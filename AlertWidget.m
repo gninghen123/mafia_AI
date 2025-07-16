@@ -44,14 +44,15 @@
 - (void)setupContentView {
     [super setupContentView];
     
-    // Toolbar
-    self.toolbarView = [[NSView alloc] initWithFrame:NSMakeRect(0, self.contentView.frame.size.height - 40,
-                                                                self.contentView.frame.size.width, 40)];
-    self.toolbarView.autoresizingMask = NSViewWidthSizable | NSViewMinYMargin;
+    // Toolbar con Auto Layout
+    self.toolbarView = [[NSView alloc] init];
+    self.toolbarView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.toolbarView.wantsLayer = YES;
     [self.contentView addSubview:self.toolbarView];
     
     // Search field
-    self.searchField = [[NSSearchField alloc] initWithFrame:NSMakeRect(10, 5, 150, 30)];
+    self.searchField = [[NSSearchField alloc] init];
+    self.searchField.translatesAutoresizingMaskIntoConstraints = NO;
     self.searchField.placeholderString = @"Cerca simbolo...";
     self.searchField.delegate = self;
     self.searchField.target = self;
@@ -59,16 +60,25 @@
     [self.toolbarView addSubview:self.searchField];
     
     // Add button
-    self.addButton = [[NSButton alloc] initWithFrame:NSMakeRect(170, 5, 30, 30)];
+    self.addButton = [[NSButton alloc] init];
+    self.addButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.addButton.bezelStyle = NSBezelStyleRegularSquare;
     self.addButton.title = @"+";
     self.addButton.target = self;
     self.addButton.action = @selector(addNewAlert);
     self.addButton.toolTip = @"Aggiungi nuovo alert";
+    
+    // Debug styling
+    self.addButton.wantsLayer = YES;
+    self.addButton.layer.backgroundColor = [NSColor blueColor].CGColor;
+    self.addButton.layer.borderWidth = 2.0;
+    self.addButton.layer.borderColor = [NSColor blackColor].CGColor;
+    
     [self.toolbarView addSubview:self.addButton];
     
     // Edit button
-    self.editButton = [[NSButton alloc] initWithFrame:NSMakeRect(205, 5, 60, 30)];
+    self.editButton = [[NSButton alloc] init];
+    self.editButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.editButton.bezelStyle = NSBezelStyleRegularSquare;
     self.editButton.title = @"Modifica";
     self.editButton.target = self;
@@ -77,7 +87,8 @@
     [self.toolbarView addSubview:self.editButton];
     
     // Delete button
-    self.deleteButton = [[NSButton alloc] initWithFrame:NSMakeRect(270, 5, 60, 30)];
+    self.deleteButton = [[NSButton alloc] init];
+    self.deleteButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.deleteButton.bezelStyle = NSBezelStyleRegularSquare;
     self.deleteButton.title = @"Elimina";
     self.deleteButton.target = self;
@@ -86,7 +97,8 @@
     [self.toolbarView addSubview:self.deleteButton];
     
     // Clear triggered button
-    self.clearTriggeredButton = [[NSButton alloc] initWithFrame:NSMakeRect(335, 5, 100, 30)];
+    self.clearTriggeredButton = [[NSButton alloc] init];
+    self.clearTriggeredButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.clearTriggeredButton.bezelStyle = NSBezelStyleRegularSquare;
     self.clearTriggeredButton.title = @"Pulisci Scattati";
     self.clearTriggeredButton.target = self;
@@ -94,68 +106,146 @@
     [self.toolbarView addSubview:self.clearTriggeredButton];
     
     // Table view
-    self.scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0,
-                                                                     self.contentView.frame.size.width,
-                                                                     self.contentView.frame.size.height - 40)];
-    self.scrollView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    self.scrollView = [[NSScrollView alloc] init];
+    self.scrollView.translatesAutoresizingMaskIntoConstraints = NO;
     self.scrollView.hasVerticalScroller = YES;
     self.scrollView.hasHorizontalScroller = NO;
     self.scrollView.borderType = NSNoBorder;
+    self.scrollView.wantsLayer = YES;
+    self.scrollView.layer.backgroundColor = [NSColor whiteColor].CGColor;
     
-    self.tableView = [[NSTableView alloc] initWithFrame:self.scrollView.bounds];
+    self.tableView = [[NSTableView alloc] init];
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
-    self.tableView.allowsEmptySelection = YES;
-    self.tableView.allowsMultipleSelection = NO;
     
-    // Colonne tabella
-    self.symbolColumn = [[NSTableColumn alloc] initWithIdentifier:@"symbol"];
-    self.symbolColumn.title = @"Simbolo";
-    self.symbolColumn.minWidth = 80;
-    self.symbolColumn.width = 100;
-    [self.tableView addTableColumn:self.symbolColumn];
-    
-    self.typeColumn = [[NSTableColumn alloc] initWithIdentifier:@"type"];
-    self.typeColumn.title = @"Tipo";
-    self.typeColumn.minWidth = 80;
-    self.typeColumn.width = 100;
-    [self.tableView addTableColumn:self.typeColumn];
-    
-    self.priceColumn = [[NSTableColumn alloc] initWithIdentifier:@"price"];
-    self.priceColumn.title = @"Prezzo Target";
-    self.priceColumn.minWidth = 80;
-    self.priceColumn.width = 120;
-    [self.tableView addTableColumn:self.priceColumn];
-    
-    self.statusColumn = [[NSTableColumn alloc] initWithIdentifier:@"status"];
-    self.statusColumn.title = @"Stato";
-    self.statusColumn.minWidth = 60;
-    self.statusColumn.width = 80;
-    [self.tableView addTableColumn:self.statusColumn];
-    
-    self.dateColumn = [[NSTableColumn alloc] initWithIdentifier:@"date"];
-    self.dateColumn.title = @"Data";
-    self.dateColumn.minWidth = 100;
-    self.dateColumn.width = 150;
-    [self.tableView addTableColumn:self.dateColumn];
+    [self setupTableColumns];
     
     self.scrollView.documentView = self.tableView;
     [self.contentView addSubview:self.scrollView];
     
-    // Carica i dati iniziali
+    // Constraints
+    [NSLayoutConstraint activateConstraints:@[
+        // Toolbar constraints - FISSA in alto
+        [self.toolbarView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor],
+        [self.toolbarView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
+        [self.toolbarView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
+        [self.toolbarView.heightAnchor constraintEqualToConstant:40],
+        
+        // Search field constraints
+        [self.searchField.leadingAnchor constraintEqualToAnchor:self.toolbarView.leadingAnchor constant:10],
+        [self.searchField.centerYAnchor constraintEqualToAnchor:self.toolbarView.centerYAnchor],
+        [self.searchField.widthAnchor constraintEqualToConstant:150],
+        [self.searchField.heightAnchor constraintEqualToConstant:30],
+        
+        // Add button constraints
+        [self.addButton.leadingAnchor constraintEqualToAnchor:self.searchField.trailingAnchor constant:10],
+        [self.addButton.centerYAnchor constraintEqualToAnchor:self.toolbarView.centerYAnchor],
+        [self.addButton.widthAnchor constraintEqualToConstant:30],
+        [self.addButton.heightAnchor constraintEqualToConstant:30],
+        
+        // Edit button constraints
+        [self.editButton.leadingAnchor constraintEqualToAnchor:self.addButton.trailingAnchor constant:5],
+        [self.editButton.centerYAnchor constraintEqualToAnchor:self.toolbarView.centerYAnchor],
+        [self.editButton.widthAnchor constraintEqualToConstant:60],
+        [self.editButton.heightAnchor constraintEqualToConstant:30],
+        
+        // Delete button constraints
+        [self.deleteButton.leadingAnchor constraintEqualToAnchor:self.editButton.trailingAnchor constant:5],
+        [self.deleteButton.centerYAnchor constraintEqualToAnchor:self.toolbarView.centerYAnchor],
+        [self.deleteButton.widthAnchor constraintEqualToConstant:60],
+        [self.deleteButton.heightAnchor constraintEqualToConstant:30],
+        
+        // Clear triggered button constraints
+        [self.clearTriggeredButton.leadingAnchor constraintEqualToAnchor:self.deleteButton.trailingAnchor constant:5],
+        [self.clearTriggeredButton.centerYAnchor constraintEqualToAnchor:self.toolbarView.centerYAnchor],
+        [self.clearTriggeredButton.widthAnchor constraintEqualToConstant:100],
+        [self.clearTriggeredButton.heightAnchor constraintEqualToConstant:30],
+        
+        // ScrollView constraints - sotto la toolbar
+        [self.scrollView.topAnchor constraintEqualToAnchor:self.toolbarView.bottomAnchor],
+        [self.scrollView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
+        [self.scrollView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
+        [self.scrollView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor]
+    ]];
+    
+    // Carica dati iniziali
     [self refreshData];
 }
+
+- (void)setupTableColumns {
+    // Rimuovi eventuali colonne esistenti
+    while (self.tableView.tableColumns.count > 0) {
+        [self.tableView removeTableColumn:self.tableView.tableColumns.lastObject];
+    }
+    
+    // Colonna Simbolo
+    self.symbolColumn = [[NSTableColumn alloc] initWithIdentifier:@"symbol"];
+    self.symbolColumn.title = @"Simbolo";
+    self.symbolColumn.width = 80;
+    self.symbolColumn.minWidth = 60;
+    self.symbolColumn.maxWidth = 120;
+    [self.tableView addTableColumn:self.symbolColumn];
+    
+    // Colonna Tipo
+    self.typeColumn = [[NSTableColumn alloc] initWithIdentifier:@"type"];
+    self.typeColumn.title = @"Tipo";
+    self.typeColumn.width = 80;
+    self.typeColumn.minWidth = 60;
+    self.typeColumn.maxWidth = 100;
+    [self.tableView addTableColumn:self.typeColumn];
+    
+    // Colonna Prezzo
+    self.priceColumn = [[NSTableColumn alloc] initWithIdentifier:@"price"];
+    self.priceColumn.title = @"Prezzo Target";
+    self.priceColumn.width = 100;
+    self.priceColumn.minWidth = 80;
+    self.priceColumn.maxWidth = 150;
+    [self.tableView addTableColumn:self.priceColumn];
+    
+    // Colonna Status
+    self.statusColumn = [[NSTableColumn alloc] initWithIdentifier:@"status"];
+    self.statusColumn.title = @"Stato";
+    self.statusColumn.width = 80;
+    self.statusColumn.minWidth = 60;
+    self.statusColumn.maxWidth = 120;
+    [self.tableView addTableColumn:self.statusColumn];
+    
+    // Colonna Data
+    self.dateColumn = [[NSTableColumn alloc] initWithIdentifier:@"date"];
+    self.dateColumn.title = @"Data";
+    self.dateColumn.width = 120;
+    self.dateColumn.minWidth = 100;
+    self.dateColumn.maxWidth = 180;
+    [self.tableView addTableColumn:self.dateColumn];
+    
+    // Configurazioni aggiuntive della tabella
+    self.tableView.usesAlternatingRowBackgroundColors = YES;
+    self.tableView.allowsMultipleSelection = NO;
+    self.tableView.columnAutoresizingStyle = NSTableViewUniformColumnAutoresizingStyle;
+    
+    // Abilita sorting sulle colonne
+    for (NSTableColumn *column in self.tableView.tableColumns) {
+        NSSortDescriptor *sortDescriptor = [NSSortDescriptor sortDescriptorWithKey:column.identifier ascending:YES];
+        column.sortDescriptorPrototype = sortDescriptor;
+    }
+}
+
+
 #pragma mark - Data Management
 
 - (void)refreshData {
+    NSLog(@"refreshData chiamato");
+    
     [self.displayedAlerts removeAllObjects];
     
     NSArray *allAlerts = [[AlertManager sharedManager] allAlerts];
+    NSLog(@"AlertManager ha %ld alert totali", (long)allAlerts.count);
     
-    // Applica filtro se presente
-    if (self.searchFilter && self.searchFilter.length > 0) {
+    // Filtra per search se presente
+    if (self.searchFilter.length > 0) {
         NSPredicate *predicate = [NSPredicate predicateWithFormat:@"symbol CONTAINS[cd] %@", self.searchFilter];
         allAlerts = [allAlerts filteredArrayUsingPredicate:predicate];
+        NSLog(@"Dopo filtro search: %ld alert", (long)allAlerts.count);
     }
     
     // Ordina per data di creazione (più recenti prima)
@@ -163,12 +253,14 @@
     allAlerts = [allAlerts sortedArrayUsingDescriptors:@[sortDescriptor]];
     
     [self.displayedAlerts addObjectsFromArray:allAlerts];
+    NSLog(@"displayedAlerts ora ha %ld elementi", (long)self.displayedAlerts.count);
+    
     [self.tableView reloadData];
+    NSLog(@"tableView reloadData chiamato");
     
     // Aggiorna stato pulsanti
     [self updateButtonStates];
 }
-
 - (void)updateButtonStates {
     NSInteger selectedRow = self.tableView.selectedRow;
     BOOL hasSelection = (selectedRow >= 0 && selectedRow < self.displayedAlerts.count);
@@ -189,12 +281,9 @@
 }
 
 - (void)addNewAlert {
-    AlertEntry *newAlert = [[AlertEntry alloc] init];
-    
-    // Precompila con il simbolo selezionato se disponibile
-    // Qui potresti ottenere il simbolo dal widget attivo o dal DataManager
-    
-    [self showAlertEditSheet:newAlert];
+    // FIXED: Pass nil to indicate this is a new alert
+    NSLog(@"addNewAlert chiamato - passando nil come alert");
+    [self showAlertEditSheet:nil];
 }
 
 - (void)editSelectedAlert {
@@ -237,24 +326,36 @@
 }
 
 - (void)showAlertEditSheet:(AlertEntry *)alert {
+    NSLog(@"showAlertEditSheet chiamato con alert: %@", alert ? alert.alertID : @"NIL (NUOVO)");
+    
     AlertEditWindowController *editController = [[AlertEditWindowController alloc] initWithAlert:alert];
     
     [self.view.window beginSheet:editController.window completionHandler:^(NSModalResponse returnCode) {
-            if (returnCode == NSModalResponseOK) {
+        NSLog(@"Sheet completata con returnCode: %ld", (long)returnCode);
+        
+        if (returnCode == NSModalResponseOK) {
             AlertEntry *editedAlert = editController.editedAlert;
+            NSLog(@"Alert editato: ID=%@, Symbol=%@, Price=%.5f",
+                  editedAlert.alertID, editedAlert.symbol, editedAlert.targetPrice);
             
-            if (alert.alertID) {
-                // Modifica alert esistente
-                [[AlertManager sharedManager] updateAlert:editedAlert];
-            } else {
-                // Nuovo alert
+            // FIXED: Check if the ORIGINAL alert was nil (not the editedAlert)
+            if (alert == nil) {
+                NSLog(@"Aggiungendo nuovo alert (original era nil)");
                 [[AlertManager sharedManager] addAlert:editedAlert];
+            } else {
+                NSLog(@"Aggiornando alert esistente con ID: %@", alert.alertID);
+                [[AlertManager sharedManager] updateAlert:editedAlert];
             }
             
+            NSLog(@"Chiamando refreshData");
             [self refreshData];
+            
+            // Debug: verifica il numero di alert nella tabella
+            NSLog(@"Numero di alert nella tabella dopo refresh: %ld", (long)self.displayedAlerts.count);
         }
     }];
 }
+
 
 #pragma mark - NSTableViewDataSource
 

@@ -50,6 +50,9 @@
 		954D30DD2E28531C00C7DC88 /* progettoinfo.txt in Resources */ = {isa = PBXBuildFile; fileRef = 954D30C02E28531C00C7DC88 /* progettoinfo.txt */; };
 		954D30DE2E28531C00C7DC88 /* PanelController.xib in Resources */ = {isa = PBXBuildFile; fileRef = 954D30D02E28531C00C7DC88 /* PanelController.xib */; };
 		954D30DF2E28531C00C7DC88 /* BaseWidget.xib in Resources */ = {isa = PBXBuildFile; fileRef = 954D30CD2E28531C00C7DC88 /* BaseWidget.xib */; };
+		954D30E32E2860F100C7DC88 /* PreferencesWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */; };
+		954D30E42E2860F100C7DC88 /* PreferencesWindowController.xib in Resources */ = {isa = PBXBuildFile; fileRef = 954D30E22E2860F100C7DC88 /* PreferencesWindowController.xib */; };
+		954D30E72E28612100C7DC88 /* AppSettings.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30E62E28612100C7DC88 /* AppSettings.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -155,6 +158,11 @@
 		954D30D12E28531C00C7DC88 /* MainWindowController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MainWindowController.h; sourceTree = "<group>"; };
 		954D30D22E28531C00C7DC88 /* MainWindowController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MainWindowController.m; sourceTree = "<group>"; };
 		954D30D32E28531C00C7DC88 /* MainWindowController.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = MainWindowController.xib; sourceTree = "<group>"; };
+		954D30E02E2860F100C7DC88 /* PreferencesWindowController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PreferencesWindowController.h; sourceTree = "<group>"; };
+		954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PreferencesWindowController.m; sourceTree = "<group>"; };
+		954D30E22E2860F100C7DC88 /* PreferencesWindowController.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = PreferencesWindowController.xib; sourceTree = "<group>"; };
+		954D30E52E28612100C7DC88 /* AppSettings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppSettings.h; sourceTree = "<group>"; };
+		954D30E62E28612100C7DC88 /* AppSettings.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppSettings.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -203,6 +211,11 @@
 		954D2FF72E28514A00C7DC88 = {
 			isa = PBXGroup;
 			children = (
+				954D30E52E28612100C7DC88 /* AppSettings.h */,
+				954D30E62E28612100C7DC88 /* AppSettings.m */,
+				954D30E02E2860F100C7DC88 /* PreferencesWindowController.h */,
+				954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */,
+				954D30E22E2860F100C7DC88 /* PreferencesWindowController.xib */,
 				954D30BF2E28531C00C7DC88 /* TradingAppTypes.h */,
 				954D30C02E28531C00C7DC88 /* progettoinfo.txt */,
 				954D30C12E28531C00C7DC88 /* WidgetTypeManager.h */,
@@ -428,6 +441,7 @@
 				954D30BE2E28530E00C7DC88 /* SchwabConfig.plist in Resources */,
 				954D30AC2E28530500C7DC88 /* ConnectionStatusWidget.xib in Resources */,
 				954D30AD2E28530500C7DC88 /* WatchlistWidget.xib in Resources */,
+				954D30E42E2860F100C7DC88 /* PreferencesWindowController.xib in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -465,10 +479,12 @@
 				954D30732E2852E400C7DC88 /* NSColor+CHAdditions.m in Sources */,
 				954D30792E2852EA00C7DC88 /* CHColorUtils.m in Sources */,
 				954D307F2E2852F000C7DC88 /* CHBarChartRenderer.m in Sources */,
+				954D30E32E2860F100C7DC88 /* PreferencesWindowController.m in Sources */,
 				954D30802E2852F000C7DC88 /* CHLineChartRenderer.m in Sources */,
 				954D308D2E2852F900C7DC88 /* CHDataPoint.m in Sources */,
 				954D30A82E28530500C7DC88 /* WatchlistWidget.m in Sources */,
 				954D30A92E28530500C7DC88 /* ConnectionStatusWidget.m in Sources */,
+				954D30E72E28612100C7DC88 /* AppSettings.m in Sources */,
 				954D30AA2E28530500C7DC88 /* QuoteWidget.m in Sources */,
 				954D30AB2E28530500C7DC88 /* WatchlistManager.m in Sources */,
 				954D308E2E2852F900C7DC88 /* CHChartConfiguration.m in Sources */,

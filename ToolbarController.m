@@ -5,8 +5,11 @@
 
 #import "ToolbarController.h"
 #import "MainWindowController.h"
+#import "PreferencesWindowController.h"
 
 // Toolbar item identifiers
+static NSString *const ToolbarItemPreferences = @"Preferences";
+
 static NSString *const ToolbarItemLeftPanel = @"LeftPanel";
 static NSString *const ToolbarItemRightPanel = @"RightPanel";
 static NSString *const ToolbarItemLayoutSelector = @"LayoutSelector";
@@ -123,9 +126,26 @@ static NSString *const ToolbarItemSaveLayout = @"SaveLayout";
         item.label = @"Save";
         item.paletteLabel = @"Save Layout";
         item.view = saveButton;
+    }else if ([itemIdentifier isEqualToString:ToolbarItemPreferences]) {
+        NSButton *preferencesButton = [[NSButton alloc] init];
+        preferencesButton.bezelStyle = NSBezelStyleTexturedRounded;
+        preferencesButton.title = @"⚙️";
+        preferencesButton.target = self;
+        preferencesButton.action = @selector(showPreferences:);
+        preferencesButton.toolTip = @"Preferences";
+        
+        [preferencesButton.widthAnchor constraintEqualToConstant:40].active = YES;
+        
+        item.label = @"Preferences";
+        item.paletteLabel = @"Preferences";
+        item.view = preferencesButton;
     }
     
     return item;
+}
+
+- (void)showPreferences:(id)sender {
+    [[PreferencesWindowController sharedController] showPreferences];
 }
 
 - (NSArray<NSToolbarItemIdentifier> *)toolbarDefaultItemIdentifiers:(NSToolbar *)toolbar {
@@ -135,6 +155,7 @@ static NSString *const ToolbarItemSaveLayout = @"SaveLayout";
         ToolbarItemLayoutSelector,
         ToolbarItemSaveLayout,
         NSToolbarFlexibleSpaceItemIdentifier,
+        ToolbarItemPreferences,  // ← Aggiungi questo
         ToolbarItemRightPanel
     ];
 }
@@ -145,9 +166,9 @@ static NSString *const ToolbarItemSaveLayout = @"SaveLayout";
         ToolbarItemRightPanel,
         ToolbarItemLayoutSelector,
         ToolbarItemSaveLayout,
-        NSToolbarSpaceItemIdentifier,
+        ToolbarItemPreferences,  // ← Aggiungi questo
         NSToolbarFlexibleSpaceItemIdentifier,
-        NSToolbarSeparatorItemIdentifier
+        NSToolbarSpaceItemIdentifier
     ];
 }
 

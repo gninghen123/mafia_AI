@@ -5,6 +5,7 @@
 
 #import "AlertManager.h"
 #import "DataManager.h"
+#import "AppSettings.h"
 
 // Notifiche
 NSString *const kAlertTriggeredNotification = @"AlertTriggeredNotification";
@@ -35,8 +36,6 @@ NSString *const kAlertEntryKey = @"AlertEntry";
     self = [super init];
     if (self) {
         _alerts = [NSMutableArray array];
-        _soundEnabled = YES;
-        _popupEnabled = YES;
         _alertQueue = dispatch_queue_create("com.tradingapp.alertqueue", DISPATCH_QUEUE_SERIAL);
         
         // Setup file path
@@ -54,20 +53,50 @@ NSString *const kAlertEntryKey = @"AlertEntry";
         // Carica alerts salvati
         [self loadAlerts];
         
+        // Usa le impostazioni per suoni e popup
+        AppSettings *settings = [AppSettings sharedSettings];
+        _soundEnabled = settings.alertSoundsEnabled;
+        _popupEnabled = settings.alertPopupsEnabled;
+        
         // Registra per notifiche prezzi dal DataManager
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(priceUpdateReceived:)
                                                      name:@"PriceUpdateNotification"
                                                    object:nil];
         
-        // Timer per controllo periodico (ogni 5 secondi come backup)
-        _checkTimer = [NSTimer scheduledTimerWithTimeInterval:5.0
-                                                       target:self
-                                                     selector:@selector(checkAllAlerts)
-                                                     userInfo:nil
-                                                      repeats:YES];
+        // Registra per cambiamenti delle impostazioni
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(settingsDidChange:)
+                                                     name:@"AppSettingsDidChange"
+                                                   object:nil];
+        
+        // Timer usando le impostazioni
+        [self setupTimerWithInterval:settings.alertBackupInterval];
     }
     return self;
+}
+
+- (void)setupTimerWithInterval:(NSTimeInterval)interval {
+    if (_checkTimer) {
+        [_checkTimer invalidate];
+    }
+    
+    _checkTimer = [NSTimer scheduledTimerWithTimeInterval:interval
+                                                   target:self
+                                                 selector:@selector(checkAllAlerts)
+                                                 userInfo:nil
+                                                  repeats:YES];
+}
+
+- (void)settingsDidChange:(NSNotification *)notification {
+    AppSettings *settings = [AppSettings sharedSettings];
+    
+    // Aggiorna le impostazioni
+    self.soundEnabled = settings.alertSoundsEnabled;
+    self.popupEnabled = settings.alertPopupsEnabled;
+    
+    // Aggiorna il timer se l'intervallo è cambiato
+    [self setupTimerWithInterval:settings.alertBackupInterval];
 }
 
 - (void)dealloc {
@@ -78,16 +107,42 @@ NSString *const kAlertEntryKey = @"AlertEntry";
 #pragma mark - Gestione Alert
 
 - (void)addAlert:(AlertEntry *)alert {
-    if (!alert || !alert.symbol || alert.targetPrice <= 0) {
+    NSLog(@"=== AlertManager addAlert INIZIATO ===");
+    NSLog(@"Alert ricevuto: %@", alert);
+    NSLog(@"  ID: %@", alert.alertID);
+    NSLog(@"  Symbol: %@", alert.symbol);
+    NSLog(@"  Price: %.5f", alert.targetPrice);
+    NSLog(@"  Status: %ld", (long)alert.status);
+    
+    if (!alert) {
+        NSLog(@"ERRORE: Alert è nil!");
         return;
     }
     
+    if (!alert.symbol) {
+        NSLog(@"ERRORE: Symbol è nil!");
+        return;
+    }
+    
+    if (alert.targetPrice <= 0) {
+        NSLog(@"ERRORE: TargetPrice non valido: %.5f", alert.targetPrice);
+        return;
+    }
+    
+    NSLog(@"Alert valido, aggiungendo alla coda...");
+    
     dispatch_async(self.alertQueue, ^{
+        NSLog(@"Dentro la alertQueue - aggiungendo alert...");
         [self.alerts addObject:alert];
+        NSLog(@"Alert aggiunto. Totale alert ora: %ld", (long)self.alerts.count);
+        
         [self saveAlerts];
+        NSLog(@"Alert salvati su disco");
         
         dispatch_async(dispatch_get_main_queue(), ^{
+            NSLog(@"Notificando aggiornamento alert su main queue...");
             [self notifyAlertsUpdated];
+            NSLog(@"=== AlertManager addAlert COMPLETATO ===");
         });
     });
 }
@@ -288,9 +343,10 @@ NSString *const kAlertEntryKey = @"AlertEntry";
                                                         object:self
                                                       userInfo:@{kAlertEntryKey: alert}];
     
-    // Suono
+    // Suono usando le impostazioni
     if (self.soundEnabled) {
-        NSSound *alertSound = [NSSound soundNamed:@"Glass"];
+        AppSettings *settings = [AppSettings sharedSettings];
+        NSSound *alertSound = [NSSound soundNamed:settings.alertSoundName];
         [alertSound play];
     }
     
@@ -309,7 +365,11 @@ NSString *const kAlertEntryKey = @"AlertEntry";
                                    alert.symbol,
                                    alert.targetPrice,
                                    alert.alertTypeString];
-    notification.soundName = NSUserNotificationDefaultSoundName;
+    
+    // Usa il suono dalle impostazioni
+    AppSettings *settings = [AppSettings sharedSettings];
+    notification.soundName = settings.alertSoundName;
+    
     notification.hasActionButton = YES;
     notification.actionButtonTitle = @"Visualizza";
     notification.userInfo = @{@"alertID": alert.alertID};

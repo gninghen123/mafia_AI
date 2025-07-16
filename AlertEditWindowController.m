@@ -15,7 +15,8 @@
 @implementation AlertEditWindowController
 
 - (instancetype)initWithAlert:(AlertEntry *)alert {
-    self = [super initWithWindowNibName:nil];
+    // FIXED: Usa init invece di initWithWindowNibName:nil
+    self = [super init];
     if (self) {
         _originalAlert = alert;
         _editedAlert = alert ? [alert copy] : [[AlertEntry alloc] init];
@@ -63,7 +64,7 @@
     [contentView addSubview:symbolLabel];
     
     self.symbolField = [[NSTextField alloc] initWithFrame:NSMakeRect(130, 280, 250, 25)];
-    self.symbolField.placeholderString = @"ES. EUR/USD";
+    self.symbolField.placeholderString = @"ES. AAPL";
     self.symbolField.delegate = self;
     [contentView addSubview:self.symbolField];
     
@@ -80,6 +81,8 @@
     [self.typePopup addItemWithTitle:@"Prezzo Sotto"];
     [contentView addSubview:self.typePopup];
     
+    // Nel metodo setupUI, trova la sezione del priceField e sostituisci con:
+
     // Price field
     NSTextField *priceLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 200, 100, 20)];
     priceLabel.stringValue = @"Prezzo Target:";
@@ -87,13 +90,21 @@
     priceLabel.bezeled = NO;
     priceLabel.drawsBackground = NO;
     [contentView addSubview:priceLabel];
-    
+
     self.priceField = [[NSTextField alloc] initWithFrame:NSMakeRect(130, 200, 250, 25)];
     self.priceField.placeholderString = @"0.00000";
+
+    // FIXED: Formatter che accetta sempre il punto come separatore decimale
     NSNumberFormatter *formatter = [[NSNumberFormatter alloc] init];
     formatter.numberStyle = NSNumberFormatterDecimalStyle;
     formatter.minimumFractionDigits = 2;
     formatter.maximumFractionDigits = 5;
+
+    // Forza l'uso del punto come separatore decimale (stile US)
+    formatter.decimalSeparator = @".";
+    formatter.groupingSeparator = @"";  // Disabilita il separatore delle migliaia
+    formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US"];
+
     self.priceField.formatter = formatter;
     [contentView addSubview:self.priceField];
     
@@ -208,6 +219,13 @@
 #pragma mark - Actions
 
 - (void)okAction:(id)sender {
+    // DEBUG: Verifica i valori dei campi PRIMA della validazione
+    NSLog(@"okAction - Valori campi:");
+    NSLog(@"  Symbol: '%@'", self.symbolField.stringValue);
+    NSLog(@"  Price string: '%@'", self.priceField.stringValue);
+    NSLog(@"  Price double: %.5f", self.priceField.doubleValue);
+    NSLog(@"  Type index: %ld", (long)self.typePopup.indexOfSelectedItem);
+    
     // Validazione
     if (self.symbolField.stringValue.length == 0) {
         NSAlert *alert = [[NSAlert alloc] init];
@@ -217,7 +235,9 @@
         return;
     }
     
+    // FIXED: Debug se il prezzo è 0 e perché
     if (self.priceField.doubleValue <= 0) {
+        NSLog(@"ERRORE: Prezzo non valido");
         NSAlert *alert = [[NSAlert alloc] init];
         alert.messageText = @"Errore";
         alert.informativeText = @"Inserisci un prezzo target valido.";
@@ -225,11 +245,21 @@
         return;
     }
     
+    // FIXED: Assicurati che il nuovo alert abbia un ID e data di creazione
+    if (!self.editedAlert.alertID) {
+        self.editedAlert.alertID = [[NSUUID UUID] UUIDString];
+        NSLog(@"Generato nuovo ID: %@", self.editedAlert.alertID);
+    }
+    if (!self.editedAlert.creationDate) {
+        self.editedAlert.creationDate = [NSDate date];
+        NSLog(@"Impostata data di creazione");
+    }
+    
     // Aggiorna l'alert
     self.editedAlert.symbol = self.symbolField.stringValue;
     self.editedAlert.targetPrice = self.priceField.doubleValue;
     self.editedAlert.alertType = self.typePopup.indexOfSelectedItem;
-    self.editedAlert.notes = self.notesField.stringValue;
+    self.editedAlert.notes = self.notesField.stringValue ?: @"";
     
     if (self.activeCheckbox.state == NSControlStateValueOn) {
         self.editedAlert.status = AlertStatusActive;
@@ -237,9 +267,16 @@
         self.editedAlert.status = AlertStatusDisabled;
     }
     
+    // DEBUG: Log dopo l'aggiornamento
+    NSLog(@"Alert aggiornato: ID=%@, Symbol=%@, Price=%.5f, Type=%ld, Status=%ld",
+          self.editedAlert.alertID,
+          self.editedAlert.symbol,
+          self.editedAlert.targetPrice,
+          (long)self.editedAlert.alertType,
+          (long)self.editedAlert.status);
+    
     [self.window.sheetParent endSheet:self.window returnCode:NSModalResponseOK];
 }
-
 - (void)cancelAction:(id)sender {
     [self.window.sheetParent endSheet:self.window returnCode:NSModalResponseCancel];
 }

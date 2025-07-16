@@ -1,16 +1,13 @@
 //
 //  PreferencesWindowController.h
-//  mafia_AI
-//
-//  Created by fabio gattone on 17/07/25.
+//  TradingApp
 //
 
 #import <Cocoa/Cocoa.h>
 
-NS_ASSUME_NONNULL_BEGIN
-
 @interface PreferencesWindowController : NSWindowController
 
-@end
++ (instancetype)sharedController;
+- (void)showPreferences;
 
-NS_ASSUME_NONNULL_END
+@end

@@ -1,16 +1,37 @@
 //
 //  AppSettings.h
-//  mafia_AI
-//
-//  Created by fabio gattone on 17/07/25.
+//  TradingApp
 //
 
 #import <Foundation/Foundation.h>
-
-NS_ASSUME_NONNULL_BEGIN
+#import <AppKit/AppKit.h>
 
 @interface AppSettings : NSObject
 
-@end
++ (instancetype)sharedSettings;
 
-NS_ASSUME_NONNULL_END
+// General Settings
+@property (nonatomic, assign) NSTimeInterval priceUpdateInterval;
+@property (nonatomic, assign) NSTimeInterval alertBackupInterval;
+@property (nonatomic, assign) BOOL autosaveLayouts;
+
+// Alert Settings
+@property (nonatomic, assign) BOOL alertSoundsEnabled;
+@property (nonatomic, assign) BOOL alertPopupsEnabled;
+@property (nonatomic, strong) NSString *alertSoundName;
+
+// Data Source Settings
+@property (nonatomic, assign) BOOL yahooEnabled;
+@property (nonatomic, assign) BOOL schwabEnabled;
+@property (nonatomic, assign) BOOL ibkrEnabled;
+
+// Appearance Settings
+@property (nonatomic, strong) NSString *themeName;
+@property (nonatomic, strong) NSColor *accentColor;
+
+// Methods
+- (void)save;
+- (void)load;
+- (void)resetToDefaults;
+
+@end

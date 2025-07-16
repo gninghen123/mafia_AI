@@ -49,6 +49,8 @@
     self.window = window;
 }
 
+// Sostituisci il metodo setupUI nell'AlertEditWindowController.m con questo completo:
+
 - (void)setupUI {
     NSView *contentView = self.window.contentView;
     

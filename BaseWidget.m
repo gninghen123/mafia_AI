@@ -16,7 +16,7 @@
 @property (nonatomic, strong) NSButton *closeButton;
 @property (nonatomic, strong) NSButton *collapseButton;
 @property (nonatomic, strong) NSButton *chainButton;
-@property (nonatomic, strong) NSButton *addButton;
+@property (nonatomic, strong) NSButton *addWidgetButton;
 @property (nonatomic, strong) NSPopover *addPopover;
 @property (nonatomic, assign) CGFloat savedHeight;
 @property (nonatomic, strong) NSView *headerViewInternal;
@@ -116,7 +116,7 @@
     self.chainButton = [self createHeaderButton:@"\U0001F517" action:@selector(showChainMenu:)];
     [self updateChainButtonColor];
 
-    self.addButton = [self createHeaderButton:@"+" action:@selector(showAddMenu:)];
+    self.addWidgetButton = [self createHeaderButton:@"+" action:@selector(showAddMenu:)];
 
     [headerStack addArrangedSubview:self.closeButton];
     if (self.collapseButton) {
@@ -125,11 +125,9 @@
     [headerStack addArrangedSubview:self.titleComboBox];
     [headerStack addArrangedSubview:self.chainButton];
  //   [headerStack addArrangedSubview:self.addButton];
-//todo
-    if (self.addButton) {
-        [headerStack addArrangedSubview:self.addButton];
+    if (self.addWidgetButton) {
+        [headerStack addArrangedSubview:self.addWidgetButton];
     }
-
     [self.titleComboBox setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
 
     [self.headerViewInternal addSubview:headerStack];
@@ -317,8 +315,8 @@
     self.addPopover.contentViewController = menuController;
     self.addPopover.behavior = NSPopoverBehaviorTransient;
     
-    [self.addPopover showRelativeToRect:self.addButton.bounds
-                                 ofView:self.addButton
+    [self.addPopover showRelativeToRect:self.addWidgetButton.bounds
+                                 ofView:self.addWidgetButton
                           preferredEdge:NSRectEdgeMaxY];
 }
 

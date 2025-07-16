@@ -105,41 +105,38 @@
     self.tableView = [[NSTableView alloc] initWithFrame:self.scrollView.bounds];
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
-    self.tableView.rowHeight = 25;
-    self.tableView.intercellSpacing = NSMakeSize(0, 0);
-    self.tableView.headerView.wantsLayer = YES;
+    self.tableView.allowsEmptySelection = YES;
     self.tableView.allowsMultipleSelection = NO;
-    self.tableView.doubleAction = @selector(editSelectedAlert);
     
-    // Colonne
+    // Colonne tabella
     self.symbolColumn = [[NSTableColumn alloc] initWithIdentifier:@"symbol"];
     self.symbolColumn.title = @"Simbolo";
-    self.symbolColumn.width = 80;
-    self.symbolColumn.minWidth = 60;
+    self.symbolColumn.minWidth = 80;
+    self.symbolColumn.width = 100;
     [self.tableView addTableColumn:self.symbolColumn];
     
     self.typeColumn = [[NSTableColumn alloc] initWithIdentifier:@"type"];
     self.typeColumn.title = @"Tipo";
-    self.typeColumn.width = 60;
-    self.typeColumn.minWidth = 50;
+    self.typeColumn.minWidth = 80;
+    self.typeColumn.width = 100;
     [self.tableView addTableColumn:self.typeColumn];
     
     self.priceColumn = [[NSTableColumn alloc] initWithIdentifier:@"price"];
     self.priceColumn.title = @"Prezzo Target";
-    self.priceColumn.width = 100;
     self.priceColumn.minWidth = 80;
+    self.priceColumn.width = 120;
     [self.tableView addTableColumn:self.priceColumn];
     
     self.statusColumn = [[NSTableColumn alloc] initWithIdentifier:@"status"];
     self.statusColumn.title = @"Stato";
-    self.statusColumn.width = 80;
     self.statusColumn.minWidth = 60;
+    self.statusColumn.width = 80;
     [self.tableView addTableColumn:self.statusColumn];
     
     self.dateColumn = [[NSTableColumn alloc] initWithIdentifier:@"date"];
     self.dateColumn.title = @"Data";
-    self.dateColumn.width = 120;
     self.dateColumn.minWidth = 100;
+    self.dateColumn.width = 150;
     [self.tableView addTableColumn:self.dateColumn];
     
     self.scrollView.documentView = self.tableView;
@@ -148,7 +145,6 @@
     // Carica i dati iniziali
     [self refreshData];
 }
-
 #pragma mark - Data Management
 
 - (void)refreshData {

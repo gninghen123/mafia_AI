@@ -226,10 +226,13 @@ NSString *const kAlertEntryKey = @"AlertEntry";
     if (!symbol || price <= 0) return;
     
     dispatch_async(self.alertQueue, ^{
-        NSArray *symbolAlerts = [self alertsForSymbol:symbol];
+        // NON usare [self alertsForSymbol:symbol] qui dentro perché causerebbe deadlock
+        // Invece filtra direttamente l'array self.alerts
+        NSPredicate *predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbol];
+        NSArray *symbolAlerts = [self.alerts filteredArrayUsingPredicate:predicate];
         
         for (AlertEntry *alert in symbolAlerts) {
-            if ([alert shouldTriggerForPrice:price]) {
+            if (alert.status == AlertStatusActive && [alert shouldTriggerForPrice:price]) {
                 alert.status = AlertStatusTriggered;
                 alert.triggerDate = [NSDate date];
                 
@@ -248,7 +251,12 @@ NSString *const kAlertEntryKey = @"AlertEntry";
     DataManager *dataManager = [DataManager sharedManager];
     
     dispatch_async(self.alertQueue, ^{
-        for (AlertEntry *alert in self.activeAlerts) {
+        // NON usare self.activeAlerts qui dentro perché causerebbe deadlock
+        // Invece filtra direttamente l'array self.alerts
+        NSPredicate *predicate = [NSPredicate predicateWithFormat:@"status == %d", AlertStatusActive];
+        NSArray *activeAlerts = [self.alerts filteredArrayUsingPredicate:predicate];
+        
+        for (AlertEntry *alert in activeAlerts) {
             NSDictionary *symbolData = [dataManager dataForSymbol:alert.symbol];
             if (symbolData) {
                 double currentPrice = [symbolData[@"last"] doubleValue];

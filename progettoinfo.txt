@@ -1,0 +1,159 @@
+# Trading App for macOS
+
+## Struttura del Progetto
+
+L'app è strutturata con i seguenti componenti principali:
+
+### 1. **MainWindowController**
+- Gestisce la finestra principale con 3 pannelli (sinistra, centro, destra)
+- I pannelli laterali sono collassabili tramite pulsanti nella toolbar
+- Gestisce il salvataggio/caricamento dei layout
+
+### 2. **PanelController**
+- Ogni pannello ha il proprio controller
+- Gestisce i widget al suo interno
+- Ha una barra superiore per salvare/caricare layout specifici del pannello
+- Garantisce che ci sia sempre almeno un widget nel pannello
+
+### 3. **BaseWidget**
+- Classe base per tutti i widget
+- Barra del titolo con:
+  - [X] Chiudi (disabilitato se è l'ultimo widget)
+  - [-] Collassa (solo pannelli laterali)
+  - Titolo editabile con autocompletamento
+  - [🔗] Chain per connessioni
+  - [+] Aggiungi nuovo widget
+
+### 4. **WidgetContainerView**
+- Gestisce la disposizione dei widget usando NSSplitView annidate
+- Nessuno spazio vuoto - i widget riempiono sempre tutto lo spazio
+- Struttura ad albero per facile serializzazione
+
+## Setup in Xcode
+
+1. **Crea nuovo progetto**:
+   - Apri Xcode
+   - File → New → Project
+   - Choose macOS → App
+   - Product Name: TradingApp
+   - Language: Objective-C
+   - User Interface: XIB (non Storyboard)
+   - Deseleziona "Use Core Data"
+
+2. **Rimuovi file default**:
+   - Elimina `MainMenu.xib`
+   - Elimina `ViewController.h` e `ViewController.m`
+
+3. **Aggiungi i file del progetto**:
+   - Copia tutti i file .h e .m nella cartella del progetto
+   - In Xcode: File → Add Files to "TradingApp"
+   - Seleziona tutti i file e assicurati che "Copy items if needed" sia selezionato
+
+4. **Modifica Info.plist**:
+   - Rimuovi la riga "Main nib file base name"
+   - L'app creerà la UI programmaticamente
+
+5. **Build Settings** (opzionale ma consigliato):
+   - Enable Modules: YES
+   - Enable Objective-C ARC: YES
+
+## Struttura delle Cartelle Suggerita
+
+```
+TradingApp/
+├── AppDelegate.h
+├── AppDelegate.m
+├── Controllers/
+│   ├── MainWindowController.h
+│   ├── MainWindowController.m
+│   ├── PanelController.h
+│   ├── PanelController.m
+│   ├── ToolbarController.h
+│   └── ToolbarController.m
+├── Views/
+│   ├── WidgetContainerView.h
+│   ├── WidgetContainerView.m
+│   ├── PanelHeaderView.h
+│   └── PanelHeaderView.m
+├── Widgets/
+│   ├── BaseWidget.h
+│   └── BaseWidget.m
+├── Managers/
+│   ├── LayoutManager.h
+│   ├── LayoutManager.m
+│   ├── WidgetTypeManager.h
+│   └── WidgetTypeManager.m
+└── Resources/
+    └── Info.plist
+```
+
+## Prossimi Passi
+
+1. **Implementare widget specifici**:
+   - Crea sottoclassi di BaseWidget per ogni tipo
+   - Override del metodo `setupContentView` per il contenuto specifico
+
+2. **Aggiungere il sistema di chain**:
+   - Implementare UI per connettere widget
+   - Sistema di messaggi tra widget connessi
+
+3. **Migliorare il salvataggio layout**:
+   - Aggiungere export/import file
+   - Gestione versioni dei layout
+
+4. **Integrare dati di trading**:
+   - API per dati real-time
+   - Gestione simboli e mercati
+
+## Note Implementative
+
+### Gestione Memory
+- Usa weak references per delegates e callbacks per evitare retain cycles
+- I widget sono retained dal PanelController
+
+### Performance
+- I widget collassati non dovrebbero aggiornare il loro contenuto
+- Usa NSOperationQueue per operazioni pesanti
+- Implementa lazy loading dove possibile
+
+### Persistenza
+- I layout sono salvati in `~/Library/Application Support/[BundleID]/Layouts/`
+- Backup automatico dell'ultimo layout usato
+
+## Esempio di Widget Custom
+
+```objc
+// ChartWidget.h
+#import "BaseWidget.h"
+
+@interface ChartWidget : BaseWidget
+@property (nonatomic, strong) NSString *symbol;
+@property (nonatomic, strong) NSString *timeframe;
+@end
+
+// ChartWidget.m
+@implementation ChartWidget
+
+- (void)setupContentView {
+    [super setupContentView];
+    // Aggiungi vista del grafico
+    // Configura binding per symbol e timeframe
+}
+
+- (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
+    if (update[@"symbol"]) {
+        self.symbol = update[@"symbol"];
+        [self updateChart];
+    }
+}
+
+@end
+```
+
+## Testing
+
+1. Verifica che i pannelli si aprano/chiudano correttamente
+2. Test salvataggio/caricamento layout
+3. Verifica che non si possa eliminare l'ultimo widget
+4. Test ridimensionamento con split views
+5. Verifica persistenza layout dopo riavvio app

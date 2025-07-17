@@ -120,6 +120,9 @@
     NSString *requestID = [[NSUUID UUID] UUIDString];
     self.activeRequests[requestID] = parameters;
     
+    // Debug logging migliorato
+   
+    
     // Get sorted data sources by priority
     NSArray<DataSourceInfo *> *sortedSources = [self sortedDataSourcesForRequestType:requestType
                                                                       preferredSource:preferredSource];
@@ -127,7 +130,9 @@
     if (sortedSources.count == 0) {
         NSError *error = [NSError errorWithDomain:@"DownloadManager"
                                              code:404
-                                         userInfo:@{NSLocalizedDescriptionKey: @"No data sources available for this request type"}];
+                                         userInfo:@{NSLocalizedDescriptionKey:
+                                                   [NSString stringWithFormat:@"No data sources available for %@ request",
+                                                    @"h"]}];
         if (completion) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 completion(nil, -1, error);
@@ -136,6 +141,7 @@
         return requestID;
     }
     
+ 
     // Try each data source in order
     [self executeRequestWithSources:sortedSources
                         requestType:requestType
@@ -146,7 +152,6 @@
     
     return requestID;
 }
-
 - (void)executeRequestWithSources:(NSArray<DataSourceInfo *> *)sources
                       requestType:(DataRequestType)requestType
                        parameters:(NSDictionary *)parameters

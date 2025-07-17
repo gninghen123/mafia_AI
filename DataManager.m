@@ -130,29 +130,49 @@
                                   completion:(void (^)(NSArray<HistoricalBar *> *bars, NSError *error))completion {
     NSString *requestID = [[NSUUID UUID] UUIDString];
     
-    NSDictionary *parameters = @{
-        @"symbol": symbol,
-        @"timeframe": @(timeframe),
-        @"startDate": startDate,
-        @"endDate": endDate,
-        @"requestID": requestID
-    };
+    // Se le date non sono fornite, setta solo endDate alla data attuale
+    // Questo permette di scaricare tutto lo storico disponibile
+    if (!endDate) {
+        endDate = [NSDate date];
+    }
+    // startDate rimane nil se non fornita - questo indica "tutto lo storico disponibile"
+    
+    // Crea i parametri - usa NSMutableDictionary per gestire valori nil
+    NSMutableDictionary *parameters = [NSMutableDictionary dictionary];
+    parameters[@"symbol"] = symbol ?: @"";
+    parameters[@"timeframe"] = @(timeframe);
+    parameters[@"requestID"] = requestID;
+    parameters[@"endDate"] = endDate;
+    
+    // Aggiungi startDate solo se fornita
+    if (startDate) {
+        parameters[@"startDate"] = startDate;
+    }
+    
+    // Debug logging migliorato con i valori enum corretti
+ 
+    
+    NSLog(@"DataManager: Request parameters: %@", parameters);
+   
     
     [self.downloadManager executeRequest:DataRequestTypeHistoricalBars
-                              parameters:parameters
+                              parameters:[parameters copy]
                           preferredSource:DataSourceTypeSchwab
                               completion:^(id result, DataSourceType usedSource, NSError *error) {
         if (error) {
+            NSLog(@"DataManager: Historical data request failed for %@: %@", symbol, error.localizedDescription);
             if (completion) completion(nil, error);
             [self notifyDelegatesOfError:error forRequest:requestID];
         } else {
             NSArray<HistoricalBar *> *bars = result;
+            NSLog(@"DataManager: Received %lu historical bars for %@", (unsigned long)bars.count, symbol);
             if (completion) completion(bars, nil);
         }
     }];
     
     return requestID;
 }
+
 
 - (NSString *)requestOrderBookForSymbol:(NSString *)symbol
                              completion:(void (^)(NSArray<OrderBookEntry *> *bids,

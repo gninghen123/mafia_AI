@@ -86,10 +86,7 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
 }
 
 + (instancetype)histogramWithFrame:(NSRect)frame {
-    CHChartWidget *widget = [self chartWidgetWithFrame:frame type:CHChartTypeBar];
-    CHBarChartRenderer *renderer = (CHBarChartRenderer *)widget.chartView.renderer;
-    renderer.barStyle = CHBarChartStyleHistogram;
-    return widget;
+    return [self chartWidgetWithFrame:frame type:CHChartTypeBar];
 }
 
 + (instancetype)scatterPlotWithFrame:(NSRect)frame {
@@ -98,22 +95,9 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
 
 #pragma mark - Initialization
 
-// FIX: Override del designated initializer di BaseWidget
-- (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType {
-    self = [super initWithType:type panelType:panelType];
-    if (self) {
-        // Determina il tipo di chart basato sul widget type
-        [self configureChartTypeFromWidgetType:type];
-        [self setupChartWidget];
-    }
-    return self;
-}
-
 - (instancetype)initWithFrame:(NSRect)frame {
-    // FIX: CHChartWidget deve chiamare il corretto inizializzatore di BaseWidget
     self = [super initWithType:@"Chart Widget" panelType:PanelTypeCenter];
     if (self) {
-        // Memorizza il frame per uso successivo
         _chartFrame = frame;
         [self setupChartWidget];
     }
@@ -121,40 +105,43 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
 }
 
 - (instancetype)initWithCoder:(NSCoder *)coder {
-    // FIX: Stesso pattern per initWithCoder
-    self = [super initWithType:@"Chart Widget" panelType:PanelTypeCenter];
+    self = [super initWithCoder:coder];
     if (self) {
-        // Frame sarà impostato dal coder
-        _chartFrame = NSMakeRect(0, 0, 300, 200); // frame di default
         [self setupChartWidget];
     }
     return self;
 }
 
-- (void)configureChartTypeFromWidgetType:(NSString *)widgetType {
-    // Mappa i widget types ai chart types
-    if ([widgetType isEqualToString:@"Line Chart"]) {
-        _chartType = CHChartTypeLine;
-    } else if ([widgetType isEqualToString:@"Bar Chart"]) {
-        _chartType = CHChartTypeBar;
-    } else if ([widgetType isEqualToString:@"Candlestick Chart"]) {
-        _chartType = CHChartTypeLine; // O un tipo specifico per candlestick
-    } else if ([widgetType isEqualToString:@"Market Depth"]) {
-        _chartType = CHChartTypeBar;
-    } else if ([widgetType isEqualToString:@"Volume Profile"]) {
-        _chartType = CHChartTypeBar;
-    } else if ([widgetType isEqualToString:@"Heatmap"]) {
-        _chartType = CHChartTypePie; // O un tipo specifico per heatmap
-    } else {
-        // Default per "Chart Widget" o tipi non riconosciuti
-        _chartType = CHChartTypeLine;
+- (instancetype)initWithType:(NSString *)widgetType panelType:(PanelType)panelType {
+    self = [super initWithType:widgetType panelType:panelType];
+    if (self) {
+        [self setupChartWidget];
+        
+        // Determina il tipo di chart dal widget type
+        if ([widgetType isEqualToString:@"Line Chart"]) {
+            _chartType = CHChartTypeLine;
+        } else if ([widgetType isEqualToString:@"Bar Chart"]) {
+            _chartType = CHChartTypeBar;
+        } else if ([widgetType isEqualToString:@"Candlestick Chart"]) {
+            _chartType = CHChartTypeCombined; // Per candlestick
+        } else if ([widgetType isEqualToString:@"Volume Profile"]) {
+            _chartType = CHChartTypeBar;
+        } else if ([widgetType isEqualToString:@"Heatmap"]) {
+            _chartType = CHChartTypePie; // O un tipo specifico per heatmap
+        } else {
+            // Default per "Chart Widget" o tipi non riconosciuti
+            _chartType = CHChartTypeLine;
+        }
     }
+    return self;
 }
+
+#pragma mark - Setup Methods
 
 - (void)setupChartWidget {
     // Configura il widget chart-specifico
     
-    // Default configuration
+    // Default configuration con tema adattivo
     _configuration = [CHChartConfiguration defaultConfiguration];
     if (_chartType == 0) {
         _chartType = CHChartTypeLine; // Assicurati che ci sia sempre un tipo valido
@@ -162,6 +149,9 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
     _configuration.chartType = _chartType;
     _maxDataPoints = NSIntegerMax;
     _realtimeData = [NSMutableArray array];
+    
+    // IMPORTANTE: Applica il tema corretto basato sull'aspetto dell'app
+    [self applyAppropriateTheme];
     
     // Default state
     _currentTimeframe = BarTimeframe1Day; // Default a daily
@@ -175,27 +165,97 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
     // FIX: Chiama prima la versione di BaseWidget per creare contentViewInternal
     [super setupContentView];
     
-    // Ora setuppa i controlli chart specifici nel contentView esistente
+    // IMPORTANTE: Setup nell'ordine corretto per evitare problemi di layout
     [self setupChartControls];
     [self setupChartView];
+    
+    // Forza il layout dopo aver creato tutto
+    [self.contentView setNeedsUpdateConstraints:YES];
+    [self.contentView setNeedsLayout:YES];
+    dispatch_async(dispatch_get_main_queue(), ^{
+           [self debugViewHierarchy];
+       });
+   
+}
+// DEBUG AVANZATO - Aggiungi questo al metodo debugViewHierarchy
+
+- (void)debugViewHierarchy {
+    NSLog(@"=== CHChartWidget View Hierarchy Debug ===");
+    NSLog(@"ContentView subviews count: %lu", (unsigned long)self.contentView.subviews.count);
+    NSLog(@"ContentView frame: %@", NSStringFromRect(self.contentView.frame));
+    NSLog(@"ContentView bounds: %@", NSStringFromRect(self.contentView.bounds));
+    NSLog(@"ContentView alpha: %.2f", self.contentView.alphaValue);
+    
+    for (NSInteger i = 0; i < self.contentView.subviews.count; i++) {
+        NSView *subview = self.contentView.subviews[i];
+        NSLog(@"Subview %ld: %@ - Frame: %@ - Hidden: %@ - Alpha: %.2f",
+              (long)i,
+              NSStringFromClass([subview class]),
+              NSStringFromRect(subview.frame),
+              subview.hidden ? @"YES" : @"NO",
+              subview.alphaValue);
+        
+        if (subview == self.controlsView) {
+            NSLog(@"  -> Found controlsView!");
+            NSLog(@"  -> Layer: %@", subview.layer);
+            NSLog(@"  -> Layer backgroundColor: %@", subview.layer.backgroundColor);
+            NSLog(@"  -> Layer borderColor: %@", subview.layer.borderColor);
+            NSLog(@"  -> Layer borderWidth: %.2f", subview.layer.borderWidth);
+            NSLog(@"  -> ControlsView subviews count: %lu", (unsigned long)self.controlsView.subviews.count);
+            
+            for (NSInteger j = 0; j < self.controlsView.subviews.count; j++) {
+                NSView *control = self.controlsView.subviews[j];
+                NSLog(@"    Control %ld: %@ - Frame: %@ - Hidden: %@ - Alpha: %.2f",
+                      (long)j,
+                      NSStringFromClass([control class]),
+                      NSStringFromRect(control.frame),
+                      control.hidden ? @"YES" : @"NO",
+                      control.alphaValue);
+                
+                if (control.layer) {
+                    NSLog(@"      -> Layer backgroundColor: %@", control.layer.backgroundColor);
+                    NSLog(@"      -> Layer borderColor: %@", control.layer.borderColor);
+                    NSLog(@"      -> Layer borderWidth: %.2f", control.layer.borderWidth);
+                }
+                
+                // Test specifico per ComboBox
+                if ([control isKindOfClass:[NSComboBox class]]) {
+                    NSComboBox *combo = (NSComboBox *)control;
+                    NSLog(@"      -> ComboBox enabled: %@", combo.enabled ? @"YES" : @"NO");
+                    NSLog(@"      -> ComboBox editable: %@", combo.editable ? @"YES" : @"NO");
+                    NSLog(@"      -> ComboBox stringValue: '%@'", combo.stringValue);
+                }
+            }
+        }
+    }
+    NSLog(@"=== End Debug ===");
+    
+    // TEST ESTREMO: Aggiungi una view di test super visibile
 }
 
+
 - (void)setupChartControls {
-    // Rimuovi il placeholder di BaseWidget
+    // Rimuovi il placeholder di BaseWidget se presente
     for (NSView *subview in self.contentView.subviews) {
         [subview removeFromSuperview];
     }
     
-    // Crea la view per i controlli in alto
+    // Crea la view per i controlli - NESSUN colore personalizzato
     self.controlsView = [[NSView alloc] init];
-    self.controlsView.wantsLayer = YES;
-    self.controlsView.layer.backgroundColor = [NSColor controlBackgroundColor].CGColor;
-    self.controlsView.layer.borderWidth = 1.0; // Debug: aggiungi bordo per vedere la view
-    self.controlsView.layer.borderColor = [NSColor redColor].CGColor;
     self.controlsView.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    // IMPORTANTE: Aggiungi subito i constraint per l'altezza fissa
     [self.contentView addSubview:self.controlsView];
     
-    // Symbol ComboBox
+    // Constraint per la controls view
+    [NSLayoutConstraint activateConstraints:@[
+        [self.controlsView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:8],
+        [self.controlsView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
+        [self.controlsView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
+        [self.controlsView.heightAnchor constraintEqualToConstant:40]
+    ]];
+    
+    // Symbol ComboBox - COMPLETAMENTE NATIVO
     self.symbolComboBox = [[NSComboBox alloc] init];
     self.symbolComboBox.placeholderString = @"Enter symbol (e.g., AAPL)";
     self.symbolComboBox.dataSource = self;
@@ -205,15 +265,14 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
     self.symbolComboBox.target = self;
     self.symbolComboBox.action = @selector(symbolEntered:);
     self.symbolComboBox.translatesAutoresizingMaskIntoConstraints = NO;
-    self.symbolComboBox.layer.backgroundColor = [NSColor whiteColor].CGColor; // Debug: background
-    self.symbolComboBox.layer.borderWidth = 1.0; // Debug: bordo
-    self.symbolComboBox.layer.borderColor = [NSColor blackColor].CGColor;
+    // NESSUN layer personalizzato - lascia che macOS gestisca l'aspetto
+    
     [self.controlsView addSubview:self.symbolComboBox];
     
     // Timeframe buttons
     [self setupTimeframeButtons];
     
-    // Loading indicator (usa NSProgressIndicator su macOS)
+    // Loading indicator
     self.loadingIndicator = [[NSProgressIndicator alloc] init];
     self.loadingIndicator.style = NSProgressIndicatorStyleSpinning;
     self.loadingIndicator.controlSize = NSControlSizeSmall;
@@ -221,30 +280,30 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
     self.loadingIndicator.translatesAutoresizingMaskIntoConstraints = NO;
     [self.controlsView addSubview:self.loadingIndicator];
     
-    // Status label
+    // Status label - COLORI NATIVI
     self.statusLabel = [[NSTextField alloc] init];
     self.statusLabel.editable = NO;
     self.statusLabel.bordered = NO;
-    self.statusLabel.drawsBackground = YES; // Debug: mostra background
-    self.statusLabel.backgroundColor = [NSColor yellowColor]; // Debug: colore di sfondo
+    self.statusLabel.drawsBackground = NO; // Sfondo trasparente
     self.statusLabel.font = [NSFont systemFontOfSize:11];
-    self.statusLabel.textColor = [NSColor blackColor]; // Debug: testo nero
+    self.statusLabel.textColor = [NSColor secondaryLabelColor]; // Colore nativo
     self.statusLabel.stringValue = @"Enter symbol to load data";
     self.statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [self.controlsView addSubview:self.statusLabel];
     
-    // Setup constraints for controls
+    // Setup constraints for all controls
     [self setupControlsConstraints];
 }
 
 - (void)setupTimeframeButtons {
-    // Crea stack view per i pulsanti timeframe
+    // Crea stack view per i pulsanti timeframe - FORZATAMENTE VISIBILE
     self.timeframeButtonsStack = [[NSStackView alloc] init];
     self.timeframeButtonsStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     self.timeframeButtonsStack.spacing = 4;
+    self.timeframeButtonsStack.distribution = NSStackViewDistributionFillEqually;
     self.timeframeButtonsStack.translatesAutoresizingMaskIntoConstraints = NO;
     self.timeframeButtonsStack.wantsLayer = YES;
-    self.timeframeButtonsStack.layer.backgroundColor = [NSColor greenColor].CGColor; // Debug: sfondo verde
+    self.timeframeButtonsStack.layer.backgroundColor = [NSColor greenColor].CGColor; // VERDE SUPER VISIBILE
     [self.controlsView addSubview:self.timeframeButtonsStack];
     
     // Definisci i timeframe disponibili
@@ -261,24 +320,25 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
     for (NSDictionary *tfInfo in timeframes) {
         NSButton *button = [[NSButton alloc] init];
         button.title = tfInfo[@"title"];
-        button.bezelStyle = NSBezelStyleRegularSquare;
-        button.buttonType = NSButtonTypePushOnPushOff;
+        button.bezelStyle = NSBezelStyleRounded;
+        button.buttonType = NSButtonTypeToggle;
         button.tag = [tfInfo[@"timeframe"] integerValue];
         button.target = self;
         button.action = @selector(timeframeButtonClicked:);
         
-        // Debug: colori visibili
+        // FORZA VISIBILITÀ Buttons
         button.wantsLayer = YES;
-        button.layer.backgroundColor = [NSColor lightGrayColor].CGColor;
-        button.layer.borderWidth = 1.0;
-        button.layer.borderColor = [NSColor blackColor].CGColor;
+        button.layer.backgroundColor = [NSColor cyanColor].CGColor; // CIANO SUPER VISIBILE
+        button.layer.borderWidth = 2.0;
+        button.layer.borderColor = [NSColor magentaColor].CGColor;
         
         // Imposta il pulsante daily come selezionato di default
         if (button.tag == BarTimeframe1Day) {
             button.state = NSControlStateValueOn;
-            button.layer.backgroundColor = [NSColor blueColor].CGColor; // Debug: blu per selezionato
+            button.layer.backgroundColor = [NSColor purpleColor].CGColor; // VIOLA per selezionato
         }
         
+        // DIMENSIONI FISSE per i pulsanti
         [button.widthAnchor constraintEqualToConstant:35].active = YES;
         [button.heightAnchor constraintEqualToConstant:25].active = YES;
         
@@ -289,15 +349,44 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
     self.timeframeButtons = [buttons copy];
 }
 
+
+- (void)setupChartView {
+    if (!self.chartView && self.contentView && self.controlsView) {
+        // Il chart view occuperà TUTTO lo spazio sotto i controlli
+        self.chartView = [[CHChartView alloc] init];
+        self.chartView.translatesAutoresizingMaskIntoConstraints = NO;
+        self.chartView.wantsLayer = YES;
+        
+        // FIX: Usa il background color dalla configurazione (che si adatta al tema)
+        self.chartView.layer.backgroundColor = self.configuration.backgroundColor.CGColor;
+        
+        // IMPORTANTE: Aggiungi il chart view SOTTO i controlli (i controlli sono già stati aggiunti)
+        [self.contentView addSubview:self.chartView];
+        
+        // CONSTRAINT CRITICI: Il chart view deve prendere tutto lo spazio rimanente
+        [NSLayoutConstraint activateConstraints:@[
+            // Top: subito sotto i controlli
+            [self.chartView.topAnchor constraintEqualToAnchor:self.controlsView.bottomAnchor constant:8],
+            // Left: margine dal bordo
+            [self.chartView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
+            // Right: margine dal bordo
+            [self.chartView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
+            // Bottom: margine dal bordo - QUESTO È CRITICO!
+            [self.chartView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-8]
+        ]];
+        
+        // Apply configuration
+        self.chartView.configuration = self.configuration;
+        self.chartView.dataSource = self;
+        
+        // IMPORTANTE: Forza il layout
+        [self.chartView setNeedsUpdateConstraints:YES];
+        [self.chartView setNeedsLayout:YES];
+    }
+}
+
+
 - (void)setupControlsConstraints {
-    // Constraints for controls view (FIXED: ancoraggio in ALTO)
-    [NSLayoutConstraint activateConstraints:@[
-        [self.controlsView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:8],
-        [self.controlsView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
-        [self.controlsView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
-        [self.controlsView.heightAnchor constraintEqualToConstant:40]
-    ]];
-    
     // Symbol combobox constraints
     [NSLayoutConstraint activateConstraints:@[
         [self.symbolComboBox.leadingAnchor constraintEqualToAnchor:self.controlsView.leadingAnchor constant:8],
@@ -306,11 +395,12 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
         [self.symbolComboBox.heightAnchor constraintEqualToConstant:25]
     ]];
     
-    // Timeframe buttons stack constraints
+    // Timeframe buttons stack constraints - DIMENSIONI FISSE
     [NSLayoutConstraint activateConstraints:@[
         [self.timeframeButtonsStack.leadingAnchor constraintEqualToAnchor:self.symbolComboBox.trailingAnchor constant:8],
         [self.timeframeButtonsStack.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
-        [self.timeframeButtonsStack.heightAnchor constraintEqualToConstant:25]
+        [self.timeframeButtonsStack.heightAnchor constraintEqualToConstant:25],
+        [self.timeframeButtonsStack.widthAnchor constraintEqualToConstant:195] // 5 buttons * 35 + 4 spaces * 4
     ]];
     
     // Loading indicator constraints
@@ -329,292 +419,7 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
     ]];
 }
 
-- (void)setupChartView {
-    if (!self.chartView && self.contentView && self.controlsView) {
-        // Il chart view occuperà lo spazio sotto i controlli
-        self.chartView = [[CHChartView alloc] init];
-        self.chartView.translatesAutoresizingMaskIntoConstraints = NO;
-        self.chartView.wantsLayer = YES;
-        self.chartView.layer.backgroundColor = [NSColor whiteColor].CGColor;
-        
-        // IMPORTANTE: Aggiungi il chart view PRIMA dei controlli per z-order corretto
-        [self.contentView addSubview:self.chartView];
-        
-        // Poi rimuovi e ri-aggiungi i controlli per metterli sopra
-        [self.controlsView removeFromSuperview];
-        [self.contentView addSubview:self.controlsView];
-        
-        // FIXED: Chart view constraints con margine dai controlli
-        [NSLayoutConstraint activateConstraints:@[
-            [self.chartView.topAnchor constraintEqualToAnchor:self.controlsView.bottomAnchor constant:8],
-            [self.chartView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
-            [self.chartView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
-            [self.chartView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-8]
-        ]];
-        
-        // Apply configuration
-        self.chartView.configuration = self.configuration;
-        self.chartView.dataSource = self;
-    }
-}
 
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    
-    // Aggiungi le label al content view dopo che è stato caricato (se necessario)
-    if (self.contentView && !self.titleLabel.superview) {
-        [self.contentView addSubview:self.titleLabel];
-        [self.contentView addSubview:self.xAxisLabel];
-        [self.contentView addSubview:self.yAxisLabel];
-    }
-}
-
-#pragma mark - Actions
-
-- (void)symbolEntered:(id)sender {
-    NSString *symbol = [self.symbolComboBox.stringValue uppercaseString];
-    if (symbol.length == 0) return;
-    
-    self.currentSymbol = symbol;
-    [self loadHistoricalDataForCurrentSymbol];
-}
-
-- (void)timeframeButtonClicked:(NSButton *)sender {
-    // Deselect all buttons
-    for (NSButton *button in self.timeframeButtons) {
-        button.state = NSControlStateValueOff;
-    }
-    
-    // Select clicked button
-    sender.state = NSControlStateValueOn;
-    self.currentTimeframe = (BarTimeframe)sender.tag;
-    
-    // Reload data if we have a symbol
-    if (self.currentSymbol) {
-        [self loadHistoricalDataForCurrentSymbol];
-    }
-}
-
-#pragma mark - Data Loading
-
-- (void)loadHistoricalDataForCurrentSymbol {
-    if (!self.currentSymbol || self.currentSymbol.length == 0) return;
-    
-    // Cancel any existing request
-    if (self.activeDataRequest) {
-        // TODO: Cancel previous request if DataManager supports it
-        self.activeDataRequest = nil;
-    }
-    
-    // Show loading state
-    [self showLoadingState];
-    
-    // Calculate date range based on timeframe
-    NSDate *endDate = [NSDate date];
-    NSDate *startDate = [self startDateForTimeframe:self.currentTimeframe];
-    
-    // Request historical data
-    DataManager *dataManager = [DataManager sharedManager];
-    
-    __weak typeof(self) weakSelf = self;
-    self.activeDataRequest = [dataManager requestHistoricalDataForSymbol:self.currentSymbol
-                                                               timeframe:self.currentTimeframe
-                                                               startDate:startDate
-                                                                 endDate:endDate
-                                                              completion:^(NSArray<HistoricalBar *> *bars, NSError *error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            __strong typeof(weakSelf) strongSelf = weakSelf;
-            if (!strongSelf) return;
-            
-            strongSelf.activeDataRequest = nil;
-            [strongSelf hideLoadingState];
-            
-            if (error) {
-                [strongSelf showErrorState:error];
-            } else {
-                [strongSelf displayHistoricalData:bars];
-            }
-        });
-    }];
-}
-
-- (NSDate *)startDateForTimeframe:(BarTimeframe)timeframe {
-    NSCalendar *calendar = [NSCalendar currentCalendar];
-    NSDate *now = [NSDate date];
-    
-    switch (timeframe) {
-        case BarTimeframe1Min:
-            return [calendar dateByAddingUnit:NSCalendarUnitDay value:-1 toDate:now options:0];
-        case BarTimeframe5Min:
-            return [calendar dateByAddingUnit:NSCalendarUnitDay value:-3 toDate:now options:0];
-        case BarTimeframe1Hour:
-            return [calendar dateByAddingUnit:NSCalendarUnitWeekOfYear value:-2 toDate:now options:0];
-        case BarTimeframe1Day:
-            return [calendar dateByAddingUnit:NSCalendarUnitYear value:-1 toDate:now options:0];
-        case BarTimeframe1Week:
-            return [calendar dateByAddingUnit:NSCalendarUnitYear value:-3 toDate:now options:0];
-        default:
-            return [calendar dateByAddingUnit:NSCalendarUnitYear value:-1 toDate:now options:0];
-    }
-}
-
-- (void)displayHistoricalData:(NSArray<HistoricalBar *> *)bars {
-    if (!bars || bars.count == 0) {
-        self.statusLabel.stringValue = @"No data available";
-        return;
-    }
-    
-    self.historicalBars = bars;
-    
-    // Convert HistoricalBar objects to CHDataPoint objects
-    NSMutableArray *dataPoints = [NSMutableArray array];
-    
-    for (NSInteger i = 0; i < bars.count; i++) {
-        HistoricalBar *bar = bars[i];
-        
-        // For line charts, use close price
-        // For candlestick charts, we might want to use OHLC data differently
-        CGFloat value;
-        if (self.chartType == CHChartTypeBar) {
-            // For bar charts, show volume
-            value = bar.volume;
-        } else {
-            // For line charts, show close price
-            value = [bar.close doubleValue];
-        }
-        
-        CHDataPoint *point = [[CHDataPoint alloc] initWithX:i y:value];
-        point.label = [self formatDateForBar:bar];
-        [dataPoints addObject:point];
-    }
-    
-    // Update chart data
-    CHChartData *chartData = [CHChartData chartData];
-    [chartData addSeries:dataPoints withName:self.currentSymbol];
-    self.chartData = chartData;
-    
-    // Update status and title
-    self.statusLabel.stringValue = [NSString stringWithFormat:@"%@ - %ld bars loaded",
-                                   self.currentSymbol, bars.count];
-    [self setTitle:[NSString stringWithFormat:@"%@ - %@",
-                   self.currentSymbol, [self timeframeDisplayName:self.currentTimeframe]]];
-}
-
-- (NSString *)formatDateForBar:(HistoricalBar *)bar {
-    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-    
-    switch (self.currentTimeframe) {
-        case BarTimeframe1Min:
-        case BarTimeframe5Min:
-            formatter.dateFormat = @"HH:mm";
-            break;
-        case BarTimeframe1Hour:
-            formatter.dateFormat = @"MMM dd HH:mm";
-            break;
-        case BarTimeframe1Day:
-            formatter.dateFormat = @"MMM dd";
-            break;
-        case BarTimeframe1Week:
-            formatter.dateFormat = @"MMM yyyy";
-            break;
-        default:
-            formatter.dateFormat = @"MMM dd";
-            break;
-    }
-    
-    return [formatter stringFromDate:bar.timestamp];
-}
-
-- (NSString *)timeframeDisplayName:(BarTimeframe)timeframe {
-    switch (timeframe) {
-        case BarTimeframe1Min: return @"1 Minute";
-        case BarTimeframe5Min: return @"5 Minutes";
-        case BarTimeframe1Hour: return @"1 Hour";
-        case BarTimeframe1Day: return @"Daily";
-        case BarTimeframe1Week: return @"Weekly";
-        default: return @"Daily";
-    }
-}
-
-#pragma mark - UI State Management
-
-- (void)showLoadingState {
-    self.loadingIndicator.hidden = NO;
-    [self.loadingIndicator startAnimation:nil];
-    self.statusLabel.stringValue = [NSString stringWithFormat:@"Loading %@...", self.currentSymbol];
-    self.symbolComboBox.enabled = NO;
-    
-    for (NSButton *button in self.timeframeButtons) {
-        button.enabled = NO;
-    }
-}
-
-- (void)hideLoadingState {
-    self.loadingIndicator.hidden = YES;
-    [self.loadingIndicator stopAnimation:nil];
-    self.symbolComboBox.enabled = YES;
-    
-    for (NSButton *button in self.timeframeButtons) {
-        button.enabled = YES;
-    }
-}
-
-- (void)showErrorState:(NSError *)error {
-    self.statusLabel.stringValue = [NSString stringWithFormat:@"Error: %@", error.localizedDescription];
-    
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Data Loading Error";
-    alert.informativeText = error.localizedDescription;
-    alert.alertStyle = NSAlertStyleWarning;
-    [alert addButtonWithTitle:@"OK"];
-    [alert runModal];
-}
-
-#pragma mark - NSComboBoxDataSource
-
-- (NSInteger)numberOfItemsInComboBox:(NSComboBox *)comboBox {
-    // Return a list of popular symbols for autocomplete
-    return [self popularSymbols].count;
-}
-
-- (id)comboBox:(NSComboBox *)comboBox objectValueForItemAtIndex:(NSInteger)index {
-    return [self popularSymbols][index];
-}
-
-- (NSUInteger)comboBox:(NSComboBox *)comboBox indexOfItemWithStringValue:(NSString *)string {
-    return [[self popularSymbols] indexOfObject:string];
-}
-
-- (NSString *)comboBox:(NSComboBox *)comboBox completedString:(NSString *)uncompletedString {
-    NSString *upperString = [uncompletedString uppercaseString];
-    for (NSString *symbol in [self popularSymbols]) {
-        if ([symbol hasPrefix:upperString]) {
-            return symbol;
-        }
-    }
-    return nil;
-}
-
-- (NSArray<NSString *> *)popularSymbols {
-    return @[@"AAPL", @"GOOGL", @"MSFT", @"AMZN", @"TSLA", @"META", @"NVDA", @"NFLX",
-             @"SPY", @"QQQ", @"IWM", @"DIA", @"GLD", @"SLV", @"TLT", @"VIX"];
-}
-
-#pragma mark - NSComboBoxDelegate
-
-- (void)comboBoxSelectionDidChange:(NSNotification *)notification {
-    [self symbolEntered:self.symbolComboBox];
-}
-
-- (void)controlTextDidEndEditing:(NSNotification *)notification {
-    if (notification.object == self.symbolComboBox) {
-        [self symbolEntered:self.symbolComboBox];
-    }
-}
-
-#pragma name - Layout Override
-
-// Rimuovi i metodi di layout manuali - ora usiamo Auto Layout
 
 - (void)setupLabels {
     // Setup delle label di base (nascoste di default ora che abbiamo i controlli)
@@ -650,9 +455,187 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
     self.yAxisLabel.hidden = YES;
 }
 
+#pragma mark - Theme Management
+
+- (void)applyAppropriateTheme {
+    // Detect if we're in dark mode
+    NSString *osxMode = [[NSUserDefaults standardUserDefaults] stringForKey:@"AppleInterfaceStyle"];
+    BOOL isDarkMode = ([osxMode isEqualToString:@"Dark"]);
+    
+    if (isDarkMode) {
+        [self.configuration applyDarkTheme];
+    } else {
+        [self.configuration applyLightTheme];
+    }
+    
+    // Aggiorna la configurazione se il chart view esiste già
+    if (self.chartView) {
+        self.chartView.configuration = self.configuration;
+        self.chartView.layer.backgroundColor = self.configuration.backgroundColor.CGColor;
+        [self.chartView setNeedsDisplay:YES];
+    }
+}
+
+- (void)viewDidAppear {
+    [super viewDidAppear];
+    
+    // Ascolta per i cambiamenti di tema
+    [[NSDistributedNotificationCenter defaultCenter] addObserver:self
+                                                        selector:@selector(appleInterfaceThemeChangedNotification:)
+                                                            name:@"AppleInterfaceThemeChangedNotification"
+                                                          object:nil];
+}
+
+- (void)viewDidDisappear {
+    [super viewDidDisappear];
+    
+    // Rimuovi l'observer
+    [[NSDistributedNotificationCenter defaultCenter] removeObserver:self
+                                                                name:@"AppleInterfaceThemeChangedNotification"
+                                                              object:nil];
+}
+
+- (void)appleInterfaceThemeChangedNotification:(NSNotification *)notification {
+    // Il tema è cambiato, aggiorna il chart
+    [self applyAppropriateTheme];
+}
+
+#pragma mark - Layout Override
+
+- (void)viewDidLayout {
+    [super viewDidLayout];
+    
+    // Dopo ogni layout, assicurati che il chart view abbia le dimensioni corrette
+    if (self.chartView) {
+        [self.chartView setNeedsDisplay:YES];
+        
+        // Debug: stampa le dimensioni per verificare
+        NSLog(@"CHChartWidget Layout - ContentView: %@", NSStringFromRect(self.contentView.frame));
+        NSLog(@"CHChartWidget Layout - ControlsView: %@", NSStringFromRect(self.controlsView.frame));
+        NSLog(@"CHChartWidget Layout - ChartView: %@", NSStringFromRect(self.chartView.frame));
+    }
+}
+
+- (void)forceLayoutUpdate {
+    // Metodo per forzare un aggiornamento del layout quando necessario
+    [self.view setNeedsUpdateConstraints:YES];
+    [self.contentView setNeedsUpdateConstraints:YES];
+    [self.controlsView setNeedsUpdateConstraints:YES];
+    [self.chartView setNeedsUpdateConstraints:YES];
+    
+    [self.view setNeedsLayout:YES];
+    [self.contentView setNeedsLayout:YES];
+    [self.controlsView setNeedsLayout:YES];
+    [self.chartView setNeedsLayout:YES];
+    
+    // Force immediate layout
+    [self.view layoutSubtreeIfNeeded];
+    
+    // Redraw the chart
+    [self.chartView setNeedsDisplay:YES];
+}
+
+#pragma mark - Actions
+
+- (void)symbolEntered:(id)sender {
+    NSString *symbol = [self.symbolComboBox.stringValue uppercaseString];
+    if (symbol.length == 0) return;
+    
+    // Update current symbol
+    self.currentSymbol = symbol;
+    
+    // Update status
+    self.statusLabel.stringValue = [NSString stringWithFormat:@"Loading %@...", symbol];
+    
+    // Start loading animation
+    [self.loadingIndicator startAnimation:nil];
+    self.loadingIndicator.hidden = NO;
+    
+    // Request data
+    NSString *requestID = [[NSUUID UUID] UUIDString];
+    self.activeDataRequest = requestID;
+    
+    [[DataManager sharedManager] requestHistoricalDataForSymbol:symbol
+                                                      timeframe:self.currentTimeframe
+                                                      startDate:nil
+                                                        endDate:nil
+                                                     completion:^(NSArray<HistoricalBar *> *bars, NSError *error) {
+        // Check if this is still the active request
+        if (![requestID isEqualToString:self.activeDataRequest]) return;
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self.loadingIndicator stopAnimation:nil];
+            self.loadingIndicator.hidden = YES;
+            
+            if (error) {
+                self.statusLabel.stringValue = [NSString stringWithFormat:@"Error loading %@", symbol];
+                NSLog(@"Error loading data for %@: %@", symbol, error.localizedDescription);
+                return;
+            }
+            
+            self.historicalBars = bars;
+            self.statusLabel.stringValue = [NSString stringWithFormat:@"%@ loaded (%ld bars)", symbol, bars.count];
+            
+            // Convert bars to chart data and display
+            [self updateChartWithBars:bars];
+        });
+    }];
+}
+
+- (void)timeframeButtonClicked:(NSButton *)sender {
+    // Deselect all buttons
+    for (NSButton *button in self.timeframeButtons) {
+        button.state = NSControlStateValueOff;
+    }
+    
+    // Select clicked button
+    sender.state = NSControlStateValueOn;
+    
+    // Update current timeframe
+    self.currentTimeframe = (BarTimeframe)sender.tag;
+    
+    // Reload data if we have a symbol
+    if (self.currentSymbol) {
+        [self symbolEntered:self.symbolComboBox];
+    }
+}
+
+- (void)updateChartWithBars:(NSArray<HistoricalBar *> *)bars {
+    if (bars.count == 0) return;
+    
+    // Convert bars to chart data points
+    NSMutableArray *dataPoints = [NSMutableArray array];
+    
+    for (NSInteger i = 0; i < bars.count; i++) {
+        HistoricalBar *bar = bars[i];
+        
+        // For line chart, use close price
+        if (self.chartType == CHChartTypeLine) {
+            CHDataPoint *point = [[CHDataPoint alloc] initWithX:i y:[bar.close doubleValue]];
+            [dataPoints addObject:point];
+        }
+        // For other chart types, you might want to create OHLC data points
+    }
+    
+    // Create chart data
+    CHChartData *chartData = [CHChartData chartData];
+    [chartData addSeries:dataPoints withName:self.currentSymbol];
+    
+    // Set chart data
+    self.chartData = chartData;
+}
+
+#pragma mark - Properties
+
 - (void)setConfiguration:(CHChartConfiguration *)configuration {
     _configuration = configuration;
-    self.chartView.configuration = configuration;
+    
+    // Aggiorna anche il background del chart view se esiste
+    if (self.chartView) {
+        self.chartView.configuration = configuration;
+        self.chartView.layer.backgroundColor = configuration.backgroundColor.CGColor;
+        [self.chartView setNeedsDisplay:YES];
+    }
 }
 
 - (void)setChartType:(CHChartType)chartType {
@@ -692,26 +675,26 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
     return 0;
 }
 
-- (CGFloat)chartView:(CHChartView *)chartView valueForSeries:(NSInteger)series atIndex:(NSInteger)index {
-    if (self.valueGetterBlock) {
-        return self.valueGetterBlock(series, index);
-    }
-    
-    if (self.chartData) {
-        CHDataPoint *point = [self.chartData dataPointInSeries:series atIndex:index];
-        return point ? point.y : 0.0;
-    }
-    
-    return 0.0;
-}
-
 - (CGFloat)chartView:(CHChartView *)chartView xValueForSeries:(NSInteger)series atIndex:(NSInteger)index {
-    if (self.chartData) {
+    if (self.chartData && series < self.chartData.seriesCount) {
         CHDataPoint *point = [self.chartData dataPointInSeries:series atIndex:index];
         return point ? point.x : (CGFloat)index;
     }
     
     return (CGFloat)index;
+}
+
+- (CGFloat)chartView:(CHChartView *)chartView valueForSeries:(NSInteger)series atIndex:(NSInteger)index {
+    if (self.valueGetterBlock) {
+        return self.valueGetterBlock(series, index);
+    }
+    
+    if (self.chartData && series < self.chartData.seriesCount) {
+        CHDataPoint *point = [self.chartData dataPointInSeries:series atIndex:index];
+        return point ? point.y : 0.0;
+    }
+    
+    return 0.0;
 }
 
 - (NSString *)chartView:(CHChartView *)chartView labelForSeries:(NSInteger)series {
@@ -845,9 +828,17 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
         [self.configuration applyLightTheme];
     } else if ([themeName isEqualToString:@"minimal"]) {
         [self.configuration applyMinimalTheme];
+    } else if ([themeName isEqualToString:@"auto"]) {
+        [self applyAppropriateTheme];
+        return; // applyAppropriateTheme già aggiorna tutto
     }
     
-    self.chartView.configuration = self.configuration;
+    // Aggiorna la vista
+    if (self.chartView) {
+        self.chartView.configuration = self.configuration;
+        self.chartView.layer.backgroundColor = self.configuration.backgroundColor.CGColor;
+        [self.chartView setNeedsDisplay:YES];
+    }
 }
 
 - (void)setSeriesColors:(NSArray<NSColor *> *)colors {
@@ -867,42 +858,16 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
 - (void)setTitle:(NSString *)title {
     self.titleLabel.stringValue = title ?: @"";
     self.titleLabel.hidden = (title == nil);
-    [self layoutLabels];
 }
 
 - (void)setXAxisLabel:(NSString *)label {
     self.xAxisLabel.stringValue = label ?: @"";
     self.xAxisLabel.hidden = (label == nil);
-    [self layoutLabels];
 }
 
 - (void)setYAxisLabel:(NSString *)label {
     self.yAxisLabel.stringValue = label ?: @"";
     self.yAxisLabel.hidden = (label == nil);
-    [self layoutLabels];
-}
-
-- (void)layoutLabels {
-    if (!self.contentView) return;
-    
-    // Layout title at top
-    if (!self.titleLabel.hidden) {
-        CGFloat titleHeight = 30;
-        self.titleLabel.frame = NSMakeRect(0, self.contentView.bounds.size.height - titleHeight,
-                                          self.contentView.bounds.size.width, titleHeight);
-    }
-    
-    // Layout X-axis label at bottom
-    if (!self.xAxisLabel.hidden) {
-        CGFloat labelHeight = 20;
-        self.xAxisLabel.frame = NSMakeRect(0, 0, self.contentView.bounds.size.width, labelHeight);
-    }
-    
-    // Layout Y-axis label at left (rotated)
-    if (!self.yAxisLabel.hidden) {
-        CGFloat labelWidth = 20;
-        self.yAxisLabel.frame = NSMakeRect(0, 0, self.contentView.bounds.size.height, labelWidth);
-    }
 }
 
 #pragma mark - Line Chart Specific
@@ -1020,6 +985,61 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
 - (BOOL)exportChartToFile:(NSString *)filePath withType:(NSBitmapImageFileType)fileType {
     NSData *imageData = [self chartImageDataWithType:fileType];
     return [imageData writeToFile:filePath atomically:YES];
+}
+
+#pragma mark - NSComboBoxDataSource
+
+- (NSInteger)numberOfItemsInComboBox:(NSComboBox *)comboBox {
+    // Provide some common symbols
+    return 20;
+}
+
+- (id)comboBox:(NSComboBox *)comboBox objectValueForItemAtIndex:(NSInteger)index {
+    // Common trading symbols
+    NSArray *symbols = @[@"AAPL", @"GOOGL", @"MSFT", @"AMZN", @"TSLA", @"META", @"NVDA", @"NFLX",
+                        @"SPY", @"QQQ", @"IWM", @"GLD", @"SLV", @"TLT", @"VIX", @"EURUSD", @"GBPUSD",
+                        @"USDJPY", @"BTC", @"ETH"];
+    
+    return index < symbols.count ? symbols[index] : @"";
+}
+
+- (NSString *)comboBox:(NSComboBox *)comboBox completedString:(NSString *)string {
+    NSArray *symbols = @[@"AAPL", @"GOOGL", @"MSFT", @"AMZN", @"TSLA", @"META", @"NVDA", @"NFLX",
+                        @"SPY", @"QQQ", @"IWM", @"GLD", @"SLV", @"TLT", @"VIX", @"EURUSD", @"GBPUSD",
+                        @"USDJPY", @"BTC", @"ETH"];
+    
+    for (NSString *symbol in symbols) {
+        if ([symbol.lowercaseString hasPrefix:string.lowercaseString]) {
+            return symbol;
+        }
+    }
+    return nil;
+}
+
+- (NSUInteger)comboBox:(NSComboBox *)comboBox indexOfItemWithStringValue:(NSString *)string {
+    NSArray *symbols = @[@"AAPL", @"GOOGL", @"MSFT", @"AMZN", @"TSLA", @"META", @"NVDA", @"NFLX",
+                        @"SPY", @"QQQ", @"IWM", @"GLD", @"SLV", @"TLT", @"VIX", @"EURUSD", @"GBPUSD",
+                        @"USDJPY", @"BTC", @"ETH"];
+    
+    return [symbols indexOfObject:string.uppercaseString];
+}
+
+#pragma mark - NSComboBoxDelegate
+
+- (void)comboBoxSelectionDidChange:(NSNotification *)notification {
+    [self symbolEntered:self.symbolComboBox];
+}
+
+- (void)controlTextDidEndEditing:(NSNotification *)notification {
+    if (notification.object == self.symbolComboBox) {
+        [self symbolEntered:self.symbolComboBox];
+    }
+}
+
+#pragma mark - Dealloc
+
+- (void)dealloc {
+    [[NSDistributedNotificationCenter defaultCenter] removeObserver:self];
 }
 
 @end

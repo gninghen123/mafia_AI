@@ -10,6 +10,9 @@
 #import "WatchlistWidget.h"
 #import "CHChartWidget.h"  // FIX: Aggiunto import per CHChartWidget
 #import "AlertWidget.h"
+#import "MultiChartWidget.h"
+#import "MiniChart.h"
+
 
 @interface WidgetTypeManager ()
 @property (nonatomic, strong) NSDictionary<NSString *, NSArray<NSString *> *> *widgetCategories;
@@ -41,6 +44,7 @@
     self.widgetCategories = @{
         @"Charts": @[
             @"Chart Widget",        // FIX: Aggiunto Chart Widget generico
+            @"MultiChart Widget",  // <-- AGGIUNGI QUESTA LINEA
             @"Candlestick Chart",
             @"Line Chart",
             @"Bar Chart",
@@ -91,7 +95,8 @@
     typeToClass[@"Quote"] = [QuoteWidget class];
     typeToClass[@"Watchlist"] = [WatchlistWidget class];
     typeToClass[@"Connection Status"] = [ConnectionStatusWidget class];
-    
+    typeToClass[@"MultiChart Widget"] = [MultiChartWidget class];  // <-- AGGIUNGI QUESTA LINEA
+
     // FIX: Map chart types to CHChartWidget
     typeToClass[@"Chart Widget"] = [CHChartWidget class];
     typeToClass[@"Candlestick Chart"] = [CHChartWidget class];
@@ -122,7 +127,8 @@
         @"Market Depth": @"chart.bar.doc.horizontal",
         @"Volume Profile": @"chart.bar.fill",
         @"Heatmap": @"square.grid.3x3.fill.square",
-        
+        @"MultiChart Widget": @"square.grid.3x3",  // <-- AGGIUNGI QUESTA LINEA
+
         @"Order Entry": @"plus.square",
         @"Order Book": @"book",
         @"Positions": @"briefcase",

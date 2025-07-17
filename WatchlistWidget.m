@@ -4,9 +4,11 @@
 //
 
 #import "WatchlistWidget.h"
-#import "MarketDataModels.h"
+#import "BaseWidget.h"
 #import "WatchlistManager.h"
-#import <objc/runtime.h>
+#import "DataManager.h"
+#import "MarketDataModels.h"
+#import <objc/runtime.h>  // <-- QUESTO IMPORT RISOLVE IL PROBLEMA
 
 #pragma mark - WatchlistRule Implementation
 
@@ -127,6 +129,8 @@
 #pragma mark - WatchlistWidget Implementation
 
 @interface WatchlistWidget ()
+- (void)broadcastUpdate:(NSDictionary *)update;
+
 @property (nonatomic, strong) NSTableView *tableViewInternal;
 @property (nonatomic, strong) NSScrollView *scrollViewInternal;
 @property (nonatomic, strong) NSTextField *symbolInputFieldInternal;
@@ -1807,8 +1811,8 @@
     
     // Connessione bidirezionale
     [self addChainedWidget:targetWidget];
-    [targetWidget addChainedWidget:self];
-    
+    [(BaseWidget *)targetWidget addChainedWidget:self];
+
     // Feedback visivo
     [self showConnectionFeedback:[NSString stringWithFormat:@"🔗 Connected to %@", targetWidget.widgetType] success:YES];
     

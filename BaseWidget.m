@@ -5,6 +5,7 @@
 
 #import "BaseWidget.h"
 #import "WidgetTypeManager.h"
+#import "CHChartWidget.h"
 
 @interface BaseWidget () <NSTextFieldDelegate, NSTextViewDelegate, NSComboBoxDataSource, NSComboBoxDelegate>
 
@@ -15,7 +16,7 @@
 
 @property (nonatomic, strong) NSButton *closeButton;
 @property (nonatomic, strong) NSButton *collapseButton;
-@property (nonatomic, strong) NSButton *chainButton;
+@property (nonatomic, strong, readwrite) NSButton *chainButton;
 @property (nonatomic, strong) NSButton *addWidgetButton;
 @property (nonatomic, strong) NSPopover *addPopover;
 @property (nonatomic, assign) CGFloat savedHeight;
@@ -632,7 +633,36 @@
         [self toggleCollapse];
     }
 }
+#pragma mark - Chain Management Helpers
 
+- (BOOL)hasConnectedWidgetsOfType:(Class)widgetClass {
+    for (BaseWidget *widget in self.chainedWidgets) {
+        if ([widget isKindOfClass:widgetClass]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+- (BOOL)hasConnectedChartWidgets {
+    // Controlla se ci sono CHChartWidget collegati
+    for (BaseWidget *widget in self.chainedWidgets) {
+        if ([widget.widgetType containsString:@"Chart"]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+- (NSArray<BaseWidget *> *)connectedWidgetsOfType:(Class)widgetClass {
+    NSMutableArray *matchingWidgets = [NSMutableArray array];
+    for (BaseWidget *widget in self.chainedWidgets) {
+        if ([widget isKindOfClass:widgetClass]) {
+            [matchingWidgets addObject:widget];
+        }
+    }
+    return [matchingWidgets copy];
+}
 #pragma mark - Properties
 
 - (NSView *)headerView {
@@ -651,4 +681,10 @@
     return self.view.window;
 }
 
+
+
+
+- (NSButton *)chainButton {
+    return self.chainButton;
+}
 @end

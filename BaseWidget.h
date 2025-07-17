@@ -18,6 +18,7 @@
 @property (nonatomic, strong, readonly) NSView *headerView;
 @property (nonatomic, strong, readonly) NSView *contentView;
 @property (nonatomic, strong, readonly) NSTextField *titleField;
+@property (nonatomic, strong, readonly) NSButton *chainButton;
 
 // Callbacks
 @property (nonatomic, copy) void (^onRemoveRequest)(BaseWidget *widget);
@@ -44,7 +45,12 @@
 - (void)connectToWidget:(NSMenuItem *)sender;
 - (void)disconnectFromWidget:(NSMenuItem *)sender;
 - (void)showConnectionFeedback:(NSString *)message success:(BOOL)success;
-
+- (BOOL)hasConnectedChartWidgets;
+- (BOOL)hasConnectedWidgetsOfType:(Class)widgetClass;
+- (NSArray<BaseWidget *> *)connectedWidgetsOfType:(Class)widgetClass;
+- (void)addChainedWidget:(BaseWidget *)widget;
+- (void)removeChainedWidget:(BaseWidget *)widget;
+- (void)broadcastUpdate:(NSDictionary *)update;
 // Collapse functionality
 - (void)toggleCollapse;
 - (CGFloat)collapsedHeight;

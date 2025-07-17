@@ -39,10 +39,11 @@
 - (NSDictionary *)serializeState;
 - (void)restoreState:(NSDictionary *)state;
 
-// Chain management
-- (void)addChainedWidget:(BaseWidget *)widget;
-- (void)removeChainedWidget:(BaseWidget *)widget;
-- (void)broadcastUpdate:(NSDictionary *)update;
+// Chain management (advanced)
+- (NSArray<BaseWidget *> *)findAvailableWidgetsForConnection;
+- (void)connectToWidget:(NSMenuItem *)sender;
+- (void)disconnectFromWidget:(NSMenuItem *)sender;
+- (void)showConnectionFeedback:(NSString *)message success:(BOOL)success;
 
 // Collapse functionality
 - (void)toggleCollapse;

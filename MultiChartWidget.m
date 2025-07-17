@@ -442,6 +442,85 @@
     }
 }
 
+
+- (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
+    NSString *action = update[@"action"];
+    
+    if ([action isEqualToString:@"setSymbols"]) {
+        NSArray<NSString *> *symbols = update[@"symbols"];
+        NSString *source = update[@"source"];
+        NSString *watchlistName = update[@"watchlistName"];
+        
+        if (symbols && symbols.count > 0) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                // Aggiorna il campo simboli
+                NSString *symbolsString = [symbols componentsJoinedByString:@","];
+                [self setSymbolsFromString:symbolsString];
+                
+                // Mostra feedback
+                [self showReceivedSymbolsMessage:symbols.count fromSource:source watchlistName:watchlistName];
+                
+                NSLog(@"📥 MultiChartWidget: Received %ld symbols from %@ (%@)",
+                      symbols.count, source ?: @"unknown", watchlistName ?: @"");
+            });
+        }
+    } else if (update[@"symbol"]) {
+        // Gestione simbolo singolo (compatibilità)
+        NSString *symbol = update[@"symbol"];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self addSymbol:symbol];
+        });
+    }
+}
+
+- (void)showReceivedSymbolsMessage:(NSInteger)symbolCount fromSource:(NSString *)source watchlistName:(NSString *)watchlistName {
+    NSString *message;
+    if ([source isEqualToString:@"watchlist"]) {
+        message = [NSString stringWithFormat:@"📥 Received %ld symbols from watchlist '%@'", symbolCount, watchlistName ?: @"Unknown"];
+    } else {
+        message = [NSString stringWithFormat:@"📥 Received %ld symbols", symbolCount];
+    }
+    
+    // Usa lo stesso sistema di feedback del WatchlistWidget
+    NSTextField *messageLabel = [[NSTextField alloc] init];
+    messageLabel.stringValue = message;
+    messageLabel.backgroundColor = [NSColor systemGreenColor];
+    messageLabel.textColor = [NSColor controlAlternatingRowBackgroundColors].firstObject;
+    messageLabel.font = [NSFont systemFontOfSize:11 weight:NSFontWeightMedium];
+    messageLabel.alignment = NSTextAlignmentCenter;
+    messageLabel.bordered = NO;
+    messageLabel.editable = NO;
+    messageLabel.selectable = NO;
+    messageLabel.wantsLayer = YES;
+    messageLabel.layer.cornerRadius = 4;
+    
+    messageLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.contentView addSubview:messageLabel];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [messageLabel.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
+        [messageLabel.topAnchor constraintEqualToAnchor:self.controlsView.bottomAnchor constant:8],
+        [messageLabel.widthAnchor constraintLessThanOrEqualToAnchor:self.contentView.widthAnchor constant:-16],
+        [messageLabel.heightAnchor constraintEqualToConstant:28]
+    ]];
+    
+    // Anima e rimuovi
+    messageLabel.layer.opacity = 0;
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.3;
+        messageLabel.animator.layer.opacity = 0.95;
+    } completionHandler:^{
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+                context.duration = 0.3;
+                messageLabel.animator.layer.opacity = 0;
+            } completionHandler:^{
+                [messageLabel removeFromSuperview];
+            }];
+        });
+    }];
+}
+
 #pragma mark - Data Updates
 
 - (void)refreshAllCharts {

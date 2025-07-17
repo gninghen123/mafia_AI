@@ -155,7 +155,7 @@
     
     // Broadcast symbol change to chained widgets
     if (self.chainedWidgets.count > 0) {
-        [self broadcastUpdate:@{@"symbol": symbol ?: @""}];
+  //todo      [self broadcastUpdate:@{@"symbol": symbol ?: @""}];
     }
 }
 

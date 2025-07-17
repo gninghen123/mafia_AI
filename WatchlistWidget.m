@@ -551,6 +551,103 @@
     }
 }
 
+
+
+
+- (void)sendSelectedSymbolsToCharts:(id)sender {
+    NSIndexSet *selectedRows = [self.tableViewInternal selectedRowIndexes];
+    NSMutableArray *selectedSymbols = [NSMutableArray array];
+    
+    [selectedRows enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL *stop) {
+        if (idx < self.symbols.count) {
+            [selectedSymbols addObject:self.symbols[idx]];
+        }
+    }];
+    
+    if (selectedSymbols.count > 0) {
+        [self sendSymbolsToChainedWidgets:selectedSymbols];
+        
+        // Mostra feedback visivo
+        [self showTemporaryMessage:[NSString stringWithFormat:@"📤 Sent %ld symbol%@ to charts",
+                                   selectedSymbols.count,
+                                   selectedSymbols.count == 1 ? @"" : @"s"]];
+    }
+}
+
+- (void)sendEntireWatchlistToCharts:(id)sender {
+    if (self.symbols.count > 0) {
+        [self sendSymbolsToChainedWidgets:[self.symbols copy]];
+        
+        // Mostra feedback visivo
+        [self showTemporaryMessage:[NSString stringWithFormat:@"📤 Sent entire watchlist (%ld symbols) to charts", self.symbols.count]];
+    }
+}
+
+- (void)sendSymbolsToChainedWidgets:(NSArray<NSString *> *)symbols {
+    if (self.chainedWidgets.count == 0) {
+        [self showTemporaryMessage:@"⚠️ No charts connected. Use 🔗 to connect to MultiChart widget"];
+        return;
+    }
+    
+    // Crea update dictionary con lista di simboli
+    NSDictionary *update = @{
+        @"action": @"setSymbols",
+        @"symbols": symbols,
+        @"source": @"watchlist",
+        @"watchlistName": self.watchlistName ?: @"Default"
+    };
+    
+    // Broadcast ai widget connessi
+    [self broadcastUpdate:update];
+    
+    NSLog(@"📤 WatchlistWidget: Sent %ld symbols to %ld connected chart widgets",
+          symbols.count, self.chainedWidgets.count);
+}
+
+- (void)showTemporaryMessage:(NSString *)message {
+    // Crea un overlay temporaneo per mostrare feedback
+    NSTextField *messageLabel = [[NSTextField alloc] init];
+    messageLabel.stringValue = message;
+    messageLabel.backgroundColor = [NSColor controlAccentColor];
+    messageLabel.textColor = [NSColor controlAlternatingRowBackgroundColors].firstObject;
+    messageLabel.font = [NSFont systemFontOfSize:11 weight:NSFontWeightMedium];
+    messageLabel.alignment = NSTextAlignmentCenter;
+    messageLabel.bordered = NO;
+    messageLabel.editable = NO;
+    messageLabel.selectable = NO;
+    messageLabel.wantsLayer = YES;
+    messageLabel.layer.cornerRadius = 4;
+    messageLabel.layer.opacity = 0.95;
+    
+    messageLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:messageLabel];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [messageLabel.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [messageLabel.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:8],
+        [messageLabel.widthAnchor constraintLessThanOrEqualToAnchor:self.view.widthAnchor constant:-16],
+        [messageLabel.heightAnchor constraintEqualToConstant:28]
+    ]];
+    
+    // Anima l'apparizione
+    messageLabel.layer.opacity = 0;
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.3;
+        messageLabel.animator.layer.opacity = 0.95;
+    } completionHandler:^{
+        // Rimuovi dopo 2 secondi
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+                context.duration = 0.3;
+                messageLabel.animator.layer.opacity = 0;
+            } completionHandler:^{
+                [messageLabel removeFromSuperview];
+            }];
+        });
+    }];
+}
+
+
 - (void)createNewListFromSelection:(id)sender {
     NSIndexSet *selectedRows = self.tableViewInternal.selectedRowIndexes;
     if (selectedRows.count == 0) return;
@@ -710,16 +807,58 @@
 - (void)updateWatchlistDisplayInfo {
     // Update the combo box to show if watchlist is dynamic
     if (self.currentWatchlist.isDynamic) {
-        NSString *displayName = [NSString stringWithFormat:@"%@ (Dynamic: #%@)",
+     /*   NSString *displayName = [NSString stringWithFormat:@"%@ (Dynamic: #%@)",
                                 self.currentWatchlist.name,
                                 self.currentWatchlist.dynamicTag];
-        // Note: We only show this info visually, the actual combo box value remains the same
+        // Note: We only show this info visually, the actual combo box value remains the same*/
     }
 }
 
 - (void)showWatchlistMenu:(NSButton *)sender {
     NSMenu *menu = [[NSMenu alloc] init];
     
+    // === SEZIONE CHAIN/INVIO (se ci sono simboli e connessioni) ===
+    if (self.symbols.count > 0) {
+        // Controlla se ci sono widget connessi che possono ricevere simboli
+        BOOL hasChartConnections = [self hasConnectedChartWidgets];
+        
+        if (hasChartConnections) {
+            NSMenuItem *chainHeader = [[NSMenuItem alloc] initWithTitle:@"📤 Send to Connected Charts" action:nil keyEquivalent:@""];
+            chainHeader.enabled = NO;
+            [menu addItem:chainHeader];
+            
+            // Opzione per inviare selezione corrente (se c'è)
+            NSIndexSet *selectedRows = [self.tableViewInternal selectedRowIndexes];
+            if (selectedRows.count > 0) {
+                NSString *title = selectedRows.count == 1 ?
+                    @"Send Selected Symbol" :
+                    [NSString stringWithFormat:@"Send Selected (%ld symbols)", selectedRows.count];
+                NSMenuItem *sendSelectedItem = [[NSMenuItem alloc] initWithTitle:title
+                                                                          action:@selector(sendSelectedSymbolsToCharts:)
+                                                                   keyEquivalent:@""];
+                sendSelectedItem.target = self;
+                [menu addItem:sendSelectedItem];
+            }
+            
+            // Opzione per inviare intera watchlist
+            NSString *watchlistTitle = [NSString stringWithFormat:@"Send Entire Watchlist (%ld symbols)", self.symbols.count];
+            NSMenuItem *sendAllItem = [[NSMenuItem alloc] initWithTitle:watchlistTitle
+                                                                 action:@selector(sendEntireWatchlistToCharts:)
+                                                          keyEquivalent:@""];
+            sendAllItem.target = self;
+            [menu addItem:sendAllItem];
+            
+            [menu addItem:[NSMenuItem separatorItem]];
+        } else if (self.symbols.count > 0) {
+            // Mostra opzione per connettere se non ci sono connessioni
+            NSMenuItem *connectHint = [[NSMenuItem alloc] initWithTitle:@"🔗 Connect to MultiChart to send symbols" action:nil keyEquivalent:@""];
+            connectHint.enabled = NO;
+            [menu addItem:connectHint];
+            [menu addItem:[NSMenuItem separatorItem]];
+        }
+    }
+    
+    // === SEZIONI ORIGINALI ===
     [menu addItemWithTitle:@"New Watchlist..." action:@selector(createNewWatchlist:) keyEquivalent:@""];
     [menu addItemWithTitle:@"New Dynamic Watchlist..." action:@selector(createDynamicWatchlist:) keyEquivalent:@""];
     [menu addItemWithTitle:@"Duplicate Current" action:@selector(duplicateWatchlist:) keyEquivalent:@""];
@@ -731,7 +870,7 @@
     
     // Set target for all menu items
     for (NSMenuItem *item in menu.itemArray) {
-        if (item.action) {
+        if (item.action && !item.target) {
             item.target = self;
         }
     }
@@ -1612,5 +1751,166 @@
     [[DataManager sharedManager] removeDelegate:self];
     [[DataManager sharedManager] unsubscribeFromQuotes:self.symbols];
 }
+
+#pragma mark - Chain
+
+
+- (NSArray<BaseWidget *> *)findAvailableWidgetsForConnection {
+    NSMutableArray<BaseWidget *> *availableWidgets = [NSMutableArray array];
+    
+    // Trova tutti i widget nell'app tramite la gerarchia di view
+    NSWindow *window = self.view.window;
+    if (!window) return @[];
+    
+    [self findWidgetsInView:window.contentView availableWidgets:availableWidgets excludingSelf:YES];
+    
+    // Rimuovi widget già connessi
+    NSMutableArray<BaseWidget *> *filteredWidgets = [availableWidgets mutableCopy];
+    [filteredWidgets removeObjectsInArray:self.chainedWidgets.allObjects];
+    
+    return [filteredWidgets copy];
+}
+
+- (void)findWidgetsInView:(NSView *)view availableWidgets:(NSMutableArray<BaseWidget *> *)widgets excludingSelf:(BOOL)excludeSelf {
+    // Controlla se questa view appartiene a un BaseWidget
+    NSViewController *controller = nil;
+    NSResponder *responder = view;
+    while (responder && ![responder isKindOfClass:[BaseWidget class]]) {
+        responder = [responder nextResponder];
+    }
+    
+    if ([responder isKindOfClass:[BaseWidget class]]) {
+        BaseWidget *widget = (BaseWidget *)responder;
+        if (!excludeSelf || widget != self) {
+            [widgets addObject:widget];
+        }
+    }
+    
+    // Ricerca ricorsiva nelle subview
+    for (NSView *subview in view.subviews) {
+        [self findWidgetsInView:subview availableWidgets:widgets excludingSelf:NO];
+    }
+}
+
+- (NSString *)panelNameForWidget:(BaseWidget *)widget {
+    switch (widget.panelType) {
+        case PanelTypeLeft: return @"Left Panel";
+        case PanelTypeCenter: return @"Center Panel";
+        case PanelTypeRight: return @"Right Panel";
+        default: return @"Unknown Panel";
+    }
+}
+
+- (void)connectToWidget:(NSMenuItem *)sender {
+    BaseWidget *targetWidget = sender.representedObject;
+    if (!targetWidget) return;
+    
+    // Connessione bidirezionale
+    [self addChainedWidget:targetWidget];
+    [targetWidget addChainedWidget:self];
+    
+    // Feedback visivo
+    [self showConnectionFeedback:[NSString stringWithFormat:@"🔗 Connected to %@", targetWidget.widgetType] success:YES];
+    
+    NSLog(@"✅ Chain connection established: %@ ↔ %@", self.widgetType, targetWidget.widgetType);
+}
+
+- (void)disconnectFromWidget:(NSMenuItem *)sender {
+    BaseWidget *targetWidget = sender.representedObject;
+    if (!targetWidget) return;
+    
+    // Disconnessione bidirezionale
+    [self removeChainedWidget:targetWidget];
+    [targetWidget removeChainedWidget:self];
+    
+    // Feedback visivo
+    [self showConnectionFeedback:[NSString stringWithFormat:@"✖ Disconnected from %@", targetWidget.widgetType] success:NO];
+    
+    NSLog(@"❌ Chain connection removed: %@ ↮ %@", self.widgetType, targetWidget.widgetType);
+}
+
+- (void)disconnectAllChains:(id)sender {
+    NSArray<BaseWidget *> *connectedWidgets = [self.chainedWidgets.allObjects copy];
+    
+    for (BaseWidget *widget in connectedWidgets) {
+        [self removeChainedWidget:widget];
+        [widget removeChainedWidget:self];
+    }
+    
+    [self showConnectionFeedback:@"✖ Disconnected from all widgets" success:NO];
+    
+    NSLog(@"❌ All chain connections removed for %@", self.widgetType);
+}
+
+- (void)showConnectionFeedback:(NSString *)message success:(BOOL)success {
+    // Crea feedback temporaneo
+    NSTextField *feedbackLabel = [[NSTextField alloc] init];
+    feedbackLabel.stringValue = message;
+    feedbackLabel.backgroundColor = success ? [NSColor systemGreenColor] : [NSColor systemOrangeColor];
+    feedbackLabel.textColor = [NSColor controlAlternatingRowBackgroundColors].firstObject;
+    feedbackLabel.font = [NSFont systemFontOfSize:11 weight:NSFontWeightMedium];
+    feedbackLabel.alignment = NSTextAlignmentCenter;
+    feedbackLabel.bordered = NO;
+    feedbackLabel.editable = NO;
+    feedbackLabel.selectable = NO;
+    feedbackLabel.wantsLayer = YES;
+    feedbackLabel.layer.cornerRadius = 4;
+    
+    feedbackLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:feedbackLabel];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [feedbackLabel.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [feedbackLabel.topAnchor constraintEqualToAnchor:self.headerView.bottomAnchor constant:4],
+        [feedbackLabel.widthAnchor constraintLessThanOrEqualToAnchor:self.view.widthAnchor constant:-16],
+        [feedbackLabel.heightAnchor constraintEqualToConstant:24]
+    ]];
+    
+    // Anima apparizione e scomparsa
+    feedbackLabel.layer.opacity = 0;
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.3;
+        feedbackLabel.animator.layer.opacity = 0.95;
+    } completionHandler:^{
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+                context.duration = 0.3;
+                feedbackLabel.animator.layer.opacity = 0;
+            } completionHandler:^{
+                [feedbackLabel removeFromSuperview];
+            }];
+        });
+    }];
+}
+
+
+- (void)addChainedWidget:(BaseWidget *)widget {
+    if (!self.chainedWidgets) {
+        self.chainedWidgets = [NSMutableSet set];
+    }
+    [self.chainedWidgets addObject:widget];
+    [self updateChainButtonColor];
+}
+
+- (void)removeChainedWidget:(BaseWidget *)widget {
+    [self.chainedWidgets removeObject:widget];
+    [self updateChainButtonColor];
+}
+
+- (void)updateChainButtonColor {
+    if (self.chainedWidgets.count > 0) {
+        // Usa colori distintivi per indicare lo stato connesso
+        self.chainButton.contentTintColor = [NSColor systemBlueColor];
+        self.chainButton.layer.backgroundColor = [[NSColor systemBlueColor] colorWithAlphaComponent:0.1].CGColor;
+        self.chainButton.layer.cornerRadius = 4;
+        self.chainButton.layer.borderWidth = 1;
+        self.chainButton.layer.borderColor = [NSColor systemBlueColor].CGColor;
+    } else {
+        self.chainButton.contentTintColor = [NSColor secondaryLabelColor];
+        self.chainButton.layer.backgroundColor = [NSColor clearColor].CGColor;
+        self.chainButton.layer.borderWidth = 0;
+    }
+}
+
 
 @end

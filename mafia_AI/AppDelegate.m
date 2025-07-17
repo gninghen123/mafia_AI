@@ -17,12 +17,20 @@
 @implementation AppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
-    // Registra data sources
-    [self registerDataSources];
-    
-    // Crea e mostra la finestra principale
-    self.mainWindowController = [[MainWindowController alloc] init];
-    [self.mainWindowController showWindow:self];
+    NSLog(@"AppDelegate: applicationDidFinishLaunching called");
+     
+     // Registra data sources
+     [self registerDataSources];
+     
+     // Crea e mostra la finestra principale
+     NSLog(@"AppDelegate: Creating MainWindowController");
+     self.mainWindowController = [[MainWindowController alloc] init];
+     
+     NSLog(@"AppDelegate: Showing window");
+     [self.mainWindowController showWindow:self];
+     
+     // IMPORTANTE: Porta l'app in primo piano
+     [NSApp activateIgnoringOtherApps:YES];
 }
 
 - (void)registerDataSources {

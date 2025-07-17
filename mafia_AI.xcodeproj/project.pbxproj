@@ -30,8 +30,6 @@
 		954D30A92E28530500C7DC88 /* ConnectionStatusWidget.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D309F2E28530500C7DC88 /* ConnectionStatusWidget.m */; };
 		954D30AA2E28530500C7DC88 /* QuoteWidget.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30A22E28530500C7DC88 /* QuoteWidget.m */; };
 		954D30AB2E28530500C7DC88 /* WatchlistManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30A42E28530500C7DC88 /* WatchlistManager.m */; };
-		954D30AC2E28530500C7DC88 /* ConnectionStatusWidget.xib in Resources */ = {isa = PBXBuildFile; fileRef = 954D30A02E28530500C7DC88 /* ConnectionStatusWidget.xib */; };
-		954D30AD2E28530500C7DC88 /* WatchlistWidget.xib in Resources */ = {isa = PBXBuildFile; fileRef = 954D30A72E28530500C7DC88 /* WatchlistWidget.xib */; };
 		954D30B92E28530E00C7DC88 /* DownloadManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30B62E28530E00C7DC88 /* DownloadManager.m */; };
 		954D30BA2E28530E00C7DC88 /* DataManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30B42E28530E00C7DC88 /* DataManager.m */; };
 		954D30BB2E28530E00C7DC88 /* SchwabDataSource.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30B02E28530E00C7DC88 /* SchwabDataSource.m */; };
@@ -46,14 +44,9 @@
 		954D30D92E28531C00C7DC88 /* BaseWidget.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30CC2E28531C00C7DC88 /* BaseWidget.m */; };
 		954D30DA2E28531C00C7DC88 /* PanelController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30CF2E28531C00C7DC88 /* PanelController.m */; };
 		954D30DB2E28531C00C7DC88 /* MainWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30D22E28531C00C7DC88 /* MainWindowController.m */; };
-		954D30DC2E28531C00C7DC88 /* MainWindowController.xib in Resources */ = {isa = PBXBuildFile; fileRef = 954D30D32E28531C00C7DC88 /* MainWindowController.xib */; };
 		954D30DD2E28531C00C7DC88 /* progettoinfo.txt in Resources */ = {isa = PBXBuildFile; fileRef = 954D30C02E28531C00C7DC88 /* progettoinfo.txt */; };
-		954D30DE2E28531C00C7DC88 /* PanelController.xib in Resources */ = {isa = PBXBuildFile; fileRef = 954D30D02E28531C00C7DC88 /* PanelController.xib */; };
-		954D30DF2E28531C00C7DC88 /* BaseWidget.xib in Resources */ = {isa = PBXBuildFile; fileRef = 954D30CD2E28531C00C7DC88 /* BaseWidget.xib */; };
 		954D30E32E2860F100C7DC88 /* PreferencesWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */; };
-		954D30E42E2860F100C7DC88 /* PreferencesWindowController.xib in Resources */ = {isa = PBXBuildFile; fileRef = 954D30E22E2860F100C7DC88 /* PreferencesWindowController.xib */; };
 		954D30E72E28612100C7DC88 /* AppSettings.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30E62E28612100C7DC88 /* AppSettings.m */; };
-		954D310D2E291AE600C7DC88 /* MultiChartWidget.xib in Resources */ = {isa = PBXBuildFile; fileRef = 954D310C2E291AE600C7DC88 /* MultiChartWidget.xib */; };
 		954D310E2E291AE600C7DC88 /* MultiChartWidget.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D310B2E291AE600C7DC88 /* MultiChartWidget.m */; };
 		954D31112E291C8600C7DC88 /* MiniChart.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D31102E291C8600C7DC88 /* MiniChart.m */; };
 /* End PBXBuildFile section */
@@ -121,14 +114,12 @@
 		954D30992E2852FF00C7DC88 /* CHChartWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CHChartWidget.m; sourceTree = "<group>"; };
 		954D309E2E28530500C7DC88 /* ConnectionStatusWidget.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ConnectionStatusWidget.h; sourceTree = "<group>"; };
 		954D309F2E28530500C7DC88 /* ConnectionStatusWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ConnectionStatusWidget.m; sourceTree = "<group>"; };
-		954D30A02E28530500C7DC88 /* ConnectionStatusWidget.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = ConnectionStatusWidget.xib; sourceTree = "<group>"; };
 		954D30A12E28530500C7DC88 /* QuoteWidget.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QuoteWidget.h; sourceTree = "<group>"; };
 		954D30A22E28530500C7DC88 /* QuoteWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QuoteWidget.m; sourceTree = "<group>"; };
 		954D30A32E28530500C7DC88 /* WatchlistManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WatchlistManager.h; sourceTree = "<group>"; };
 		954D30A42E28530500C7DC88 /* WatchlistManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WatchlistManager.m; sourceTree = "<group>"; };
 		954D30A52E28530500C7DC88 /* WatchlistWidget.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WatchlistWidget.h; sourceTree = "<group>"; };
 		954D30A62E28530500C7DC88 /* WatchlistWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WatchlistWidget.m; sourceTree = "<group>"; };
-		954D30A72E28530500C7DC88 /* WatchlistWidget.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = WatchlistWidget.xib; sourceTree = "<group>"; };
 		954D30AE2E28530E00C7DC88 /* SchwabConfig.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = SchwabConfig.plist; sourceTree = "<group>"; };
 		954D30AF2E28530E00C7DC88 /* SchwabDataSource.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SchwabDataSource.h; sourceTree = "<group>"; };
 		954D30B02E28530E00C7DC88 /* SchwabDataSource.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SchwabDataSource.m; sourceTree = "<group>"; };
@@ -154,21 +145,16 @@
 		954D30CA2E28531C00C7DC88 /* LayoutManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = LayoutManager.m; sourceTree = "<group>"; };
 		954D30CB2E28531C00C7DC88 /* BaseWidget.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BaseWidget.h; sourceTree = "<group>"; };
 		954D30CC2E28531C00C7DC88 /* BaseWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = BaseWidget.m; sourceTree = "<group>"; };
-		954D30CD2E28531C00C7DC88 /* BaseWidget.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = BaseWidget.xib; sourceTree = "<group>"; };
 		954D30CE2E28531C00C7DC88 /* PanelController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PanelController.h; sourceTree = "<group>"; };
 		954D30CF2E28531C00C7DC88 /* PanelController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PanelController.m; sourceTree = "<group>"; };
-		954D30D02E28531C00C7DC88 /* PanelController.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = PanelController.xib; sourceTree = "<group>"; };
 		954D30D12E28531C00C7DC88 /* MainWindowController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MainWindowController.h; sourceTree = "<group>"; };
 		954D30D22E28531C00C7DC88 /* MainWindowController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MainWindowController.m; sourceTree = "<group>"; };
-		954D30D32E28531C00C7DC88 /* MainWindowController.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = MainWindowController.xib; sourceTree = "<group>"; };
 		954D30E02E2860F100C7DC88 /* PreferencesWindowController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PreferencesWindowController.h; sourceTree = "<group>"; };
 		954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PreferencesWindowController.m; sourceTree = "<group>"; };
-		954D30E22E2860F100C7DC88 /* PreferencesWindowController.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = PreferencesWindowController.xib; sourceTree = "<group>"; };
 		954D30E52E28612100C7DC88 /* AppSettings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppSettings.h; sourceTree = "<group>"; };
 		954D30E62E28612100C7DC88 /* AppSettings.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppSettings.m; sourceTree = "<group>"; };
 		954D310A2E291AE600C7DC88 /* MultiChartWidget.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MultiChartWidget.h; sourceTree = "<group>"; };
 		954D310B2E291AE600C7DC88 /* MultiChartWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MultiChartWidget.m; sourceTree = "<group>"; };
-		954D310C2E291AE600C7DC88 /* MultiChartWidget.xib */ = {isa = PBXFileReference; lastKnownFileType = file.xib; path = MultiChartWidget.xib; sourceTree = "<group>"; };
 		954D310F2E291C8600C7DC88 /* MiniChart.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MiniChart.h; sourceTree = "<group>"; };
 		954D31102E291C8600C7DC88 /* MiniChart.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MiniChart.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -223,12 +209,10 @@
 				954D31102E291C8600C7DC88 /* MiniChart.m */,
 				954D310A2E291AE600C7DC88 /* MultiChartWidget.h */,
 				954D310B2E291AE600C7DC88 /* MultiChartWidget.m */,
-				954D310C2E291AE600C7DC88 /* MultiChartWidget.xib */,
 				954D30E52E28612100C7DC88 /* AppSettings.h */,
 				954D30E62E28612100C7DC88 /* AppSettings.m */,
 				954D30E02E2860F100C7DC88 /* PreferencesWindowController.h */,
 				954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */,
-				954D30E22E2860F100C7DC88 /* PreferencesWindowController.xib */,
 				954D30BF2E28531C00C7DC88 /* TradingAppTypes.h */,
 				954D30C02E28531C00C7DC88 /* progettoinfo.txt */,
 				954D30C12E28531C00C7DC88 /* WidgetTypeManager.h */,
@@ -243,13 +227,10 @@
 				954D30CA2E28531C00C7DC88 /* LayoutManager.m */,
 				954D30CB2E28531C00C7DC88 /* BaseWidget.h */,
 				954D30CC2E28531C00C7DC88 /* BaseWidget.m */,
-				954D30CD2E28531C00C7DC88 /* BaseWidget.xib */,
 				954D30CE2E28531C00C7DC88 /* PanelController.h */,
 				954D30CF2E28531C00C7DC88 /* PanelController.m */,
-				954D30D02E28531C00C7DC88 /* PanelController.xib */,
 				954D30D12E28531C00C7DC88 /* MainWindowController.h */,
 				954D30D22E28531C00C7DC88 /* MainWindowController.m */,
-				954D30D32E28531C00C7DC88 /* MainWindowController.xib */,
 				954D30AE2E28530E00C7DC88 /* SchwabConfig.plist */,
 				954D30AF2E28530E00C7DC88 /* SchwabDataSource.h */,
 				954D30B02E28530E00C7DC88 /* SchwabDataSource.m */,
@@ -263,14 +244,12 @@
 				954D30B82E28530E00C7DC88 /* MarketDataModels.m */,
 				954D309E2E28530500C7DC88 /* ConnectionStatusWidget.h */,
 				954D309F2E28530500C7DC88 /* ConnectionStatusWidget.m */,
-				954D30A02E28530500C7DC88 /* ConnectionStatusWidget.xib */,
 				954D30A12E28530500C7DC88 /* QuoteWidget.h */,
 				954D30A22E28530500C7DC88 /* QuoteWidget.m */,
 				954D30A32E28530500C7DC88 /* WatchlistManager.h */,
 				954D30A42E28530500C7DC88 /* WatchlistManager.m */,
 				954D30A52E28530500C7DC88 /* WatchlistWidget.h */,
 				954D30A62E28530500C7DC88 /* WatchlistWidget.m */,
-				954D30A72E28530500C7DC88 /* WatchlistWidget.xib */,
 				954D30902E2852FF00C7DC88 /* CHChartRenderer.h */,
 				954D30912E2852FF00C7DC88 /* CHChartRenderer.m */,
 				954D30922E2852FF00C7DC88 /* CHChartCore.h */,
@@ -447,15 +426,8 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				954D30DC2E28531C00C7DC88 /* MainWindowController.xib in Resources */,
 				954D30DD2E28531C00C7DC88 /* progettoinfo.txt in Resources */,
-				954D30DE2E28531C00C7DC88 /* PanelController.xib in Resources */,
-				954D30DF2E28531C00C7DC88 /* BaseWidget.xib in Resources */,
-				954D310D2E291AE600C7DC88 /* MultiChartWidget.xib in Resources */,
 				954D30BE2E28530E00C7DC88 /* SchwabConfig.plist in Resources */,
-				954D30AC2E28530500C7DC88 /* ConnectionStatusWidget.xib in Resources */,
-				954D30AD2E28530500C7DC88 /* WatchlistWidget.xib in Resources */,
-				954D30E42E2860F100C7DC88 /* PreferencesWindowController.xib in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

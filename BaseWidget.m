@@ -684,7 +684,5 @@
 
 
 
-- (NSButton *)chainButton {
-    return self.chainButton;
-}
+
 @end

@@ -279,6 +279,9 @@
 - (void)loadSettings {
     AppSettings *settings = [AppSettings sharedSettings];
     
+    // Forza il reload delle impostazioni da NSUserDefaults
+    [settings load];
+    
     // General
     self.priceUpdateIntervalField.doubleValue = settings.priceUpdateInterval;
     self.alertBackupIntervalField.doubleValue = settings.alertBackupInterval;
@@ -299,6 +302,7 @@
     self.accentColorWell.color = settings.accentColor ?: [NSColor systemBlueColor];
 }
 
+// Assicurati che il metodo save in AppSettings chiami synchronize
 - (void)saveSettings {
     AppSettings *settings = [AppSettings sharedSettings];
     
@@ -322,15 +326,19 @@
     settings.accentColor = self.accentColorWell.color;
     
     [settings save];
+    
+    // Forza la sincronizzazione
+    [[NSUserDefaults standardUserDefaults] synchronize];
 }
-
 #pragma mark - Public Methods
 
 - (void)showPreferences {
+    // Assicurati che le impostazioni siano caricate ogni volta che la finestra viene mostrata
+    [self loadSettings];
+    
     [self.window makeKeyAndOrderFront:nil];
     [NSApp activateIgnoringOtherApps:YES];
 }
-
 #pragma mark - Window Delegate
 
 - (void)windowWillClose:(NSNotification *)notification {

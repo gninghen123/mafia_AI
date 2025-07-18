@@ -151,30 +151,36 @@
 - (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType {
     self = [super initWithType:type panelType:panelType];
     if (self) {
-        self.widgetType = @"Watchlist";
-        _symbols = [NSMutableArray array];
-        _rules = [NSMutableArray array];
-        _marketDataCache = [NSMutableDictionary dictionary];
-        _symbolColors = [NSMutableDictionary dictionary];
-        _symbolTags = [NSMutableDictionary dictionary];
-        _dataManager = [DataManager sharedManager];
-        _watchlistManager = [WatchlistManager sharedManager];
-        
-        [_dataManager addDelegate:self];
-        
-        // Load default watchlist
-        _watchlistName = @"Default";
-        [self loadWatchlist:_watchlistName];
-        
-        // Set up refresh timer for periodic updates
-        _refreshTimer = [NSTimer scheduledTimerWithTimeInterval:30.0
-                                                         target:self
-                                                       selector:@selector(refreshData)
-                                                       userInfo:nil
-                                                        repeats:YES];
-    }
+           self.widgetType = @"Watchlist";
+           _symbols = [NSMutableArray array];
+           _rules = [NSMutableArray array];
+           _marketDataCache = [NSMutableDictionary dictionary];
+           _symbolColors = [NSMutableDictionary dictionary];
+           _symbolTags = [NSMutableDictionary dictionary];
+           _dataManager = [DataManager sharedManager];
+           _watchlistManager = [WatchlistManager sharedManager];
+           
+           [_dataManager addDelegate:self];
+           
+           // MODIFICA: Carica la prima watchlist disponibile invece di forzare "Default"
+           NSArray<NSString *> *availableWatchlists = [_watchlistManager availableWatchlistNames];
+           if (availableWatchlists.count > 0) {
+               _watchlistName = availableWatchlists.firstObject;
+           } else {
+               _watchlistName = @"Default";
+           }
+           [self loadWatchlist:_watchlistName];
+           
+           // Set up refresh timer for periodic updates
+           _refreshTimer = [NSTimer scheduledTimerWithTimeInterval:30.0
+                                                            target:self
+                                                          selector:@selector(refreshData)
+                                                          userInfo:nil
+                                                           repeats:YES];
+       }
     return self;
 }
+
 
 - (void)setupContentView {
     [super setupContentView];
@@ -205,6 +211,17 @@
         [mainStack.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor]
     ]];
     
+    // AGGIUNTO: Forza il reload della ComboBox DOPO che tutto è stato creato
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.watchlistComboBoxInternal reloadData];
+        NSLog(@"WatchlistWidget: Reloaded ComboBox with %lu watchlists",
+              (unsigned long)[self.watchlistManager availableWatchlistNames].count);
+        
+        // Debug: stampa tutte le watchlist disponibili
+        NSArray *names = [self.watchlistManager availableWatchlistNames];
+        NSLog(@"Available watchlists: %@", names);
+    });
+    
     // Request initial quotes for all symbols
     [self refreshData];
 }
@@ -233,7 +250,7 @@
     self.watchlistComboBoxInternal.itemHeight = 20;
     self.watchlistComboBoxInternal.numberOfVisibleItems = 10;
     self.watchlistComboBoxInternal.stringValue = self.watchlistName;
-    [self.watchlistComboBoxInternal reloadData];
+   // [self.watchlistComboBoxInternal reloadData];
     
     // Bottone menu per azioni watchlist
     self.watchlistMenuButton = [[NSButton alloc] init];

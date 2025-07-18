@@ -374,10 +374,18 @@
     // Create directory if it doesn't exist
     NSFileManager *fileManager = [NSFileManager defaultManager];
     if (![fileManager fileExistsAtPath:appDirectory]) {
-        [fileManager createDirectoryAtPath:appDirectory withIntermediateDirectories:YES attributes:nil error:nil];
+        NSError *error;
+        BOOL created = [fileManager createDirectoryAtPath:appDirectory
+                                withIntermediateDirectories:YES
+                                               attributes:nil
+                                                    error:&error];
+        if (!created) {
+            NSLog(@"Failed to create directory: %@", error.localizedDescription);
+        }
     }
     
-    return [appDirectory stringByAppendingPathComponent:@"watchlists.plist"];
+    // Usa .json invece di .plist
+    return [appDirectory stringByAppendingPathComponent:@"watchlists.json"];
 }
 
 - (void)saveAllData {
@@ -399,40 +407,75 @@
     
     // Write to file
     NSString *filePath = [self dataFilePath];
-    BOOL success = [data writeToFile:filePath atomically:YES];
+    NSError *error;
+    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:data options:NSJSONWritingPrettyPrinted error:&error];
+
+    if (jsonData) {
+        [jsonData writeToFile:filePath atomically:YES];
+        NSLog(@"Salvato su disco in: %@", filePath);
+    } else {
+        NSLog(@"Errore nella serializzazione JSON: %@", error.localizedDescription);
+    }
+  /*  BOOL success = [data writeToFile:filePath atomically:YES];
     
     if (success) {
         NSLog(@"WatchlistManager: Saved data to %@", filePath);
     } else {
         NSLog(@"WatchlistManager: Failed to save data to %@", filePath);
     }
+   */
 }
 
 - (void)loadAllData {
     NSString *filePath = [self dataFilePath];
-    NSDictionary *data = [NSDictionary dictionaryWithContentsOfFile:filePath];
+    NSLog(@"Tentativo di caricare da: %@", filePath);
+    
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    if (![fileManager fileExistsAtPath:filePath]) {
+        NSLog(@"WatchlistManager: No existing data file found, starting fresh");
+        return;
+    }
+    
+    // Leggi il file JSON
+    NSData *jsonData = [NSData dataWithContentsOfFile:filePath];
+    if (!jsonData) {
+        NSLog(@"WatchlistManager: Could not read data file");
+        return;
+    }
+    
+    // Deserializza JSON
+    NSError *error;
+    NSDictionary *data = [NSJSONSerialization JSONObjectWithData:jsonData
+                                                         options:NSJSONReadingMutableContainers
+                                                           error:&error];
     
     if (!data) {
-        NSLog(@"WatchlistManager: No existing data file found, starting fresh");
+        NSLog(@"WatchlistManager: Failed to parse JSON: %@", error.localizedDescription);
         return;
     }
     
     // Load watchlists
     NSDictionary *watchlistsDict = data[@"watchlists"];
-    for (NSString *name in watchlistsDict) {
-        WatchlistData *watchlist = [[WatchlistData alloc] initWithDictionary:watchlistsDict[name]];
-        self.watchlists[name] = watchlist;
+    if (watchlistsDict) {
+        for (NSString *name in watchlistsDict) {
+            WatchlistData *watchlist = [[WatchlistData alloc] initWithDictionary:watchlistsDict[name]];
+            self.watchlists[name] = watchlist;
+        }
     }
     
     // Load symbol properties
     NSDictionary *symbolPropsDict = data[@"symbolProperties"];
-    for (NSString *symbol in symbolPropsDict) {
-        SymbolProperties *properties = [[SymbolProperties alloc] initWithDictionary:symbolPropsDict[symbol]];
-        self.symbolProperties[symbol] = properties;
+    if (symbolPropsDict) {
+        for (NSString *symbol in symbolPropsDict) {
+            SymbolProperties *properties = [[SymbolProperties alloc] initWithDictionary:symbolPropsDict[symbol]];
+            self.symbolProperties[symbol] = properties;
+        }
     }
     
-    NSLog(@"WatchlistManager: Loaded %lu watchlists and %lu symbol properties",
+    NSLog(@"WatchlistManager: Loaded %lu watchlists and %lu symbol properties from JSON",
           (unsigned long)self.watchlists.count, (unsigned long)self.symbolProperties.count);
+    
+    // Debug: stampa nomi watchlist caricate
 }
 
 @end

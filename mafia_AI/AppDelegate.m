@@ -12,6 +12,7 @@
 
 @interface AppDelegate ()
 @property (nonatomic, strong) MainWindowController *mainWindowController;
+
 @end
 
 @implementation AppDelegate
@@ -127,4 +128,5 @@
         }
     }
 }
+
 @end

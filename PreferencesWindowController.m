@@ -54,10 +54,10 @@
 }
 
 - (void)setupWindow {
-    NSRect frame = NSMakeRect(0, 0, 500, 400);
+    NSRect frame = NSMakeRect(0, 0, 600, 500);
     NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
                                                    styleMask:NSWindowStyleMaskTitled |
-                                                            NSWindowStyleMaskClosable
+                        NSWindowStyleMaskClosable
                                                      backing:NSBackingStoreBuffered
                                                        defer:NO];
     
@@ -81,7 +81,7 @@
         [self.tabView.topAnchor constraintEqualToAnchor:contentView.topAnchor constant:20],
         [self.tabView.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:20],
         [self.tabView.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20],
-        [self.tabView.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor constant:-20]
+        [self.tabView.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor constant:-50]
     ]];
     
     // Add tabs
@@ -89,6 +89,7 @@
     [self setupAlertTab];
     [self setupDataSourceTab];
     [self setupAppearanceTab];
+    [self setupButtons];
 }
 
 - (void)setupGeneralTab {
@@ -302,34 +303,55 @@
     self.accentColorWell.color = settings.accentColor ?: [NSColor systemBlueColor];
 }
 
-// Assicurati che il metodo save in AppSettings chiami synchronize
 - (void)saveSettings {
     AppSettings *settings = [AppSettings sharedSettings];
     
-    // General
+    NSLog(@"PreferencesWindowController: Saving settings...");
+    
+    // General Settings
     settings.priceUpdateInterval = self.priceUpdateIntervalField.doubleValue;
     settings.alertBackupInterval = self.alertBackupIntervalField.doubleValue;
     settings.autosaveLayouts = (self.autosaveLayoutsCheckbox.state == NSControlStateValueOn);
     
-    // Alerts
+    NSLog(@"Saving - Price Update Interval: %.2f", settings.priceUpdateInterval);
+    NSLog(@"Saving - Alert Backup Interval: %.2f", settings.alertBackupInterval);
+    NSLog(@"Saving - Autosave Layouts: %@", settings.autosaveLayouts ? @"YES" : @"NO");
+    
+    // Alert Settings
     settings.alertSoundsEnabled = (self.alertSoundsCheckbox.state == NSControlStateValueOn);
     settings.alertPopupsEnabled = (self.alertPopupsCheckbox.state == NSControlStateValueOn);
     settings.alertSoundName = self.alertSoundPopup.selectedItem.title;
     
-    // Data Sources
+    NSLog(@"Saving - Alert Sounds: %@", settings.alertSoundsEnabled ? @"YES" : @"NO");
+    NSLog(@"Saving - Alert Popups: %@", settings.alertPopupsEnabled ? @"YES" : @"NO");
+    NSLog(@"Saving - Alert Sound Name: %@", settings.alertSoundName);
+    
+    // Data Source Settings
     settings.yahooEnabled = (self.enableYahooCheckbox.state == NSControlStateValueOn);
     settings.schwabEnabled = (self.enableSchwabCheckbox.state == NSControlStateValueOn);
     settings.ibkrEnabled = (self.enableIBKRCheckbox.state == NSControlStateValueOn);
     
-    // Appearance
+    NSLog(@"Saving - Yahoo Enabled: %@", settings.yahooEnabled ? @"YES" : @"NO");
+    NSLog(@"Saving - Schwab Enabled: %@", settings.schwabEnabled ? @"YES" : @"NO");
+    NSLog(@"Saving - IBKR Enabled: %@", settings.ibkrEnabled ? @"YES" : @"NO");
+    
+    // Appearance Settings
     settings.themeName = self.themePopup.selectedItem.title;
     settings.accentColor = self.accentColorWell.color;
     
+    NSLog(@"Saving - Theme: %@", settings.themeName);
+    NSLog(@"Saving - Accent Color: %@", settings.accentColor);
+    
+    // Salva effettivamente le impostazioni
     [settings save];
     
-    // Forza la sincronizzazione
+    // Forza la sincronizzazione immediata
     [[NSUserDefaults standardUserDefaults] synchronize];
+    
+    NSLog(@"PreferencesWindowController: Settings saved and synchronized");
 }
+
+
 #pragma mark - Public Methods
 
 - (void)showPreferences {
@@ -345,4 +367,97 @@
     [self saveSettings];
 }
 
+
+#pragma mark - Action Methods
+
+- (void)applyButtonClicked:(id)sender {
+    NSLog(@"Apply button clicked");
+    [self saveSettings];
+    
+    // Mostra un feedback visivo all'utente
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Settings Saved";
+    alert.informativeText = @"Your preferences have been saved successfully.";
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+}
+
+- (void)okButtonClicked:(id)sender {
+    NSLog(@"OK button clicked");
+    [self saveSettings];
+    [self.window close];
+}
+
+- (void)cancelButtonClicked:(id)sender {
+    NSLog(@"Cancel button clicked");
+    // Ricarica le impostazioni originali
+    [self loadSettings];
+    [self.window close];
+}
+
+// Aggiungi i pulsanti Apply, OK e Cancel se non esistono già
+- (void)setupButtons {
+    // Crea un contenitore per i pulsanti
+    NSView *buttonContainer = [[NSView alloc] init];
+    buttonContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.window.contentView addSubview:buttonContainer];
+    
+    // Pulsante Cancel
+    NSButton *cancelButton = [[NSButton alloc] init];
+    cancelButton.title = @"Cancel";
+    cancelButton.bezelStyle = NSBezelStyleRounded;
+    cancelButton.target = self;
+    cancelButton.action = @selector(cancelButtonClicked:);
+    cancelButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [buttonContainer addSubview:cancelButton];
+    
+    // Pulsante Apply
+    NSButton *applyButton = [[NSButton alloc] init];
+    applyButton.title = @"Apply";
+    applyButton.bezelStyle = NSBezelStyleRounded;
+    applyButton.target = self;
+    applyButton.action = @selector(applyButtonClicked:);
+    applyButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [buttonContainer addSubview:applyButton];
+    
+    // Pulsante OK
+    NSButton *okButton = [[NSButton alloc] init];
+    okButton.title = @"OK";
+    okButton.bezelStyle = NSBezelStyleRounded;
+    okButton.target = self;
+    okButton.action = @selector(okButtonClicked:);
+    okButton.keyEquivalent = @"\r"; // Invio
+    okButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [buttonContainer addSubview:okButton];
+    
+    // Layout dei pulsanti
+    [NSLayoutConstraint activateConstraints:@[
+        // Container position
+        [buttonContainer.trailingAnchor constraintEqualToAnchor:self.window.contentView.trailingAnchor constant:-20],
+        [buttonContainer.bottomAnchor constraintEqualToAnchor:self.window.contentView.bottomAnchor constant:-20],
+        [buttonContainer.heightAnchor constraintEqualToConstant:32],
+        
+        // Cancel button
+        [cancelButton.leadingAnchor constraintEqualToAnchor:buttonContainer.leadingAnchor],
+        [cancelButton.centerYAnchor constraintEqualToAnchor:buttonContainer.centerYAnchor],
+        [cancelButton.widthAnchor constraintEqualToConstant:80],
+        
+        // Apply button
+        [applyButton.leadingAnchor constraintEqualToAnchor:cancelButton.trailingAnchor constant:10],
+        [applyButton.centerYAnchor constraintEqualToAnchor:buttonContainer.centerYAnchor],
+        [applyButton.widthAnchor constraintEqualToConstant:80],
+        
+        // OK button
+        [okButton.leadingAnchor constraintEqualToAnchor:applyButton.trailingAnchor constant:10],
+        [okButton.centerYAnchor constraintEqualToAnchor:buttonContainer.centerYAnchor],
+        [okButton.widthAnchor constraintEqualToConstant:80],
+        [okButton.trailingAnchor constraintEqualToAnchor:buttonContainer.trailingAnchor]
+    ]];
+    
+    // Aggiusta la posizione del TabView per fare spazio ai pulsanti
+    [NSLayoutConstraint activateConstraints:@[
+        [self.tabView.bottomAnchor constraintEqualToAnchor:buttonContainer.topAnchor constant:-20]
+    ]];
+}
 @end

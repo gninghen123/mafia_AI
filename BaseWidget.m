@@ -130,8 +130,31 @@ static NSString *const kChainSenderKey = @"sender";
     self.titleComboBox.backgroundColor = [NSColor clearColor];
     self.titleComboBox.stringValue = [self.widgetType isEqualToString:@"Empty Widget"] ? @"" : self.widgetType;
 
-    self.chainButton = [self createHeaderButton:@"\U0001F517" action:@selector(showChainMenu:)];
-    [self updateChainButtonAppearance];
+    self.chainButton = [NSButton buttonWithTitle:@"" target:self action:@selector(showChainMenu:)];
+      self.chainButton.bezelStyle = NSBezelStyleRounded;
+      self.chainButton.bordered = NO;
+      self.chainButton.font = [NSFont systemFontOfSize:12];
+      
+      // Usa un'immagine template per la chain
+      NSImage *chainImage = [NSImage imageNamed:@"chainIcon"];
+      if (!chainImage) {
+          // Fallback: usa l'icona di sistema se non hai un'immagine custom
+          chainImage = [NSImage imageWithSystemSymbolName:@"link" accessibilityDescription:@"Chain"];
+      }
+      
+      if (chainImage) {
+          chainImage.template = YES;  // Questo permette la colorazione con contentTintColor
+          self.chainButton.image = chainImage;
+          self.chainButton.title = @"";  // Rimuovi il titolo quando usi un'immagine
+      } else {
+          // Fallback finale se non ci sono immagini disponibili
+          self.chainButton.title = @"🔗";
+      }
+      
+      [self.chainButton.widthAnchor constraintEqualToConstant:24].active = YES;
+      [self.chainButton.heightAnchor constraintEqualToConstant:20].active = YES;
+      
+      [self updateChainButtonAppearance];
 
     self.addButton = [self createHeaderButton:@"+" action:@selector(showAddMenu:)];
 
@@ -174,7 +197,7 @@ static NSString *const kChainSenderKey = @"sender";
 
 - (void)setChainActive:(BOOL)active withColor:(NSColor *)color {
     self.chainActive = active;
-    if (active && color) {
+    if (color) {  // Rimuovi la condizione "active &&" per permettere cambio colore sempre
         self.chainColor = color;
     }
     [self updateChainButtonAppearance];
@@ -182,14 +205,14 @@ static NSString *const kChainSenderKey = @"sender";
 
 - (void)updateChainButtonAppearance {
     if (self.chainActive) {
-        // Chain attiva: mostra il colore
-        self.chainButton.contentTintColor = self.chainColor;
-        self.chainButton.title = @"\U0001F517"; // Link emoji
+        // Chain attiva: colora l'immagine template
+        self.chainButton.contentTintColor = self.chainColor ?: [NSColor systemBlueColor];
     } else {
-        // Chain non attiva: mostra grigia o "rotta"
+        // Chain non attiva: colore grigio
         self.chainButton.contentTintColor = [NSColor tertiaryLabelColor];
-        self.chainButton.title = @"\U0001F4A5"; // Broken link emoji o altro simbolo
     }
+    
+    // Non cambiare più il title/image qui, solo il colore
 }
 
 - (void)broadcastUpdate:(NSDictionary *)update {
@@ -299,7 +322,8 @@ static NSString *const kChainSenderKey = @"sender";
 
 - (void)selectChainColor:(NSMenuItem *)sender {
     NSColor *newColor = sender.representedObject;
-    [self setChainActive:YES withColor:newColor];
+    self.chainColor = newColor;  // Aggiorna direttamente il colore
+    [self updateChainButtonAppearance];  // E poi aggiorna l'aspetto
 }
 
 - (void)showAddMenu:(id)sender {

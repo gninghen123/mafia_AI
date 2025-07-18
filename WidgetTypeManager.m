@@ -163,6 +163,31 @@
 
 #pragma mark - Public Methods
 
+- (NSString *)correctNameForType:(NSString *)type {
+    // Cerca il nome corretto (case-sensitive) per il tipo fornito
+    NSArray *availableTypes = [self availableWidgetTypes];
+    
+    // Prima prova una corrispondenza esatta
+    if ([availableTypes containsObject:type]) {
+        return type;
+    }
+    
+    // Poi prova una corrispondenza case-insensitive
+    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"SELF ==[cd] %@", type];
+    NSArray *matches = [availableTypes filteredArrayUsingPredicate:predicate];
+    
+    if (matches.count > 0) {
+        return matches[0]; // Restituisce la prima corrispondenza con la giusta capitalizzazione
+    }
+    
+    // Se non trovato, restituisce il tipo originale
+    return type;
+}
+
+- (Class)classForWidgetType:(NSString *)type {
+    // Questo è un alias per widgetClassForType: per mantenere compatibilità
+    return [self widgetClassForType:type];
+}
 - (NSArray<NSString *> *)availableWidgetTypes {
     NSMutableArray *allTypes = [NSMutableArray array];
     for (NSArray *types in self.widgetCategories.allValues) {

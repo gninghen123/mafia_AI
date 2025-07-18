@@ -139,7 +139,6 @@
     // Copy state from old widget
     newWidget.widgetID = oldWidget.widgetID;
     newWidget.collapsed = oldWidget.collapsed;
-    newWidget.chainedWidgets = oldWidget.chainedWidgets;
     newWidget.chainColor = oldWidget.chainColor;
     
     // Replace in the container view

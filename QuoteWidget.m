@@ -154,9 +154,9 @@
     }
     
     // Broadcast symbol change to chained widgets
-    if (self.chainedWidgets.count > 0) {
+ //   if (self.chainedWidgets.count > 0) {
   //todo      [self broadcastUpdate:@{@"symbol": symbol ?: @""}];
-    }
+    
 }
 
 #pragma mark - Display Updates

@@ -18,4 +18,8 @@
 - (Class)widgetClassForType:(NSString *)type;
 - (NSString *)iconNameForWidgetType:(NSString *)type;
 
+// FIX: Aggiunti metodi mancanti utilizzati in BaseWidget.m
+- (NSString *)correctNameForType:(NSString *)type;
+- (Class)classForWidgetType:(NSString *)type;
+
 @end

@@ -54,7 +54,6 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
 @property (nonatomic, copy) CHChartWidgetColorBlock colorGetterBlock;
 
 // Real-time data management
-@property (nonatomic) NSInteger maxDataPoints;
 @property (nonatomic, strong) NSMutableArray<NSMutableArray<CHDataPoint *> *> *realtimeData;
 
 // Title labels
@@ -1024,6 +1023,37 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
     return [symbols indexOfObject:string.uppercaseString];
 }
 
+- (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
+    // Questo metodo viene chiamato automaticamente quando:
+    // 1. Questo widget ha la chain attiva
+    // 2. Un altro widget invia un update con lo stesso colore di chain
+    
+    NSString *newSymbol = update[@"symbol"];
+    if (newSymbol && ![newSymbol isEqualToString:self.currentSymbol]) {
+        NSLog(@"ChartWidget ricevuto nuovo simbolo: %@ (chain color match!)", newSymbol);
+        
+        // Aggiorna il simbolo nel combo box
+        self.symbolComboBox.stringValue = newSymbol;
+        self.currentSymbol = newSymbol;
+        
+        // Ricarica i dati del grafico
+        [self loadChartData];
+    }
+    
+    // Potresti anche gestire altri tipi di update
+    NSArray *symbols = update[@"symbols"];
+    if (symbols) {
+        // Aggiorna la lista di simboli disponibili
+        [self updateAvailableSymbols:symbols];
+    }
+    
+    NSString *timeframe = update[@"timeframe"];
+    if (timeframe) {
+        // Cambia il timeframe se supportato
+        [self changeTimeframe:timeframe];
+    }
+}
+
 #pragma mark - NSComboBoxDelegate
 
 - (void)comboBoxSelectionDidChange:(NSNotification *)notification {
@@ -1034,6 +1064,76 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
     if (notification.object == self.symbolComboBox) {
         [self symbolEntered:self.symbolComboBox];
     }
+}
+
+
+
+
+
+#pragma mark - chain
+
+// Quando l'utente cambia manualmente il simbolo nel widget
+- (void)symbolComboBoxDidChange:(id)sender {
+    NSString *newSymbol = self.symbolComboBox.stringValue;
+    if (newSymbol.length > 0) {
+        self.currentSymbol = newSymbol;
+        [self loadChartData];
+        
+        // Propaga il cambio ad altri widget con lo stesso colore di chain
+        if (self.chainActive) {
+            [self broadcastUpdate:@{@"symbol": newSymbol}];
+        }
+    }
+}
+
+// Esempio di menu contestuale per configurare la chain
+- (void)showChartContextMenu:(NSEvent *)event {
+    NSMenu *menu = [[NSMenu alloc] init];
+    
+    // Opzioni standard del grafico...
+    
+    [menu addItem:[NSMenuItem separatorItem]];
+    
+    // Opzioni per la chain
+    NSMenuItem *chainItem = [[NSMenuItem alloc] init];
+    chainItem.title = @"Chain Settings";
+    
+    NSMenu *chainSubmenu = [[NSMenu alloc] init];
+    
+    // Status della chain
+    NSMenuItem *statusItem = [[NSMenuItem alloc] init];
+    statusItem.title = self.chainActive ?
+        [NSString stringWithFormat:@"Chain Attiva (%@)", [self colorNameForColor:self.chainColor]] :
+        @"Chain Non Attiva";
+    statusItem.enabled = NO;
+    [chainSubmenu addItem:statusItem];
+    
+    [chainSubmenu addItem:[NSMenuItem separatorItem]];
+    
+    // Toggle chain
+    NSMenuItem *toggleItem = [[NSMenuItem alloc] init];
+    toggleItem.title = self.chainActive ? @"Disattiva Chain" : @"Attiva Chain";
+    toggleItem.action = @selector(toggleChain:);
+    [chainSubmenu addItem:toggleItem];
+    
+    chainItem.submenu = chainSubmenu;
+    [menu addItem:chainItem];
+    
+    [menu popUpMenuPositioningItem:nil atLocation:event.locationInWindow inView:self.view];
+}
+
+
+// Helper per ottenere il nome del colore
+- (NSString *)colorNameForColor:(NSColor *)color {
+    // Confronta con i colori standard
+  /*  if ([self colorsMatch:color with:[NSColor systemRedColor]]) return @"Rosso";
+    if ([self colorsMatch:color with:[NSColor systemGreenColor]]) return @"Verde";
+    if ([self colorsMatch:color with:[NSColor systemBlueColor]]) return @"Blu";
+    if ([self colorsMatch:color with:[NSColor systemYellowColor]]) return @"Giallo";
+    if ([self colorsMatch:color with:[NSColor systemOrangeColor]]) return @"Arancione";
+    if ([self colorsMatch:color with:[NSColor systemPurpleColor]]) return @"Viola";
+    if ([self colorsMatch:color with:[NSColor systemGrayColor]]) return @"Grigio";*/
+    return @"Custom";
 }
 
 #pragma mark - Dealloc

@@ -273,6 +273,8 @@
 
 #pragma mark - Symbol Operations
 
+
+
 - (void)addSymbol:(NSString *)symbol toWatchlist:(NSString *)watchlistName {
     WatchlistData *watchlist = self.watchlists[watchlistName];
     if (!watchlist) return;

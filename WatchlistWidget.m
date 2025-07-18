@@ -605,10 +605,7 @@
 }
 
 - (void)sendSymbolsToChainedWidgets:(NSArray<NSString *> *)symbols {
-    if (self.chainedWidgets.count == 0) {
-        [self showTemporaryMessage:@"⚠️ No charts connected. Use 🔗 to connect to MultiChart widget"];
-        return;
-    }
+    
     
     // Crea update dictionary con lista di simboli
     NSDictionary *update = @{
@@ -621,8 +618,6 @@
     // Broadcast ai widget connessi
     [self broadcastUpdate:update];
     
-    NSLog(@"📤 WatchlistWidget: Sent %ld symbols to %ld connected chart widgets",
-          symbols.count, self.chainedWidgets.count);
 }
 
 - (void)showTemporaryMessage:(NSString *)message {
@@ -841,7 +836,7 @@
     // === SEZIONE CHAIN/INVIO (se ci sono simboli e connessioni) ===
     if (self.symbols.count > 0) {
         // Controlla se ci sono widget connessi che possono ricevere simboli
-        BOOL hasChartConnections = [self hasConnectedChartWidgets];
+        BOOL hasChartConnections =[self chainActive];
         
         if (hasChartConnections) {
             NSMenuItem *chainHeader = [[NSMenuItem alloc] initWithTitle:@"📤 Send to Connected Charts" action:nil keyEquivalent:@""];
@@ -1136,11 +1131,10 @@
     return [validChars isSupersetOfSet:symbolChars] && symbol.length <= 10; // Reasonable length limit
 }
 
+
 - (void)addSymbol:(NSString *)symbol {
-    if (!symbol || symbol.length == 0) return;
-    
     NSString *upperSymbol = symbol.uppercaseString;
-    if (![self.symbols containsObject:upperSymbol]) {
+    if (upperSymbol.length > 0 && ![self.symbols containsObject:upperSymbol]) {
         [self.symbols addObject:upperSymbol];
         [self.watchlistManager addSymbol:upperSymbol toWatchlist:self.watchlistName];
         
@@ -1157,8 +1151,8 @@
         
         [self.tableViewInternal reloadData];
         
-        // Broadcast symbol change to chained widgets
-        if (self.chainedWidgets.count > 0) {
+        // UPDATED: Broadcast symbol change usando il nuovo sistema
+        if (self.chainActive) {
             [self broadcastUpdate:@{@"symbol": upperSymbol}];
         }
     }
@@ -1194,8 +1188,8 @@
         
         [self.tableViewInternal reloadData];
         
-        // Broadcast the first new symbol to chained widgets
-        if (self.chainedWidgets.count > 0 && newSymbols.count > 0) {
+        // UPDATED: Broadcast the first new symbol usando il nuovo sistema
+        if (self.chainActive && newSymbols.count > 0) {
             [self broadcastUpdate:@{@"symbol": newSymbols[0]}];
         }
     }
@@ -1665,12 +1659,14 @@
     if (selectedRow >= 0 && selectedRow < self.symbols.count) {
         NSString *selectedSymbol = self.symbols[selectedRow];
         
-        // Broadcast selected symbol to chained widgets
-        if (self.chainedWidgets.count > 0) {
+        // UPDATED: Broadcast solo se la chain è attiva
+        if (self.chainActive) {
             [self broadcastUpdate:@{@"symbol": selectedSymbol}];
         }
     }
 }
+
+
 
 #pragma mark - DataManagerDelegate
 
@@ -1775,7 +1771,25 @@
 
 #pragma mark - Chain
 
-
+- (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
+    // Il widget riceverà questo messaggio solo se:
+    // 1. La sua chain è attiva
+    // 2. Il colore della chain matcha con quello del sender
+    
+    NSString *symbol = update[@"symbol"];
+    if (symbol) {
+        // Aggiungi il simbolo alla watchlist se non presente
+        [self addSymbol:symbol];
+        
+        // Seleziona il simbolo nella tabella
+        NSUInteger index = [self.symbols indexOfObject:symbol.uppercaseString];
+        if (index != NSNotFound) {
+            [self.tableViewInternal selectRowIndexes:[NSIndexSet indexSetWithIndex:index]
+                                byExtendingSelection:NO];
+        }
+    }
+}
+/*
 - (NSArray<BaseWidget *> *)findAvailableWidgetsForConnection {
     NSMutableArray<BaseWidget *> *availableWidgets = [NSMutableArray array];
     
@@ -1932,6 +1946,6 @@
         self.chainButton.layer.borderWidth = 0;
     }
 }
-
+*/
 
 @end

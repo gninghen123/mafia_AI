@@ -20,6 +20,7 @@ typedef NS_ENUM(NSInteger, BarTimeframe);
 
 @class CHDataPoint;
 @class CHChartData;
+@class HistoricalBar;
 
 // Block-based data source as an alternative to protocol
 typedef NSInteger (^CHChartWidgetSeriesCountBlock)(void);
@@ -32,7 +33,7 @@ typedef NSColor* (^CHChartWidgetColorBlock)(NSInteger series);
 
 #pragma mark - Initialization
 
-// FIX: Aggiunte dichiarazioni per i metodi di inizializzazione
+// Metodi di inizializzazione
 - (instancetype)initWithFrame:(NSRect)frame;
 - (instancetype)initWithCoder:(NSCoder *)coder;
 
@@ -78,47 +79,89 @@ typedef NSColor* (^CHChartWidgetColorBlock)(NSInteger series);
 - (void)reloadData;
 - (void)reloadDataAnimated:(BOOL)animated;
 
+#pragma mark - Market Data Integration
+
+// FIX: Aggiunte dichiarazioni per i metodi mancanti
+- (void)loadChartData;
+- (void)updateAvailableSymbols:(NSArray<NSString *> *)symbols;
+- (void)changeTimeframe:(BarTimeframe)timeframe;
+
+// Symbol and timeframe management
+- (void)setCurrentSymbol:(NSString *)symbol;
+- (void)setCurrentTimeframe:(BarTimeframe)timeframe;
+
+// Historical data handling
+- (void)loadHistoricalDataForCurrentSymbol;
+- (void)displayHistoricalData:(NSArray<HistoricalBar *> *)bars;
+
+#pragma mark - UI State Management
+
+// Loading and error states
+- (void)showLoadingState;
+- (void)hideLoadingState;
+- (void)showErrorState:(NSError *)error;
+
 #pragma mark - Appearance Customization
 
 // Quick theme application
 - (void)applyTheme:(NSString *)themeName; // "dark", "light", "minimal", etc.
 
-// Color customization
+// Colors and styling
 - (void)setSeriesColors:(NSArray<NSColor *> *)colors;
-- (void)addSeriesWithColor:(NSColor *)color;
+- (void)setLineWidth:(CGFloat)width;
+- (void)setMarkerSize:(CGFloat)size;
 
-// Line chart specific (only active when chartType is CHChartTypeLine)
-- (void)setLineStyle:(CHLineChartStyle)style;
-- (void)setShowDataPoints:(BOOL)show;
-- (void)setFillArea:(BOOL)fill;
-- (void)setSmoothLines:(BOOL)smooth;
+#pragma mark - Chart-specific Styling
 
-// Bar chart specific (only active when chartType is CHChartTypeBar)
+// Line chart specific
+- (void)setLineStyle:(CHLineChartStyle)style forSeries:(NSInteger)series;
+- (void)setLineDashPattern:(NSArray<NSNumber *> *)pattern forSeries:(NSInteger)series;
+
+// Bar chart specific
 - (void)setBarStyle:(CHBarChartStyle)style;
 - (void)setBarWidth:(CGFloat)width;
-- (void)setGrouped:(BOOL)grouped;
+
+#pragma mark - Selection and Interaction
+
+// Selection handling
+@property (nonatomic, readonly) NSInteger selectedSeriesIndex;
+@property (nonatomic, readonly) NSInteger selectedPointIndex;
+@property (nonatomic, readonly) CHDataPoint *selectedPoint;
+
+// Interaction
+- (void)selectPointAtIndex:(NSInteger)pointIndex inSeries:(NSInteger)seriesIndex;
+- (void)clearSelection;
+- (void)zoomToFitData;
+- (void)resetZoom;
 
 #pragma mark - Real-time Data
 
-// For live data feeds
+// Real-time updates
 - (void)enableRealTimeMode;
 - (void)disableRealTimeMode;
 - (void)addDataPoint:(CGFloat)value;
 - (void)addDataPoint:(CGFloat)value toSeries:(NSInteger)series;
-- (void)setMaxDataPoints:(NSInteger)maxPoints;
+
+// Real-time data management
+@property (nonatomic) NSInteger maxDataPoints;
+
+#pragma mark - Labels and Titles
+
+// Chart labels
+@property (nonatomic, strong) NSString *chartTitle;
+@property (nonatomic, strong) NSString *xAxisTitle;
+@property (nonatomic, strong) NSString *yAxisTitle;
 
 #pragma mark - Export
 
-// Export chart as image
+// Export functionality
 - (NSImage *)chartImage;
 - (NSData *)chartImageDataWithType:(NSBitmapImageFileType)fileType;
 - (BOOL)exportChartToFile:(NSString *)filePath withType:(NSBitmapImageFileType)fileType;
 
-#pragma mark - Labels and Titles
-
-// Chart labeling
-- (void)setTitle:(NSString *)title;
-- (void)setXAxisLabel:(NSString *)label;
-- (void)setYAxisLabel:(NSString *)label;
-
 @end
+
+// Notifications
+extern NSString * const CHChartWidgetSelectionDidChangeNotification;
+extern NSString * const CHChartWidgetDataDidReloadNotification;
+extern NSString * const CHChartWidgetAnimationDidCompleteNotification;

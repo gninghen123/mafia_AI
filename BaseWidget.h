@@ -18,16 +18,17 @@
 @property (nonatomic, strong, readonly) NSView *headerView;
 @property (nonatomic, strong, readonly) NSView *contentView;
 @property (nonatomic, strong, readonly) NSTextField *titleField;
-@property (nonatomic, strong, readonly) NSButton *chainButton;
 
 // Callbacks
 @property (nonatomic, copy) void (^onRemoveRequest)(BaseWidget *widget);
 @property (nonatomic, copy) void (^onAddRequest)(BaseWidget *widget, WidgetAddDirection direction);
 @property (nonatomic, copy) void (^onTypeChange)(BaseWidget *widget, NSString *newType);
 
-// Chain connections
-@property (nonatomic, strong) NSMutableSet *chainedWidgets;
-@property (nonatomic, strong) NSColor *chainColor;
+// Chain system - NEW PROPERTIES
+@property (nonatomic, assign) BOOL chainActive;
+@property (nonatomic, strong) NSColor *chainColor;  // Colore della chain quando attiva
+
+// REMOVED: @property (nonatomic, strong) NSMutableSet *chainedWidgets;
 
 - (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType;
 
@@ -40,17 +41,14 @@
 - (NSDictionary *)serializeState;
 - (void)restoreState:(NSDictionary *)state;
 
-// Chain management (advanced)
-- (NSArray<BaseWidget *> *)findAvailableWidgetsForConnection;
-- (void)connectToWidget:(NSMenuItem *)sender;
-- (void)disconnectFromWidget:(NSMenuItem *)sender;
-- (void)showConnectionFeedback:(NSString *)message success:(BOOL)success;
-- (BOOL)hasConnectedChartWidgets;
-- (BOOL)hasConnectedWidgetsOfType:(Class)widgetClass;
-- (NSArray<BaseWidget *> *)connectedWidgetsOfType:(Class)widgetClass;
-- (void)addChainedWidget:(BaseWidget *)widget;
-- (void)removeChainedWidget:(BaseWidget *)widget;
+// Chain management - UPDATED METHODS
+- (void)setChainActive:(BOOL)active withColor:(NSColor *)color;
 - (void)broadcastUpdate:(NSDictionary *)update;
+- (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender;
+
+// REMOVED: - (void)addChainedWidget:(BaseWidget *)widget;
+// REMOVED: - (void)removeChainedWidget:(BaseWidget *)widget;
+
 // Collapse functionality
 - (void)toggleCollapse;
 - (CGFloat)collapsedHeight;

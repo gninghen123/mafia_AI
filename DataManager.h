@@ -18,7 +18,12 @@ typedef NS_ENUM(NSInteger, DataRequestType) {
     DataRequestTypeFundamentals,    // Company fundamentals
     DataRequestTypePositions,       // Account positions
     DataRequestTypeOrders,          // Account orders
-    DataRequestTypeAccountInfo      // Account details
+    DataRequestTypeAccountInfo,      // Account details
+    
+    DataRequestTypeMarketList = 100,
+      DataRequestTypeTopGainers = 101,
+      DataRequestTypeTopLosers = 102,
+      DataRequestTypeETFList = 103,
 };
 
 typedef NS_ENUM(NSInteger, BarTimeframe) {

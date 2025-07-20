@@ -3,4 +3,84 @@
    uuid = "D59CA7BA-A192-4220-801D-601A873B2271"
    type = "1"
    version = "2.0">
+   <Breakpoints>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "07EC6653-869E-4E91-920B-E10152F11395"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "GeneralMarketWidget.m"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "327"
+            endingLineNumber = "327"
+            landmarkName = "-updateGainersNode:forRankType:"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "07EC6653-869E-4E91-920B-E10152F11395 - 545af58acf837bf5"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "__53-[GeneralMarketWidget updateGainersNode:forRankType:]_block_invoke"
+                  moduleName = "mafia_AI"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/fabiogattone/Documents/coding/macmafia/mafia_AI/GeneralMarketWidget.m"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "327"
+                  endingLineNumber = "327">
+               </Location>
+               <Location
+                  uuid = "07EC6653-869E-4E91-920B-E10152F11395 - 545af58acf837bf5"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "__53-[GeneralMarketWidget updateGainersNode:forRankType:]_block_invoke"
+                  moduleName = "mafia_AI"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/fabiogattone/Documents/coding/macmafia/mafia_AI/GeneralMarketWidget.m"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "327"
+                  endingLineNumber = "327">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "CFB94CD5-E99E-489A-8223-21697CFD345C"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "DownloadManager.m"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "227"
+            endingLineNumber = "227"
+            landmarkName = "-executeRequest:parameters:preferredSource:completion:"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "C3B8FFAF-D164-45A8-B438-722B84B33D92"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "WebullDataSource.m"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "115"
+            endingLineNumber = "115"
+            landmarkName = "-fetchTopGainersWithRankType:pageSize:completion:"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+   </Breakpoints>
 </Bucket>

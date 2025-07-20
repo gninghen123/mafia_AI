@@ -12,7 +12,7 @@
 #import "AlertWidget.h"
 #import "MultiChartWidget.h"
 #import "MiniChart.h"
-
+#import "GeneralMarketWidget.h"
 
 @interface WidgetTypeManager ()
 @property (nonatomic, strong) NSDictionary<NSString *, NSArray<NSString *> *> *widgetCategories;
@@ -71,6 +71,7 @@
         @"Information": @[
             @"Quote",
             @"Watchlist",
+            @"General Market",     // <-- AGGIUNGI QUESTA LINEA
             @"News Feed",
             @"Economic Calendar",
             @"Market Overview",
@@ -96,6 +97,7 @@
     typeToClass[@"Watchlist"] = [WatchlistWidget class];
     typeToClass[@"Connection Status"] = [ConnectionStatusWidget class];
     typeToClass[@"MultiChart Widget"] = [MultiChartWidget class];  // <-- AGGIUNGI QUESTA LINEA
+    typeToClass[@"General Market"] = [GeneralMarketWidget class];
 
     // FIX: Map chart types to CHChartWidget
     typeToClass[@"Chart Widget"] = [CHChartWidget class];
@@ -143,6 +145,7 @@
         @"Correlation Matrix": @"square.grid.3x3",
         @"Options Chain": @"list.bullet.indent",
         
+        @"General Market": @"list.bullet.rectangle",
         @"Quote": @"dollarsign.circle",
         @"Watchlist": @"star.fill",
         @"News Feed": @"newspaper",

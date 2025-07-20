@@ -1,16 +1,34 @@
 //
 //  WebullDataSource.h
-//  mafia_AI
+//  TradingApp
 //
-//  Created by fabio gattone on 19/07/25.
+//  Webull API data source implementation
 //
 
 #import <Foundation/Foundation.h>
+#import "DownloadManager.h"
 
-NS_ASSUME_NONNULL_BEGIN
+@interface WebullDataSource : NSObject <DataSourceProtocol>
 
-@interface WebullDataSource : NSObject
+// Market Lists
+- (void)fetchTopGainersWithRankType:(NSString *)rankType
+                           pageSize:(NSInteger)pageSize
+                         completion:(void (^)(NSArray *gainers, NSError *error))completion;
+
+- (void)fetchTopLosersWithRankType:(NSString *)rankType
+                          pageSize:(NSInteger)pageSize
+                        completion:(void (^)(NSArray *losers, NSError *error))completion;
+
+- (void)fetchETFListWithCompletion:(void (^)(NSArray *etfs, NSError *error))completion;
+
+// Quotes
+- (void)fetchQuotesForSymbols:(NSArray<NSString *> *)symbols
+                   completion:(void (^)(NSDictionary *quotes, NSError *error))completion;
+
+// Historical Data
+- (void)fetchHistoricalDataForSymbol:(NSString *)symbol
+                          timeframe:(NSString *)timeframe
+                              count:(NSInteger)count
+                         completion:(void (^)(NSArray *bars, NSError *error))completion;
 
 @end
-
-NS_ASSUME_NONNULL_END

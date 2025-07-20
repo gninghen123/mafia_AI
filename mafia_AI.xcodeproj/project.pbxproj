@@ -49,6 +49,9 @@
 		954D30E72E28612100C7DC88 /* AppSettings.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30E62E28612100C7DC88 /* AppSettings.m */; };
 		954D310E2E291AE600C7DC88 /* MultiChartWidget.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D310B2E291AE600C7DC88 /* MultiChartWidget.m */; };
 		954D31112E291C8600C7DC88 /* MiniChart.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D31102E291C8600C7DC88 /* MiniChart.m */; };
+		955B3CD12E2BFF55008CA475 /* WebullDataSource.m in Sources */ = {isa = PBXBuildFile; fileRef = 955B3CD02E2BFF55008CA475 /* WebullDataSource.m */; };
+		955B3CD42E2BFF91008CA475 /* GeneralMarketWidget.m in Sources */ = {isa = PBXBuildFile; fileRef = 955B3CD32E2BFF91008CA475 /* GeneralMarketWidget.m */; };
+		955B3CE82E2C10FF008CA475 /* DataManager+MarketLists.m in Sources */ = {isa = PBXBuildFile; fileRef = 955B3CE72E2C10FF008CA475 /* DataManager+MarketLists.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -157,6 +160,12 @@
 		954D310B2E291AE600C7DC88 /* MultiChartWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MultiChartWidget.m; sourceTree = "<group>"; };
 		954D310F2E291C8600C7DC88 /* MiniChart.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MiniChart.h; sourceTree = "<group>"; };
 		954D31102E291C8600C7DC88 /* MiniChart.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MiniChart.m; sourceTree = "<group>"; };
+		955B3CCF2E2BFF55008CA475 /* WebullDataSource.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WebullDataSource.h; sourceTree = "<group>"; };
+		955B3CD02E2BFF55008CA475 /* WebullDataSource.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WebullDataSource.m; sourceTree = "<group>"; };
+		955B3CD22E2BFF91008CA475 /* GeneralMarketWidget.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneralMarketWidget.h; sourceTree = "<group>"; };
+		955B3CD32E2BFF91008CA475 /* GeneralMarketWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GeneralMarketWidget.m; sourceTree = "<group>"; };
+		955B3CE62E2C0DC6008CA475 /* DataManager+MarketLists.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "DataManager+MarketLists.h"; sourceTree = "<group>"; };
+		955B3CE72E2C10FF008CA475 /* DataManager+MarketLists.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "DataManager+MarketLists.m"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -205,6 +214,8 @@
 		954D2FF72E28514A00C7DC88 = {
 			isa = PBXGroup;
 			children = (
+				955B3CD22E2BFF91008CA475 /* GeneralMarketWidget.h */,
+				955B3CD32E2BFF91008CA475 /* GeneralMarketWidget.m */,
 				954D310F2E291C8600C7DC88 /* MiniChart.h */,
 				954D31102E291C8600C7DC88 /* MiniChart.m */,
 				954D310A2E291AE600C7DC88 /* MultiChartWidget.h */,
@@ -232,10 +243,14 @@
 				954D30D12E28531C00C7DC88 /* MainWindowController.h */,
 				954D30D22E28531C00C7DC88 /* MainWindowController.m */,
 				954D30AE2E28530E00C7DC88 /* SchwabConfig.plist */,
+				955B3CCF2E2BFF55008CA475 /* WebullDataSource.h */,
+				955B3CD02E2BFF55008CA475 /* WebullDataSource.m */,
 				954D30AF2E28530E00C7DC88 /* SchwabDataSource.h */,
 				954D30B02E28530E00C7DC88 /* SchwabDataSource.m */,
 				954D30B12E28530E00C7DC88 /* YahooDataSource.h */,
 				954D30B22E28530E00C7DC88 /* YahooDataSource.m */,
+				955B3CE62E2C0DC6008CA475 /* DataManager+MarketLists.h */,
+				955B3CE72E2C10FF008CA475 /* DataManager+MarketLists.m */,
 				954D30B32E28530E00C7DC88 /* DataManager.h */,
 				954D30B42E28530E00C7DC88 /* DataManager.m */,
 				954D30B52E28530E00C7DC88 /* DownloadManager.h */,
@@ -456,6 +471,7 @@
 				954D31112E291C8600C7DC88 /* MiniChart.m in Sources */,
 				954D309B2E2852FF00C7DC88 /* CHChartRenderer.m in Sources */,
 				954D309C2E2852FF00C7DC88 /* CHChartWidget.m in Sources */,
+				955B3CE82E2C10FF008CA475 /* DataManager+MarketLists.m in Sources */,
 				954D309D2E2852FF00C7DC88 /* CHChartCore.m in Sources */,
 				954D306B2E2852DF00C7DC88 /* AlertEditWindowController.m in Sources */,
 				954D30852E2852F400C7DC88 /* CHChartLayer.m in Sources */,
@@ -470,6 +486,7 @@
 				954D30802E2852F000C7DC88 /* CHLineChartRenderer.m in Sources */,
 				954D308D2E2852F900C7DC88 /* CHDataPoint.m in Sources */,
 				954D30A82E28530500C7DC88 /* WatchlistWidget.m in Sources */,
+				955B3CD12E2BFF55008CA475 /* WebullDataSource.m in Sources */,
 				954D30A92E28530500C7DC88 /* ConnectionStatusWidget.m in Sources */,
 				954D30E72E28612100C7DC88 /* AppSettings.m in Sources */,
 				954D30AA2E28530500C7DC88 /* QuoteWidget.m in Sources */,
@@ -491,6 +508,7 @@
 				954D30DB2E28531C00C7DC88 /* MainWindowController.m in Sources */,
 				954D30BB2E28530E00C7DC88 /* SchwabDataSource.m in Sources */,
 				954D30BC2E28530E00C7DC88 /* MarketDataModels.m in Sources */,
+				955B3CD42E2BFF91008CA475 /* GeneralMarketWidget.m in Sources */,
 				954D30BD2E28530E00C7DC88 /* YahooDataSource.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

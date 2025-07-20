@@ -9,6 +9,8 @@
 #import "DataManager.h"
 #import "MarketDataModels.h"
 #import <objc/runtime.h>  // <-- QUESTO IMPORT RISOLVE IL PROBLEMA
+#import "AppSettings.h"
+
 
 #pragma mark - WatchlistRule Implementation
 
@@ -171,12 +173,12 @@
            }
            [self loadWatchlist:_watchlistName];
            
-           // Set up refresh timer for periodic updates
-           _refreshTimer = [NSTimer scheduledTimerWithTimeInterval:30.0
-                                                            target:self
-                                                          selector:@selector(refreshData)
-                                                          userInfo:nil
-                                                           repeats:YES];
+        AppSettings *settings = [AppSettings sharedSettings];
+        _refreshTimer = [NSTimer scheduledTimerWithTimeInterval:settings.priceUpdateInterval
+                                                        target:self
+                                                      selector:@selector(refreshData)
+                                                      userInfo:nil
+                                                       repeats:YES];
        }
     return self;
 }

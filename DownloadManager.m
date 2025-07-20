@@ -5,6 +5,11 @@
 
 #import "DownloadManager.h"
 #import "MarketDataModels.h"
+#import "WebullDataSource.h"
+#import "DataManager+MarketLists.h"
+
+
+
 
 @interface DataSourceInfo : NSObject
 @property (nonatomic, strong) id<DataSourceProtocol> dataSource;
@@ -111,6 +116,98 @@
 }
 
 #pragma mark - Request Execution
+- (void)executeMarketListRequest:(NSDictionary *)parameters
+                  withDataSource:(id<DataSourceProtocol>)dataSource
+                      sourceInfo:(DataSourceInfo *)sourceInfo
+                         sources:(NSArray<DataSourceInfo *> *)sources
+                     sourceIndex:(NSInteger)index
+                       requestID:(NSString *)requestID
+                      completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    // Check if this is a Webull data source
+    if ([dataSource isKindOfClass:[WebullDataSource class]]) {
+        WebullDataSource *webullSource = (WebullDataSource *)dataSource;
+        NSString *listType = parameters[@"listType"];
+        
+        if ([listType isEqualToString:@"topGainers"]) {
+            NSString *rankType = parameters[@"rankType"];
+            NSInteger pageSize = [parameters[@"pageSize"] integerValue];
+            
+            [webullSource fetchTopGainersWithRankType:rankType
+                                             pageSize:pageSize
+                                           completion:^(NSArray *gainers, NSError *error) {
+                if (error) {
+                    // Try next source
+                    [self executeRequestWithSources:sources
+                                        requestType:DataRequestTypeTopGainers
+                                         parameters:parameters
+                                        sourceIndex:index + 1
+                                          requestID:requestID
+                                         completion:completion];
+                } else {
+                    [self.activeRequests removeObjectForKey:requestID];
+                    if (completion) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            completion(gainers, sourceInfo.type, nil);
+                        });
+                    }
+                }
+            }];
+        } else if ([listType isEqualToString:@"topLosers"]) {
+            NSString *rankType = parameters[@"rankType"];
+            NSInteger pageSize = [parameters[@"pageSize"] integerValue];
+            
+            [webullSource fetchTopLosersWithRankType:rankType
+                                            pageSize:pageSize
+                                          completion:^(NSArray *losers, NSError *error) {
+                if (error) {
+                    // Try next source
+                    [self executeRequestWithSources:sources
+                                        requestType:DataRequestTypeTopLosers
+                                         parameters:parameters
+                                        sourceIndex:index + 1
+                                          requestID:requestID
+                                         completion:completion];
+                } else {
+                    [self.activeRequests removeObjectForKey:requestID];
+                    if (completion) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            completion(losers, sourceInfo.type, nil);
+                        });
+                    }
+                }
+            }];
+        } else if ([listType isEqualToString:@"etfList"]) {
+            [webullSource fetchETFListWithCompletion:^(NSArray *etfs, NSError *error) {
+                if (error) {
+                    // Try next source
+                    [self executeRequestWithSources:sources
+                                        requestType:DataRequestTypeETFList
+                                         parameters:parameters
+                                        sourceIndex:index + 1
+                                          requestID:requestID
+                                         completion:completion];
+                } else {
+                    [self.activeRequests removeObjectForKey:requestID];
+                    if (completion) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            completion(etfs, sourceInfo.type, nil);
+                        });
+                    }
+                }
+            }];
+        }
+    } else {
+        // This source doesn't support market lists
+        [self executeRequestWithSources:sources
+                            requestType:DataRequestTypeMarketList
+                             parameters:parameters
+                            sourceIndex:index + 1
+                              requestID:requestID
+                             completion:completion];
+    }
+}
+
 
 - (NSString *)executeRequest:(DataRequestType)requestType
                   parameters:(NSDictionary *)parameters
@@ -195,6 +292,18 @@
     
     // Execute request based on type
     switch (requestType) {
+        case DataRequestTypeTopGainers:
+        case DataRequestTypeTopLosers:
+        case DataRequestTypeETFList:
+        case DataRequestTypeMarketList:
+            [self executeMarketListRequest:parameters
+                            withDataSource:dataSource
+                                sourceInfo:sourceInfo
+                                   sources:sources
+                               sourceIndex:index
+                                 requestID:requestID
+                                completion:completion];
+            break;
         case DataRequestTypeQuote:
             [self executeQuoteRequest:parameters
                        withDataSource:dataSource

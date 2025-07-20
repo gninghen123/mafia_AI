@@ -85,6 +85,8 @@ static NSString *const kChainSenderKey = @"sender";
     [self setupContentView];
 }
 
+
+
 - (void)setupViews {
     self.mainStackView = [[NSStackView alloc] init];
     self.mainStackView.orientation = NSUserInterfaceLayoutOrientationVertical;

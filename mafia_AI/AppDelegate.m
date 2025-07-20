@@ -9,6 +9,8 @@
 #import "MainWindowController.h"
 #import "DownloadManager.h"
 #import "SchwabDataSource.h"
+#import "WebullDataSource.h"
+
 
 @interface AppDelegate ()
 @property (nonatomic, strong) MainWindowController *mainWindowController;
@@ -47,6 +49,12 @@
     [downloadManager registerDataSource:schwabSource
                                withType:DataSourceTypeSchwab
                                priority:1];
+    
+    // Registra Webull data source
+    WebullDataSource *webullSource = [[WebullDataSource alloc] init];
+    [downloadManager registerDataSource:webullSource
+                               withType:DataSourceTypeCustom  // Usa Custom per Webull
+                               priority:2];  // Priority più bassa di Schwab
 }
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification {

@@ -653,9 +653,23 @@
     return availableSources;
 }
 
+// Nel file DownloadManager.m, modifica il metodo dataSource:supportsRequestType:
+
 - (BOOL)dataSource:(id<DataSourceProtocol>)dataSource supportsRequestType:(DataRequestType)requestType {
     DataSourceCapabilities capabilities = dataSource.capabilities;
     
+    // Aggiungi supporto per i nuovi tipi di richiesta
+    // I valori 100-103 sono quelli definiti in DataManager+MarketLists.h
+    if (requestType == 100 || // DataRequestTypeMarketList
+        requestType == 101 || // DataRequestTypeTopGainers
+        requestType == 102 || // DataRequestTypeTopLosers
+        requestType == 103) { // DataRequestTypeETFList
+        
+        // Per ora, solo DataSourceTypeCustom (Webull) supporta questi tipi
+        return dataSource.sourceType == DataSourceTypeCustom;
+    }
+    
+    // Gestione dei tipi esistenti
     switch (requestType) {
         case DataRequestTypeQuote:
             return (capabilities & DataSourceCapabilityQuotes) != 0;
@@ -679,7 +693,6 @@
             return NO;
     }
 }
-
 #pragma mark - Connection Management
 
 - (void)connectDataSource:(DataSourceType)type completion:(void (^)(BOOL success, NSError *error))completion {

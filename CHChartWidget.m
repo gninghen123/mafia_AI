@@ -166,71 +166,16 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
     
     // IMPORTANTE: Setup nell'ordine corretto per evitare problemi di layout
     [self setupChartControls];
+
     [self setupChartView];
     
     // Forza il layout dopo aver creato tutto
-    [self.contentView setNeedsUpdateConstraints:YES];
-    [self.contentView setNeedsLayout:YES];
-    dispatch_async(dispatch_get_main_queue(), ^{
-           [self debugViewHierarchy];
-       });
+ //   [self.contentView setNeedsUpdateConstraints:YES];
+  //  [self.contentView setNeedsLayout:YES];
+   
    
 }
-// DEBUG AVANZATO - Aggiungi questo al metodo debugViewHierarchy
 
-- (void)debugViewHierarchy {
-    NSLog(@"=== CHChartWidget View Hierarchy Debug ===");
-    NSLog(@"ContentView subviews count: %lu", (unsigned long)self.contentView.subviews.count);
-    NSLog(@"ContentView frame: %@", NSStringFromRect(self.contentView.frame));
-    NSLog(@"ContentView bounds: %@", NSStringFromRect(self.contentView.bounds));
-    NSLog(@"ContentView alpha: %.2f", self.contentView.alphaValue);
-    
-    for (NSInteger i = 0; i < self.contentView.subviews.count; i++) {
-        NSView *subview = self.contentView.subviews[i];
-        NSLog(@"Subview %ld: %@ - Frame: %@ - Hidden: %@ - Alpha: %.2f",
-              (long)i,
-              NSStringFromClass([subview class]),
-              NSStringFromRect(subview.frame),
-              subview.hidden ? @"YES" : @"NO",
-              subview.alphaValue);
-        
-        if (subview == self.controlsView) {
-            NSLog(@"  -> Found controlsView!");
-            NSLog(@"  -> Layer: %@", subview.layer);
-            NSLog(@"  -> Layer backgroundColor: %@", subview.layer.backgroundColor);
-            NSLog(@"  -> Layer borderColor: %@", subview.layer.borderColor);
-            NSLog(@"  -> Layer borderWidth: %.2f", subview.layer.borderWidth);
-            NSLog(@"  -> ControlsView subviews count: %lu", (unsigned long)self.controlsView.subviews.count);
-            
-            for (NSInteger j = 0; j < self.controlsView.subviews.count; j++) {
-                NSView *control = self.controlsView.subviews[j];
-                NSLog(@"    Control %ld: %@ - Frame: %@ - Hidden: %@ - Alpha: %.2f",
-                      (long)j,
-                      NSStringFromClass([control class]),
-                      NSStringFromRect(control.frame),
-                      control.hidden ? @"YES" : @"NO",
-                      control.alphaValue);
-                
-                if (control.layer) {
-                    NSLog(@"      -> Layer backgroundColor: %@", control.layer.backgroundColor);
-                    NSLog(@"      -> Layer borderColor: %@", control.layer.borderColor);
-                    NSLog(@"      -> Layer borderWidth: %.2f", control.layer.borderWidth);
-                }
-                
-                // Test specifico per ComboBox
-                if ([control isKindOfClass:[NSComboBox class]]) {
-                    NSComboBox *combo = (NSComboBox *)control;
-                    NSLog(@"      -> ComboBox enabled: %@", combo.enabled ? @"YES" : @"NO");
-                    NSLog(@"      -> ComboBox editable: %@", combo.editable ? @"YES" : @"NO");
-                    NSLog(@"      -> ComboBox stringValue: '%@'", combo.stringValue);
-                }
-            }
-        }
-    }
-    NSLog(@"=== End Debug ===");
-    
-    // TEST ESTREMO: Aggiungi una view di test super visibile
-}
 
 
 - (void)setupChartControls {
@@ -353,8 +298,8 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
     if (!self.chartView && self.contentView && self.controlsView) {
         // Il chart view occuperà TUTTO lo spazio sotto i controlli
         self.chartView = [[CHChartView alloc] init];
-        self.chartView.translatesAutoresizingMaskIntoConstraints = NO;
-        self.chartView.wantsLayer = YES;
+       self.chartView.translatesAutoresizingMaskIntoConstraints = NO;
+       self.chartView.wantsLayer = YES;
         
         // FIX: Usa il background color dalla configurazione (che si adatta al tema)
         self.chartView.layer.backgroundColor = self.configuration.backgroundColor.CGColor;
@@ -1023,36 +968,30 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
     return [symbols indexOfObject:string.uppercaseString];
 }
 
+// In CHChartWidget.m, modifica receiveUpdate:
 - (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
-    // Questo metodo viene chiamato automaticamente quando:
-    // 1. Questo widget ha la chain attiva
-    // 2. Un altro widget invia un update con lo stesso colore di chain
+    NSString *action = update[@"action"];
     
-    NSString *newSymbol = update[@"symbol"];
-    if (newSymbol && ![newSymbol isEqualToString:self.currentSymbol]) {
-        NSLog(@"ChartWidget ricevuto nuovo simbolo: %@ (chain color match!)", newSymbol);
-        
-        // Aggiorna il simbolo nel combo box
-        self.symbolComboBox.stringValue = newSymbol;
-        self.currentSymbol = newSymbol;
-        
-        // Ricarica i dati del grafico
-        [self loadChartData];
-    }
-    
-    // Potresti anche gestire altri tipi di update
-    NSArray *symbols = update[@"symbols"];
-    if (symbols) {
-        // Aggiorna la lista di simboli disponibili
-        [self updateAvailableSymbols:symbols];
-    }
-    
-    NSString *timeframe = update[@"timeframe"];
-    if (timeframe) {
-        // Cambia il timeframe se supportato
-        [self changeTimeframe:timeframe];
+    if ([action isEqualToString:@"setSymbols"]) {
+        NSArray *symbols = update[@"symbols"];
+        if (symbols.count > 0) {
+            // Prendi solo il primo simbolo per widget single-symbol
+            NSString *symbol = symbols[0];
+            if (symbol && ![symbol isEqualToString:self.currentSymbol]) {
+                // Aggiorna il simbolo nel combo box
+                self.symbolComboBox.stringValue = symbol;
+                self.currentSymbol = symbol;
+                
+                // Ricarica i dati del grafico
+                [self loadChartData];
+                
+             
+            }
+        }
     }
 }
+        // Aggiorna il simbolo nel combo box
+  
 
 #pragma mark - NSComboBoxDelegate
 

@@ -155,7 +155,10 @@ static NSString *const kChainSenderKey = @"sender";
       
       [self.chainButton.widthAnchor constraintEqualToConstant:24].active = YES;
       [self.chainButton.heightAnchor constraintEqualToConstant:20].active = YES;
-      
+    // Imposta chain attiva di default con colore rosso
+    self.chainActive = YES;
+    self.chainColor = [NSColor systemRedColor];
+    
       [self updateChainButtonAppearance];
 
     self.addButton = [self createHeaderButton:@"+" action:@selector(showAddMenu:)];
@@ -217,13 +220,28 @@ static NSString *const kChainSenderKey = @"sender";
     // Non cambiare più il title/image qui, solo il colore
 }
 
+// In BaseWidget.m, trova il metodo broadcastUpdate e modificalo così:
 - (void)broadcastUpdate:(NSDictionary *)update {
     if (!self.chainActive) return;
+    
+    // Converti simbolo singolo in array se necessario
+    NSMutableDictionary *normalizedUpdate = [update mutableCopy];
+    
+    // Se c'è un "symbol" singolo, convertilo in "symbols" array
+    if (normalizedUpdate[@"symbol"] && !normalizedUpdate[@"symbols"]) {
+        normalizedUpdate[@"symbols"] = @[normalizedUpdate[@"symbol"]];
+        [normalizedUpdate removeObjectForKey:@"symbol"];
+    }
+    
+    // Assicurati che l'action sia sempre "setSymbols"
+    if (!normalizedUpdate[@"action"]) {
+        normalizedUpdate[@"action"] = @"setSymbols";
+    }
     
     // Includi il colore della chain nel messaggio
     NSMutableDictionary *notification = [NSMutableDictionary dictionary];
     notification[kChainColorKey] = self.chainColor;
-    notification[kChainUpdateKey] = update;
+    notification[kChainUpdateKey] = normalizedUpdate;
     notification[kChainSenderKey] = self;
     
     [[NSNotificationCenter defaultCenter] postNotificationName:kWidgetChainUpdateNotification

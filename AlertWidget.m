@@ -443,4 +443,15 @@
     [self refreshData];
 }
 
+- (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
+    NSString *action = update[@"action"];
+ //todo
+    if ([action isEqualToString:@"setSymbols"]) {
+        NSArray *symbols = update[@"symbols"];
+        // AlertWidget può gestire tutti i simboli
+        for (NSString *symbol in symbols) {
+      //      [self addNewAlert:symbol];
+        }
+    }
+}
 @end

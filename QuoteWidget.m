@@ -249,8 +249,14 @@
 #pragma mark - Widget Chain
 
 - (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
-    if (update[@"symbol"]) {
-        [self setSymbol:update[@"symbol"]];
+    NSString *action = update[@"action"];
+    
+    if ([action isEqualToString:@"setSymbols"]) {
+        NSArray *symbols = update[@"symbols"];
+        if (symbols.count > 0) {
+            // QuoteWidget usa solo il primo simbolo
+            [self setSymbol:symbols[0]];
+        }
     }
 }
 

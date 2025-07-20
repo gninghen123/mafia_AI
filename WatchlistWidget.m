@@ -1659,16 +1659,17 @@
 - (void)tableViewSelectionDidChange:(NSNotification *)notification {
     NSInteger selectedRow = self.tableViewInternal.selectedRow;
     if (selectedRow >= 0 && selectedRow < self.symbols.count) {
-        NSString *selectedSymbol = self.symbols[selectedRow];
+        NSString *symbol = self.symbols[selectedRow];
         
-        // UPDATED: Broadcast solo se la chain è attiva
-        if (self.chainActive) {
-            [self broadcastUpdate:@{@"symbol": selectedSymbol}];
-        }
+        // Broadcast tramite chain (sempre come array)
+        NSDictionary *update = @{
+            @"symbols": @[symbol],
+            @"action": @"setSymbols",
+            @"source": @"Watchlist"
+        };
+        [self broadcastUpdate:update];
     }
 }
-
-
 
 #pragma mark - DataManagerDelegate
 

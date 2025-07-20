@@ -444,10 +444,11 @@
 
 
 - (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
-    NSString *action = update[@"action"];
-    
-    if ([action isEqualToString:@"setSymbols"]) {
+   
         NSArray<NSString *> *symbols = update[@"symbols"];
+    if ([symbols count]) {
+        
+    
         NSString *source = update[@"source"];
         NSString *watchlistName = update[@"watchlistName"];
         

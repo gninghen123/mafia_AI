@@ -128,12 +128,21 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
         }
         
         NSMutableArray *gainers = [NSMutableArray array];
-        for (NSDictionary *item in data) {
+        for (NSDictionary *item0 in data) {
+            NSDictionary *item = item0[@"ticker"];
+            // Calcola la variazione percentuale
+            NSNumber *changeRatio = item[@"changeRatio"];
+            double changePercent = 0.0;
+            if (changeRatio) {
+                changePercent = [changeRatio doubleValue] * 100.0; // Converti in percentuale
+            }
+            
             NSDictionary *gainersData = @{
                 @"symbol": item[@"symbol"] ?: @"",
                 @"name": item[@"name"] ?: @"",
-                @"changePercent": item[@"changeRatio"] ?: @0,
+                @"changePercent": @(changePercent),
                 @"price": item[@"close"] ?: @0,
+                @"change": item[@"change"] ?: @0,
                 @"volume": item[@"volume"] ?: @0
             };
             [gainers addObject:gainersData];
@@ -163,12 +172,21 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
         }
         
         NSMutableArray *losers = [NSMutableArray array];
-        for (NSDictionary *item in data) {
+        for (NSDictionary *item0 in data) {
+            NSDictionary *item = item0[@"ticker"];
+            // Calcola la variazione percentuale
+            NSNumber *changeRatio = item[@"changeRatio"];
+            double changePercent = 0.0;
+            if (changeRatio) {
+                changePercent = [changeRatio doubleValue] * 100.0; // Converti in percentuale
+            }
+            
             NSDictionary *loserData = @{
                 @"symbol": item[@"symbol"] ?: @"",
                 @"name": item[@"name"] ?: @"",
-                @"changePercent": item[@"changeRatio"] ?: @0,
+                @"changePercent": @(changePercent),
                 @"price": item[@"close"] ?: @0,
+                @"change": item[@"change"] ?: @0,
                 @"volume": item[@"volume"] ?: @0
             };
             [losers addObject:loserData];
@@ -188,27 +206,51 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
             return;
         }
         
-        NSArray *data = response[@"data"];
-        if (!data) {
+        NSMutableArray *etfs = [NSMutableArray array];
+        
+        // La struttura è: response -> tabs -> tickerTupleList
+        NSArray *tabs = response[@"tabs"];
+        if (!tabs || tabs.count == 0) {
             if (completion) completion(@[], nil);
             return;
         }
         
-        NSMutableArray *etfs = [NSMutableArray array];
-        for (NSDictionary *item in data) {
-            NSArray *holdings = item[@"holdings"];
-            if (holdings) {
-                for (NSDictionary *etf in holdings) {
-                    NSDictionary *etfData = @{
-                        @"symbol": etf[@"ticker"] ?: @"",
-                        @"name": etf[@"name"] ?: @"",
-                        @"changePercent": etf[@"changeRatio"] ?: @0,
-                        @"price": etf[@"close"] ?: @0,
-                        @"weight": etf[@"weight"] ?: @0
-                    };
-                    [etfs addObject:etfData];
-                }
+        // Prendiamo il primo tab (All) che contiene tutti gli ETF
+        NSDictionary *allTab = tabs[0];
+        NSArray *tickerTupleList = allTab[@"tickerTupleList"];
+        
+        if (!tickerTupleList) {
+            if (completion) completion(@[], nil);
+            return;
+        }
+        
+        // Limitiamo a 20 ETF per non sovraccaricare l'interfaccia
+        NSInteger maxETFs = MIN(tickerTupleList.count, 20);
+        
+        for (NSInteger i = 0; i < maxETFs; i++) {
+            NSDictionary *etf = tickerTupleList[i];
+            
+            // Estrai i dati dell'ETF
+            NSString *symbol = etf[@"symbol"] ?: etf[@"disSymbol"] ?: @"";
+            NSString *name = etf[@"name"] ?: @"";
+            
+            // Calcola la variazione percentuale
+            NSNumber *changeRatio = etf[@"changeRatio"];
+            double changePercent = 0.0;
+            if (changeRatio) {
+                changePercent = [changeRatio doubleValue] * 100.0; // Converti in percentuale
             }
+            
+            NSDictionary *etfData = @{
+                @"symbol": symbol,
+                @"name": name,
+                @"changePercent": @(changePercent),
+                @"price": etf[@"close"] ?: @0,
+                @"change": etf[@"change"] ?: @0,
+                @"volume": etf[@"volume"] ?: @0
+            };
+            
+            [etfs addObject:etfData];
         }
         
         if (completion) completion(etfs, nil);

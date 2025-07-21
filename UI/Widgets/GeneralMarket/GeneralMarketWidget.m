@@ -6,6 +6,9 @@
 #import "GeneralMarketWidget.h"
 #import "DataManager.h"
 #import "DataManager+MarketLists.h"
+#import "DataHub.h"  // <-- AGGIUNGI QUESTO
+#import "Watchlist+CoreDataClass.h"  // <-- AGGIUNGI QUESTO
+
 
 @implementation MarketDataNode
 
@@ -454,6 +457,8 @@
     }
 }
 
+// In GeneralMarketWidget.m, sostituisci il metodo createWatchlistFromList con questo:
+
 - (void)createWatchlistFromList:(NSArray *)symbols {
     // Mostra dialog per nome watchlist
     NSAlert *alert = [[NSAlert alloc] init];
@@ -470,13 +475,16 @@
     NSModalResponse response = [alert runModal];
     
     if (response == NSAlertFirstButtonReturn && input.stringValue.length > 0) {
-        WatchlistManager *manager = [WatchlistManager sharedManager];
+        // Usa DataHub invece di WatchlistManager
+        DataHub *hub = [DataHub shared];
         
         // Crea la watchlist
-        WatchlistData *newWatchlist = [manager createWatchlistWithName:input.stringValue];
+        Watchlist *newWatchlist = [hub createWatchlistWithName:input.stringValue];
         
         // Aggiungi i simboli
-        [manager addSymbols:symbols toWatchlist:newWatchlist.name];
+        for (NSString *symbol in symbols) {
+            [hub addSymbol:symbol toWatchlist:newWatchlist];
+        }
         
         [self showTemporaryMessage:@"Watchlist created successfully"];
     }

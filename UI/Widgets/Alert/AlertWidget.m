@@ -13,10 +13,9 @@
 
 @implementation AlertWidget
 
-- (instancetype)initWithType:(WidgetType)type {
-    self = [super initWithType:type];
+- (instancetype)init {
+    self = [super initWithType:@"Alert" panelType:PanelTypeLeft];
     if (self) {
-        self.widgetTitle = @"Price Alerts";
         [self setupUI];
         [self setupDateFormatter];
         [self registerForNotifications];
@@ -95,15 +94,15 @@
     [toolbar addSubview:self.statusLabel];
     
     // Add to main view
-    [self addSubview:toolbar];
-    [self addSubview:self.scrollView];
+    [self.view addSubview:toolbar];
+    [self.view addSubview:self.scrollView];
     
     // Setup constraints
     [NSLayoutConstraint activateConstraints:@[
         // Toolbar
-        [toolbar.topAnchor constraintEqualToAnchor:self.topAnchor constant:5],
-        [toolbar.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:5],
-        [toolbar.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-5],
+        [toolbar.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:5],
+        [toolbar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:5],
+        [toolbar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-5],
         [toolbar.heightAnchor constraintEqualToConstant:30],
         
         // Filter control
@@ -126,9 +125,9 @@
         
         // Scroll view
         [self.scrollView.topAnchor constraintEqualToAnchor:toolbar.bottomAnchor constant:5],
-        [self.scrollView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
-        [self.scrollView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
-        [self.scrollView.bottomAnchor constraintEqualToAnchor:self.bottomAnchor]
+        [self.scrollView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.scrollView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.scrollView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
     ]];
 }
 
@@ -229,7 +228,7 @@
         }
     };
     
-    [self.window.windowController.window beginSheet:editController.window
+    [self.view.window.windowController.window beginSheet:editController.window
                                   completionHandler:^(NSModalResponse returnCode) {
         // Sheet closed
     }];
@@ -360,7 +359,7 @@
 
 - (NSDictionary *)serializeState {
     return @{
-        @"widgetType": @(self.widgetType),
+        @"widgetType": @"Alert",
         @"widgetID": self.widgetID ?: @"",
         @"currentFilter": @(self.currentFilter)
     };

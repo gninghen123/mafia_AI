@@ -4,7 +4,6 @@
 //
 
 #import "DataHub.h"
-#import "StockSymbol+CoreDataClass.h"
 #import "Watchlist+CoreDataClass.h"
 #import "Alert+CoreDataClass.h"
 #import "StockConnection+CoreDataClass.h"

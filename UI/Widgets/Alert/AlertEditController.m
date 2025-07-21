@@ -2,12 +2,12 @@
 //  AlertEditController.m
 //  mafia_AI
 //
+
 #import "AlertEditController.h"
-#import "AlertWidget.h"
 #import "DataHub.h"
 #import "Alert+CoreDataClass.h"
 
-@interface AlertEditController ()
+@interface AlertEditController () <NSTextFieldDelegate>
 @property (nonatomic, strong) NSTextField *symbolField;
 @property (nonatomic, strong) NSPopUpButton *conditionPopup;
 @property (nonatomic, strong) NSTextField *priceField;
@@ -23,30 +23,7 @@
 
 - (instancetype)initWithAlert:(Alert *)alert {
     self = [super initWithWindowNibName:@""];
-    if (self.completionHandler) {
-        self.completionHandler(self.alert, YES);
-    }
-    
-    [self.window.sheetParent endSheet:self.window returnCode:NSModalResponseOK];
-}
-
-- (void)cancel:(id)sender {
-    if (self.completionHandler) {
-        self.completionHandler(nil, NO);
-    }
-    
-    [self.window.sheetParent endSheet:self.window returnCode:NSModalResponseCancel];
-}
-
-#pragma mark - NSTextFieldDelegate
-
-- (void)controlTextDidChange:(NSNotification *)notification {
-    if (notification.object == self.symbolField) {
-        [self performSelector:@selector(updateCurrentPrice) withObject:nil afterDelay:0.5];
-    }
-}
-
-@endself) {
+    if (self) {
         self.alert = alert;
         [self setupWindow];
     }
@@ -239,7 +216,7 @@
         return;
     }
     
-    double price = [self.priceField.doubleValue];
+    double price = [self.priceField doubleValue];
     if (price <= 0) {
         NSBeep();
         return;
@@ -268,4 +245,30 @@
         [hub updateAlert:self.alert];
     }
     
-    if (
+    if (self.completionHandler) {
+        self.completionHandler(self.alert, YES);
+    }
+    
+    [self.window.sheetParent endSheet:self.window returnCode:NSModalResponseOK];
+}
+
+- (void)cancel:(id)sender {
+    if (self.completionHandler) {
+        self.completionHandler(nil, NO);
+    }
+    
+    [self.window.sheetParent endSheet:self.window returnCode:NSModalResponseCancel];
+}
+
+#pragma mark - NSTextFieldDelegate
+
+- (void)controlTextDidChange:(NSNotification *)notification {
+    if (notification.object == self.symbolField) {
+        // Cancella qualsiasi update precedente in coda
+        [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(updateCurrentPrice) object:nil];
+        // Aggiorna dopo 0.5 secondi di pausa nella digitazione
+        [self performSelector:@selector(updateCurrentPrice) withObject:nil afterDelay:0.5];
+    }
+}
+
+@end

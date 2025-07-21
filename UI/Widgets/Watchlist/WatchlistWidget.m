@@ -14,10 +14,9 @@
 
 @implementation WatchlistWidget
 
-- (instancetype)initWithType:(WidgetType)type {
-    self = [super initWithType:type];
+- (instancetype)init {
+    self = [super initWithType:@"Watchlist" panelType:PanelTypeLeft];
     if (self) {
-        self.widgetTitle = @"Watchlist";
         self.symbolDataCache = [NSMutableDictionary dictionary];
         [self setupFormatters];
         [self setupUI];
@@ -127,15 +126,15 @@
     [toolbar addSubview:self.loadingIndicator];
     
     // Add to main view
-    [self addSubview:toolbar];
-    [self addSubview:self.scrollView];
+    [self.view addSubview:toolbar];
+    [self.view addSubview:self.scrollView];
     
     // Setup constraints
     [NSLayoutConstraint activateConstraints:@[
         // Toolbar
-        [toolbar.topAnchor constraintEqualToAnchor:self.topAnchor constant:5],
-        [toolbar.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:5],
-        [toolbar.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-5],
+        [toolbar.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:5],
+        [toolbar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:5],
+        [toolbar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-5],
         [toolbar.heightAnchor constraintEqualToConstant:30],
         
         // Watchlist selector
@@ -168,9 +167,9 @@
         
         // Scroll view
         [self.scrollView.topAnchor constraintEqualToAnchor:toolbar.bottomAnchor constant:5],
-        [self.scrollView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor],
-        [self.scrollView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor],
-        [self.scrollView.bottomAnchor constraintEqualToAnchor:self.bottomAnchor]
+        [self.scrollView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
+        [self.scrollView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
+        [self.scrollView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
     ]];
 }
 
@@ -306,7 +305,7 @@
 }
 
 - (void)refreshTimerFired:(NSTimer *)timer {
-    if (self.window && self.window.isVisible) {
+    if (self.view.window && self.view.window.isVisible) {
         [self refreshSymbolData];
     }
 }
@@ -336,7 +335,7 @@
     menu.delegate = self;
     
     NSPoint point = NSMakePoint(NSMinX(self.watchlistMenuButton.frame), NSMinY(self.watchlistMenuButton.frame));
-    [menu popUpMenuPositioningItem:nil atLocation:point inView:self];
+    [menu popUpMenuPositioningItem:nil atLocation:point inView:self.view];
 }
 
 - (void)searchFieldChanged:(id)sender {
@@ -360,7 +359,7 @@
         }
     };
     
-    [self.window.windowController.window beginSheet:controller.window
+    [self.view.window.windowController.window beginSheet:controller.window
                                   completionHandler:^(NSModalResponse returnCode) {
         // Sheet closed
     }];
@@ -393,7 +392,7 @@
         }
     };
     
-    [self.window.windowController.window beginSheet:controller.window
+    [self.view.window.windowController.window beginSheet:controller.window
                                   completionHandler:^(NSModalResponse returnCode) {
         // Sheet closed
     }];
@@ -585,7 +584,7 @@
 
 - (NSDictionary *)serializeState {
     NSMutableDictionary *state = [NSMutableDictionary dictionary];
-    state[@"widgetType"] = @(self.widgetType);
+            state[@"widgetType"] = @"Watchlist";
     state[@"widgetID"] = self.widgetID ?: @"";
     
     if (self.currentWatchlist) {

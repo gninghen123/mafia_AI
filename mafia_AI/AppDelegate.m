@@ -10,6 +10,7 @@
 #import "DownloadManager.h"
 #import "SchwabDataSource.h"
 #import "WebullDataSource.h"
+#import "DataHub.h"
 
 
 @interface AppDelegate ()
@@ -21,7 +22,8 @@
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
     NSLog(@"AppDelegate: applicationDidFinishLaunching called");
-     
+    [DataHub shared];
+
      // Registra data sources
      [self registerDataSources];
      

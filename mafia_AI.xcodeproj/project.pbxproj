@@ -7,10 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		954D306B2E2852DF00C7DC88 /* AlertEditWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30642E2852DF00C7DC88 /* AlertEditWindowController.m */; };
-		954D306C2E2852DF00C7DC88 /* AlertEntry.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30662E2852DF00C7DC88 /* AlertEntry.m */; };
-		954D306D2E2852DF00C7DC88 /* AlertWidget.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D306A2E2852DF00C7DC88 /* AlertWidget.m */; };
-		954D306E2E2852DF00C7DC88 /* AlertManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30682E2852DF00C7DC88 /* AlertManager.m */; };
 		954D30732E2852E400C7DC88 /* NSColor+CHAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30722E2852E400C7DC88 /* NSColor+CHAdditions.m */; };
 		954D30742E2852E400C7DC88 /* NSBezierPath+CHAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30702E2852E400C7DC88 /* NSBezierPath+CHAdditions.m */; };
 		954D30792E2852EA00C7DC88 /* CHColorUtils.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30782E2852EA00C7DC88 /* CHColorUtils.m */; };
@@ -26,34 +22,23 @@
 		954D309B2E2852FF00C7DC88 /* CHChartRenderer.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30912E2852FF00C7DC88 /* CHChartRenderer.m */; };
 		954D309C2E2852FF00C7DC88 /* CHChartWidget.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30992E2852FF00C7DC88 /* CHChartWidget.m */; };
 		954D309D2E2852FF00C7DC88 /* CHChartCore.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30932E2852FF00C7DC88 /* CHChartCore.m */; };
-		954D30A82E28530500C7DC88 /* WatchlistWidget.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30A62E28530500C7DC88 /* WatchlistWidget.m */; };
-		954D30A92E28530500C7DC88 /* ConnectionStatusWidget.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D309F2E28530500C7DC88 /* ConnectionStatusWidget.m */; };
-		954D30AA2E28530500C7DC88 /* QuoteWidget.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30A22E28530500C7DC88 /* QuoteWidget.m */; };
-		954D30AB2E28530500C7DC88 /* WatchlistManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30A42E28530500C7DC88 /* WatchlistManager.m */; };
 		954D30B92E28530E00C7DC88 /* DownloadManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30B62E28530E00C7DC88 /* DownloadManager.m */; };
 		954D30BA2E28530E00C7DC88 /* DataManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30B42E28530E00C7DC88 /* DataManager.m */; };
 		954D30BB2E28530E00C7DC88 /* SchwabDataSource.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30B02E28530E00C7DC88 /* SchwabDataSource.m */; };
 		954D30BC2E28530E00C7DC88 /* MarketDataModels.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30B82E28530E00C7DC88 /* MarketDataModels.m */; };
 		954D30BD2E28530E00C7DC88 /* YahooDataSource.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30B22E28530E00C7DC88 /* YahooDataSource.m */; };
 		954D30BE2E28530E00C7DC88 /* SchwabConfig.plist in Resources */ = {isa = PBXBuildFile; fileRef = 954D30AE2E28530E00C7DC88 /* SchwabConfig.plist */; };
-		954D30D42E28531C00C7DC88 /* WidgetContainerView.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30C62E28531C00C7DC88 /* WidgetContainerView.m */; };
 		954D30D52E28531C00C7DC88 /* LayoutManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30CA2E28531C00C7DC88 /* LayoutManager.m */; };
-		954D30D62E28531C00C7DC88 /* WidgetTypeManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30C22E28531C00C7DC88 /* WidgetTypeManager.m */; };
 		954D30D72E28531C00C7DC88 /* ToolbarController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30C82E28531C00C7DC88 /* ToolbarController.m */; };
 		954D30D82E28531C00C7DC88 /* PanelHeaderView.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30C42E28531C00C7DC88 /* PanelHeaderView.m */; };
-		954D30D92E28531C00C7DC88 /* BaseWidget.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30CC2E28531C00C7DC88 /* BaseWidget.m */; };
 		954D30DA2E28531C00C7DC88 /* PanelController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30CF2E28531C00C7DC88 /* PanelController.m */; };
 		954D30DB2E28531C00C7DC88 /* MainWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30D22E28531C00C7DC88 /* MainWindowController.m */; };
 		954D30DD2E28531C00C7DC88 /* progettoinfo.txt in Resources */ = {isa = PBXBuildFile; fileRef = 954D30C02E28531C00C7DC88 /* progettoinfo.txt */; };
 		954D30E32E2860F100C7DC88 /* PreferencesWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */; };
 		954D30E72E28612100C7DC88 /* AppSettings.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30E62E28612100C7DC88 /* AppSettings.m */; };
-		954D310E2E291AE600C7DC88 /* MultiChartWidget.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D310B2E291AE600C7DC88 /* MultiChartWidget.m */; };
-		954D31112E291C8600C7DC88 /* MiniChart.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D31102E291C8600C7DC88 /* MiniChart.m */; };
 		955B3CD12E2BFF55008CA475 /* WebullDataSource.m in Sources */ = {isa = PBXBuildFile; fileRef = 955B3CD02E2BFF55008CA475 /* WebullDataSource.m */; };
-		955B3CD42E2BFF91008CA475 /* GeneralMarketWidget.m in Sources */ = {isa = PBXBuildFile; fileRef = 955B3CD32E2BFF91008CA475 /* GeneralMarketWidget.m */; };
 		955B3CE82E2C10FF008CA475 /* DataManager+MarketLists.m in Sources */ = {isa = PBXBuildFile; fileRef = 955B3CE72E2C10FF008CA475 /* DataManager+MarketLists.m */; };
-		95F1AD472E2D62F700D96BDD /* SymbolDataHub.m in Sources */ = {isa = PBXBuildFile; fileRef = 95F1AD462E2D62F700D96BDD /* SymbolDataHub.m */; };
-		95F1AD4A2E2D633200D96BDD /* SymbolDataModels.m in Sources */ = {isa = PBXBuildFile; fileRef = 95F1AD492E2D633200D96BDD /* SymbolDataModels.m */; };
+		95F1AD532E2E475500D96BDD /* DataHub.m in Sources */ = {isa = PBXBuildFile; fileRef = 95F1AD522E2E475500D96BDD /* DataHub.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -77,14 +62,6 @@
 		954D30002E28514A00C7DC88 /* mafia_AI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = mafia_AI.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		954D30122E28514B00C7DC88 /* mafia_AITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = mafia_AITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		954D301C2E28514C00C7DC88 /* mafia_AIUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = mafia_AIUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		954D30632E2852DF00C7DC88 /* AlertEditWindowController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AlertEditWindowController.h; sourceTree = "<group>"; };
-		954D30642E2852DF00C7DC88 /* AlertEditWindowController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AlertEditWindowController.m; sourceTree = "<group>"; };
-		954D30652E2852DF00C7DC88 /* AlertEntry.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AlertEntry.h; sourceTree = "<group>"; };
-		954D30662E2852DF00C7DC88 /* AlertEntry.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AlertEntry.m; sourceTree = "<group>"; };
-		954D30672E2852DF00C7DC88 /* AlertManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AlertManager.h; sourceTree = "<group>"; };
-		954D30682E2852DF00C7DC88 /* AlertManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AlertManager.m; sourceTree = "<group>"; };
-		954D30692E2852DF00C7DC88 /* AlertWidget.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AlertWidget.h; sourceTree = "<group>"; };
-		954D306A2E2852DF00C7DC88 /* AlertWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AlertWidget.m; sourceTree = "<group>"; };
 		954D306F2E2852E400C7DC88 /* NSBezierPath+CHAdditions.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NSBezierPath+CHAdditions.h"; sourceTree = "<group>"; };
 		954D30702E2852E400C7DC88 /* NSBezierPath+CHAdditions.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "NSBezierPath+CHAdditions.m"; sourceTree = "<group>"; };
 		954D30712E2852E400C7DC88 /* NSColor+CHAdditions.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NSColor+CHAdditions.h"; sourceTree = "<group>"; };
@@ -117,14 +94,6 @@
 		954D30972E2852FF00C7DC88 /* CHChartTypes.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CHChartTypes.m; sourceTree = "<group>"; };
 		954D30982E2852FF00C7DC88 /* CHChartWidget.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CHChartWidget.h; sourceTree = "<group>"; };
 		954D30992E2852FF00C7DC88 /* CHChartWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CHChartWidget.m; sourceTree = "<group>"; };
-		954D309E2E28530500C7DC88 /* ConnectionStatusWidget.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ConnectionStatusWidget.h; sourceTree = "<group>"; };
-		954D309F2E28530500C7DC88 /* ConnectionStatusWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ConnectionStatusWidget.m; sourceTree = "<group>"; };
-		954D30A12E28530500C7DC88 /* QuoteWidget.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = QuoteWidget.h; sourceTree = "<group>"; };
-		954D30A22E28530500C7DC88 /* QuoteWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = QuoteWidget.m; sourceTree = "<group>"; };
-		954D30A32E28530500C7DC88 /* WatchlistManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WatchlistManager.h; sourceTree = "<group>"; };
-		954D30A42E28530500C7DC88 /* WatchlistManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WatchlistManager.m; sourceTree = "<group>"; };
-		954D30A52E28530500C7DC88 /* WatchlistWidget.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WatchlistWidget.h; sourceTree = "<group>"; };
-		954D30A62E28530500C7DC88 /* WatchlistWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WatchlistWidget.m; sourceTree = "<group>"; };
 		954D30AE2E28530E00C7DC88 /* SchwabConfig.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = SchwabConfig.plist; sourceTree = "<group>"; };
 		954D30AF2E28530E00C7DC88 /* SchwabDataSource.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SchwabDataSource.h; sourceTree = "<group>"; };
 		954D30B02E28530E00C7DC88 /* SchwabDataSource.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SchwabDataSource.m; sourceTree = "<group>"; };
@@ -138,18 +107,12 @@
 		954D30B82E28530E00C7DC88 /* MarketDataModels.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MarketDataModels.m; sourceTree = "<group>"; };
 		954D30BF2E28531C00C7DC88 /* TradingAppTypes.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TradingAppTypes.h; sourceTree = "<group>"; };
 		954D30C02E28531C00C7DC88 /* progettoinfo.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = progettoinfo.txt; sourceTree = "<group>"; };
-		954D30C12E28531C00C7DC88 /* WidgetTypeManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WidgetTypeManager.h; sourceTree = "<group>"; };
-		954D30C22E28531C00C7DC88 /* WidgetTypeManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WidgetTypeManager.m; sourceTree = "<group>"; };
 		954D30C32E28531C00C7DC88 /* PanelHeaderView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PanelHeaderView.h; sourceTree = "<group>"; };
 		954D30C42E28531C00C7DC88 /* PanelHeaderView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PanelHeaderView.m; sourceTree = "<group>"; };
-		954D30C52E28531C00C7DC88 /* WidgetContainerView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WidgetContainerView.h; sourceTree = "<group>"; };
-		954D30C62E28531C00C7DC88 /* WidgetContainerView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WidgetContainerView.m; sourceTree = "<group>"; };
 		954D30C72E28531C00C7DC88 /* ToolbarController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ToolbarController.h; sourceTree = "<group>"; };
 		954D30C82E28531C00C7DC88 /* ToolbarController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ToolbarController.m; sourceTree = "<group>"; };
 		954D30C92E28531C00C7DC88 /* LayoutManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LayoutManager.h; sourceTree = "<group>"; };
 		954D30CA2E28531C00C7DC88 /* LayoutManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = LayoutManager.m; sourceTree = "<group>"; };
-		954D30CB2E28531C00C7DC88 /* BaseWidget.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BaseWidget.h; sourceTree = "<group>"; };
-		954D30CC2E28531C00C7DC88 /* BaseWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = BaseWidget.m; sourceTree = "<group>"; };
 		954D30CE2E28531C00C7DC88 /* PanelController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PanelController.h; sourceTree = "<group>"; };
 		954D30CF2E28531C00C7DC88 /* PanelController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PanelController.m; sourceTree = "<group>"; };
 		954D30D12E28531C00C7DC88 /* MainWindowController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MainWindowController.h; sourceTree = "<group>"; };
@@ -158,20 +121,12 @@
 		954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PreferencesWindowController.m; sourceTree = "<group>"; };
 		954D30E52E28612100C7DC88 /* AppSettings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppSettings.h; sourceTree = "<group>"; };
 		954D30E62E28612100C7DC88 /* AppSettings.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppSettings.m; sourceTree = "<group>"; };
-		954D310A2E291AE600C7DC88 /* MultiChartWidget.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MultiChartWidget.h; sourceTree = "<group>"; };
-		954D310B2E291AE600C7DC88 /* MultiChartWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MultiChartWidget.m; sourceTree = "<group>"; };
-		954D310F2E291C8600C7DC88 /* MiniChart.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MiniChart.h; sourceTree = "<group>"; };
-		954D31102E291C8600C7DC88 /* MiniChart.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MiniChart.m; sourceTree = "<group>"; };
 		955B3CCF2E2BFF55008CA475 /* WebullDataSource.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WebullDataSource.h; sourceTree = "<group>"; };
 		955B3CD02E2BFF55008CA475 /* WebullDataSource.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WebullDataSource.m; sourceTree = "<group>"; };
-		955B3CD22E2BFF91008CA475 /* GeneralMarketWidget.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneralMarketWidget.h; sourceTree = "<group>"; };
-		955B3CD32E2BFF91008CA475 /* GeneralMarketWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GeneralMarketWidget.m; sourceTree = "<group>"; };
 		955B3CE62E2C0DC6008CA475 /* DataManager+MarketLists.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "DataManager+MarketLists.h"; sourceTree = "<group>"; };
 		955B3CE72E2C10FF008CA475 /* DataManager+MarketLists.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "DataManager+MarketLists.m"; sourceTree = "<group>"; };
-		95F1AD452E2D62F700D96BDD /* SymbolDataHub.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SymbolDataHub.h; sourceTree = "<group>"; };
-		95F1AD462E2D62F700D96BDD /* SymbolDataHub.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SymbolDataHub.m; sourceTree = "<group>"; };
-		95F1AD482E2D633200D96BDD /* SymbolDataModels.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SymbolDataModels.h; sourceTree = "<group>"; };
-		95F1AD492E2D633200D96BDD /* SymbolDataModels.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SymbolDataModels.m; sourceTree = "<group>"; };
+		95F1AD512E2E475500D96BDD /* DataHub.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DataHub.h; sourceTree = "<group>"; };
+		95F1AD522E2E475500D96BDD /* DataHub.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = DataHub.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -188,6 +143,16 @@
 		954D301F2E28514C00C7DC88 /* mafia_AIUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = mafia_AIUITests;
+			sourceTree = "<group>";
+		};
+		95F1AD752E2E4EE100D96BDD /* datamodels */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = datamodels;
+			sourceTree = "<group>";
+		};
+		95F1AD762E2E517E00D96BDD /* UI */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = UI;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -220,34 +185,22 @@
 		954D2FF72E28514A00C7DC88 = {
 			isa = PBXGroup;
 			children = (
-				95F1AD482E2D633200D96BDD /* SymbolDataModels.h */,
-				95F1AD492E2D633200D96BDD /* SymbolDataModels.m */,
-				95F1AD452E2D62F700D96BDD /* SymbolDataHub.h */,
-				95F1AD462E2D62F700D96BDD /* SymbolDataHub.m */,
-				955B3CD22E2BFF91008CA475 /* GeneralMarketWidget.h */,
-				955B3CD32E2BFF91008CA475 /* GeneralMarketWidget.m */,
-				954D310F2E291C8600C7DC88 /* MiniChart.h */,
-				954D31102E291C8600C7DC88 /* MiniChart.m */,
-				954D310A2E291AE600C7DC88 /* MultiChartWidget.h */,
-				954D310B2E291AE600C7DC88 /* MultiChartWidget.m */,
+				95F1AD762E2E517E00D96BDD /* UI */,
+				95F1AD752E2E4EE100D96BDD /* datamodels */,
+				95F1AD512E2E475500D96BDD /* DataHub.h */,
+				95F1AD522E2E475500D96BDD /* DataHub.m */,
 				954D30E52E28612100C7DC88 /* AppSettings.h */,
 				954D30E62E28612100C7DC88 /* AppSettings.m */,
 				954D30E02E2860F100C7DC88 /* PreferencesWindowController.h */,
 				954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */,
 				954D30BF2E28531C00C7DC88 /* TradingAppTypes.h */,
 				954D30C02E28531C00C7DC88 /* progettoinfo.txt */,
-				954D30C12E28531C00C7DC88 /* WidgetTypeManager.h */,
-				954D30C22E28531C00C7DC88 /* WidgetTypeManager.m */,
 				954D30C32E28531C00C7DC88 /* PanelHeaderView.h */,
 				954D30C42E28531C00C7DC88 /* PanelHeaderView.m */,
-				954D30C52E28531C00C7DC88 /* WidgetContainerView.h */,
-				954D30C62E28531C00C7DC88 /* WidgetContainerView.m */,
 				954D30C72E28531C00C7DC88 /* ToolbarController.h */,
 				954D30C82E28531C00C7DC88 /* ToolbarController.m */,
 				954D30C92E28531C00C7DC88 /* LayoutManager.h */,
 				954D30CA2E28531C00C7DC88 /* LayoutManager.m */,
-				954D30CB2E28531C00C7DC88 /* BaseWidget.h */,
-				954D30CC2E28531C00C7DC88 /* BaseWidget.m */,
 				954D30CE2E28531C00C7DC88 /* PanelController.h */,
 				954D30CF2E28531C00C7DC88 /* PanelController.m */,
 				954D30D12E28531C00C7DC88 /* MainWindowController.h */,
@@ -267,14 +220,6 @@
 				954D30B62E28530E00C7DC88 /* DownloadManager.m */,
 				954D30B72E28530E00C7DC88 /* MarketDataModels.h */,
 				954D30B82E28530E00C7DC88 /* MarketDataModels.m */,
-				954D309E2E28530500C7DC88 /* ConnectionStatusWidget.h */,
-				954D309F2E28530500C7DC88 /* ConnectionStatusWidget.m */,
-				954D30A12E28530500C7DC88 /* QuoteWidget.h */,
-				954D30A22E28530500C7DC88 /* QuoteWidget.m */,
-				954D30A32E28530500C7DC88 /* WatchlistManager.h */,
-				954D30A42E28530500C7DC88 /* WatchlistManager.m */,
-				954D30A52E28530500C7DC88 /* WatchlistWidget.h */,
-				954D30A62E28530500C7DC88 /* WatchlistWidget.m */,
 				954D30902E2852FF00C7DC88 /* CHChartRenderer.h */,
 				954D30912E2852FF00C7DC88 /* CHChartRenderer.m */,
 				954D30922E2852FF00C7DC88 /* CHChartCore.h */,
@@ -307,14 +252,6 @@
 				954D30702E2852E400C7DC88 /* NSBezierPath+CHAdditions.m */,
 				954D30712E2852E400C7DC88 /* NSColor+CHAdditions.h */,
 				954D30722E2852E400C7DC88 /* NSColor+CHAdditions.m */,
-				954D30632E2852DF00C7DC88 /* AlertEditWindowController.h */,
-				954D30642E2852DF00C7DC88 /* AlertEditWindowController.m */,
-				954D30652E2852DF00C7DC88 /* AlertEntry.h */,
-				954D30662E2852DF00C7DC88 /* AlertEntry.m */,
-				954D30672E2852DF00C7DC88 /* AlertManager.h */,
-				954D30682E2852DF00C7DC88 /* AlertManager.m */,
-				954D30692E2852DF00C7DC88 /* AlertWidget.h */,
-				954D306A2E2852DF00C7DC88 /* AlertWidget.m */,
 				954D30022E28514A00C7DC88 /* mafia_AI */,
 				954D30152E28514B00C7DC88 /* mafia_AITests */,
 				954D301F2E28514C00C7DC88 /* mafia_AIUITests */,
@@ -349,6 +286,8 @@
 			);
 			fileSystemSynchronizedGroups = (
 				954D30022E28514A00C7DC88 /* mafia_AI */,
+				95F1AD752E2E4EE100D96BDD /* datamodels */,
+				95F1AD762E2E517E00D96BDD /* UI */,
 			);
 			name = mafia_AI;
 			packageProductDependencies = (
@@ -478,49 +417,34 @@
 			buildActionMask = 2147483647;
 			files = (
 				954D309A2E2852FF00C7DC88 /* CHChartTypes.m in Sources */,
-				954D31112E291C8600C7DC88 /* MiniChart.m in Sources */,
 				954D309B2E2852FF00C7DC88 /* CHChartRenderer.m in Sources */,
 				954D309C2E2852FF00C7DC88 /* CHChartWidget.m in Sources */,
 				955B3CE82E2C10FF008CA475 /* DataManager+MarketLists.m in Sources */,
 				954D309D2E2852FF00C7DC88 /* CHChartCore.m in Sources */,
-				954D306B2E2852DF00C7DC88 /* AlertEditWindowController.m in Sources */,
 				954D30852E2852F400C7DC88 /* CHChartLayer.m in Sources */,
 				954D30862E2852F400C7DC88 /* CHChartView.m in Sources */,
-				954D306C2E2852DF00C7DC88 /* AlertEntry.m in Sources */,
-				954D306D2E2852DF00C7DC88 /* AlertWidget.m in Sources */,
-				954D306E2E2852DF00C7DC88 /* AlertManager.m in Sources */,
 				954D30732E2852E400C7DC88 /* NSColor+CHAdditions.m in Sources */,
 				954D30792E2852EA00C7DC88 /* CHColorUtils.m in Sources */,
 				954D307F2E2852F000C7DC88 /* CHBarChartRenderer.m in Sources */,
 				954D30E32E2860F100C7DC88 /* PreferencesWindowController.m in Sources */,
 				954D30802E2852F000C7DC88 /* CHLineChartRenderer.m in Sources */,
 				954D308D2E2852F900C7DC88 /* CHDataPoint.m in Sources */,
-				954D30A82E28530500C7DC88 /* WatchlistWidget.m in Sources */,
 				955B3CD12E2BFF55008CA475 /* WebullDataSource.m in Sources */,
-				954D30A92E28530500C7DC88 /* ConnectionStatusWidget.m in Sources */,
 				954D30E72E28612100C7DC88 /* AppSettings.m in Sources */,
-				954D30AA2E28530500C7DC88 /* QuoteWidget.m in Sources */,
-				954D30AB2E28530500C7DC88 /* WatchlistManager.m in Sources */,
 				954D308E2E2852F900C7DC88 /* CHChartConfiguration.m in Sources */,
 				954D308F2E2852F900C7DC88 /* CHChartData.m in Sources */,
 				954D307A2E2852EA00C7DC88 /* CHChartUtils.m in Sources */,
+				95F1AD532E2E475500D96BDD /* DataHub.m in Sources */,
 				954D30742E2852E400C7DC88 /* NSBezierPath+CHAdditions.m in Sources */,
 				954D30B92E28530E00C7DC88 /* DownloadManager.m in Sources */,
 				954D30BA2E28530E00C7DC88 /* DataManager.m in Sources */,
-				954D30D42E28531C00C7DC88 /* WidgetContainerView.m in Sources */,
 				954D30D52E28531C00C7DC88 /* LayoutManager.m in Sources */,
-				954D30D62E28531C00C7DC88 /* WidgetTypeManager.m in Sources */,
 				954D30D72E28531C00C7DC88 /* ToolbarController.m in Sources */,
 				954D30D82E28531C00C7DC88 /* PanelHeaderView.m in Sources */,
-				954D310E2E291AE600C7DC88 /* MultiChartWidget.m in Sources */,
-				954D30D92E28531C00C7DC88 /* BaseWidget.m in Sources */,
 				954D30DA2E28531C00C7DC88 /* PanelController.m in Sources */,
 				954D30DB2E28531C00C7DC88 /* MainWindowController.m in Sources */,
 				954D30BB2E28530E00C7DC88 /* SchwabDataSource.m in Sources */,
 				954D30BC2E28530E00C7DC88 /* MarketDataModels.m in Sources */,
-				95F1AD472E2D62F700D96BDD /* SymbolDataHub.m in Sources */,
-				95F1AD4A2E2D633200D96BDD /* SymbolDataModels.m in Sources */,
-				955B3CD42E2BFF91008CA475 /* GeneralMarketWidget.m in Sources */,
 				954D30BD2E28530E00C7DC88 /* YahooDataSource.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

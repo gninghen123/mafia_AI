@@ -6,7 +6,6 @@
 #import "GeneralMarketWidget.h"
 #import "DataManager.h"
 #import "DataManager+MarketLists.h"
-#import "WatchlistManager.h"
 
 @implementation MarketDataNode
 

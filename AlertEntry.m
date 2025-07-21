@@ -2,7 +2,8 @@
 //  AlertEntry.m
 //  TradingApp
 //
-
+#import "SymbolDataHub.h"
+#import "SymbolDataModels.h"
 #import "AlertEntry.h"
 
 @implementation AlertEntry
@@ -147,6 +148,36 @@
     }
     
     return alert;
+}
+
+
++ (instancetype)fromAlertData:(AlertData *)alertData {
+    if (!alertData) return nil;
+    
+    AlertEntry *entry = [[AlertEntry alloc] init];
+    entry.alertID = alertData.alertId;
+    entry.symbol = alertData.symbol.symbol;
+    entry.status = alertData.status;
+    entry.creationDate = alertData.dateCreated;
+    entry.triggerDate = alertData.dateTriggered;
+    entry.notes = alertData.message;
+    
+    // Estrai il prezzo dalle condizioni
+    NSNumber *price = alertData.conditions[@"price"];
+    entry.targetPrice = price ? price.doubleValue : 0;
+    
+    // Mappa il tipo
+    if (alertData.type == AlertTypePriceAbove) {
+        entry.alertType = AlertTypePriceAbove;
+    } else if (alertData.type == AlertTypePriceBelow) {
+        entry.alertType = AlertTypePriceBelow;
+    }
+    
+    return entry;
+}
+- (AlertData *)toAlertData {
+    NSLog(@"Warning: toAlertData richiede un managed object context. Usa DataHub direttamente.");
+    return nil;
 }
 
 @end

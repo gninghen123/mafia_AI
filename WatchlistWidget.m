@@ -10,7 +10,8 @@
 #import "MarketDataModels.h"
 #import <objc/runtime.h>  // <-- QUESTO IMPORT RISOLVE IL PROBLEMA
 #import "AppSettings.h"
-
+#import "SymbolDataHub.h"
+#import "SymbolDataModels.h"
 
 #pragma mark - WatchlistRule Implementation
 
@@ -343,9 +344,11 @@
     [self.tableViewInternal addTableColumn:changeColumn];
     
     NSTableColumn *tagsColumn = [[NSTableColumn alloc] initWithIdentifier:@"tags"];
-    tagsColumn.title = @"Tags";
-    tagsColumn.width = 120;
-    [self.tableViewInternal addTableColumn:tagsColumn];
+        tagsColumn.title = @"Tags";
+        tagsColumn.width = 100;
+        tagsColumn.minWidth = 80;
+        tagsColumn.maxWidth = 200;
+        [self.tableViewInternal addTableColumn:tagsColumn];
     
     self.tableViewInternal.dataSource = self;
     self.tableViewInternal.delegate = self;
@@ -1564,6 +1567,42 @@
 }
 
 #pragma mark - NSTableViewDataSource
+- (NSView *)tableView:(NSTableView *)tableView
+    viewForTableColumn:(NSTableColumn *)tableColumn
+                   row:(NSInteger)row {
+                   
+    NSString *identifier = tableColumn.identifier;
+    NSString *symbol = self.currentWatchlist.symbols[row];
+    
+    if ([identifier isEqualToString:@"tags"]) {
+        // Crea vista per tags
+        NSArray<NSString *> *tags = [[SymbolDataHub sharedHub] tagsForSymbol:symbol];
+        
+        NSTextField *textField = [tableView makeViewWithIdentifier:@"tags" owner:self];
+        if (!textField) {
+            textField = [[NSTextField alloc] init];
+            textField.identifier = @"tags";
+            textField.bordered = NO;
+            textField.editable = NO;
+            textField.font = [NSFont systemFontOfSize:11];
+        }
+        
+        if (tags.count > 0) {
+            NSMutableArray *tagStrings = [NSMutableArray array];
+            for (NSString *tag in tags) {
+                [tagStrings addObject:[NSString stringWithFormat:@"#%@", tag]];
+            }
+            textField.stringValue = [tagStrings componentsJoinedByString:@" "];
+            textField.textColor = [NSColor controlAccentColor];
+        } else {
+            textField.stringValue = @"";
+        }
+        
+        return textField;
+    }
+    
+    // ... resto del codice esistente per altre colonne ...
+}
 
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
     return self.symbols.count;

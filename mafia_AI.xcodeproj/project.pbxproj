@@ -52,6 +52,8 @@
 		955B3CD12E2BFF55008CA475 /* WebullDataSource.m in Sources */ = {isa = PBXBuildFile; fileRef = 955B3CD02E2BFF55008CA475 /* WebullDataSource.m */; };
 		955B3CD42E2BFF91008CA475 /* GeneralMarketWidget.m in Sources */ = {isa = PBXBuildFile; fileRef = 955B3CD32E2BFF91008CA475 /* GeneralMarketWidget.m */; };
 		955B3CE82E2C10FF008CA475 /* DataManager+MarketLists.m in Sources */ = {isa = PBXBuildFile; fileRef = 955B3CE72E2C10FF008CA475 /* DataManager+MarketLists.m */; };
+		95F1AD472E2D62F700D96BDD /* SymbolDataHub.m in Sources */ = {isa = PBXBuildFile; fileRef = 95F1AD462E2D62F700D96BDD /* SymbolDataHub.m */; };
+		95F1AD4A2E2D633200D96BDD /* SymbolDataModels.m in Sources */ = {isa = PBXBuildFile; fileRef = 95F1AD492E2D633200D96BDD /* SymbolDataModels.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -166,6 +168,10 @@
 		955B3CD32E2BFF91008CA475 /* GeneralMarketWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GeneralMarketWidget.m; sourceTree = "<group>"; };
 		955B3CE62E2C0DC6008CA475 /* DataManager+MarketLists.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "DataManager+MarketLists.h"; sourceTree = "<group>"; };
 		955B3CE72E2C10FF008CA475 /* DataManager+MarketLists.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "DataManager+MarketLists.m"; sourceTree = "<group>"; };
+		95F1AD452E2D62F700D96BDD /* SymbolDataHub.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SymbolDataHub.h; sourceTree = "<group>"; };
+		95F1AD462E2D62F700D96BDD /* SymbolDataHub.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SymbolDataHub.m; sourceTree = "<group>"; };
+		95F1AD482E2D633200D96BDD /* SymbolDataModels.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SymbolDataModels.h; sourceTree = "<group>"; };
+		95F1AD492E2D633200D96BDD /* SymbolDataModels.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SymbolDataModels.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -214,6 +220,10 @@
 		954D2FF72E28514A00C7DC88 = {
 			isa = PBXGroup;
 			children = (
+				95F1AD482E2D633200D96BDD /* SymbolDataModels.h */,
+				95F1AD492E2D633200D96BDD /* SymbolDataModels.m */,
+				95F1AD452E2D62F700D96BDD /* SymbolDataHub.h */,
+				95F1AD462E2D62F700D96BDD /* SymbolDataHub.m */,
 				955B3CD22E2BFF91008CA475 /* GeneralMarketWidget.h */,
 				955B3CD32E2BFF91008CA475 /* GeneralMarketWidget.m */,
 				954D310F2E291C8600C7DC88 /* MiniChart.h */,
@@ -508,6 +518,8 @@
 				954D30DB2E28531C00C7DC88 /* MainWindowController.m in Sources */,
 				954D30BB2E28530E00C7DC88 /* SchwabDataSource.m in Sources */,
 				954D30BC2E28530E00C7DC88 /* MarketDataModels.m in Sources */,
+				95F1AD472E2D62F700D96BDD /* SymbolDataHub.m in Sources */,
+				95F1AD4A2E2D633200D96BDD /* SymbolDataModels.m in Sources */,
 				955B3CD42E2BFF91008CA475 /* GeneralMarketWidget.m in Sources */,
 				954D30BD2E28530E00C7DC88 /* YahooDataSource.m in Sources */,
 			);

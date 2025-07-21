@@ -2,19 +2,20 @@
 //  AlertWidget.m
 //  TradingApp
 //
+//  VERSIONE PULITA - Integrazione diretta con DataHub
+//
 
 #import "AlertWidget.h"
 #import "AlertEditWindowController.h"
-#import "DataManager.h"
+#import "SymbolDataHub.h"
+#import "SymbolDataModels.h"
 
 @interface AlertWidget ()
-
 @property (nonatomic, strong) NSTableColumn *symbolColumn;
 @property (nonatomic, strong) NSTableColumn *typeColumn;
 @property (nonatomic, strong) NSTableColumn *priceColumn;
 @property (nonatomic, strong) NSTableColumn *statusColumn;
 @property (nonatomic, strong) NSTableColumn *dateColumn;
-
 @end
 
 @implementation AlertWidget
@@ -22,24 +23,28 @@
 - (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType {
     self = [super initWithType:type panelType:panelType];
     if (self) {
-        self.widgetType = @"Alert";
+        self.widgetType = @"Alerts";
         _displayedAlerts = [NSMutableArray array];
         
-        // Registra come delegate dell'AlertManager
-        [[AlertManager sharedManager] setDelegate:self];
+        // RIMUOVI: [[AlertManager sharedManager] setDelegate:self];
         
-        // Osserva notifiche
+        // AGGIUNGI osservatori DataHub:
         [[NSNotificationCenter defaultCenter] addObserver:self
-                                                 selector:@selector(alertsUpdated:)
-                                                     name:kAlertsUpdatedNotification
+                                                 selector:@selector(dataHubUpdated:)
+                                                     name:kSymbolDataUpdatedNotification
+                                                   object:nil];
+        
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(alertTriggered:)
+                                                     name:kAlertTriggeredNotification
                                                    object:nil];
     }
     return self;
 }
-
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
+
 
 - (void)setupContentView {
     [super setupContentView];
@@ -171,286 +176,194 @@
     // Carica dati iniziali
     [self refreshData];
 }
-
-- (void)setupTableColumns {
-    // Rimuovi eventuali colonne esistenti
-    while (self.tableView.tableColumns.count > 0) {
-        [self.tableView removeTableColumn:self.tableView.tableColumns.lastObject];
-    }
-    
-    // Colonna Simbolo
-    self.symbolColumn = [[NSTableColumn alloc] initWithIdentifier:@"symbol"];
-    self.symbolColumn.title = @"Simbolo";
-    self.symbolColumn.width = 80;
-    self.symbolColumn.minWidth = 60;
-    self.symbolColumn.maxWidth = 120;
-    [self.tableView addTableColumn:self.symbolColumn];
-    
-    // Colonna Tipo
-    self.typeColumn = [[NSTableColumn alloc] initWithIdentifier:@"type"];
-    self.typeColumn.title = @"Tipo";
-    self.typeColumn.width = 80;
-    self.typeColumn.minWidth = 60;
-    self.typeColumn.maxWidth = 100;
-    [self.tableView addTableColumn:self.typeColumn];
-    
-    // Colonna Prezzo
-    self.priceColumn = [[NSTableColumn alloc] initWithIdentifier:@"price"];
-    self.priceColumn.title = @"Prezzo Target";
-    self.priceColumn.width = 100;
-    self.priceColumn.minWidth = 80;
-    self.priceColumn.maxWidth = 150;
-    [self.tableView addTableColumn:self.priceColumn];
-    
-    // Colonna Status
-    self.statusColumn = [[NSTableColumn alloc] initWithIdentifier:@"status"];
-    self.statusColumn.title = @"Stato";
-    self.statusColumn.width = 80;
-    self.statusColumn.minWidth = 60;
-    self.statusColumn.maxWidth = 120;
-    [self.tableView addTableColumn:self.statusColumn];
-    
-    // Colonna Data
-    self.dateColumn = [[NSTableColumn alloc] initWithIdentifier:@"date"];
-    self.dateColumn.title = @"Data";
-    self.dateColumn.width = 120;
-    self.dateColumn.minWidth = 100;
-    self.dateColumn.maxWidth = 180;
-    [self.tableView addTableColumn:self.dateColumn];
-    
-    // Configurazioni aggiuntive della tabella
-    self.tableView.usesAlternatingRowBackgroundColors = YES;
-    self.tableView.allowsMultipleSelection = NO;
-    self.tableView.columnAutoresizingStyle = NSTableViewUniformColumnAutoresizingStyle;
-    
-    // Abilita sorting sulle colonne
-    for (NSTableColumn *column in self.tableView.tableColumns) {
-        NSSortDescriptor *sortDescriptor = [NSSortDescriptor sortDescriptorWithKey:column.identifier ascending:YES];
-        column.sortDescriptorPrototype = sortDescriptor;
-    }
-}
-
-
 #pragma mark - Data Management
 
 - (void)refreshData {
-    NSLog(@"refreshData chiamato");
+    // Carica alerts direttamente dal DataHub
+    NSArray<AlertData *> *alerts = [[SymbolDataHub sharedHub] allActiveAlerts];
     
-    [self.displayedAlerts removeAllObjects];
-    
-    NSArray *allAlerts = [[AlertManager sharedManager] allAlerts];
-    NSLog(@"AlertManager ha %ld alert totali", (long)allAlerts.count);
-    
-    // Filtra per search se presente
-    if (self.searchFilter.length > 0) {
-        NSPredicate *predicate = [NSPredicate predicateWithFormat:@"symbol CONTAINS[cd] %@", self.searchFilter];
-        allAlerts = [allAlerts filteredArrayUsingPredicate:predicate];
-        NSLog(@"Dopo filtro search: %ld alert", (long)allAlerts.count);
+    // Converti in AlertEntry per compatibilità con UI
+    NSMutableArray *entries = [NSMutableArray array];
+    for (AlertData *alert in alerts) {
+        AlertEntry *entry = [AlertEntry fromAlertData:alert];
+        if (entry) {
+            // Applica filtro se presente
+            if (self.searchFilter.length > 0) {
+                if ([entry.symbol.lowercaseString containsString:self.searchFilter.lowercaseString]) {
+                    [entries addObject:entry];
+                }
+            } else {
+                [entries addObject:entry];
+            }
+        }
     }
     
-    // Ordina per data di creazione (più recenti prima)
-    NSSortDescriptor *sortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"creationDate" ascending:NO];
-    allAlerts = [allAlerts sortedArrayUsingDescriptors:@[sortDescriptor]];
-    
-    [self.displayedAlerts addObjectsFromArray:allAlerts];
-    NSLog(@"displayedAlerts ora ha %ld elementi", (long)self.displayedAlerts.count);
-    
+    self.displayedAlerts = entries;
     [self.tableView reloadData];
-    NSLog(@"tableView reloadData chiamato");
-    
-    // Aggiorna stato pulsanti
     [self updateButtonStates];
 }
-- (void)updateButtonStates {
-    NSInteger selectedRow = self.tableView.selectedRow;
-    BOOL hasSelection = (selectedRow >= 0 && selectedRow < self.displayedAlerts.count);
-    
-    self.editButton.enabled = hasSelection;
-    self.deleteButton.enabled = hasSelection;
-    
-    // Abilita "Pulisci Scattati" solo se ci sono alert scattati
-    NSArray *triggeredAlerts = [[AlertManager sharedManager] triggeredAlerts];
-    self.clearTriggeredButton.enabled = (triggeredAlerts.count > 0);
-}
-
 #pragma mark - Actions
 
-- (void)searchFieldDidChange:(id)sender {
-    self.searchFilter = self.searchField.stringValue;
-    [self refreshData];
-}
-
 - (void)addNewAlert {
-    // FIXED: Pass nil to indicate this is a new alert
-    NSLog(@"addNewAlert chiamato - passando nil come alert");
-    [self showAlertEditSheet:nil];
+    AlertEditWindowController *editController = [[AlertEditWindowController alloc] init];
+    editController.isNewAlert = YES;
+    
+    [self.view.window beginSheet:editController.window completionHandler:^(NSModalResponse returnCode) {
+        if (returnCode == NSModalResponseOK) {
+            AlertEntry *newAlert = editController.alert;
+            
+            // Aggiungi al DataHub
+            NSDictionary *conditions = @{
+                @"price": @(newAlert.targetPrice),
+                @"comparison": newAlert.alertType == AlertTypePriceAbove ? @"above" : @"below"
+            };
+            
+            AlertData *dataHubAlert = [[SymbolDataHub sharedHub] addAlertForSymbol:newAlert.symbol
+                                                                               type:newAlert.alertType == AlertTypePriceAbove ? @"priceAbove" : @"priceBelow"
+                                                                          condition:conditions];
+            
+            if (newAlert.notes) {
+                dataHubAlert.message = newAlert.notes;
+                [[SymbolDataHub sharedHub] saveContext];
+            }
+            
+            [self refreshData];
+        }
+    }];
 }
 
 - (void)editSelectedAlert {
     NSInteger selectedRow = self.tableView.selectedRow;
-    if (selectedRow >= 0 && selectedRow < self.displayedAlerts.count) {
-        AlertEntry *alert = self.displayedAlerts[selectedRow];
-        [self showAlertEditSheet:[alert copy]];
-    }
+    if (selectedRow < 0 || selectedRow >= self.displayedAlerts.count) return;
+    
+    AlertEntry *selectedAlert = self.displayedAlerts[selectedRow];
+    [self showAlertEditSheet:selectedAlert];
 }
 
 - (void)deleteSelectedAlert {
     NSInteger selectedRow = self.tableView.selectedRow;
-    if (selectedRow >= 0 && selectedRow < self.displayedAlerts.count) {
-        AlertEntry *alert = self.displayedAlerts[selectedRow];
-        
-        NSAlert *confirmAlert = [[NSAlert alloc] init];
-        confirmAlert.messageText = @"Elimina Alert";
-        confirmAlert.informativeText = [NSString stringWithFormat:@"Sei sicuro di voler eliminare l'alert per %@?", alert.symbol];
-        [confirmAlert addButtonWithTitle:@"Elimina"];
-        [confirmAlert addButtonWithTitle:@"Annulla"];
-        
-        if ([confirmAlert runModal] == NSAlertFirstButtonReturn) {
-            [[AlertManager sharedManager] removeAlert:alert];
-            [self refreshData];
+    if (selectedRow < 0 || selectedRow >= self.displayedAlerts.count) return;
+    
+    AlertEntry *alertToDelete = self.displayedAlerts[selectedRow];
+    
+    // Conferma eliminazione
+    NSAlert *confirm = [[NSAlert alloc] init];
+    confirm.messageText = @"Elimina Alert";
+    confirm.informativeText = [NSString stringWithFormat:@"Sei sicuro di voler eliminare l'alert per %@?", alertToDelete.symbol];
+    [confirm addButtonWithTitle:@"Elimina"];
+    [confirm addButtonWithTitle:@"Annulla"];
+    confirm.alertStyle = NSAlertStyleWarning;
+    
+    if ([confirm runModal] == NSAlertFirstButtonReturn) {
+        // Trova e rimuovi dal DataHub
+        NSArray<AlertData *> *alerts = [[SymbolDataHub sharedHub] alertsForSymbol:alertToDelete.symbol];
+
+        for (AlertData *alert in alerts) {
+            if ([alert.alertId isEqualToString:alertToDelete.alertID]) {
+                [[SymbolDataHub sharedHub] removeAlert:alert];
+                break;
+            }
         }
+
+        [self refreshData];
     }
 }
 
 - (void)clearTriggeredAlerts {
-    NSAlert *confirmAlert = [[NSAlert alloc] init];
-    confirmAlert.messageText = @"Pulisci Alert Scattati";
-    confirmAlert.informativeText = @"Sei sicuro di voler eliminare tutti gli alert scattati?";
-    [confirmAlert addButtonWithTitle:@"Elimina"];
-    [confirmAlert addButtonWithTitle:@"Annulla"];
+    NSAlert *confirm = [[NSAlert alloc] init];
+    confirm.messageText = @"Elimina Alert Scattati";
+    confirm.informativeText = @"Sei sicuro di voler eliminare tutti gli alert scattati?";
+    [confirm addButtonWithTitle:@"Elimina"];
+    [confirm addButtonWithTitle:@"Annulla"];
+    confirm.alertStyle = NSAlertStyleWarning;
     
-    if ([confirmAlert runModal] == NSAlertFirstButtonReturn) {
-        [[AlertManager sharedManager] removeTriggeredAlerts];
+    if ([confirm runModal] == NSAlertFirstButtonReturn) {
+        // Rimuovi tutti gli alert triggered dal DataHub
+        for (AlertEntry *entry in self.displayedAlerts) {
+            if (entry.status == AlertStatusTriggered) {
+                NSArray<AlertData *> *alerts = [[SymbolDataHub sharedHub] alertsForSymbol:entry.symbol];
+                
+                for (AlertData *alert in alerts) {
+                    if ([alert.alertId isEqualToString:entry.alertID]) {
+                        [[SymbolDataHub sharedHub] removeAlert:alert];
+                        break;
+                    }
+                }
+            }
+        }
+        
         [self refreshData];
     }
 }
 
 - (void)showAlertEditSheet:(AlertEntry *)alert {
-    NSLog(@"showAlertEditSheet chiamato con alert: %@", alert ? alert.alertID : @"NIL (NUOVO)");
-    
-    AlertEditWindowController *editController = [[AlertEditWindowController alloc] initWithAlert:alert];
+    AlertEditWindowController *editController = [[AlertEditWindowController alloc] init];
+    editController.alert = alert;
+    editController.isNewAlert = NO;
     
     [self.view.window beginSheet:editController.window completionHandler:^(NSModalResponse returnCode) {
-        NSLog(@"Sheet completata con returnCode: %ld", (long)returnCode);
-        
         if (returnCode == NSModalResponseOK) {
-            AlertEntry *editedAlert = editController.editedAlert;
-            NSLog(@"Alert editato: ID=%@, Symbol=%@, Price=%.5f",
-                  editedAlert.alertID, editedAlert.symbol, editedAlert.targetPrice);
+            // Aggiorna nel DataHub
+            NSArray<AlertData *> *alerts = [[SymbolDataHub sharedHub] alertsForSymbol:alert.symbol];
             
-            // FIXED: Check if the ORIGINAL alert was nil (not the editedAlert)
-            if (alert == nil) {
-                NSLog(@"Aggiungendo nuovo alert (original era nil)");
-                [[AlertManager sharedManager] addAlert:editedAlert];
-            } else {
-                NSLog(@"Aggiornando alert esistente con ID: %@", alert.alertID);
-                [[AlertManager sharedManager] updateAlert:editedAlert];
+            for (AlertData *dataHubAlert in alerts) {
+                if ([dataHubAlert.alertId isEqualToString:alert.alertID]) {
+                    // Aggiorna proprietà
+                    NSNumber *newPrice = @(editController.alert.targetPrice);
+                    NSMutableDictionary *conditions = [dataHubAlert.conditions mutableCopy];
+                    conditions[@"price"] = newPrice;
+                    dataHubAlert.conditions = conditions;
+                    
+                    dataHubAlert.type = editController.alert.alertType == AlertTypePriceAbove ? AlertTypePriceAbove : AlertTypePriceBelow;
+                    dataHubAlert.message = editController.alert.notes;
+                    
+                    [[SymbolDataHub sharedHub] saveContext];
+                    break;
+                }
             }
             
-            NSLog(@"Chiamando refreshData");
             [self refreshData];
-            
-            // Debug: verifica il numero di alert nella tabella
-            NSLog(@"Numero di alert nella tabella dopo refresh: %ld", (long)self.displayedAlerts.count);
         }
     }];
 }
 
+#pragma mark - DataHub Notifications
 
-#pragma mark - NSTableViewDataSource
-
-- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
-    return self.displayedAlerts.count;
-}
-
-- (id)tableView:(NSTableView *)tableView objectValueForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
-    if (row >= self.displayedAlerts.count) return nil;
+-- (void)dataHubUpdated:(NSNotification *)notification {
+    SymbolUpdateType updateType = [notification.userInfo[kUpdateTypeKey] integerValue];
     
-    AlertEntry *alert = self.displayedAlerts[row];
-    NSString *identifier = tableColumn.identifier;
-    
-    if ([identifier isEqualToString:@"symbol"]) {
-        return alert.symbol;
-    } else if ([identifier isEqualToString:@"type"]) {
-        return alert.alertTypeString;
-    } else if ([identifier isEqualToString:@"price"]) {
-        return [NSString stringWithFormat:@"%.2f", alert.targetPrice];
-    } else if ([identifier isEqualToString:@"status"]) {
-        return alert.statusString;
-    } else if ([identifier isEqualToString:@"date"]) {
-        NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-        formatter.dateStyle = NSDateFormatterShortStyle;
-        formatter.timeStyle = NSDateFormatterShortStyle;
-        
-        if (alert.status == AlertStatusTriggered && alert.triggerDate) {
-            return [formatter stringFromDate:alert.triggerDate];
-        } else {
-            return [formatter stringFromDate:alert.creationDate];
-        }
-    }
-    
-    return nil;
-}
-
-#pragma mark - NSTableViewDelegate
-
-- (void)tableView:(NSTableView *)tableView willDisplayCell:(NSTextFieldCell *)cell
- forTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
-    if (row >= self.displayedAlerts.count) return;
-    
-    AlertEntry *alert = self.displayedAlerts[row];
-    
-    // Colora di rosso gli alert scattati
-    if (alert.status == AlertStatusTriggered) {
-        cell.textColor = [NSColor redColor];
-        cell.font = [NSFont boldSystemFontOfSize:cell.font.pointSize];
-    } else if (alert.status == AlertStatusDisabled) {
-        cell.textColor = [NSColor grayColor];
-    } else {
-        cell.textColor = [NSColor labelColor];
-        cell.font = [NSFont systemFontOfSize:cell.font.pointSize];
+    if (updateType == SymbolUpdateTypeAlerts || updateType == SymbolUpdateTypeAll) {
+        [self refreshData];
     }
 }
 
-- (void)tableViewSelectionDidChange:(NSNotification *)notification {
-    [self updateButtonStates];
-}
-
-#pragma mark - AlertManagerDelegate
-
-- (void)alertManager:(id)manager didTriggerAlert:(AlertEntry *)alert {
-    // Refresh per mostrare l'alert scattato in rosso
-    [self refreshData];
+- (void)alertTriggered:(NSNotification *)notification {
+    AlertData *alert = notification.userInfo[@"alert"];
+    NSString *symbol = notification.userInfo[@"symbol"];
     
-    // Opzionale: seleziona l'alert scattato nella tabella
-    NSUInteger index = [self.displayedAlerts indexOfObjectPassingTest:^BOOL(AlertEntry *obj, NSUInteger idx, BOOL *stop) {
-        return [obj.alertID isEqualToString:alert.alertID];
-    }];
+    // Mostra notifica
+    NSUserNotification *userNotification = [[NSUserNotification alloc] init];
+    userNotification.title = [NSString stringWithFormat:@"Alert Scattato: %@", symbol];
+    userNotification.informativeText = alert.message ?: [NSString stringWithFormat:@"Il prezzo ha raggiunto %.2f", [alert.conditions[@"price"] doubleValue]];
+    userNotification.soundName = NSUserNotificationDefaultSoundName;
     
-    if (index != NSNotFound) {
-        [self.tableView selectRowIndexes:[NSIndexSet indexSetWithIndex:index] byExtendingSelection:NO];
-        [self.tableView scrollRowToVisible:index];
-    }
-}
-
-- (void)alertManagerDidUpdateAlerts:(id)manager {
+    [[NSUserNotificationCenter defaultUserNotificationCenter] deliverNotification:userNotification];
+    
+    // Refresh per mostrare lo stato aggiornato
     [self refreshData];
 }
 
-#pragma mark - Notifications
-
-- (void)alertsUpdated:(NSNotification *)notification {
-    [self refreshData];
-}
+#pragma mark - Widget Chain
 
 - (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
     NSString *action = update[@"action"];
- //todo
-    if ([action isEqualToString:@"setSymbols"]) {
-        NSArray *symbols = update[@"symbols"];
-        // AlertWidget può gestire tutti i simboli
-        for (NSString *symbol in symbols) {
-      //      [self addNewAlert:symbol];
+    
+    if ([action isEqualToString:@"setSymbol"]) {
+        NSString *symbol = update[@"symbol"];
+        if (symbol) {
+            // Crea nuovo alert per il simbolo ricevuto
+            AlertEntry *newAlert = [AlertEntry alertWithSymbol:symbol targetPrice:0 type:AlertTypePriceAbove];
+            [self showAlertEditSheet:newAlert];
         }
     }
 }

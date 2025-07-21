@@ -2,19 +2,17 @@
 //  AlertEntry.h
 //  TradingApp
 //
+//  MODIFICATO: Ora usa SymbolDataModels invece di definire propri enum
+//
 
 #import <Foundation/Foundation.h>
+#import "SymbolDataModels.h"  // Import per AlertType e AlertStatus
 
-typedef NS_ENUM(NSInteger, AlertType) {
-    AlertTypeAbove = 0,  // Prezzo sopra il target
-    AlertTypeBelow = 1   // Prezzo sotto il target
-};
+// RIMOSSI gli enum AlertType e AlertStatus - ora usiamo quelli di SymbolDataModels
 
-typedef NS_ENUM(NSInteger, AlertStatus) {
-    AlertStatusActive = 0,
-    AlertStatusTriggered = 1,
-    AlertStatusDisabled = 2
-};
+// Mapping per compatibilità con il vecchio codice
+#define AlertTypeAbove AlertTypePriceAbove
+#define AlertTypeBelow AlertTypePriceBelow
 
 @interface AlertEntry : NSObject <NSCoding, NSCopying>
 
@@ -38,5 +36,9 @@ typedef NS_ENUM(NSInteger, AlertStatus) {
 - (BOOL)shouldTriggerForPrice:(double)currentPrice;
 - (NSDictionary *)toDictionary;
 + (instancetype)fromDictionary:(NSDictionary *)dict;
+
+// NUOVO: Metodo per convertire in AlertData del nuovo sistema
+- (AlertData *)toAlertData;
++ (instancetype)fromAlertData:(AlertData *)alertData;
 
 @end

@@ -28,24 +28,11 @@
 @property (nonatomic, strong) NSArray<NSString *> *filteredSymbols;
 @property (nonatomic, strong) NSMutableDictionary *symbolDataCache;
 
+// Additional properties needed for GeneralMarketWidget compatibility
+@property (nonatomic, assign) NSInteger pageSize;
+@property (nonatomic, strong) NSMutableArray *dataSource;
+
 // Refresh timer
 @property (nonatomic, strong) NSTimer *refreshTimer;
-
-@end
-
-// Window controller for managing watchlists
-@interface WatchlistManagerController : NSWindowController <NSTableViewDelegate, NSTableViewDataSource>
-
-@property (nonatomic, copy) void (^completionHandler)(BOOL changed);
-
-@end
-
-// Window controller for adding symbols
-@interface AddSymbolController : NSWindowController <NSTextFieldDelegate>
-
-@property (nonatomic, strong) Watchlist *watchlist;
-@property (nonatomic, copy) void (^completionHandler)(NSArray<NSString *> *symbols);
-
-- (instancetype)initWithWatchlist:(Watchlist *)watchlist;
 
 @end

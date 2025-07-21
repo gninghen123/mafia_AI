@@ -4,6 +4,7 @@
 //
 
 #import "AlertWidget.h"
+#import "AlertEditController.h"
 #import "DataHub.h"
 #import "Alert+CoreDataClass.h"
 
@@ -13,15 +14,19 @@
 
 @implementation AlertWidget
 
-- (instancetype)init {
-    self = [super initWithType:@"Alert" panelType:PanelTypeLeft];
+- (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType {
+    self = [super initWithType:type panelType:panelType];
     if (self) {
-        [self setupUI];
-        [self setupDateFormatter];
-        [self registerForNotifications];
-        [self loadAlerts];
+        _currentFilter = 0; // Default to "All"
     }
     return self;
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    [self setupDateFormatter];
+    [self registerForNotifications];
+    [self loadAlerts];
 }
 
 - (void)dealloc {
@@ -30,7 +35,13 @@
 
 #pragma mark - Setup
 
-- (void)setupUI {
+- (void)setupContentView {
+    [super setupContentView];
+    
+    // Usa il contentView fornito da BaseWidget
+    NSView *container = self.contentView;
+    container.translatesAutoresizingMaskIntoConstraints = NO;
+    
     // Main container
     self.scrollView = [[NSScrollView alloc] init];
     self.scrollView.hasVerticalScroller = YES;
@@ -94,15 +105,15 @@
     [toolbar addSubview:self.statusLabel];
     
     // Add to main view
-    [self.view addSubview:toolbar];
-    [self.view addSubview:self.scrollView];
+    [container addSubview:toolbar];
+    [container addSubview:self.scrollView];
     
     // Setup constraints
     [NSLayoutConstraint activateConstraints:@[
         // Toolbar
-        [toolbar.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:5],
-        [toolbar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:5],
-        [toolbar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-5],
+        [toolbar.topAnchor constraintEqualToAnchor:container.topAnchor constant:5],
+        [toolbar.leadingAnchor constraintEqualToAnchor:container.leadingAnchor constant:5],
+        [toolbar.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-5],
         [toolbar.heightAnchor constraintEqualToConstant:30],
         
         // Filter control
@@ -125,9 +136,9 @@
         
         // Scroll view
         [self.scrollView.topAnchor constraintEqualToAnchor:toolbar.bottomAnchor constant:5],
-        [self.scrollView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [self.scrollView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.scrollView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
+        [self.scrollView.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
+        [self.scrollView.trailingAnchor constraintEqualToAnchor:container.trailingAnchor],
+        [self.scrollView.bottomAnchor constraintEqualToAnchor:container.bottomAnchor]
     ]];
 }
 

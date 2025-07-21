@@ -25,13 +25,3 @@
 @property (nonatomic, assign) NSInteger currentFilter; // 0=All, 1=Active, 2=Triggered
 
 @end
-
-// Alert creation/edit window controller
-@interface AlertEditController : NSWindowController
-
-@property (nonatomic, strong) Alert *alert; // nil for new alert
-@property (nonatomic, copy) void (^completionHandler)(Alert *alert, BOOL saved);
-
-- (instancetype)initWithAlert:(Alert *)alert;
-
-@end

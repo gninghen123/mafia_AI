@@ -4,6 +4,7 @@
 //
 
 #import "WatchlistWidget.h"
+#import "WatchlistManagerController.h"
 #import "DataHub.h"
 #import "Watchlist+CoreDataClass.h"
 
@@ -14,17 +15,22 @@
 
 @implementation WatchlistWidget
 
-- (instancetype)init {
-    self = [super initWithType:@"Watchlist" panelType:PanelTypeLeft];
+- (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType {
+    self = [super initWithType:type panelType:panelType];
     if (self) {
-        self.symbolDataCache = [NSMutableDictionary dictionary];
-        [self setupFormatters];
-        [self setupUI];
-        [self registerForNotifications];
-        [self loadWatchlists];
-        [self startRefreshTimer];
+        _symbolDataCache = [NSMutableDictionary dictionary];
+        _pageSize = 50; // Default
+        _dataSource = [NSMutableArray array];
     }
     return self;
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    [self setupFormatters];
+    [self registerForNotifications];
+    [self loadWatchlists];
+    [self startRefreshTimer];
 }
 
 - (void)dealloc {
@@ -49,7 +55,13 @@
     self.percentFormatter.negativeSuffix = @"%";
 }
 
-- (void)setupUI {
+- (void)setupContentView {
+    [super setupContentView];
+    
+    // Usa il contentView fornito da BaseWidget
+    NSView *container = self.contentView;
+    container.translatesAutoresizingMaskIntoConstraints = NO;
+    
     // Top toolbar
     NSView *toolbar = [[NSView alloc] init];
     toolbar.translatesAutoresizingMaskIntoConstraints = NO;
@@ -126,15 +138,15 @@
     [toolbar addSubview:self.loadingIndicator];
     
     // Add to main view
-    [self.view addSubview:toolbar];
-    [self.view addSubview:self.scrollView];
+    [container addSubview:toolbar];
+    [container addSubview:self.scrollView];
     
     // Setup constraints
     [NSLayoutConstraint activateConstraints:@[
         // Toolbar
-        [toolbar.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:5],
-        [toolbar.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor constant:5],
-        [toolbar.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-5],
+        [toolbar.topAnchor constraintEqualToAnchor:container.topAnchor constant:5],
+        [toolbar.leadingAnchor constraintEqualToAnchor:container.leadingAnchor constant:5],
+        [toolbar.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-5],
         [toolbar.heightAnchor constraintEqualToConstant:30],
         
         // Watchlist selector
@@ -167,9 +179,9 @@
         
         // Scroll view
         [self.scrollView.topAnchor constraintEqualToAnchor:toolbar.bottomAnchor constant:5],
-        [self.scrollView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [self.scrollView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.scrollView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
+        [self.scrollView.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
+        [self.scrollView.trailingAnchor constraintEqualToAnchor:container.trailingAnchor],
+        [self.scrollView.bottomAnchor constraintEqualToAnchor:container.bottomAnchor]
     ]];
 }
 
@@ -335,7 +347,7 @@
     menu.delegate = self;
     
     NSPoint point = NSMakePoint(NSMinX(self.watchlistMenuButton.frame), NSMinY(self.watchlistMenuButton.frame));
-    [menu popUpMenuPositioningItem:nil atLocation:point inView:self.view];
+    [menu popUpMenuPositioningItem:nil atLocation:point inView:self.contentView];
 }
 
 - (void)searchFieldChanged:(id)sender {
@@ -584,7 +596,7 @@
 
 - (NSDictionary *)serializeState {
     NSMutableDictionary *state = [NSMutableDictionary dictionary];
-            state[@"widgetType"] = @"Watchlist";
+    state[@"widgetType"] = @"Watchlist";
     state[@"widgetID"] = self.widgetID ?: @"";
     
     if (self.currentWatchlist) {

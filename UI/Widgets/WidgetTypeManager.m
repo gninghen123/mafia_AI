@@ -64,6 +64,7 @@
             @"Technical Indicators",
             @"Scanner",
             @"Alerts",
+            @"Alerts",
             @"Strategy Tester",
             @"Correlation Matrix",
             @"Options Chain"
@@ -108,6 +109,7 @@
     typeToClass[@"Volume Profile"] = [CHChartWidget class];
     typeToClass[@"Heatmap"] = [CHChartWidget class];
     typeToClass[@"Alerts"] = [AlertWidget class];
+    typeToClass[@"Alert"] = [AlertWidget class];
 
     // Map all other types to BaseWidget for now
     for (NSArray *types in self.widgetCategories.allValues) {

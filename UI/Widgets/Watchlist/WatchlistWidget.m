@@ -7,6 +7,8 @@
 #import "WatchlistManagerController.h"
 #import "DataHub.h"
 #import "Watchlist+CoreDataClass.h"
+#import "AddSymbolController.h"
+
 
 @interface WatchlistWidget ()
 @property (nonatomic, strong) NSNumberFormatter *priceFormatter;
@@ -360,7 +362,7 @@
         return;
     }
     
-    AddSymbolController *controller = [[AddSymbolController alloc] initWithWatchlist:self.currentWatchlist];
+    AddSymbolController *controller = [[AddSymbolController alloc] initWithWatchlistName:self.currentWatchlist.name];
     controller.completionHandler = ^(NSArray<NSString *> *symbols) {
         if (symbols.count > 0) {
             DataHub *hub = [DataHub shared];

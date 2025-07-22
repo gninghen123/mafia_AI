@@ -5,7 +5,7 @@
 
 #import <Cocoa/Cocoa.h>
 
-@interface WatchlistManagerController : NSWindowController <NSTableViewDelegate, NSTableViewDataSource>
+@interface WatchlistManagerController : NSWindowController <NSTableViewDataSource, NSTableViewDelegate>
 
 @property (nonatomic, copy) void (^completionHandler)(BOOL changed);
 

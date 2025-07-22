@@ -7,6 +7,8 @@
     <objects>
         <customObject id="-2" userLabel="File's Owner" customClass="AddSymbolController">
             <connections>
+                <outlet property="addButton" destination="ZPL-xR-N3F" id="31p-Ku-5mo"/>
+                <outlet property="cancelButton" destination="dm3-RO-WJ8" id="X0K-YA-QBo"/>
                 <outlet property="exchangeTextField" destination="eIf-1t-hdS" id="7hk-m7-Zd8"/>
                 <outlet property="nameTextField" destination="y6s-Wj-Vxp" id="Sxu-mo-ceW"/>
                 <outlet property="progressIndicator" destination="1mX-Z9-iRt" id="H5z-8Y-lv8"/>

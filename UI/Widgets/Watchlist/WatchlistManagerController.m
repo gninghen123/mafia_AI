@@ -3,10 +3,9 @@
 //  mafia_AI
 //
 
-#import "WatchlistManagerController.h"  // QUESTO È IL FIX PRINCIPALE!
+#import "WatchlistManagerController.h"
 #import "DataHub.h"
 #import "Watchlist+CoreDataClass.h"
-#import "AddSymbolController.h"
 
 @interface WatchlistManagerController ()
 @property (nonatomic, strong) NSTableView *tableView;
@@ -19,9 +18,11 @@
 @implementation WatchlistManagerController
 
 - (instancetype)init {
-    self = [super initWithWindowNibName:@""];
+    self = [super init];
     if (self) {
+        // Non chiamare super initWithWindowNibName con stringa vuota
         [self setupWindow];
+        [self setupUI];
         [self loadWatchlists];
     }
     return self;
@@ -37,8 +38,10 @@
     window.title = @"Manage Watchlists";
     window.minSize = NSMakeSize(300, 200);
     self.window = window;
-    
-    NSView *contentView = window.contentView;
+}
+
+- (void)setupUI {
+    NSView *contentView = self.window.contentView;
     
     // Table view
     NSScrollView *scrollView = [[NSScrollView alloc] init];
@@ -67,32 +70,44 @@
     [contentView addSubview:scrollView];
     
     // Buttons
-    self.addButton = [NSButton buttonWithTitle:@"Add" target:self action:@selector(addWatchlist:)];
+    self.addButton = [NSButton buttonWithTitle:@"Create New Watchlist"
+                                        target:self
+                                        action:@selector(addWatchlist:)];
     self.addButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.addButton.enabled = YES; // Assicurati che sia abilitato
     [contentView addSubview:self.addButton];
     
-    self.deleteButton = [NSButton buttonWithTitle:@"Delete" target:self action:@selector(deleteWatchlist:)];
+    self.deleteButton = [NSButton buttonWithTitle:@"Delete"
+                                           target:self
+                                           action:@selector(deleteWatchlist:)];
     self.deleteButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.deleteButton.enabled = NO;
+    self.deleteButton.enabled = NO; // Disabilitato finché non si seleziona una watchlist
     [contentView addSubview:self.deleteButton];
     
-    self.doneButton = [NSButton buttonWithTitle:@"Done" target:self action:@selector(done:)];
+    self.doneButton = [NSButton buttonWithTitle:@"Done"
+                                         target:self
+                                         action:@selector(done:)];
     self.doneButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.doneButton.keyEquivalent = @"\r"; // Enter key
     [contentView addSubview:self.doneButton];
     
     // Auto Layout
     [NSLayoutConstraint activateConstraints:@[
+        // ScrollView constraints
         [scrollView.topAnchor constraintEqualToAnchor:contentView.topAnchor constant:20],
         [scrollView.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:20],
         [scrollView.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20],
         [scrollView.bottomAnchor constraintEqualToAnchor:self.addButton.topAnchor constant:-20],
         
+        // Add button constraints
         [self.addButton.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:20],
         [self.addButton.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor constant:-20],
         
+        // Delete button constraints
         [self.deleteButton.leadingAnchor constraintEqualToAnchor:self.addButton.trailingAnchor constant:10],
         [self.deleteButton.bottomAnchor constraintEqualToAnchor:self.addButton.bottomAnchor],
         
+        // Done button constraints
         [self.doneButton.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20],
         [self.doneButton.bottomAnchor constraintEqualToAnchor:self.addButton.bottomAnchor]
     ]];
@@ -113,16 +128,37 @@
     [alert addButtonWithTitle:@"Cancel"];
     
     NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.placeholderString = @"Watchlist Name";
     alert.accessoryView = input;
     
+    // Make the text field first responder
+    [alert.window setInitialFirstResponder:input];
+    
     if ([alert runModal] == NSAlertFirstButtonReturn) {
-        NSString *name = input.stringValue;
+        NSString *name = [input.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
         if (name.length > 0) {
-            [[DataHub shared] createWatchlistWithName:name];
-            [self loadWatchlists];
+            // Check if watchlist with same name already exists
+            BOOL exists = NO;
+            for (Watchlist *watchlist in self.watchlists) {
+                if ([watchlist.name isEqualToString:name]) {
+                    exists = YES;
+                    break;
+                }
+            }
             
-            if (self.completionHandler) {
-                self.completionHandler(YES);
+            if (exists) {
+                NSAlert *errorAlert = [[NSAlert alloc] init];
+                errorAlert.messageText = @"Watchlist Already Exists";
+                errorAlert.informativeText = [NSString stringWithFormat:@"A watchlist named '%@' already exists.", name];
+                [errorAlert addButtonWithTitle:@"OK"];
+                [errorAlert runModal];
+            } else {
+                [[DataHub shared] createWatchlistWithName:name];
+                [self loadWatchlists];
+                
+                if (self.completionHandler) {
+                    self.completionHandler(YES);
+                }
             }
         }
     }
@@ -136,9 +172,10 @@
     
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"Delete Watchlist?";
-    alert.informativeText = [NSString stringWithFormat:@"Delete watchlist '%@'?", watchlist.name];
+    alert.informativeText = [NSString stringWithFormat:@"Are you sure you want to delete the watchlist '%@'? This action cannot be undone.", watchlist.name];
     [alert addButtonWithTitle:@"Delete"];
     [alert addButtonWithTitle:@"Cancel"];
+    alert.alertStyle = NSAlertStyleWarning;
     
     if ([alert runModal] == NSAlertFirstButtonReturn) {
         [[DataHub shared] deleteWatchlist:watchlist];

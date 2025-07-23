@@ -4,44 +4,10 @@
 //
 
 #import "BaseWidget.h"
+#import "WatchlistCellViews.h"
 
 @class Watchlist;
 
-// Custom cell view for symbol column
-@interface WatchlistSymbolCellView : NSTableCellView
-@property (nonatomic, strong) NSTextField *symbolField;
-@property (nonatomic, assign) BOOL isEditable;
-@end
-
-// Custom cell view for price column
-@interface WatchlistPriceCellView : NSTableCellView
-@property (nonatomic, strong) NSTextField *priceField;
-@end
-
-// Custom cell view for change column
-@interface WatchlistChangeCellView : NSTableCellView
-@property (nonatomic, strong) NSTextField *changeField;
-@property (nonatomic, strong) NSTextField *percentField;
-@property (nonatomic, strong) NSImageView *trendIcon;
-@end
-
-// Custom cell view for volume column
-@interface WatchlistVolumeCellView : NSTableCellView
-@property (nonatomic, strong) NSTextField *volumeField;
-@property (nonatomic, strong) NSProgressIndicator *volumeBar;
-@end
-
-// Custom cell view for market cap column
-@interface WatchlistMarketCapCellView : NSTableCellView
-@property (nonatomic, strong) NSTextField *marketCapField;
-@end
-
-// Custom cell view for watchlist items in sidebar
-@interface WatchlistSidebarCellView : NSTableCellView
-@property (nonatomic, strong) NSTextField *nameField;
-@property (nonatomic, strong) NSTextField *countField;
-@property (nonatomic, strong) NSImageView *iconView;
-@end
 
 @interface WatchlistWidget : BaseWidget <NSTableViewDelegate, NSTableViewDataSource, NSTextFieldDelegate>
 

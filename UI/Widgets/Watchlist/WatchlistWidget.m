@@ -8,8 +8,8 @@
 #import "Watchlist+CoreDataClass.h"
 #import "WatchlistManagerController.h"
 #import <QuartzCore/QuartzCore.h>
-#import "WatchlistCellViews.m"
-#import "WatchlistWidget+ViewBased.m"
+#import "WatchlistCellViews.h"
+
 
 
 @implementation WatchlistWidget

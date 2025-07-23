@@ -4,7 +4,8 @@
 //
 
 #import "DataHub.h"
-#import "Watchlist+CoreDataClass.h"
+#import "datamodels/Watchlist+CoreDataClass.h"
+#import "datamodels/Watchlist+CoreDataProperties.h"
 #import "Alert+CoreDataClass.h"
 #import "StockConnection+CoreDataClass.h"
 #import "TradingModel+CoreDataClass.h"
@@ -141,7 +142,17 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 }
 
 #pragma mark - Watchlist Management
+- (BOOL)isSymbolFavorite:(NSString *)symbol {
+    // For now, return NO until we implement favorites properly
+    // TODO: Implement favorites in Core Data model
+    return NO;
+}
 
+- (void)setSymbol:(NSString *)symbol favorite:(BOOL)favorite {
+    // TODO: Implement favorites in Core Data model
+    // For now, just log
+    NSLog(@"Setting favorite status for %@: %@", symbol, favorite ? @"YES" : @"NO");
+}
 - (void)loadWatchlists {
     NSFetchRequest *request = [Watchlist fetchRequest];
     request.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"sortOrder" ascending:YES]];

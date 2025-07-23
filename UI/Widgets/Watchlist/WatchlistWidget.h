@@ -46,6 +46,8 @@
 @interface WatchlistWidget : BaseWidget <NSTableViewDelegate, NSTableViewDataSource, NSTextFieldDelegate>
 
 // UI Elements
+@property (nonatomic, strong) NSLayoutConstraint *sidebarWidthConstraint;
+
 @property (nonatomic, strong) NSScrollView *scrollView;
 @property (nonatomic, strong) NSTableView *mainTableView;
 @property (nonatomic, strong) NSPopUpButton *watchlistPopup;
@@ -77,6 +79,14 @@
 @property (nonatomic, strong) NSArray<NSString *> *draggedSymbols;
 @property (nonatomic, strong) NSTimer *refreshTimer;
 @property (nonatomic, assign) BOOL showOnlyFavorites;
+@property (nonatomic, assign) BOOL sidebarVisible;
+
+// Import/Export
+@property (nonatomic, strong) NSArray<NSString *> *supportedImportFormats;
+
+// Data Arrays (legacy support)
+@property (nonatomic, strong) NSArray *mainDataArray;
+@property (nonatomic, strong) NSArray *sidebarDataArray;
 
 // Methods
 - (void)loadWatchlists;

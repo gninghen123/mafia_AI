@@ -7,7 +7,7 @@
 
 #import "WatchlistWidget.h"
 #import "DataHub.h"
-#import "Watchlist.h"
+#import "Watchlist+CoreDataClass.h"
 
 @implementation WatchlistWidget (ViewBasedTable)
 

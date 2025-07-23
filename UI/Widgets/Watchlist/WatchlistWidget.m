@@ -616,43 +616,28 @@
     */
 }
 
-- (void)toggleSidebar {
-    self.sidebarVisible = !self.sidebarVisible;
+- (void)toggleSidebar:(id)sender {
+    // Simple implementation without the sidebarVisible property
+    BOOL isHidden = self.temporarySidebar.hidden;
+    self.temporarySidebar.hidden = !isHidden;
     
-    if (self.sidebarVisible) {
-        // Mostra la sidebar
-        self.temporarySidebar.hidden = NO;
-        
-        // Aggiorna constraint della table view per fare spazio alla sidebar
-        for (NSLayoutConstraint *constraint in self.contentView.constraints) {
-            if (constraint.firstItem == self.scrollView &&
-                constraint.firstAttribute == NSLayoutAttributeTrailing) {
-                constraint.constant = -160; // 150px sidebar + 10px spacing
-                break;
-            }
-        }
-        
-        // Ricarica i dati della sidebar
-        [self.sidebarTableView reloadData];
-        
-        // Log per debug
-        NSLog(@"Sidebar shown. Watchlists count: %lu", (unsigned long)self.watchlists.count);
+    if (!isHidden) {
+        // Hiding sidebar
+        [NSLayoutConstraint deactivateConstraints:@[self.sidebarWidthConstraint]];
+        self.sidebarWidthConstraint = [self.temporarySidebar.widthAnchor constraintEqualToConstant:0];
+        [self.sidebarWidthConstraint setActive:YES];
     } else {
-        // Nascondi la sidebar
-        self.temporarySidebar.hidden = YES;
-        
-        // Ripristina constraint della table view
-        for (NSLayoutConstraint *constraint in self.contentView.constraints) {
-            if (constraint.firstItem == self.scrollView &&
-                constraint.firstAttribute == NSLayoutAttributeTrailing) {
-                constraint.constant = -5;
-                break;
-            }
-        }
+        // Showing sidebar
+        [NSLayoutConstraint deactivateConstraints:@[self.sidebarWidthConstraint]];
+        self.sidebarWidthConstraint = [self.temporarySidebar.widthAnchor constraintEqualToConstant:200];
+        [self.sidebarWidthConstraint setActive:YES];
+        [self.sidebarTableView reloadData];
     }
     
-    // Forza il layout update
-    [self.contentView layoutSubtreeIfNeeded];
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.25;
+        [self.view layoutSubtreeIfNeeded];
+    }];
 }
 
 - (void)showImportDialog {
@@ -908,100 +893,8 @@
 
 #pragma mark - NSTableViewDelegate - VIEW-BASED Implementation
 
-- (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
-    
-    // Identifier per le celle riutilizzabili
-    NSString *identifier = tableColumn.identifier;
-    
-    if (tableView == self.mainTableView) {
-        return [self mainTableViewForColumn:tableColumn row:row identifier:identifier];
-    } else if (tableView == self.sidebarTableView) {
-        return [self sidebarTableViewForColumn:tableColumn row:row identifier:identifier];
-    }
-    
-    return nil;
-}
 
-- (NSView *)mainTableViewForColumn:(NSTableColumn *)tableColumn row:(NSInteger)row identifier:(NSString *)identifier {
-    
-    // Crea o riusa una NSTableCellView
-    NSTableCellView *cellView = [self.mainTableView makeViewWithIdentifier:identifier owner:self];
-    
-    if (cellView == nil) {
-        // Crea una nuova cella se non esiste
-        cellView = [[NSTableCellView alloc] init];
-        cellView.identifier = identifier;
-        
-        // Crea il text field per la cella
-        NSTextField *textField = [[NSTextField alloc] init];
-        textField.translatesAutoresizingMaskIntoConstraints = NO;
-        textField.bordered = NO;
-        textField.backgroundColor = [NSColor clearColor];
-        textField.editable = YES; // Permette editing
-        textField.target = self;
-        textField.action = @selector(cellEditingFinished:);
-        
-        [cellView addSubview:textField];
-        cellView.textField = textField;
-        
-        // Auto Layout per il text field
-        [NSLayoutConstraint activateConstraints:@[
-            [textField.leadingAnchor constraintEqualToAnchor:cellView.leadingAnchor constant:2],
-            [textField.trailingAnchor constraintEqualToAnchor:cellView.trailingAnchor constant:-2],
-            [textField.topAnchor constraintEqualToAnchor:cellView.topAnchor],
-            [textField.bottomAnchor constraintEqualToAnchor:cellView.bottomAnchor]
-        ]];
-    }
-    
-    // Popola la cella con i dati
-    if (row < [self.mainDataArray count]) {
-        // Sostituisci con la tua logica di popolamento dati
-        id dataObject = [self.mainDataArray objectAtIndex:row];
-        cellView.textField.stringValue = [self stringValueForObject:dataObject column:identifier];
-        
-        // Salva row e column per l'editing
-        cellView.textField.tag = row;
-    }
-    
-    return cellView;
-}
 
-- (NSView *)sidebarTableViewForColumn:(NSTableColumn *)tableColumn row:(NSInteger)row identifier:(NSString *)identifier {
-    
-    NSTableCellView *cellView = [self.sidebarTableView makeViewWithIdentifier:identifier owner:self];
-    
-    if (cellView == nil) {
-        cellView = [[NSTableCellView alloc] init];
-        cellView.identifier = identifier;
-        
-        NSTextField *textField = [[NSTextField alloc] init];
-        textField.translatesAutoresizingMaskIntoConstraints = NO;
-        textField.bordered = NO;
-        textField.backgroundColor = [NSColor clearColor];
-        textField.editable = YES;
-        textField.target = self;
-        textField.action = @selector(sidebarCellEditingFinished:);
-        
-        [cellView addSubview:textField];
-        cellView.textField = textField;
-        
-        [NSLayoutConstraint activateConstraints:@[
-            [textField.leadingAnchor constraintEqualToAnchor:cellView.leadingAnchor constant:2],
-            [textField.trailingAnchor constraintEqualToAnchor:cellView.trailingAnchor constant:-2],
-            [textField.topAnchor constraintEqualToAnchor:cellView.topAnchor],
-            [textField.bottomAnchor constraintEqualToAnchor:cellView.bottomAnchor]
-        ]];
-    }
-    
-    // Popola la cella sidebar
-    if (row < [self.sidebarDataArray count]) {
-        id dataObject = [self.sidebarDataArray objectAtIndex:row];
-        cellView.textField.stringValue = [self stringValueForObject:dataObject column:identifier];
-        cellView.textField.tag = row;
-    }
-    
-    return cellView;
-}
 
 
 - (void)flashRow:(NSInteger)row color:(NSColor *)color {
@@ -1029,35 +922,7 @@
 
 #pragma mark - NSTableViewDelegate
 
-- (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
-    if (tableView.tag == 1002) {
-        NSTableCellView *cellView = [tableView makeViewWithIdentifier:@"WatchlistCell" owner:self];
-        if (!cellView) {
-            cellView = [[NSTableCellView alloc] init];
-            cellView.identifier = @"WatchlistCell";
-            
-            NSTextField *textField = [NSTextField labelWithString:@""];
-            textField.translatesAutoresizingMaskIntoConstraints = NO;
-            [cellView addSubview:textField];
-            cellView.textField = textField;
-            
-            [NSLayoutConstraint activateConstraints:@[
-                [textField.leadingAnchor constraintEqualToAnchor:cellView.leadingAnchor constant:5],
-                [textField.centerYAnchor constraintEqualToAnchor:cellView.centerYAnchor]
-            ]];
-        }
-        
-        if (row < self.watchlists.count) {
-            Watchlist *watchlist = self.watchlists[row];
-            cellView.textField.stringValue = [NSString stringWithFormat:@"%@ (%lu)", watchlist.name, watchlist.symbols.count];
-        }
-        
-        return cellView;
-    }
-    
-    // Main table
-    return nil; // Use default text cell
-}
+
 
 - (BOOL)tableView:(NSTableView *)tableView shouldEditTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
     // Only allow editing the symbol column on the last row
@@ -1120,6 +985,7 @@
     
     return NO;
 }
+/*
 - (BOOL)tableView:(NSTableView *)tableView writeRowsWithIndexes:(NSIndexSet *)rowIndexes toPasteboard:(NSPasteboard *)pboard {
     if (tableView.tag != 1001) return NO;
     
@@ -1145,7 +1011,7 @@
     
     return NO;
 }
-
+*/
 - (NSDragOperation)tableView:(NSTableView *)tableView validateDrop:(id<NSDraggingInfo>)info proposedRow:(NSInteger)row proposedDropOperation:(NSTableViewDropOperation)dropOperation {
     if (tableView.tag == 1002 && self.draggedSymbols.count > 0) {
         // Allow drop on watchlists in sidebar

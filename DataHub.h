@@ -90,6 +90,8 @@ typedef NS_ENUM(NSInteger, ModelStatus) {
 - (void)removeSymbol:(NSString *)symbol fromWatchlist:(Watchlist *)watchlist;
 - (NSArray<NSString *> *)getSymbolsForWatchlist:(Watchlist *)watchlist;
 - (void)updateWatchlistName:(Watchlist *)watchlist newName:(NSString *)newName;
+- (BOOL)isSymbolFavorite:(NSString *)symbol;
+- (void)setSymbol:(NSString *)symbol favorite:(BOOL)favorite;
 
 // MARK: - Alert Management
 - (NSArray<Alert *> *)getAllAlerts;

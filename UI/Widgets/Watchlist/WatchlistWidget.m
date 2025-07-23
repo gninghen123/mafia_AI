@@ -8,6 +8,9 @@
 #import "Watchlist+CoreDataClass.h"
 #import "WatchlistManagerController.h"
 #import <QuartzCore/QuartzCore.h>
+#import "WatchlistCellViews.m"
+#import "WatchlistWidget+ViewBased.m"
+
 
 @implementation WatchlistWidget
 
@@ -132,7 +135,16 @@
     self.mainTableView.doubleAction = @selector(doubleClickedRow:);
     self.mainTableView.target = self;
     self.mainTableView.tag = 1001;
-    
+    self.mainTableView.rowHeight = 28.0;
+       self.mainTableView.intercellSpacing = NSMakeSize(0, 2);
+       self.mainTableView.gridStyleMask = NSTableViewSolidHorizontalGridLineMask;
+       self.mainTableView.gridColor = [NSColor separatorColor];
+       
+       // Enable alternating row colors for better readability
+       self.mainTableView.usesAlternatingRowBackgroundColors = YES;
+       
+       // Set selection highlight style
+       self.mainTableView.selectionHighlightStyle = NSTableViewSelectionHighlightStyleRegular;
     // Enable drag and drop
     [self.mainTableView registerForDraggedTypes:@[NSPasteboardTypeString]];
     self.mainTableView.draggingDestinationFeedbackStyle = NSTableViewDraggingDestinationFeedbackStyleSourceList;
@@ -321,30 +333,50 @@
 }
 
 - (void)createTableColumns {
+    // Remove all existing columns
+    while (self.mainTableView.tableColumns.count > 0) {
+        [self.mainTableView removeTableColumn:self.mainTableView.tableColumns[0]];
+    }
+    
     // Symbol column (editable for adding new symbols)
     NSTableColumn *symbolColumn = [[NSTableColumn alloc] initWithIdentifier:@"symbol"];
     symbolColumn.title = @"Symbol";
     symbolColumn.width = 80;
-    symbolColumn.editable = YES;
+    symbolColumn.minWidth = 60;
+    symbolColumn.maxWidth = 120;
     [self.mainTableView addTableColumn:symbolColumn];
     
     // Price column
     NSTableColumn *priceColumn = [[NSTableColumn alloc] initWithIdentifier:@"price"];
     priceColumn.title = @"Price";
     priceColumn.width = 80;
+    priceColumn.minWidth = 70;
+    priceColumn.maxWidth = 100;
     [self.mainTableView addTableColumn:priceColumn];
     
-    // Change percent column
-    NSTableColumn *changePercentColumn = [[NSTableColumn alloc] initWithIdentifier:@"changePercent"];
-    changePercentColumn.title = @"Change %";
-    changePercentColumn.width = 80;
-    [self.mainTableView addTableColumn:changePercentColumn];
+    // Change column (includes both $ and %)
+    NSTableColumn *changeColumn = [[NSTableColumn alloc] initWithIdentifier:@"change"];
+    changeColumn.title = @"Change";
+    changeColumn.width = 120;
+    changeColumn.minWidth = 100;
+    changeColumn.maxWidth = 150;
+    [self.mainTableView addTableColumn:changeColumn];
     
     // Volume column
     NSTableColumn *volumeColumn = [[NSTableColumn alloc] initWithIdentifier:@"volume"];
     volumeColumn.title = @"Volume";
-    volumeColumn.width = 100;
+    volumeColumn.width = 80;
+    volumeColumn.minWidth = 70;
+    volumeColumn.maxWidth = 100;
     [self.mainTableView addTableColumn:volumeColumn];
+    
+    // Market Cap column
+    NSTableColumn *marketCapColumn = [[NSTableColumn alloc] initWithIdentifier:@"marketCap"];
+    marketCapColumn.title = @"Market Cap";
+    marketCapColumn.width = 100;
+    marketCapColumn.minWidth = 80;
+    marketCapColumn.maxWidth = 120;
+    [self.mainTableView addTableColumn:marketCapColumn];
 }
 
 #pragma mark - Data Management
@@ -426,7 +458,36 @@
   
 
 }
-
+- (void)filterSymbols {
+    NSString *searchText = self.searchField.stringValue.lowercaseString;
+    
+    if (searchText.length == 0 && !self.showOnlyFavorites) {
+        self.filteredSymbols = [self.symbols mutableCopy];
+    } else {
+        NSMutableArray *filtered = [NSMutableArray array];
+        
+        for (NSString *symbol in self.symbols) {
+            BOOL matchesSearch = (searchText.length == 0 ||
+                                [symbol.lowercaseString containsString:searchText]);
+            
+            BOOL matchesFavorite = !self.showOnlyFavorites ||
+                                  [[DataHub shared] isSymbolFavorite:symbol];
+            
+            if (matchesSearch && matchesFavorite) {
+                [filtered addObject:symbol];
+            }
+        }
+        
+        self.filteredSymbols = filtered;
+    }
+    
+    // Always ensure there's an empty row at the end for adding new symbols
+    if (self.filteredSymbols.count == 0 || self.filteredSymbols.lastObject.length > 0) {
+        [self.filteredSymbols addObject:@""];
+    }
+    
+    [self.mainTableView reloadData];
+}
 - (void)applyFilter {
     NSString *searchText = self.searchField.stringValue;
     
@@ -831,100 +892,117 @@
     if (tableView.tag == 1002) {
         return self.watchlists.count;
     }
-    return self.filteredSymbols.count;
+    
+    // Main table - always show one extra row for adding new symbols
+    NSInteger count = self.filteredSymbols.count;
+    
+    // Ensure we always have an empty row at the end
+    if (count == 0 || self.filteredSymbols.lastObject.length > 0) {
+        // Add empty string to allow new symbol entry
+        [self.filteredSymbols addObject:@""];
+        count = self.filteredSymbols.count;
+    }
+    
+    return count;
 }
 
-- (id)tableView:(NSTableView *)tableView objectValueForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
-    if (tableView.tag == 1002) {
-        // Sidebar showing watchlists
-        if (row < self.watchlists.count) {
-            Watchlist *watchlist = self.watchlists[row];
-            return [NSString stringWithFormat:@"%@ (%lu)", watchlist.name, watchlist.symbols.count];
-        }
-        return nil;
+#pragma mark - NSTableViewDelegate - VIEW-BASED Implementation
+
+- (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
+    
+    // Identifier per le celle riutilizzabili
+    NSString *identifier = tableColumn.identifier;
+    
+    if (tableView == self.mainTableView) {
+        return [self mainTableViewForColumn:tableColumn row:row identifier:identifier];
+    } else if (tableView == self.sidebarTableView) {
+        return [self sidebarTableViewForColumn:tableColumn row:row identifier:identifier];
     }
     
-    // Main table showing symbols
-    if (row >= self.filteredSymbols.count) return nil;
-    
-    NSString *symbol = self.filteredSymbols[row];
-    
-    if ([tableColumn.identifier isEqualToString:@"symbol"]) {
-        if (symbol.length == 0 && row == self.filteredSymbols.count - 1) {
-            // Last row - show placeholder
-            NSAttributedString *placeholder = [[NSAttributedString alloc] initWithString:@"Type symbol..."
-                                                                               attributes:@{NSForegroundColorAttributeName: [NSColor placeholderTextColor]}];
-            return placeholder;
-        }
-        return symbol;
-    }
-    
-    // For empty row, return empty values
-    if (symbol.length == 0) {
-        return @"--";
-    }
-    
-    // Get cached data for symbol
-    NSDictionary *data = self.symbolDataCache[symbol];
-    if (!data) return @"--";
-    
-    if ([tableColumn.identifier isEqualToString:@"price"]) {
-        NSNumber *price = data[@"price"];
-        return price ? [NSString stringWithFormat:@"$%.2f", price.doubleValue] : @"--";
-    }
-    else if ([tableColumn.identifier isEqualToString:@"change"]) {
-        NSNumber *change = data[@"change"];
-        if (change) {
-            double val = change.doubleValue;
-            return [NSString stringWithFormat:@"%@%.2f", (val >= 0 ? @"+" : @""), val];
-        }
-        return @"--";
-    }
-    else if ([tableColumn.identifier isEqualToString:@"changePercent"]) {
-        NSNumber *changePercent = data[@"changePercent"];
-        if (changePercent) {
-            double val = changePercent.doubleValue;
-            return [NSString stringWithFormat:@"%@%.2f%%", (val >= 0 ? @"+" : @""), val];
-        }
-        return @"--";
-    }
-    else if ([tableColumn.identifier isEqualToString:@"volume"]) {
-        NSNumber *volume = data[@"volume"];
-        if (volume) {
-            NSNumberFormatter *formatter = [[NSNumberFormatter alloc] init];
-            formatter.numberStyle = NSNumberFormatterDecimalStyle;
-            return [formatter stringFromNumber:volume];
-        }
-        return @"--";
-    }
-    
-    return @"";
+    return nil;
 }
 
-- (void)tableView:(NSTableView *)tableView setObjectValue:(id)object forTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
-    if (tableView.tag != 1001) return;
+- (NSView *)mainTableViewForColumn:(NSTableColumn *)tableColumn row:(NSInteger)row identifier:(NSString *)identifier {
     
-    if ([tableColumn.identifier isEqualToString:@"symbol"] && row == self.filteredSymbols.count - 1) {
-        // User is editing the last row - add new symbol
-        NSString *newSymbol = [[object description] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        newSymbol = [newSymbol uppercaseString];
+    // Crea o riusa una NSTableCellView
+    NSTableCellView *cellView = [self.mainTableView makeViewWithIdentifier:identifier owner:self];
+    
+    if (cellView == nil) {
+        // Crea una nuova cella se non esiste
+        cellView = [[NSTableCellView alloc] init];
+        cellView.identifier = identifier;
         
-        if (newSymbol.length > 0) {
-            // Check for duplicates
-            if (![self.symbols containsObject:newSymbol]) {
-                [[DataHub shared] addSymbol:newSymbol toWatchlist:self.currentWatchlist];
-                [self loadSymbolsForCurrentWatchlist];
-                
-                // Flash green for success
-                [self flashRow:row color:[NSColor systemGreenColor]];
-            } else {
-                // Flash yellow for duplicate
-                [self flashRow:row color:[NSColor systemYellowColor]];
-                NSBeep();
-            }
-        }
+        // Crea il text field per la cella
+        NSTextField *textField = [[NSTextField alloc] init];
+        textField.translatesAutoresizingMaskIntoConstraints = NO;
+        textField.bordered = NO;
+        textField.backgroundColor = [NSColor clearColor];
+        textField.editable = YES; // Permette editing
+        textField.target = self;
+        textField.action = @selector(cellEditingFinished:);
+        
+        [cellView addSubview:textField];
+        cellView.textField = textField;
+        
+        // Auto Layout per il text field
+        [NSLayoutConstraint activateConstraints:@[
+            [textField.leadingAnchor constraintEqualToAnchor:cellView.leadingAnchor constant:2],
+            [textField.trailingAnchor constraintEqualToAnchor:cellView.trailingAnchor constant:-2],
+            [textField.topAnchor constraintEqualToAnchor:cellView.topAnchor],
+            [textField.bottomAnchor constraintEqualToAnchor:cellView.bottomAnchor]
+        ]];
     }
+    
+    // Popola la cella con i dati
+    if (row < [self.mainDataArray count]) {
+        // Sostituisci con la tua logica di popolamento dati
+        id dataObject = [self.mainDataArray objectAtIndex:row];
+        cellView.textField.stringValue = [self stringValueForObject:dataObject column:identifier];
+        
+        // Salva row e column per l'editing
+        cellView.textField.tag = row;
+    }
+    
+    return cellView;
 }
+
+- (NSView *)sidebarTableViewForColumn:(NSTableColumn *)tableColumn row:(NSInteger)row identifier:(NSString *)identifier {
+    
+    NSTableCellView *cellView = [self.sidebarTableView makeViewWithIdentifier:identifier owner:self];
+    
+    if (cellView == nil) {
+        cellView = [[NSTableCellView alloc] init];
+        cellView.identifier = identifier;
+        
+        NSTextField *textField = [[NSTextField alloc] init];
+        textField.translatesAutoresizingMaskIntoConstraints = NO;
+        textField.bordered = NO;
+        textField.backgroundColor = [NSColor clearColor];
+        textField.editable = YES;
+        textField.target = self;
+        textField.action = @selector(sidebarCellEditingFinished:);
+        
+        [cellView addSubview:textField];
+        cellView.textField = textField;
+        
+        [NSLayoutConstraint activateConstraints:@[
+            [textField.leadingAnchor constraintEqualToAnchor:cellView.leadingAnchor constant:2],
+            [textField.trailingAnchor constraintEqualToAnchor:cellView.trailingAnchor constant:-2],
+            [textField.topAnchor constraintEqualToAnchor:cellView.topAnchor],
+            [textField.bottomAnchor constraintEqualToAnchor:cellView.bottomAnchor]
+        ]];
+    }
+    
+    // Popola la cella sidebar
+    if (row < [self.sidebarDataArray count]) {
+        id dataObject = [self.sidebarDataArray objectAtIndex:row];
+        cellView.textField.stringValue = [self stringValueForObject:dataObject column:identifier];
+        cellView.textField.tag = row;
+    }
+    
+    return cellView;
+}
+
 
 - (void)flashRow:(NSInteger)row color:(NSColor *)color {
     NSTableCellView *cellView = [self.mainTableView viewAtColumn:0 row:row makeIfNecessary:YES];
@@ -987,16 +1065,61 @@
 }
 
 - (void)tableViewSelectionDidChange:(NSNotification *)notification {
-    // Update remove button state
-    BOOL hasSelection = self.mainTableView.selectedRowIndexes.count > 0;
-    BOOL lastRowSelected = [self.mainTableView.selectedRowIndexes containsIndex:self.filteredSymbols.count - 1];
+    NSTableView *tableView = notification.object;
     
-    // Don't allow removing the empty last row
-    self.removeSymbolButton.enabled = hasSelection && !lastRowSelected;
+    if (tableView == self.mainTableView) {
+        // Update remove button state
+        NSIndexSet *selectedRows = tableView.selectedRowIndexes;
+        BOOL hasSelection = selectedRows.count > 0;
+        BOOL lastRowSelected = [selectedRows containsIndex:self.filteredSymbols.count - 1];
+        
+        // Don't allow removing the empty last row
+        self.removeSymbolButton.enabled = hasSelection && !lastRowSelected;
+    }
+}
+#pragma mark - Drag and Drop
+- (void)setupDragAndDropVisualFeedback {
+    // This should be called in setupUI after creating the table views
+    
+    // For main table
+    self.mainTableView.draggingDestinationFeedbackStyle = NSTableViewDraggingDestinationFeedbackStyleRegular;
+    [self.mainTableView setDraggingSourceOperationMask:NSDragOperationCopy forLocal:NO];
+    
+    // For sidebar
+    self.sidebarTableView.draggingDestinationFeedbackStyle = NSTableViewDraggingDestinationFeedbackStyleGap;
 }
 
-#pragma mark - Drag and Drop
-
+- (BOOL)tableView:(NSTableView *)tableView writeRowsWithIndexes:(NSIndexSet *)rowIndexes toPasteboard:(NSPasteboard *)pboard {
+    if (tableView.tag != 1001) return NO;
+    
+    // Don't allow dragging the empty last row
+    NSUInteger lastRow = self.filteredSymbols.count - 1;
+    if ([rowIndexes containsIndex:lastRow]) {
+        NSMutableIndexSet *adjustedIndexes = [rowIndexes mutableCopy];
+        [adjustedIndexes removeIndex:lastRow];
+        if (adjustedIndexes.count == 0) return NO;
+        rowIndexes = adjustedIndexes;
+    }
+    
+    NSMutableArray *symbols = [NSMutableArray array];
+    [rowIndexes enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL *stop) {
+        if (idx < self.filteredSymbols.count) {
+            NSString *symbol = self.filteredSymbols[idx];
+            if (symbol.length > 0) {
+                [symbols addObject:symbol];
+            }
+        }
+    }];
+    
+    if (symbols.count > 0) {
+        self.draggedSymbols = symbols;
+        [pboard declareTypes:@[NSPasteboardTypeString] owner:self];
+        [pboard setString:[symbols componentsJoinedByString:@","] forType:NSPasteboardTypeString];
+        return YES;
+    }
+    
+    return NO;
+}
 - (BOOL)tableView:(NSTableView *)tableView writeRowsWithIndexes:(NSIndexSet *)rowIndexes toPasteboard:(NSPasteboard *)pboard {
     if (tableView.tag != 1001) return NO;
     

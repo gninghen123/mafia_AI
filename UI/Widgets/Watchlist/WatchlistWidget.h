@@ -2,129 +2,86 @@
 //  WatchlistWidget.h
 //  mafia_AI
 //
-//  Widget per la gestione delle watchlist
-//
 
 #import "BaseWidget.h"
 
 @class Watchlist;
 
-@interface WatchlistWidget : BaseWidget <NSTableViewDelegate, NSTableViewDataSource, NSMenuDelegate, NSTextFieldDelegate>
+// Custom cell view for symbol column
+@interface WatchlistSymbolCellView : NSTableCellView
+@property (nonatomic, strong) NSTextField *symbolField;
+@property (nonatomic, assign) BOOL isEditable;
+@end
 
-// UI Components - Mantenuti per compatibilità
-@property (nonatomic, strong) NSSegmentedControl *watchlistSelector;
-@property (nonatomic, strong) NSButton *watchlistMenuButton;
+// Custom cell view for price column
+@interface WatchlistPriceCellView : NSTableCellView
+@property (nonatomic, strong) NSTextField *priceField;
+@end
+
+// Custom cell view for change column
+@interface WatchlistChangeCellView : NSTableCellView
+@property (nonatomic, strong) NSTextField *changeField;
+@property (nonatomic, strong) NSTextField *percentField;
+@property (nonatomic, strong) NSImageView *trendIcon;
+@end
+
+// Custom cell view for volume column
+@interface WatchlistVolumeCellView : NSTableCellView
+@property (nonatomic, strong) NSTextField *volumeField;
+@property (nonatomic, strong) NSProgressIndicator *volumeBar;
+@end
+
+// Custom cell view for market cap column
+@interface WatchlistMarketCapCellView : NSTableCellView
+@property (nonatomic, strong) NSTextField *marketCapField;
+@end
+
+// Custom cell view for watchlist items in sidebar
+@interface WatchlistSidebarCellView : NSTableCellView
+@property (nonatomic, strong) NSTextField *nameField;
+@property (nonatomic, strong) NSTextField *countField;
+@property (nonatomic, strong) NSImageView *iconView;
+@end
+
+@interface WatchlistWidget : BaseWidget <NSTableViewDelegate, NSTableViewDataSource, NSTextFieldDelegate>
+
+// UI Elements
 @property (nonatomic, strong) NSScrollView *scrollView;
 @property (nonatomic, strong) NSTableView *mainTableView;
-@property (nonatomic, strong) NSTextField *searchField;
-@property (nonatomic, strong) NSButton *addSymbolButton;
-@property (nonatomic, strong) NSButton *removeSymbolButton;
-@property (nonatomic, strong) NSProgressIndicator *loadingIndicator;
-
-// UI Components - Nuova interfaccia
 @property (nonatomic, strong) NSPopUpButton *watchlistPopup;
 @property (nonatomic, strong) NSButton *previousButton;
 @property (nonatomic, strong) NSButton *nextButton;
 @property (nonatomic, strong) NSButton *favoriteButton;
 @property (nonatomic, strong) NSButton *organizeButton;
-@property (nonatomic, strong) NSTextField *quickAddField;
+@property (nonatomic, strong) NSSearchField *searchField;
 @property (nonatomic, strong) NSButton *importButton;
+@property (nonatomic, strong) NSButton *removeSymbolButton;
+@property (nonatomic, strong) NSProgressIndicator *loadingIndicator;
 
-// UI Components - Main Area
+// Quick Add Bar
 @property (nonatomic, strong) NSView *quickAddBar;
+@property (nonatomic, strong) NSTextField *quickAddField;
+
+// Temporary Sidebar for drag & drop
 @property (nonatomic, strong) NSView *temporarySidebar;
 @property (nonatomic, strong) NSTableView *sidebarTableView;
-@property (nonatomic, assign) BOOL sidebarVisible;
 
 // Data
 @property (nonatomic, strong) NSArray<Watchlist *> *watchlists;
-@property (nonatomic, strong) NSArray<Watchlist *> *favoriteWatchlists;
 @property (nonatomic, strong) Watchlist *currentWatchlist;
-@property (nonatomic, strong) NSArray<NSString *> *symbols;
-@property (nonatomic, strong) NSArray<NSString *> *filteredSymbols;
+@property (nonatomic, strong) NSMutableArray<NSString *> *symbols;
+@property (nonatomic, strong) NSMutableArray<NSString *> *filteredSymbols;
 @property (nonatomic, strong) NSMutableDictionary *symbolDataCache;
 
 // State
-@property (nonatomic, assign) BOOL showOnlyFavorites;
-@property (nonatomic, assign) BOOL isEditingInline;
-@property (nonatomic, strong) NSString *pendingSymbol;
-@property (nonatomic, assign) NSInteger editingRow;
-
-// Drag & Drop
-@property (nonatomic, strong) NSArray *draggedSymbols;
-@property (nonatomic, assign) BOOL isDragging;
-
-// Import/Export
-@property (nonatomic, strong) NSArray *supportedImportFormats;
-
-// Additional properties needed for GeneralMarketWidget compatibility
-@property (nonatomic, assign) NSInteger pageSize;
-@property (nonatomic, strong) NSMutableArray *dataSource;
-
-// Refresh timer
+@property (nonatomic, strong) NSArray<NSString *> *draggedSymbols;
 @property (nonatomic, strong) NSTimer *refreshTimer;
+@property (nonatomic, assign) BOOL showOnlyFavorites;
 
-// Formatters
-@property (nonatomic, strong) NSNumberFormatter *priceFormatter;
-@property (nonatomic, strong) NSNumberFormatter *percentFormatter;
-
-// Methods - Setup
-- (void)setupQuickAddBar;
-- (void)setupTemporarySidebar;
-- (void)setupFormatters;
-- (void)registerForNotifications;
-
-// Methods - Navigation
-- (void)toggleSidebar;
-- (void)navigateToPreviousWatchlist;
-- (void)navigateToNextWatchlist;
-- (void)toggleFavoriteFilter;
-- (void)updateNavigationButtons;
-
-// Methods - Data Management
+// Methods
 - (void)loadWatchlists;
 - (void)loadSymbolsForCurrentWatchlist;
 - (void)refreshSymbolData;
-- (void)applyFilter;
-
-// Methods - Symbol Management
-- (void)processQuickAddInput:(NSString *)input;
-- (NSArray<NSString *> *)parseSymbolInput:(NSString *)input;
-- (void)validateAndAddSymbols:(NSArray<NSString *> *)symbols;
-- (void)removeSelectedSymbols:(id)sender;
-
-// Methods - Import/Export
-- (void)importFromCSV:(NSURL *)fileURL;
-- (void)showImportDialog;
-
-// Methods - UI Feedback
-- (void)showTemporaryMessage:(NSString *)message;
-- (void)flashRow:(NSInteger)row color:(NSColor *)color;
-
-// Methods - Timer
-- (void)startRefreshTimer;
-- (void)refreshTimerFired:(NSTimer *)timer;
-
-// Methods - Actions (compatibilità)
-- (void)watchlistChanged:(id)sender;
-- (void)showWatchlistMenu:(id)sender;
-- (void)searchFieldChanged:(id)sender;
-- (void)addSymbol:(id)sender;
-- (void)removeSymbol:(id)sender;
-- (void)manageWatchlists:(id)sender;
-- (void)createWatchlist:(id)sender;
-- (void)renameCurrentWatchlist:(id)sender;
-- (void)deleteCurrentWatchlist:(id)sender;
-
-// Methods - Actions (nuove)
-- (void)quickAddSymbols:(id)sender;
-- (void)hideQuickAddBar:(id)sender;
-
-// Methods - Table Support
-- (void)createTableColumns;
-
-// Methods - Notifications
-- (void)watchlistsUpdated:(NSNotification *)notification;
-- (void)symbolDataUpdated:(NSNotification *)notification;
+- (void)filterSymbols;
 
 @end

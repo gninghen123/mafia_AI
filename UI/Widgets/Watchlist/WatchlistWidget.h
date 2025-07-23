@@ -15,7 +15,7 @@
 @property (nonatomic, strong) NSSegmentedControl *watchlistSelector;
 @property (nonatomic, strong) NSButton *watchlistMenuButton;
 @property (nonatomic, strong) NSScrollView *scrollView;
-@property (nonatomic, strong) NSTableView *tableView;
+@property (nonatomic, strong) NSTableView *mainTableView;
 @property (nonatomic, strong) NSTextField *searchField;
 @property (nonatomic, strong) NSButton *addSymbolButton;
 @property (nonatomic, strong) NSButton *removeSymbolButton;

@@ -18,8 +18,9 @@
         self.title = @"Watchlist";
         self.symbolDataCache = [NSMutableDictionary dictionary];
         self.supportedImportFormats = @[@"csv", @"txt"];
-        [self loadWatchlists];
-        [self startRefreshTimer];
+        // Non chiamare loadWatchlists qui - il popup non esiste ancora!
+        // [self loadWatchlists];
+        // [self startRefreshTimer];
     }
     return self;
 }
@@ -102,6 +103,14 @@
     self.loadingIndicator.displayedWhenStopped = NO;
     self.loadingIndicator.translatesAutoresizingMaskIntoConstraints = NO;
     
+    // Quick add button - semplice pulsante + accanto alla ricerca
+    NSButton *quickAddButton = [NSButton buttonWithTitle:@"+"
+                                                  target:self
+                                                  action:@selector(showQuickAddDialog:)];
+    quickAddButton.bezelStyle = NSBezelStyleTexturedRounded;
+    quickAddButton.translatesAutoresizingMaskIntoConstraints = NO;
+    quickAddButton.toolTip = @"Add symbols to watchlist";
+    
     // Quick add bar (initially hidden)
     [self setupQuickAddBar];
     
@@ -112,21 +121,23 @@
     self.scrollView.borderType = NSNoBorder;
     self.scrollView.translatesAutoresizingMaskIntoConstraints = NO;
     
-    self.tableView = [[NSTableView alloc] init];
-    self.tableView.delegate = self;
-    self.tableView.dataSource = self;
-    self.tableView.rowHeight = 32;
-    self.tableView.intercellSpacing = NSMakeSize(0, 1);
-    self.tableView.gridStyleMask = NSTableViewSolidHorizontalGridLineMask;
-    self.tableView.columnAutoresizingStyle = NSTableViewUniformColumnAutoresizingStyle;
-    self.tableView.allowsMultipleSelection = YES;
+    self.mainTableView = [[NSTableView alloc] init];
+    self.mainTableView.delegate = self;
+    self.mainTableView.dataSource = self;
+    self.mainTableView.rowHeight = 32;
+    self.mainTableView.intercellSpacing = NSMakeSize(0, 1);
+    self.mainTableView.gridStyleMask = NSTableViewSolidHorizontalGridLineMask;
+    self.mainTableView.columnAutoresizingStyle = NSTableViewUniformColumnAutoresizingStyle;
+    self.mainTableView.allowsMultipleSelection = YES;
+    self.mainTableView.doubleAction = @selector(doubleClickedRow:);
+    self.mainTableView.target = self;
+    self.mainTableView.tag = 1001;
     
     // Enable drag and drop
-    [self.tableView registerForDraggedTypes:@[NSPasteboardTypeString]];
-    self.tableView.draggingDestinationFeedbackStyle = NSTableViewDraggingDestinationFeedbackStyleSourceList;
-    
+    [self.mainTableView registerForDraggedTypes:@[NSPasteboardTypeString]];
+    self.mainTableView.draggingDestinationFeedbackStyle = NSTableViewDraggingDestinationFeedbackStyleSourceList;
     [self createTableColumns];
-    self.scrollView.documentView = self.tableView;
+    self.scrollView.documentView = self.mainTableView;
     
     // Temporary sidebar for drag & drop
     [self setupTemporarySidebar];
@@ -138,6 +149,7 @@
     [toolbar addSubview:self.favoriteButton];
     [toolbar addSubview:self.organizeButton];
     [toolbar addSubview:self.searchField];
+    [toolbar addSubview:quickAddButton];
     [toolbar addSubview:self.importButton];
     [toolbar addSubview:self.removeSymbolButton];
     [toolbar addSubview:self.loadingIndicator];
@@ -196,8 +208,13 @@
         
         // Search field
         [self.searchField.leadingAnchor constraintEqualToAnchor:self.organizeButton.trailingAnchor constant:10],
-        [self.searchField.trailingAnchor constraintEqualToAnchor:self.loadingIndicator.leadingAnchor constant:-10],
+        [self.searchField.trailingAnchor constraintEqualToAnchor:quickAddButton.leadingAnchor constant:-5],
         [self.searchField.centerYAnchor constraintEqualToAnchor:toolbar.centerYAnchor],
+        
+        // Quick add button
+        [quickAddButton.trailingAnchor constraintEqualToAnchor:self.loadingIndicator.leadingAnchor constant:-5],
+        [quickAddButton.centerYAnchor constraintEqualToAnchor:toolbar.centerYAnchor],
+        [quickAddButton.widthAnchor constraintEqualToConstant:30],
         
         // Quick add bar (initially hidden)
         [self.quickAddBar.topAnchor constraintEqualToAnchor:toolbar.bottomAnchor constant:5],
@@ -209,8 +226,18 @@
         [self.scrollView.topAnchor constraintEqualToAnchor:self.quickAddBar.bottomAnchor constant:5],
         [self.scrollView.leadingAnchor constraintEqualToAnchor:container.leadingAnchor constant:5],
         [self.scrollView.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-5],
-        [self.scrollView.bottomAnchor constraintEqualToAnchor:container.bottomAnchor constant:-5]
+        [self.scrollView.bottomAnchor constraintEqualToAnchor:container.bottomAnchor constant:-5],
+        
+        // Temporary sidebar - posizionata sulla destra
+        [self.temporarySidebar.topAnchor constraintEqualToAnchor:self.scrollView.topAnchor],
+        [self.temporarySidebar.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-5],
+        [self.temporarySidebar.bottomAnchor constraintEqualToAnchor:self.scrollView.bottomAnchor],
+        [self.temporarySidebar.widthAnchor constraintEqualToConstant:150]
     ]];
+    
+    // Ora che tutto è configurato, carica le watchlist e avvia il timer
+    [self loadWatchlists];
+    [self startRefreshTimer];
 }
 
 - (void)setupQuickAddBar {
@@ -276,7 +303,8 @@
     self.sidebarTableView.delegate = self;
     self.sidebarTableView.dataSource = self;
     [self.sidebarTableView registerForDraggedTypes:@[NSPasteboardTypeString]];
-    
+    self.sidebarTableView.tag = 1002;
+
     NSTableColumn *column = [[NSTableColumn alloc] initWithIdentifier:@"watchlist"];
     column.title = @"Watchlists";
     [self.sidebarTableView addTableColumn:column];
@@ -298,31 +326,25 @@
     symbolColumn.title = @"Symbol";
     symbolColumn.width = 80;
     symbolColumn.editable = YES;
-    [self.tableView addTableColumn:symbolColumn];
+    [self.mainTableView addTableColumn:symbolColumn];
     
     // Price column
     NSTableColumn *priceColumn = [[NSTableColumn alloc] initWithIdentifier:@"price"];
     priceColumn.title = @"Price";
     priceColumn.width = 80;
-    [self.tableView addTableColumn:priceColumn];
-    
-    // Change column
-    NSTableColumn *changeColumn = [[NSTableColumn alloc] initWithIdentifier:@"change"];
-    changeColumn.title = @"Change";
-    changeColumn.width = 80;
-    [self.tableView addTableColumn:changeColumn];
+    [self.mainTableView addTableColumn:priceColumn];
     
     // Change percent column
     NSTableColumn *changePercentColumn = [[NSTableColumn alloc] initWithIdentifier:@"changePercent"];
     changePercentColumn.title = @"Change %";
     changePercentColumn.width = 80;
-    [self.tableView addTableColumn:changePercentColumn];
+    [self.mainTableView addTableColumn:changePercentColumn];
     
     // Volume column
     NSTableColumn *volumeColumn = [[NSTableColumn alloc] initWithIdentifier:@"volume"];
     volumeColumn.title = @"Volume";
     volumeColumn.width = 100;
-    [self.tableView addTableColumn:volumeColumn];
+    [self.mainTableView addTableColumn:volumeColumn];
 }
 
 #pragma mark - Data Management
@@ -389,7 +411,7 @@
     if (!self.currentWatchlist) {
         self.symbols = @[];
         self.filteredSymbols = @[];
-        [self.tableView reloadData];
+        [self.mainTableView reloadData];
         return;
     }
     
@@ -401,6 +423,8 @@
     self.symbols = symbolList;
     [self applyFilter];
     [self refreshSymbolData];
+  
+
 }
 
 - (void)applyFilter {
@@ -418,7 +442,7 @@
         self.filteredSymbols = filtered;
     }
     
-    [self.tableView reloadData];
+    [self.mainTableView reloadData];
 }
 
 #pragma mark - Actions
@@ -455,8 +479,21 @@
     }
 }
 
+- (void)doubleClickedRow:(id)sender {
+    NSInteger row = self.mainTableView.clickedRow;
+    NSInteger column = self.mainTableView.clickedColumn;
+    
+    if (row == self.filteredSymbols.count - 1 && column >= 0) {
+        // È l'ultima riga - inizia l'editing
+        NSTableColumn *tableColumn = self.mainTableView.tableColumns[column];
+        if ([tableColumn.identifier isEqualToString:@"symbol"]) {
+            [self.mainTableView editColumn:column row:row withEvent:nil select:YES];
+        }
+    }
+}
+
 - (void)removeSelectedSymbols:(id)sender {
-    NSIndexSet *selectedRows = self.tableView.selectedRowIndexes;
+    NSIndexSet *selectedRows = self.mainTableView.selectedRowIndexes;
     if (selectedRows.count == 0) return;
     
     NSMutableArray *symbolsToRemove = [NSMutableArray array];
@@ -522,28 +559,39 @@
     self.sidebarVisible = !self.sidebarVisible;
     
     if (self.sidebarVisible) {
+        // Mostra la sidebar
         self.temporarySidebar.hidden = NO;
-        // Add constraint for sidebar width
-        NSLayoutConstraint *widthConstraint = [self.temporarySidebar.widthAnchor constraintEqualToConstant:150];
-        widthConstraint.active = YES;
         
-        // Update table view constraint to make room
-        for (NSLayoutConstraint *constraint in self.scrollView.constraints) {
-            if (constraint.firstAttribute == NSLayoutAttributeTrailing) {
-                constraint.constant = -160;
+        // Aggiorna constraint della table view per fare spazio alla sidebar
+        for (NSLayoutConstraint *constraint in self.contentView.constraints) {
+            if (constraint.firstItem == self.scrollView &&
+                constraint.firstAttribute == NSLayoutAttributeTrailing) {
+                constraint.constant = -160; // 150px sidebar + 10px spacing
                 break;
             }
         }
+        
+        // Ricarica i dati della sidebar
+        [self.sidebarTableView reloadData];
+        
+        // Log per debug
+        NSLog(@"Sidebar shown. Watchlists count: %lu", (unsigned long)self.watchlists.count);
     } else {
+        // Nascondi la sidebar
         self.temporarySidebar.hidden = YES;
-        // Restore table view constraint
-        for (NSLayoutConstraint *constraint in self.scrollView.constraints) {
-            if (constraint.firstAttribute == NSLayoutAttributeTrailing) {
+        
+        // Ripristina constraint della table view
+        for (NSLayoutConstraint *constraint in self.contentView.constraints) {
+            if (constraint.firstItem == self.scrollView &&
+                constraint.firstAttribute == NSLayoutAttributeTrailing) {
                 constraint.constant = -5;
                 break;
             }
         }
     }
+    
+    // Forza il layout update
+    [self.contentView layoutSubtreeIfNeeded];
 }
 
 - (void)showImportDialog {
@@ -780,14 +828,14 @@
 #pragma mark - NSTableViewDataSource
 
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
-    if (tableView == self.sidebarTableView) {
+    if (tableView.tag == 1002) {
         return self.watchlists.count;
     }
     return self.filteredSymbols.count;
 }
 
 - (id)tableView:(NSTableView *)tableView objectValueForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
-    if (tableView == self.sidebarTableView) {
+    if (tableView.tag == 1002) {
         // Sidebar showing watchlists
         if (row < self.watchlists.count) {
             Watchlist *watchlist = self.watchlists[row];
@@ -854,7 +902,7 @@
 }
 
 - (void)tableView:(NSTableView *)tableView setObjectValue:(id)object forTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
-    if (tableView != self.tableView) return;
+    if (tableView.tag != 1001) return;
     
     if ([tableColumn.identifier isEqualToString:@"symbol"] && row == self.filteredSymbols.count - 1) {
         // User is editing the last row - add new symbol
@@ -879,7 +927,7 @@
 }
 
 - (void)flashRow:(NSInteger)row color:(NSColor *)color {
-    NSTableCellView *cellView = [self.tableView viewAtColumn:0 row:row makeIfNecessary:YES];
+    NSTableCellView *cellView = [self.mainTableView viewAtColumn:0 row:row makeIfNecessary:YES];
     if (cellView) {
         CALayer *flashLayer = [CALayer layer];
         flashLayer.backgroundColor = color.CGColor;
@@ -904,7 +952,7 @@
 #pragma mark - NSTableViewDelegate
 
 - (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
-    if (tableView == self.sidebarTableView) {
+    if (tableView.tag == 1002) {
         NSTableCellView *cellView = [tableView makeViewWithIdentifier:@"WatchlistCell" owner:self];
         if (!cellView) {
             cellView = [[NSTableCellView alloc] init];
@@ -940,8 +988,8 @@
 
 - (void)tableViewSelectionDidChange:(NSNotification *)notification {
     // Update remove button state
-    BOOL hasSelection = self.tableView.selectedRowIndexes.count > 0;
-    BOOL lastRowSelected = [self.tableView.selectedRowIndexes containsIndex:self.filteredSymbols.count - 1];
+    BOOL hasSelection = self.mainTableView.selectedRowIndexes.count > 0;
+    BOOL lastRowSelected = [self.mainTableView.selectedRowIndexes containsIndex:self.filteredSymbols.count - 1];
     
     // Don't allow removing the empty last row
     self.removeSymbolButton.enabled = hasSelection && !lastRowSelected;
@@ -950,7 +998,7 @@
 #pragma mark - Drag and Drop
 
 - (BOOL)tableView:(NSTableView *)tableView writeRowsWithIndexes:(NSIndexSet *)rowIndexes toPasteboard:(NSPasteboard *)pboard {
-    if (tableView != self.tableView) return NO;
+    if (tableView.tag != 1001) return NO;
     
     // Don't allow dragging the empty last row
     if ([rowIndexes containsIndex:self.filteredSymbols.count - 1]) return NO;
@@ -976,7 +1024,7 @@
 }
 
 - (NSDragOperation)tableView:(NSTableView *)tableView validateDrop:(id<NSDraggingInfo>)info proposedRow:(NSInteger)row proposedDropOperation:(NSTableViewDropOperation)dropOperation {
-    if (tableView == self.sidebarTableView && self.draggedSymbols.count > 0) {
+    if (tableView.tag == 1002 && self.draggedSymbols.count > 0) {
         // Allow drop on watchlists in sidebar
         return NSDragOperationCopy;
     }
@@ -984,7 +1032,7 @@
 }
 
 - (BOOL)tableView:(NSTableView *)tableView acceptDrop:(id<NSDraggingInfo>)info row:(NSInteger)row dropOperation:(NSTableViewDropOperation)dropOperation {
-    if (tableView == self.sidebarTableView && row < self.watchlists.count) {
+    if (tableView.tag == 1002 && row < self.watchlists.count) {
         Watchlist *targetWatchlist = self.watchlists[row];
         DataHub *hub = [DataHub shared];
         
@@ -1006,7 +1054,7 @@
 #pragma mark - Timer
 
 - (void)startRefreshTimer {
-    self.refreshTimer = [NSTimer scheduledTimerWithTimeInterval:5.0
+    self.refreshTimer = [NSTimer scheduledTimerWithTimeInterval:30.0
                                                          target:self
                                                        selector:@selector(refreshTimerFired:)
                                                        userInfo:nil
@@ -1035,7 +1083,7 @@
         
         dispatch_async(dispatch_get_main_queue(), ^{
             self.symbolDataCache = newCache;
-            [self.tableView reloadData];
+            [self.mainTableView reloadData];
             [self.loadingIndicator stopAnimation:nil];
         });
     });
@@ -1071,6 +1119,27 @@
         }
     } else {
         [super keyDown:event];
+    }
+}
+
+- (void)showQuickAddDialog:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Add Symbols";
+    alert.informativeText = @"Enter symbols separated by commas:";
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 300, 24)];
+    input.placeholderString = @"AAPL, MSFT, GOOGL";
+    alert.accessoryView = input;
+    
+    [alert addButtonWithTitle:@"Add"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        NSString *symbolsText = input.stringValue;
+        if (symbolsText.length > 0) {
+            NSArray *symbols = [self parseSymbolInput:symbolsText];
+            [self validateAndAddSymbols:symbols];
+        }
     }
 }
 

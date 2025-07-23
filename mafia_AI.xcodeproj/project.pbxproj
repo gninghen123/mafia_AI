@@ -129,16 +129,6 @@
 		95F1AD522E2E475500D96BDD /* DataHub.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = DataHub.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		95F1AFB32E30CB1900D96BDD /* Exceptions for "UI" folder in "mafia_AI" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				"Widgets/Watchlist/WatchlistWidget+ViewBased.m",
-			);
-			target = 954D2FFF2E28514A00C7DC88 /* mafia_AI */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		954D30022E28514A00C7DC88 /* mafia_AI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -162,9 +152,6 @@
 		};
 		95F1AD762E2E517E00D96BDD /* UI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				95F1AFB32E30CB1900D96BDD /* Exceptions for "UI" folder in "mafia_AI" target */,
-			);
 			path = UI;
 			sourceTree = "<group>";
 		};

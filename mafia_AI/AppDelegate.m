@@ -104,7 +104,8 @@
                 NSLog(@"AppDelegate: Schwab auto-connection successful");
                 
                 // Opzionale: Mostra una notifica di successo
-                [self showConnectionNotification:@"Connected to Schwab" success:YES];
+                //todo inserire preferenza per non mosrtare piu
+               // [self showConnectionNotification:@"Connected to Schwab" success:YES];
             } else {
                 NSLog(@"AppDelegate: Schwab auto-connection failed: %@", error.localizedDescription);
                 

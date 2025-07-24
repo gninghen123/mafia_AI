@@ -4,7 +4,6 @@
 //
 
 #import "QuoteWidget.h"
-#import "MarketDataModels.h"
 
 @interface QuoteWidget ()
 @property (nonatomic, strong) NSTextField *symbolLabelInternal;

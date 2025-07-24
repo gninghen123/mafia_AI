@@ -8,7 +8,6 @@
 #import "MultiChartWidget.h"
 #import "MiniChart.h"
 #import "DataManager.h"
-#import "MarketDataModels.h"
 
 @interface MultiChartWidget ()
 

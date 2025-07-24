@@ -4,7 +4,6 @@
 //
 
 #import "WebullDataSource.h"
-#import "MarketDataModels.h"
 
 // Webull API Endpoints
 static NSString *const kWebullTopGainersURL = @"https://quotes-gw.webullfintech.com/api/bgw/market/topGainers";

@@ -4,7 +4,6 @@
 //
 
 #import "YahooDataSource.h"
-#import "MarketDataModels.h"
 
 @interface YahooDataSource ()
 @property (nonatomic, strong) NSURLSession *session;

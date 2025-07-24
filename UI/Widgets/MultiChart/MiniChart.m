@@ -1,6 +1,5 @@
 
 #import "MiniChart.h"
-#import "MarketDataModels.h"
 #import "DataManager.h"
 
 @interface MiniChart ()

@@ -2,7 +2,6 @@
 // Define standard models and adapter protocol
 
 #import <Foundation/Foundation.h>
-#import "MarketDataModels.h"
 
 // Protocol that all adapters must implement
 @protocol DataSourceAdapter <NSObject>

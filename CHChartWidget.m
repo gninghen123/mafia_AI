@@ -14,7 +14,6 @@
 #import "CHBarChartRenderer.h"
 #import "CHColorUtils.h"
 #import "DataManager.h"
-#import "MarketDataModels.h"
 
 // Make sure we have the full definitions
 #import "CHLineChartRenderer.h"

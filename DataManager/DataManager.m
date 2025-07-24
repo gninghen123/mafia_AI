@@ -8,7 +8,6 @@
 #import "DataManager.h"
 #import "CommonTypes.h"
 #import "DownloadManager.h"
-#import "MarketDataModels.h"
 #import "DataAdapterFactory.h"
 #import "DataStandardization.h"
 #import <AppKit/AppKit.h>
@@ -54,6 +53,7 @@
         _historicalCacheTTL = 300.0; // 5 minutes for historical data
         
         [self setupNotifications];
+        [[DataManager sharedManager] testStandardization];
     }
     return self;
 }
@@ -526,5 +526,9 @@
     [[[NSWorkspace sharedWorkspace] notificationCenter] removeObserver:self];
     [self.quoteTimer invalidate];
 }
+
+
+
+
 
 @end

@@ -6,32 +6,7 @@
 //
 
 #import <Foundation/Foundation.h>
-#import "DataManager.h"
-
-// Data source priorities
-typedef NS_ENUM(NSInteger, DataSourceType) {
-    DataSourceTypeSchwab,
-    DataSourceTypeIBKR,
-    DataSourceTypeAlpaca,
-    DataSourceTypeYahoo,
-    DataSourceTypePolygon,
-    DataSourceTypeIEX,
-    DataSourceTypeCustom
-};
-
-// Data source capabilities
-typedef NS_OPTIONS(NSUInteger, DataSourceCapabilities) {
-    DataSourceCapabilityQuotes          = 1 << 0,
-    DataSourceCapabilityHistorical      = 1 << 1,
-    DataSourceCapabilityOrderBook       = 1 << 2,
-    DataSourceCapabilityTimeSales       = 1 << 3,
-    DataSourceCapabilityOptions         = 1 << 4,
-    DataSourceCapabilityNews            = 1 << 5,
-    DataSourceCapabilityFundamentals    = 1 << 6,
-    DataSourceCapabilityAccounts        = 1 << 7,
-    DataSourceCapabilityTrading         = 1 << 8,
-    DataSourceCapabilityRealtime        = 1 << 9
-};
+#import "CommonTypes.h"  // Aggiungi questo
 
 @protocol DataSourceProtocol;
 

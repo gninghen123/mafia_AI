@@ -22,8 +22,6 @@
 		954D309B2E2852FF00C7DC88 /* CHChartRenderer.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30912E2852FF00C7DC88 /* CHChartRenderer.m */; };
 		954D309C2E2852FF00C7DC88 /* CHChartWidget.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30992E2852FF00C7DC88 /* CHChartWidget.m */; };
 		954D309D2E2852FF00C7DC88 /* CHChartCore.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30932E2852FF00C7DC88 /* CHChartCore.m */; };
-		954D30B92E28530E00C7DC88 /* DownloadManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30B62E28530E00C7DC88 /* DownloadManager.m */; };
-		954D30BA2E28530E00C7DC88 /* DataManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30B42E28530E00C7DC88 /* DataManager.m */; };
 		954D30BB2E28530E00C7DC88 /* SchwabDataSource.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30B02E28530E00C7DC88 /* SchwabDataSource.m */; };
 		954D30BC2E28530E00C7DC88 /* MarketDataModels.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30B82E28530E00C7DC88 /* MarketDataModels.m */; };
 		954D30BD2E28530E00C7DC88 /* YahooDataSource.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30B22E28530E00C7DC88 /* YahooDataSource.m */; };
@@ -33,11 +31,10 @@
 		954D30D82E28531C00C7DC88 /* PanelHeaderView.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30C42E28531C00C7DC88 /* PanelHeaderView.m */; };
 		954D30DA2E28531C00C7DC88 /* PanelController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30CF2E28531C00C7DC88 /* PanelController.m */; };
 		954D30DB2E28531C00C7DC88 /* MainWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30D22E28531C00C7DC88 /* MainWindowController.m */; };
-		954D30DD2E28531C00C7DC88 /* progettoinfo.txt in Resources */ = {isa = PBXBuildFile; fileRef = 954D30C02E28531C00C7DC88 /* progettoinfo.txt */; };
+		954D30DD2E28531C00C7DC88 /* PROJECT_ARCHITECTURE.md in Resources */ = {isa = PBXBuildFile; fileRef = 954D30C02E28531C00C7DC88 /* PROJECT_ARCHITECTURE.md */; };
 		954D30E32E2860F100C7DC88 /* PreferencesWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */; };
 		954D30E72E28612100C7DC88 /* AppSettings.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30E62E28612100C7DC88 /* AppSettings.m */; };
 		955B3CD12E2BFF55008CA475 /* WebullDataSource.m in Sources */ = {isa = PBXBuildFile; fileRef = 955B3CD02E2BFF55008CA475 /* WebullDataSource.m */; };
-		955B3CE82E2C10FF008CA475 /* DataManager+MarketLists.m in Sources */ = {isa = PBXBuildFile; fileRef = 955B3CE72E2C10FF008CA475 /* DataManager+MarketLists.m */; };
 		95F1AD532E2E475500D96BDD /* DataHub.m in Sources */ = {isa = PBXBuildFile; fileRef = 95F1AD522E2E475500D96BDD /* DataHub.m */; };
 /* End PBXBuildFile section */
 
@@ -99,14 +96,10 @@
 		954D30B02E28530E00C7DC88 /* SchwabDataSource.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SchwabDataSource.m; sourceTree = "<group>"; };
 		954D30B12E28530E00C7DC88 /* YahooDataSource.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = YahooDataSource.h; sourceTree = "<group>"; };
 		954D30B22E28530E00C7DC88 /* YahooDataSource.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = YahooDataSource.m; sourceTree = "<group>"; };
-		954D30B32E28530E00C7DC88 /* DataManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DataManager.h; sourceTree = "<group>"; };
-		954D30B42E28530E00C7DC88 /* DataManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = DataManager.m; sourceTree = "<group>"; };
-		954D30B52E28530E00C7DC88 /* DownloadManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DownloadManager.h; sourceTree = "<group>"; };
-		954D30B62E28530E00C7DC88 /* DownloadManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = DownloadManager.m; sourceTree = "<group>"; };
 		954D30B72E28530E00C7DC88 /* MarketDataModels.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MarketDataModels.h; sourceTree = "<group>"; };
 		954D30B82E28530E00C7DC88 /* MarketDataModels.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MarketDataModels.m; sourceTree = "<group>"; };
 		954D30BF2E28531C00C7DC88 /* TradingAppTypes.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TradingAppTypes.h; sourceTree = "<group>"; };
-		954D30C02E28531C00C7DC88 /* progettoinfo.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = progettoinfo.txt; sourceTree = "<group>"; };
+		954D30C02E28531C00C7DC88 /* PROJECT_ARCHITECTURE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PROJECT_ARCHITECTURE.md; sourceTree = "<group>"; };
 		954D30C32E28531C00C7DC88 /* PanelHeaderView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PanelHeaderView.h; sourceTree = "<group>"; };
 		954D30C42E28531C00C7DC88 /* PanelHeaderView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PanelHeaderView.m; sourceTree = "<group>"; };
 		954D30C72E28531C00C7DC88 /* ToolbarController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ToolbarController.h; sourceTree = "<group>"; };
@@ -123,10 +116,9 @@
 		954D30E62E28612100C7DC88 /* AppSettings.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppSettings.m; sourceTree = "<group>"; };
 		955B3CCF2E2BFF55008CA475 /* WebullDataSource.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WebullDataSource.h; sourceTree = "<group>"; };
 		955B3CD02E2BFF55008CA475 /* WebullDataSource.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WebullDataSource.m; sourceTree = "<group>"; };
-		955B3CE62E2C0DC6008CA475 /* DataManager+MarketLists.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "DataManager+MarketLists.h"; sourceTree = "<group>"; };
-		955B3CE72E2C10FF008CA475 /* DataManager+MarketLists.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "DataManager+MarketLists.m"; sourceTree = "<group>"; };
 		95F1AD512E2E475500D96BDD /* DataHub.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DataHub.h; sourceTree = "<group>"; };
 		95F1AD522E2E475500D96BDD /* DataHub.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = DataHub.m; sourceTree = "<group>"; };
+		95F1AFC52E32037F00D96BDD /* CommonTypes.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CommonTypes.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -153,6 +145,11 @@
 		95F1AD762E2E517E00D96BDD /* UI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = UI;
+			sourceTree = "<group>";
+		};
+		95F1AFB42E31131100D96BDD /* DataManager */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = DataManager;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -185,8 +182,10 @@
 		954D2FF72E28514A00C7DC88 = {
 			isa = PBXGroup;
 			children = (
+				95F1AFC52E32037F00D96BDD /* CommonTypes.h */,
 				95F1AD762E2E517E00D96BDD /* UI */,
 				95F1AD752E2E4EE100D96BDD /* datamodels */,
+				95F1AFB42E31131100D96BDD /* DataManager */,
 				95F1AD512E2E475500D96BDD /* DataHub.h */,
 				95F1AD522E2E475500D96BDD /* DataHub.m */,
 				954D30E52E28612100C7DC88 /* AppSettings.h */,
@@ -194,7 +193,7 @@
 				954D30E02E2860F100C7DC88 /* PreferencesWindowController.h */,
 				954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */,
 				954D30BF2E28531C00C7DC88 /* TradingAppTypes.h */,
-				954D30C02E28531C00C7DC88 /* progettoinfo.txt */,
+				954D30C02E28531C00C7DC88 /* PROJECT_ARCHITECTURE.md */,
 				954D30C32E28531C00C7DC88 /* PanelHeaderView.h */,
 				954D30C42E28531C00C7DC88 /* PanelHeaderView.m */,
 				954D30C72E28531C00C7DC88 /* ToolbarController.h */,
@@ -212,12 +211,6 @@
 				954D30B02E28530E00C7DC88 /* SchwabDataSource.m */,
 				954D30B12E28530E00C7DC88 /* YahooDataSource.h */,
 				954D30B22E28530E00C7DC88 /* YahooDataSource.m */,
-				955B3CE62E2C0DC6008CA475 /* DataManager+MarketLists.h */,
-				955B3CE72E2C10FF008CA475 /* DataManager+MarketLists.m */,
-				954D30B32E28530E00C7DC88 /* DataManager.h */,
-				954D30B42E28530E00C7DC88 /* DataManager.m */,
-				954D30B52E28530E00C7DC88 /* DownloadManager.h */,
-				954D30B62E28530E00C7DC88 /* DownloadManager.m */,
 				954D30B72E28530E00C7DC88 /* MarketDataModels.h */,
 				954D30B82E28530E00C7DC88 /* MarketDataModels.m */,
 				954D30902E2852FF00C7DC88 /* CHChartRenderer.h */,
@@ -288,6 +281,7 @@
 				954D30022E28514A00C7DC88 /* mafia_AI */,
 				95F1AD752E2E4EE100D96BDD /* datamodels */,
 				95F1AD762E2E517E00D96BDD /* UI */,
+				95F1AFB42E31131100D96BDD /* DataManager */,
 			);
 			name = mafia_AI;
 			packageProductDependencies = (
@@ -390,7 +384,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				954D30DD2E28531C00C7DC88 /* progettoinfo.txt in Resources */,
+				954D30DD2E28531C00C7DC88 /* PROJECT_ARCHITECTURE.md in Resources */,
 				954D30BE2E28530E00C7DC88 /* SchwabConfig.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -419,7 +413,6 @@
 				954D309A2E2852FF00C7DC88 /* CHChartTypes.m in Sources */,
 				954D309B2E2852FF00C7DC88 /* CHChartRenderer.m in Sources */,
 				954D309C2E2852FF00C7DC88 /* CHChartWidget.m in Sources */,
-				955B3CE82E2C10FF008CA475 /* DataManager+MarketLists.m in Sources */,
 				954D309D2E2852FF00C7DC88 /* CHChartCore.m in Sources */,
 				954D30852E2852F400C7DC88 /* CHChartLayer.m in Sources */,
 				954D30862E2852F400C7DC88 /* CHChartView.m in Sources */,
@@ -436,8 +429,6 @@
 				954D307A2E2852EA00C7DC88 /* CHChartUtils.m in Sources */,
 				95F1AD532E2E475500D96BDD /* DataHub.m in Sources */,
 				954D30742E2852E400C7DC88 /* NSBezierPath+CHAdditions.m in Sources */,
-				954D30B92E28530E00C7DC88 /* DownloadManager.m in Sources */,
-				954D30BA2E28530E00C7DC88 /* DataManager.m in Sources */,
 				954D30D52E28531C00C7DC88 /* LayoutManager.m in Sources */,
 				954D30D72E28531C00C7DC88 /* ToolbarController.m in Sources */,
 				954D30D82E28531C00C7DC88 /* PanelHeaderView.m in Sources */,

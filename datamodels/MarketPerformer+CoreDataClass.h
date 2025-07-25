@@ -1,14 +1,17 @@
-#pragma mark - MarketPerformer Entity
-// Per liste di gainers/losers
+//
+//  MarketPerformer+CoreDataClass.h
+//  mafia_AI
+//
+
+#import <Foundation/Foundation.h>
+#import <CoreData/CoreData.h>
+
+NS_ASSUME_NONNULL_BEGIN
+
 @interface MarketPerformer : NSManagedObject
 
-@property (nonatomic, strong) NSString *symbol;
-@property (nonatomic, strong) NSString *name;
-@property (nonatomic) double price;
-@property (nonatomic) double changePercent;
-@property (nonatomic) int64_t volume;
-@property (nonatomic, strong) NSString *listType; // "gainers", "losers", "active"
-@property (nonatomic, strong) NSString *timeframe; // "1d", "52w", etc.
-@property (nonatomic, strong) NSDate *timestamp;
-
 @end
+
+NS_ASSUME_NONNULL_END
+
+#import "MarketPerformer+CoreDataProperties.h"

@@ -2,15 +2,12 @@
 //  MarketQuote+CoreDataClass.m
 //  mafia_AI
 //
-//  Created by fabio gattone on 25/07/25.
-//
-//
 
 #import "MarketQuote+CoreDataClass.h"
+#import <AppKit/AppKit.h>  // Aggiungi questo per NSColor
 
 @implementation MarketQuote
 
-@end
 - (BOOL)isGainer {
     return self.changePercent > 0;
 }
@@ -27,3 +24,5 @@
     }
     return [NSColor labelColor];
 }
+
+@end

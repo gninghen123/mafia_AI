@@ -11,6 +11,10 @@
 #import "DataAdapterFactory.h"
 #import "DataStandardization.h"
 #import <AppKit/AppKit.h>
+#import "DataManager+Persistence.h"
+#import "DataHub.h"
+#import "DataHub+MarketData.h"
+
 
 @interface DataManager ()
 @property (nonatomic, strong) DownloadManager *downloadManager;
@@ -238,6 +242,28 @@
     // Update cache
     [self updateQuoteCache:standardizedQuote forSymbol:symbol];
     
+    // NUOVO: Salva automaticamente in DataHub
+    if (self.autoSaveToDataHub) {
+        // Converti MarketData in dictionary per DataHub
+        NSDictionary *quoteDict = @{
+            @"symbol": symbol,
+            @"name": standardizedQuote.name ?: symbol,
+            @"last": standardizedQuote.last ?: @0,
+            @"bid": standardizedQuote.bid ?: @0,
+            @"ask": standardizedQuote.ask ?: @0,
+            @"volume": standardizedQuote.volume ?: @0,
+            @"open": standardizedQuote.open ?: @0,
+            @"high": standardizedQuote.high ?: @0,
+            @"low": standardizedQuote.low ?: @0,
+            @"previousClose": standardizedQuote.previousClose ?: @0,
+            @"change": standardizedQuote.change ?: @0,
+            @"changePercent": standardizedQuote.changePercent ?: @0,
+            @"timestamp": standardizedQuote.timestamp ?: [NSDate date]
+        };
+        
+        [self saveQuoteToDataHub:quoteDict forSymbol:symbol];
+    }
+    
     // Notify delegates
     [self notifyDelegatesOfQuoteUpdate:standardizedQuote forSymbol:symbol];
     
@@ -249,7 +275,6 @@
         });
     }
 }
-
 - (void)handleHistoricalResponse:(id)responseData
                   fromDataSource:(DataSourceType)sourceType
                        forSymbol:(NSString *)symbol

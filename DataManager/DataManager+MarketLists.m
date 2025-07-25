@@ -27,17 +27,23 @@
     // Use custom data source type for Webull
     [[DownloadManager sharedManager] executeRequest:DataRequestTypeTopGainers
                                          parameters:parameters
-                                     preferredSource:DataSourceTypeCustom
+                                    preferredSource:DataSourceTypeCustom
                                          completion:^(id result, DataSourceType usedSource, NSError *error) {
         if (error) {
             if (completion) completion(nil, error);
         } else {
             NSArray *gainers = result;
+            
+            // NUOVO: Salva in DataHub
+            if (self.autoSaveToDataHub && self.saveMarketLists) {
+                [self saveMarketListToDataHub:gainers
+                                     listType:@"gainers"
+                                    timeframe:rankType];
+            }
+            
             if (completion) completion(gainers, nil);
         }
     }];
-    
-    return requestID;
 }
 
 - (NSString *)requestTopLosersWithRankType:(NSString *)rankType
@@ -53,19 +59,25 @@
         @"requestID": requestID
     };
     
-    [[DownloadManager sharedManager] executeRequest:DataRequestTypeTopLosers
+    [[DownloadManager sharedManager] executeRequest:DataRequestTypeTopGainers
                                          parameters:parameters
                                      preferredSource:DataSourceTypeCustom
                                          completion:^(id result, DataSourceType usedSource, NSError *error) {
         if (error) {
             if (completion) completion(nil, error);
         } else {
-            NSArray *losers = result;
-            if (completion) completion(losers, nil);
+            NSArray *gainers = result;
+            
+            // NUOVO: Salva in DataHub
+            if (self.autoSaveToDataHub && self.saveMarketLists) {
+                [self saveMarketListToDataHub:gainers
+                                     listType:@"gainers"
+                                    timeframe:rankType];
+            }
+            
+            if (completion) completion(gainers, nil);
         }
     }];
-    
-    return requestID;
 }
 
 - (NSString *)requestETFListWithCompletion:(void (^)(NSArray *etfs, NSError *error))completion {

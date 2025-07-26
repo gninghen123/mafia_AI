@@ -14,6 +14,7 @@
 #import "CHBarChartRenderer.h"
 #import "CHColorUtils.h"
 #import "DataManager.h"
+#import "HistoricalBar+CoreDataClass.h"  // <-- AGGIUNGI QUESTO
 
 // Make sure we have the full definitions
 #import "CHLineChartRenderer.h"

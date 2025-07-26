@@ -4,6 +4,9 @@
 //
 
 #import "DataHub+MarketData.h"
+#import "DataHub+MarketData.h"
+#import "DataManager.h"            // <-- AGGIUNGI QUESTO
+#import "DataManager+MarketLists.h"
 
 @implementation DataHub (MarketData)
 
@@ -363,6 +366,36 @@
     stats[@"totalCompanyInfo"] = @([self.mainContext countForFetchRequest:infoCount error:nil]);
     
     return stats;
+}
+
+
+
+- (void)requestHistoricalDataUpdateForSymbol:(NSString *)symbol
+                                   timeframe:(BarTimeframe)timeframe {
+    // DataHub chiede internamente a DataManager di aggiornare
+    // Questo mantiene l'incapsulamento - le UI non sanno di DataManager
+    
+    DataManager *dm = [DataManager sharedManager];
+    NSDate *endDate = [NSDate date];
+    NSDate *startDate = [endDate dateByAddingTimeInterval:-(30 * 24 * 60 * 60)]; // 30 giorni
+    
+    [dm requestHistoricalDataForSymbol:symbol
+                            timeframe:timeframe
+                            startDate:startDate
+                              endDate:endDate
+                           completion:^(NSArray<HistoricalBar *> *bars, NSError *error) {
+        if (!error && bars.count > 0) {
+            // I dati vengono salvati automaticamente tramite DataManager+Persistence
+            // Invia notifica
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"DataHubHistoricalDataUpdated"
+                                                                object:self
+                                                              userInfo:@{
+                                                                  @"symbol": symbol,
+                                                                  @"timeframe": @(timeframe),
+                                                                  @"barsCount": @(bars.count)
+                                                              }];
+        }
+    }];
 }
 
 - (void)requestMarketDataUpdate {

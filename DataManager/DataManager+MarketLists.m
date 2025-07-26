@@ -83,6 +83,8 @@
             if (completion) completion(gainers, nil);
         }
     }];
+    return requestID;
+
 }
 
 - (NSString *)requestETFListWithCompletion:(void (^)(NSArray *etfs, NSError *error))completion {

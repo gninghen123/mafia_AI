@@ -1,4 +1,4 @@
-/ GeneralMarketWidget.m - Versione che usa SOLO DataHub
+// GeneralMarketWidget.m - Versione che usa SOLO DataHub
 
 #import "GeneralMarketWidget.h"
 #import "DataHub.h"
@@ -7,12 +7,12 @@
 #import "MarketPerformer+CoreDataClass.h"
 
 @interface GeneralMarketWidget ()
+@property (nonatomic, strong) NSMutableArray<NSMutableDictionary *> *internalMarketLists;
 @property (nonatomic, strong) NSMenuItem *contextMenuCreateWatchlist;
 @property (nonatomic, strong) NSMenuItem *contextMenuSendToChain;
 @property (nonatomic, strong) NSMenu *contextMenu;
 @property (nonatomic, strong) NSTimer *refreshTimer;
 @property (nonatomic, assign) BOOL isLoading;
-@property (nonatomic, strong) NSMutableArray<NSMutableDictionary *> *marketLists;
 @end
 
 @implementation GeneralMarketWidget
@@ -276,4 +276,145 @@
       [self.refreshTimer invalidate];
   }
 
+- (NSView *)createToolbar {
+    NSView *toolbar = [[NSView alloc] init];
+    
+    // Refresh button
+    self.refreshButton = [[NSButton alloc] init];
+    self.refreshButton.bezelStyle = NSBezelStyleTexturedRounded;
+    self.refreshButton.title = @"Refresh";
+    self.refreshButton.target = self;
+    self.refreshButton.action = @selector(refreshButtonClicked:);
+    self.refreshButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [toolbar addSubview:self.refreshButton];
+    
+    // Progress indicator
+    self.progressIndicator = [[NSProgressIndicator alloc] init];
+    self.progressIndicator.style = NSProgressIndicatorStyleSpinning;
+    self.progressIndicator.controlSize = NSControlSizeSmall;
+    self.progressIndicator.hidden = YES;
+    self.progressIndicator.translatesAutoresizingMaskIntoConstraints = NO;
+    [toolbar addSubview:self.progressIndicator];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [self.refreshButton.centerYAnchor constraintEqualToAnchor:toolbar.centerYAnchor],
+        [self.refreshButton.leadingAnchor constraintEqualToAnchor:toolbar.leadingAnchor constant:10],
+        
+        [self.progressIndicator.centerYAnchor constraintEqualToAnchor:toolbar.centerYAnchor],
+        [self.progressIndicator.leadingAnchor constraintEqualToAnchor:self.refreshButton.trailingAnchor constant:10]
+    ]];
+    
+    return toolbar;
+}
+
+- (NSMenu *)createContextMenu {
+    NSMenu *menu = [[NSMenu alloc] init];
+    
+    self.contextMenuCreateWatchlist = [[NSMenuItem alloc] initWithTitle:@"Create Watchlist from Selection"
+                                                                  action:@selector(createWatchlistFromSelection:)
+                                                           keyEquivalent:@""];
+    self.contextMenuCreateWatchlist.target = self;
+    
+    self.contextMenuSendToChain = [[NSMenuItem alloc] initWithTitle:@"Send to Chain"
+                                                              action:@selector(sendSelectionToChain:)
+                                                       keyEquivalent:@""];
+    self.contextMenuSendToChain.target = self;
+    
+    [menu addItem:self.contextMenuCreateWatchlist];
+    [menu addItem:[NSMenuItem separatorItem]];
+    [menu addItem:self.contextMenuSendToChain];
+    
+    return menu;
+}
+
+- (void)showTemporaryMessage:(NSString *)message {
+    // Implementa un messaggio temporaneo
+    NSTextField *messageLabel = [[NSTextField alloc] init];
+    messageLabel.stringValue = message;
+    messageLabel.editable = NO;
+    messageLabel.bordered = NO;
+    messageLabel.backgroundColor = [NSColor controlBackgroundColor];
+    messageLabel.textColor = [NSColor labelColor];
+    messageLabel.alignment = NSTextAlignmentCenter;
+    messageLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    [self.contentView addSubview:messageLabel];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [messageLabel.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
+        [messageLabel.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-10]
+    ]];
+    
+    // Rimuovi dopo 3 secondi
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [messageLabel removeFromSuperview];
+    });
+}
+
+- (NSArray<NSString *> *)selectedSymbols {
+    NSMutableArray *symbols = [NSMutableArray array];
+    NSIndexSet *selectedRows = self.outlineView.selectedRowIndexes;
+    
+    [selectedRows enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL *stop) {
+        id item = [self.outlineView itemAtRow:idx];
+        if ([item isKindOfClass:[NSDictionary class]] && item[@"symbol"]) {
+            [symbols addObject:item[@"symbol"]];
+        }
+    }];
+    
+    return symbols;
+}
+
+- (NSInteger)rowForItem:(id)item {
+    for (NSInteger i = 0; i < [self.outlineView numberOfRows]; i++) {
+        if ([self.outlineView itemAtRow:i] == item) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// Correggi setupInitialDataStructure per usare internalMarketLists
+- (void)setupInitialDataStructure {
+    self.internalMarketLists = [NSMutableArray array];
+    
+    NSArray *listTypes = @[@"ETF", @"Day Gainers", @"Day Losers", @"Week Gainers", @"Week Losers"];
+    for (NSString *type in listTypes) {
+        NSMutableDictionary *listDict = @{
+            @"type": type,
+            @"items": [NSMutableArray array],
+            @"expanded": @NO,
+            @"lastUpdate": [NSDate date]
+        }.mutableCopy;
+        
+        [self.internalMarketLists addObject:listDict];
+    }
+}
+
+// Per la watchlist, usa il metodo corretto di DataHub
+- (void)createWatchlistFromList:(NSArray *)symbols {
+    DataHub *hub = [DataHub shared];
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Create New Watchlist";
+    alert.informativeText = [NSString stringWithFormat:@"Enter a name for the watchlist with %lu symbols",
+                           (unsigned long)symbols.count];
+    [alert addButtonWithTitle:@"Create"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.stringValue = @"New Watchlist";
+    alert.accessoryView = input;
+    
+    NSModalResponse response = [alert runModal];
+    if (response == NSAlertFirstButtonReturn) {
+        NSString *name = input.stringValue;
+        if (name.length > 0) {
+            Watchlist *watchlist = [hub createWatchlistWithName:name];
+            watchlist.symbols = symbols;
+            [hub saveContext]; // Salva invece di updateWatchlist
+            [self showTemporaryMessage:[NSString stringWithFormat:@"Created watchlist: %@", name]];
+        }
+    }
+}
   @end

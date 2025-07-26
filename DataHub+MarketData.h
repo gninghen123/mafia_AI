@@ -10,6 +10,7 @@
 #import "HistoricalBar+CoreDataClass.h"
 #import "MarketPerformer+CoreDataClass.h"
 #import "CompanyInfo+CoreDataClass.h"
+#import "CommonTypes.h"  // Per BarTimeframe
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -46,6 +47,10 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)hasHistoricalDataForSymbol:(NSString *)symbol
                          timeframe:(NSInteger)timeframe
                          startDate:(NSDate *)startDate;
+
+// Richiede aggiornamento dati storici
+- (void)requestHistoricalDataUpdateForSymbol:(NSString *)symbol
+                                   timeframe:(BarTimeframe)timeframe;
 
 #pragma mark - Market Lists
 
@@ -86,10 +91,12 @@ NS_ASSUME_NONNULL_BEGIN
 // Statistiche sui dati salvati
 - (NSDictionary *)getMarketDataStatistics;
 
+#pragma mark - Update Requests
 
-#pragma mark - update
-
+// Richiede aggiornamento dati di mercato
 - (void)requestMarketDataUpdate;
+
+// Richiede aggiornamento liste di mercato
 - (void)requestMarketListUpdate:(NSString *)listType timeframe:(NSString *)timeframe;
 
 @end

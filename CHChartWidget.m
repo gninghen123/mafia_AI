@@ -555,8 +555,8 @@ NSString * const CHChartWidgetAnimationDidCompleteNotification = @"CHChartWidget
         
         // For line chart, use close price
         if (self.chartType == CHChartTypeLine) {
-            CHDataPoint *point = [[CHDataPoint alloc] initWithX:i y:[bar.close doubleValue]];
-            [dataPoints addObject:point];
+         // todo  CHDataPoint *point = [[CHDataPoint alloc] initWithX:i y:bar.close];
+   //todo         [dataPoints addObject:point];
         }
         // For other chart types, you might want to create OHLC data points
     }

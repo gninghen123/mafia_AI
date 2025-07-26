@@ -17,10 +17,11 @@ typedef NS_ENUM(NSInteger, MiniChartTimeframe) {
     MiniChartTimeframe1Min,
     MiniChartTimeframe5Min,
     MiniChartTimeframe15Min,
+    MiniChartTimeframe30Min,
     MiniChartTimeframe1Hour,
-    MiniChartTimeframe4Hour,
     MiniChartTimeframeDaily,
-    MiniChartTimeframeWeekly
+    MiniChartTimeframeWeekly,
+    MiniChartTimeframeMonthly
 };
 
 typedef NS_ENUM(NSInteger, MiniChartScaleType) {

@@ -105,19 +105,21 @@
       [self loadDataFromDataHub];
   }
 
-  - (void)setupInitialDataStructure {
-      self.marketLists = [NSMutableArray array];
-      
-      NSArray *listTypes = @[@"ETF", @"Day Gainers", @"Day Losers", @"Week Gainers", @"Week Losers"];
-      for (NSString *type in listTypes) {
-          [self.marketLists addObject:@{
-              @"type": type,
-              @"items": [NSMutableArray array],
-              @"expanded": @NO,
-              @"lastUpdate": [NSDate date]
-          }.mutableCopy];
-      }
-  }
+- (void)setupInitialDataStructure {
+    self.internalMarketLists = [NSMutableArray array];
+    
+    NSArray *listTypes = @[@"ETF", @"Day Gainers", @"Day Losers", @"Week Gainers", @"Week Losers"];
+    for (NSString *type in listTypes) {
+        NSMutableDictionary *listDict = @{
+            @"type": type,
+            @"items": [NSMutableArray array],
+            @"expanded": @NO,
+            @"lastUpdate": [NSDate date]
+        }.mutableCopy;
+        
+        [self.internalMarketLists addObject:listDict];
+    }
+}
 
   - (void)registerForNotifications {
       NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
@@ -244,32 +246,31 @@
       }
   }
 
-  - (void)createWatchlistFromList:(NSArray *)symbols {
-      // Usa DataHub per creare la watchlist
-      DataHub *hub = [DataHub shared];
-      
-      NSAlert *alert = [[NSAlert alloc] init];
-      alert.messageText = @"Create New Watchlist";
-      alert.informativeText = [NSString stringWithFormat:@"Enter a name for the watchlist with %lu symbols",
-                             (unsigned long)symbols.count];
-      [alert addButtonWithTitle:@"Create"];
-      [alert addButtonWithTitle:@"Cancel"];
-      
-      NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
-      input.stringValue = @"New Watchlist";
-      alert.accessoryView = input;
-      
-      NSModalResponse response = [alert runModal];
-      if (response == NSAlertFirstButtonReturn) {
-          NSString *name = input.stringValue;
-          if (name.length > 0) {
-              Watchlist *watchlist = [hub createWatchlistWithName:name];
-              watchlist.symbols = symbols;
-              [hub updateWatchlist:watchlist];
-              [self showTemporaryMessage:[NSString stringWithFormat:@"Created watchlist: %@", name]];
-          }
-      }
-  }
+- (void)createWatchlistFromList:(NSArray *)symbols {
+    DataHub *hub = [DataHub shared];
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Create New Watchlist";
+    alert.informativeText = [NSString stringWithFormat:@"Enter a name for the watchlist with %lu symbols",
+                           (unsigned long)symbols.count];
+    [alert addButtonWithTitle:@"Create"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.stringValue = @"New Watchlist";
+    alert.accessoryView = input;
+    
+    NSModalResponse response = [alert runModal];
+    if (response == NSAlertFirstButtonReturn) {
+        NSString *name = input.stringValue;
+        if (name.length > 0) {
+            Watchlist *watchlist = [hub createWatchlistWithName:name];
+            watchlist.symbols = symbols;
+            [hub saveContext]; // Salva invece di updateWatchlist
+            [self showTemporaryMessage:[NSString stringWithFormat:@"Created watchlist: %@", name]];
+        }
+    }
+}
 
   - (void)dealloc {
       [[NSNotificationCenter defaultCenter] removeObserver:self];
@@ -374,47 +375,5 @@
     return -1;
 }
 
-// Correggi setupInitialDataStructure per usare internalMarketLists
-- (void)setupInitialDataStructure {
-    self.internalMarketLists = [NSMutableArray array];
-    
-    NSArray *listTypes = @[@"ETF", @"Day Gainers", @"Day Losers", @"Week Gainers", @"Week Losers"];
-    for (NSString *type in listTypes) {
-        NSMutableDictionary *listDict = @{
-            @"type": type,
-            @"items": [NSMutableArray array],
-            @"expanded": @NO,
-            @"lastUpdate": [NSDate date]
-        }.mutableCopy;
-        
-        [self.internalMarketLists addObject:listDict];
-    }
-}
 
-// Per la watchlist, usa il metodo corretto di DataHub
-- (void)createWatchlistFromList:(NSArray *)symbols {
-    DataHub *hub = [DataHub shared];
-    
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Create New Watchlist";
-    alert.informativeText = [NSString stringWithFormat:@"Enter a name for the watchlist with %lu symbols",
-                           (unsigned long)symbols.count];
-    [alert addButtonWithTitle:@"Create"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
-    input.stringValue = @"New Watchlist";
-    alert.accessoryView = input;
-    
-    NSModalResponse response = [alert runModal];
-    if (response == NSAlertFirstButtonReturn) {
-        NSString *name = input.stringValue;
-        if (name.length > 0) {
-            Watchlist *watchlist = [hub createWatchlistWithName:name];
-            watchlist.symbols = symbols;
-            [hub saveContext]; // Salva invece di updateWatchlist
-            [self showTemporaryMessage:[NSString stringWithFormat:@"Created watchlist: %@", name]];
-        }
-    }
-}
   @end

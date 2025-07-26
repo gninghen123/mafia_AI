@@ -17,8 +17,7 @@
 @property (nonatomic, strong) NSProgressIndicator *progressIndicator;
 
 // Data Structure - ora usa array di MarketPerformer da Core Data
-@property (nonatomic, strong) NSMutableDictionary<NSString *, NSArray<MarketPerformer *> *> *marketLists;
-@property (nonatomic, assign) NSInteger pageSize;
+@property (nonatomic, strong) NSMutableArray<NSMutableDictionary *> *marketLists;@property (nonatomic, assign) NSInteger pageSize;
 
 // Public Methods
 - (void)refreshData;

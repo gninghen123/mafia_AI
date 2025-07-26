@@ -1,8 +1,15 @@
+//
+//  MiniChart.m
+//  TradingApp
+//
+//  Implementation of lightweight chart view for grid display
+//
+
 #import "MiniChart.h"
 #import "HistoricalBar+CoreDataClass.h"
 #import "DataHub.h"
 #import "DataHub+MarketData.h"
-
+#import "CommonTypes.h"  // Per BarTimeframe
 
 @interface MiniChart ()
 
@@ -21,7 +28,6 @@
 @property (nonatomic, assign) CGFloat minPrice;
 @property (nonatomic, assign) CGFloat maxPrice;
 @property (nonatomic, assign) CGFloat maxVolume;  // Volume massimo per normalizzazione
-@property (nonatomic, strong) NSMutableArray *candlestickData;
 
 @end
 
@@ -294,7 +300,7 @@
     double basePrice = 0;
     if (self.scaleType == MiniChartScalePercent && self.priceData.count > 0) {
         HistoricalBar *firstBar = self.priceData.firstObject;
-        basePrice = firstBar.close.doubleValue;
+        basePrice = firstBar.close;
     }
     
     for (HistoricalBar *bar in self.priceData) {
@@ -302,18 +308,18 @@
         
         switch (self.scaleType) {
             case MiniChartScaleLinear:
-                lowPrice = bar.low.doubleValue;
-                highPrice = bar.high.doubleValue;
+                lowPrice = bar.low;
+                highPrice = bar.high;
                 break;
                 
             case MiniChartScaleLog:
-                lowPrice = log(bar.low.doubleValue);
-                highPrice = log(bar.high.doubleValue);
+                lowPrice = log(bar.low);
+                highPrice = log(bar.high);
                 break;
                 
             case MiniChartScalePercent:
-                lowPrice = ((bar.low.doubleValue - basePrice) / basePrice) * 100.0;
-                highPrice = ((bar.high.doubleValue - basePrice) / basePrice) * 100.0;
+                lowPrice = ((bar.low - basePrice) / basePrice) * 100.0;
+                highPrice = ((bar.high - basePrice) / basePrice) * 100.0;
                 break;
         }
         
@@ -417,7 +423,6 @@
     }
 }
 
-
 - (void)generateCandlestickChartPath:(NSBezierPath *)path inRect:(CGRect)rect {
     if (!self.candlestickData) {
         self.candlestickData = [NSMutableArray array];
@@ -442,10 +447,10 @@
         NSMutableDictionary *candleInfo = [NSMutableDictionary dictionary];
         candleInfo[@"x"] = @(x);
         candleInfo[@"width"] = @(candleWidth);
-        candleInfo[@"openY"] = @(openY);
-        candleInfo[@"closeY"] = @(closeY);
-        candleInfo[@"highY"] = @(highY);
-        candleInfo[@"lowY"] = @(lowY);
+        candleInfo[@"yOpen"] = @(openY);
+        candleInfo[@"yClose"] = @(closeY);
+        candleInfo[@"yHigh"] = @(highY);
+        candleInfo[@"yLow"] = @(lowY);
         candleInfo[@"isGreen"] = @(bar.close >= bar.open);
         
         [self.candlestickData addObject:candleInfo];
@@ -484,12 +489,12 @@
     HistoricalBar *lastBar = self.priceData.lastObject;
     HistoricalBar *firstBar = self.priceData.firstObject;
     
-    // Converti NSDecimalNumber a double
-    self.currentPrice = @(lastBar.close.doubleValue);
+    // Converti NSDecimalNumber a double se necessario
+    self.currentPrice = @(lastBar.close);
     
     if (firstBar && lastBar) {
-        double closePrice = lastBar.close.doubleValue;
-        double openPrice = firstBar.close.doubleValue;
+        double closePrice = lastBar.close;
+        double openPrice = firstBar.close;
         double priceChange = closePrice - openPrice;
         double percentChange = (priceChange / openPrice) * 100.0;
         
@@ -531,7 +536,6 @@
 }
 
 #pragma mark - Actions
-
 
 - (void)refresh {
     [self setLoading:YES];
@@ -666,7 +670,8 @@
             [candleColor setFill];
             [bodyPath fill];
         } else {
-            [candleColor setFill];
+            // Candela rossa: corpo vuoto con bordo
+            [[NSColor clearColor] setFill];
             [bodyPath fill];
             [candleColor setStroke];
             [bodyPath setLineWidth:1.0];
@@ -675,60 +680,8 @@
     }
 }
 
+#pragma mark - Helper Methods
 
-- (void)calculateDataBounds {
-    if (!self.priceData || self.priceData.count == 0) {
-        self.minPrice = 0;
-        self.maxPrice = 100;
-        self.maxVolume = 0;
-        return;
-    }
-    
-    self.minPrice = DBL_MAX;
-    self.maxPrice = -DBL_MAX;
-    self.maxVolume = 0;
-    
-    double basePrice = 0;
-    if (self.scaleType == MiniChartScalePercent && self.priceData.count > 0) {
-        HistoricalBar *firstBar = self.priceData.firstObject;
-        basePrice = firstBar.close;
-    }
-    
-    for (HistoricalBar *bar in self.priceData) {
-        double lowPrice, highPrice;
-        
-        switch (self.scaleType) {
-            case MiniChartScaleLinear:
-                lowPrice = bar.low;
-                highPrice = bar.high;
-                break;
-                
-            case MiniChartScaleLog:
-                lowPrice = log(bar.low);
-                highPrice = log(bar.high);
-                break;
-                
-            case MiniChartScalePercent:
-                lowPrice = ((bar.low - basePrice) / basePrice) * 100.0;
-                highPrice = ((bar.high - basePrice) / basePrice) * 100.0;
-                break;
-        }
-        
-        if (lowPrice < self.minPrice) self.minPrice = lowPrice;
-        if (highPrice > self.maxPrice) self.maxPrice = highPrice;
-        
-        // Volume
-        if (bar.volume > self.maxVolume) {
-            self.maxVolume = bar.volume;
-        }
-    }
-    
-    // Add some padding
-    CGFloat range = self.maxPrice - self.minPrice;
-    CGFloat padding = range * 0.05; // 5% padding
-    self.minPrice -= padding;
-    self.maxPrice += padding;
-}
 - (NSDate *)calculateStartDateForTimeframe {
     NSCalendar *calendar = [NSCalendar currentCalendar];
     NSDate *now = [NSDate date];
@@ -740,10 +693,10 @@
             return [calendar dateByAddingUnit:NSCalendarUnitDay value:-5 toDate:now options:0];
         case MiniChartTimeframe15Min:
             return [calendar dateByAddingUnit:NSCalendarUnitDay value:-15 toDate:now options:0];
+        case MiniChartTimeframe30Min:
+            return [calendar dateByAddingUnit:NSCalendarUnitMonth value:-1 toDate:now options:0];
         case MiniChartTimeframe1Hour:
             return [calendar dateByAddingUnit:NSCalendarUnitMonth value:-1 toDate:now options:0];
-        case MiniChartTimeframe4Hour:
-            return [calendar dateByAddingUnit:NSCalendarUnitMonth value:-3 toDate:now options:0];
         case MiniChartTimeframeDaily:
             return [calendar dateByAddingUnit:NSCalendarUnitYear value:-1 toDate:now options:0];
         case MiniChartTimeframeWeekly:
@@ -755,13 +708,25 @@
 
 - (BarTimeframe)convertToBarTimeframe:(MiniChartTimeframe)miniTimeframe {
     switch (miniTimeframe) {
-        case MiniChartTimeframe1Min: return BarTimeframe1Min;
-        case MiniChartTimeframe5Min: return BarTimeframe5Min;
-        case MiniChartTimeframe15Min: return BarTimeframe15Min;
-        case MiniChartTimeframe1Hour: return BarTimeframe1Hour;
-        case MiniChartTimeframe4Hour: return BarTimeframe4Hour;
-        case MiniChartTimeframeDaily: return BarTimeframe1Day;
-        case MiniChartTimeframeWeekly: return BarTimeframe1Week;
-        default: return BarTimeframe1Day;
+        case MiniChartTimeframe1Min:
+            return BarTimeframe1Min;
+        case MiniChartTimeframe5Min:
+            return BarTimeframe5Min;
+        case MiniChartTimeframe15Min:
+            return BarTimeframe15Min;
+        case MiniChartTimeframe30Min:
+            return BarTimeframe30Min;
+        case MiniChartTimeframe1Hour:
+            return BarTimeframe1Hour;
+        case MiniChartTimeframeDaily:
+            return BarTimeframe1Day;
+        case MiniChartTimeframeWeekly:
+            return BarTimeframe1Week;
+        case MiniChartTimeframeMonthly:
+            return BarTimeframe1Month;
+        default:
+            return BarTimeframe1Day;
     }
-}@end
+}
+
+@end

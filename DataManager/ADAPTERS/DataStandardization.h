@@ -1,7 +1,17 @@
-// DataStandardization.h
-// Define standard models and adapter protocol
+//
+//  DataStandardization.h
+//  mafia_AI
+//
+//  Define standard models and adapter protocol
+//
 
 #import <Foundation/Foundation.h>
+
+// Forward declarations
+@class MarketData;
+@class HistoricalBar;
+@class Position;
+@class Order;
 
 // Protocol that all adapters must implement
 @protocol DataSourceAdapter <NSObject>

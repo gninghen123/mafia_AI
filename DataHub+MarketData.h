@@ -86,6 +86,12 @@ NS_ASSUME_NONNULL_BEGIN
 // Statistiche sui dati salvati
 - (NSDictionary *)getMarketDataStatistics;
 
+
+#pragma mark - update
+
+- (void)requestMarketDataUpdate;
+- (void)requestMarketListUpdate:(NSString *)listType timeframe:(NSString *)timeframe;
+
 @end
 
 NS_ASSUME_NONNULL_END

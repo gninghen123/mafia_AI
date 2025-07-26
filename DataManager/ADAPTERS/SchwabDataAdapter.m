@@ -1,5 +1,13 @@
-// SchwabDataAdapter.m
+//
+//  SchwabDataAdapter.m
+//  mafia_AI
+//
+
 #import "SchwabDataAdapter.h"
+#import "MarketData.h"
+#import "HistoricalBar+CoreDataClass.h"
+#import "Position.h"
+#import "Order.h"
 
 @implementation SchwabDataAdapter
 
@@ -10,22 +18,28 @@
 - (MarketData *)standardizeQuoteData:(NSDictionary *)rawData forSymbol:(NSString *)symbol {
     if (!rawData) return nil;
     
-    // Schwab structure: data[@"quote"] contains main price data
-    NSDictionary *quote = rawData[@"quote"];
-    NSDictionary *reference = rawData[@"reference"];
-    
-    if (!quote) return nil;
-    
     NSMutableDictionary *standardData = [NSMutableDictionary dictionary];
     
     // Symbol
     standardData[@"symbol"] = symbol;
     
-    // Prices - Map Schwab fields to standard fields
-    if (quote[@"lastPrice"]) {
-        standardData[@"last"] = quote[@"lastPrice"];
+    // Map Schwab fields to standard fields
+    NSDictionary *quote = rawData[@"quote"];
+    NSDictionary *reference = rawData[@"reference"];
+    
+    if (!quote) {
+        // Sometimes Schwab puts data directly in rawData
+        quote = rawData;
     }
     
+    // Prices
+    if (quote[@"lastPrice"]) {
+        standardData[@"last"] = quote[@"lastPrice"];
+    } else if (quote[@"mark"]) {
+        standardData[@"last"] = quote[@"mark"];
+    }
+    
+    // Bid/Ask
     if (quote[@"bidPrice"]) {
         standardData[@"bid"] = quote[@"bidPrice"];
     }
@@ -34,45 +48,17 @@
         standardData[@"ask"] = quote[@"askPrice"];
     }
     
-    if (quote[@"openPrice"]) {
-        standardData[@"open"] = quote[@"openPrice"];
-    }
-    
-    if (quote[@"highPrice"]) {
-        standardData[@"high"] = quote[@"highPrice"];
-    }
-    
-    if (quote[@"lowPrice"]) {
-        standardData[@"low"] = quote[@"lowPrice"];
-    }
-    
-    // Previous close (Schwab uses "closePrice" for previous close)
-    if (quote[@"closePrice"]) {
-        standardData[@"previousClose"] = quote[@"closePrice"];
-    }
-    
-    // Current close (for after hours)
-    if (quote[@"regularMarketLastPrice"]) {
-        standardData[@"close"] = quote[@"regularMarketLastPrice"];
-    } else {
-        standardData[@"close"] = quote[@"lastPrice"];
-    }
+    // OHLC
+    standardData[@"open"] = quote[@"openPrice"];
+    standardData[@"high"] = quote[@"highPrice"];
+    standardData[@"low"] = quote[@"lowPrice"];
+    standardData[@"close"] = quote[@"closePrice"];
+    standardData[@"previousClose"] = quote[@"previousClosePrice"];
     
     // Volume
-    if (quote[@"totalVolume"]) {
-        standardData[@"volume"] = quote[@"totalVolume"];
-    }
+    standardData[@"volume"] = quote[@"totalVolume"];
     
-    // Bid/Ask sizes
-    if (quote[@"bidSize"]) {
-        standardData[@"bidSize"] = quote[@"bidSize"];
-    }
-    
-    if (quote[@"askSize"]) {
-        standardData[@"askSize"] = quote[@"askSize"];
-    }
-    
-    // Change and Change Percent
+    // Change
     if (quote[@"netChange"]) {
         standardData[@"change"] = quote[@"netChange"];
     }
@@ -103,7 +89,7 @@
     return [[MarketData alloc] initWithDictionary:standardData];
 }
 
-- (NSArray<HistoricalBar *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol {
+- (NSArray<NSDictionary *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol {
     if (!rawData || ![rawData isKindOfClass:[NSDictionary class]]) return @[];
     
     NSDictionary *data = (NSDictionary *)rawData;
@@ -111,26 +97,26 @@
     
     if (!candles) return @[];
     
-    NSMutableArray<HistoricalBar *> *bars = [NSMutableArray array];
+    NSMutableArray<NSDictionary *> *bars = [NSMutableArray array];
     
     for (NSDictionary *candle in candles) {
         NSMutableDictionary *barData = [NSMutableDictionary dictionary];
         
-        // Timestamp (Schwab uses milliseconds)
+        // Date (Schwab uses milliseconds)
         if (candle[@"datetime"]) {
             NSNumber *timestamp = candle[@"datetime"];
-            barData[@"timestamp"] = [NSDate dateWithTimeIntervalSince1970:[timestamp doubleValue] / 1000.0];
+            barData[@"date"] = [NSDate dateWithTimeIntervalSince1970:[timestamp doubleValue] / 1000.0];
         }
         
         // OHLC data
-        barData[@"open"] = candle[@"open"];
-        barData[@"high"] = candle[@"high"];
-        barData[@"low"] = candle[@"low"];
-        barData[@"close"] = candle[@"close"];
-        barData[@"volume"] = candle[@"volume"];
+        barData[@"open"] = candle[@"open"] ?: @0;
+        barData[@"high"] = candle[@"high"] ?: @0;
+        barData[@"low"] = candle[@"low"] ?: @0;
+        barData[@"close"] = candle[@"close"] ?: @0;
+        barData[@"volume"] = candle[@"volume"] ?: @0;
+        barData[@"symbol"] = symbol;
         
-        HistoricalBar *bar = [[HistoricalBar alloc] initWithDictionary:barData];
-        [bars addObject:bar];
+        [bars addObject:barData];
     }
     
     return bars;

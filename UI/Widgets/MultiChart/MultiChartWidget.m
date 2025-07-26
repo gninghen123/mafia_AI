@@ -4,10 +4,13 @@
 //
 //  Implementation of multi-symbol chart grid widget
 //
-
 #import "MultiChartWidget.h"
 #import "MiniChart.h"
-#import "DataManager.h"
+#import "DataHub.h"
+#import "DataHub+MarketData.h"
+#import "HistoricalBar+CoreDataClass.h"
+#import "MarketQuote+CoreDataClass.h"
+
 
 @interface MultiChartWidget ()
 
@@ -179,6 +182,29 @@
     self.refreshButton.action = @selector(refreshAllCharts);
     self.refreshButton.translatesAutoresizingMaskIntoConstraints = NO;
     [self.controlsView addSubview:self.refreshButton];
+    
+    
+    // Registra per notifiche DataHub
+        [self registerForDataHubNotifications];
+        
+        // Carica dati esistenti per i simboli
+        [self loadDataFromDataHub];
+}
+
+- (void)registerForDataHubNotifications {
+    NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+    
+    // Notifica quando vengono aggiornati dati storici
+    [nc addObserver:self
+           selector:@selector(historicalDataUpdated:)
+               name:@"DataHubHistoricalDataUpdated"
+             object:nil];
+    
+    // Notifica quando viene aggiornata una quote
+    [nc addObserver:self
+           selector:@selector(marketQuoteUpdated:)
+               name:@"DataHubMarketQuoteUpdated"
+             object:nil];
 }
 
 - (void)setupChartsView {
@@ -731,11 +757,230 @@
     [super viewWillDisappear];
     [self stopAutoRefresh];
 }
+#pragma mark - Data Loading from DataHub
+
+- (void)loadDataFromDataHub {
+    DataHub *hub = [DataHub shared];
+    
+    for (MiniChart *miniChart in self.miniCharts) {
+        [self loadDataForMiniChart:miniChart];
+    }
+}
+
+- (void)loadDataForMiniChart:(MiniChart *)miniChart {
+    DataHub *hub = [DataHub shared];
+    NSString *symbol = miniChart.symbol;
+    
+    // Mostra loading
+    [miniChart setLoading:YES];
+    
+    // Carica quote corrente
+    MarketQuote *quote = [hub getQuoteForSymbol:symbol];
+    if (quote) {
+        miniChart.currentPrice = @(quote.currentPrice);
+        miniChart.priceChange = @(quote.change);
+        miniChart.percentChange = @(quote.changePercent);
+    }
+    
+    // Carica dati storici
+    BarTimeframe barTimeframe = [self barTimeframeFromMiniTimeframe:miniChart.timeframe];
+    NSDate *endDate = [NSDate date];
+    NSDate *startDate = [self calculateStartDateForTimeframe:barTimeframe bars:miniChart.maxBars];
+    
+    NSArray<HistoricalBar *> *bars = [hub getHistoricalBarsForSymbol:symbol
+                                                           timeframe:barTimeframe
+                                                           startDate:startDate
+                                                             endDate:endDate];
+    
+    if (bars.count > 0) {
+        // Limita al numero massimo di barre
+        if (bars.count > miniChart.maxBars) {
+            NSInteger startIndex = bars.count - miniChart.maxBars;
+            bars = [bars subarrayWithRange:NSMakeRange(startIndex, miniChart.maxBars)];
+        }
+        
+        [miniChart updateWithPriceData:bars];
+        [miniChart setLoading:NO];
+    } else {
+        // Nessun dato disponibile
+        [miniChart setError:@"No data available"];
+        [miniChart setLoading:NO];
+    }
+}
+
+#pragma mark - Data Updates
+
+- (void)refreshAllCharts {
+    // NON chiamiamo DataManager!
+    // Chiediamo a DataHub di aggiornare i dati se necessario
+    DataHub *hub = [DataHub shared];
+    
+    // Per ogni simbolo, verifica se ci sono dati recenti
+    for (MiniChart *miniChart in self.miniCharts) {
+        NSString *symbol = miniChart.symbol;
+        BarTimeframe timeframe = [self barTimeframeFromMiniTimeframe:miniChart.timeframe];
+        
+        // Verifica se abbiamo dati recenti
+        NSDate *now = [NSDate date];
+        NSDate *recentDate = [now dateByAddingTimeInterval:-300]; // 5 minuti fa
+        
+        if (![hub hasHistoricalDataForSymbol:symbol timeframe:timeframe startDate:recentDate]) {
+            // I dati sono vecchi, richiedi aggiornamento
+            // DataHub dovrebbe gestire internamente la richiesta a DataManager
+            [hub requestHistoricalDataUpdateForSymbol:symbol timeframe:timeframe];
+        }
+        
+        // Intanto carica quello che c'è
+        [self loadDataForMiniChart:miniChart];
+    }
+}
+
+- (void)refreshChartForSymbol:(NSString *)symbol {
+    MiniChart *chart = [self miniChartForSymbol:symbol];
+    if (chart) {
+        [self loadDataForMiniChart:chart];
+    }
+}
+
+#pragma mark - Symbol Management (aggiorna)
+
+- (void)setSymbols:(NSArray<NSString *> *)symbols {
+    _symbols = symbols ?: @[];
+    [self rebuildMiniCharts];
+    
+    // Carica dati per i nuovi chart
+    [self loadDataFromDataHub];
+}
+
+- (void)rebuildMiniCharts {
+    // ... codice esistente per ricreare mini charts ...
+    
+    // Dopo aver creato i chart, carica i dati
+    for (MiniChart *miniChart in self.miniCharts) {
+        [self loadDataForMiniChart:miniChart];
+    }
+}
+
+#pragma mark - DataHub Notifications
+
+- (void)historicalDataUpdated:(NSNotification *)notification {
+    NSDictionary *userInfo = notification.userInfo;
+    NSString *symbol = userInfo[@"symbol"];
+    NSNumber *timeframe = userInfo[@"timeframe"];
+    
+    // Trova il mini chart per questo simbolo
+    MiniChart *chart = [self miniChartForSymbol:symbol];
+    if (chart && [self barTimeframeFromMiniTimeframe:chart.timeframe] == timeframe.integerValue) {
+        // Ricarica i dati per questo chart
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self loadDataForMiniChart:chart];
+        });
+    }
+}
+
+- (void)marketQuoteUpdated:(NSNotification *)notification {
+    NSDictionary *userInfo = notification.userInfo;
+    NSString *symbol = userInfo[@"symbol"];
+    MarketQuote *quote = userInfo[@"quote"];
+    
+    // Trova il mini chart per questo simbolo
+    MiniChart *chart = [self miniChartForSymbol:symbol];
+    if (chart) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            chart.currentPrice = @(quote.currentPrice);
+            chart.priceChange = @(quote.change);
+            chart.percentChange = @(quote.changePercent);
+            [chart setNeedsDisplay:YES];
+        });
+    }
+}
+
+#pragma mark - Helper Methods
+
+- (MiniChart *)miniChartForSymbol:(NSString *)symbol {
+    for (MiniChart *chart in self.miniCharts) {
+        if ([chart.symbol isEqualToString:symbol]) {
+            return chart;
+        }
+    }
+    return nil;
+}
+
+- (BarTimeframe)barTimeframeFromMiniTimeframe:(MiniChartTimeframe)miniTimeframe {
+    switch (miniTimeframe) {
+        case MiniChartTimeframe1Min:
+            return BarTimeframe1Min;
+        case MiniChartTimeframe5Min:
+            return BarTimeframe5Min;
+        case MiniChartTimeframe15Min:
+            return BarTimeframe15Min;
+        case MiniChartTimeframe1Hour:
+            return BarTimeframe1Hour;
+        case MiniChartTimeframe4Hour:
+            return BarTimeframe4Hour;
+        case MiniChartTimeframeDaily:
+            return BarTimeframe1Day;
+        case MiniChartTimeframeWeekly:
+            return BarTimeframe1Week;
+        default:
+            return BarTimeframe1Day;
+    }
+}
+
+- (NSDate *)calculateStartDateForTimeframe:(BarTimeframe)timeframe bars:(NSInteger)maxBars {
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDate *now = [NSDate date];
+    
+    switch (timeframe) {
+        case BarTimeframe1Min:
+            return [calendar dateByAddingUnit:NSCalendarUnitMinute value:-maxBars toDate:now options:0];
+        case BarTimeframe5Min:
+            return [calendar dateByAddingUnit:NSCalendarUnitMinute value:-(maxBars * 5) toDate:now options:0];
+        case BarTimeframe15Min:
+            return [calendar dateByAddingUnit:NSCalendarUnitMinute value:-(maxBars * 15) toDate:now options:0];
+        case BarTimeframe30Min:
+            return [calendar dateByAddingUnit:NSCalendarUnitMinute value:-(maxBars * 30) toDate:now options:0];
+        case BarTimeframe1Hour:
+            return [calendar dateByAddingUnit:NSCalendarUnitHour value:-maxBars toDate:now options:0];
+        case BarTimeframe4Hour:
+            return [calendar dateByAddingUnit:NSCalendarUnitHour value:-(maxBars * 4) toDate:now options:0];
+        case BarTimeframe1Day:
+            return [calendar dateByAddingUnit:NSCalendarUnitDay value:-maxBars toDate:now options:0];
+        case BarTimeframe1Week:
+            return [calendar dateByAddingUnit:NSCalendarUnitWeekOfYear value:-maxBars toDate:now options:0];
+        case BarTimeframe1Month:
+            return [calendar dateByAddingUnit:NSCalendarUnitMonth value:-maxBars toDate:now options:0];
+        default:
+            return [calendar dateByAddingUnit:NSCalendarUnitDay value:-100 toDate:now options:0];
+    }
+}
+
+#pragma mark - UI Actions (aggiorna)
+
+- (IBAction)refreshButtonClicked:(id)sender {
+    [self refreshAllCharts];
+}
+
+- (IBAction)chartTypeChanged:(id)sender {
+    self.chartType = (MiniChartType)self.chartTypePopup.indexOfSelectedItem;
+    for (MiniChart *chart in self.miniCharts) {
+        chart.chartType = self.chartType;
+        [chart setNeedsDisplay:YES];
+    }
+}
+
+- (IBAction)timeframeChanged:(id)sender {
+    self.timeframe = (MiniChartTimeframe)self.timeframePopup.indexOfSelectedItem;
+    for (MiniChart *chart in self.miniCharts) {
+        chart.timeframe = self.timeframe;
+    }
+    // Ricarica dati con nuovo timeframe
+    [self loadDataFromDataHub];
+}
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
-    [self stopAutoRefresh];
-    [self.dataQueue cancelAllOperations];
+    [self.refreshTimer invalidate];
 }
 
 @end

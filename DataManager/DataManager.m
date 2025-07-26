@@ -9,12 +9,17 @@
 #import "CommonTypes.h"
 #import "DownloadManager.h"
 #import "DataAdapterFactory.h"
-#import "DataStandardization.h"
-#import <AppKit/AppKit.h>
+#import "DataSourceAdapter.h"
+#import "MarketData.h"
+#import "HistoricalBar+CoreDataClass.h"
+#import "Position.h"
+#import "Order.h"
+#import "OrderBookEntry.h"
 #import "DataManager+Persistence.h"
+#import "DataManager+Cache.h"
 #import "DataHub.h"
 #import "DataHub+MarketData.h"
-
+#import <AppKit/AppKit.h>
 
 @interface DataManager ()
 @property (nonatomic, strong) DownloadManager *downloadManager;
@@ -55,9 +60,10 @@
         // Default cache TTLs
         _quoteCacheTTL = 5.0; // 5 seconds for real-time quotes
         _historicalCacheTTL = 300.0; // 5 minutes for historical data
-        
+        self.autoSaveToDataHub = YES;
+              self.saveHistoricalData = YES;
+              self.saveMarketLists = YES;
         [self setupNotifications];
-        [[DataManager sharedManager] testStandardization];
     }
     return self;
 }

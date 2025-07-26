@@ -6,6 +6,7 @@
 #import "DataManager+MarketLists.h"
 #import "DownloadManager.h"
 #import "WebullDataSource.h"
+#import "DataManager+Persistence.h"
 
 // Define new data request types for market lists
 
@@ -24,26 +25,30 @@
         @"requestID": requestID
     };
     
-    // Use custom data source type for Webull
+    __weak typeof(self) weakSelf = self;
+    
     [[DownloadManager sharedManager] executeRequest:DataRequestTypeTopGainers
                                          parameters:parameters
-                                    preferredSource:DataSourceTypeCustom
+                                     preferredSource:DataSourceTypeCustom
                                          completion:^(id result, DataSourceType usedSource, NSError *error) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
         if (error) {
             if (completion) completion(nil, error);
         } else {
             NSArray *gainers = result;
             
-            // NUOVO: Salva in DataHub
-            if (self.autoSaveToDataHub && self.saveMarketLists) {
-                [self saveMarketListToDataHub:gainers
-                                     listType:@"gainers"
-                                    timeframe:rankType];
+            // Salva in DataHub se abilitato
+            if (strongSelf && strongSelf.autoSaveToDataHub && strongSelf.saveMarketLists) {
+                [strongSelf saveMarketListToDataHub:gainers
+                                           listType:@"gainers"
+                                          timeframe:rankType];
             }
             
             if (completion) completion(gainers, nil);
         }
     }];
+    
+    return requestID;
 }
 
 - (NSString *)requestTopLosersWithRankType:(NSString *)rankType

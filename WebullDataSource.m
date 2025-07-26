@@ -4,6 +4,9 @@
 //
 
 #import "WebullDataSource.h"
+#import "MarketData.h"
+#import "HistoricalBar+CoreDataClass.h"
+#import "CommonTypes.h"  // Per BarTimeframe
 
 // Webull API Endpoints
 static NSString *const kWebullTopGainersURL = @"https://quotes-gw.webullfintech.com/api/bgw/market/topGainers";
@@ -347,13 +350,15 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
         NSMutableArray *bars = [NSMutableArray array];
         
         for (NSDictionary *barData in data) {
-            HistoricalBar *bar = [[HistoricalBar alloc] init];
-            bar.timestamp = [NSDate dateWithTimeIntervalSince1970:[barData[@"time"] doubleValue] / 1000.0];
-            bar.open = barData[@"open"] ?: @0;
-            bar.high = barData[@"high"] ?: @0;
-            bar.low = barData[@"low"] ?: @0;
-            bar.close = barData[@"close"] ?: @0;
-            bar.volume = barData[@"volume"] ?: @0;
+            // Crea un dizionario invece di un oggetto HistoricalBar
+            NSMutableDictionary *bar = [NSMutableDictionary dictionary];
+            bar[@"date"] = [NSDate dateWithTimeIntervalSince1970:[barData[@"time"] doubleValue] / 1000.0];
+            bar[@"open"] = barData[@"open"] ?: @0;
+            bar[@"high"] = barData[@"high"] ?: @0;
+            bar[@"low"] = barData[@"low"] ?: @0;
+            bar[@"close"] = barData[@"close"] ?: @0;
+            bar[@"volume"] = barData[@"volume"] ?: @0;
+            bar[@"symbol"] = symbol;
             
             [bars addObject:bar];
         }

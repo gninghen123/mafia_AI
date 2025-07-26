@@ -2,12 +2,11 @@
 //  GeneralMarketWidget.h
 //  TradingApp
 //
-//  Widget per visualizzare liste di mercato usando i modelli standard
-//
 
 #import <Cocoa/Cocoa.h>
 #import "BaseWidget.h"
-#import "StandardModels.h"
+
+#import "MarketPerformer+CoreDataClass.h"
 
 @interface GeneralMarketWidget : BaseWidget <NSOutlineViewDelegate, NSOutlineViewDataSource>
 
@@ -17,9 +16,9 @@
 @property (nonatomic, strong) NSButton *refreshButton;
 @property (nonatomic, strong) NSProgressIndicator *progressIndicator;
 
-// Data Structure - ora usa i modelli standard
-@property (nonatomic, strong) NSMutableArray<MarketList *> *marketLists;
-@property (nonatomic, strong) NSMutableDictionary<NSString *, MarketQuote *> *quotesCache;
+// Data Structure - ora usa array di MarketPerformer da Core Data
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSArray<MarketPerformer *> *> *marketLists;
+@property (nonatomic, assign) NSInteger pageSize;
 
 // Public Methods
 - (void)refreshData;

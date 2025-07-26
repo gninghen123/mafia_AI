@@ -161,7 +161,7 @@
 #pragma mark - Display Updates
 
 - (void)updateWithQuote:(MarketData *)quote {
-    self.currentQuote = quote;
+/*    self.currentQuote = quote;
     
     // Update price
     if (quote.last) {
@@ -205,7 +205,7 @@
         formatter.dateFormat = @"HH:mm:ss";
         self.timestampLabel.stringValue = [NSString stringWithFormat:@"Updated: %@",
                                           [formatter stringFromDate:quote.timestamp]];
-    }
+    }*/
 }
 
 - (void)clearDisplay {

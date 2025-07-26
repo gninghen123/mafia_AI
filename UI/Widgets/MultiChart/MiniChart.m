@@ -1,6 +1,8 @@
-
 #import "MiniChart.h"
-#import "DataManager.h"
+#import "HistoricalBar+CoreDataClass.h"
+#import "DataHub.h"
+#import "DataHub+MarketData.h"
+
 
 @interface MiniChart ()
 
@@ -19,6 +21,7 @@
 @property (nonatomic, assign) CGFloat minPrice;
 @property (nonatomic, assign) CGFloat maxPrice;
 @property (nonatomic, assign) CGFloat maxVolume;  // Volume massimo per normalizzazione
+@property (nonatomic, strong) NSMutableArray *candlestickData;
 
 @end
 
@@ -364,7 +367,7 @@
     for (NSInteger i = 0; i < self.priceData.count; i++) {
         HistoricalBar *bar = self.priceData[i];
         CGFloat x = volumeRect.origin.x + (i * xStep) + (xStep * 0.1);
-        CGFloat barHeight = (bar.volume / self.maxVolume) * volumeRect.size.height;
+        CGFloat barHeight = ((double)bar.volume / (double)self.maxVolume) * volumeRect.size.height;
         
         NSRect barRect = NSMakeRect(x, volumeRect.origin.y, barWidth, barHeight);
         [path appendBezierPathWithRect:barRect];
@@ -385,7 +388,7 @@
             
         case MiniChartScalePercent: {
             HistoricalBar *firstBar = self.priceData.firstObject;
-            double basePrice = firstBar.close.doubleValue;
+            double basePrice = firstBar.close;
             return ((price - basePrice) / basePrice) * 100.0;
         }
     }
@@ -403,7 +406,7 @@
         CGFloat x = rect.origin.x + (i * xStep);
         
         // Usa il valore trasformato in base alla scala
-        CGFloat transformedPrice = [self transformedPriceValue:bar.close.doubleValue];
+        CGFloat transformedPrice = [self transformedPriceValue:bar.close];
         CGFloat y = rect.origin.y + ((transformedPrice - self.minPrice) / yRange) * rect.size.height;
         
         if (i == 0) {
@@ -414,10 +417,8 @@
     }
 }
 
+
 - (void)generateCandlestickChartPath:(NSBezierPath *)path inRect:(CGRect)rect {
-    // Per i candlestick, creiamo un array di dizionari che contiene le informazioni per ogni candela
-    // Questo sarà usato nel metodo drawRect per disegnare correttamente corpo e wick
-    
     if (!self.candlestickData) {
         self.candlestickData = [NSMutableArray array];
     } else {
@@ -425,80 +426,55 @@
     }
     
     CGFloat xStep = rect.size.width / self.priceData.count;
+    CGFloat candleWidth = xStep * 0.8;
     CGFloat yRange = self.maxPrice - self.minPrice;
-    CGFloat candleWidth = xStep * 0.7; // Larghezza del corpo della candela
     
     for (NSInteger i = 0; i < self.priceData.count; i++) {
         HistoricalBar *bar = self.priceData[i];
-        CGFloat x = rect.origin.x + (i * xStep) + (xStep * 0.15);
+        CGFloat x = rect.origin.x + (i * xStep) + (xStep * 0.1);
         
-        // Trasforma i valori OHLC
-        CGFloat open = [self transformedPriceValue:bar.open.doubleValue];
-        CGFloat high = [self transformedPriceValue:bar.high.doubleValue];
-        CGFloat low = [self transformedPriceValue:bar.low.doubleValue];
-        CGFloat close = [self transformedPriceValue:bar.close.doubleValue];
+        // Trasforma i prezzi in base alla scala
+        CGFloat openY = rect.origin.y + (([self transformedPriceValue:bar.open] - self.minPrice) / yRange) * rect.size.height;
+        CGFloat closeY = rect.origin.y + (([self transformedPriceValue:bar.close] - self.minPrice) / yRange) * rect.size.height;
+        CGFloat highY = rect.origin.y + (([self transformedPriceValue:bar.high] - self.minPrice) / yRange) * rect.size.height;
+        CGFloat lowY = rect.origin.y + (([self transformedPriceValue:bar.low] - self.minPrice) / yRange) * rect.size.height;
         
-        // Calcola posizioni Y
-        CGFloat yHigh = rect.origin.y + ((high - self.minPrice) / yRange) * rect.size.height;
-        CGFloat yLow = rect.origin.y + ((low - self.minPrice) / yRange) * rect.size.height;
-        CGFloat yOpen = rect.origin.y + ((open - self.minPrice) / yRange) * rect.size.height;
-        CGFloat yClose = rect.origin.y + ((close - self.minPrice) / yRange) * rect.size.height;
-        
-        // Determina colore: verde se close > open, rosso altrimenti
-        BOOL isGreen = (bar.close.doubleValue >= bar.open.doubleValue);
-        
-        // Crea dizionario con info della candela
-        NSDictionary *candleInfo = @{
-            @"x": @(x),
-            @"width": @(candleWidth),
-            @"yHigh": @(yHigh),
-            @"yLow": @(yLow),
-            @"yOpen": @(yOpen),
-            @"yClose": @(yClose),
-            @"isGreen": @(isGreen)
-        };
+        NSMutableDictionary *candleInfo = [NSMutableDictionary dictionary];
+        candleInfo[@"x"] = @(x);
+        candleInfo[@"width"] = @(candleWidth);
+        candleInfo[@"openY"] = @(openY);
+        candleInfo[@"closeY"] = @(closeY);
+        candleInfo[@"highY"] = @(highY);
+        candleInfo[@"lowY"] = @(lowY);
+        candleInfo[@"isGreen"] = @(bar.close >= bar.open);
         
         [self.candlestickData addObject:candleInfo];
     }
-    
-    // Il path principale non viene usato per candlestick
-    // Il disegno avviene direttamente in drawRect usando candlestickData
 }
 
 - (void)generateOHLCBarChartPath:(NSBezierPath *)path inRect:(CGRect)rect {
-    // OHLC Bar chart: linea verticale per High-Low + tick a sinistra per Open + tick a destra per Close
-    
     CGFloat xStep = rect.size.width / self.priceData.count;
     CGFloat yRange = self.maxPrice - self.minPrice;
-    CGFloat tickLength = xStep * 0.3; // Lunghezza dei tick
     
     for (NSInteger i = 0; i < self.priceData.count; i++) {
         HistoricalBar *bar = self.priceData[i];
-        CGFloat x = rect.origin.x + (i * xStep) + (xStep * 0.5); // Centro della barra
+        CGFloat x = rect.origin.x + (i * xStep) + (xStep * 0.5);
         
-        // Trasforma i valori OHLC
-        CGFloat open = [self transformedPriceValue:bar.open.doubleValue];
-        CGFloat high = [self transformedPriceValue:bar.high.doubleValue];
-        CGFloat low = [self transformedPriceValue:bar.low.doubleValue];
-        CGFloat close = [self transformedPriceValue:bar.close.doubleValue];
+        // Vertical line from low to high
+        CGFloat lowY = rect.origin.y + (([self transformedPriceValue:bar.low] - self.minPrice) / yRange) * rect.size.height;
+        CGFloat highY = rect.origin.y + (([self transformedPriceValue:bar.high] - self.minPrice) / yRange) * rect.size.height;
+        [path moveToPoint:NSMakePoint(x, lowY)];
+        [path lineToPoint:NSMakePoint(x, highY)];
         
-        // Calcola posizioni Y
-        CGFloat yHigh = rect.origin.y + ((high - self.minPrice) / yRange) * rect.size.height;
-        CGFloat yLow = rect.origin.y + ((low - self.minPrice) / yRange) * rect.size.height;
-        CGFloat yOpen = rect.origin.y + ((open - self.minPrice) / yRange) * rect.size.height;
-        CGFloat yClose = rect.origin.y + ((close - self.minPrice) / yRange) * rect.size.height;
+        // Left tick for open
+        CGFloat openY = rect.origin.y + (([self transformedPriceValue:bar.open] - self.minPrice) / yRange) * rect.size.height;
+        [path moveToPoint:NSMakePoint(x - xStep * 0.2, openY)];
+        [path lineToPoint:NSMakePoint(x, openY)];
         
-        // Linea verticale High-Low
-        [path moveToPoint:NSMakePoint(x, yLow)];
-        [path lineToPoint:NSMakePoint(x, yHigh)];
-        
-        // Tick per Open (a sinistra)
-        [path moveToPoint:NSMakePoint(x - tickLength, yOpen)];
-        [path lineToPoint:NSMakePoint(x, yOpen)];
-        
-        // Tick per Close (a destra)
-        [path moveToPoint:NSMakePoint(x, yClose)];
-        [path lineToPoint:NSMakePoint(x + tickLength, yClose)];
+        // Right tick for close
+        CGFloat closeY = rect.origin.y + (([self transformedPriceValue:bar.close] - self.minPrice) / yRange) * rect.size.height;
+        [path moveToPoint:NSMakePoint(x, closeY)];
+        [path lineToPoint:NSMakePoint(x + xStep * 0.2, closeY)];
     }
 }
 
@@ -556,33 +532,44 @@
 
 #pragma mark - Actions
 
+
 - (void)refresh {
     [self setLoading:YES];
     
-    // Calcola date range per i dati storici
+    // Usa DataHub invece di DataManager
+    DataHub *hub = [DataHub shared];
+    
+    // Calcola le date in base al timeframe
     NSDate *endDate = [NSDate date];
-    NSCalendar *calendar = [NSCalendar currentCalendar];
-    NSDate *startDate = [calendar dateByAddingUnit:NSCalendarUnitYear value:-1 toDate:endDate options:0];
+    NSDate *startDate = [self calculateStartDateForTimeframe];
     
-    // Richiedi i dati dal DataManager usando il metodo corretto
-    BarTimeframe barTimeframe = BarTimeframe1Day; // Default
+    // Converti MiniChartTimeframe a BarTimeframe
+    BarTimeframe barTimeframe = [self convertToBarTimeframe:self.timeframe];
     
-    [[DataManager sharedManager] requestHistoricalDataForSymbol:self.symbol
-                                                      timeframe:barTimeframe
-                                                      startDate:startDate
-                                                        endDate:endDate
-                                                     completion:^(NSArray<HistoricalBar *> *bars, NSError *error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self setLoading:NO];
-            
-            if (error) {
-                [self setError:error.localizedDescription];
-            } else {
-                [self clearError];
-                [self updateWithPriceData:bars];
-            }
-        });
-    }];
+    // Carica dati da DataHub
+    NSArray<HistoricalBar *> *bars = [hub getHistoricalBarsForSymbol:self.symbol
+                                                           timeframe:barTimeframe
+                                                           startDate:startDate
+                                                             endDate:endDate];
+    
+    if (bars.count > 0) {
+        [self setLoading:NO];
+        [self clearError];
+        
+        // Limita al numero massimo di barre
+        if (bars.count > self.maxBars) {
+            NSInteger startIndex = bars.count - self.maxBars;
+            bars = [bars subarrayWithRange:NSMakeRange(startIndex, self.maxBars)];
+        }
+        
+        [self updateWithPriceData:bars];
+    } else {
+        // Nessun dato, richiedi aggiornamento
+        [hub requestHistoricalDataUpdateForSymbol:self.symbol timeframe:barTimeframe];
+        
+        [self setLoading:NO];
+        [self setError:@"Loading data..."];
+    }
 }
 
 #pragma mark - Drawing
@@ -688,4 +675,93 @@
     }
 }
 
-@end
+
+- (void)calculateDataBounds {
+    if (!self.priceData || self.priceData.count == 0) {
+        self.minPrice = 0;
+        self.maxPrice = 100;
+        self.maxVolume = 0;
+        return;
+    }
+    
+    self.minPrice = DBL_MAX;
+    self.maxPrice = -DBL_MAX;
+    self.maxVolume = 0;
+    
+    double basePrice = 0;
+    if (self.scaleType == MiniChartScalePercent && self.priceData.count > 0) {
+        HistoricalBar *firstBar = self.priceData.firstObject;
+        basePrice = firstBar.close;
+    }
+    
+    for (HistoricalBar *bar in self.priceData) {
+        double lowPrice, highPrice;
+        
+        switch (self.scaleType) {
+            case MiniChartScaleLinear:
+                lowPrice = bar.low;
+                highPrice = bar.high;
+                break;
+                
+            case MiniChartScaleLog:
+                lowPrice = log(bar.low);
+                highPrice = log(bar.high);
+                break;
+                
+            case MiniChartScalePercent:
+                lowPrice = ((bar.low - basePrice) / basePrice) * 100.0;
+                highPrice = ((bar.high - basePrice) / basePrice) * 100.0;
+                break;
+        }
+        
+        if (lowPrice < self.minPrice) self.minPrice = lowPrice;
+        if (highPrice > self.maxPrice) self.maxPrice = highPrice;
+        
+        // Volume
+        if (bar.volume > self.maxVolume) {
+            self.maxVolume = bar.volume;
+        }
+    }
+    
+    // Add some padding
+    CGFloat range = self.maxPrice - self.minPrice;
+    CGFloat padding = range * 0.05; // 5% padding
+    self.minPrice -= padding;
+    self.maxPrice += padding;
+}
+- (NSDate *)calculateStartDateForTimeframe {
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDate *now = [NSDate date];
+    
+    switch (self.timeframe) {
+        case MiniChartTimeframe1Min:
+            return [calendar dateByAddingUnit:NSCalendarUnitDay value:-1 toDate:now options:0];
+        case MiniChartTimeframe5Min:
+            return [calendar dateByAddingUnit:NSCalendarUnitDay value:-5 toDate:now options:0];
+        case MiniChartTimeframe15Min:
+            return [calendar dateByAddingUnit:NSCalendarUnitDay value:-15 toDate:now options:0];
+        case MiniChartTimeframe1Hour:
+            return [calendar dateByAddingUnit:NSCalendarUnitMonth value:-1 toDate:now options:0];
+        case MiniChartTimeframe4Hour:
+            return [calendar dateByAddingUnit:NSCalendarUnitMonth value:-3 toDate:now options:0];
+        case MiniChartTimeframeDaily:
+            return [calendar dateByAddingUnit:NSCalendarUnitYear value:-1 toDate:now options:0];
+        case MiniChartTimeframeWeekly:
+            return [calendar dateByAddingUnit:NSCalendarUnitYear value:-2 toDate:now options:0];
+        default:
+            return [calendar dateByAddingUnit:NSCalendarUnitYear value:-1 toDate:now options:0];
+    }
+}
+
+- (BarTimeframe)convertToBarTimeframe:(MiniChartTimeframe)miniTimeframe {
+    switch (miniTimeframe) {
+        case MiniChartTimeframe1Min: return BarTimeframe1Min;
+        case MiniChartTimeframe5Min: return BarTimeframe5Min;
+        case MiniChartTimeframe15Min: return BarTimeframe15Min;
+        case MiniChartTimeframe1Hour: return BarTimeframe1Hour;
+        case MiniChartTimeframe4Hour: return BarTimeframe4Hour;
+        case MiniChartTimeframeDaily: return BarTimeframe1Day;
+        case MiniChartTimeframeWeekly: return BarTimeframe1Week;
+        default: return BarTimeframe1Day;
+    }
+}@end

@@ -147,4 +147,6 @@ typedef NS_ENUM(NSInteger, ModelStatus) {
 - (NSArray<Alert *> *)filterAlerts:(NSDictionary *)criteria;
 - (NSArray<TradingModel *> *)filterModels:(NSDictionary *)criteria;
 
+
+
 @end

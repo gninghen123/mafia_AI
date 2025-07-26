@@ -7,6 +7,11 @@
 #import <AppKit/AppKit.h>
 #import <WebKit/WebKit.h>
 #import <Security/Security.h>
+#import "MarketData.h"
+#import "HistoricalBar+CoreDataClass.h"
+#import "Position.h"
+#import "Order.h"
+#import "CommonTypes.h"
 
 // API Configuration
 static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
@@ -789,28 +794,59 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     NSMutableArray *bars = [NSMutableArray array];
     
     for (NSDictionary *candle in candles) {
-        HistoricalBar *bar = [[HistoricalBar alloc] init];
-        bar.timestamp = [NSDate dateWithTimeIntervalSince1970:[candle[@"datetime"] doubleValue] / 1000.0];
-        bar.open = [NSDecimalNumber decimalNumberWithString:[candle[@"open"] stringValue]];
-        bar.high = [NSDecimalNumber decimalNumberWithString:[candle[@"high"] stringValue]];
-        bar.low = [NSDecimalNumber decimalNumberWithString:[candle[@"low"] stringValue]];
-        bar.close = [NSDecimalNumber decimalNumberWithString:[candle[@"close"] stringValue]];
-        bar.volume = [candle[@"volume"] integerValue];
+        NSMutableDictionary *barDict = [NSMutableDictionary dictionary];
         
-        [bars addObject:bar];
+        // Usa 'date' invece di 'timestamp'
+        barDict[@"date"] = [NSDate dateWithTimeIntervalSince1970:[candle[@"datetime"] doubleValue] / 1000.0];
+        
+        // I valori potrebbero essere già NSNumber o NSDecimalNumber
+        if (candle[@"open"]) {
+            if ([candle[@"open"] isKindOfClass:[NSDecimalNumber class]]) {
+                barDict[@"open"] = @([candle[@"open"] doubleValue]);
+            } else {
+                barDict[@"open"] = candle[@"open"];
+            }
+        }
+        
+        if (candle[@"high"]) {
+            if ([candle[@"high"] isKindOfClass:[NSDecimalNumber class]]) {
+                barDict[@"high"] = @([candle[@"high"] doubleValue]);
+            } else {
+                barDict[@"high"] = candle[@"high"];
+            }
+        }
+        
+        if (candle[@"low"]) {
+            if ([candle[@"low"] isKindOfClass:[NSDecimalNumber class]]) {
+                barDict[@"low"] = @([candle[@"low"] doubleValue]);
+            } else {
+                barDict[@"low"] = candle[@"low"];
+            }
+        }
+        
+        if (candle[@"close"]) {
+            if ([candle[@"close"] isKindOfClass:[NSDecimalNumber class]]) {
+                barDict[@"close"] = @([candle[@"close"] doubleValue]);
+            } else {
+                barDict[@"close"] = candle[@"close"];
+            }
+        }
+        
+        if (candle[@"volume"]) {
+            barDict[@"volume"] = candle[@"volume"];
+        }
+        
+        [bars addObject:barDict];
     }
     
     return bars;
 }
 
+
 - (Position *)parsePositionData:(NSDictionary *)data {
-    Position *position = [[Position alloc] init];
-    position.symbol = data[@"instrument"][@"symbol"];
-    position.quantity = [data[@"longQuantity"] integerValue] - [data[@"shortQuantity"] integerValue];
-    position.averageCost = [NSDecimalNumber decimalNumberWithString:[data[@"averagePrice"] stringValue]];
-    position.marketValue = [NSDecimalNumber decimalNumberWithString:[data[@"marketValue"] stringValue]];
-    
-    return position;
+    // Per ora restituiamo nil perché Position dovrebbe essere creato tramite factory o builder
+    // TODO: Implementare quando necessario
+    return nil;
 }
 
 #pragma mark - Keychain Management

@@ -365,4 +365,16 @@
     return stats;
 }
 
+- (void)requestMarketDataUpdate {
+    // DataHub chiede a DataManager di aggiornare
+    DataManager *dm = [DataManager sharedManager];
+    
+    // Richiedi aggiornamenti per le liste principali
+    [dm requestTopGainersWithRankType:@"1d" pageSize:50 completion:nil];
+    [dm requestTopLosersWithRankType:@"1d" pageSize:50 completion:nil];
+    [dm requestETFListWithCompletion:nil];
+    
+    // I dati verranno salvati automaticamente qui tramite DataManager+Persistence
+}
+
 @end

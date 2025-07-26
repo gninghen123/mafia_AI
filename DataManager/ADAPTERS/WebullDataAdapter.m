@@ -1,5 +1,13 @@
-// WebullDataAdapter.m
+//
+//  WebullDataAdapter.m
+//  mafia_AI
+//
+
 #import "WebullDataAdapter.h"
+#import "MarketData.h"
+#import "HistoricalBar+CoreDataClass.h"
+#import "Position.h"
+#import "Order.h"
 
 @implementation WebullDataAdapter
 
@@ -66,9 +74,27 @@
 }
 
 - (NSArray<HistoricalBar *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol {
-    // Implementation similar to Schwab but with Webull field mappings
-    // TODO: Complete implementation
-    return @[];
+    // TODO: Implement when needed
+    // Per ora restituiamo array di dizionari invece di HistoricalBar
+    NSMutableArray *bars = [NSMutableArray array];
+    
+    if ([rawData isKindOfClass:[NSArray class]]) {
+        for (NSDictionary *barData in rawData) {
+            NSMutableDictionary *standardBar = [NSMutableDictionary dictionary];
+            
+            standardBar[@"symbol"] = symbol;
+            standardBar[@"date"] = barData[@"date"] ?: [NSDate date];
+            standardBar[@"open"] = barData[@"open"] ?: @0;
+            standardBar[@"high"] = barData[@"high"] ?: @0;
+            standardBar[@"low"] = barData[@"low"] ?: @0;
+            standardBar[@"close"] = barData[@"close"] ?: @0;
+            standardBar[@"volume"] = barData[@"volume"] ?: @0;
+            
+            [bars addObject:standardBar];
+        }
+    }
+    
+    return bars;
 }
 
 - (Position *)standardizePositionData:(NSDictionary *)rawData {

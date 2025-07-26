@@ -53,6 +53,7 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
         _alerts = [NSMutableArray array];
         _connections = [NSMutableArray array];
         _tradingModels = [NSMutableArray array];
+     
     }
     return self;
 }

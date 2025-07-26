@@ -1,31 +1,18 @@
-//
-//  GeneralMarketWidget.m
-//  TradingApp
-//
+/ GeneralMarketWidget.m - Versione che usa SOLO DataHub
 
 #import "GeneralMarketWidget.h"
-#import "DataManager.h"
 #import "DataHub.h"
+#import "DataHub+MarketData.h"
 #import "Watchlist+CoreDataClass.h"
+#import "MarketPerformer+CoreDataClass.h"
 
 @interface GeneralMarketWidget ()
-
 @property (nonatomic, strong) NSMenuItem *contextMenuCreateWatchlist;
 @property (nonatomic, strong) NSMenuItem *contextMenuSendToChain;
 @property (nonatomic, strong) NSMenu *contextMenu;
 @property (nonatomic, strong) NSTimer *refreshTimer;
 @property (nonatomic, assign) BOOL isLoading;
-
-// Private method declarations
-- (void)setupInitialDataStructure;
-- (void)showTemporaryMessage:(NSString *)message;
-- (NSMenu *)createContextMenu;
-- (void)refreshButtonClicked:(id)sender;
-- (void)sendSelectionToChain:(id)sender;
-- (void)sendAllToChain:(id)sender;
-- (void)createWatchlistFromSelection:(id)sender;
-- (NSArray<NSString *> *)selectedSymbols;
-
+@property (nonatomic, strong) NSMutableArray<NSMutableDictionary *> *marketLists;
 @end
 
 @implementation GeneralMarketWidget
@@ -34,7 +21,7 @@
     self = [super initWithType:type panelType:panelType];
     if (self) {
         _marketLists = [NSMutableArray array];
-        _quotesCache = [NSMutableDictionary dictionary];
+        _pageSize = 50;
     }
     return self;
 }
@@ -43,7 +30,6 @@
 
 - (void)setupContentView {
     [super setupContentView];
-    
     // Main container
     NSView *containerView = [[NSView alloc] init];
     containerView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -115,358 +101,179 @@
     ]];
     
     [self setupInitialDataStructure];
-}
+      [self registerForNotifications];
+      [self loadDataFromDataHub];
+  }
 
-- (NSView *)createToolbar {
-    NSView *toolbar = [[NSView alloc] init];
-    
-    // Refresh button
-    self.refreshButton = [[NSButton alloc] init];
-    self.refreshButton.bezelStyle = NSBezelStyleTexturedRounded;
-    self.refreshButton.title = @"Refresh";
-    self.refreshButton.target = self;
-    self.refreshButton.action = @selector(refreshButtonClicked:);
-    self.refreshButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [toolbar addSubview:self.refreshButton];
-    
-    // Progress indicator
-    self.progressIndicator = [[NSProgressIndicator alloc] init];
-    self.progressIndicator.style = NSProgressIndicatorStyleSpinning;
-    self.progressIndicator.controlSize = NSControlSizeSmall;
-    self.progressIndicator.hidden = YES;
-    self.progressIndicator.translatesAutoresizingMaskIntoConstraints = NO;
-    [toolbar addSubview:self.progressIndicator];
-    
-    [NSLayoutConstraint activateConstraints:@[
-        [self.refreshButton.centerYAnchor constraintEqualToAnchor:toolbar.centerYAnchor],
-        [self.refreshButton.leadingAnchor constraintEqualToAnchor:toolbar.leadingAnchor constant:10],
-        
-        [self.progressIndicator.centerYAnchor constraintEqualToAnchor:toolbar.centerYAnchor],
-        [self.progressIndicator.leadingAnchor constraintEqualToAnchor:self.refreshButton.trailingAnchor constant:10]
-    ]];
-    
-    return toolbar;
-}
+  - (void)setupInitialDataStructure {
+      self.marketLists = [NSMutableArray array];
+      
+      NSArray *listTypes = @[@"ETF", @"Day Gainers", @"Day Losers", @"Week Gainers", @"Week Losers"];
+      for (NSString *type in listTypes) {
+          [self.marketLists addObject:@{
+              @"type": type,
+              @"items": [NSMutableArray array],
+              @"expanded": @NO,
+              @"lastUpdate": [NSDate date]
+          }.mutableCopy];
+      }
+  }
 
-#pragma mark - Data Management
+  - (void)registerForNotifications {
+      NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+      
+      [nc addObserver:self
+             selector:@selector(marketDataUpdated:)
+                 name:@"DataHubMarketListUpdated"
+               object:nil];
+      
+      [nc addObserver:self
+             selector:@selector(marketQuoteUpdated:)
+                 name:@"DataHubMarketQuoteUpdated"
+               object:nil];
+  }
 
-- (void)setupInitialDataStructure {
-    // Create empty market lists
-    NSArray *listTypes = @[@"ETF", @"Day Gainers", @"Day Losers", @"Week Gainers", @"Week Losers"];
-    
-    for (NSString *type in listTypes) {
-        MarketList *list = [[MarketList alloc] init];
-        list.listType = type;
-        list.items = @[];
-        list.lastUpdate = [NSDate date];
-        [self.marketLists addObject:list];
-    }
-    
-    [self.outlineView reloadData];
-}
+  #pragma mark - Data Loading from DataHub ONLY
 
-- (void)refreshData {
-    if (self.isLoading) return;
-    
-    self.isLoading = YES;
-    self.progressIndicator.hidden = NO;
-    [self.progressIndicator startAnimation:nil];
-    self.refreshButton.enabled = NO;
-    
-    DataManager *dataManager = [DataManager sharedManager];
-    
-    // Fetch each list type
-    dispatch_group_t group = dispatch_group_create();
-    
-    // ETF List
-    dispatch_group_enter(group);
-    [dataManager requestETFListWithCompletion:^(NSArray *etfs, NSError *error) {
-        if (!error && etfs) {
-            [self updateMarketList:@"ETF" withData:etfs];
-        }
-        dispatch_group_leave(group);
-    }];
-    
-    // Gainers/Losers for different rank types
-    NSArray *rankTypes = @[@"1d", @"52w"];  // Day and Week
-    for (NSString *rankType in rankTypes) {
-        // Gainers
-        dispatch_group_enter(group);
-        NSString *gainersType = [rankType isEqualToString:@"1d"] ? @"Day Gainers" : @"Week Gainers";
-        [dataManager requestTopGainersWithRankType:rankType
-                                          pageSize:50
-                                        completion:^(NSArray *gainers, NSError *error) {
-            if (!error && gainers) {
-                [self updateMarketList:gainersType withData:gainers];
-            }
-            dispatch_group_leave(group);
-        }];
-        
-        // Losers
-        dispatch_group_enter(group);
-        NSString *losersType = [rankType isEqualToString:@"1d"] ? @"Day Losers" : @"Week Losers";
-        [dataManager requestTopLosersWithRankType:rankType
-                                         pageSize:50
-                                       completion:^(NSArray *losers, NSError *error) {
-            if (!error && losers) {
-                [self updateMarketList:losersType withData:losers];
-            }
-            dispatch_group_leave(group);
-        }];
-    }
-    
-    // When all requests complete
-    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
-        self.isLoading = NO;
-        self.progressIndicator.hidden = YES;
-        [self.progressIndicator stopAnimation:nil];
-        self.refreshButton.enabled = YES;
-        [self.outlineView reloadData];
-        [self showTemporaryMessage:@"Data refreshed"];
-    });
-}
+  - (void)refreshData {
+      if (self.isLoading) return;
+      
+      self.isLoading = YES;
+      self.progressIndicator.hidden = NO;
+      [self.progressIndicator startAnimation:nil];
+      self.refreshButton.enabled = NO;
+      
+      // NON chiamiamo DataManager!
+      // Invece, chiediamo a DataHub di aggiornare i dati
+      DataHub *hub = [DataHub shared];
+      
+      // DataHub dovrebbe avere un metodo per richiedere aggiornamenti
+      // Per ora, carichiamo solo quello che c'è
+      [self loadDataFromDataHub];
+      
+      // Se vogliamo dati freschi, DataHub dovrebbe gestirlo internamente
+      // Potremmo aggiungere un metodo come:
+      // [hub requestMarketDataUpdate];
+      
+      self.isLoading = NO;
+      self.progressIndicator.hidden = YES;
+      [self.progressIndicator stopAnimation:nil];
+      self.refreshButton.enabled = YES;
+      
+      [self showTemporaryMessage:@"Data loaded from cache"];
+  }
 
-- (void)updateMarketList:(NSString *)listType withData:(NSArray *)data {
-    // Find the list
-    MarketList *list = nil;
-    for (MarketList *ml in self.marketLists) {
-        if ([ml.listType isEqualToString:listType]) {
-            list = ml;
-            break;
-        }
-    }
-    
-    if (!list) return;
-    
-    // Convert data to MarketPerformer objects
-    NSMutableArray *performers = [NSMutableArray array];
-    
-    for (NSDictionary *item in data) {
-        MarketPerformer *performer = [[MarketPerformer alloc] init];
-        performer.symbol = item[@"symbol"];
-        performer.name = item[@"name"] ?: item[@"symbol"];
-        performer.price = [item[@"price"] doubleValue];
-        performer.changePercent = [item[@"changePercent"] doubleValue];
-        performer.volume = [item[@"volume"] longLongValue];
-        [performers addObject:performer];
-    }
-    
-    list.items = performers;
-    list.lastUpdate = [NSDate date];
-}
+  - (void)loadDataFromDataHub {
+      DataHub *hub = [DataHub shared];
+      
+      // Mapping tra tipo lista e timeframe
+      NSDictionary *listMappings = @{
+          @"Day Gainers": @{@"type": @"gainers", @"timeframe": @"1d"},
+          @"Day Losers": @{@"type": @"losers", @"timeframe": @"1d"},
+          @"Week Gainers": @{@"type": @"gainers", @"timeframe": @"52w"},
+          @"Week Losers": @{@"type": @"losers", @"timeframe": @"52w"},
+          @"ETF": @{@"type": @"etf", @"timeframe": @"1d"}
+      };
+      
+      for (NSMutableDictionary *marketList in self.marketLists) {
+          NSString *listName = marketList[@"type"];
+          NSDictionary *mapping = listMappings[listName];
+          
+          if (mapping) {
+              NSArray<MarketPerformer *> *performers = [hub getMarketPerformersForList:mapping[@"type"]
+                                                                            timeframe:mapping[@"timeframe"]];
+              
+              NSMutableArray *items = [NSMutableArray array];
+              for (MarketPerformer *performer in performers) {
+                  [items addObject:@{
+                      @"symbol": performer.symbol ?: @"",
+                      @"name": performer.name ?: performer.symbol ?: @"",
+                      @"price": @(performer.price),
+                      @"changePercent": @(performer.changePercent),
+                      @"volume": @(performer.volume)
+                  }];
+              }
+              
+              marketList[@"items"] = items;
+              marketList[@"lastUpdate"] = [NSDate date];
+          }
+      }
+      
+      [self.outlineView reloadData];
+  }
 
-#pragma mark - NSOutlineView DataSource
+  #pragma mark - Notifications
 
-- (NSInteger)outlineView:(NSOutlineView *)outlineView numberOfChildrenOfItem:(id)item {
-    if (!item) {
-        return self.marketLists.count;
-    }
-    
-    if ([item isKindOfClass:[MarketList class]]) {
-        MarketList *list = (MarketList *)item;
-        return list.items.count;
-    }
-    
-    return 0;
-}
+  - (void)marketDataUpdated:(NSNotification *)notification {
+      // DataHub ci notifica che ci sono nuovi dati
+      dispatch_async(dispatch_get_main_queue(), ^{
+          [self loadDataFromDataHub];
+      });
+  }
 
-- (id)outlineView:(NSOutlineView *)outlineView child:(NSInteger)index ofItem:(id)item {
-    if (!item) {
-        return self.marketLists[index];
-    }
-    
-    if ([item isKindOfClass:[MarketList class]]) {
-        MarketList *list = (MarketList *)item;
-        return list.items[index];
-    }
-    
-    return nil;
-}
+  - (void)marketQuoteUpdated:(NSNotification *)notification {
+      NSDictionary *userInfo = notification.userInfo;
+      NSString *symbol = userInfo[@"symbol"];
+      MarketQuote *quote = userInfo[@"quote"];
+      
+      // Aggiorna solo il simbolo specifico
+      for (NSMutableDictionary *list in self.marketLists) {
+          NSMutableArray *items = list[@"items"];
+          for (NSMutableDictionary *item in items) {
+              if ([item[@"symbol"] isEqualToString:symbol]) {
+                  item[@"price"] = @(quote.currentPrice);
+                  item[@"changePercent"] = @(quote.changePercent);
+                  
+                  // Aggiorna solo questa riga
+                  NSInteger row = [self rowForItem:item];
+                  if (row >= 0) {
+                      [self.outlineView reloadDataForRowIndexes:[NSIndexSet indexSetWithIndex:row]
+                                                  columnIndexes:[NSIndexSet indexSetWithIndexesInRange:NSMakeRange(0, self.outlineView.numberOfColumns)]];
+                  }
+              }
+          }
+      }
+  }
 
-- (BOOL)outlineView:(NSOutlineView *)outlineView isItemExpandable:(id)item {
-    return [item isKindOfClass:[MarketList class]];
-}
+  #pragma mark - Actions
 
-#pragma mark - NSOutlineView Delegate
+  - (void)createWatchlistFromSelection {
+      NSArray *symbols = [self selectedSymbols];
+      if (symbols.count > 0) {
+          [self createWatchlistFromList:symbols];
+      }
+  }
 
-- (NSView *)outlineView:(NSOutlineView *)outlineView
-     viewForTableColumn:(NSTableColumn *)tableColumn
-                   item:(id)item {
-    
-    NSTextField *textField = [[NSTextField alloc] init];
-    textField.bordered = NO;
-    textField.editable = NO;
-    textField.backgroundColor = [NSColor clearColor];
-    
-    if ([item isKindOfClass:[MarketList class]]) {
-        // Header row
-        MarketList *list = (MarketList *)item;
-        if ([tableColumn.identifier isEqualToString:@"symbol"]) {
-            textField.stringValue = list.listType;
-            textField.font = [NSFont boldSystemFontOfSize:12];
-        } else if ([tableColumn.identifier isEqualToString:@"name"]) {
-            textField.stringValue = [NSString stringWithFormat:@"%lu items",
-                                   (unsigned long)list.items.count];
-            textField.textColor = [NSColor secondaryLabelColor];
-        }
-    } else if ([item isKindOfClass:[MarketPerformer class]]) {
-        // Data row
-        MarketPerformer *performer = (MarketPerformer *)item;
-        
-        if ([tableColumn.identifier isEqualToString:@"symbol"]) {
-            textField.stringValue = performer.symbol;
-        } else if ([tableColumn.identifier isEqualToString:@"name"]) {
-            textField.stringValue = performer.name;
-        } else if ([tableColumn.identifier isEqualToString:@"price"]) {
-            textField.stringValue = [NSString stringWithFormat:@"$%.2f", performer.price];
-        } else if ([tableColumn.identifier isEqualToString:@"change"]) {
-            textField.stringValue = [NSString stringWithFormat:@"%.2f%%", performer.changePercent];
-            textField.textColor = performer.changePercent >= 0 ?
-                                [NSColor systemGreenColor] : [NSColor systemRedColor];
-        }
-    }
-    
-    return textField;
-}
+  - (void)createWatchlistFromList:(NSArray *)symbols {
+      // Usa DataHub per creare la watchlist
+      DataHub *hub = [DataHub shared];
+      
+      NSAlert *alert = [[NSAlert alloc] init];
+      alert.messageText = @"Create New Watchlist";
+      alert.informativeText = [NSString stringWithFormat:@"Enter a name for the watchlist with %lu symbols",
+                             (unsigned long)symbols.count];
+      [alert addButtonWithTitle:@"Create"];
+      [alert addButtonWithTitle:@"Cancel"];
+      
+      NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+      input.stringValue = @"New Watchlist";
+      alert.accessoryView = input;
+      
+      NSModalResponse response = [alert runModal];
+      if (response == NSAlertFirstButtonReturn) {
+          NSString *name = input.stringValue;
+          if (name.length > 0) {
+              Watchlist *watchlist = [hub createWatchlistWithName:name];
+              watchlist.symbols = symbols;
+              [hub updateWatchlist:watchlist];
+              [self showTemporaryMessage:[NSString stringWithFormat:@"Created watchlist: %@", name]];
+          }
+      }
+  }
 
-#pragma mark - Actions
+  - (void)dealloc {
+      [[NSNotificationCenter defaultCenter] removeObserver:self];
+      [self.refreshTimer invalidate];
+  }
 
-- (void)refreshButtonClicked:(id)sender {
-    [self refreshData];
-}
-
-- (void)doubleClickAction:(id)sender {
-    NSInteger clickedRow = self.outlineView.clickedRow;
-    if (clickedRow < 0) return;
-    
-    id item = [self.outlineView itemAtRow:clickedRow];
-    if ([item isKindOfClass:[MarketPerformer class]]) {
-        MarketPerformer *performer = (MarketPerformer *)item;
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"SymbolSelected"
-                                                            object:self
-                                                          userInfo:@{@"symbol": performer.symbol}];
-    }
-}
-
-- (NSArray<NSString *> *)selectedSymbols {
-    NSMutableArray *symbols = [NSMutableArray array];
-    NSIndexSet *selectedRows = self.outlineView.selectedRowIndexes;
-    
-    [selectedRows enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL *stop) {
-        id item = [self.outlineView itemAtRow:idx];
-        if ([item isKindOfClass:[MarketPerformer class]]) {
-            MarketPerformer *performer = (MarketPerformer *)item;
-            [symbols addObject:performer.symbol];
-        }
-    }];
-    
-    return symbols;
-}
-
-#pragma mark - Context Menu
-
-- (NSMenu *)createContextMenu {
-    NSMenu *menu = [[NSMenu alloc] init];
-    
-    self.contextMenuCreateWatchlist = [[NSMenuItem alloc] initWithTitle:@"Create Watchlist from Selection"
-                                                                  action:@selector(createWatchlistFromSelection:)
-                                                           keyEquivalent:@""];
-    self.contextMenuCreateWatchlist.target = self;
-    
-    self.contextMenuSendToChain = [[NSMenuItem alloc] initWithTitle:@"Send to Chain"
-                                                              action:@selector(sendSelectionToChain:)
-                                                       keyEquivalent:@""];
-    self.contextMenuSendToChain.target = self;
-    
-    [menu addItem:self.contextMenuCreateWatchlist];
-    [menu addItem:[NSMenuItem separatorItem]];
-    [menu addItem:self.contextMenuSendToChain];
-    
-    return menu;
-}
-
-- (void)createWatchlistFromSelection:(id)sender {
-    NSArray *symbols = [self selectedSymbols];
-    if (symbols.count > 0) {
-        [self createWatchlistFromList:symbols];
-    }
-}
-
-- (void)createWatchlistFromList:(NSArray *)symbols {
-    // Create dialog for watchlist name
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Create New Watchlist";
-    alert.informativeText = [NSString stringWithFormat:@"Enter a name for the watchlist with %lu symbols",
-                           (unsigned long)symbols.count];
-    [alert addButtonWithTitle:@"Create"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
-    input.stringValue = @"New Watchlist";
-    alert.accessoryView = input;
-    
-    NSModalResponse response = [alert runModal];
-    if (response == NSAlertFirstButtonReturn) {
-        NSString *name = input.stringValue;
-        if (name.length > 0) {
-            Watchlist *watchlist = [[DataHub shared] createWatchlistWithName:name];
-            watchlist.symbols = symbols;
-            [[DataHub shared] updateWatchlist:watchlist];
-            [self showTemporaryMessage:[NSString stringWithFormat:@"Created watchlist: %@", name]];
-        }
-    }
-}
-
-- (void)sendSelectionToChain:(id)sender {
-    NSArray *symbols = [self selectedSymbols];
-    if (symbols.count > 0) {
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"AddSymbolsToChain"
-                                                            object:self
-                                                          userInfo:@{@"symbols": symbols}];
-    }
-}
-
-- (void)sendAllToChain:(id)sender {
-    NSMutableArray *allSymbols = [NSMutableArray array];
-    
-    for (MarketList *list in self.marketLists) {
-        for (MarketPerformer *performer in list.items) {
-            [allSymbols addObject:performer.symbol];
-        }
-    }
-    
-    if (allSymbols.count > 0) {
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"AddSymbolsToChain"
-                                                            object:self
-                                                          userInfo:@{@"symbols": allSymbols}];
-    }
-}
-
-- (void)showTemporaryMessage:(NSString *)message {
-    // Implement temporary message display
-    NSLog(@"%@", message);
-}
-
-#pragma mark - Widget Protocol
-
-- (void)refresh {
-    [self refreshData];
-}
-
-- (NSDictionary *)serializeState {
-    NSMutableDictionary *state = [[super serializeState] mutableCopy];
-    // Add any specific state if needed
-    return state;
-}
-
-- (void)restoreState:(NSDictionary *)state {
-    [super restoreState:state];
-    // Restore any specific state if needed
-    [self refreshData];
-}
-
-- (void)dealloc {
-    [self.refreshTimer invalidate];
-}
-
-@end
+  @end

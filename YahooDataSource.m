@@ -4,7 +4,9 @@
 //
 
 #import "YahooDataSource.h"
-
+#import "MarketData.h"
+#import "HistoricalBar+CoreDataClass.h"
+#import "CommonTypes.h"
 @interface YahooDataSource ()
 @property (nonatomic, strong) NSURLSession *session;
 @property (nonatomic, strong) NSString *crumb;
@@ -379,15 +381,16 @@
     NSMutableArray *bars = [NSMutableArray array];
     
     for (NSInteger i = 0; i < timestamps.count; i++) {
-        HistoricalBar *bar = [[HistoricalBar alloc] init];
-        bar.timestamp = [NSDate dateWithTimeIntervalSince1970:[timestamps[i] doubleValue]];
-        bar.open = [NSDecimalNumber decimalNumberWithString:[opens[i] stringValue]];
-        bar.high = [NSDecimalNumber decimalNumberWithString:[highs[i] stringValue]];
-        bar.low = [NSDecimalNumber decimalNumberWithString:[lows[i] stringValue]];
-        bar.close = [NSDecimalNumber decimalNumberWithString:[closes[i] stringValue]];
-        bar.volume = [volumes[i] integerValue];
+        NSMutableDictionary *barDict = [NSMutableDictionary dictionary];
         
-        [bars addObject:bar];
+        barDict[@"date"] = [NSDate dateWithTimeIntervalSince1970:[timestamps[i] doubleValue]];
+        barDict[@"open"] = opens[i];
+        barDict[@"high"] = highs[i];
+        barDict[@"low"] = lows[i];
+        barDict[@"close"] = closes[i];
+        barDict[@"volume"] = volumes[i];
+        
+        [bars addObject:barDict];
     }
     
     return bars;

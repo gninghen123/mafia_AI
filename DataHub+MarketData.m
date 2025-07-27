@@ -374,7 +374,8 @@
                                    timeframe:(BarTimeframe)timeframe {
     // DataHub chiede internamente a DataManager di aggiornare
     // Questo mantiene l'incapsulamento - le UI non sanno di DataManager
-    
+    NSLog(@"🚀 DataHub requesting update for %@ timeframe %ld", symbol, timeframe);
+
     DataManager *dm = [DataManager sharedManager];
     NSDate *endDate = [NSDate date];
     NSDate *startDate = [endDate dateByAddingTimeInterval:-(30 * 24 * 60 * 60)]; // 30 giorni

@@ -451,7 +451,7 @@
     BarTimeframe timeframe = [parameters[@"timeframe"] integerValue];
     NSDate *startDate = parameters[@"startDate"];
     NSDate *endDate = parameters[@"endDate"];
-    
+ 
     if ([dataSource respondsToSelector:@selector(fetchHistoricalDataForSymbol:timeframe:startDate:endDate:completion:)]) {
         [dataSource fetchHistoricalDataForSymbol:symbol
                                       timeframe:timeframe

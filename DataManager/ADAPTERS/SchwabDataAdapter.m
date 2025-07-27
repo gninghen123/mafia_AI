@@ -90,37 +90,95 @@
 }
 
 - (NSArray<NSDictionary *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol {
-    if (!rawData || ![rawData isKindOfClass:[NSDictionary class]]) return @[];
+    if (!rawData) return @[];
     
-    NSDictionary *data = (NSDictionary *)rawData;
-    NSArray *candles = data[@"candles"];
+    NSArray *candles = nil;
     
-    if (!candles) return @[];
+    // Caso 1: rawData è già un array di candele (formato diretto)
+    if ([rawData isKindOfClass:[NSArray class]]) {
+        candles = (NSArray *)rawData;
+        NSLog(@"SchwabAdapter: Raw data is array with %lu candles", (unsigned long)candles.count);
+    }
+    // Caso 2: rawData è un dictionary con chiave "candles" (formato wrapped)
+    else if ([rawData isKindOfClass:[NSDictionary class]]) {
+        NSDictionary *data = (NSDictionary *)rawData;
+        candles = data[@"candles"];
+        NSLog(@"SchwabAdapter: Raw data is dictionary, extracted %lu candles", (unsigned long)candles.count);
+    }
+    // Caso 3: formato non riconosciuto
+    else {
+        NSLog(@"SchwabAdapter: Unexpected raw data format: %@", [rawData class]);
+        return @[];
+    }
+    
+    if (!candles || ![candles isKindOfClass:[NSArray class]]) {
+        NSLog(@"SchwabAdapter: No valid candles array found");
+        return @[];
+    }
     
     NSMutableArray<NSDictionary *> *bars = [NSMutableArray array];
     
-    for (NSDictionary *candle in candles) {
-        NSMutableDictionary *barData = [NSMutableDictionary dictionary];
-        
-        // Date (Schwab uses milliseconds)
-        if (candle[@"datetime"]) {
-            NSNumber *timestamp = candle[@"datetime"];
-            barData[@"date"] = [NSDate dateWithTimeIntervalSince1970:[timestamp doubleValue] / 1000.0];
+    for (id candleItem in candles) {
+        if (![candleItem isKindOfClass:[NSDictionary class]]) {
+            NSLog(@"SchwabAdapter: Skipping non-dictionary candle: %@", candleItem);
+            continue;
         }
         
-        // OHLC data
-        barData[@"open"] = candle[@"open"] ?: @0;
-        barData[@"high"] = candle[@"high"] ?: @0;
-        barData[@"low"] = candle[@"low"] ?: @0;
-        barData[@"close"] = candle[@"close"] ?: @0;
-        barData[@"volume"] = candle[@"volume"] ?: @0;
+        NSDictionary *candle = (NSDictionary *)candleItem;
+        NSMutableDictionary *barData = [NSMutableDictionary dictionary];
+        
+        // Date handling - supporta sia "datetime" (timestamp) che "date" (string)
+        NSDate *candleDate = nil;
+        
+        if (candle[@"datetime"]) {
+            // Formato timestamp (milliseconds)
+            NSNumber *timestamp = candle[@"datetime"];
+            candleDate = [NSDate dateWithTimeIntervalSince1970:[timestamp doubleValue] / 1000.0];
+        }else if (candle[@"date"]){
+            candleDate = candleItem[@"date"];
+        }
+        
+        if (!candleDate) {
+            NSLog(@"SchwabAdapter: Missing or invalid date in candle: %@", candle);
+            continue; // Skip candles without valid date
+        }
+        
+        // Assicurati che sia proprio un NSDate
+        if (candleDate && [candleDate isKindOfClass:[NSDate class]]) {
+            barData[@"date"] = candleDate;
+        } else {
+            NSLog(@"SchwabAdapter: Invalid date object type: %@", [candleDate class]);
+            continue;
+        }
+        
+        // OHLC data con validazione
+        barData[@"open"] = [self safeNumberFromValue:candle[@"open"]];
+        barData[@"high"] = [self safeNumberFromValue:candle[@"high"]];
+        barData[@"low"] = [self safeNumberFromValue:candle[@"low"]];
+        barData[@"close"] = [self safeNumberFromValue:candle[@"close"]];
+        barData[@"volume"] = [self safeNumberFromValue:candle[@"volume"]];
         barData[@"symbol"] = symbol;
         
         [bars addObject:barData];
     }
     
+    NSLog(@"SchwabAdapter: Successfully converted %lu bars for %@", (unsigned long)bars.count, symbol);
     return bars;
 }
+
+// Helper method per validare i numeri
+- (NSNumber *)safeNumberFromValue:(id)value {
+    if ([value isKindOfClass:[NSNumber class]]) {
+        return (NSNumber *)value;
+    } else if ([value isKindOfClass:[NSString class]]) {
+        return @([value doubleValue]);
+    }
+    return @0;
+}
+
+
+
+
 
 - (Position *)standardizePositionData:(NSDictionary *)rawData {
     // TODO: Implement when needed

@@ -281,9 +281,7 @@
 
 #pragma mark - Data Loading from DataHub
 
-- (void)loadDataFromDataHub {
-    DataHub *hub = [DataHub shared];
-    
+- (void)loadDataFromDataHub {    
     for (MiniChart *miniChart in self.miniCharts) {
         [self loadDataForMiniChart:miniChart];
     }
@@ -333,7 +331,6 @@
 #pragma mark - Data Updates
 
 - (void)refreshAllCharts {
-    DataHub *hub = [DataHub shared];
     
     // Per ogni simbolo, carica i dati disponibili e richiedi aggiornamenti se necessario
     for (MiniChart *miniChart in self.miniCharts) {
@@ -665,8 +662,8 @@
         [self.refreshTimer invalidate];
     }
     
-    // Refresh ogni 30 secondi
-    self.refreshTimer = [NSTimer scheduledTimerWithTimeInterval:30.0
+    // Refresh ogni 240 secondi
+    self.refreshTimer = [NSTimer scheduledTimerWithTimeInterval:240.0
                                                          target:self
                                                        selector:@selector(autoRefreshTimerFired:)
                                                        userInfo:nil

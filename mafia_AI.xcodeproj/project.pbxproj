@@ -56,6 +56,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		95334AE92E3615AE00C43F8F /* DataHub+Private.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "DataHub+Private.h"; sourceTree = "<group>"; };
 		9549A3072E33B41100E873AB /* DataHub+MarketData.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "DataHub+MarketData.h"; sourceTree = "<group>"; };
 		9549A30B2E33B4BF00E873AB /* DataHub+MarketData.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "DataHub+MarketData.m"; sourceTree = "<group>"; };
 		954D30002E28514A00C7DC88 /* mafia_AI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = mafia_AI.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -188,6 +189,7 @@
 				95F1AFB42E31131100D96BDD /* DataManager */,
 				95F1AD512E2E475500D96BDD /* DataHub.h */,
 				95F1AD522E2E475500D96BDD /* DataHub.m */,
+				95334AE92E3615AE00C43F8F /* DataHub+Private.h */,
 				9549A3072E33B41100E873AB /* DataHub+MarketData.h */,
 				9549A30B2E33B4BF00E873AB /* DataHub+MarketData.m */,
 				954D30E52E28612100C7DC88 /* AppSettings.h */,

@@ -4,9 +4,13 @@
 //
 
 #import "DataHub+MarketData.h"
-#import "DataHub+MarketData.h"
-#import "DataManager.h"            // <-- AGGIUNGI QUESTO
+#import "DataHub+Private.h"
+#import "DataManager.h"
 #import "DataManager+MarketLists.h"
+#import "HistoricalBar+CoreDataClass.h"
+#import "MarketQuote+CoreDataClass.h"
+#import "MarketPerformer+CoreDataClass.h"
+#import "CompanyInfo+CoreDataClass.h"
 
 @implementation DataHub (MarketData)
 
@@ -368,33 +372,74 @@
     return stats;
 }
 
-
+#pragma mark - Update Requests
 
 - (void)requestHistoricalDataUpdateForSymbol:(NSString *)symbol
                                    timeframe:(BarTimeframe)timeframe {
-    // DataHub chiede internamente a DataManager di aggiornare
-    // Questo mantiene l'incapsulamento - le UI non sanno di DataManager
+    
+    // Inizializza il dizionario delle richieste pendenti se non esiste
+    if (!self.pendingRequests) {
+        self.pendingRequests = [NSMutableDictionary dictionary];
+    }
+    
+    // Crea una chiave unica per questa richiesta
+    NSString *requestKey = [NSString stringWithFormat:@"historical_%@_%ld", symbol, (long)timeframe];
+    
+    // Controlla se c'è già una richiesta in corso
+    @synchronized(self.pendingRequests) {
+        if (self.pendingRequests[requestKey]) {
+            NSLog(@"🔄 DataHub: Request already pending for %@ timeframe %ld", symbol, timeframe);
+            return;
+        }
+        
+        // Marca la richiesta come in corso
+        self.pendingRequests[requestKey] = @YES;
+    }
+    
     NSLog(@"🚀 DataHub requesting update for %@ timeframe %ld", symbol, timeframe);
-
+    
     DataManager *dm = [DataManager sharedManager];
     NSDate *endDate = [NSDate date];
     NSDate *startDate = [endDate dateByAddingTimeInterval:-(30 * 24 * 60 * 60)]; // 30 giorni
     
+    __weak typeof(self) weakSelf = self;
     [dm requestHistoricalDataForSymbol:symbol
                             timeframe:timeframe
                             startDate:startDate
                               endDate:endDate
                            completion:^(NSArray<HistoricalBar *> *bars, NSError *error) {
+        
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        
+        // Rimuovi dalla lista delle richieste pendenti
+        @synchronized(strongSelf.pendingRequests) {
+            [strongSelf.pendingRequests removeObjectForKey:requestKey];
+        }
+        
         if (!error && bars.count > 0) {
-            // I dati vengono salvati automaticamente tramite DataManager+Persistence
-            // Invia notifica
+            NSLog(@"✅ DataHub: Received %lu bars for %@ timeframe %ld",
+                  (unsigned long)bars.count, symbol, timeframe);
+            
+            // IMPORTANTE: Dobbiamo salvare i dati nel Core Data!
+            // I bars che arrivano da DataManager NON sono oggetti Core Data salvati
+            
+            
+            
+            // Salva i dati nel Core Data tramite il metodo esistente
+            [strongSelf saveHistoricalBars:bars forSymbol:symbol timeframe:timeframe];
+            
+            // Solo DOPO aver salvato, invia la notifica
             [[NSNotificationCenter defaultCenter] postNotificationName:@"DataHubHistoricalDataUpdated"
-                                                                object:self
+                                                                object:strongSelf
                                                               userInfo:@{
                                                                   @"symbol": symbol,
                                                                   @"timeframe": @(timeframe),
                                                                   @"barsCount": @(bars.count)
                                                               }];
+        } else if (error) {
+            NSLog(@"❌ DataHub: Error requesting data for %@ timeframe %ld: %@",
+                  symbol, timeframe, error.localizedDescription);
         }
     }];
 }

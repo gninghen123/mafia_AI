@@ -4,6 +4,7 @@
 //
 
 #import "DataHub.h"
+#import "DataHub+Private.h"
 #import "datamodels/Watchlist+CoreDataClass.h"
 #import "datamodels/Watchlist+CoreDataProperties.h"
 #import "Alert+CoreDataClass.h"
@@ -18,16 +19,8 @@ NSString *const DataHubConnectionsUpdatedNotification = @"DataHubConnectionsUpda
 NSString *const DataHubModelsUpdatedNotification = @"DataHubModelsUpdatedNotification";
 NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification";
 
-@interface DataHub ()
-@property (nonatomic, strong, readwrite) NSPersistentContainer *persistentContainer;
-@property (nonatomic, strong, readwrite) NSManagedObjectContext *mainContext;
-@property (nonatomic, strong, readwrite) NSMutableDictionary *symbolDataCache;
-@property (nonatomic, strong, readwrite) NSMutableArray *watchlists;
-@property (nonatomic, strong, readwrite) NSMutableArray *alerts;
-@property (nonatomic, strong, readwrite) NSMutableArray *connections;
-@property (nonatomic, strong, readwrite) NSMutableArray *tradingModels;
-@property (nonatomic, strong) NSTimer *alertCheckTimer;
-@end
+// Le proprietà sono già dichiarate in DataHub+Private.h
+// Non servono ridichiarazioni qui
 
 @implementation DataHub
 
@@ -53,7 +46,10 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
         _alerts = [NSMutableArray array];
         _connections = [NSMutableArray array];
         _tradingModels = [NSMutableArray array];
-     
+        
+        // AGGIUNGI QUESTE RIGHE per inizializzare le proprietà mancanti
+        _cache = [NSMutableDictionary dictionary];
+        _pendingRequests = [NSMutableDictionary dictionary];
     }
     return self;
 }
@@ -78,82 +74,54 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     NSError *error = nil;
     if ([self.mainContext hasChanges] && ![self.mainContext save:&error]) {
         NSLog(@"Failed to save context: %@", error);
+        // In production, handle this error appropriately
     }
 }
 
+#pragma mark - Initial Data Loading
+
 - (void)loadInitialData {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self loadWatchlists];
-        [self loadAlerts];
-        [self loadConnections];
-        [self loadTradingModels];
-        
-        [[NSNotificationCenter defaultCenter] postNotificationName:DataHubDataLoadedNotification object:self];
-    });
+    [self loadWatchlists];
+    [self loadAlerts];
+    [self loadConnections];
+    
+    // Notify that initial data is loaded
+    [[NSNotificationCenter defaultCenter] postNotificationName:DataHubDataLoadedNotification
+                                                        object:self];
 }
 
 #pragma mark - Symbol Data Management
 
-- (void)updateSymbolData:(NSString *)symbol
-              withPrice:(double)price
-                 volume:(NSInteger)volume
-                 change:(double)change
-           changePercent:(double)changePercent {
-    
-    if (!symbol) return;
+- (void)updateSymbolData:(NSDictionary *)data forSymbol:(NSString *)symbol {
+    if (!symbol || !data) return;
     
     @synchronized(self.symbolDataCache) {
-        NSMutableDictionary *data = [self.symbolDataCache[symbol] mutableCopy] ?: [NSMutableDictionary dictionary];
-        
-        data[@"symbol"] = symbol;
-        data[@"price"] = @(price);
-        data[@"volume"] = @(volume);
-        data[@"change"] = @(change);
-        data[@"changePercent"] = @(changePercent);
-        data[@"lastUpdate"] = [NSDate date];
-        
         self.symbolDataCache[symbol] = data;
     }
     
-    // Check alerts for this symbol
-    [self checkAlertsForSymbol:symbol];
-    
-    // Notify observers
     [[NSNotificationCenter defaultCenter] postNotificationName:DataHubSymbolsUpdatedNotification
                                                         object:self
-                                                      userInfo:@{@"symbol": symbol}];
+                                                      userInfo:@{@"symbol": symbol, @"data": data}];
 }
 
 - (NSDictionary *)getDataForSymbol:(NSString *)symbol {
+    if (!symbol) return nil;
+    
     @synchronized(self.symbolDataCache) {
-        return [self.symbolDataCache[symbol] copy];
+        return self.symbolDataCache[symbol];
     }
 }
 
-- (NSArray<NSString *> *)getAllSymbols {
+- (void)removeDataForSymbol:(NSString *)symbol {
+    if (!symbol) return;
+    
     @synchronized(self.symbolDataCache) {
-        return [self.symbolDataCache.allKeys copy];
-    }
-}
-
-- (void)clearAllSymbolData {
-    @synchronized(self.symbolDataCache) {
-        [self.symbolDataCache removeAllObjects];
+        [self.symbolDataCache removeObjectForKey:symbol];
     }
 }
 
 #pragma mark - Watchlist Management
-- (BOOL)isSymbolFavorite:(NSString *)symbol {
-    // For now, return NO until we implement favorites properly
-    // TODO: Implement favorites in Core Data model
-    return NO;
-}
 
-- (void)setSymbol:(NSString *)symbol favorite:(BOOL)favorite {
-    // TODO: Implement favorites in Core Data model
-    // For now, just log
-    NSLog(@"Setting favorite status for %@: %@", symbol, favorite ? @"YES" : @"NO");
-}
 - (void)loadWatchlists {
     NSFetchRequest *request = [Watchlist fetchRequest];
     request.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"sortOrder" ascending:YES]];
@@ -427,14 +395,6 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     return connection;
 }
 
-- (void)updateConnection:(StockConnection *)connection {
-    [self saveContext];
-    
-    [[NSNotificationCenter defaultCenter] postNotificationName:DataHubConnectionsUpdatedNotification
-                                                        object:self
-                                                      userInfo:@{@"action": @"updated", @"connection": connection}];
-}
-
 - (void)deleteConnection:(StockConnection *)connection {
     [self.connections removeObject:connection];
     [self.mainContext deleteObject:connection];
@@ -445,40 +405,9 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
                                                       userInfo:@{@"action": @"deleted"}];
 }
 
-- (NSArray<NSString *> *)getRelatedSymbolsFor:(NSString *)symbol {
-    NSMutableSet *relatedSymbols = [NSMutableSet set];
-    
-    for (StockConnection *connection in [self getConnectionsForSymbol:symbol]) {
-        [relatedSymbols addObjectsFromArray:connection.symbols];
-    }
-    
-    [relatedSymbols removeObject:symbol]; // Remove the queried symbol itself
-    
-    return [relatedSymbols allObjects];
-}
+#pragma mark - Trading Models Management
 
-- (NSArray<StockConnection *> *)getConnectionsOfType:(ConnectionType)type {
-    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"connectionType == %d", type];
-    return [self.connections filteredArrayUsingPredicate:predicate];
-}
-
-#pragma mark - Trading Model Management
-
-- (void)loadTradingModels {
-    NSFetchRequest *request = [TradingModel fetchRequest];
-    request.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"setupDate" ascending:NO]];
-    
-    NSError *error = nil;
-    NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
-    
-    if (error) {
-        NSLog(@"Error loading trading models: %@", error);
-    } else {
-        [self.tradingModels setArray:results];
-    }
-}
-
-- (NSArray<TradingModel *> *)getAllModels {
+- (NSArray<TradingModel *> *)getAllTradingModels {
     return [self.tradingModels copy];
 }
 
@@ -492,28 +421,25 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     return [self.tradingModels filteredArrayUsingPredicate:predicate];
 }
 
-- (NSArray<TradingModel *> *)getModelsOfType:(ModelType)type {
-    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"modelType == %d", type];
-    return [self.tradingModels filteredArrayUsingPredicate:predicate];
-}
-
-- (TradingModel *)createModelWithSymbol:(NSString *)symbol
-                                   type:(ModelType)type
-                              setupDate:(NSDate *)setupDate
-                             entryPrice:(double)entryPrice
-                            targetPrice:(double)targetPrice
-                              stopPrice:(double)stopPrice {
+- (TradingModel *)createTradingModelWithSymbol:(NSString *)symbol
+                                           type:(ModelType)type
+                                           name:(NSString *)name
+                                     parameters:(NSDictionary *)parameters {
     
     TradingModel *model = [NSEntityDescription insertNewObjectForEntityForName:@"TradingModel"
-                                                         inManagedObjectContext:self.mainContext];
+                                                        inManagedObjectContext:self.mainContext];
     model.symbol = symbol;
     model.modelType = type;
-    model.setupDate = setupDate;
-    model.entryPrice = entryPrice;
-    model.targetPrice = targetPrice;
-    model.stopPrice = stopPrice;
     model.status = ModelStatusPending;
-    model.currentOutcome = 0.0;
+    model.setupDate = [NSDate date];
+    // name e parameters non esistono nel model, li salviamo in notes come JSON
+    if (name || parameters) {
+        NSMutableDictionary *extraData = [NSMutableDictionary dictionary];
+        if (name) extraData[@"name"] = name;
+        if (parameters) extraData[@"parameters"] = parameters;
+        NSData *jsonData = [NSJSONSerialization dataWithJSONObject:extraData options:0 error:nil];
+        model.notes = [[NSString alloc] initWithData:jsonData encoding:NSUTF8StringEncoding];
+    }
     
     [self.tradingModels addObject:model];
     [self saveContext];
@@ -525,50 +451,12 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     return model;
 }
 
-- (void)updateModelStatus:(TradingModel *)model status:(ModelStatus)status {
-    model.status = status;
-    
-    if (status == ModelStatusActive) {
-        model.entryDate = [NSDate date];
-    }
-    
+- (void)updateModel:(TradingModel *)model {
     [self saveContext];
     
     [[NSNotificationCenter defaultCenter] postNotificationName:DataHubModelsUpdatedNotification
                                                         object:self
-                                                      userInfo:@{@"action": @"statusChanged", @"model": model}];
-}
-
-- (void)updateModelOutcome:(TradingModel *)model currentPrice:(double)currentPrice {
-    // Calculate current outcome percentage
-    double outcome = ((currentPrice - model.entryPrice) / model.entryPrice) * 100.0;
-    model.currentOutcome = outcome;
-    
-    // Check if stop or target hit
-    if (currentPrice <= model.stopPrice) {
-        [self closeModel:model atPrice:currentPrice];
-        model.status = ModelStatusStopped;
-    } else if (currentPrice >= model.targetPrice) {
-        [self closeModel:model atPrice:currentPrice];
-        model.status = ModelStatusClosed;
-    }
-    
-    [self saveContext];
-}
-
-- (void)closeModel:(TradingModel *)model atPrice:(double)exitPrice {
-    model.exitDate = [NSDate date];
-    model.currentOutcome = ((exitPrice - model.entryPrice) / model.entryPrice) * 100.0;
-    
-    if (model.status != ModelStatusStopped) {
-        model.status = ModelStatusClosed;
-    }
-    
-    [self saveContext];
-    
-    [[NSNotificationCenter defaultCenter] postNotificationName:DataHubModelsUpdatedNotification
-                                                        object:self
-                                                      userInfo:@{@"action": @"closed", @"model": model}];
+                                                      userInfo:@{@"action": @"updated", @"model": model}];
 }
 
 - (void)deleteModel:(TradingModel *)model {
@@ -581,325 +469,31 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
                                                       userInfo:@{@"action": @"deleted"}];
 }
 
-- (NSDictionary *)getModelStatistics {
-    NSInteger totalModels = self.tradingModels.count;
-    NSInteger activeModels = self.getActiveModels.count;
-    NSInteger winnersCount = 0;
-    NSInteger losersCount = 0;
-    double totalGain = 0.0;
-    double totalLoss = 0.0;
-    
-    for (TradingModel *model in self.tradingModels) {
-        if (model.status == ModelStatusClosed || model.status == ModelStatusStopped) {
-            if (model.currentOutcome > 0) {
-                winnersCount++;
-                totalGain += model.currentOutcome;
-            } else if (model.currentOutcome < 0) {
-                losersCount++;
-                totalLoss += model.currentOutcome;
-            }
-        }
-    }
-    
-    double winRate = (winnersCount + losersCount) > 0 ? (double)winnersCount / (winnersCount + losersCount) * 100 : 0;
-    double avgWin = winnersCount > 0 ? totalGain / winnersCount : 0;
-    double avgLoss = losersCount > 0 ? totalLoss / losersCount : 0;
-    
-    return @{
-        @"totalModels": @(totalModels),
-        @"activeModels": @(activeModels),
-        @"closedModels": @(winnersCount + losersCount),
-        @"winners": @(winnersCount),
-        @"losers": @(losersCount),
-        @"winRate": @(winRate),
-        @"averageWin": @(avgWin),
-        @"averageLoss": @(avgLoss),
-        @"totalGain": @(totalGain),
-        @"totalLoss": @(totalLoss),
-        @"netResult": @(totalGain + totalLoss)
-    };
+#pragma mark - Debug
+
+- (NSString *)debugDescription {
+    return [NSString stringWithFormat:@"DataHub: %lu watchlists, %lu alerts, %lu connections, %lu models, %lu cached symbols",
+            (unsigned long)self.watchlists.count,
+            (unsigned long)self.alerts.count,
+            (unsigned long)self.connections.count,
+            (unsigned long)self.tradingModels.count,
+            (unsigned long)self.symbolDataCache.count];
 }
 
-#pragma mark - Data Export/Import
-
-- (BOOL)exportDataToPath:(NSString *)path {
-    NSMutableDictionary *exportData = [NSMutableDictionary dictionary];
-    
-    // Export watchlists
-    NSMutableArray *watchlistData = [NSMutableArray array];
+- (void)printDataHubStatus {
+    NSLog(@"=== DataHub Status ===");
+    NSLog(@"Watchlists: %lu", (unsigned long)self.watchlists.count);
     for (Watchlist *watchlist in self.watchlists) {
-        [watchlistData addObject:@{
-            @"name": watchlist.name ?: @"",
-            @"symbols": watchlist.symbols ?: @[],
-            @"sortOrder": @(watchlist.sortOrder)
-        }];
-    }
-    exportData[@"watchlists"] = watchlistData;
-    
-    // Export alerts
-    NSMutableArray *alertData = [NSMutableArray array];
-    for (Alert *alert in self.alerts) {
-        [alertData addObject:@{
-            @"symbol": alert.symbol ?: @"",
-            @"condition": alert.conditionString ?: @"",
-            @"triggerValue": @(alert.triggerValue),
-            @"isActive": @(alert.isActive),
-            @"notes": alert.notes ?: @""
-        }];
-    }
-    exportData[@"alerts"] = alertData;
-    
-    // Export connections
-    NSMutableArray *connectionData = [NSMutableArray array];
-    for (StockConnection *connection in self.connections) {
-        [connectionData addObject:@{
-            @"symbols": connection.symbols ?: @[],
-            @"type": @(connection.connectionType),
-            @"description": connection.connectionDescription ?: @"",
-            @"source": connection.source ?: @"",
-            @"url": connection.url ?: @""
-        }];
-    }
-    exportData[@"connections"] = connectionData;
-    
-    // Export models
-    NSMutableArray *modelData = [NSMutableArray array];
-    for (TradingModel *model in self.tradingModels) {
-        NSMutableDictionary *modelDict = [@{
-            @"symbol": model.symbol ?: @"",
-            @"type": @(model.modelType),
-            @"setupDate": model.setupDate ?: [NSDate date],
-            @"entryPrice": @(model.entryPrice),
-            @"targetPrice": @(model.targetPrice),
-            @"stopPrice": @(model.stopPrice),
-            @"status": @(model.status),
-            @"currentOutcome": @(model.currentOutcome)
-        } mutableCopy];
-        
-        if (model.entryDate) modelDict[@"entryDate"] = model.entryDate;
-        if (model.exitDate) modelDict[@"exitDate"] = model.exitDate;
-        if (model.notes) modelDict[@"notes"] = model.notes;
-        
-        [modelData addObject:modelDict];
-    }
-    exportData[@"models"] = modelData;
-    
-    // Save to file
-    NSError *error = nil;
-    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:exportData options:NSJSONWritingPrettyPrinted error:&error];
-    
-    if (error) {
-        NSLog(@"Error serializing data: %@", error);
-        return NO;
+        NSLog(@"  - %@: %lu symbols", watchlist.name, (unsigned long)watchlist.symbols.count);
     }
     
-    return [jsonData writeToFile:path atomically:YES];
-}
-
-- (BOOL)importDataFromPath:(NSString *)path {
-    NSError *error = nil;
-    NSData *jsonData = [NSData dataWithContentsOfFile:path];
-    
-    if (!jsonData) {
-        NSLog(@"Failed to read file at path: %@", path);
-        return NO;
-    }
-    
-    NSDictionary *importData = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:&error];
-    
-    if (error) {
-        NSLog(@"Error parsing JSON: %@", error);
-        return NO;
-    }
-    
-    // Clear existing data
-    [self clearAllData];
-    
-    // Import watchlists
-    NSArray *watchlistData = importData[@"watchlists"];
-    for (NSDictionary *dict in watchlistData) {
-        Watchlist *watchlist = [self createWatchlistWithName:dict[@"name"]];
-        watchlist.symbols = dict[@"symbols"];
-        watchlist.sortOrder = [dict[@"sortOrder"] integerValue];
-    }
-    
-    // Import alerts
-    NSArray *alertData = importData[@"alerts"];
-    for (NSDictionary *dict in alertData) {
-        Alert *alert = [self createAlertForSymbol:dict[@"symbol"]
-                                        condition:dict[@"condition"]
-                                            value:[dict[@"triggerValue"] doubleValue]
-                                           active:[dict[@"isActive"] boolValue]];
-        alert.notes = dict[@"notes"];
-    }
-    
-    // Import connections
-    NSArray *connectionData = importData[@"connections"];
-    for (NSDictionary *dict in connectionData) {
-        [self createConnectionWithSymbols:dict[@"symbols"]
-                                     type:[dict[@"type"] integerValue]
-                              description:dict[@"description"]
-                                   source:dict[@"source"]
-                                      url:dict[@"url"]];
-    }
-    
-    // Import models
-    NSArray *modelData = importData[@"models"];
-    for (NSDictionary *dict in modelData) {
-        TradingModel *model = [self createModelWithSymbol:dict[@"symbol"]
-                                                     type:[dict[@"type"] integerValue]
-                                                setupDate:dict[@"setupDate"]
-                                               entryPrice:[dict[@"entryPrice"] doubleValue]
-                                              targetPrice:[dict[@"targetPrice"] doubleValue]
-                                                stopPrice:[dict[@"stopPrice"] doubleValue]];
-        
-        model.status = [dict[@"status"] integerValue];
-        model.currentOutcome = [dict[@"currentOutcome"] doubleValue];
-        if (dict[@"entryDate"]) model.entryDate = dict[@"entryDate"];
-        if (dict[@"exitDate"]) model.exitDate = dict[@"exitDate"];
-        if (dict[@"notes"]) model.notes = dict[@"notes"];
-    }
-    
-    [self saveContext];
-    return YES;
-}
-
-- (void)backupData {
-    NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
-    NSString *backupDir = [documentsPath stringByAppendingPathComponent:@"TradingBackups"];
-    
-    // Create backup directory if it doesn't exist
-    [[NSFileManager defaultManager] createDirectoryAtPath:backupDir withIntermediateDirectories:YES attributes:nil error:nil];
-    
-    // Create backup filename with timestamp
-    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-    formatter.dateFormat = @"yyyy-MM-dd_HH-mm-ss";
-    NSString *timestamp = [formatter stringFromDate:[NSDate date]];
-    NSString *backupPath = [backupDir stringByAppendingPathComponent:[NSString stringWithFormat:@"backup_%@.json", timestamp]];
-    
-    [self exportDataToPath:backupPath];
-}
-
-- (void)restoreFromBackup:(NSString *)backupPath {
-    [self importDataFromPath:backupPath];
-}
-
-#pragma mark - Search and Filter
-
-- (NSArray *)searchSymbols:(NSString *)query {
-    NSMutableSet *results = [NSMutableSet set];
-    NSString *lowercaseQuery = [query lowercaseString];
-    
-    // Search in watchlists
-    for (Watchlist *watchlist in self.watchlists) {
-        for (NSString *symbol in watchlist.symbols) {
-            if ([[symbol lowercaseString] containsString:lowercaseQuery]) {
-                [results addObject:symbol];
-            }
-        }
-    }
-    
-    // Search in alerts
-    for (Alert *alert in self.alerts) {
-        if ([[alert.symbol lowercaseString] containsString:lowercaseQuery]) {
-            [results addObject:alert.symbol];
-        }
-    }
-    
-    // Search in connections
-    for (StockConnection *connection in self.connections) {
-        for (NSString *symbol in connection.symbols) {
-            if ([[symbol lowercaseString] containsString:lowercaseQuery]) {
-                [results addObject:symbol];
-            }
-        }
-    }
-    
-    // Search in models
-    for (TradingModel *model in self.tradingModels) {
-        if ([[model.symbol lowercaseString] containsString:lowercaseQuery]) {
-            [results addObject:model.symbol];
-        }
-    }
-    
-    return [[results allObjects] sortedArrayUsingSelector:@selector(compare:)];
-}
-
-- (NSArray<Alert *> *)filterAlerts:(NSDictionary *)criteria {
-    NSMutableArray *predicates = [NSMutableArray array];
-    
-    if (criteria[@"symbol"]) {
-        [predicates addObject:[NSPredicate predicateWithFormat:@"symbol == %@", criteria[@"symbol"]]];
-    }
-    
-    if (criteria[@"isActive"]) {
-        [predicates addObject:[NSPredicate predicateWithFormat:@"isActive == %@", criteria[@"isActive"]]];
-    }
-    
-    if (criteria[@"condition"]) {
-        [predicates addObject:[NSPredicate predicateWithFormat:@"conditionString == %@", criteria[@"condition"]]];
-    }
-    
-    NSCompoundPredicate *compound = [NSCompoundPredicate andPredicateWithSubpredicates:predicates];
-    return [self.alerts filteredArrayUsingPredicate:compound];
-}
-
-- (NSArray<TradingModel *> *)filterModels:(NSDictionary *)criteria {
-    NSMutableArray *predicates = [NSMutableArray array];
-    
-    if (criteria[@"symbol"]) {
-        [predicates addObject:[NSPredicate predicateWithFormat:@"symbol == %@", criteria[@"symbol"]]];
-    }
-    
-    if (criteria[@"type"]) {
-        [predicates addObject:[NSPredicate predicateWithFormat:@"modelType == %d", [criteria[@"type"] intValue]]];
-    }
-    
-    if (criteria[@"status"]) {
-        [predicates addObject:[NSPredicate predicateWithFormat:@"status == %d", [criteria[@"status"] intValue]]];
-    }
-    
-    if (criteria[@"minOutcome"]) {
-        [predicates addObject:[NSPredicate predicateWithFormat:@"currentOutcome >= %f", [criteria[@"minOutcome"] doubleValue]]];
-    }
-    
-    NSCompoundPredicate *compound = [NSCompoundPredicate andPredicateWithSubpredicates:predicates];
-    return [self.tradingModels filteredArrayUsingPredicate:compound];
-}
-
-#pragma mark - Helper Methods
-
-- (void)clearAllData {
-    // Remove all watchlists
-    for (Watchlist *watchlist in self.watchlists) {
-        [self.mainContext deleteObject:watchlist];
-    }
-    [self.watchlists removeAllObjects];
-    
-    // Remove all alerts
-    for (Alert *alert in self.alerts) {
-        [self.mainContext deleteObject:alert];
-    }
-    [self.alerts removeAllObjects];
-    
-    // Remove all connections
-    for (StockConnection *connection in self.connections) {
-        [self.mainContext deleteObject:connection];
-    }
-    [self.connections removeAllObjects];
-    
-    // Remove all models
-    for (TradingModel *model in self.tradingModels) {
-        [self.mainContext deleteObject:model];
-    }
-    [self.tradingModels removeAllObjects];
-    
-    [self saveContext];
-}
-
-- (void)dealloc {
-    [self.alertCheckTimer invalidate];
-    self.alertCheckTimer = nil;
+    NSLog(@"Active Alerts: %lu", (unsigned long)self.getActiveAlerts.count);
+    NSLog(@"Total Connections: %lu", (unsigned long)self.connections.count);
+    NSLog(@"Active Trading Models: %lu", (unsigned long)self.getActiveModels.count);
+    NSLog(@"Cached Symbols: %lu", (unsigned long)self.symbolDataCache.count);
+    NSLog(@"Core Data Persistent Store: %@",
+          self.persistentContainer.persistentStoreDescriptions.firstObject.URL.lastPathComponent ?:
+          @"Not loaded");
 }
 
 @end

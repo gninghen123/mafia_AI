@@ -104,7 +104,7 @@
     self.priceLabel = [[NSTextField alloc] init];
     self.priceLabel.stringValue = @"$0.00";
     self.priceLabel.textColor = self.textColor;
-    self.priceLabel.font = [NSFont systemFontOfSize:9];
+    self.priceLabel.font = [NSFont systemFontOfSize:18];
     self.priceLabel.backgroundColor = [NSColor clearColor];
     self.priceLabel.bordered = NO;
     self.priceLabel.editable = NO;
@@ -117,7 +117,7 @@
     self.changeLabel = [[NSTextField alloc] init];
     self.changeLabel.stringValue = @"+0.00%";
     self.changeLabel.textColor = self.positiveColor;
-    self.changeLabel.font = [NSFont systemFontOfSize:8];
+    self.changeLabel.font = [NSFont systemFontOfSize:18];
     self.changeLabel.backgroundColor = [NSColor clearColor];
     self.changeLabel.bordered = NO;
     self.changeLabel.editable = NO;

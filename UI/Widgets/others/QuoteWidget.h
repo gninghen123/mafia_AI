@@ -2,7 +2,7 @@
 //  QuoteWidget.h
 //  TradingApp
 //
-//  Widget for displaying real-time quotes
+//  Widget for displaying stock quotes - ON DEMAND LOADING ONLY
 //
 
 #import "BaseWidget.h"
@@ -18,8 +18,11 @@
 @property (nonatomic, strong, readonly) NSTextField *changeLabel;
 @property (nonatomic, strong, readonly) NSTextField *volumeLabel;
 @property (nonatomic, strong, readonly) NSTextField *bidAskLabel;
+@property (nonatomic, strong, readonly) NSButton *refreshButton;
 
-// Subscribe to a new symbol
+// Data loading - ON DEMAND ONLY
 - (void)setSymbol:(NSString *)symbol;
+- (void)refreshQuote;
+- (void)loadQuoteData;
 
 @end

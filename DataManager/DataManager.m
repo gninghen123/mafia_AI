@@ -2,176 +2,106 @@
 //  DataManager.m
 //  TradingApp
 //
-//  Refactored to use standardized data adapters
-//
 
 #import "DataManager.h"
-#import "CommonTypes.h"
 #import "DownloadManager.h"
-#import "DataAdapterFactory.h"
-#import "DataSourceAdapter.h"
 #import "MarketData.h"
 #import "HistoricalBar+CoreDataClass.h"
-#import "Position.h"
-#import "Order.h"
-#import "OrderBookEntry.h"
-#import "DataManager+Persistence.h"
-#import "DataManager+Cache.h"
-#import "DataHub.h"
-#import "DataHub+MarketData.h"
-#import <AppKit/AppKit.h>
 
 @interface DataManager ()
 @property (nonatomic, strong) DownloadManager *downloadManager;
 @property (nonatomic, strong) NSMutableSet<id<DataManagerDelegate>> *delegates;
-@property (nonatomic, strong) NSMutableDictionary<NSString *, id> *activeRequests;
-@property (nonatomic, strong) NSMutableDictionary<NSString *, MarketData *> *quoteCache;
-@property (nonatomic, strong) NSMutableDictionary<NSString *, NSDate *> *cacheTimestamps;
-@property (nonatomic, strong) NSMutableSet<NSString *> *subscribedSymbols;
-@property (nonatomic, strong) NSTimer *quoteTimer;
 @property (nonatomic, strong) dispatch_queue_t delegateQueue;
+@property (nonatomic, strong) NSMutableDictionary *activeRequests;
+@property (nonatomic, strong) NSCache *quoteCache;
+@property (nonatomic, strong) NSCache *historicalCache;
+@property (nonatomic, assign) BOOL autoSaveToDataHub;
 @end
 
 @implementation DataManager
 
-#pragma mark - Singleton
-
 + (instancetype)sharedManager {
-    static DataManager *sharedManager = nil;
+    static DataManager *sharedInstance = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        sharedManager = [[self alloc] init];
+        sharedInstance = [[self alloc] init];
     });
-    return sharedManager;
+    return sharedInstance;
 }
 
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _downloadManager = [DownloadManager sharedManager];
+        _downloadManager = [[DownloadManager alloc] init];
         _delegates = [NSMutableSet set];
+        _delegateQueue = dispatch_queue_create("DataManagerDelegateQueue", DISPATCH_QUEUE_CONCURRENT);
         _activeRequests = [NSMutableDictionary dictionary];
-        _quoteCache = [NSMutableDictionary dictionary];
-        _cacheTimestamps = [NSMutableDictionary dictionary];
-        _subscribedSymbols = [NSMutableSet set];
         _cacheEnabled = YES;
-        _delegateQueue = dispatch_queue_create("com.tradingapp.datamanager.delegates", DISPATCH_QUEUE_SERIAL);
-        
-        // Default cache TTLs
-        _quoteCacheTTL = 5.0; // 5 seconds for real-time quotes
+        _quoteCacheTTL = 60.0;      // 1 minute for on-demand quotes
         _historicalCacheTTL = 300.0; // 5 minutes for historical data
-        self.autoSaveToDataHub = YES;
-              self.saveHistoricalData = YES;
-              self.saveMarketLists = YES;
-        [self setupNotifications];
+        _autoSaveToDataHub = YES;
+        
+        // Setup caches
+        _quoteCache = [[NSCache alloc] init];
+        _quoteCache.countLimit = 100;
+        _quoteCache.totalCostLimit = 1024 * 1024; // 1MB
+        
+        _historicalCache = [[NSCache alloc] init];
+        _historicalCache.countLimit = 50;
+        _historicalCache.totalCostLimit = 10 * 1024 * 1024; // 10MB
     }
     return self;
-}
-
-- (void)setupNotifications {
-    [[[NSWorkspace sharedWorkspace] notificationCenter] addObserver:self
-                                                            selector:@selector(applicationDidBecomeActive:)
-                                                                name:NSWorkspaceDidActivateApplicationNotification
-                                                              object:nil];
-    
-    [[[NSWorkspace sharedWorkspace] notificationCenter] addObserver:self
-                                                            selector:@selector(applicationDidResignActive:)
-                                                                name:NSWorkspaceDidDeactivateApplicationNotification
-                                                              object:nil];
 }
 
 #pragma mark - Delegate Management
 
 - (void)addDelegate:(id<DataManagerDelegate>)delegate {
-    dispatch_async(self.delegateQueue, ^{
+    dispatch_barrier_async(self.delegateQueue, ^{
         [self.delegates addObject:delegate];
     });
 }
 
 - (void)removeDelegate:(id<DataManagerDelegate>)delegate {
-    dispatch_async(self.delegateQueue, ^{
+    dispatch_barrier_async(self.delegateQueue, ^{
         [self.delegates removeObject:delegate];
     });
 }
 
-#pragma mark - Quote Requests
+#pragma mark - Market Data Requests
 
 - (NSString *)requestQuoteForSymbol:(NSString *)symbol
                           completion:(void (^)(MarketData *quote, NSError *error))completion {
-    NSString *requestID = [[NSUUID UUID] UUIDString];
     
-    // Check cache first
-    if ([self isQuoteCacheValidForSymbol:symbol]) {
-        MarketData *cachedQuote = self.quoteCache[symbol];
+    if (!symbol || symbol.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"DataManager"
+                                             code:100
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid symbol"}];
         if (completion) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                completion(cachedQuote, nil);
+                completion(nil, error);
             });
         }
-        return requestID;
+        return nil;
     }
     
-    // Store the request
-    self.activeRequests[requestID] = @{
-        @"type": @"quote",
-        @"symbol": symbol,
-        @"completion": completion ? [completion copy] : [NSNull null]
-    };
+    // Check cache first
+    if (self.cacheEnabled) {
+        MarketData *cachedQuote = [self getCachedQuoteForSymbol:symbol];
+        if (cachedQuote) {
+            if (completion) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(cachedQuote, nil);
+                });
+            }
+            return nil; // Return nil as no ongoing request
+        }
+    }
     
-    // Request from DownloadManager
-    NSDictionary *parameters = @{
-        @"symbol": symbol,
-        @"requestID": requestID
-    };
-    
-    [self.downloadManager executeRequest:DataRequestTypeQuote
-                              parameters:parameters
-                          preferredSource:DataSourceTypeSchwab
-                              completion:^(id result, DataSourceType usedSource, NSError *error) {
-        [self handleQuoteResponse:result
-                   fromDataSource:usedSource
-                        forSymbol:symbol
-                        requestID:requestID
-                           error:error];
-    }];
-    
-    return requestID;
-}
-
-#pragma mark - Historical Data Requests
-
-- (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
-                                   timeframe:(BarTimeframe)timeframe
-                                       count:(NSInteger)count
-                                  completion:(void (^)(NSArray<HistoricalBar *> *bars, NSError *error))completion {
     NSString *requestID = [[NSUUID UUID] UUIDString];
+    self.activeRequests[requestID] = @{@"type": @"quote", @"symbol": symbol, @"completion": completion ?: [NSNull null]};
     
-    // Store the request
-    self.activeRequests[requestID] = @{
-        @"type": @"historical",
-        @"symbol": symbol,
-        @"timeframe": @(timeframe),
-        @"count": @(count),
-        @"completion": completion ? [completion copy] : [NSNull null]
-    };
-    
-    // Request from DownloadManager
-    NSDictionary *parameters = @{
-        @"symbol": symbol,
-        @"timeframe": @(timeframe),
-        @"count": @(count),
-        @"requestID": requestID
-    };
-    
-    [self.downloadManager executeRequest:DataRequestTypeHistoricalBars
-                              parameters:parameters
-                          preferredSource:DataSourceTypeSchwab
-                              completion:^(id result, DataSourceType usedSource, NSError *error) {
-        [self handleHistoricalResponse:result
-                        fromDataSource:usedSource
-                             forSymbol:symbol
-                             requestID:requestID
-                                 error:error];
+    [self.downloadManager fetchQuoteForSymbol:symbol completion:^(id responseData, NSError *error) {
+        [self handleQuoteResponse:responseData error:error forSymbol:symbol requestID:requestID completion:completion];
     }];
     
     return requestID;
@@ -182,26 +112,115 @@
                                    startDate:(NSDate *)startDate
                                      endDate:(NSDate *)endDate
                                   completion:(void (^)(NSArray<HistoricalBar *> *bars, NSError *error))completion {
-    // For now, convert to count-based request
-    // TODO: Implement proper date range support
-    NSInteger count = 100; // Default count
+    
+    if (!symbol || symbol.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"DataManager"
+                                             code:100
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid symbol"}];
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, error);
+            });
+        }
+        return nil;
+    }
+    
+    NSString *requestID = [[NSUUID UUID] UUIDString];
+    self.activeRequests[requestID] = @{
+        @"type": @"historical",
+        @"symbol": symbol,
+        @"completion": completion ?: [NSNull null]
+    };
+    
+    [self.downloadManager fetchHistoricalDataForSymbol:symbol
+                                             timeframe:timeframe
+                                             startDate:startDate
+                                               endDate:endDate
+                                            completion:^(NSArray *bars, NSError *error) {
+        [self handleHistoricalResponse:bars error:error forSymbol:symbol requestID:requestID completion:completion];
+    }];
+    
+    return requestID;
+}
+
+- (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
+                                   timeframe:(BarTimeframe)timeframe
+                                       count:(NSInteger)count
+                                  completion:(void (^)(NSArray<HistoricalBar *> *bars, NSError *error))completion {
+    
+    // Calculate date range based on count and timeframe
+    NSDate *endDate = [NSDate date];
+    NSDate *startDate;
+    
+    NSTimeInterval interval;
+    switch (timeframe) {
+        case BarTimeframe1Min:
+            interval = count * 60;
+            break;
+        case BarTimeframe5Min:
+            interval = count * 300;
+            break;
+        case BarTimeframe15Min:
+            interval = count * 900;
+            break;
+        case BarTimeframe1Hour:
+            interval = count * 3600;
+            break;
+        case BarTimeframe1Day:
+            interval = count * 86400;
+            break;
+        default:
+            interval = count * 86400;
+            break;
+    }
+    
+    startDate = [NSDate dateWithTimeInterval:-interval sinceDate:endDate];
+    
     return [self requestHistoricalDataForSymbol:symbol
                                       timeframe:timeframe
-                                          count:count
+                                      startDate:startDate
+                                        endDate:endDate
                                      completion:completion];
 }
 
-#pragma mark - Response Handlers with Standardization
+- (NSString *)requestOrderBookForSymbol:(NSString *)symbol
+                             completion:(void (^)(NSArray<OrderBookEntry *> *bids,
+                                                 NSArray<OrderBookEntry *> *asks,
+                                                 NSError *error))completion {
+    
+    NSString *requestID = [[NSUUID UUID] UUIDString];
+    self.activeRequests[requestID] = @{
+        @"type": @"orderbook",
+        @"symbol": symbol,
+        @"completion": completion ?: [NSNull null]
+    };
+    
+    [self.downloadManager fetchOrderBookForSymbol:symbol
+                                            depth:20
+                                       completion:^(id orderBook, NSError *error) {
+        [self handleOrderBookResponse:orderBook error:error forSymbol:symbol requestID:requestID completion:completion];
+    }];
+    
+    return requestID;
+}
+
+#pragma mark - Account Data Requests
+
+- (void)requestPositionsWithCompletion:(void (^)(NSArray<Position *> *positions, NSError *error))completion {
+    [self.downloadManager fetchPositionsWithCompletion:completion];
+}
+
+- (void)requestOrdersWithCompletion:(void (^)(NSArray<Order *> *orders, NSError *error))completion {
+    [self.downloadManager fetchOrdersWithCompletion:completion];
+}
+
+#pragma mark - Response Handlers
 
 - (void)handleQuoteResponse:(id)responseData
-             fromDataSource:(DataSourceType)sourceType
+                      error:(NSError *)error
                   forSymbol:(NSString *)symbol
                   requestID:(NSString *)requestID
-                      error:(NSError *)error {
-    
-    // Get stored request info
-    NSDictionary *requestInfo = self.activeRequests[requestID];
-    void (^completion)(MarketData *, NSError *) = requestInfo[@"completion"];
+                 completion:(void (^)(MarketData *quote, NSError *error))completion {
     
     if (error) {
         [self.activeRequests removeObjectForKey:requestID];
@@ -210,16 +229,16 @@
                 completion(nil, error);
             });
         }
+        [self notifyDelegatesOfError:error forRequest:requestID];
         return;
     }
     
-    // Get appropriate adapter
-    id<DataSourceAdapter> adapter = [DataAdapterFactory adapterForDataSource:sourceType];
-    
+    // Get appropriate adapter and standardize data
+    id adapter = [self getAdapterForCurrentDataSource];
     if (!adapter) {
         NSError *adapterError = [NSError errorWithDomain:@"DataManager"
-                                                     code:100
-                                                 userInfo:@{NSLocalizedDescriptionKey: @"No adapter available for data source"}];
+                                                     code:102
+                                                 userInfo:@{NSLocalizedDescriptionKey: @"No adapter for current data source"}];
         [self.activeRequests removeObjectForKey:requestID];
         if (completion && completion != (id)[NSNull null]) {
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -248,9 +267,8 @@
     // Update cache
     [self updateQuoteCache:standardizedQuote forSymbol:symbol];
     
-    // NUOVO: Salva automaticamente in DataHub
+    // Save to DataHub if enabled
     if (self.autoSaveToDataHub) {
-        // Converti MarketData in dictionary per DataHub
         NSDictionary *quoteDict = @{
             @"symbol": symbol,
             @"name": standardizedQuote.name ?: symbol,
@@ -267,29 +285,28 @@
             @"timestamp": standardizedQuote.timestamp ?: [NSDate date]
         };
         
-        [self saveQuoteToDataHub:quoteDict forSymbol:symbol];
+        // Save to DataHub
+        [[DataHub shared] cacheQuote:quoteDict forSymbol:symbol];
     }
     
-    // Notify delegates
-    [self notifyDelegatesOfQuoteUpdate:standardizedQuote forSymbol:symbol];
-    
-    // Complete the request
     [self.activeRequests removeObjectForKey:requestID];
+    
+    // Call completion
     if (completion && completion != (id)[NSNull null]) {
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(standardizedQuote, nil);
         });
     }
+    
+    // Notify delegates
+    [self notifyDelegatesOfQuoteUpdate:standardizedQuote forSymbol:symbol];
 }
-- (void)handleHistoricalResponse:(id)responseData
-                  fromDataSource:(DataSourceType)sourceType
+
+- (void)handleHistoricalResponse:(NSArray *)bars
+                           error:(NSError *)error
                        forSymbol:(NSString *)symbol
                        requestID:(NSString *)requestID
-                           error:(NSError *)error {
-    
-    // Get stored request info
-    NSDictionary *requestInfo = self.activeRequests[requestID];
-    void (^completion)(NSArray<HistoricalBar *> *, NSError *) = requestInfo[@"completion"];
+                      completion:(void (^)(NSArray<HistoricalBar *> *bars, NSError *error))completion {
     
     if (error) {
         [self.activeRequests removeObjectForKey:requestID];
@@ -298,125 +315,95 @@
                 completion(nil, error);
             });
         }
+        [self notifyDelegatesOfError:error forRequest:requestID];
         return;
     }
     
-    // Get appropriate adapter
-    id<DataSourceAdapter> adapter = [DataAdapterFactory adapterForDataSource:sourceType];
+    // Process and standardize historical data
+    id adapter = [self getAdapterForCurrentDataSource];
+    NSArray<HistoricalBar *> *standardizedBars = [adapter standardizeHistoricalData:bars forSymbol:symbol];
     
-    if (!adapter) {
-        NSError *adapterError = [NSError errorWithDomain:@"DataManager"
-                                                     code:100
-                                                 userInfo:@{NSLocalizedDescriptionKey: @"No adapter available for data source"}];
-        [self.activeRequests removeObjectForKey:requestID];
-        if (completion && completion != (id)[NSNull null]) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(nil, adapterError);
-            });
-        }
-        return;
-    }
-    
-    // Standardize the data
-    NSArray<HistoricalBar *> *standardizedBars = [adapter standardizeHistoricalData:responseData forSymbol:symbol];
-    
-    if (!standardizedBars) {
-        NSError *standardizationError = [NSError errorWithDomain:@"DataManager"
-                                                             code:102
-                                                         userInfo:@{NSLocalizedDescriptionKey: @"Failed to standardize historical data"}];
-        [self.activeRequests removeObjectForKey:requestID];
-        if (completion && completion != (id)[NSNull null]) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(nil, standardizationError);
-            });
-        }
-        return;
-    }
-    
-    // Notify delegates
-    [self notifyDelegatesOfHistoricalUpdate:standardizedBars forSymbol:symbol];
-    
-    // Complete the request
     [self.activeRequests removeObjectForKey:requestID];
+    
     if (completion && completion != (id)[NSNull null]) {
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(standardizedBars, nil);
         });
     }
+    
+    [self notifyDelegatesOfHistoricalUpdate:standardizedBars forSymbol:symbol];
 }
 
-#pragma mark - Other Request Types
-
-- (NSString *)requestOrderBookForSymbol:(NSString *)symbol
-                             completion:(void (^)(NSArray<OrderBookEntry *> *bids,
-                                                 NSArray<OrderBookEntry *> *asks,
-                                                 NSError *error))completion {
-    // TODO: Implement order book requests
-    NSString *requestID = [[NSUUID UUID] UUIDString];
-    if (completion) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            NSError *error = [NSError errorWithDomain:@"DataManager"
-                                                 code:501
-                                             userInfo:@{NSLocalizedDescriptionKey: @"Order book not implemented"}];
-            completion(nil, nil, error);
-        });
+- (void)handleOrderBookResponse:(id)orderBook
+                          error:(NSError *)error
+                      forSymbol:(NSString *)symbol
+                      requestID:(NSString *)requestID
+                     completion:(void (^)(NSArray<OrderBookEntry *> *bids,
+                                         NSArray<OrderBookEntry *> *asks,
+                                         NSError *error))completion {
+    
+    [self.activeRequests removeObjectForKey:requestID];
+    
+    if (error) {
+        if (completion && completion != (id)[NSNull null]) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, nil, error);
+            });
+        }
+        return;
     }
-    return requestID;
-}
-
-- (void)requestPositionsWithCompletion:(void (^)(NSArray<Position *> *positions, NSError *error))completion {
-    // TODO: Implement positions request
-    if (completion) {
+    
+    // Process order book data
+    id adapter = [self getAdapterForCurrentDataSource];
+    NSDictionary *processedOrderBook = [adapter standardizeOrderBookData:orderBook forSymbol:symbol];
+    
+    NSArray<OrderBookEntry *> *bids = processedOrderBook[@"bids"];
+    NSArray<OrderBookEntry *> *asks = processedOrderBook[@"asks"];
+    
+    if (completion && completion != (id)[NSNull null]) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            completion(@[], nil);
-        });
-    }
-}
-
-- (void)requestOrdersWithCompletion:(void (^)(NSArray<Order *> *orders, NSError *error))completion {
-    // TODO: Implement orders request
-    if (completion) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            completion(@[], nil);
+            completion(bids, asks, nil);
         });
     }
 }
 
 #pragma mark - Cache Management
 
-- (BOOL)isQuoteCacheValidForSymbol:(NSString *)symbol {
-    if (!self.cacheEnabled) return NO;
+- (MarketData *)getCachedQuoteForSymbol:(NSString *)symbol {
+    NSDictionary *cacheEntry = [self.quoteCache objectForKey:symbol];
+    if (!cacheEntry) return nil;
     
-    MarketData *cachedQuote = self.quoteCache[symbol];
-    NSDate *cacheTime = self.cacheTimestamps[symbol];
+    NSDate *timestamp = cacheEntry[@"timestamp"];
+    if ([[NSDate date] timeIntervalSinceDate:timestamp] > self.quoteCacheTTL) {
+        [self.quoteCache removeObjectForKey:symbol];
+        return nil;
+    }
     
-    if (!cachedQuote || !cacheTime) return NO;
-    
-    NSTimeInterval age = [[NSDate date] timeIntervalSinceDate:cacheTime];
-    return age < self.quoteCacheTTL;
+    return cacheEntry[@"data"];
 }
 
 - (void)updateQuoteCache:(MarketData *)quote forSymbol:(NSString *)symbol {
     if (!self.cacheEnabled) return;
     
-    @synchronized(self.quoteCache) {
-        self.quoteCache[symbol] = quote;
-        self.cacheTimestamps[symbol] = [NSDate date];
-    }
+    NSDictionary *cacheEntry = @{
+        @"data": quote,
+        @"timestamp": [NSDate date]
+    };
+    
+    [self.quoteCache setObject:cacheEntry forKey:symbol];
 }
 
 - (void)clearCache {
-    @synchronized(self.quoteCache) {
-        [self.quoteCache removeAllObjects];
-        [self.cacheTimestamps removeAllObjects];
-    }
+    [self.quoteCache removeAllObjects];
+    [self.historicalCache removeAllObjects];
 }
 
-- (void)clearCacheForSymbol:(NSString *)symbol {
-    @synchronized(self.quoteCache) {
-        [self.quoteCache removeObjectForKey:symbol];
-        [self.cacheTimestamps removeObjectForKey:symbol];
-    }
+#pragma mark - Helper Methods
+
+- (id)getAdapterForCurrentDataSource {
+    // Return appropriate adapter based on active data source
+    // This would need to be implemented based on your adapter system
+    return nil; // Placeholder
 }
 
 #pragma mark - Delegate Notifications
@@ -457,69 +444,14 @@
     });
 }
 
-#pragma mark - Subscription Management
-
-- (void)subscribeToQuotes:(NSArray<NSString *> *)symbols {
-    [self.subscribedSymbols addObjectsFromArray:symbols];
-    
-    if (!self.quoteTimer) {
-        self.quoteTimer = [NSTimer scheduledTimerWithTimeInterval:5.0
-                                                           target:self
-                                                         selector:@selector(refreshSubscribedQuotes)
-                                                         userInfo:nil
-                                                          repeats:YES];
-    }
-}
-
-- (void)unsubscribeFromQuotes:(NSArray<NSString *> *)symbols {
-    for (NSString *symbol in symbols) {
-        [self.subscribedSymbols removeObject:symbol];
-    }
-    
-    if (self.subscribedSymbols.count == 0 && self.quoteTimer) {
-        [self.quoteTimer invalidate];
-        self.quoteTimer = nil;
-    }
-}
-
-- (void)refreshSubscribedQuotes {
-    for (NSString *symbol in self.subscribedSymbols) {
-        [self requestQuoteForSymbol:symbol completion:nil];
-    }
-}
-
-#pragma mark - Application State
-
-- (void)applicationDidBecomeActive:(NSNotification *)notification {
-    // Resume updates when app becomes active
-    if (self.subscribedSymbols.count > 0 && !self.quoteTimer) {
-        [self refreshSubscribedQuotes];
-        self.quoteTimer = [NSTimer scheduledTimerWithTimeInterval:5.0
-                                                           target:self
-                                                         selector:@selector(refreshSubscribedQuotes)
-                                                         userInfo:nil
-                                                          repeats:YES];
-    }
-}
-
-- (void)applicationDidResignActive:(NSNotification *)notification {
-    // Pause updates when app is in background
-    if (self.quoteTimer) {
-        [self.quoteTimer invalidate];
-        self.quoteTimer = nil;
-    }
-}
-
 #pragma mark - Request Management
 
 - (void)cancelRequest:(NSString *)requestID {
     [self.activeRequests removeObjectForKey:requestID];
-    // DownloadManager doesn't have cancelRequest method, just remove from our tracking
 }
 
 - (void)cancelAllRequests {
     [self.activeRequests removeAllObjects];
-    // DownloadManager doesn't have cancelAllRequests method
 }
 
 #pragma mark - Connection Status
@@ -550,16 +482,5 @@
     }
     return @"None";
 }
-
-#pragma mark - Cleanup
-
-- (void)dealloc {
-    [[[NSWorkspace sharedWorkspace] notificationCenter] removeObserver:self];
-    [self.quoteTimer invalidate];
-}
-
-
-
-
 
 @end

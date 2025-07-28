@@ -8,7 +8,7 @@
 #import <Foundation/Foundation.h>
 #import "DownloadManager.h"
 
-@interface SchwabDataSource : NSObject <DataSourceProtocol>
+@interface SchwabDataSource : NSObject 
 
 // OAuth2 Authentication
 - (void)authenticateWithCompletion:(void (^)(BOOL success, NSError *error))completion;

@@ -119,7 +119,7 @@ typedef NS_ENUM(NSInteger, CHChartLayerType) {
 
 // Render Quality
 typedef NS_ENUM(NSInteger, CHRenderQuality) {
-    CHRenderQualityDraft,          // Fast rendering for real-time
+    CHRenderQualityDraft,          // Fast rendering 
     CHRenderQualityGood,           // Standard quality
     CHRenderQualityHigh            // High quality for export
 };

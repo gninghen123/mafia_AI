@@ -124,7 +124,7 @@ mafia_AI/
 - ✅ Coordinamento richieste verso API multiple
 - ✅ Standardizzazione dati tramite Adapter
 - ✅ Gestione priorità data source
-- ✅ Subscription management per real-time
+- ✅ Subscription management per pseudo real-time
 - ❌ NON gestisce persistenza o cache
 - ❌ NON conosce business logic
 
@@ -148,7 +148,7 @@ mafia_AI/
 ### Formato Standard App
 
 ```objc
-// MarketData (Quote real-time)
+// MarketData (Quote )
 @interface MarketData : NSObject
 @property NSString *symbol;
 @property double lastPrice;
@@ -175,7 +175,7 @@ mafia_AI/
 
 | Tipo Dato | TTL | Motivazione |
 |-----------|-----|-------------|
-| Quote Real-time | 5-10 sec | Dati cambiano rapidamente |
+| Quote  | 5-10 sec | Dati cambiano rapidamente |
 | Market Overview | 1 min | Aggiornamenti meno critici |
 | Price History | 5 min | Dati storici stabili |
 | Company Info | 24 ore | Raramente cambia |
@@ -191,7 +191,7 @@ BaseWidget (abstract)
 ├── WatchlistWidget      # Table-based, view-based cells
 ├── AlertWidget          # Gestione alert prezzi
 ├── ChartWidget          # Grafici con CHChart
-├── QuoteWidget          # Quote singola real-time
+├── QuoteWidget          # Quote singola 
 ├── GeneralMarketWidget  # Overview mercato
 └── PortfolioWidget      # Posizioni e P&L
 ```
@@ -206,7 +206,7 @@ BaseWidget (abstract)
 ## 🔌 Gestione API Esterne
 
 ### Priorità Data Source
-1. **Schwab** - Dati real-time se autenticato
+1. **Schwab** - Dati se autenticato
 2. **Webull** - Fallback per quote gratuite
 3. **Yahoo Finance** - Ultimo fallback
 

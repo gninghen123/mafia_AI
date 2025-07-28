@@ -2,11 +2,13 @@
 //  DataHub+MarketData.m
 //  mafia_AI
 //
+//  Implementation with intelligent caching and automatic data fetching
+//
 
 #import "DataHub+MarketData.h"
 #import "DataHub+Private.h"
 #import "DataManager.h"
-#import "DataManager+MarketLists.h"
+#import "DataHub+MarketData.h"
 #import "HistoricalBar+CoreDataClass.h"
 #import "MarketQuote+CoreDataClass.h"
 #import "MarketPerformer+CoreDataClass.h"
@@ -14,10 +16,372 @@
 
 @implementation DataHub (MarketData)
 
-#pragma mark - Market Quotes
+#pragma mark - Data Freshness Management
 
-- (MarketQuote *)saveMarketQuote:(NSDictionary *)quoteData forSymbol:(NSString *)symbol {
-    // Cerca quote esistente o crea nuova
+- (NSTimeInterval)TTLForDataType:(DataFreshnessType)type {
+    switch (type) {
+        case DataFreshnessTypeQuote:
+            return 10.0; // 10 seconds for quotes
+        case DataFreshnessTypeMarketOverview:
+            return 60.0; // 1 minute
+        case DataFreshnessTypeHistorical:
+            return 300.0; // 5 minutes
+        case DataFreshnessTypeCompanyInfo:
+            return 86400.0; // 24 hours
+        case DataFreshnessTypeWatchlist:
+            return INFINITY; // Never expires
+    }
+}
+
+- (BOOL)isDataStale:(NSDate *)lastUpdate forType:(DataFreshnessType)type {
+    if (!lastUpdate) return YES;
+    
+    NSTimeInterval age = [[NSDate date] timeIntervalSinceDate:lastUpdate];
+    NSTimeInterval ttl = [self TTLForDataType:type];
+    
+    return age > ttl;
+}
+
+- (BOOL)hasPendingRequestForSymbol:(NSString *)symbol dataType:(DataFreshnessType)type {
+    NSString *requestKey = [self requestKeyForSymbol:symbol dataType:type];
+    
+    @synchronized(self.pendingRequests) {
+        return self.pendingRequests[requestKey] != nil;
+    }
+}
+
+- (NSString *)requestKeyForSymbol:(NSString *)symbol dataType:(DataFreshnessType)type {
+    return [NSString stringWithFormat:@"%@_%ld", symbol, (long)type];
+}
+
+#pragma mark - Market Quotes with Smart Caching
+
+- (void)getQuoteForSymbol:(NSString *)symbol
+               completion:(void(^)(MarketQuote * _Nullable quote, BOOL isLive))completion {
+    
+    if (!symbol || !completion) return;
+    
+    NSLog(@"📊 DataHub: Getting quote for %@", symbol);
+    
+    // 1. Check memory cache first
+    NSDictionary *cachedData = [self getDataForSymbol:symbol];
+    MarketQuote *quote = nil;
+    BOOL needsFresh = YES;
+    
+    // 2. Check Core Data
+    if (!cachedData) {
+        quote = [self fetchQuoteFromCoreData:symbol];
+    }
+    
+    // 3. Determine if data is fresh
+    if (quote && quote.lastUpdate) {
+        needsFresh = [self isDataStale:quote.lastUpdate forType:DataFreshnessTypeQuote];
+    }
+    
+    // 4. Return cached data immediately if available
+    if (quote) {
+        completion(quote, !needsFresh);
+    }
+    
+    // 5. Request fresh data if needed and not already pending
+    if (needsFresh && ![self hasPendingRequestForSymbol:symbol dataType:DataFreshnessTypeQuote]) {
+        [self requestFreshQuoteForSymbol:symbol completion:^(MarketQuote *freshQuote, NSError *error) {
+            if (freshQuote && completion) {
+                completion(freshQuote, YES);
+            }
+        }];
+    }
+}
+
+- (void)getQuotesForSymbols:(NSArray<NSString *> *)symbols
+                 completion:(void(^)(NSDictionary<NSString *, MarketQuote *> *quotes, BOOL isLive))completion {
+    
+    if (!symbols || symbols.count == 0 || !completion) return;
+    
+    NSMutableDictionary *quotesDict = [NSMutableDictionary dictionary];
+    NSMutableArray *symbolsNeedingRefresh = [NSMutableArray array];
+    BOOL allFresh = YES;
+    
+    // Check each symbol
+    for (NSString *symbol in symbols) {
+        MarketQuote *quote = [self fetchQuoteFromCoreData:symbol];
+        
+        if (quote) {
+            quotesDict[symbol] = quote;
+            
+            if ([self isDataStale:quote.lastUpdate forType:DataFreshnessTypeQuote]) {
+                [symbolsNeedingRefresh addObject:symbol];
+                allFresh = NO;
+            }
+        } else {
+            [symbolsNeedingRefresh addObject:symbol];
+            allFresh = NO;
+        }
+    }
+    
+    // Return cached data immediately
+    if (quotesDict.count > 0) {
+        completion([quotesDict copy], allFresh);
+    }
+    
+    // Request fresh data for symbols that need it
+    if (symbolsNeedingRefresh.count > 0) {
+        [self refreshQuotesForSymbols:symbolsNeedingRefresh];
+    }
+}
+
+- (void)refreshQuoteForSymbol:(NSString *)symbol
+                   completion:(void(^)(MarketQuote * _Nullable quote, NSError * _Nullable error))completion {
+    [self requestFreshQuoteForSymbol:symbol completion:completion];
+}
+
+#pragma mark - Historical Data with Smart Caching
+
+- (void)getHistoricalBarsForSymbol:(NSString *)symbol
+                         timeframe:(BarTimeframe)timeframe
+                          barCount:(NSInteger)barCount
+                        completion:(void(^)(NSArray<HistoricalBar *> *bars, BOOL isFresh))completion {
+    
+    if (!symbol || !completion) return;
+    
+    NSLog(@"📈 DataHub: Getting historical data for %@ timeframe:%ld", symbol, (long)timeframe);
+    
+    // Calculate date range based on bar count
+    NSDate *endDate = [NSDate date];
+    NSDate *startDate = [self calculateStartDateForTimeframe:timeframe barCount:barCount fromDate:endDate];
+    
+    [self getHistoricalBarsForSymbol:symbol
+                          timeframe:timeframe
+                          startDate:startDate
+                            endDate:endDate
+                         completion:completion];
+}
+
+- (void)getHistoricalBarsForSymbol:(NSString *)symbol
+                         timeframe:(BarTimeframe)timeframe
+                         startDate:(NSDate *)startDate
+                           endDate:(NSDate *)endDate
+                        completion:(void(^)(NSArray<HistoricalBar *> *bars, BOOL isFresh))completion {
+    
+    if (!symbol || !completion) return;
+    
+    // 1. Check Core Data
+    NSArray<HistoricalBar *> *bars = [self fetchHistoricalBarsFromCoreData:symbol
+                                                                 timeframe:timeframe
+                                                                 startDate:startDate
+                                                                   endDate:endDate];
+    
+    // 2. Determine if data is fresh
+    BOOL needsFresh = YES;
+    if (bars.count > 0) {
+        HistoricalBar *mostRecent = bars.lastObject;
+        needsFresh = [self isDataStale:mostRecent.date forType:DataFreshnessTypeHistorical];
+    }
+    
+    // 3. Return cached data immediately if available
+    if (bars.count > 0) {
+        completion(bars, !needsFresh);
+    }
+    
+    // 4. Request fresh data if needed
+    NSString *requestKey = [NSString stringWithFormat:@"historical_%@_%ld", symbol, (long)timeframe];
+    if (needsFresh && ![self hasPendingRequestForKey:requestKey]) {
+        [self requestFreshHistoricalDataForSymbol:symbol
+                                       timeframe:timeframe
+                                       startDate:startDate
+                                         endDate:endDate
+                                      completion:^(NSArray<HistoricalBar *> *freshBars, NSError *error) {
+            if (freshBars && completion) {
+                completion(freshBars, YES);
+            }
+        }];
+    }
+}
+
+#pragma mark - Company Info
+
+- (void)getCompanyInfoForSymbol:(NSString *)symbol
+                     completion:(void(^)(CompanyInfo * _Nullable info, BOOL isFresh))completion {
+    
+    if (!symbol || !completion) return;
+    
+    // 1. Check Core Data
+    CompanyInfo *info = [self fetchCompanyInfoFromCoreData:symbol];
+    
+    // 2. Determine if data is fresh
+    BOOL needsFresh = YES;
+    if (info && info.lastUpdate) {
+        needsFresh = [self isDataStale:info.lastUpdate forType:DataFreshnessTypeCompanyInfo];
+    }
+    
+    // 3. Return cached data immediately if available
+    if (info) {
+        completion(info, !needsFresh);
+    }
+    
+    // 4. Request fresh data if needed
+    if (needsFresh && ![self hasPendingRequestForSymbol:symbol dataType:DataFreshnessTypeCompanyInfo]) {
+        [self requestFreshCompanyInfoForSymbol:symbol completion:^(CompanyInfo *freshInfo, NSError *error) {
+            if (freshInfo && completion) {
+                completion(freshInfo, YES);
+            }
+        }];
+    }
+}
+
+#pragma mark - Private Helper Methods
+
+- (MarketQuote *)fetchQuoteFromCoreData:(NSString *)symbol {
+    NSFetchRequest *request = [MarketQuote fetchRequest];
+    request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbol];
+    
+    NSError *error = nil;
+    NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
+    
+    if (error) {
+        NSLog(@"❌ Error fetching quote: %@", error);
+    }
+    
+    return results.firstObject;
+}
+
+- (NSArray<HistoricalBar *> *)fetchHistoricalBarsFromCoreData:(NSString *)symbol
+                                                    timeframe:(NSInteger)timeframe
+                                                    startDate:(NSDate *)startDate
+                                                      endDate:(NSDate *)endDate {
+    NSFetchRequest *request = [HistoricalBar fetchRequest];
+    request.predicate = [NSPredicate predicateWithFormat:
+                        @"symbol == %@ AND timeframe == %d AND date >= %@ AND date <= %@",
+                        symbol, (int)timeframe, startDate, endDate];
+    request.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"date" ascending:YES]];
+    
+    NSError *error = nil;
+    NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
+    
+    if (error) {
+        NSLog(@"❌ Error fetching historical bars: %@", error);
+    }
+    
+    return results ?: @[];
+}
+
+- (CompanyInfo *)fetchCompanyInfoFromCoreData:(NSString *)symbol {
+    NSFetchRequest *request = [CompanyInfo fetchRequest];
+    request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbol];
+    
+    NSError *error = nil;
+    NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
+    
+    return results.firstObject;
+}
+
+#pragma mark - Fresh Data Requests
+
+- (void)requestFreshQuoteForSymbol:(NSString *)symbol
+                        completion:(void(^)(MarketQuote *quote, NSError *error))completion {
+    
+    NSString *requestKey = [self requestKeyForSymbol:symbol dataType:DataFreshnessTypeQuote];
+    
+    // Mark request as pending
+    @synchronized(self.pendingRequests) {
+        self.pendingRequests[requestKey] = @YES;
+    }
+    
+    // Request from DataManager
+    [[DataManager sharedManager] requestQuoteForSymbol:symbol completion:^(MarketData *marketData, NSError *error) {
+        
+        // Remove from pending
+        @synchronized(self.pendingRequests) {
+            [self.pendingRequests removeObjectForKey:requestKey];
+        }
+        
+        if (error || !marketData) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        
+        // Convert MarketData to dictionary for saving
+        NSDictionary *quoteDict = @{
+            @"symbol": symbol,
+            @"lastPrice": marketData.lastPrice ?: @0,
+            @"bid": marketData.bid ?: @0,
+            @"ask": marketData.ask ?: @0,
+            @"volume": @(marketData.volume),
+            @"open": marketData.open ?: @0,
+            @"high": marketData.high ?: @0,
+            @"low": marketData.low ?: @0,
+            @"previousClose": marketData.previousClose ?: @0,
+            @"change": marketData.change ?: @0,
+            @"changePercent": marketData.changePercent ?: @0,
+            @"timestamp": marketData.timestamp ?: [NSDate date]
+        };
+        
+        // Save to Core Data
+        MarketQuote *quote = [self saveMarketQuoteData:quoteDict forSymbol:symbol];
+        
+        // Update memory cache
+        [self updateSymbolData:quoteDict forSymbol:symbol];
+        
+        // Notify observers
+        [[NSNotificationCenter defaultCenter] postNotificationName:DataHubSymbolsUpdatedNotification
+                                                            object:self
+                                                          userInfo:@{@"symbol": symbol}];
+        
+        if (completion) completion(quote, nil);
+    }];
+}
+
+- (void)requestFreshHistoricalDataForSymbol:(NSString *)symbol
+                                  timeframe:(BarTimeframe)timeframe
+                                  startDate:(NSDate *)startDate
+                                    endDate:(NSDate *)endDate
+                                 completion:(void(^)(NSArray<HistoricalBar *> *bars, NSError *error))completion {
+    
+    NSString *requestKey = [NSString stringWithFormat:@"historical_%@_%ld", symbol, (long)timeframe];
+    
+    // Mark request as pending
+    @synchronized(self.pendingRequests) {
+        self.pendingRequests[requestKey] = @YES;
+    }
+    
+    // Request from DataManager
+    [[DataManager sharedManager] requestHistoricalDataForSymbol:symbol
+                                                      timeframe:timeframe
+                                                      startDate:startDate
+                                                        endDate:endDate
+                                                     completion:^(NSArray<HistoricalBar *> *bars, NSError *error) {
+        
+        // Remove from pending
+        @synchronized(self.pendingRequests) {
+            [self.pendingRequests removeObjectForKey:requestKey];
+        }
+        
+        if (error || !bars) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        
+        // I bars sono già oggetti HistoricalBar dal DataManager
+        // Non serve conversione, sono già salvati nel Core Data dal DataManager
+        
+        if (completion) completion(bars, nil);
+    }];
+}
+
+- (void)requestFreshCompanyInfoForSymbol:(NSString *)symbol
+                              completion:(void(^)(CompanyInfo *info, NSError *error))completion {
+    
+    // TODO: DataManager doesn't currently support company info requests
+    // For now, just return nil
+    NSError *error = [NSError errorWithDomain:@"DataHub"
+                                         code:404
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Company info not implemented"}];
+    if (completion) completion(nil, error);
+}
+
+#pragma mark - Core Data Save Methods
+
+- (MarketQuote *)saveMarketQuoteData:(NSDictionary *)quoteData forSymbol:(NSString *)symbol {
     NSFetchRequest *request = [MarketQuote fetchRequest];
     request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbol];
     
@@ -31,238 +395,16 @@
         quote.symbol = symbol;
     }
     
-    // Aggiorna dati
-    quote.name = quoteData[@"name"] ?: symbol;
-    quote.exchange = quoteData[@"exchange"] ?: @"";
-    
-    quote.currentPrice = [quoteData[@"currentPrice"] doubleValue];
-    quote.previousClose = [quoteData[@"previousClose"] doubleValue];
-    quote.open = [quoteData[@"open"] doubleValue];
-    quote.high = [quoteData[@"high"] doubleValue];
-    quote.low = [quoteData[@"low"] doubleValue];
-    
-    quote.change = [quoteData[@"change"] doubleValue];
-    quote.changePercent = [quoteData[@"changePercent"] doubleValue];
-    
-    quote.volume = [quoteData[@"volume"] longLongValue];
-    quote.avgVolume = [quoteData[@"avgVolume"] longLongValue];
-    
-    quote.marketCap = [quoteData[@"marketCap"] doubleValue];
-    quote.pe = [quoteData[@"pe"] doubleValue];
-    quote.eps = [quoteData[@"eps"] doubleValue];
-    quote.beta = [quoteData[@"beta"] doubleValue];
-    
+    // Update quote properties
+    [self updateQuoteObject:quote withData:quoteData];
     quote.lastUpdate = [NSDate date];
-    quote.marketTime = quoteData[@"marketTime"] ?: [NSDate date];
     
     [self saveContext];
-    
-    // Notifica aggiornamento
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"DataHubMarketQuoteUpdated"
-                                                        object:self
-                                                      userInfo:@{@"symbol": symbol, @"quote": quote}];
     
     return quote;
 }
 
-- (MarketQuote *)getQuoteForSymbol:(NSString *)symbol {
-    NSFetchRequest *request = [MarketQuote fetchRequest];
-    request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbol];
-    
-    NSError *error = nil;
-    NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
-    
-    return results.firstObject;
-}
-
-- (NSArray<MarketQuote *> *)getQuotesForSymbols:(NSArray<NSString *> *)symbols {
-    NSFetchRequest *request = [MarketQuote fetchRequest];
-    request.predicate = [NSPredicate predicateWithFormat:@"symbol IN %@", symbols];
-    
-    NSError *error = nil;
-    NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
-    
-    return results ?: @[];
-}
-
-- (void)cleanOldQuotes:(NSInteger)daysToKeep {
-    NSDate *cutoffDate = [[NSDate date] dateByAddingTimeInterval:-daysToKeep * 24 * 60 * 60];
-    
-    NSFetchRequest *request = [MarketQuote fetchRequest];
-    request.predicate = [NSPredicate predicateWithFormat:@"lastUpdate < %@", cutoffDate];
-    
-    NSError *error = nil;
-    NSArray *oldQuotes = [self.mainContext executeFetchRequest:request error:&error];
-    
-    for (MarketQuote *quote in oldQuotes) {
-        [self.mainContext deleteObject:quote];
-    }
-    
-    [self saveContext];
-}
-
-#pragma mark - Historical Data
-
-- (void)saveHistoricalBars:(NSArray<NSDictionary *> *)barsData
-                 forSymbol:(NSString *)symbol
-                timeframe:(NSInteger)timeframe {
-    
-    // Prima elimina barre esistenti per evitare duplicati
-    NSFetchRequest *deleteRequest = [HistoricalBar fetchRequest];
-    deleteRequest.predicate = [NSPredicate predicateWithFormat:@"symbol == %@ AND timeframe == %d",
-                             symbol, timeframe];
-    
-    NSBatchDeleteRequest *batchDelete = [[NSBatchDeleteRequest alloc] initWithFetchRequest:deleteRequest];
-    [self.mainContext executeRequest:batchDelete error:nil];
-    
-    // Salva nuove barre
-    for (NSDictionary *barData in barsData) {
-        HistoricalBar *bar = [NSEntityDescription insertNewObjectForEntityForName:@"HistoricalBar"
-                                                        inManagedObjectContext:self.mainContext];
-        
-        bar.symbol = symbol;
-        bar.date = barData[@"date"];
-        bar.open = [barData[@"open"] doubleValue];
-        bar.high = [barData[@"high"] doubleValue];
-        bar.low = [barData[@"low"] doubleValue];
-        bar.close = [barData[@"close"] doubleValue];
-        bar.adjustedClose = [barData[@"adjustedClose"] doubleValue];
-        bar.volume = [barData[@"volume"] longLongValue];
-        bar.timeframe = timeframe;
-    }
-    
-    [self saveContext];
-}
-
-- (NSArray<HistoricalBar *> *)getHistoricalBarsForSymbol:(NSString *)symbol
-                                               timeframe:(NSInteger)timeframe
-                                               startDate:(NSDate *)startDate
-                                                 endDate:(NSDate *)endDate {
-    
-    NSFetchRequest *request = [HistoricalBar fetchRequest];
-    
-    NSMutableArray *predicates = [NSMutableArray array];
-    [predicates addObject:[NSPredicate predicateWithFormat:@"symbol == %@", symbol]];
-    [predicates addObject:[NSPredicate predicateWithFormat:@"timeframe == %d", timeframe]];
-    
-    if (startDate) {
-        [predicates addObject:[NSPredicate predicateWithFormat:@"date >= %@", startDate]];
-    }
-    if (endDate) {
-        [predicates addObject:[NSPredicate predicateWithFormat:@"date <= %@", endDate]];
-    }
-    
-    request.predicate = [NSCompoundPredicate andPredicateWithSubpredicates:predicates];
-    request.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"date" ascending:YES]];
-    
-    NSError *error = nil;
-    NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
-    
-    return results ?: @[];
-}
-
-- (BOOL)hasHistoricalDataForSymbol:(NSString *)symbol
-                         timeframe:(NSInteger)timeframe
-                         startDate:(NSDate *)startDate {
-    
-    NSFetchRequest *request = [HistoricalBar fetchRequest];
-    request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@ AND timeframe == %d AND date >= %@",
-                        symbol, timeframe, startDate];
-    request.fetchLimit = 1;
-    
-    NSError *error = nil;
-    NSUInteger count = [self.mainContext countForFetchRequest:request error:&error];
-    
-    return count > 0;
-}
-
-#pragma mark - Market Lists
-
-- (void)saveMarketPerformers:(NSArray<NSDictionary *> *)performers
-                    listType:(NSString *)listType
-                   timeframe:(NSString *)timeframe {
-    
-    // Elimina performers vecchi per questa lista
-    NSFetchRequest *deleteRequest = [MarketPerformer fetchRequest];
-    deleteRequest.predicate = [NSPredicate predicateWithFormat:@"listType == %@ AND timeframe == %@",
-                             listType, timeframe];
-    
-    NSBatchDeleteRequest *batchDelete = [[NSBatchDeleteRequest alloc] initWithFetchRequest:deleteRequest];
-    [self.mainContext executeRequest:batchDelete error:nil];
-    
-    // Salva nuovi performers
-    for (NSDictionary *performerData in performers) {
-        MarketPerformer *performer = [NSEntityDescription insertNewObjectForEntityForName:@"MarketPerformer"
-                                                               inManagedObjectContext:self.mainContext];
-        
-        performer.symbol = performerData[@"symbol"];
-        performer.name = performerData[@"name"] ?: performerData[@"symbol"];
-        performer.price = [performerData[@"price"] doubleValue];
-        performer.changePercent = [performerData[@"changePercent"] doubleValue];
-        performer.volume = [performerData[@"volume"] longLongValue];
-        performer.listType = listType;
-        performer.timeframe = timeframe;
-        performer.timestamp = [NSDate date];
-    }
-    
-    [self saveContext];
-    
-    // Notifica aggiornamento lista
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"DataHubMarketListUpdated"
-                                                        object:self
-                                                      userInfo:@{@"listType": listType,
-                                                               @"timeframe": timeframe}];
-}
-
-- (NSArray<MarketPerformer *> *)getMarketPerformersForList:(NSString *)listType
-                                                 timeframe:(NSString *)timeframe {
-    
-    NSFetchRequest *request = [MarketPerformer fetchRequest];
-    request.predicate = [NSPredicate predicateWithFormat:@"listType == %@ AND timeframe == %@",
-                        listType, timeframe];
-    request.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"changePercent"
-                                                            ascending:(![listType isEqualToString:@"gainers"])]];
-    
-    NSError *error = nil;
-    NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
-    
-    return results ?: @[];
-}
-
-- (NSArray<NSString *> *)getAvailableMarketLists {
-    NSFetchRequest *request = [MarketPerformer fetchRequest];
-    request.resultType = NSDictionaryResultType;
-    request.propertiesToFetch = @[@"listType", @"timeframe"];
-    request.returnsDistinctResults = YES;
-    
-    NSError *error = nil;
-    NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
-    
-    NSMutableArray *lists = [NSMutableArray array];
-    for (NSDictionary *result in results) {
-        NSString *listIdentifier = [NSString stringWithFormat:@"%@-%@",
-                                  result[@"listType"], result[@"timeframe"]];
-        [lists addObject:listIdentifier];
-    }
-    
-    return lists;
-}
-
-- (void)cleanOldMarketPerformers:(NSInteger)hoursToKeep {
-    NSDate *cutoffDate = [[NSDate date] dateByAddingTimeInterval:-hoursToKeep * 60 * 60];
-    
-    NSFetchRequest *request = [MarketPerformer fetchRequest];
-    request.predicate = [NSPredicate predicateWithFormat:@"timestamp < %@", cutoffDate];
-    
-    NSBatchDeleteRequest *batchDelete = [[NSBatchDeleteRequest alloc] initWithFetchRequest:request];
-    [self.mainContext executeRequest:batchDelete error:nil];
-    
-    [self saveContext];
-}
-
-#pragma mark - Company Info
-
-- (CompanyInfo *)saveCompanyInfo:(NSDictionary *)infoData forSymbol:(NSString *)symbol {
+- (CompanyInfo *)saveCompanyInfoData:(NSDictionary *)infoData forSymbol:(NSString *)symbol {
     NSFetchRequest *request = [CompanyInfo fetchRequest];
     request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbol];
     
@@ -272,20 +414,12 @@
     CompanyInfo *info = results.firstObject;
     if (!info) {
         info = [NSEntityDescription insertNewObjectForEntityForName:@"CompanyInfo"
-                                          inManagedObjectContext:self.mainContext];
+                                             inManagedObjectContext:self.mainContext];
         info.symbol = symbol;
     }
     
-    // Aggiorna dati
-    info.name = infoData[@"name"] ?: symbol;
-    info.sector = infoData[@"sector"] ?: @"";
-    info.industry = infoData[@"industry"] ?: @"";
-    info.companyDescription = infoData[@"description"] ?: @"";
-    info.website = infoData[@"website"] ?: @"";
-    info.ceo = infoData[@"ceo"] ?: @"";
-    info.employees = [infoData[@"employees"] intValue];
-    info.headquarters = infoData[@"headquarters"] ?: @"";
-    info.ipoDate = infoData[@"ipoDate"];
+    // Update info properties
+    [self updateCompanyInfoObject:info withData:infoData];
     info.lastUpdate = [NSDate date];
     
     [self saveContext];
@@ -293,167 +427,171 @@
     return info;
 }
 
-- (CompanyInfo *)getCompanyInfoForSymbol:(NSString *)symbol {
-    NSFetchRequest *request = [CompanyInfo fetchRequest];
-    request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbol];
-    
-    NSError *error = nil;
-    NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
-    
-    return results.firstObject;
-}
-
-- (BOOL)hasRecentCompanyInfoForSymbol:(NSString *)symbol maxAge:(NSTimeInterval)maxAge {
-    CompanyInfo *info = [self getCompanyInfoForSymbol:symbol];
-    if (!info) return NO;
-    
-    NSTimeInterval age = [[NSDate date] timeIntervalSinceDate:info.lastUpdate];
-    return age < maxAge;
-}
-
 #pragma mark - Batch Operations
 
-- (void)saveMarketQuotesBatch:(NSArray<NSDictionary *> *)quotesData {
-    for (NSDictionary *quoteData in quotesData) {
-        NSString *symbol = quoteData[@"symbol"];
-        if (symbol) {
-            [self saveMarketQuote:quoteData forSymbol:symbol];
-        }
+- (void)refreshQuotesForSymbols:(NSArray<NSString *> *)symbols {
+    for (NSString *symbol in symbols) {
+        [self refreshQuoteForSymbol:symbol completion:nil];
     }
 }
 
-- (NSArray<NSString *> *)getAllSymbolsWithMarketData {
-    NSMutableSet *symbols = [NSMutableSet set];
+- (void)prefetchDataForSymbols:(NSArray<NSString *> *)symbols {
+    // Prefetch quotes
+    [self getQuotesForSymbols:symbols completion:nil];
     
-    // Simboli da quotes
-    NSFetchRequest *quotesRequest = [MarketQuote fetchRequest];
-    quotesRequest.resultType = NSDictionaryResultType;
-    quotesRequest.propertiesToFetch = @[@"symbol"];
-    quotesRequest.returnsDistinctResults = YES;
-    
-    NSArray *quoteResults = [self.mainContext executeFetchRequest:quotesRequest error:nil];
-    for (NSDictionary *result in quoteResults) {
-        [symbols addObject:result[@"symbol"]];
+    // Prefetch recent historical data
+    for (NSString *symbol in symbols) {
+        [self getHistoricalBarsForSymbol:symbol
+                               timeframe:BarTimeframe1Day
+                                barCount:30
+                              completion:nil];
     }
-    
-    // Simboli da historical
-    NSFetchRequest *historicalRequest = [HistoricalBar fetchRequest];
-    historicalRequest.resultType = NSDictionaryResultType;
-    historicalRequest.propertiesToFetch = @[@"symbol"];
-    historicalRequest.returnsDistinctResults = YES;
-    
-    NSArray *historicalResults = [self.mainContext executeFetchRequest:historicalRequest error:nil];
-    for (NSDictionary *result in historicalResults) {
-        [symbols addObject:result[@"symbol"]];
-    }
-    
-    return [symbols allObjects];
 }
 
-- (NSDictionary *)getMarketDataStatistics {
+#pragma mark - Cache Management
+
+- (void)clearMarketDataCache {
+    // Clear memory cache
+    [self.symbolDataCache removeAllObjects];
+    
+    // Clear pending requests
+    @synchronized(self.pendingRequests) {
+        [self.pendingRequests removeAllObjects];
+    }
+}
+
+- (void)clearCacheForSymbol:(NSString *)symbol {
+    // Clear memory cache
+    [self.symbolDataCache removeObjectForKey:symbol];
+    
+    // Clear pending requests for this symbol
+    @synchronized(self.pendingRequests) {
+        NSArray *keysToRemove = [self.pendingRequests.allKeys filteredArrayUsingPredicate:
+                                [NSPredicate predicateWithFormat:@"SELF BEGINSWITH %@", symbol]];
+        [self.pendingRequests removeObjectsForKeys:keysToRemove];
+    }
+}
+
+- (NSDictionary *)getCacheStatistics {
     NSMutableDictionary *stats = [NSMutableDictionary dictionary];
     
-    // Conta quotes
-    NSFetchRequest *quotesCount = [MarketQuote fetchRequest];
-    stats[@"totalQuotes"] = @([self.mainContext countForFetchRequest:quotesCount error:nil]);
+    // Memory cache stats
+    stats[@"memoryCacheCount"] = @(self.symbolDataCache.count);
     
-    // Conta historical bars
-    NSFetchRequest *barsCount = [HistoricalBar fetchRequest];
-    stats[@"totalHistoricalBars"] = @([self.mainContext countForFetchRequest:barsCount error:nil]);
+    // Core Data stats
+    NSFetchRequest *quoteRequest = [MarketQuote fetchRequest];
+    NSUInteger quoteCount = [self.mainContext countForFetchRequest:quoteRequest error:nil];
+    stats[@"quotesInCoreData"] = @(quoteCount);
     
-    // Conta performers
-    NSFetchRequest *performersCount = [MarketPerformer fetchRequest];
-    stats[@"totalPerformers"] = @([self.mainContext countForFetchRequest:performersCount error:nil]);
-    
-    // Conta company info
-    NSFetchRequest *infoCount = [CompanyInfo fetchRequest];
-    stats[@"totalCompanyInfo"] = @([self.mainContext countForFetchRequest:infoCount error:nil]);
+    // Pending requests
+    @synchronized(self.pendingRequests) {
+        stats[@"pendingRequests"] = @(self.pendingRequests.count);
+    }
     
     return stats;
 }
 
-#pragma mark - Update Requests
+#pragma mark - Helper Methods
 
-- (void)requestHistoricalDataUpdateForSymbol:(NSString *)symbol
-                                   timeframe:(BarTimeframe)timeframe {
+- (NSDate *)calculateStartDateForTimeframe:(BarTimeframe)timeframe barCount:(NSInteger)barCount fromDate:(NSDate *)endDate {
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDateComponents *components = [[NSDateComponents alloc] init];
     
-    // Inizializza il dizionario delle richieste pendenti se non esiste
-    if (!self.pendingRequests) {
-        self.pendingRequests = [NSMutableDictionary dictionary];
+    switch (timeframe) {
+        case BarTimeframe1Min:
+            components.minute = -barCount;
+            break;
+        case BarTimeframe5Min:
+            components.minute = -barCount * 5;
+            break;
+        case BarTimeframe15Min:
+            components.minute = -barCount * 15;
+            break;
+        case BarTimeframe30Min:
+            components.minute = -barCount * 30;
+            break;
+        case BarTimeframe1Hour:
+            components.hour = -barCount;
+            break;
+        case BarTimeframe1Day:
+            components.day = -barCount;
+            break;
+        case BarTimeframe1Week:
+            components.weekOfYear = -barCount;
+            break;
+        case BarTimeframe1Month:
+            components.month = -barCount;
+            break;
     }
     
-    // Crea una chiave unica per questa richiesta
-    NSString *requestKey = [NSString stringWithFormat:@"historical_%@_%ld", symbol, (long)timeframe];
-    
-    // Controlla se c'è già una richiesta in corso
-    @synchronized(self.pendingRequests) {
-        if (self.pendingRequests[requestKey]) {
-            NSLog(@"🔄 DataHub: Request already pending for %@ timeframe %ld", symbol, timeframe);
-            return;
-        }
-        
-        // Marca la richiesta come in corso
-        self.pendingRequests[requestKey] = @YES;
-    }
-    
-    NSLog(@"🚀 DataHub requesting update for %@ timeframe %ld", symbol, timeframe);
-    
-    DataManager *dm = [DataManager sharedManager];
-    NSDate *endDate = [NSDate date];
-    NSDate *startDate = [endDate dateByAddingTimeInterval:-(30 * 24 * 60 * 60)]; // 30 giorni
-    
-    __weak typeof(self) weakSelf = self;
-    [dm requestHistoricalDataForSymbol:symbol
-                            timeframe:timeframe
-                            startDate:startDate
-                              endDate:endDate
-                           completion:^(NSArray<HistoricalBar *> *bars, NSError *error) {
-        
-        __strong typeof(weakSelf) strongSelf = weakSelf;
-        if (!strongSelf) return;
-        
-        // Rimuovi dalla lista delle richieste pendenti
-        @synchronized(strongSelf.pendingRequests) {
-            [strongSelf.pendingRequests removeObjectForKey:requestKey];
-        }
-        
-        if (!error && bars.count > 0) {
-            NSLog(@"✅ DataHub: Received %lu bars for %@ timeframe %ld",
-                  (unsigned long)bars.count, symbol, timeframe);
-            
-            // IMPORTANTE: Dobbiamo salvare i dati nel Core Data!
-            // I bars che arrivano da DataManager NON sono oggetti Core Data salvati
-            
-            
-            
-            // Salva i dati nel Core Data tramite il metodo esistente
-            [strongSelf saveHistoricalBars:bars forSymbol:symbol timeframe:timeframe];
-            
-            // Solo DOPO aver salvato, invia la notifica
-            [[NSNotificationCenter defaultCenter] postNotificationName:@"DataHubHistoricalDataUpdated"
-                                                                object:strongSelf
-                                                              userInfo:@{
-                                                                  @"symbol": symbol,
-                                                                  @"timeframe": @(timeframe),
-                                                                  @"barsCount": @(bars.count)
-                                                              }];
-        } else if (error) {
-            NSLog(@"❌ DataHub: Error requesting data for %@ timeframe %ld: %@",
-                  symbol, timeframe, error.localizedDescription);
-        }
-    }];
+    return [calendar dateByAddingComponents:components toDate:endDate options:0];
 }
 
-- (void)requestMarketDataUpdate {
-    // DataHub chiede a DataManager di aggiornare
-    DataManager *dm = [DataManager sharedManager];
+- (void)updateQuoteObject:(MarketQuote *)quote withData:(NSDictionary *)data {
+    quote.currentPrice = [data[@"lastPrice"] doubleValue];
+    quote.previousClose = [data[@"previousClose"] doubleValue];
+    quote.change = [data[@"change"] doubleValue];
+    quote.changePercent = [data[@"changePercent"] doubleValue];
+    quote.volume = [data[@"volume"] longLongValue];
+    quote.open = [data[@"open"] doubleValue];
+    quote.high = [data[@"dayHigh"] doubleValue];
+    quote.low = [data[@"dayLow"] doubleValue];
+    quote.marketCap = [data[@"marketCap"] doubleValue];
+    quote.pe = [data[@"peRatio"] doubleValue];
     
-    // Richiedi aggiornamenti per le liste principali
-    [dm requestTopGainersWithRankType:@"1d" pageSize:50 completion:nil];
-    [dm requestTopLosersWithRankType:@"1d" pageSize:50 completion:nil];
-    [dm requestETFListWithCompletion:nil];
+    if (data[@"name"]) quote.name = data[@"name"];
+    if (data[@"exchange"]) quote.exchange = data[@"exchange"];
+}
+
+- (void)updateCompanyInfoObject:(CompanyInfo *)info withData:(NSDictionary *)data {
+    if (data[@"name"]) info.name = data[@"name"];
+    if (data[@"sector"]) info.sector = data[@"sector"];
+    if (data[@"industry"]) info.industry = data[@"industry"];
+    if (data[@"description"]) info.companyDescription = data[@"description"];
+    if (data[@"website"]) info.website = data[@"website"];
+    if (data[@"ceo"]) info.ceo = data[@"ceo"];
+    if (data[@"employees"]) info.employees = [data[@"employees"] intValue];
+    if (data[@"headquarters"]) info.headquarters = data[@"headquarters"];
+}
+
+- (void)saveHistoricalBar:(NSDictionary *)barData forSymbol:(NSString *)symbol timeframe:(NSInteger)timeframe {
+    NSDate *date = barData[@"date"];
+    if (!date) return;
     
-    // I dati verranno salvati automaticamente qui tramite DataManager+Persistence
+    // Check if bar already exists
+    NSFetchRequest *request = [HistoricalBar fetchRequest];
+    request.predicate = [NSPredicate predicateWithFormat:
+                        @"symbol == %@ AND timeframe == %d AND date == %@",
+                        symbol, (int)timeframe, date];
+    
+    NSError *error = nil;
+    NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
+    
+    HistoricalBar *bar = results.firstObject;
+    if (!bar) {
+        bar = [NSEntityDescription insertNewObjectForEntityForName:@"HistoricalBar"
+                                            inManagedObjectContext:self.mainContext];
+        bar.symbol = symbol;
+        bar.timeframe = timeframe;
+        bar.date = date;
+    }
+    
+    // Update bar data
+    bar.open = [barData[@"open"] doubleValue];
+    bar.high = [barData[@"high"] doubleValue];
+    bar.low = [barData[@"low"] doubleValue];
+    bar.close = [barData[@"close"] doubleValue];
+    bar.volume = [barData[@"volume"] longLongValue];
+    
+    if (barData[@"adjustedClose"]) {
+        bar.adjustedClose = [barData[@"adjustedClose"] doubleValue];
+    }
+}
+
+- (BOOL)hasPendingRequestForKey:(NSString *)requestKey {
+    @synchronized(self.pendingRequests) {
+        return self.pendingRequests[requestKey] != nil;
+    }
 }
 
 @end

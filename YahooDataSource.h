@@ -8,7 +8,7 @@
 #import <Foundation/Foundation.h>
 #import "DownloadManager.h"
 
-@interface YahooDataSource : NSObject <DataSourceProtocol>
+@interface YahooDataSource : NSObject 
 
 // Yahoo-specific configuration
 @property (nonatomic, assign) BOOL useCrumbAuthentication;

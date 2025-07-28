@@ -61,8 +61,7 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
                        DataSourceCapabilityHistorical |
                        DataSourceCapabilityOrderBook |
                        DataSourceCapabilityAccounts |
-                       DataSourceCapabilityTrading |
-                       DataSourceCapabilityRealtime;
+                       DataSourceCapabilityTrading;
         _sourceName = @"Charles Schwab";
         
         // Load credentials from configuration

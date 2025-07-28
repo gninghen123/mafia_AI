@@ -3,6 +3,7 @@
 //  mafia_AI
 //
 //  Estensione del DataHub per gestire i dati di mercato
+//  Updated with intelligent caching and automatic data fetching
 //
 
 #import "DataHub.h"
@@ -14,90 +15,89 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+// Data freshness types
+typedef NS_ENUM(NSInteger, DataFreshnessType) {
+    DataFreshnessTypeQuote,           // TTL: 5-10 seconds
+    DataFreshnessTypeMarketOverview,  // TTL: 1 minute
+    DataFreshnessTypeHistorical,      // TTL: 5 minutes
+    DataFreshnessTypeCompanyInfo,     // TTL: 24 hours
+    DataFreshnessTypeWatchlist        // TTL: Infinite (user managed)
+};
+
 @interface DataHub (MarketData)
 
-#pragma mark - Market Quotes
+#pragma mark - Market Quotes with Smart Caching
 
-// Salva o aggiorna una quote
-- (MarketQuote *)saveMarketQuote:(NSDictionary *)quoteData forSymbol:(NSString *)symbol;
+// Get quote with automatic refresh if stale
+- (void)getQuoteForSymbol:(NSString *)symbol
+               completion:(void(^)(MarketQuote * _Nullable quote, BOOL isLive))completion;
 
-// Recupera l'ultima quote per un simbolo
-- (MarketQuote *)getQuoteForSymbol:(NSString *)symbol;
+// Get multiple quotes
+- (void)getQuotesForSymbols:(NSArray<NSString *> *)symbols
+                 completion:(void(^)(NSDictionary<NSString *, MarketQuote *> *quotes, BOOL isLive))completion;
 
-// Recupera quote per multipli simboli
-- (NSArray<MarketQuote *> *)getQuotesForSymbols:(NSArray<NSString *> *)symbols;
+// Force refresh quote (bypasses cache)
+- (void)refreshQuoteForSymbol:(NSString *)symbol
+                   completion:(void(^)(MarketQuote * _Nullable quote, NSError * _Nullable error))completion;
 
-// Pulisce quote vecchie (più di N giorni)
-- (void)cleanOldQuotes:(NSInteger)daysToKeep;
+#pragma mark - Historical Data with Smart Caching
 
-#pragma mark - Historical Data
+// Get historical data with automatic refresh if stale
+- (void)getHistoricalBarsForSymbol:(NSString *)symbol
+                         timeframe:(BarTimeframe)timeframe
+                          barCount:(NSInteger)barCount
+                        completion:(void(^)(NSArray<HistoricalBar *> *bars, BOOL isFresh))completion;
 
-// Salva barre storiche
-- (void)saveHistoricalBars:(NSArray<NSDictionary *> *)barsData
-                 forSymbol:(NSString *)symbol
-                timeframe:(NSInteger)timeframe;
-
-// Recupera dati storici
-- (NSArray<HistoricalBar *> *)getHistoricalBarsForSymbol:(NSString *)symbol
-                                               timeframe:(NSInteger)timeframe
-                                               startDate:(NSDate *)startDate
-                                                 endDate:(NSDate *)endDate;
-
-// Verifica se ci sono dati storici per un periodo
-- (BOOL)hasHistoricalDataForSymbol:(NSString *)symbol
-                         timeframe:(NSInteger)timeframe
-                         startDate:(NSDate *)startDate;
-
-// Richiede aggiornamento dati storici
-- (void)requestHistoricalDataUpdateForSymbol:(NSString *)symbol
-                                   timeframe:(BarTimeframe)timeframe;
-
-#pragma mark - Market Lists
-
-// Salva lista di performers (gainers/losers)
-- (void)saveMarketPerformers:(NSArray<NSDictionary *> *)performers
-                    listType:(NSString *)listType
-                   timeframe:(NSString *)timeframe;
-
-// Recupera performers per tipo e timeframe
-- (NSArray<MarketPerformer *> *)getMarketPerformersForList:(NSString *)listType
-                                                 timeframe:(NSString *)timeframe;
-
-// Recupera tutti i tipi di liste disponibili
-- (NSArray<NSString *> *)getAvailableMarketLists;
-
-// Pulisce performers vecchi
-- (void)cleanOldMarketPerformers:(NSInteger)hoursToKeep;
+// Get historical data for date range
+- (void)getHistoricalBarsForSymbol:(NSString *)symbol
+                         timeframe:(BarTimeframe)timeframe
+                         startDate:(NSDate *)startDate
+                           endDate:(NSDate *)endDate
+                        completion:(void(^)(NSArray<HistoricalBar *> *bars, BOOL isFresh))completion;
 
 #pragma mark - Company Info
 
-// Salva o aggiorna info aziendali
-- (CompanyInfo *)saveCompanyInfo:(NSDictionary *)infoData forSymbol:(NSString *)symbol;
+// Get company info with automatic refresh if stale
+- (void)getCompanyInfoForSymbol:(NSString *)symbol
+                     completion:(void(^)(CompanyInfo * _Nullable info, BOOL isFresh))completion;
 
-// Recupera info aziendali
-- (CompanyInfo *)getCompanyInfoForSymbol:(NSString *)symbol;
+#pragma mark - Market Lists
 
-// Verifica se le info sono aggiornate
-- (BOOL)hasRecentCompanyInfoForSymbol:(NSString *)symbol maxAge:(NSTimeInterval)maxAge;
+// Get market performers (gainers/losers) with automatic refresh
+- (void)getMarketPerformersForList:(NSString *)listType
+                        timeframe:(NSString *)timeframe
+                       completion:(void(^)(NSArray<MarketPerformer *> *performers, BOOL isFresh))completion;
+
+#pragma mark - Data Freshness Management
+
+// Check if data is stale based on type and last update
+- (BOOL)isDataStale:(NSDate *)lastUpdate forType:(DataFreshnessType)type;
+
+// Get TTL for data type
+- (NSTimeInterval)TTLForDataType:(DataFreshnessType)type;
+
+// Check if there's a pending request
+- (BOOL)hasPendingRequestForSymbol:(NSString *)symbol dataType:(DataFreshnessType)type;
 
 #pragma mark - Batch Operations
 
-// Salva multipli quote in batch
-- (void)saveMarketQuotesBatch:(NSArray<NSDictionary *> *)quotesData;
+// Request quotes for multiple symbols
+- (void)refreshQuotesForSymbols:(NSArray<NSString *> *)symbols;
 
-// Recupera tutti i simboli con dati
-- (NSArray<NSString *> *)getAllSymbolsWithMarketData;
+// Prefetch data for symbols (useful for watchlists)
+- (void)prefetchDataForSymbols:(NSArray<NSString *> *)symbols;
 
-// Statistiche sui dati salvati
-- (NSDictionary *)getMarketDataStatistics;
+#pragma mark - Cache Management
 
-#pragma mark - Update Requests
+// Clear all market data cache
+- (void)clearMarketDataCache;
 
-// Richiede aggiornamento dati di mercato
-- (void)requestMarketDataUpdate;
+// Clear cache for specific symbol
+- (void)clearCacheForSymbol:(NSString *)symbol;
 
-// Richiede aggiornamento liste di mercato
-- (void)requestMarketListUpdate:(NSString *)listType timeframe:(NSString *)timeframe;
+// Get cache statistics
+- (NSDictionary *)getCacheStatistics;
+
 
 @end
 

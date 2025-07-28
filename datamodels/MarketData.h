@@ -2,7 +2,7 @@
 //  MarketData.h
 //  mafia_AI
 //
-//  Modello per rappresentare dati di mercato real-time
+//  Modello per rappresentare dati di mercato 
 //  Usato come modello intermedio prima di salvare in Core Data
 //
 

@@ -3,11 +3,11 @@
 //  TradingApp
 //
 //  Central data management system that provides unified data interface to widgets
+//  Uses HTTP polling for frequent updates (no WebSocket/streaming)
 //
 
 #import <Foundation/Foundation.h>
-#import "CommonTypes.h"  // Aggiungi questo
-
+#import "CommonTypes.h"
 
 // Forward declarations
 @class MarketData;
@@ -17,7 +17,7 @@
 @class Order;
 @class DataManager;
 
-// Delegate protocol for real-time updates
+// Delegate protocol for data updates via HTTP polling
 @protocol DataManagerDelegate <NSObject>
 @optional
 - (void)dataManager:(DataManager *)manager didUpdateQuote:(MarketData *)quote forSymbol:(NSString *)symbol;
@@ -40,14 +40,14 @@
 - (NSString *)requestQuoteForSymbol:(NSString *)symbol
                           completion:(void (^)(MarketData *quote, NSError *error))completion;
 
-// Historical data - with date range (original method)
+// Historical data - with date range
 - (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
                                    timeframe:(BarTimeframe)timeframe
                                    startDate:(NSDate *)startDate
                                      endDate:(NSDate *)endDate
                                   completion:(void (^)(NSArray<HistoricalBar *> *bars, NSError *error))completion;
 
-// Historical data - with count (new method to match implementation)
+// Historical data - with count
 - (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
                                    timeframe:(BarTimeframe)timeframe
                                        count:(NSInteger)count
@@ -62,7 +62,7 @@
 - (void)requestPositionsWithCompletion:(void (^)(NSArray<Position *> *positions, NSError *error))completion;
 - (void)requestOrdersWithCompletion:(void (^)(NSArray<Order *> *orders, NSError *error))completion;
 
-// Subscription management
+// HTTP Polling management (maintains symbol list for periodic requests)
 - (void)subscribeToQuotes:(NSArray<NSString *> *)symbols;
 - (void)unsubscribeFromQuotes:(NSArray<NSString *> *)symbols;
 

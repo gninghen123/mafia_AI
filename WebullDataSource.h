@@ -8,7 +8,7 @@
 #import <Foundation/Foundation.h>
 #import "DownloadManager.h"
 
-@interface WebullDataSource : NSObject <DataSourceProtocol>
+@interface WebullDataSource : NSObject 
 
 // Market Lists
 - (void)fetchTopGainersWithRankType:(NSString *)rankType

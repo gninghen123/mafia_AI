@@ -8,6 +8,7 @@
 #import "HistoricalBar+CoreDataClass.h"
 #import "Position.h"
 #import "Order.h"
+#import "OrderBookEntry.h"  // AGGIUNGI QUESTO IMPORT
 
 @implementation SchwabDataAdapter
 
@@ -89,7 +90,7 @@
     return [[MarketData alloc] initWithDictionary:standardData];
 }
 
-- (NSArray<NSDictionary *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol {
+- (NSArray<HistoricalBar *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol {
     if (!rawData) return @[];
     
     NSArray *candles = nil;
@@ -116,77 +117,100 @@
         return @[];
     }
     
-    NSMutableArray<NSDictionary *> *bars = [NSMutableArray array];
+    NSMutableArray<HistoricalBar *> *bars = [NSMutableArray array];
     
     for (id candleItem in candles) {
-        if (![candleItem isKindOfClass:[NSDictionary class]]) {
-            NSLog(@"SchwabAdapter: Skipping non-dictionary candle: %@", candleItem);
-            continue;
+        HistoricalBar *bar = [[HistoricalBar alloc] init];
+        
+        if ([candleItem isKindOfClass:[NSDictionary class]]) {
+            NSDictionary *candle = (NSDictionary *)candleItem;
+            
+            // Schwab usa epoch in millisecondi
+            NSNumber *datetime = candle[@"datetime"];
+            if (datetime) {
+                NSTimeInterval timestamp = [datetime doubleValue] / 1000.0;
+                bar.date = [NSDate dateWithTimeIntervalSince1970:timestamp];
+            }
+            
+            bar.symbol = symbol;
+            
+            // Converti valori numerici correttamente
+            bar.open = [candle[@"open"] doubleValue];
+            bar.high = [candle[@"high"] doubleValue];
+            bar.low = [candle[@"low"] doubleValue];
+            bar.close = [candle[@"close"] doubleValue];
+            bar.volume = [candle[@"volume"] longLongValue];
+        }
+        // Supporta anche formato array [timestamp, open, high, low, close, volume]
+        else if ([candleItem isKindOfClass:[NSArray class]]) {
+            NSArray *candleArray = (NSArray *)candleItem;
+            if (candleArray.count >= 6) {
+                NSNumber *timestamp = candleArray[0];
+                bar.date = [NSDate dateWithTimeIntervalSince1970:[timestamp doubleValue] / 1000.0];
+                bar.symbol = symbol;
+                bar.open = [candleArray[1] doubleValue];
+                bar.high = [candleArray[2] doubleValue];
+                bar.low = [candleArray[3] doubleValue];
+                bar.close = [candleArray[4] doubleValue];
+                bar.volume = [candleArray[5] longLongValue];
+            }
         }
         
-        NSDictionary *candle = (NSDictionary *)candleItem;
-        NSMutableDictionary *barData = [NSMutableDictionary dictionary];
-        
-        // Date handling - supporta sia "datetime" (timestamp) che "date" (string)
-        NSDate *candleDate = nil;
-        
-        if (candle[@"datetime"]) {
-            // Formato timestamp (milliseconds)
-            NSNumber *timestamp = candle[@"datetime"];
-            candleDate = [NSDate dateWithTimeIntervalSince1970:[timestamp doubleValue] / 1000.0];
-        }else if (candle[@"date"]){
-            candleDate = candleItem[@"date"];
+        if (bar.date) {
+            [bars addObject:bar];
         }
-        
-        if (!candleDate) {
-            NSLog(@"SchwabAdapter: Missing or invalid date in candle: %@", candle);
-            continue; // Skip candles without valid date
-        }
-        
-        // Assicurati che sia proprio un NSDate
-        if (candleDate && [candleDate isKindOfClass:[NSDate class]]) {
-            barData[@"date"] = candleDate;
-        } else {
-            NSLog(@"SchwabAdapter: Invalid date object type: %@", [candleDate class]);
-            continue;
-        }
-        
-        // OHLC data con validazione
-        barData[@"open"] = [self safeNumberFromValue:candle[@"open"]];
-        barData[@"high"] = [self safeNumberFromValue:candle[@"high"]];
-        barData[@"low"] = [self safeNumberFromValue:candle[@"low"]];
-        barData[@"close"] = [self safeNumberFromValue:candle[@"close"]];
-        barData[@"volume"] = [self safeNumberFromValue:candle[@"volume"]];
-        barData[@"symbol"] = symbol;
-        
-        [bars addObject:barData];
     }
     
-    NSLog(@"SchwabAdapter: Successfully converted %lu bars for %@", (unsigned long)bars.count, symbol);
-    return bars;
+    NSLog(@"SchwabAdapter: Standardized %lu bars", (unsigned long)bars.count);
+    return [bars copy];
 }
 
-// Helper method per validare i numeri
-- (NSNumber *)safeNumberFromValue:(id)value {
-    if ([value isKindOfClass:[NSNumber class]]) {
-        return (NSNumber *)value;
-    } else if ([value isKindOfClass:[NSString class]]) {
-        return @([value doubleValue]);
+- (NSDictionary *)standardizeOrderBookData:(id)rawData forSymbol:(NSString *)symbol {
+    if (!rawData) return @{@"bids": @[], @"asks": @[]};
+    
+    NSMutableArray<OrderBookEntry *> *bids = [NSMutableArray array];
+    NSMutableArray<OrderBookEntry *> *asks = [NSMutableArray array];
+    
+    // Schwab potrebbe fornire order book in diversi formati
+    if ([rawData isKindOfClass:[NSDictionary class]]) {
+        NSDictionary *orderBookData = (NSDictionary *)rawData;
+        
+        // Processa i bid
+        NSArray *rawBids = orderBookData[@"bids"] ?: orderBookData[@"bidList"] ?: @[];
+        for (NSDictionary *bidData in rawBids) {
+            OrderBookEntry *entry = [[OrderBookEntry alloc] init];
+            entry.price = [bidData[@"price"] ?: bidData[@"bidPrice"] ?: @0 doubleValue];
+            entry.size = [bidData[@"size"] ?: bidData[@"bidSize"] ?: @0 integerValue];
+            entry.marketMaker = bidData[@"marketMaker"];
+            entry.isBid = YES;
+            [bids addObject:entry];
+        }
+        
+        // Processa gli ask
+        NSArray *rawAsks = orderBookData[@"asks"] ?: orderBookData[@"askList"] ?: @[];
+        for (NSDictionary *askData in rawAsks) {
+            OrderBookEntry *entry = [[OrderBookEntry alloc] init];
+            entry.price = [askData[@"price"] ?: askData[@"askPrice"] ?: @0 doubleValue];
+            entry.size = [askData[@"size"] ?: askData[@"askSize"] ?: @0 integerValue];
+            entry.marketMaker = askData[@"marketMaker"];
+            entry.isBid = NO;
+            [asks addObject:entry];
+        }
     }
-    return @0;
+    
+    return @{
+        @"bids": [bids copy],
+        @"asks": [asks copy]
+    };
 }
-
-
-
-
 
 - (Position *)standardizePositionData:(NSDictionary *)rawData {
-    // TODO: Implement when needed
+    // TODO: Implementare quando necessario
     return nil;
 }
 
 - (Order *)standardizeOrderData:(NSDictionary *)rawData {
-    // TODO: Implement when needed
+    // TODO: Implementare quando necessario
     return nil;
 }
 

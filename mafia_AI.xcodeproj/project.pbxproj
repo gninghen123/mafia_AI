@@ -8,21 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		9549A30C2E33B4BF00E873AB /* DataHub+MarketData.m in Sources */ = {isa = PBXBuildFile; fileRef = 9549A30B2E33B4BF00E873AB /* DataHub+MarketData.m */; };
-		954D30732E2852E400C7DC88 /* NSColor+CHAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30722E2852E400C7DC88 /* NSColor+CHAdditions.m */; };
-		954D30742E2852E400C7DC88 /* NSBezierPath+CHAdditions.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30702E2852E400C7DC88 /* NSBezierPath+CHAdditions.m */; };
-		954D30792E2852EA00C7DC88 /* CHColorUtils.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30782E2852EA00C7DC88 /* CHColorUtils.m */; };
-		954D307A2E2852EA00C7DC88 /* CHChartUtils.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30762E2852EA00C7DC88 /* CHChartUtils.m */; };
-		954D307F2E2852F000C7DC88 /* CHBarChartRenderer.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D307E2E2852F000C7DC88 /* CHBarChartRenderer.m */; };
-		954D30802E2852F000C7DC88 /* CHLineChartRenderer.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D307C2E2852F000C7DC88 /* CHLineChartRenderer.m */; };
-		954D30852E2852F400C7DC88 /* CHChartLayer.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30842E2852F400C7DC88 /* CHChartLayer.m */; };
-		954D30862E2852F400C7DC88 /* CHChartView.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30822E2852F400C7DC88 /* CHChartView.m */; };
-		954D308D2E2852F900C7DC88 /* CHDataPoint.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30882E2852F900C7DC88 /* CHDataPoint.m */; };
-		954D308E2E2852F900C7DC88 /* CHChartConfiguration.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D308A2E2852F900C7DC88 /* CHChartConfiguration.m */; };
-		954D308F2E2852F900C7DC88 /* CHChartData.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D308C2E2852F900C7DC88 /* CHChartData.m */; };
-		954D309A2E2852FF00C7DC88 /* CHChartTypes.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30972E2852FF00C7DC88 /* CHChartTypes.m */; };
-		954D309B2E2852FF00C7DC88 /* CHChartRenderer.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30912E2852FF00C7DC88 /* CHChartRenderer.m */; };
-		954D309C2E2852FF00C7DC88 /* CHChartWidget.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30992E2852FF00C7DC88 /* CHChartWidget.m */; };
-		954D309D2E2852FF00C7DC88 /* CHChartCore.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30932E2852FF00C7DC88 /* CHChartCore.m */; };
 		954D30BB2E28530E00C7DC88 /* SchwabDataSource.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30B02E28530E00C7DC88 /* SchwabDataSource.m */; };
 		954D30BD2E28530E00C7DC88 /* YahooDataSource.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30B22E28530E00C7DC88 /* YahooDataSource.m */; };
 		954D30BE2E28530E00C7DC88 /* SchwabConfig.plist in Resources */ = {isa = PBXBuildFile; fileRef = 954D30AE2E28530E00C7DC88 /* SchwabConfig.plist */; };
@@ -62,38 +47,6 @@
 		954D30002E28514A00C7DC88 /* mafia_AI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = mafia_AI.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		954D30122E28514B00C7DC88 /* mafia_AITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = mafia_AITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		954D301C2E28514C00C7DC88 /* mafia_AIUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = mafia_AIUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		954D306F2E2852E400C7DC88 /* NSBezierPath+CHAdditions.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NSBezierPath+CHAdditions.h"; sourceTree = "<group>"; };
-		954D30702E2852E400C7DC88 /* NSBezierPath+CHAdditions.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "NSBezierPath+CHAdditions.m"; sourceTree = "<group>"; };
-		954D30712E2852E400C7DC88 /* NSColor+CHAdditions.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "NSColor+CHAdditions.h"; sourceTree = "<group>"; };
-		954D30722E2852E400C7DC88 /* NSColor+CHAdditions.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "NSColor+CHAdditions.m"; sourceTree = "<group>"; };
-		954D30752E2852EA00C7DC88 /* CHChartUtils.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CHChartUtils.h; sourceTree = "<group>"; };
-		954D30762E2852EA00C7DC88 /* CHChartUtils.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CHChartUtils.m; sourceTree = "<group>"; };
-		954D30772E2852EA00C7DC88 /* CHColorUtils.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CHColorUtils.h; sourceTree = "<group>"; };
-		954D30782E2852EA00C7DC88 /* CHColorUtils.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CHColorUtils.m; sourceTree = "<group>"; };
-		954D307B2E2852F000C7DC88 /* CHLineChartRenderer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CHLineChartRenderer.h; sourceTree = "<group>"; };
-		954D307C2E2852F000C7DC88 /* CHLineChartRenderer.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CHLineChartRenderer.m; sourceTree = "<group>"; };
-		954D307D2E2852F000C7DC88 /* CHBarChartRenderer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CHBarChartRenderer.h; sourceTree = "<group>"; };
-		954D307E2E2852F000C7DC88 /* CHBarChartRenderer.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CHBarChartRenderer.m; sourceTree = "<group>"; };
-		954D30812E2852F400C7DC88 /* CHChartView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CHChartView.h; sourceTree = "<group>"; };
-		954D30822E2852F400C7DC88 /* CHChartView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CHChartView.m; sourceTree = "<group>"; };
-		954D30832E2852F400C7DC88 /* CHChartLayer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CHChartLayer.h; sourceTree = "<group>"; };
-		954D30842E2852F400C7DC88 /* CHChartLayer.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CHChartLayer.m; sourceTree = "<group>"; };
-		954D30872E2852F900C7DC88 /* CHDataPoint.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CHDataPoint.h; sourceTree = "<group>"; };
-		954D30882E2852F900C7DC88 /* CHDataPoint.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CHDataPoint.m; sourceTree = "<group>"; };
-		954D30892E2852F900C7DC88 /* CHChartConfiguration.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CHChartConfiguration.h; sourceTree = "<group>"; };
-		954D308A2E2852F900C7DC88 /* CHChartConfiguration.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CHChartConfiguration.m; sourceTree = "<group>"; };
-		954D308B2E2852F900C7DC88 /* CHChartData.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CHChartData.h; sourceTree = "<group>"; };
-		954D308C2E2852F900C7DC88 /* CHChartData.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CHChartData.m; sourceTree = "<group>"; };
-		954D30902E2852FF00C7DC88 /* CHChartRenderer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CHChartRenderer.h; sourceTree = "<group>"; };
-		954D30912E2852FF00C7DC88 /* CHChartRenderer.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CHChartRenderer.m; sourceTree = "<group>"; };
-		954D30922E2852FF00C7DC88 /* CHChartCore.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CHChartCore.h; sourceTree = "<group>"; };
-		954D30932E2852FF00C7DC88 /* CHChartCore.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CHChartCore.m; sourceTree = "<group>"; };
-		954D30942E2852FF00C7DC88 /* CHChartDataSource.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CHChartDataSource.h; sourceTree = "<group>"; };
-		954D30952E2852FF00C7DC88 /* CHChartDelegate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CHChartDelegate.h; sourceTree = "<group>"; };
-		954D30962E2852FF00C7DC88 /* CHChartTypes.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CHChartTypes.h; sourceTree = "<group>"; };
-		954D30972E2852FF00C7DC88 /* CHChartTypes.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CHChartTypes.m; sourceTree = "<group>"; };
-		954D30982E2852FF00C7DC88 /* CHChartWidget.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CHChartWidget.h; sourceTree = "<group>"; };
-		954D30992E2852FF00C7DC88 /* CHChartWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CHChartWidget.m; sourceTree = "<group>"; };
 		954D30AE2E28530E00C7DC88 /* SchwabConfig.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = SchwabConfig.plist; sourceTree = "<group>"; };
 		954D30AF2E28530E00C7DC88 /* SchwabDataSource.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SchwabDataSource.h; sourceTree = "<group>"; };
 		954D30B02E28530E00C7DC88 /* SchwabDataSource.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SchwabDataSource.m; sourceTree = "<group>"; };
@@ -136,6 +89,11 @@
 		954D301F2E28514C00C7DC88 /* mafia_AIUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = mafia_AIUITests;
+			sourceTree = "<group>";
+		};
+		959A4A832E39284300D83EB1 /* chchart */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = chchart;
 			sourceTree = "<group>";
 		};
 		95F1AD752E2E4EE100D96BDD /* datamodels */ = {
@@ -215,38 +173,7 @@
 				954D30B02E28530E00C7DC88 /* SchwabDataSource.m */,
 				954D30B12E28530E00C7DC88 /* YahooDataSource.h */,
 				954D30B22E28530E00C7DC88 /* YahooDataSource.m */,
-				954D30902E2852FF00C7DC88 /* CHChartRenderer.h */,
-				954D30912E2852FF00C7DC88 /* CHChartRenderer.m */,
-				954D30922E2852FF00C7DC88 /* CHChartCore.h */,
-				954D30932E2852FF00C7DC88 /* CHChartCore.m */,
-				954D30942E2852FF00C7DC88 /* CHChartDataSource.h */,
-				954D30952E2852FF00C7DC88 /* CHChartDelegate.h */,
-				954D30962E2852FF00C7DC88 /* CHChartTypes.h */,
-				954D30972E2852FF00C7DC88 /* CHChartTypes.m */,
-				954D30982E2852FF00C7DC88 /* CHChartWidget.h */,
-				954D30992E2852FF00C7DC88 /* CHChartWidget.m */,
-				954D30872E2852F900C7DC88 /* CHDataPoint.h */,
-				954D30882E2852F900C7DC88 /* CHDataPoint.m */,
-				954D30892E2852F900C7DC88 /* CHChartConfiguration.h */,
-				954D308A2E2852F900C7DC88 /* CHChartConfiguration.m */,
-				954D308B2E2852F900C7DC88 /* CHChartData.h */,
-				954D308C2E2852F900C7DC88 /* CHChartData.m */,
-				954D30812E2852F400C7DC88 /* CHChartView.h */,
-				954D30822E2852F400C7DC88 /* CHChartView.m */,
-				954D30832E2852F400C7DC88 /* CHChartLayer.h */,
-				954D30842E2852F400C7DC88 /* CHChartLayer.m */,
-				954D307B2E2852F000C7DC88 /* CHLineChartRenderer.h */,
-				954D307C2E2852F000C7DC88 /* CHLineChartRenderer.m */,
-				954D307D2E2852F000C7DC88 /* CHBarChartRenderer.h */,
-				954D307E2E2852F000C7DC88 /* CHBarChartRenderer.m */,
-				954D30752E2852EA00C7DC88 /* CHChartUtils.h */,
-				954D30762E2852EA00C7DC88 /* CHChartUtils.m */,
-				954D30772E2852EA00C7DC88 /* CHColorUtils.h */,
-				954D30782E2852EA00C7DC88 /* CHColorUtils.m */,
-				954D306F2E2852E400C7DC88 /* NSBezierPath+CHAdditions.h */,
-				954D30702E2852E400C7DC88 /* NSBezierPath+CHAdditions.m */,
-				954D30712E2852E400C7DC88 /* NSColor+CHAdditions.h */,
-				954D30722E2852E400C7DC88 /* NSColor+CHAdditions.m */,
+				959A4A832E39284300D83EB1 /* chchart */,
 				954D30022E28514A00C7DC88 /* mafia_AI */,
 				954D30152E28514B00C7DC88 /* mafia_AITests */,
 				954D301F2E28514C00C7DC88 /* mafia_AIUITests */,
@@ -281,6 +208,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				954D30022E28514A00C7DC88 /* mafia_AI */,
+				959A4A832E39284300D83EB1 /* chchart */,
 				95F1AD752E2E4EE100D96BDD /* datamodels */,
 				95F1AD762E2E517E00D96BDD /* UI */,
 				95F1AFB42E31131100D96BDD /* DataManager */,
@@ -412,25 +340,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				954D309A2E2852FF00C7DC88 /* CHChartTypes.m in Sources */,
-				954D309B2E2852FF00C7DC88 /* CHChartRenderer.m in Sources */,
-				954D309C2E2852FF00C7DC88 /* CHChartWidget.m in Sources */,
-				954D309D2E2852FF00C7DC88 /* CHChartCore.m in Sources */,
-				954D30852E2852F400C7DC88 /* CHChartLayer.m in Sources */,
-				954D30862E2852F400C7DC88 /* CHChartView.m in Sources */,
-				954D30732E2852E400C7DC88 /* NSColor+CHAdditions.m in Sources */,
-				954D30792E2852EA00C7DC88 /* CHColorUtils.m in Sources */,
-				954D307F2E2852F000C7DC88 /* CHBarChartRenderer.m in Sources */,
 				954D30E32E2860F100C7DC88 /* PreferencesWindowController.m in Sources */,
-				954D30802E2852F000C7DC88 /* CHLineChartRenderer.m in Sources */,
-				954D308D2E2852F900C7DC88 /* CHDataPoint.m in Sources */,
 				955B3CD12E2BFF55008CA475 /* WebullDataSource.m in Sources */,
 				954D30E72E28612100C7DC88 /* AppSettings.m in Sources */,
-				954D308E2E2852F900C7DC88 /* CHChartConfiguration.m in Sources */,
-				954D308F2E2852F900C7DC88 /* CHChartData.m in Sources */,
-				954D307A2E2852EA00C7DC88 /* CHChartUtils.m in Sources */,
 				95F1AD532E2E475500D96BDD /* DataHub.m in Sources */,
-				954D30742E2852E400C7DC88 /* NSBezierPath+CHAdditions.m in Sources */,
 				9549A30C2E33B4BF00E873AB /* DataHub+MarketData.m in Sources */,
 				954D30D52E28531C00C7DC88 /* LayoutManager.m in Sources */,
 				954D30D72E28531C00C7DC88 /* ToolbarController.m in Sources */,

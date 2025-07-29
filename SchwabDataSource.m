@@ -134,6 +134,49 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     }
 }
 
+- (void)connectWithCompletion:(void (^)(BOOL success, NSError *error))completion {
+    NSLog(@"SchwabDataSource: connectWithCompletion called");
+    
+    // Check if we already have valid tokens from keychain
+    [self loadTokensFromKeychain];
+    
+    // Check if we have a valid token
+    if ([self hasValidToken]) {
+        NSLog(@"SchwabDataSource: Already have valid token, marking as connected");
+        self.connected = YES;
+        if (completion) {
+            completion(YES, nil);
+        }
+        return;
+    }
+    
+    // Try to refresh token first
+    if (self.refreshToken) {
+        NSLog(@"SchwabDataSource: Attempting to refresh token");
+        [self refreshTokenIfNeeded:^(BOOL success, NSError *error) {
+            if (success) {
+                self.connected = YES;
+                NSLog(@"SchwabDataSource: Token refresh successful");
+                if (completion) completion(YES, nil);
+            } else {
+                // Need to re-authenticate
+                NSLog(@"SchwabDataSource: Token refresh failed, need to re-authenticate");
+                [self authenticateWithCompletion:^(BOOL success, NSError *error) {
+                    self.connected = success;
+                    if (completion) completion(success, error);
+                }];
+            }
+        }];
+    } else {
+        // Need to authenticate
+        NSLog(@"SchwabDataSource: No refresh token, need to authenticate");
+        [self authenticateWithCompletion:^(BOOL success, NSError *error) {
+            self.connected = success;
+            if (completion) completion(success, error);
+        }];
+    }
+}
+
 - (void)disconnect {
     [self.session invalidateAndCancel];
     self.connected = NO;

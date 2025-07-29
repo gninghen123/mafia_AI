@@ -10,6 +10,7 @@
 #import "HistoricalBar+CoreDataClass.h"
 #import "Position.h"
 #import "Order.h"
+#import "OrderBookEntry.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -20,8 +21,11 @@ NS_ASSUME_NONNULL_BEGIN
 // Converte dati quote da formato API a MarketData standard
 - (MarketData *)standardizeQuoteData:(NSDictionary *)rawData forSymbol:(NSString *)symbol;
 
-// Converte dati storici da formato API a array di dizionari
-- (NSArray<NSDictionary *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol;
+// Converte dati storici da formato API a array di HistoricalBar
+- (NSArray<HistoricalBar *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol;
+
+// Converte dati order book da formato API
+- (NSDictionary *)standardizeOrderBookData:(id)rawData forSymbol:(NSString *)symbol;
 
 // Converte dati posizioni
 - (Position *)standardizePositionData:(NSDictionary *)rawData;

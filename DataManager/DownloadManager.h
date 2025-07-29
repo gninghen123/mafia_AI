@@ -18,7 +18,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) DataSourceType sourceType;
 @property (nonatomic, readonly) DataSourceCapabilities capabilities;
 @property (nonatomic, readonly) NSString *sourceName;
-@property (nonatomic, readonly) BOOL isConnected; // AGGIUNGERE
+@property (nonatomic, readonly) BOOL isConnected;
 
 // Connection management (HTTP authentication only)
 - (void)connectWithCompletion:(void (^)(BOOL success, NSError *error))completion;
@@ -59,17 +59,34 @@ NS_ASSUME_NONNULL_BEGIN
 + (instancetype)sharedManager;
 
 // Data source management
-- (void)registerDataSource:(id<DataSource>)dataSource;
-- (void)unregisterDataSource:(id<DataSource>)dataSource;
-- (NSArray<id<DataSource>> *)availableDataSources;
-- (id<DataSource>)primaryDataSource;
+- (void)registerDataSource:(id<DataSource>)dataSource
+                  withType:(DataSourceType)type
+                  priority:(NSInteger)priority;
+- (void)unregisterDataSource:(DataSourceType)type;
 
-// Connection status (HTTP authentication status)
-- (BOOL)isDataSourceConnected:(DataSourceType)sourceType;
-- (void)connectToDataSource:(DataSourceType)sourceType
-                 completion:(void (^)(BOOL success, NSError *error))completion;
+// Connection management
+- (void)connectDataSource:(DataSourceType)type
+               completion:(nullable void (^)(BOOL success, NSError * _Nullable error))completion;
+- (void)disconnectDataSource:(DataSourceType)type;
+- (void)reconnectAllDataSources;
 
-// Data requests - all via HTTP REST API
+// Status and monitoring
+- (BOOL)isDataSourceConnected:(DataSourceType)type;
+- (DataSourceCapabilities)capabilitiesForDataSource:(DataSourceType)type;
+- (NSDictionary *)statisticsForDataSource:(DataSourceType)type;
+
+// Properties
+@property (nonatomic, readonly) DataSourceType currentDataSource;
+
+// Request execution
+- (NSString *)executeRequest:(DataRequestType)requestType
+                  parameters:(NSDictionary *)parameters
+                  completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion;
+
+- (void)cancelRequest:(NSString *)requestID;
+- (void)cancelAllRequests;
+
+// Convenience methods for specific request types
 - (void)fetchQuoteForSymbol:(NSString *)symbol
                  completion:(void (^)(id quote, NSError *error))completion;
 
@@ -85,11 +102,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)fetchPositionsWithCompletion:(void (^)(NSArray *positions, NSError *error))completion;
 - (void)fetchOrdersWithCompletion:(void (^)(NSArray *orders, NSError *error))completion;
-- (void)fetchAccountInfoWithCompletion:(void (^)(NSDictionary *accountInfo, NSError *error))completion;
-
-// Rate limiting
-- (NSInteger)remainingRequestsForDataSource:(DataSourceType)sourceType;
-- (NSDate *)rateLimitResetDateForDataSource:(DataSourceType)sourceType;
 
 @end
 

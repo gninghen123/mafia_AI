@@ -7,6 +7,9 @@
 #import "DownloadManager.h"
 #import "MarketData.h"
 #import "HistoricalBar+CoreDataClass.h"
+#import "DataAdapterFactory.h"
+#import "DataSourceAdapter.h"
+#import "OrderBookEntry.h"
 
 @interface DataManager ()
 @property (nonatomic, strong) DownloadManager *downloadManager;
@@ -68,7 +71,7 @@
 #pragma mark - Market Data Requests
 
 - (NSString *)requestQuoteForSymbol:(NSString *)symbol
-                          completion:(void (^)(MarketData *quote, NSError *error))completion {
+                         completion:(void (^)(MarketData *quote, NSError *error))completion {
     
     if (!symbol || symbol.length == 0) {
         NSError *error = [NSError errorWithDomain:@"DataManager"
@@ -96,7 +99,17 @@
     }
     
     NSString *requestID = [[NSUUID UUID] UUIDString];
-    self.activeRequests[requestID] = @{@"type": @"quote", @"symbol": symbol, @"completion": completion ?: [NSNull null]};
+    // Store the completion block directly without NSNull
+    NSMutableDictionary *requestInfo = [@{
+        @"type": @"quote",
+        @"symbol": symbol
+    } mutableCopy];
+    
+    if (completion) {
+        requestInfo[@"completion"] = [completion copy];
+    }
+    
+    self.activeRequests[requestID] = requestInfo;
     
     [self.downloadManager fetchQuoteForSymbol:symbol completion:^(id responseData, NSError *error) {
         [self handleQuoteResponse:responseData error:error forSymbol:symbol requestID:requestID completion:completion];
@@ -124,11 +137,16 @@
     }
     
     NSString *requestID = [[NSUUID UUID] UUIDString];
-    self.activeRequests[requestID] = @{
+    NSMutableDictionary *requestInfo = [@{
         @"type": @"historical",
-        @"symbol": symbol,
-        @"completion": completion ?: [NSNull null]
-    };
+        @"symbol": symbol
+    } mutableCopy];
+    
+    if (completion) {
+        requestInfo[@"completion"] = [completion copy];
+    }
+    
+    self.activeRequests[requestID] = requestInfo;
     
     [self.downloadManager fetchHistoricalDataForSymbol:symbol
                                              timeframe:timeframe
@@ -140,6 +158,7 @@
     
     return requestID;
 }
+
 
 - (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
                                    timeframe:(BarTimeframe)timeframe
@@ -186,12 +205,29 @@
                                                  NSArray<OrderBookEntry *> *asks,
                                                  NSError *error))completion {
     
+    if (!symbol || symbol.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"DataManager"
+                                             code:100
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid symbol"}];
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, nil, error);
+            });
+        }
+        return nil;
+    }
+    
     NSString *requestID = [[NSUUID UUID] UUIDString];
-    self.activeRequests[requestID] = @{
+    NSMutableDictionary *requestInfo = [@{
         @"type": @"orderbook",
-        @"symbol": symbol,
-        @"completion": completion ?: [NSNull null]
-    };
+        @"symbol": symbol
+    } mutableCopy];
+    
+    if (completion) {
+        requestInfo[@"completion"] = [completion copy];
+    }
+    
+    self.activeRequests[requestID] = requestInfo;
     
     [self.downloadManager fetchOrderBookForSymbol:symbol
                                             depth:20
@@ -201,7 +237,6 @@
     
     return requestID;
 }
-
 #pragma mark - Account Data Requests
 
 - (void)requestPositionsWithCompletion:(void (^)(NSArray<Position *> *positions, NSError *error))completion {
@@ -222,7 +257,7 @@
     
     if (error) {
         [self.activeRequests removeObjectForKey:requestID];
-        if (completion && completion != (id)[NSNull null]) {
+        if (completion) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 completion(nil, error);
             });
@@ -232,13 +267,13 @@
     }
     
     // Get appropriate adapter and standardize data
-    id adapter = [self getAdapterForCurrentDataSource];
+    id<DataSourceAdapter> adapter = [self getAdapterForCurrentDataSource];
     if (!adapter) {
         NSError *adapterError = [NSError errorWithDomain:@"DataManager"
                                                      code:102
                                                  userInfo:@{NSLocalizedDescriptionKey: @"No adapter for current data source"}];
         [self.activeRequests removeObjectForKey:requestID];
-        if (completion && completion != (id)[NSNull null]) {
+        if (completion) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 completion(nil, adapterError);
             });
@@ -254,7 +289,7 @@
                                                              code:101
                                                          userInfo:@{NSLocalizedDescriptionKey: @"Failed to standardize quote data"}];
         [self.activeRequests removeObjectForKey:requestID];
-        if (completion && completion != (id)[NSNull null]) {
+        if (completion) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 completion(nil, standardizationError);
             });
@@ -265,12 +300,10 @@
     // Update cache
     [self updateQuoteCache:standardizedQuote forSymbol:symbol];
     
-    
-    
     [self.activeRequests removeObjectForKey:requestID];
     
     // Call completion
-    if (completion && completion != (id)[NSNull null]) {
+    if (completion) {
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(standardizedQuote, nil);
         });
@@ -288,7 +321,7 @@
     
     if (error) {
         [self.activeRequests removeObjectForKey:requestID];
-        if (completion && completion != (id)[NSNull null]) {
+        if (completion) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 completion(nil, error);
             });
@@ -298,12 +331,12 @@
     }
     
     // Process and standardize historical data
-    id adapter = [self getAdapterForCurrentDataSource];
+    id<DataSourceAdapter> adapter = [self getAdapterForCurrentDataSource];
     NSArray<HistoricalBar *> *standardizedBars = [adapter standardizeHistoricalData:bars forSymbol:symbol];
     
     [self.activeRequests removeObjectForKey:requestID];
     
-    if (completion && completion != (id)[NSNull null]) {
+    if (completion) {
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(standardizedBars, nil);
         });
@@ -323,7 +356,7 @@
     [self.activeRequests removeObjectForKey:requestID];
     
     if (error) {
-        if (completion && completion != (id)[NSNull null]) {
+        if (completion) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 completion(nil, nil, error);
             });
@@ -332,19 +365,18 @@
     }
     
     // Process order book data
-    id adapter = [self getAdapterForCurrentDataSource];
+    id<DataSourceAdapter> adapter = [self getAdapterForCurrentDataSource];
     NSDictionary *processedOrderBook = [adapter standardizeOrderBookData:orderBook forSymbol:symbol];
     
     NSArray<OrderBookEntry *> *bids = processedOrderBook[@"bids"];
     NSArray<OrderBookEntry *> *asks = processedOrderBook[@"asks"];
     
-    if (completion && completion != (id)[NSNull null]) {
+    if (completion) {
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(bids, asks, nil);
         });
     }
 }
-
 #pragma mark - Cache Management
 
 - (MarketData *)getCachedQuoteForSymbol:(NSString *)symbol {
@@ -378,10 +410,9 @@
 
 #pragma mark - Helper Methods
 
-- (id)getAdapterForCurrentDataSource {
-    // Return appropriate adapter based on active data source
-    // This would need to be implemented based on your adapter system
-    return nil; // Placeholder
+- (id<DataSourceAdapter>)getAdapterForCurrentDataSource {
+    DataSourceType currentSource = self.downloadManager.currentDataSource;
+    return [DataAdapterFactory adapterForDataSource:currentSource];
 }
 
 #pragma mark - Delegate Notifications

@@ -26,23 +26,16 @@ NS_ASSUME_NONNULL_BEGIN
 
 @optional
 // Market data via HTTP REST calls
-- (void)fetchQuoteForSymbol:(NSString *)symbol
-                 completion:(void (^)(id quote, NSError *error))completion;
+// Metodo principale - il DownloadManager decide la priorità
+- (NSString *)executeRequest:(DataRequestType)requestType
+                  parameters:(NSDictionary *)parameters
+                  completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion;
 
-- (void)fetchHistoricalDataForSymbol:(NSString *)symbol
-                           timeframe:(BarTimeframe)timeframe
-                           startDate:(NSDate *)startDate
-                             endDate:(NSDate *)endDate
-                          completion:(void (^)(NSArray *bars, NSError *error))completion;
-
-- (void)fetchOrderBookForSymbol:(NSString *)symbol
-                          depth:(NSInteger)depth
-                     completion:(void (^)(id orderBook, NSError *error))completion;
-
-// Account data via HTTP
-- (void)fetchPositionsWithCompletion:(void (^)(NSArray *positions, NSError *error))completion;
-- (void)fetchOrdersWithCompletion:(void (^)(NSArray *orders, NSError *error))completion;
-- (void)fetchAccountInfoWithCompletion:(void (^)(NSDictionary *accountInfo, NSError *error))completion;
+// Metodo avanzato - per casi speciali con source forzato
+- (NSString *)executeRequest:(DataRequestType)requestType
+                  parameters:(NSDictionary *)parameters
+             preferredSource:(DataSourceType)preferredSource
+                  completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion;
 
 // HTTP Polling subscription (NOT WebSocket - just symbol list management)
 - (void)subscribeToQuotes:(NSArray<NSString *> *)symbols;

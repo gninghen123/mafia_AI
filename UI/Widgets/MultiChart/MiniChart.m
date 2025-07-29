@@ -539,10 +539,7 @@
 
 - (void)refresh {
     [self setLoading:YES];
-    
-    // Usa DataHub invece di DataManager
-    DataHub *hub = [DataHub shared];
-    
+        
     // Calcola le date in base al timeframe
     NSDate *endDate = [NSDate date];
     NSDate *startDate = [self calculateStartDateForTimeframe];

@@ -70,11 +70,6 @@
 - (void)cancelRequest:(NSString *)requestID;
 - (void)cancelAllRequests;
 
-// Cache management
-@property (nonatomic, assign) BOOL cacheEnabled;
-@property (nonatomic, assign) NSTimeInterval quoteCacheTTL;      // Default: 5 seconds
-@property (nonatomic, assign) NSTimeInterval historicalCacheTTL; // Default: 300 seconds
-- (void)clearCache;
 
 // Connection status
 - (BOOL)isConnected;

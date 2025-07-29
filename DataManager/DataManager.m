@@ -16,8 +16,6 @@
 @property (nonatomic, strong) NSMutableSet<id<DataManagerDelegate>> *delegates;
 @property (nonatomic, strong) dispatch_queue_t delegateQueue;
 @property (nonatomic, strong) NSMutableDictionary *activeRequests;
-@property (nonatomic, strong) NSCache *quoteCache;
-@property (nonatomic, strong) NSCache *historicalCache;
 @end
 
 @implementation DataManager
@@ -38,18 +36,8 @@
         _delegates = [NSMutableSet set];
         _delegateQueue = dispatch_queue_create("DataManagerDelegateQueue", DISPATCH_QUEUE_CONCURRENT);
         _activeRequests = [NSMutableDictionary dictionary];
-        _cacheEnabled = YES;
-        _quoteCacheTTL = 60.0;      // 1 minute for on-demand quotes
-        _historicalCacheTTL = 300.0; // 5 minutes for historical data
+      
         
-        // Setup caches
-        _quoteCache = [[NSCache alloc] init];
-        _quoteCache.countLimit = 100;
-        _quoteCache.totalCostLimit = 1024 * 1024; // 1MB
-        
-        _historicalCache = [[NSCache alloc] init];
-        _historicalCache.countLimit = 50;
-        _historicalCache.totalCostLimit = 10 * 1024 * 1024; // 10MB
     }
     return self;
 }
@@ -70,8 +58,8 @@
 
 #pragma mark - Market Data Requests
 
-- (NSString *)requestQuoteForSymbol:(NSString *)symbol
-                         completion:(void (^)(MarketData *quote, NSError *error))completion {
+
+(void (^)(MarketData *quote, NSError *error))completion {
     
     if (!symbol || symbol.length == 0) {
         NSError *error = [NSError errorWithDomain:@"DataManager"
@@ -85,18 +73,6 @@
         return nil;
     }
     
-    // Check cache first
-    if (self.cacheEnabled) {
-        MarketData *cachedQuote = [self getCachedQuoteForSymbol:symbol];
-        if (cachedQuote) {
-            if (completion) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(cachedQuote, nil);
-                });
-            }
-            return nil; // Return nil as no ongoing request
-        }
-    }
     
     NSString *requestID = [[NSUUID UUID] UUIDString];
     // Store the completion block directly without NSNull
@@ -111,8 +87,11 @@
     
     self.activeRequests[requestID] = requestInfo;
     
-    [self.downloadManager fetchQuoteForSymbol:symbol completion:^(id responseData, NSError *error) {
-        [self handleQuoteResponse:responseData error:error forSymbol:symbol requestID:requestID completion:completion];
+    [self.downloadManager executeRequest:DataRequestTypeQuote
+                              parameters:@{@"symbol": symbol}
+                         preferredSource:DataSourceTypeYahoo
+                              completion:^(id result, DataSourceType usedSource, NSError *error) {
+        [self handleQuoteResponse:result error:error forSymbol:symbol requestID:requestID completion:completion];
     }];
     
     return requestID;
@@ -297,8 +276,6 @@
         return;
     }
     
-    // Update cache
-    [self updateQuoteCache:standardizedQuote forSymbol:symbol];
     
     [self.activeRequests removeObjectForKey:requestID];
     
@@ -377,36 +354,7 @@
         });
     }
 }
-#pragma mark - Cache Management
 
-- (MarketData *)getCachedQuoteForSymbol:(NSString *)symbol {
-    NSDictionary *cacheEntry = [self.quoteCache objectForKey:symbol];
-    if (!cacheEntry) return nil;
-    
-    NSDate *timestamp = cacheEntry[@"timestamp"];
-    if ([[NSDate date] timeIntervalSinceDate:timestamp] > self.quoteCacheTTL) {
-        [self.quoteCache removeObjectForKey:symbol];
-        return nil;
-    }
-    
-    return cacheEntry[@"data"];
-}
-
-- (void)updateQuoteCache:(MarketData *)quote forSymbol:(NSString *)symbol {
-    if (!self.cacheEnabled) return;
-    
-    NSDictionary *cacheEntry = @{
-        @"data": quote,
-        @"timestamp": [NSDate date]
-    };
-    
-    [self.quoteCache setObject:cacheEntry forKey:symbol];
-}
-
-- (void)clearCache {
-    [self.quoteCache removeAllObjects];
-    [self.historicalCache removeAllObjects];
-}
 
 #pragma mark - Helper Methods
 

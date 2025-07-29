@@ -550,31 +550,34 @@
     // Converti MiniChartTimeframe a BarTimeframe
     BarTimeframe barTimeframe = [self convertToBarTimeframe:self.timeframe];
     
-    // Carica dati da DataHub
-    NSArray<HistoricalBar *> *bars = [hub getHistoricalBarsForSymbol:self.symbol
-                                                           timeframe:barTimeframe
-                                                           startDate:startDate
-                                                             endDate:endDate];
-    
-    if (bars.count > 0) {
-        [self setLoading:NO];
-        [self clearError];
-        
-        // Limita al numero massimo di barre
-        if (bars.count > self.maxBars) {
-            NSInteger startIndex = bars.count - self.maxBars;
-            bars = [bars subarrayWithRange:NSMakeRange(startIndex, self.maxBars)];
-        }
-        
-        [self updateWithPriceData:bars];
-    } else {
-        // Nessun dato, richiedi aggiornamento
-        [hub requestHistoricalDataUpdateForSymbol:self.symbol timeframe:barTimeframe];
-        
-        [self setLoading:NO];
-        [self setError:@"Loading data..."];
-    }
+    // CORREZIONE: Usa il metodo asincrono con completion block
+    [[DataHub shared] getHistoricalBarsForSymbol:self.symbol
+                                        timeframe:barTimeframe
+                                        startDate:startDate
+                                          endDate:endDate
+                                       completion:^(NSArray<HistoricalBar *> *bars, BOOL isFresh) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (bars && bars.count > 0) {
+                [self setLoading:NO];
+                [self clearError];
+                
+                // Limita al numero massimo di barre
+                NSArray<HistoricalBar *> *limitedBars = bars;
+                if (bars.count > self.maxBars) {
+                    NSInteger startIndex = bars.count - self.maxBars;
+                    limitedBars = [bars subarrayWithRange:NSMakeRange(startIndex, self.maxBars)];
+                }
+                
+                [self updateWithPriceData:limitedBars];
+            } else {
+                // Nessun dato disponibile
+                [self setLoading:NO];
+                [self setError:@"No data available"];
+            }
+        });
+    }];
 }
+
 
 #pragma mark - Drawing
 
@@ -684,26 +687,37 @@
 
 - (NSDate *)calculateStartDateForTimeframe {
     NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDateComponents *components = [[NSDateComponents alloc] init];
     NSDate *now = [NSDate date];
     
     switch (self.timeframe) {
         case MiniChartTimeframe1Min:
-            return [calendar dateByAddingUnit:NSCalendarUnitDay value:-1 toDate:now options:0];
+            components.minute = -self.maxBars;
+            break;
         case MiniChartTimeframe5Min:
-            return [calendar dateByAddingUnit:NSCalendarUnitDay value:-5 toDate:now options:0];
+            components.minute = -self.maxBars * 5;
+            break;
         case MiniChartTimeframe15Min:
-            return [calendar dateByAddingUnit:NSCalendarUnitDay value:-15 toDate:now options:0];
+            components.minute = -self.maxBars * 15;
+            break;
         case MiniChartTimeframe30Min:
-            return [calendar dateByAddingUnit:NSCalendarUnitMonth value:-1 toDate:now options:0];
+            components.minute = -self.maxBars * 30;
+            break;
         case MiniChartTimeframe1Hour:
-            return [calendar dateByAddingUnit:NSCalendarUnitMonth value:-1 toDate:now options:0];
+            components.hour = -self.maxBars;
+            break;
         case MiniChartTimeframeDaily:
-            return [calendar dateByAddingUnit:NSCalendarUnitYear value:-1 toDate:now options:0];
+            components.day = -self.maxBars;
+            break;
         case MiniChartTimeframeWeekly:
-            return [calendar dateByAddingUnit:NSCalendarUnitYear value:-2 toDate:now options:0];
-        default:
-            return [calendar dateByAddingUnit:NSCalendarUnitYear value:-1 toDate:now options:0];
+            components.weekOfYear = -self.maxBars;
+            break;
+        case MiniChartTimeframeMonthly:
+            components.month = -self.maxBars;
+            break;
     }
+    
+    return [calendar dateByAddingComponents:components toDate:now options:0];
 }
 
 - (BarTimeframe)convertToBarTimeframe:(MiniChartTimeframe)miniTimeframe {
@@ -728,5 +742,4 @@
             return BarTimeframe1Day;
     }
 }
-
 @end

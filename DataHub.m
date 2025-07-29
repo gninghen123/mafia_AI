@@ -91,18 +91,19 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 }
 
 #pragma mark - Symbol Data Management
-
 - (void)updateSymbolData:(NSDictionary *)data forSymbol:(NSString *)symbol {
-    if (!symbol || !data) return;
+    if (!data || !symbol) return;
     
-    @synchronized(self.symbolDataCache) {
-        self.symbolDataCache[symbol] = data;
-    }
+    // Aggiorna la cache in memoria
+    [self.symbolDataCache setObject:data forKey:symbol];
     
+    // Notifica gli osservatori
     [[NSNotificationCenter defaultCenter] postNotificationName:DataHubSymbolsUpdatedNotification
                                                         object:self
                                                       userInfo:@{@"symbol": symbol, @"data": data}];
 }
+
+
 
 - (NSDictionary *)getDataForSymbol:(NSString *)symbol {
     if (!symbol) return nil;

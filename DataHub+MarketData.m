@@ -13,6 +13,8 @@
 #import "MarketQuote+CoreDataClass.h"
 #import "MarketPerformer+CoreDataClass.h"
 #import "CompanyInfo+CoreDataClass.h"
+#import "MarketData.h"
+
 
 @implementation DataHub (MarketData)
 
@@ -303,10 +305,10 @@
         // Convert MarketData to dictionary for saving
         NSDictionary *quoteDict = @{
             @"symbol": symbol,
-            @"lastPrice": marketData.lastPrice ?: @0,
+            @"lastPrice": marketData.last ?: @0,
             @"bid": marketData.bid ?: @0,
             @"ask": marketData.ask ?: @0,
-            @"volume": @(marketData.volume),
+            @"volume": marketData.volume ?: @0,
             @"open": marketData.open ?: @0,
             @"high": marketData.high ?: @0,
             @"low": marketData.low ?: @0,
@@ -316,18 +318,17 @@
             @"timestamp": marketData.timestamp ?: [NSDate date]
         };
         
-        // Save to Core Data
-        MarketQuote *quote = [self saveMarketQuoteData:quoteDict forSymbol:symbol];
+        // Save quote
+        MarketQuote *savedQuote = [self saveMarketQuoteData:quoteDict forSymbol:symbol];
         
-        // Update memory cache
-        [self updateSymbolData:quoteDict forSymbol:symbol];
+        // Update memory cache usando il metodo esistente
+        [self updateSymbolData:symbol
+                     withPrice:[marketData.last doubleValue]
+                        volume:[marketData.volume longLongValue]
+                        change:[marketData.change doubleValue]
+                  changePercent:[marketData.changePercent doubleValue]];
         
-        // Notify observers
-        [[NSNotificationCenter defaultCenter] postNotificationName:DataHubSymbolsUpdatedNotification
-                                                            object:self
-                                                          userInfo:@{@"symbol": symbol}];
-        
-        if (completion) completion(quote, nil);
+        if (completion) completion(savedQuote, nil);
     }];
 }
 
@@ -538,6 +539,8 @@
     quote.low = [data[@"dayLow"] doubleValue];
     quote.marketCap = [data[@"marketCap"] doubleValue];
     quote.pe = [data[@"peRatio"] doubleValue];
+    
+    // NON includere bid/ask perché MarketQuote non ha queste proprietà
     
     if (data[@"name"]) quote.name = data[@"name"];
     if (data[@"exchange"]) quote.exchange = data[@"exchange"];

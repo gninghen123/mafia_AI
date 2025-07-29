@@ -15,7 +15,6 @@
 @property (nonatomic, strong) NSMutableDictionary *activeRequests;
 @property (nonatomic, strong) NSCache *quoteCache;
 @property (nonatomic, strong) NSCache *historicalCache;
-@property (nonatomic, assign) BOOL autoSaveToDataHub;
 @end
 
 @implementation DataManager
@@ -39,7 +38,6 @@
         _cacheEnabled = YES;
         _quoteCacheTTL = 60.0;      // 1 minute for on-demand quotes
         _historicalCacheTTL = 300.0; // 5 minutes for historical data
-        _autoSaveToDataHub = YES;
         
         // Setup caches
         _quoteCache = [[NSCache alloc] init];
@@ -267,27 +265,7 @@
     // Update cache
     [self updateQuoteCache:standardizedQuote forSymbol:symbol];
     
-    // Save to DataHub if enabled
-    if (self.autoSaveToDataHub) {
-        NSDictionary *quoteDict = @{
-            @"symbol": symbol,
-            @"name": standardizedQuote.name ?: symbol,
-            @"last": standardizedQuote.last ?: @0,
-            @"bid": standardizedQuote.bid ?: @0,
-            @"ask": standardizedQuote.ask ?: @0,
-            @"volume": standardizedQuote.volume ?: @0,
-            @"open": standardizedQuote.open ?: @0,
-            @"high": standardizedQuote.high ?: @0,
-            @"low": standardizedQuote.low ?: @0,
-            @"previousClose": standardizedQuote.previousClose ?: @0,
-            @"change": standardizedQuote.change ?: @0,
-            @"changePercent": standardizedQuote.changePercent ?: @0,
-            @"timestamp": standardizedQuote.timestamp ?: [NSDate date]
-        };
-        
-        // Save to DataHub
-        [[DataHub shared] cacheQuote:quoteDict forSymbol:symbol];
-    }
+    
     
     [self.activeRequests removeObjectForKey:requestID];
     

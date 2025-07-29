@@ -5,13 +5,12 @@
 
 #import "DownloadManager.h"
 #import "WebullDataSource.h"
-#import "DataManager+MarketLists.h"
 
 
 
 
 @interface DataSourceInfo : NSObject
-@property (nonatomic, strong) id<DataSourceProtocol> dataSource;
+@property (nonatomic, strong) id<DataSource> dataSource;
 @property (nonatomic, assign) DataSourceType type;
 @property (nonatomic, assign) NSInteger priority;
 @property (nonatomic, assign) NSInteger failureCount;
@@ -62,7 +61,7 @@
 
 #pragma mark - Data Source Management
 
-- (void)registerDataSource:(id<DataSourceProtocol>)dataSource
+- (void)registerDataSource:(id<DataSource>)dataSource
                   withType:(DataSourceType)type
                   priority:(NSInteger)priority {
     dispatch_async(self.dataSourceQueue, ^{
@@ -103,7 +102,7 @@
     dispatch_async(self.dataSourceQueue, ^{
         DataSourceInfo *info = self.dataSources[@(type)];
         if (info) {
-            [info.dataSource connectWithCredentials:credentials completion:^(BOOL success, NSError *error) {
+            [info.dataSource connectWithCompletion:^(BOOL success, NSError *error) {
                 if (success) {
                     NSLog(@"Successfully configured data source: %@", info.dataSource.sourceName);
                 } else {
@@ -116,7 +115,7 @@
 
 #pragma mark - Request Execution
 - (void)executeMarketListRequest:(NSDictionary *)parameters
-                  withDataSource:(id<DataSourceProtocol>)dataSource
+                  withDataSource:(id<DataSource>)dataSource
                       sourceInfo:(DataSourceInfo *)sourceInfo
                          sources:(NSArray<DataSourceInfo *> *)sources
                      sourceIndex:(NSInteger)index
@@ -275,7 +274,7 @@
     }
     
     DataSourceInfo *sourceInfo = sources[index];
-    id<DataSourceProtocol> dataSource = sourceInfo.dataSource;
+    id<DataSource> dataSource = sourceInfo.dataSource;
     
     // Check if source is connected
     if (!dataSource.isConnected) {
@@ -370,7 +369,7 @@
 // Aggiornamento del metodo executeQuoteRequest nel DownloadManager.m
 
 - (void)executeQuoteRequest:(NSDictionary *)parameters
-             withDataSource:(id<DataSourceProtocol>)dataSource
+             withDataSource:(id<DataSource>)dataSource
                  sourceInfo:(DataSourceInfo *)sourceInfo
                     sources:(NSArray<DataSourceInfo *> *)sources
                 sourceIndex:(NSInteger)index
@@ -440,7 +439,7 @@
 }
 
 - (void)executeHistoricalRequest:(NSDictionary *)parameters
-                  withDataSource:(id<DataSourceProtocol>)dataSource
+                  withDataSource:(id<DataSource>)dataSource
                       sourceInfo:(DataSourceInfo *)sourceInfo
                          sources:(NSArray<DataSourceInfo *> *)sources
                      sourceIndex:(NSInteger)index
@@ -494,7 +493,7 @@
 }
 
 - (void)executeOrderBookRequest:(NSDictionary *)parameters
-                 withDataSource:(id<DataSourceProtocol>)dataSource
+                 withDataSource:(id<DataSource>)dataSource
                      sourceInfo:(DataSourceInfo *)sourceInfo
                         sources:(NSArray<DataSourceInfo *> *)sources
                     sourceIndex:(NSInteger)index
@@ -542,7 +541,7 @@
 }
 
 - (void)executePositionsRequest:(NSDictionary *)parameters
-                 withDataSource:(id<DataSourceProtocol>)dataSource
+                 withDataSource:(id<DataSource>)dataSource
                      sourceInfo:(DataSourceInfo *)sourceInfo
                         sources:(NSArray<DataSourceInfo *> *)sources
                     sourceIndex:(NSInteger)index
@@ -577,7 +576,7 @@
 }
 
 - (void)executeOrdersRequest:(NSDictionary *)parameters
-              withDataSource:(id<DataSourceProtocol>)dataSource
+              withDataSource:(id<DataSource>)dataSource
                   sourceInfo:(DataSourceInfo *)sourceInfo
                      sources:(NSArray<DataSourceInfo *> *)sources
                  sourceIndex:(NSInteger)index
@@ -654,7 +653,7 @@
 
 // Nel file DownloadManager.m, modifica il metodo dataSource:supportsRequestType:
 
-- (BOOL)dataSource:(id<DataSourceProtocol>)dataSource supportsRequestType:(DataRequestType)requestType {
+- (BOOL)dataSource:(id<DataSource>)dataSource supportsRequestType:(DataRequestType)requestType {
     DataSourceCapabilities capabilities = dataSource.capabilities;
     
     // Aggiungi supporto per i nuovi tipi di richiesta
@@ -698,7 +697,7 @@
     dispatch_async(self.dataSourceQueue, ^{
         DataSourceInfo *info = self.dataSources[@(type)];
         if (info) {
-            [info.dataSource connectWithCredentials:nil completion:completion];
+            [info.dataSource connectWithCompletion:completion];
         } else {
             NSError *error = [NSError errorWithDomain:@"DownloadManager"
                                                  code:404
@@ -722,7 +721,8 @@
         for (DataSourceInfo *info in self.dataSources.allValues) {
             if (info.dataSource.isConnected) {
                 [info.dataSource disconnect];
-                [info.dataSource connectWithCredentials:nil completion:nil];
+                //todo 29lug
+                [info.dataSource connectWithCompletion:nil];
             }
         }
     });

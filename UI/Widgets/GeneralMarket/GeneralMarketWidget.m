@@ -137,72 +137,148 @@
 
   #pragma mark - Data Loading from DataHub ONLY
 
-  - (void)refreshData {
-      if (self.isLoading) return;
-      
-      self.isLoading = YES;
-      self.progressIndicator.hidden = NO;
-      [self.progressIndicator startAnimation:nil];
-      self.refreshButton.enabled = NO;
-      
-      // NON chiamiamo DataManager!
-      // Invece, chiediamo a DataHub di aggiornare i dati
-      DataHub *hub = [DataHub shared];
-      
-      // DataHub dovrebbe avere un metodo per richiedere aggiornamenti
-      // Per ora, carichiamo solo quello che c'è
-      [self loadDataFromDataHub];
-      
-      // Se vogliamo dati freschi, DataHub dovrebbe gestirlo internamente
-      // Potremmo aggiungere un metodo come:
-      // [hub requestMarketDataUpdate];
-      
-      self.isLoading = NO;
-      self.progressIndicator.hidden = YES;
-      [self.progressIndicator stopAnimation:nil];
-      self.refreshButton.enabled = YES;
-      
-      [self showTemporaryMessage:@"Data loaded from cache"];
-  }
+- (void)refreshData {
+    if (self.isLoading) return;
+    
+    self.isLoading = YES;
+    self.progressIndicator.hidden = NO;
+    [self.progressIndicator startAnimation:nil];
+    self.refreshButton.enabled = NO;
+    
+    // DataHub gestisce internamente il refresh dei dati
+    DataHub *hub = [DataHub shared];
+    
+    // Conta quante richieste dobbiamo fare
+    __block NSInteger pendingRequests = 0;
+    __block NSInteger completedRequests = 0;
+    
+    NSDictionary *listMappings = @{
+        @"Day Gainers": @{@"type": @"gainers", @"timeframe": @"1d"},
+        @"Day Losers": @{@"type": @"losers", @"timeframe": @"1d"},
+        @"Week Gainers": @{@"type": @"gainers", @"timeframe": @"52w"},
+        @"Week Losers": @{@"type": @"losers", @"timeframe": @"52w"},
+        @"ETF": @{@"type": @"etf", @"timeframe": @"1d"}
+    };
+    
+    for (NSMutableDictionary *marketList in self.marketLists) {
+        NSDictionary *mapping = listMappings[marketList[@"type"]];
+        if (mapping) {
+            pendingRequests++;
+        }
+    }
+    
+    // Refresh ogni lista
+    for (NSMutableDictionary *marketList in self.marketLists) {
+        NSString *listName = marketList[@"type"];
+        NSDictionary *mapping = listMappings[listName];
+        
+        if (mapping) {
+            marketList[@"isLoading"] = @YES;
+            
+            // Forza refresh usando refreshQuotesForSymbols se abbiamo già dei simboli
+            NSArray *currentItems = marketList[@"items"];
+            if (currentItems.count > 0) {
+                NSMutableArray *symbols = [NSMutableArray array];
+                for (NSDictionary *item in currentItems) {
+                    if (item[@"symbol"]) {
+                        [symbols addObject:item[@"symbol"]];
+                    }
+                }
+                [hub refreshQuotesForSymbols:symbols];
+            }
+            
+            // Poi ricarica la lista
+            [hub getMarketPerformersForList:mapping[@"type"]
+                                 timeframe:mapping[@"timeframe"]
+                                completion:^(NSArray<MarketPerformer *> *performers, BOOL isFresh) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    NSMutableArray *items = [NSMutableArray array];
+                    for (MarketPerformer *performer in performers) {
+                        [items addObject:@{
+                            @"symbol": performer.symbol ?: @"",
+                            @"name": performer.name ?: performer.symbol ?: @"",
+                            @"price": @(performer.price),
+                            @"changePercent": @(performer.changePercent),
+                            @"volume": @(performer.volume)
+                        }];
+                    }
+                    
+                    marketList[@"items"] = items;
+                    marketList[@"isLoading"] = @NO;
+                    
+                    [self.outlineView reloadItem:marketList reloadChildren:YES];
+                    
+                    completedRequests++;
+                    if (completedRequests >= pendingRequests) {
+                        self.isLoading = NO;
+                        self.progressIndicator.hidden = YES;
+                        [self.progressIndicator stopAnimation:nil];
+                        self.refreshButton.enabled = YES;
+                        
+                        [self showTemporaryMessage:isFresh ? @"Data refreshed" : @"Loaded from cache"];
+                    }
+                });
+            }];
+        }
+    }
+    
+    // Se non ci sono richieste da fare
+    if (pendingRequests == 0) {
+        self.isLoading = NO;
+        self.progressIndicator.hidden = YES;
+        [self.progressIndicator stopAnimation:nil];
+        self.refreshButton.enabled = YES;
+    }
+}
 
-  - (void)loadDataFromDataHub {
-      DataHub *hub = [DataHub shared];
-      
-      // Mapping tra tipo lista e timeframe
-      NSDictionary *listMappings = @{
-          @"Day Gainers": @{@"type": @"gainers", @"timeframe": @"1d"},
-          @"Day Losers": @{@"type": @"losers", @"timeframe": @"1d"},
-          @"Week Gainers": @{@"type": @"gainers", @"timeframe": @"52w"},
-          @"Week Losers": @{@"type": @"losers", @"timeframe": @"52w"},
-          @"ETF": @{@"type": @"etf", @"timeframe": @"1d"}
-      };
-      
-      for (NSMutableDictionary *marketList in self.marketLists) {
-          NSString *listName = marketList[@"type"];
-          NSDictionary *mapping = listMappings[listName];
-          
-          if (mapping) {
-              NSArray<MarketPerformer *> *performers = [hub getMarketPerformersForList:mapping[@"type"]
-                                                                            timeframe:mapping[@"timeframe"]];
-              
-              NSMutableArray *items = [NSMutableArray array];
-              for (MarketPerformer *performer in performers) {
-                  [items addObject:@{
-                      @"symbol": performer.symbol ?: @"",
-                      @"name": performer.name ?: performer.symbol ?: @"",
-                      @"price": @(performer.price),
-                      @"changePercent": @(performer.changePercent),
-                      @"volume": @(performer.volume)
-                  }];
-              }
-              
-              marketList[@"items"] = items;
-              marketList[@"lastUpdate"] = [NSDate date];
-          }
-      }
-      
-      [self.outlineView reloadData];
-  }
+- (void)loadDataFromDataHub {
+    DataHub *hub = [DataHub shared];
+    
+    // Mapping tra tipo lista e timeframe
+    NSDictionary *listMappings = @{
+        @"Day Gainers": @{@"type": @"gainers", @"timeframe": @"1d"},
+        @"Day Losers": @{@"type": @"losers", @"timeframe": @"1d"},
+        @"Week Gainers": @{@"type": @"gainers", @"timeframe": @"52w"},
+        @"Week Losers": @{@"type": @"losers", @"timeframe": @"52w"},
+        @"ETF": @{@"type": @"etf", @"timeframe": @"1d"}
+    };
+    
+    for (NSMutableDictionary *marketList in self.marketLists) {
+        NSString *listName = marketList[@"type"];
+        NSDictionary *mapping = listMappings[listName];
+        
+        if (mapping) {
+            // CORREZIONE: Usa il metodo con completion block
+            [hub getMarketPerformersForList:mapping[@"type"]
+                                 timeframe:mapping[@"timeframe"]
+                                completion:^(NSArray<MarketPerformer *> *performers, BOOL isFresh) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    NSMutableArray *items = [NSMutableArray array];
+                    for (MarketPerformer *performer in performers) {
+                        [items addObject:@{
+                            @"symbol": performer.symbol ?: @"",
+                            @"name": performer.name ?: performer.symbol ?: @"",
+                            @"price": @(performer.price),
+                            @"changePercent": @(performer.changePercent),
+                            @"volume": @(performer.volume)
+                        }];
+                    }
+                    
+                    marketList[@"items"] = items;
+                    marketList[@"isLoading"] = @NO;
+                    
+                    // Aggiorna la vista
+                    [self.outlineView reloadItem:marketList reloadChildren:YES];
+                    
+                    // Se i dati non sono freschi, mostra un indicatore
+                    if (!isFresh) {
+                        [self showTemporaryMessage:@"Showing cached data"];
+                    }
+                });
+            }];
+        }
+    }
+}
 
   #pragma mark - Notifications
 

@@ -18,6 +18,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) DataSourceType sourceType;
 @property (nonatomic, readonly) DataSourceCapabilities capabilities;
 @property (nonatomic, readonly) NSString *sourceName;
+@property (nonatomic, readonly) BOOL isConnected; // AGGIUNGERE
 
 // Connection management (HTTP authentication only)
 - (void)connectWithCompletion:(void (^)(BOOL success, NSError *error))completion;

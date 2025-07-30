@@ -73,26 +73,33 @@
     return [[MarketData alloc] initWithDictionary:standardData];
 }
 
-- (NSArray<NSDictionary *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol {
-    NSMutableArray *bars = [NSMutableArray array];
+- (NSArray<HistoricalBarModel *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol {
+    NSMutableArray<HistoricalBarModel *> *bars = [NSMutableArray array];
     
     if ([rawData isKindOfClass:[NSArray class]]) {
-        for (NSDictionary *barData in rawData) {
-            NSMutableDictionary *standardBar = [NSMutableDictionary dictionary];
+        for (id barItem in (NSArray *)rawData) {
+            if (![barItem isKindOfClass:[NSDictionary class]]) continue;
             
-            standardBar[@"symbol"] = symbol;
-            standardBar[@"date"] = barData[@"date"] ?: [NSDate date];
-            standardBar[@"open"] = barData[@"open"] ?: @0;
-            standardBar[@"high"] = barData[@"high"] ?: @0;
-            standardBar[@"low"] = barData[@"low"] ?: @0;
-            standardBar[@"close"] = barData[@"close"] ?: @0;
-            standardBar[@"volume"] = barData[@"volume"] ?: @0;
-            standardBar[@"adjustedClose"] = barData[@"close"] ?: @0;
+            NSDictionary *barData = (NSDictionary *)barItem;
             
-            [bars addObject:standardBar];
+            // CREARE RUNTIME MODEL DIRETTAMENTE
+            HistoricalBarModel *bar = [[HistoricalBarModel alloc] init];
+            
+            bar.symbol = symbol;
+            bar.date = barData[@"date"] ?: [NSDate date];
+            bar.open = [barData[@"open"] doubleValue];
+            bar.high = [barData[@"high"] doubleValue];
+            bar.low = [barData[@"low"] doubleValue];
+            bar.close = [barData[@"close"] doubleValue];
+            bar.adjustedClose = bar.close; // Default
+            bar.volume = [barData[@"volume"] longLongValue];
+            bar.timeframe = BarTimeframe1Day; // Default
+            
+            [bars addObject:bar];
         }
     }
     
+    NSLog(@"WebullAdapter: Standardized %lu runtime HistoricalBarModel objects for %@", (unsigned long)bars.count, symbol);
     return [bars copy];
 }
 

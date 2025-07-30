@@ -41,17 +41,32 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 - (instancetype)init {
     self = [super init];
     if (self) {
+        // Legacy properties
         _symbolDataCache = [NSMutableDictionary dictionary];
         _watchlists = [NSMutableArray array];
         _alerts = [NSMutableArray array];
         _connections = [NSMutableArray array];
         _tradingModels = [NSMutableArray array];
-        
-        // AGGIUNGI QUESTE RIGHE per inizializzare le proprietà mancanti
         _cache = [NSMutableDictionary dictionary];
         _pendingRequests = [NSMutableDictionary dictionary];
+        
+        // NEW: Initialize market data caches
+        [self initializeMarketDataCaches];
     }
     return self;
+}
+
+// Implementazione del metodo helper
+- (void)initializeMarketDataCaches {
+    if (!_quotesCache) {
+        _quotesCache = [NSMutableDictionary dictionary];
+        _historicalCache = [NSMutableDictionary dictionary];
+        _companyInfoCache = [NSMutableDictionary dictionary];
+        _cacheTimestamps = [NSMutableDictionary dictionary];
+        _activeQuoteRequests = [NSMutableSet set];
+        _activeHistoricalRequests = [NSMutableSet set];
+        _subscribedSymbols = [NSMutableSet set];
+    }
 }
 
 #pragma mark - Core Data Stack

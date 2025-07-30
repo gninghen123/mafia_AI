@@ -96,6 +96,11 @@
 			path = chchart;
 			sourceTree = "<group>";
 		};
+		959A4B4E2E3A1E6000D83EB1 /* Models */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Models;
+			sourceTree = "<group>";
+		};
 		95F1AD752E2E4EE100D96BDD /* datamodels */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = datamodels;
@@ -141,6 +146,7 @@
 		954D2FF72E28514A00C7DC88 = {
 			isa = PBXGroup;
 			children = (
+				959A4B4E2E3A1E6000D83EB1 /* Models */,
 				95F1AFC52E32037F00D96BDD /* CommonTypes.h */,
 				95F1AD762E2E517E00D96BDD /* UI */,
 				95F1AD752E2E4EE100D96BDD /* datamodels */,
@@ -209,6 +215,7 @@
 			fileSystemSynchronizedGroups = (
 				954D30022E28514A00C7DC88 /* mafia_AI */,
 				959A4A832E39284300D83EB1 /* chchart */,
+				959A4B4E2E3A1E6000D83EB1 /* Models */,
 				95F1AD752E2E4EE100D96BDD /* datamodels */,
 				95F1AD762E2E517E00D96BDD /* UI */,
 				95F1AFB42E31131100D96BDD /* DataManager */,

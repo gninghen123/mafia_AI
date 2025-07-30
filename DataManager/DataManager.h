@@ -5,26 +5,33 @@
 //  Central data management system that provides unified data interface to widgets
 //  Uses HTTP polling for frequent updates (no WebSocket/streaming)
 //
+//  UPDATED: Now works with runtime models from adapters
+//
 
 #import <Foundation/Foundation.h>
 #import "CommonTypes.h"
+#import "RuntimeModels.h"  // Import runtime models
 
-// Forward declarations
+// Forward declarations - SOLO runtime objects
 @class MarketData;
-@class HistoricalBar;
 @class OrderBookEntry;
-@class Position;
-@class Order;
 @class DataManager;
 
 // Delegate protocol for data updates via HTTP polling
+// UPDATED: Now notifies with runtime models
 @protocol DataManagerDelegate <NSObject>
 @optional
 - (void)dataManager:(DataManager *)manager didUpdateQuote:(MarketData *)quote forSymbol:(NSString *)symbol;
-- (void)dataManager:(DataManager *)manager didUpdateHistoricalData:(NSArray<HistoricalBar *> *)bars forSymbol:(NSString *)symbol;
+
+// UPDATED: Now notifies with runtime HistoricalBarModel objects
+- (void)dataManager:(DataManager *)manager didUpdateHistoricalData:(NSArray<HistoricalBarModel *> *)bars forSymbol:(NSString *)symbol;
+
 - (void)dataManager:(DataManager *)manager didUpdateOrderBook:(NSArray<OrderBookEntry *> *)orderBook forSymbol:(NSString *)symbol;
-- (void)dataManager:(DataManager *)manager didUpdatePositions:(NSArray<Position *> *)positions;
-- (void)dataManager:(DataManager *)manager didUpdateOrders:(NSArray<Order *> *)orders;
+
+// TODO: Update these to runtime models when Position/Order runtime models are created
+- (void)dataManager:(DataManager *)manager didUpdatePositions:(NSArray<NSDictionary *> *)positionDictionaries;
+- (void)dataManager:(DataManager *)manager didUpdateOrders:(NSArray<NSDictionary *> *)orderDictionaries;
+
 - (void)dataManager:(DataManager *)manager didFailWithError:(NSError *)error forRequest:(NSString *)requestID;
 @end
 
@@ -41,17 +48,19 @@
                           completion:(void (^)(MarketData *quote, NSError *error))completion;
 
 // Historical data - with date range
+// UPDATED: Now returns runtime models
 - (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
                                    timeframe:(BarTimeframe)timeframe
                                    startDate:(NSDate *)startDate
                                      endDate:(NSDate *)endDate
-                                  completion:(void (^)(NSArray<HistoricalBar *> *bars, NSError *error))completion;
+                                  completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion;
 
 // Historical data - with count
+// UPDATED: Now returns runtime models
 - (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
                                    timeframe:(BarTimeframe)timeframe
                                        count:(NSInteger)count
-                                  completion:(void (^)(NSArray<HistoricalBar *> *bars, NSError *error))completion;
+                                  completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion;
 
 - (NSString *)requestOrderBookForSymbol:(NSString *)symbol
                              completion:(void (^)(NSArray<OrderBookEntry *> *bids,
@@ -59,8 +68,9 @@
                                                  NSError *error))completion;
 
 // Account data requests
-- (void)requestPositionsWithCompletion:(void (^)(NSArray<Position *> *positions, NSError *error))completion;
-- (void)requestOrdersWithCompletion:(void (^)(NSArray<Order *> *orders, NSError *error))completion;
+// TODO: Update these when Position/Order runtime models are created
+- (void)requestPositionsWithCompletion:(void (^)(NSArray<NSDictionary *> *positionDictionaries, NSError *error))completion;
+- (void)requestOrdersWithCompletion:(void (^)(NSArray<NSDictionary *> *orderDictionaries, NSError *error))completion;
 
 // HTTP Polling management (maintains symbol list for periodic requests)
 - (void)subscribeToQuotes:(NSArray<NSString *> *)symbols;
@@ -69,7 +79,6 @@
 // Request management
 - (void)cancelRequest:(NSString *)requestID;
 - (void)cancelAllRequests;
-
 
 // Connection status
 - (BOOL)isConnected;

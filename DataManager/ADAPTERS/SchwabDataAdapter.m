@@ -90,90 +90,91 @@
     return [[MarketData alloc] initWithDictionary:standardData];
 }
 
-- (NSArray<NSDictionary *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol {
+- (NSArray<HistoricalBarModel *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol {
     if (!rawData) return @[];
     
     NSArray *candles = nil;
     
-    // Caso 1: rawData è già un array di candele (formato diretto)
+    // Gestione formato Schwab: può essere array diretto o dictionary con "candles"
     if ([rawData isKindOfClass:[NSArray class]]) {
         candles = (NSArray *)rawData;
         NSLog(@"SchwabAdapter: Raw data is array with %lu candles", (unsigned long)candles.count);
-    }
-    // Caso 2: rawData è un dictionary con chiave "candles" (formato wrapped)
-    else if ([rawData isKindOfClass:[NSDictionary class]]) {
+    } else if ([rawData isKindOfClass:[NSDictionary class]]) {
         NSDictionary *data = (NSDictionary *)rawData;
         candles = data[@"candles"];
         NSLog(@"SchwabAdapter: Raw data is dictionary, extracted %lu candles", (unsigned long)candles.count);
-    }
-    // Caso 3: formato non riconosciuto
-    else {
-        NSLog(@"SchwabAdapter: Unexpected raw data format: %@", [rawData class]);
+    } else {
+        NSLog(@"SchwabAdapter ERROR: Unexpected raw data format: %@", [rawData class]);
         return @[];
     }
     
     if (!candles || ![candles isKindOfClass:[NSArray class]]) {
-        NSLog(@"SchwabAdapter: No valid candles array found");
+        NSLog(@"SchwabAdapter ERROR: No valid candles array found");
         return @[];
     }
     
-    NSMutableArray<NSDictionary *> *bars = [NSMutableArray array];
+    NSMutableArray<HistoricalBarModel *> *bars = [NSMutableArray array];
     
     for (id candleItem in candles) {
-        NSMutableDictionary *barDict = [NSMutableDictionary dictionary];
-        
-        if ([candleItem isKindOfClass:[NSDictionary class]]) {
-            NSDictionary *candle = (NSDictionary *)candleItem;
-            
-            // Schwab usa epoch in millisecondi
-            NSNumber *datetime = candle[@"datetime"];
-            if (datetime) {
-                NSTimeInterval timestamp = [datetime doubleValue] / 1000.0;
-                barDict[@"date"] = [NSDate dateWithTimeIntervalSince1970:timestamp];
-            }
-            
-            barDict[@"symbol"] = symbol;
-            
-            // Converti valori numerici correttamente
-            barDict[@"open"] = @([candle[@"open"] doubleValue]);
-            barDict[@"high"] = @([candle[@"high"] doubleValue]);
-            barDict[@"low"] = @([candle[@"low"] doubleValue]);
-            barDict[@"close"] = @([candle[@"close"] doubleValue]);
-            barDict[@"volume"] = @([candle[@"volume"] longLongValue]);
-            
-            // Aggiungi adjustedClose se disponibile (per ora uguale a close)
-            barDict[@"adjustedClose"] = barDict[@"close"];
-        }
-        // Supporta anche formato array [timestamp, open, high, low, close, volume]
-        else if ([candleItem isKindOfClass:[NSArray class]]) {
-            NSArray *candleArray = (NSArray *)candleItem;
-            if (candleArray.count >= 6) {
-                NSNumber *timestamp = candleArray[0];
-                barDict[@"date"] = [NSDate dateWithTimeIntervalSince1970:[timestamp doubleValue] / 1000.0];
-                barDict[@"symbol"] = symbol;
-                barDict[@"open"] = @([candleArray[1] doubleValue]);
-                barDict[@"high"] = @([candleArray[2] doubleValue]);
-                barDict[@"low"] = @([candleArray[3] doubleValue]);
-                barDict[@"close"] = @([candleArray[4] doubleValue]);
-                barDict[@"volume"] = @([candleArray[5] longLongValue]);
-                barDict[@"adjustedClose"] = barDict[@"close"];
-            }
+        if (![candleItem isKindOfClass:[NSDictionary class]]) {
+            NSLog(@"SchwabAdapter WARNING: Skipping non-dictionary candle item");
+            continue;
         }
         
-        // Aggiungi solo se abbiamo una data valida
-        if (barDict[@"date"]) {
-            [bars addObject:barDict];
+        NSDictionary *candle = (NSDictionary *)candleItem;
+        
+        // Validazione datetime
+        NSNumber *datetime = candle[@"datetime"];
+        if (!datetime || [datetime doubleValue] <= 0) {
+            NSLog(@"SchwabAdapter WARNING: Invalid datetime %@ for symbol %@", datetime, symbol);
+            continue;
         }
+        
+        // Validazione valori OHLCV
+        double open = [candle[@"open"] doubleValue];
+        double high = [candle[@"high"] doubleValue];
+        double low = [candle[@"low"] doubleValue];
+        double close = [candle[@"close"] doubleValue];
+        long long volume = [candle[@"volume"] longLongValue];
+        
+        // Validazione consistenza OHLC
+        if (open <= 0 || high <= 0 || low <= 0 || close <= 0) {
+            NSLog(@"SchwabAdapter WARNING: Invalid OHLC values for %@", symbol);
+            continue;
+        }
+        
+        if (high < low || open > high || open < low || close > high || close < low) {
+            NSLog(@"SchwabAdapter WARNING: Inconsistent OHLC values for %@", symbol);
+            continue;
+        }
+        
+        // CREARE RUNTIME MODEL DIRETTAMENTE
+        HistoricalBarModel *bar = [[HistoricalBarModel alloc] init];
+        
+        // Basic properties
+        bar.symbol = symbol;
+        bar.date = [NSDate dateWithTimeIntervalSince1970:[datetime doubleValue] / 1000.0];
+        
+        // OHLCV data
+        bar.open = open;
+        bar.high = high;
+        bar.low = low;
+        bar.close = close;
+        bar.adjustedClose = close; // Default a close, miglioreremo con split/dividendi
+        bar.volume = volume;
+        
+        // Default timeframe (sarà settato dal DataManager se necessario)
+        bar.timeframe = BarTimeframe1Day;
+        
+        [bars addObject:bar];
     }
     
-    // Ordina per data (dal più vecchio al più recente)
-    NSArray *sortedBars = [bars sortedArrayUsingComparator:^NSComparisonResult(NSDictionary *bar1, NSDictionary *bar2) {
-        NSDate *date1 = bar1[@"date"];
-        NSDate *date2 = bar2[@"date"];
-        return [date1 compare:date2];
+    // Ordina per data crescente
+    NSArray<HistoricalBarModel *> *sortedBars = [bars sortedArrayUsingComparator:^NSComparisonResult(HistoricalBarModel *bar1, HistoricalBarModel *bar2) {
+        return [bar1.date compare:bar2.date];
     }];
     
-    NSLog(@"SchwabAdapter: Standardized %lu bars for symbol %@", (unsigned long)sortedBars.count, symbol);
+    NSLog(@"SchwabAdapter SUCCESS: Standardized %lu runtime HistoricalBarModel objects for %@", (unsigned long)sortedBars.count, symbol);
     return sortedBars;
 }
 

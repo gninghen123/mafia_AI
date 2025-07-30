@@ -2,16 +2,13 @@
 //  DataHub+MarketData.h
 //  mafia_AI
 //
-//  Estensione del DataHub per gestire i dati di mercato
-//  Updated with intelligent caching and automatic data fetching
+//  NEW API: Runtime models instead of Core Data objects
+//  Thread-safe, performance-optimized, UI-friendly
 //
 
 #import "DataHub.h"
-#import "MarketQuote+CoreDataClass.h"
-#import "HistoricalBar+CoreDataClass.h"
-#import "MarketPerformer+CoreDataClass.h"
-#import "CompanyInfo+CoreDataClass.h"
-#import "CommonTypes.h"  // Per BarTimeframe
+#import "RuntimeModels.h"  // Import our new runtime models
+#import "CommonTypes.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -29,12 +26,14 @@ typedef NS_ENUM(NSInteger, DataFreshnessType) {
 #pragma mark - Market Quotes with Smart Caching
 
 // Get quote with automatic refresh if stale
+// RETURNS: Runtime MarketQuote object (thread-safe)
 - (void)getQuoteForSymbol:(NSString *)symbol
                completion:(void(^)(MarketQuote * _Nullable quote, BOOL isLive))completion;
 
 // Get multiple quotes
+// RETURNS: Dictionary of runtime MarketQuote objects
 - (void)getQuotesForSymbols:(NSArray<NSString *> *)symbols
-                 completion:(void(^)(NSDictionary<NSString *, MarketQuote *> *quotes, BOOL isLive))completion;
+                 completion:(void(^)(NSDictionary<NSString *, MarketQuote *> *quotes, BOOL allLive))completion;
 
 // Force refresh quote (bypasses cache)
 - (void)refreshQuoteForSymbol:(NSString *)symbol
@@ -43,6 +42,7 @@ typedef NS_ENUM(NSInteger, DataFreshnessType) {
 #pragma mark - Historical Data with Smart Caching
 
 // Get historical data with automatic refresh if stale
+// RETURNS: Array of runtime HistoricalBar objects (thread-safe)
 - (void)getHistoricalBarsForSymbol:(NSString *)symbol
                          timeframe:(BarTimeframe)timeframe
                           barCount:(NSInteger)barCount
@@ -58,33 +58,16 @@ typedef NS_ENUM(NSInteger, DataFreshnessType) {
 #pragma mark - Company Info
 
 // Get company info with automatic refresh if stale
+// RETURNS: Runtime CompanyInfo object
 - (void)getCompanyInfoForSymbol:(NSString *)symbol
                      completion:(void(^)(CompanyInfo * _Nullable info, BOOL isFresh))completion;
 
-#pragma mark - Market Lists
-
-// Get market performers (gainers/losers) with automatic refresh
-- (void)getMarketPerformersForList:(NSString *)listType
-                        timeframe:(NSString *)timeframe
-                       completion:(void(^)(NSArray<MarketPerformer *> *performers, BOOL isFresh))completion;
-
-#pragma mark - Data Freshness Management
-
-// Check if data is stale based on type and last update
-- (BOOL)isDataStale:(NSDate *)lastUpdate forType:(DataFreshnessType)type;
-
-// Get TTL for data type
-- (NSTimeInterval)TTLForDataType:(DataFreshnessType)type;
-
-// Check if there's a pending request
-- (BOOL)hasPendingRequestForSymbol:(NSString *)symbol dataType:(DataFreshnessType)type;
-
 #pragma mark - Batch Operations
 
-// Request quotes for multiple symbols
+// Refresh multiple quotes at once
 - (void)refreshQuotesForSymbols:(NSArray<NSString *> *)symbols;
 
-// Prefetch data for symbols (useful for watchlists)
+// Prefetch data for better performance
 - (void)prefetchDataForSymbols:(NSArray<NSString *> *)symbols;
 
 #pragma mark - Cache Management
@@ -98,6 +81,15 @@ typedef NS_ENUM(NSInteger, DataFreshnessType) {
 // Get cache statistics
 - (NSDictionary *)getCacheStatistics;
 
+#pragma mark - Subscription Management (for real-time updates)
+
+// Subscribe to quote updates
+- (void)subscribeToQuoteUpdatesForSymbol:(NSString *)symbol;
+- (void)subscribeToQuoteUpdatesForSymbols:(NSArray<NSString *> *)symbols;
+
+// Unsubscribe from updates
+- (void)unsubscribeFromQuoteUpdatesForSymbol:(NSString *)symbol;
+- (void)unsubscribeFromAllQuoteUpdates;
 
 @end
 

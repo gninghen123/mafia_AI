@@ -2,7 +2,7 @@
 //  WatchlistCellViews.m
 //  mafia_AI
 //
-//  Custom cell view implementations for WatchlistWidget
+//  UPDATED: Simplified change cell to show only %change with colors
 //
 
 #import "WatchlistWidget.h"
@@ -37,8 +37,10 @@
     if (isEditable) {
         self.symbolField.bezeled = YES;
         self.symbolField.bezelStyle = NSTextFieldRoundedBezel;
+        self.symbolField.backgroundColor = [NSColor controlBackgroundColor];
     } else {
         self.symbolField.bezeled = NO;
+        self.symbolField.backgroundColor = [NSColor clearColor];
     }
 }
 
@@ -72,73 +74,49 @@
 
 @end
 
-#pragma mark - Change Cell View
+#pragma mark - Change Cell View - SIMPLIFIED TO ONLY %CHANGE
 
 @implementation WatchlistChangeCellView
 
 - (instancetype)init {
     self = [super init];
     if (self) {
-        // Container stack view
-        NSStackView *stackView = [[NSStackView alloc] init];
-        stackView.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-        stackView.spacing = 4;
-        stackView.alignment = NSLayoutAttributeCenterY;
-        stackView.translatesAutoresizingMaskIntoConstraints = NO;
+        // REMOVED: changeField (dollar change)
+        // REMOVED: trendIcon (simplified design)
         
-        // Trend icon
-        self.trendIcon = [[NSImageView alloc] init];
-        self.trendIcon.imageScaling = NSImageScaleProportionallyDown;
-        [self.trendIcon setContentHuggingPriority:NSLayoutPriorityRequired forOrientation:NSLayoutConstraintOrientationHorizontal];
-        
-        // Change value field
-        self.changeField = [[NSTextField alloc] init];
-        self.changeField.bordered = NO;
-        self.changeField.editable = NO;
-        self.changeField.backgroundColor = [NSColor clearColor];
-        self.changeField.font = [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightMedium];
-        self.changeField.alignment = NSTextAlignmentRight;
-        
-        // Percentage field
+        // Only percent change field
         self.percentField = [[NSTextField alloc] init];
         self.percentField.bordered = NO;
         self.percentField.editable = NO;
         self.percentField.backgroundColor = [NSColor clearColor];
-        self.percentField.font = [NSFont monospacedDigitSystemFontOfSize:11 weight:NSFontWeightRegular];
+        self.percentField.font = [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightMedium];
         self.percentField.alignment = NSTextAlignmentRight;
+        self.percentField.translatesAutoresizingMaskIntoConstraints = NO;
         
-        [stackView addArrangedSubview:self.trendIcon];
-        [stackView addArrangedSubview:self.changeField];
-        [stackView addArrangedSubview:self.percentField];
-        
-        [self addSubview:stackView];
+        [self addSubview:self.percentField];
         
         [NSLayoutConstraint activateConstraints:@[
-            [stackView.leadingAnchor constraintGreaterThanOrEqualToAnchor:self.leadingAnchor constant:8],
-            [stackView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
-            [stackView.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
-            [self.trendIcon.widthAnchor constraintEqualToConstant:12],
-            [self.trendIcon.heightAnchor constraintEqualToConstant:12]
+            [self.percentField.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
+            [self.percentField.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
+            [self.percentField.centerYAnchor constraintEqualToAnchor:self.centerYAnchor]
         ]];
     }
     return self;
 }
 
+// UPDATED: Simplified method - only handles percent change
 - (void)setChangeValue:(double)change percentChange:(double)percent {
-    BOOL isPositive = change >= 0;
-    NSColor *color = isPositive ? [NSColor systemGreenColor] : [NSColor systemRedColor];
+    NSString *sign = percent >= 0 ? @"+" : @"";
+    self.percentField.stringValue = [NSString stringWithFormat:@"%@%.2f%%", sign, percent];
     
-    // Set icon
-    NSString *iconName = isPositive ? @"arrowtriangle.up.fill" : @"arrowtriangle.down.fill";
-    self.trendIcon.image = [NSImage imageWithSystemSymbolName:iconName accessibilityDescription:nil];
-    self.trendIcon.contentTintColor = color;
-    
-    // Set text
-    self.changeField.stringValue = [NSString stringWithFormat:@"%@%.2f", isPositive ? @"+" : @"", change];
-    self.changeField.textColor = color;
-    
-    self.percentField.stringValue = [NSString stringWithFormat:@"(%@%.2f%%)", isPositive ? @"+" : @"", percent];
-    self.percentField.textColor = color;
+    // Color coding: Green for positive, Red for negative, Gray for zero
+    if (percent > 0) {
+        self.percentField.textColor = [NSColor systemGreenColor];
+    } else if (percent < 0) {
+        self.percentField.textColor = [NSColor systemRedColor];
+    } else {
+        self.percentField.textColor = [NSColor secondaryLabelColor];
+    }
 }
 
 @end
@@ -155,33 +133,34 @@
         self.volumeField.bordered = NO;
         self.volumeField.editable = NO;
         self.volumeField.backgroundColor = [NSColor clearColor];
-        self.volumeField.font = [NSFont monospacedDigitSystemFontOfSize:12 weight:NSFontWeightRegular];
+        self.volumeField.font = [NSFont monospacedDigitSystemFontOfSize:11 weight:NSFontWeightRegular];
         self.volumeField.alignment = NSTextAlignmentRight;
         self.volumeField.translatesAutoresizingMaskIntoConstraints = NO;
         
-        // Volume bar (visual indicator)
+        // Volume bar (optional visual indicator)
         self.volumeBar = [[NSProgressIndicator alloc] init];
         self.volumeBar.style = NSProgressIndicatorStyleBar;
         self.volumeBar.indeterminate = NO;
         self.volumeBar.minValue = 0;
         self.volumeBar.maxValue = 100;
-        self.volumeBar.controlSize = NSControlSizeSmall;
+        self.volumeBar.doubleValue = 0;
         self.volumeBar.translatesAutoresizingMaskIntoConstraints = NO;
         
-        [self addSubview:self.volumeBar];
         [self addSubview:self.volumeField];
+        [self addSubview:self.volumeBar];
         
         [NSLayoutConstraint activateConstraints:@[
-            // Volume bar at bottom
-            [self.volumeBar.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
-            [self.volumeBar.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
-            [self.volumeBar.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-2],
-            [self.volumeBar.heightAnchor constraintEqualToConstant:4],
-            
-            // Text above bar
+            // Volume field takes most space
+            [self.volumeField.topAnchor constraintEqualToAnchor:self.topAnchor constant:2],
             [self.volumeField.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
             [self.volumeField.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
-            [self.volumeField.bottomAnchor constraintEqualToAnchor:self.volumeBar.topAnchor constant:-2]
+            [self.volumeField.bottomAnchor constraintEqualToAnchor:self.volumeBar.topAnchor constant:-2],
+            
+            // Volume bar at bottom
+            [self.volumeBar.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-2],
+            [self.volumeBar.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
+            [self.volumeBar.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
+            [self.volumeBar.heightAnchor constraintEqualToConstant:3]
         ]];
     }
     return self;
@@ -206,10 +185,19 @@
         
         self.volumeField.stringValue = [NSString stringWithFormat:@"%.1f%@", vol, suffix];
         
-        // Set progress bar relative to average
+        // Set progress bar relative to average volume
         if (avgVolume && avgVolume.doubleValue > 0) {
             double ratio = (volume.doubleValue / avgVolume.doubleValue) * 50; // 50 = midpoint
             self.volumeBar.doubleValue = MIN(100, ratio);
+            
+            // Color the bar based on relative volume
+            if (ratio > 75) {
+                self.volumeBar.appearance = [NSAppearance appearanceNamed:NSAppearanceNameVibrantDark];
+            } else {
+                self.volumeBar.appearance = [NSAppearance appearanceNamed:NSAppearanceNameVibrantLight];
+            }
+        } else {
+            self.volumeBar.doubleValue = 25; // Default position
         }
     } else {
         self.volumeField.stringValue = @"--";
@@ -246,7 +234,7 @@
 }
 
 - (void)setMarketCap:(NSNumber *)marketCap {
-    if (marketCap) {
+    if (marketCap && marketCap.doubleValue > 0) {
         double cap = marketCap.doubleValue;
         NSString *suffix = @"";
         
@@ -259,6 +247,9 @@
         } else if (cap >= 1e6) {
             cap /= 1e6;
             suffix = @"M";
+        } else if (cap >= 1e3) {
+            cap /= 1e3;
+            suffix = @"K";
         }
         
         self.marketCapField.stringValue = [NSString stringWithFormat:@"$%.1f%@", cap, suffix];
@@ -296,6 +287,7 @@
         self.countField.backgroundColor = [NSColor clearColor];
         self.countField.font = [NSFont systemFontOfSize:11 weight:NSFontWeightRegular];
         self.countField.textColor = [NSColor secondaryLabelColor];
+        self.countField.alignment = NSTextAlignmentRight;
         self.countField.translatesAutoresizingMaskIntoConstraints = NO;
         
         [self addSubview:self.iconView];
@@ -309,16 +301,19 @@
             [self.iconView.widthAnchor constraintEqualToConstant:16],
             [self.iconView.heightAnchor constraintEqualToConstant:16],
             
-            // Name
+            // Name field
             [self.nameField.leadingAnchor constraintEqualToAnchor:self.iconView.trailingAnchor constant:8],
             [self.nameField.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
+            [self.nameField.trailingAnchor constraintEqualToAnchor:self.countField.leadingAnchor constant:-8],
             
-            // Count
-            [self.countField.leadingAnchor constraintEqualToAnchor:self.nameField.trailingAnchor constant:8],
+            // Count field
             [self.countField.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
             [self.countField.centerYAnchor constraintEqualToAnchor:self.centerYAnchor],
             [self.countField.widthAnchor constraintEqualToConstant:30]
         ]];
+        
+        // Set default icon
+        self.iconView.image = [NSImage imageNamed:NSImageNameFolder];
     }
     return self;
 }

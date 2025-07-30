@@ -1,5 +1,5 @@
-// GeneralMarketWidget.m - Versione che usa SOLO DataHub
-
+/*todo
+ // GeneralMarketWidget.m - Versione che usa SOLO DataHub
 #import "GeneralMarketWidget.h"
 #import "DataHub.h"
 #import "DataHub+MarketData.h"
@@ -186,7 +186,6 @@
                 }
                 [hub refreshQuotesForSymbols:symbols];
             }
-            
             // Poi ricarica la lista
             [hub getMarketPerformersForList:mapping[@"type"]
                                  timeframe:mapping[@"timeframe"]
@@ -229,6 +228,7 @@
         [self.progressIndicator stopAnimation:nil];
         self.refreshButton.enabled = YES;
     }
+             
 }
 
 - (void)loadDataFromDataHub {
@@ -453,3 +453,5 @@
 
 
   @end
+
+*/

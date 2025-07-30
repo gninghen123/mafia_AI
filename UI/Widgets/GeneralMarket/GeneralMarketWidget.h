@@ -1,8 +1,7 @@
-//
 //  GeneralMarketWidget.h
 //  TradingApp
 //
-
+/* todo
 #import <Cocoa/Cocoa.h>
 #import "BaseWidget.h"
 
@@ -25,3 +24,4 @@
 - (void)createWatchlistFromList:(NSArray *)symbols;
 
 @end
+*/

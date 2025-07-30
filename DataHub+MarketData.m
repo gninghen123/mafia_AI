@@ -448,7 +448,13 @@
         
         NSManagedObjectContext *backgroundContext = [self.persistentContainer newBackgroundContext];
         
+        // AGGIUNGI: Configura il merge policy per gestire i conflict
+        backgroundContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy;
+        
         [backgroundContext performBlock:^{
+            
+            // AGGIUNGI: Refresh degli oggetti per evitare stale data
+            [backgroundContext refreshAllObjects];
             
             // Find existing or create new
             NSFetchRequest *request = [MarketQuote fetchRequest];
@@ -464,18 +470,38 @@
                 coreDataQuote.symbol = quote.symbol;
             }
             
+            // AGGIUNGI: Refresh dell'oggetto specifico per avere l'ultima versione
+            [backgroundContext refreshObject:coreDataQuote mergeChanges:YES];
+            
             // Update properties using corrected method
             [self updateCoreDataQuote:coreDataQuote withRuntimeModel:quote];
             coreDataQuote.lastUpdate = [NSDate date];
             
-            // Save
+            // Save with retry logic
             if (![backgroundContext save:&error]) {
                 NSLog(@"Error saving quote to Core Data: %@", error);
+                
+                // AGGIUNGI: Retry logic per merge conflicts
+                if (error.code == NSManagedObjectMergeError || error.code == 133020) {
+                    NSLog(@"🔄 Retrying save after merge conflict for %@", quote.symbol);
+                    
+                    // Refresh and try again
+                    [backgroundContext refreshAllObjects];
+                    [backgroundContext refreshObject:coreDataQuote mergeChanges:YES];
+                    [self updateCoreDataQuote:coreDataQuote withRuntimeModel:quote];
+                    coreDataQuote.lastUpdate = [NSDate date];
+                    
+                    NSError *retryError = nil;
+                    if (![backgroundContext save:&retryError]) {
+                        NSLog(@"❌ Retry failed for %@: %@", quote.symbol, retryError);
+                    } else {
+                        NSLog(@"✅ Retry successful for %@", quote.symbol);
+                    }
+                }
             }
         }];
     });
 }
-
 - (void)saveHistoricalBarsModelToCoreData:(NSArray<HistoricalBarModel *> *)bars
                                    symbol:(NSString *)symbol
                                 timeframe:(BarTimeframe)timeframe {

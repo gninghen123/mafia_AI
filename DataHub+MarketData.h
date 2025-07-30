@@ -8,88 +8,79 @@
 
 #import "DataHub.h"
 #import "RuntimeModels.h"  // Import our new runtime models
-#import "CommonTypes.h"
+#import "CommonTypes.h"    // DataFreshnessType is now defined here
 
 NS_ASSUME_NONNULL_BEGIN
-
-// Data freshness types
-typedef NS_ENUM(NSInteger, DataFreshnessType) {
-    DataFreshnessTypeQuote,           // TTL: 5-10 seconds
-    DataFreshnessTypeMarketOverview,  // TTL: 1 minute
-    DataFreshnessTypeHistorical,      // TTL: 5 minutes
-    DataFreshnessTypeCompanyInfo,     // TTL: 24 hours
-    DataFreshnessTypeWatchlist        // TTL: Infinite (user managed)
-};
 
 @interface DataHub (MarketData)
 
 #pragma mark - Market Quotes with Smart Caching
 
 // Get quote with automatic refresh if stale
-// RETURNS: Runtime MarketQuote object (thread-safe)
+// RETURNS: Runtime MarketQuoteModel object (thread-safe)
 - (void)getQuoteForSymbol:(NSString *)symbol
-               completion:(void(^)(MarketQuote * _Nullable quote, BOOL isLive))completion;
+               completion:(void(^)(MarketQuoteModel * _Nullable quote, BOOL isLive))completion;
 
 // Get multiple quotes
-// RETURNS: Dictionary of runtime MarketQuote objects
+// RETURNS: Dictionary of runtime MarketQuoteModel objects
 - (void)getQuotesForSymbols:(NSArray<NSString *> *)symbols
-                 completion:(void(^)(NSDictionary<NSString *, MarketQuote *> *quotes, BOOL allLive))completion;
+                 completion:(void(^)(NSDictionary<NSString *, MarketQuoteModel *> *quotes, BOOL allLive))completion;
 
 // Force refresh quote (bypasses cache)
 - (void)refreshQuoteForSymbol:(NSString *)symbol
-                   completion:(void(^)(MarketQuote * _Nullable quote, NSError * _Nullable error))completion;
+                   completion:(void(^)(MarketQuoteModel * _Nullable quote, NSError * _Nullable error))completion;
 
 #pragma mark - Historical Data with Smart Caching
 
 // Get historical data with automatic refresh if stale
-// RETURNS: Array of runtime HistoricalBar objects (thread-safe)
+// RETURNS: Array of runtime HistoricalBarModel objects (thread-safe)
 - (void)getHistoricalBarsForSymbol:(NSString *)symbol
                          timeframe:(BarTimeframe)timeframe
                           barCount:(NSInteger)barCount
-                        completion:(void(^)(NSArray<HistoricalBar *> *bars, BOOL isFresh))completion;
+                        completion:(void(^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion;
 
 // Get historical data for date range
 - (void)getHistoricalBarsForSymbol:(NSString *)symbol
                          timeframe:(BarTimeframe)timeframe
                          startDate:(NSDate *)startDate
                            endDate:(NSDate *)endDate
-                        completion:(void(^)(NSArray<HistoricalBar *> *bars, BOOL isFresh))completion;
+                        completion:(void(^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion;
 
-#pragma mark - Company Info
+#pragma mark - Company Information with Smart Caching
 
 // Get company info with automatic refresh if stale
-// RETURNS: Runtime CompanyInfo object
+// RETURNS: Runtime CompanyInfoModel object (thread-safe)
 - (void)getCompanyInfoForSymbol:(NSString *)symbol
-                     completion:(void(^)(CompanyInfo * _Nullable info, BOOL isFresh))completion;
+                     completion:(void(^)(CompanyInfoModel * _Nullable info, BOOL isFresh))completion;
 
-#pragma mark - Batch Operations
+#pragma mark - Subscription Management (Pseudo Real-Time)
 
-// Refresh multiple quotes at once
-- (void)refreshQuotesForSymbols:(NSArray<NSString *> *)symbols;
-
-// Prefetch data for better performance
-- (void)prefetchDataForSymbols:(NSArray<NSString *> *)symbols;
-
-#pragma mark - Cache Management
-
-// Clear all market data cache
-- (void)clearMarketDataCache;
-
-// Clear cache for specific symbol
-- (void)clearCacheForSymbol:(NSString *)symbol;
-
-// Get cache statistics
-- (NSDictionary *)getCacheStatistics;
-
-#pragma mark - Subscription Management (for real-time updates)
-
-// Subscribe to quote updates
+// Subscribe to quote updates (refreshes every 5-10 seconds)
 - (void)subscribeToQuoteUpdatesForSymbol:(NSString *)symbol;
 - (void)subscribeToQuoteUpdatesForSymbols:(NSArray<NSString *> *)symbols;
 
 // Unsubscribe from updates
 - (void)unsubscribeFromQuoteUpdatesForSymbol:(NSString *)symbol;
 - (void)unsubscribeFromAllQuoteUpdates;
+
+#pragma mark - Batch Operations
+
+// Refresh multiple quotes at once
+- (void)refreshQuotesForSymbols:(NSArray<NSString *> *)symbols;
+
+// Prefetch data for symbols (useful for watchlists)
+- (void)prefetchDataForSymbols:(NSArray<NSString *> *)symbols;
+
+#pragma mark - Cache Management
+
+// Clear all market data cache (memory + Core Data)
+- (void)clearMarketDataCache;
+
+// Clear cache for specific symbol
+- (void)clearCacheForSymbol:(NSString *)symbol;
+
+// Get cache statistics for debugging
+- (NSDictionary *)getCacheStatistics;
 
 @end
 

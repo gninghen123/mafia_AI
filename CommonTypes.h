@@ -18,6 +18,7 @@ typedef NS_ENUM(NSInteger, DataSourceType) {
     DataSourceTypeInteractiveBrokers,
     DataSourceTypeAlpaca,
     DataSourceTypeYahoo,
+    DataSourceTypeWebull,
     DataSourceTypePolygon,
     DataSourceTypeIEX,
     DataSourceTypeCustom
@@ -54,6 +55,15 @@ typedef NS_ENUM(NSInteger, BarTimeframe) {
     BarTimeframe1Day,
     BarTimeframe1Week,
     BarTimeframe1Month
+};
+
+// MOVED FROM DataHub+MarketData.h: Data freshness types for caching
+typedef NS_ENUM(NSInteger, DataFreshnessType) {
+    DataFreshnessTypeQuote,           // TTL: 5-10 seconds
+    DataFreshnessTypeMarketOverview,  // TTL: 1 minute
+    DataFreshnessTypeHistorical,      // TTL: 5 minutes
+    DataFreshnessTypeCompanyInfo,     // TTL: 24 hours
+    DataFreshnessTypeWatchlist        // TTL: Infinite (user managed)
 };
 
 // Data source capabilities

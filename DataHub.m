@@ -56,7 +56,6 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     return self;
 }
 
-// Implementazione del metodo helper
 - (void)initializeMarketDataCaches {
     if (!_quotesCache) {
         _quotesCache = [NSMutableDictionary dictionary];
@@ -66,6 +65,8 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
         _activeQuoteRequests = [NSMutableSet set];
         _activeHistoricalRequests = [NSMutableSet set];
         _subscribedSymbols = [NSMutableSet set];
+        
+        NSLog(@"DataHub: Initialized market data caches");
     }
 }
 

@@ -2,7 +2,7 @@
 //  DataHub+MarketData.m
 //  mafia_AI
 //
-//  NEW IMPLEMENTATION: Runtime models + DataManagerDelegate
+//  FINAL IMPLEMENTATION: Runtime models from DataManager
 //  Core Data used only for internal persistence
 //
 
@@ -17,23 +17,6 @@
 #import "CompanyInfo+CoreDataClass.h"
 
 @interface DataHub () <DataManagerDelegate>
-
-// Internal caches (runtime models)
-@property (nonatomic, strong) NSMutableDictionary<NSString *, MarketQuote *> *quotesCache;
-@property (nonatomic, strong) NSMutableDictionary<NSString *, NSArray<HistoricalBar *> *> *historicalCache;
-@property (nonatomic, strong) NSMutableDictionary<NSString *, CompanyInfo *> *companyInfoCache;
-
-// Cache timestamps for TTL management
-@property (nonatomic, strong) NSMutableDictionary<NSString *, NSDate *> *cacheTimestamps;
-
-// Active requests tracking
-@property (nonatomic, strong) NSMutableSet<NSString *> *activeQuoteRequests;
-@property (nonatomic, strong) NSMutableSet<NSString *> *activeHistoricalRequests;
-
-// Subscriptions for real-time updates
-@property (nonatomic, strong) NSMutableSet<NSString *> *subscribedSymbols;
-@property (nonatomic, strong) NSTimer *refreshTimer;
-
 @end
 
 @implementation DataHub (MarketData)
@@ -97,7 +80,7 @@
 #pragma mark - Public API - Market Quotes
 
 - (void)getQuoteForSymbol:(NSString *)symbol
-               completion:(void(^)(MarketQuote * _Nullable quote, BOOL isLive))completion {
+               completion:(void(^)(MarketQuoteModel * _Nullable quote, BOOL isLive))completion {
     
     if (!symbol || !completion) return;
     
@@ -106,7 +89,7 @@
     NSLog(@"📊 DataHub: Getting quote for %@", symbol);
     
     // 1. Check memory cache first
-    MarketQuote *cachedQuote = self.quotesCache[symbol];
+    MarketQuoteModel *cachedQuote = self.quotesCache[symbol];
     NSString *cacheKey = [NSString stringWithFormat:@"quote_%@", symbol];
     BOOL isStale = [self isCacheStale:cacheKey dataType:DataFreshnessTypeQuote];
     
@@ -120,7 +103,7 @@
     
     // 3. Check Core Data if no memory cache
     if (!cachedQuote) {
-        [self loadQuoteFromCoreData:symbol completion:^(MarketQuote *quote) {
+        [self loadQuoteFromCoreData:symbol completion:^(MarketQuoteModel *quote) {
             if (quote) {
                 self.quotesCache[symbol] = quote;
                 completion(quote, NO); // From Core Data = not live
@@ -138,11 +121,11 @@
             
             if (marketData) {
                 // Convert to runtime model and cache
-                MarketQuote *runtimeQuote = [MarketQuote quoteFromMarketData:marketData];
+                MarketQuoteModel *runtimeQuote = [MarketQuoteModel quoteFromMarketData:marketData];
                 [self cacheQuote:runtimeQuote];
                 
                 // Save to Core Data in background
-                [self saveQuoteToCoreData:runtimeQuote];
+                [self saveQuoteModelToCoreData:runtimeQuote];
                 
                 // Call completion if this is the first response
                 if (!cachedQuote && completion) {
@@ -154,26 +137,38 @@
 }
 
 - (void)getQuotesForSymbols:(NSArray<NSString *> *)symbols
-                 completion:(void(^)(NSDictionary<NSString *, MarketQuote *> *quotes, BOOL allLive))completion {
+                 completion:(void(^)(NSDictionary<NSString *, MarketQuoteModel *> *quotes, BOOL allLive))completion {
     
     if (!symbols || symbols.count == 0 || !completion) return;
     
-    NSMutableDictionary<NSString *, MarketQuote *> *result = [NSMutableDictionary dictionary];
-    NSMutableArray<NSString *> *symbolsNeedingRefresh = [NSMutableArray array];
-    BOOL allLive = YES;
+    NSMutableDictionary<NSString *, MarketQuoteModel *> *result = [NSMutableDictionary dictionary];
+    __block NSInteger completedCount = 0;
+    __block BOOL allLive = YES;
     
-    // Check cache for each symbol
+    // Get quote for each symbol
     for (NSString *symbol in symbols) {
-        [self getQuoteForSymbol:symbol completion:^(MarketQuote *quote, BOOL isLive) {
+        [self getQuoteForSymbol:symbol completion:^(MarketQuoteModel *quote, BOOL isLive) {
             if (quote) {
-                result[symbol] = quote;
-                if (!isLive) allLive = NO;
+                @synchronized(result) {
+                    result[symbol] = quote;
+                    if (!isLive) allLive = NO;
+                    
+                    completedCount++;
+                    if (completedCount == symbols.count) {
+                        completion([result copy], allLive);
+                    }
+                }
+            } else {
+                @synchronized(result) {
+                    completedCount++;
+                    allLive = NO;
+                    if (completedCount == symbols.count) {
+                        completion([result copy], allLive);
+                    }
+                }
             }
         }];
     }
-    
-    // Return what we have
-    completion([result copy], allLive);
 }
 
 #pragma mark - Public API - Historical Data
@@ -181,7 +176,7 @@
 - (void)getHistoricalBarsForSymbol:(NSString *)symbol
                          timeframe:(BarTimeframe)timeframe
                           barCount:(NSInteger)barCount
-                        completion:(void(^)(NSArray<HistoricalBar *> *bars, BOOL isFresh))completion {
+                        completion:(void(^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion {
     
     if (!symbol || !completion) return;
     
@@ -191,7 +186,7 @@
     
     // 1. Check memory cache
     NSString *cacheKey = [NSString stringWithFormat:@"historical_%@_%ld_%ld", symbol, (long)timeframe, (long)barCount];
-    NSArray<HistoricalBar *> *cachedBars = self.historicalCache[cacheKey];
+    NSArray<HistoricalBarModel *> *cachedBars = self.historicalCache[cacheKey];
     BOOL isStale = [self isCacheStale:cacheKey dataType:DataFreshnessTypeHistorical];
     
     // 2. Return cached data immediately if available
@@ -207,7 +202,7 @@
         [self loadHistoricalDataFromCoreData:symbol
                                    timeframe:timeframe
                                     barCount:barCount
-                                  completion:^(NSArray<HistoricalBar *> *bars) {
+                                  completion:^(NSArray<HistoricalBarModel *> *bars) {
             if (bars.count > 0) {
                 self.historicalCache[cacheKey] = bars;
                 completion(bars, NO); // From Core Data = not fresh
@@ -222,18 +217,15 @@
         [[DataManager sharedManager] requestHistoricalDataForSymbol:symbol
                                                           timeframe:timeframe
                                                               count:barCount
-                                                         completion:^(NSArray<NSDictionary *> *barDictionaries, NSError *error) {
+                                                         completion:^(NSArray<HistoricalBarModel *> *runtimeBars, NSError *error) {
             [self.activeHistoricalRequests removeObject:cacheKey];
             
-            if (barDictionaries && barDictionaries.count > 0) {
-                // Convert to runtime models
-                NSArray<HistoricalBar *> *runtimeBars = [HistoricalBar barsFromDictionaries:barDictionaries];
-                
+            if (runtimeBars && runtimeBars.count > 0) {
                 // Cache in memory
                 [self cacheHistoricalBars:runtimeBars forKey:cacheKey];
                 
                 // Save to Core Data in background
-                [self saveHistoricalBarsToCoreData:barDictionaries symbol:symbol timeframe:timeframe];
+                [self saveHistoricalBarsModelToCoreData:runtimeBars symbol:symbol timeframe:timeframe];
                 
                 // Call completion if this is the first response
                 if (!cachedBars && completion) {
@@ -248,7 +240,7 @@
                          timeframe:(BarTimeframe)timeframe
                          startDate:(NSDate *)startDate
                            endDate:(NSDate *)endDate
-                        completion:(void(^)(NSArray<HistoricalBar *> *bars, BOOL isFresh))completion {
+                        completion:(void(^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion {
     
     if (!symbol || !completion) return;
     
@@ -264,14 +256,14 @@
 #pragma mark - Public API - Company Info
 
 - (void)getCompanyInfoForSymbol:(NSString *)symbol
-                     completion:(void(^)(CompanyInfo * _Nullable info, BOOL isFresh))completion {
+                     completion:(void(^)(CompanyInfoModel * _Nullable info, BOOL isFresh))completion {
     
     if (!symbol || !completion) return;
     
     [self initializeMarketDataCaches];
     
     // 1. Check memory cache
-    CompanyInfo *cachedInfo = self.companyInfoCache[symbol];
+    CompanyInfoModel *cachedInfo = self.companyInfoCache[symbol];
     NSString *cacheKey = [NSString stringWithFormat:@"company_%@", symbol];
     BOOL isStale = [self isCacheStale:cacheKey dataType:DataFreshnessTypeCompanyInfo];
     
@@ -285,7 +277,7 @@
     
     // 3. Check Core Data if no memory cache
     if (!cachedInfo) {
-        [self loadCompanyInfoFromCoreData:symbol completion:^(CompanyInfo *info) {
+        [self loadCompanyInfoFromCoreData:symbol completion:^(CompanyInfoModel *info) {
             if (info) {
                 self.companyInfoCache[symbol] = info;
                 completion(info, NO); // From Core Data = not fresh
@@ -305,33 +297,32 @@
 - (void)dataManager:(DataManager *)manager didUpdateQuote:(MarketData *)marketData forSymbol:(NSString *)symbol {
     
     // Convert MarketData to runtime model
-    MarketQuote *runtimeQuote = [MarketQuote quoteFromMarketData:marketData];
+    MarketQuoteModel *runtimeQuote = [MarketQuoteModel quoteFromMarketData:marketData];
     
     // Cache in memory
     [self cacheQuote:runtimeQuote];
     
     // Save to Core Data in background
-    [self saveQuoteToCoreData:runtimeQuote];
+    [self saveQuoteModelToCoreData:runtimeQuote];
     
     // Broadcast notification with runtime model
     [self broadcastQuoteUpdate:runtimeQuote];
 }
 
-- (void)dataManager:(DataManager *)manager didUpdateHistoricalData:(NSArray<NSDictionary *> *)barDictionaries forSymbol:(NSString *)symbol {
+- (void)dataManager:(DataManager *)manager didUpdateHistoricalData:(NSArray<HistoricalBarModel *> *)bars forSymbol:(NSString *)symbol {
     
-    // Convert dictionaries to runtime models
-    NSArray<HistoricalBar *> *runtimeBars = [HistoricalBar barsFromDictionaries:barDictionaries];
+    NSLog(@"📈 DataHub: Received %lu runtime HistoricalBarModel objects for %@", (unsigned long)bars.count, symbol);
     
-    // Cache in memory (need to determine cache key from context)
-    // For now, cache with default timeframe
-    NSString *cacheKey = [NSString stringWithFormat:@"historical_%@_%ld_0", symbol, (long)BarTimeframe1Day];
-    [self cacheHistoricalBars:runtimeBars forKey:cacheKey];
+    // Cache in memory with appropriate key
+    BarTimeframe timeframe = bars.firstObject ? bars.firstObject.timeframe : BarTimeframe1Day;
+    NSString *cacheKey = [NSString stringWithFormat:@"historical_%@_%ld_%lu", symbol, (long)timeframe, (unsigned long)bars.count];
+    [self cacheHistoricalBars:bars forKey:cacheKey];
     
     // Save to Core Data in background
-    [self saveHistoricalBarsToCoreData:barDictionaries symbol:symbol timeframe:BarTimeframe1Day];
+    [self saveHistoricalBarsModelToCoreData:bars symbol:symbol timeframe:timeframe];
     
     // Broadcast notification with runtime models
-    [self broadcastHistoricalDataUpdate:runtimeBars forSymbol:symbol];
+    [self broadcastHistoricalDataUpdate:bars forSymbol:symbol];
 }
 
 - (void)dataManager:(DataManager *)manager didFailWithError:(NSError *)error forRequest:(NSString *)requestID {
@@ -348,7 +339,7 @@
 
 #pragma mark - Caching Methods
 
-- (void)cacheQuote:(MarketQuote *)quote {
+- (void)cacheQuote:(MarketQuoteModel *)quote {
     if (!quote || !quote.symbol) return;
     
     [self initializeMarketDataCaches];
@@ -357,10 +348,10 @@
     NSString *cacheKey = [NSString stringWithFormat:@"quote_%@", quote.symbol];
     [self updateCacheTimestamp:cacheKey];
     
-    NSLog(@"DataHub: Cached quote for %@", quote.symbol);
+    NSLog(@"DataHub: Cached MarketQuoteModel for %@", quote.symbol);
 }
 
-- (void)cacheHistoricalBars:(NSArray<HistoricalBar *> *)bars forKey:(NSString *)cacheKey {
+- (void)cacheHistoricalBars:(NSArray<HistoricalBarModel *> *)bars forKey:(NSString *)cacheKey {
     if (!bars || bars.count == 0 || !cacheKey) return;
     
     [self initializeMarketDataCaches];
@@ -368,12 +359,12 @@
     self.historicalCache[cacheKey] = bars;
     [self updateCacheTimestamp:cacheKey];
     
-    NSLog(@"DataHub: Cached %lu historical bars for key %@", (unsigned long)bars.count, cacheKey);
+    NSLog(@"DataHub: Cached %lu HistoricalBarModel objects for key %@", (unsigned long)bars.count, cacheKey);
 }
 
-#pragma mark - Core Data Integration (Internal)
+#pragma mark - Core Data Integration (Internal Persistence)
 
-- (void)loadQuoteFromCoreData:(NSString *)symbol completion:(void(^)(MarketQuote *quote))completion {
+- (void)loadQuoteFromCoreData:(NSString *)symbol completion:(void(^)(MarketQuoteModel *quote))completion {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         
         NSFetchRequest *request = [MarketQuote fetchRequest];
@@ -382,11 +373,11 @@
         NSError *error = nil;
         NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
         
-        MarketQuote *runtimeQuote = nil;
+        MarketQuoteModel *runtimeQuote = nil;
         if (results.firstObject) {
             // Convert Core Data entity to runtime model
             MarketQuote *coreDataQuote = results.firstObject;
-            runtimeQuote = [MarketQuote quoteFromDictionary:[self quoteCoreDataToDictionary:coreDataQuote]];
+            runtimeQuote = [self convertCoreDataQuoteToRuntimeModel:coreDataQuote];
         }
         
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -398,7 +389,7 @@
 - (void)loadHistoricalDataFromCoreData:(NSString *)symbol
                              timeframe:(BarTimeframe)timeframe
                               barCount:(NSInteger)barCount
-                            completion:(void(^)(NSArray<HistoricalBar *> *bars))completion {
+                            completion:(void(^)(NSArray<HistoricalBarModel *> *bars))completion {
     
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         
@@ -413,10 +404,9 @@
         NSError *error = nil;
         NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
         
-        NSMutableArray<HistoricalBar *> *runtimeBars = [NSMutableArray array];
+        NSMutableArray<HistoricalBarModel *> *runtimeBars = [NSMutableArray array];
         for (HistoricalBar *coreDataBar in results) {
-            NSDictionary *dict = [self historicalBarCoreDataToDictionary:coreDataBar];
-            HistoricalBar *runtimeBar = [HistoricalBar barFromDictionary:dict];
+            HistoricalBarModel *runtimeBar = [self convertCoreDataBarToRuntimeModel:coreDataBar];
             if (runtimeBar) {
                 [runtimeBars addObject:runtimeBar];
             }
@@ -428,7 +418,7 @@
     });
 }
 
-- (void)loadCompanyInfoFromCoreData:(NSString *)symbol completion:(void(^)(CompanyInfo *info))completion {
+- (void)loadCompanyInfoFromCoreData:(NSString *)symbol completion:(void(^)(CompanyInfoModel *info))completion {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         
         NSFetchRequest *request = [CompanyInfo fetchRequest];
@@ -437,10 +427,10 @@
         NSError *error = nil;
         NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
         
-        CompanyInfo *runtimeInfo = nil;
+        CompanyInfoModel *runtimeInfo = nil;
         if (results.firstObject) {
             CompanyInfo *coreDataInfo = results.firstObject;
-            runtimeInfo = [CompanyInfo infoFromDictionary:[self companyInfoCoreDataToDictionary:coreDataInfo]];
+            runtimeInfo = [self convertCoreDataCompanyInfoToRuntimeModel:coreDataInfo];
         }
         
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -449,7 +439,9 @@
     });
 }
 
-- (void)saveQuoteToCoreData:(MarketQuote *)quote {
+#pragma mark - Core Data Saving (Background)
+
+- (void)saveQuoteModelToCoreData:(MarketQuoteModel *)quote {
     if (!quote) return;
     
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
@@ -472,8 +464,8 @@
                 coreDataQuote.symbol = quote.symbol;
             }
             
-            // Update properties
-            [self updateCoreDataQuote:coreDataQuote withRuntimeQuote:quote];
+            // Update properties using corrected method
+            [self updateCoreDataQuote:coreDataQuote withRuntimeModel:quote];
             coreDataQuote.lastUpdate = [NSDate date];
             
             // Save
@@ -484,11 +476,11 @@
     });
 }
 
-- (void)saveHistoricalBarsToCoreData:(NSArray<NSDictionary *> *)barDictionaries
-                              symbol:(NSString *)symbol
-                           timeframe:(BarTimeframe)timeframe {
+- (void)saveHistoricalBarsModelToCoreData:(NSArray<HistoricalBarModel *> *)bars
+                                   symbol:(NSString *)symbol
+                                timeframe:(BarTimeframe)timeframe {
     
-    if (!barDictionaries || barDictionaries.count == 0) return;
+    if (!bars || bars.count == 0) return;
     
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
         
@@ -496,11 +488,8 @@
         
         [backgroundContext performBlock:^{
             
-            for (NSDictionary *barDict in barDictionaries) {
-                [self saveHistoricalBarDict:barDict
-                                  forSymbol:symbol
-                                  timeframe:timeframe
-                                  inContext:backgroundContext];
+            for (HistoricalBarModel *barModel in bars) {
+                [self saveHistoricalBarModel:barModel inContext:backgroundContext];
             }
             
             NSError *error = nil;
@@ -511,112 +500,151 @@
     });
 }
 
-#pragma mark - Core Data Conversion Helpers
+#pragma mark - Core Data Conversion Helpers (FIXED)
 
-- (NSDictionary *)quoteCoreDataToDictionary:(MarketQuote *)coreDataQuote {
-    return @{
-        @"symbol": coreDataQuote.symbol ?: @"",
-        @"last": coreDataQuote.lastPrice ?: @0,
-        @"bid": coreDataQuote.bid ?: @0,
-        @"ask": coreDataQuote.ask ?: @0,
-        @"open": coreDataQuote.open ?: @0,
-        @"high": coreDataQuote.high ?: @0,
-        @"low": coreDataQuote.low ?: @0,
-        @"close": coreDataQuote.close ?: @0,
-        @"previousClose": coreDataQuote.previousClose ?: @0,
-        @"change": coreDataQuote.change ?: @0,
-        @"changePercent": coreDataQuote.changePercent ?: @0,
-        @"volume": coreDataQuote.volume ?: @0,
-        @"timestamp": coreDataQuote.lastUpdate ?: [NSDate date]
-    };
-}
-
-- (NSDictionary *)historicalBarCoreDataToDictionary:(HistoricalBar *)coreDataBar {
-    return @{
-        @"symbol": coreDataBar.symbol ?: @"",
-        @"date": coreDataBar.date ?: [NSDate date],
-        @"open": @(coreDataBar.open),
-        @"high": @(coreDataBar.high),
-        @"low": @(coreDataBar.low),
-        @"close": @(coreDataBar.close),
-        @"adjustedClose": @(coreDataBar.adjustedClose),
-        @"volume": @(coreDataBar.volume),
-        @"timeframe": @(coreDataBar.timeframe)
-    };
-}
-
-- (NSDictionary *)companyInfoCoreDataToDictionary:(CompanyInfo *)coreDataInfo {
-    return @{
-        @"symbol": coreDataInfo.symbol ?: @"",
-        @"name": coreDataInfo.name ?: @"",
-        @"sector": coreDataInfo.sector ?: @"",
-        @"industry": coreDataInfo.industry ?: @"",
-        @"companyDescription": coreDataInfo.companyDescription ?: @"",
-        @"website": coreDataInfo.website ?: @"",
-        @"ceo": coreDataInfo.ceo ?: @"",
-        @"employees": @(coreDataInfo.employees),
-        @"headquarters": coreDataInfo.headquarters ?: @"",
-        @"lastUpdate": coreDataInfo.lastUpdate ?: [NSDate date]
-    };
-}
-
-- (void)updateCoreDataQuote:(MarketQuote *)coreDataQuote withRuntimeQuote:(MarketQuote *)runtimeQuote {
-    coreDataQuote.lastPrice = runtimeQuote.last;
-    coreDataQuote.bid = runtimeQuote.bid;
-    coreDataQuote.ask = runtimeQuote.ask;
-    coreDataQuote.open = runtimeQuote.open;
-    coreDataQuote.high = runtimeQuote.high;
-    coreDataQuote.low = runtimeQuote.low;
-    coreDataQuote.close = runtimeQuote.close;
-    coreDataQuote.previousClose = runtimeQuote.previousClose;
-    coreDataQuote.change = runtimeQuote.change;
-    coreDataQuote.changePercent = runtimeQuote.changePercent;
-    coreDataQuote.volume = runtimeQuote.volume;
-}
-
-- (void)saveHistoricalBarDict:(NSDictionary *)barDict
-                    forSymbol:(NSString *)symbol
-                    timeframe:(BarTimeframe)timeframe
-                    inContext:(NSManagedObjectContext *)context {
+- (MarketQuoteModel *)convertCoreDataQuoteToRuntimeModel:(MarketQuote *)coreDataQuote {
+    MarketQuoteModel *runtimeQuote = [[MarketQuoteModel alloc] init];
     
-    NSDate *date = barDict[@"date"];
+    runtimeQuote.symbol = coreDataQuote.symbol;
+    runtimeQuote.name = coreDataQuote.name;
+    runtimeQuote.exchange = coreDataQuote.exchange;
+    
+    // FIXED: Core Data uses currentPrice, convert to NSNumber
+    runtimeQuote.last = @(coreDataQuote.currentPrice);
+    
+    // Core Data doesn't have bid/ask, use currentPrice as fallback
+    runtimeQuote.bid = @(coreDataQuote.currentPrice);
+    runtimeQuote.ask = @(coreDataQuote.currentPrice);
+    
+    // OHLC data - Core Data uses double, convert to NSNumber
+    runtimeQuote.open = @(coreDataQuote.open);
+    runtimeQuote.high = @(coreDataQuote.high);
+    runtimeQuote.low = @(coreDataQuote.low);
+    runtimeQuote.close = @(coreDataQuote.currentPrice); // Use currentPrice as close
+    runtimeQuote.previousClose = @(coreDataQuote.previousClose);
+    
+    // Changes
+    runtimeQuote.change = @(coreDataQuote.change);
+    runtimeQuote.changePercent = @(coreDataQuote.changePercent);
+    
+    // Volume - Core Data uses int64_t, convert to NSNumber
+    runtimeQuote.volume = @(coreDataQuote.volume);
+    runtimeQuote.avgVolume = @(coreDataQuote.avgVolume);
+    
+    // Market data
+    runtimeQuote.marketCap = @(coreDataQuote.marketCap);
+    runtimeQuote.pe = @(coreDataQuote.pe);
+    runtimeQuote.eps = @(coreDataQuote.eps);
+    runtimeQuote.beta = @(coreDataQuote.beta);
+    
+    // Timestamp
+    runtimeQuote.timestamp = coreDataQuote.lastUpdate ?: [NSDate date];
+    runtimeQuote.isMarketOpen = YES; // Default, Core Data doesn't store this
+    
+    return runtimeQuote;
+}
+
+- (void)updateCoreDataQuote:(MarketQuote *)coreDataQuote withRuntimeModel:(MarketQuoteModel *)runtimeQuote {
+    // FIXED: Map runtime model properties to Core Data properties correctly
+    coreDataQuote.name = runtimeQuote.name;
+    coreDataQuote.exchange = runtimeQuote.exchange;
+    
+    // Core Data uses currentPrice, not lastPrice
+    coreDataQuote.currentPrice = runtimeQuote.last ? [runtimeQuote.last doubleValue] : 0.0;
+    
+    // OHLC data - convert NSNumber to double
+    coreDataQuote.open = runtimeQuote.open ? [runtimeQuote.open doubleValue] : 0.0;
+    coreDataQuote.high = runtimeQuote.high ? [runtimeQuote.high doubleValue] : 0.0;
+    coreDataQuote.low = runtimeQuote.low ? [runtimeQuote.low doubleValue] : 0.0;
+    coreDataQuote.previousClose = runtimeQuote.previousClose ? [runtimeQuote.previousClose doubleValue] : 0.0;
+    
+    // Changes
+    coreDataQuote.change = runtimeQuote.change ? [runtimeQuote.change doubleValue] : 0.0;
+    coreDataQuote.changePercent = runtimeQuote.changePercent ? [runtimeQuote.changePercent doubleValue] : 0.0;
+    
+    // Volume - convert NSNumber to int64_t
+    coreDataQuote.volume = runtimeQuote.volume ? [runtimeQuote.volume longLongValue] : 0;
+    coreDataQuote.avgVolume = runtimeQuote.avgVolume ? [runtimeQuote.avgVolume longLongValue] : 0;
+    
+    // Market data
+    coreDataQuote.marketCap = runtimeQuote.marketCap ? [runtimeQuote.marketCap doubleValue] : 0.0;
+    coreDataQuote.pe = runtimeQuote.pe ? [runtimeQuote.pe doubleValue] : 0.0;
+    coreDataQuote.eps = runtimeQuote.eps ? [runtimeQuote.eps doubleValue] : 0.0;
+    coreDataQuote.beta = runtimeQuote.beta ? [runtimeQuote.beta doubleValue] : 0.0;
+    
+    // Timestamp
+    coreDataQuote.marketTime = runtimeQuote.timestamp;
+}
+
+- (HistoricalBarModel *)convertCoreDataBarToRuntimeModel:(HistoricalBar *)coreDataBar {
+    HistoricalBarModel *runtimeBar = [[HistoricalBarModel alloc] init];
+    
+    runtimeBar.symbol = coreDataBar.symbol;
+    runtimeBar.date = coreDataBar.date;
+    runtimeBar.open = coreDataBar.open;
+    runtimeBar.high = coreDataBar.high;
+    runtimeBar.low = coreDataBar.low;
+    runtimeBar.close = coreDataBar.close;
+    runtimeBar.adjustedClose = coreDataBar.adjustedClose;
+    runtimeBar.volume = coreDataBar.volume;
+    runtimeBar.timeframe = (BarTimeframe)coreDataBar.timeframe;
+    
+    return runtimeBar;
+}
+
+- (CompanyInfoModel *)convertCoreDataCompanyInfoToRuntimeModel:(CompanyInfo *)coreDataInfo {
+    CompanyInfoModel *runtimeInfo = [[CompanyInfoModel alloc] init];
+    
+    runtimeInfo.symbol = coreDataInfo.symbol;
+    runtimeInfo.name = coreDataInfo.name;
+    runtimeInfo.sector = coreDataInfo.sector;
+    runtimeInfo.industry = coreDataInfo.industry;
+    runtimeInfo.companyDescription = coreDataInfo.companyDescription;
+    runtimeInfo.website = coreDataInfo.website;
+    runtimeInfo.ceo = coreDataInfo.ceo;
+    runtimeInfo.employees = coreDataInfo.employees;
+    runtimeInfo.headquarters = coreDataInfo.headquarters;
+    runtimeInfo.lastUpdate = coreDataInfo.lastUpdate;
+    
+    return runtimeInfo;
+}
+
+- (void)saveHistoricalBarModel:(HistoricalBarModel *)barModel
+                     inContext:(NSManagedObjectContext *)context {
+    
+    NSDate *date = barModel.date;
     if (!date) return;
     
     // Check if bar already exists
     NSFetchRequest *request = [HistoricalBar fetchRequest];
     request.predicate = [NSPredicate predicateWithFormat:
                         @"symbol == %@ AND timeframe == %d AND date == %@",
-                        symbol, (int)timeframe, date];
+                        barModel.symbol, (int)barModel.timeframe, date];
     
     NSError *error = nil;
     NSArray *results = [context executeFetchRequest:request error:&error];
     
-    HistoricalBar *bar = results.firstObject;
-    if (!bar) {
-        bar = [NSEntityDescription insertNewObjectForEntityForName:@"HistoricalBar"
-                                            inManagedObjectContext:context];
-        bar.symbol = symbol;
-        bar.timeframe = timeframe;
-        bar.date = date;
+    HistoricalBar *coreDataBar = results.firstObject;
+    if (!coreDataBar) {
+        coreDataBar = [NSEntityDescription insertNewObjectForEntityForName:@"HistoricalBar"
+                                                    inManagedObjectContext:context];
+        coreDataBar.symbol = barModel.symbol;
+        coreDataBar.timeframe = barModel.timeframe;
+        coreDataBar.date = date;
     }
     
-    // Update bar data
-    bar.open = [barDict[@"open"] doubleValue];
-    bar.high = [barDict[@"high"] doubleValue];
-    bar.low = [barDict[@"low"] doubleValue];
-    bar.close = [barDict[@"close"] doubleValue];
-    bar.volume = [barDict[@"volume"] longLongValue];
-    
-    if (barDict[@"adjustedClose"]) {
-        bar.adjustedClose = [barDict[@"adjustedClose"] doubleValue];
-    } else {
-        bar.adjustedClose = bar.close;
-    }
+    // Update bar data from runtime model
+    coreDataBar.open = barModel.open;
+    coreDataBar.high = barModel.high;
+    coreDataBar.low = barModel.low;
+    coreDataBar.close = barModel.close;
+    coreDataBar.adjustedClose = barModel.adjustedClose;
+    coreDataBar.volume = barModel.volume;
 }
 
 #pragma mark - Notifications
 
-- (void)broadcastQuoteUpdate:(MarketQuote *)quote {
+- (void)broadcastQuoteUpdate:(MarketQuoteModel *)quote {
     dispatch_async(dispatch_get_main_queue(), ^{
         [[NSNotificationCenter defaultCenter] postNotificationName:@"DataHubQuoteUpdatedNotification"
                                                             object:self
@@ -628,7 +656,7 @@
     });
 }
 
-- (void)broadcastHistoricalDataUpdate:(NSArray<HistoricalBar *> *)bars forSymbol:(NSString *)symbol {
+- (void)broadcastHistoricalDataUpdate:(NSArray<HistoricalBarModel *> *)bars forSymbol:(NSString *)symbol {
     dispatch_async(dispatch_get_main_queue(), ^{
         [[NSNotificationCenter defaultCenter] postNotificationName:@"DataHubHistoricalDataUpdatedNotification"
                                                             object:self
@@ -752,13 +780,13 @@
 }
 
 - (void)refreshQuoteForSymbol:(NSString *)symbol
-                   completion:(void(^)(MarketQuote * _Nullable quote, NSError * _Nullable error))completion {
+                   completion:(void(^)(MarketQuoteModel * _Nullable quote, NSError * _Nullable error))completion {
     
     [[DataManager sharedManager] requestQuoteForSymbol:symbol completion:^(MarketData *marketData, NSError *error) {
         if (marketData) {
-            MarketQuote *runtimeQuote = [MarketQuote quoteFromMarketData:marketData];
+            MarketQuoteModel *runtimeQuote = [MarketQuoteModel quoteFromMarketData:marketData];
             [self cacheQuote:runtimeQuote];
-            [self saveQuoteToCoreData:runtimeQuote];
+            [self saveQuoteModelToCoreData:runtimeQuote];
             
             if (completion) completion(runtimeQuote, nil);
         } else {

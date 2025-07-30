@@ -136,41 +136,109 @@
     }
 }
 
+// Replace the getQuotesForSymbols method in DataHub+MarketData.m
+
+
 - (void)getQuotesForSymbols:(NSArray<NSString *> *)symbols
                  completion:(void(^)(NSDictionary<NSString *, MarketQuoteModel *> *quotes, BOOL allLive))completion {
     
     if (!symbols || symbols.count == 0 || !completion) return;
     
-    NSMutableDictionary<NSString *, MarketQuoteModel *> *result = [NSMutableDictionary dictionary];
-    __block NSInteger completedCount = 0;
-    __block BOOL allLive = YES;
+    [self initializeMarketDataCaches];
     
-    // Get quote for each symbol
+    NSLog(@"📊 DataHub: Getting quotes for %lu symbols: %@", (unsigned long)symbols.count, symbols);
+    
+    NSMutableDictionary<NSString *, MarketQuoteModel *> *result = [NSMutableDictionary dictionary];
+    NSMutableArray<NSString *> *symbolsToFetch = [NSMutableArray array];
+    BOOL allCachedAreFresh = YES;
+    
+    // 1. Check cache first for all symbols
     for (NSString *symbol in symbols) {
-        [self getQuoteForSymbol:symbol completion:^(MarketQuoteModel *quote, BOOL isLive) {
-            if (quote) {
-                @synchronized(result) {
-                    result[symbol] = quote;
-                    if (!isLive) allLive = NO;
-                    
-                    completedCount++;
-                    if (completedCount == symbols.count) {
-                        completion([result copy], allLive);
-                    }
-                }
+        MarketQuoteModel *cachedQuote = self.quotesCache[symbol];
+        NSString *cacheKey = [NSString stringWithFormat:@"quote_%@", symbol];
+        BOOL isStale = [self isCacheStale:cacheKey dataType:DataFreshnessTypeQuote];
+        
+        if (cachedQuote && !isStale) {
+            // Fresh cached data
+            result[symbol] = cachedQuote;
+            NSLog(@"✅ Using fresh cached quote for %@", symbol);
+        } else {
+            // Need to fetch
+            [symbolsToFetch addObject:symbol];
+            if (cachedQuote) {
+                // Use stale data temporarily
+                result[symbol] = cachedQuote;
+                allCachedAreFresh = NO;
+                NSLog(@"⚠️ Using stale cached quote for %@", symbol);
             } else {
-                @synchronized(result) {
-                    completedCount++;
-                    allLive = NO;
-                    if (completedCount == symbols.count) {
-                        completion([result copy], allLive);
-                    }
+                NSLog(@"❌ No cached quote for %@", symbol);
+            }
+        }
+    }
+    
+    // 2. If we have all fresh cached data, return immediately
+    if (symbolsToFetch.count == 0) {
+        NSLog(@"✅ All quotes from fresh cache");
+        completion([result copy], YES);
+        return;
+    }
+    
+    // 3. If we have some cached data (even stale), return it first
+    if (result.count > 0) {
+        NSLog(@"📤 Returning %lu cached quotes, fetching %lu fresh", (unsigned long)result.count, (unsigned long)symbolsToFetch.count);
+        completion([result copy], allCachedAreFresh);
+    }
+    
+    // 4. Make SINGLE batch API call for missing/stale symbols
+    NSLog(@"🔄 Making batch API call for symbols: %@", symbolsToFetch);
+    
+    [[DataManager sharedManager] requestQuotesForSymbols:symbolsToFetch completion:^(NSDictionary *rawQuotes, NSError *error) {
+        if (error) {
+            NSLog(@"❌ Batch quotes request failed: %@", error.localizedDescription);
+            // If we had cached data, we already returned it above
+            if (result.count == 0) {
+                completion(@{}, NO);
+            }
+            return;
+        }
+        
+        if (!rawQuotes || rawQuotes.count == 0) {
+            NSLog(@"⚠️ Batch quotes request returned no data");
+            if (result.count == 0) {
+                completion(@{}, NO);
+            }
+            return;
+        }
+        
+        NSLog(@"✅ Batch quotes request succeeded, got %lu quotes", (unsigned long)rawQuotes.count);
+        
+        // Convert and cache all fresh quotes
+        NSMutableDictionary<NSString *, MarketQuoteModel *> *freshResult = [result mutableCopy];
+        
+        for (NSString *symbol in rawQuotes) {
+            NSDictionary *rawQuote = rawQuotes[symbol];
+            if (rawQuote && [rawQuote isKindOfClass:[NSDictionary class]]) {
+                MarketQuoteModel *runtimeQuote = [MarketQuoteModel quoteFromDictionary:rawQuote];
+                if (runtimeQuote) {
+                    // Cache the fresh quote (this will also update timestamp)
+                    [self cacheQuote:runtimeQuote];
+                    
+                    // Save to Core Data in background
+                    [self saveQuoteModelToCoreData:runtimeQuote];
+                    
+                    // Add to result
+                    freshResult[symbol] = runtimeQuote;
+                    
+                    NSLog(@"✅ Processed fresh quote for %@", symbol);
                 }
             }
-        }];
-    }
+        }
+        
+        // Return fresh results
+        NSLog(@"📤 Returning %lu total quotes (%lu fresh)", (unsigned long)freshResult.count, (unsigned long)rawQuotes.count);
+        completion([freshResult copy], YES);
+    }];
 }
-
 #pragma mark - Public API - Historical Data
 
 - (void)getHistoricalBarsForSymbol:(NSString *)symbol
@@ -339,16 +407,46 @@
 
 #pragma mark - Caching Methods
 
+
+#pragma mark - Cache Utility Methods
+
+- (BOOL)isQuoteCacheStale:(NSString *)symbol {
+    if (!symbol) return YES;
+    
+    [self initializeMarketDataCaches];
+    
+    NSString *cacheKey = [NSString stringWithFormat:@"quote_%@", symbol];
+    NSDate *timestamp = self.cacheTimestamps[cacheKey];
+    
+    if (!timestamp) {
+        return YES; // No timestamp = stale
+    }
+    
+    // Consider quote stale after 30 seconds
+    NSTimeInterval staleDuration = 30.0;
+    NSTimeInterval age = [[NSDate date] timeIntervalSinceDate:timestamp];
+    
+    return age > staleDuration;
+}
+
+// Also add this helper method for updating cache timestamps
+
+
+// Update the cacheQuote method to set timestamp
+
+// Update the cacheQuote method to set timestamp (if not already implemented correctly)
 - (void)cacheQuote:(MarketQuoteModel *)quote {
     if (!quote || !quote.symbol) return;
     
     [self initializeMarketDataCaches];
     
     self.quotesCache[quote.symbol] = quote;
+    
+    // Update timestamp
     NSString *cacheKey = [NSString stringWithFormat:@"quote_%@", quote.symbol];
     [self updateCacheTimestamp:cacheKey];
     
-    NSLog(@"DataHub: Cached MarketQuoteModel for %@", quote.symbol);
+    NSLog(@"DataHub: Cached quote for %@ at %@", quote.symbol, [NSDate date]);
 }
 
 - (void)cacheHistoricalBars:(NSArray<HistoricalBarModel *> *)bars forKey:(NSString *)cacheKey {

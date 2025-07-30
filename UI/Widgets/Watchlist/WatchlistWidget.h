@@ -5,9 +5,10 @@
 
 #import "BaseWidget.h"
 #import "WatchlistCellViews.h"
+#import "RuntimeModels.h"  // Add this import
 
-@class Watchlist;
-
+// Remove Core Data import - UI should not know about Core Data
+// @class Watchlist;  // Remove this
 
 @interface WatchlistWidget : BaseWidget <NSTableViewDelegate, NSTableViewDataSource, NSTextFieldDelegate>
 
@@ -34,9 +35,9 @@
 @property (nonatomic, strong) NSView *temporarySidebar;
 @property (nonatomic, strong) NSTableView *sidebarTableView;
 
-// Data
-@property (nonatomic, strong) NSArray<Watchlist *> *watchlists;
-@property (nonatomic, strong) Watchlist *currentWatchlist;
+// Data - FIXED: Use RuntimeModels instead of Core Data objects
+@property (nonatomic, strong) NSArray<WatchlistModel *> *watchlists;
+@property (nonatomic, strong) WatchlistModel *currentWatchlist;
 @property (nonatomic, strong) NSMutableArray<NSString *> *symbols;
 @property (nonatomic, strong) NSMutableArray<NSString *> *filteredSymbols;
 @property (nonatomic, strong) NSMutableDictionary *symbolDataCache;

@@ -4,16 +4,13 @@
 //
 //  REFACTORED: Uses DataHub+MarketData for real-time quotes and %change
 //
-
 #import "WatchlistWidget.h"
 #import "DataHub.h"
 #import "DataHub+MarketData.h"
-#import "Watchlist+CoreDataClass.h"
 #import "WatchlistManagerController.h"
 #import "WatchlistCellViews.h"
-#import "RuntimeModels.h"
+#import "RuntimeModels.h"  // Add this import
 #import <QuartzCore/QuartzCore.h>
-
 @interface WatchlistWidget ()
 
 // UPDATED: Use MarketQuoteModel cache instead of NSDictionary
@@ -34,9 +31,15 @@
     self = [super initWithType:type panelType:panelType];
     if (self) {
         self.widgetType = @"Watchlist";
-        
-        // UPDATED: Use MarketQuoteModel cache
-        self.quotesCache = [NSMutableDictionary dictionary];
+        self.isRefreshing = NO;
+        self.showOnlyFavorites = NO;
+        self.sidebarVisible = NO;
+
+        // Initialize data arrays
+        self.symbols = [NSMutableArray array];
+        self.filteredSymbols = [NSMutableArray array];
+        self.symbolDataCache = [NSMutableDictionary dictionary];
+        self.quotesCache = [NSMutableDictionary dictionary];  // Add this if missing
         self.supportedImportFormats = @[@"csv", @"txt"];
         
         // Register for DataHub notifications
@@ -305,12 +308,13 @@
 #pragma mark - Data Management
 
 - (void)loadWatchlists {
-    self.watchlists = [[DataHub shared] getAllWatchlists];
+    // FIXED: Use RuntimeModels instead of Core Data objects
+    self.watchlists = [[DataHub shared] getAllWatchlistModels];
     
     // Update popup menu
     [self.watchlistPopup removeAllItems];
     
-    for (Watchlist *watchlist in self.watchlists) {
+    for (WatchlistModel *watchlist in self.watchlists) {
         [self.watchlistPopup addItemWithTitle:watchlist.name];
     }
     
@@ -340,7 +344,8 @@
         return;
     }
     
-    NSMutableArray *symbolList = [[[DataHub shared] getSymbolsForWatchlist:self.currentWatchlist] mutableCopy];
+    // FIXED: Get symbols from RuntimeModel instead of Core Data
+    NSMutableArray *symbolList = [[[DataHub shared] getSymbolsForWatchlistModel:self.currentWatchlist] mutableCopy];
     
     // Add empty row at the end for inline adding
     [symbolList addObject:@""];
@@ -351,37 +356,86 @@
 }
 
 // UPDATED: New method using DataHub+MarketData
+// UPDATED: New method using DataHub+MarketData with safety checks
+// Replace refreshSymbolData method in WatchlistWidget.m
+
 - (void)refreshSymbolData {
-    if (self.isRefreshing) return;
+    NSLog(@"=== WatchlistWidget: RefreshSymbolData START ===");
     
-    self.isRefreshing = YES;
-    [self.loadingIndicator startAnimation:nil];
+    // Safety checks
+    if (self.isRefreshing) {
+        NSLog(@"WatchlistWidget: Refresh already in progress, skipping");
+        return;
+    }
     
-    dispatch_group_t group = dispatch_group_create();
+    if (!self.symbols || self.symbols.count == 0) {
+        NSLog(@"WatchlistWidget: No symbols to refresh");
+        return;
+    }
     
+    // Filter out empty symbols
+    NSMutableArray *validSymbols = [NSMutableArray array];
     for (NSString *symbol in self.symbols) {
-        if (symbol.length > 0) {
-            dispatch_group_enter(group);
-            
-            // UPDATED: Use DataHub+MarketData instead of legacy getDataForSymbol
-            [[DataHub shared] getQuoteForSymbol:symbol completion:^(MarketQuoteModel *quote, BOOL isLive) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    if (quote) {
-                        self.quotesCache[symbol] = quote;
-                    }
-                    dispatch_group_leave(group);
-                });
-            }];
+        if (symbol && [symbol isKindOfClass:[NSString class]] && symbol.length > 0) {
+            [validSymbols addObject:symbol];
         }
     }
     
-    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
-        self.isRefreshing = NO;
-        [self.loadingIndicator stopAnimation:nil];
-        [self.mainTableView reloadData];
-    });
+    if (validSymbols.count == 0) {
+        NSLog(@"WatchlistWidget: No valid symbols to refresh");
+        return;
+    }
+    
+    // Ensure we're on main thread for UI updates
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self refreshSymbolData];
+        });
+        return;
+    }
+    
+    NSLog(@"WatchlistWidget: Starting BATCH refresh for %lu symbols: %@", (unsigned long)validSymbols.count, validSymbols);
+    
+    self.isRefreshing = YES;
+    
+    // Check loading indicator exists before using it
+    if (self.loadingIndicator) {
+        [self.loadingIndicator startAnimation:nil];
+    }
+    
+    // Initialize quotes cache if needed
+    if (!self.quotesCache) {
+        self.quotesCache = [NSMutableDictionary dictionary];
+    }
+    
+    // Make SINGLE batch call for all symbols
+    [[DataHub shared] getQuotesForSymbols:validSymbols completion:^(NSDictionary<NSString *,MarketQuoteModel *> *quotes, BOOL allLive) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSLog(@"✅ WatchlistWidget: Batch refresh completed - received %lu quotes (allLive: %@)",
+                  (unsigned long)quotes.count, allLive ? @"YES" : @"NO");
+            
+            // Update quotes cache
+            if (self.quotesCache && quotes) {
+                [self.quotesCache addEntriesFromDictionary:quotes];
+            }
+            
+            // Update UI state
+            self.isRefreshing = NO;
+            if (self.loadingIndicator) {
+                [self.loadingIndicator stopAnimation:nil];
+            }
+            
+            // Reload table view
+            if (self.mainTableView) {
+                [self.mainTableView reloadData];
+            }
+            
+            NSLog(@"🔄 WatchlistWidget: UI updated with fresh quotes");
+        });
+    }];
+    
+    NSLog(@"=== WatchlistWidget: RefreshSymbolData END ===");
 }
-
 - (void)applyFilter {
     NSString *searchText = self.searchField.stringValue;
     
@@ -642,16 +696,14 @@
 
 - (void)controlTextDidEndEditing:(NSNotification *)notification {
     NSTextField *textField = notification.object;
-    NSString *newSymbol = textField.stringValue;
+    NSString *newText = [textField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     
-    if (newSymbol.length > 0) {
-        // Add the new symbol
-        NSString *upperSymbol = [newSymbol uppercaseString];
+    if (newText.length > 0) {
+        NSString *upperSymbol = newText.uppercaseString;
         
-        // Check if symbol already exists
         if (![self.symbols containsObject:upperSymbol]) {
-            // Add to current watchlist
-            [[DataHub shared] addSymbol:upperSymbol toWatchlist:self.currentWatchlist];
+            // FIXED: Use RuntimeModel method
+            [[DataHub shared] addSymbol:upperSymbol toWatchlistModel:self.currentWatchlist];
             
             // Reload data
             [self loadSymbolsForCurrentWatchlist];
@@ -698,14 +750,13 @@
         return;
     }
     
-    // Normal watchlist selection
+    // Normal watchlist selection - FIXED: Use RuntimeModel
     if (selectedIndex >= 0 && selectedIndex < self.watchlists.count) {
         self.currentWatchlist = self.watchlists[selectedIndex];
         [self loadSymbolsForCurrentWatchlist];
         [self updateNavigationButtons];
     }
 }
-
 - (void)searchFieldChanged:(id)sender {
     [self applyFilter];
 }
@@ -727,7 +778,8 @@
         NSString *symbol = [input.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].uppercaseString;
         if (symbol.length > 0) {
             if (![self.symbols containsObject:symbol]) {
-                [[DataHub shared] addSymbol:symbol toWatchlist:self.currentWatchlist];
+                // FIXED: Use RuntimeModel method
+                [[DataHub shared] addSymbol:symbol toWatchlistModel:self.currentWatchlist];
                 [self loadSymbolsForCurrentWatchlist];
                 [self refreshSymbolData];
             } else {
@@ -757,7 +809,8 @@
     
     if (symbolsToRemove.count > 0) {
         for (NSString *symbol in symbolsToRemove) {
-            [[DataHub shared] removeSymbol:symbol fromWatchlist:self.currentWatchlist];
+            // FIXED: Use RuntimeModel method
+            [[DataHub shared] removeSymbol:symbol fromWatchlistModel:self.currentWatchlist];
         }
         
         [self loadSymbolsForCurrentWatchlist];
@@ -821,7 +874,8 @@
     if ([alert runModal] == NSAlertFirstButtonReturn) {
         NSString *name = [input.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
         if (name.length > 0) {
-            Watchlist *watchlist = [[DataHub shared] createWatchlistWithName:name];
+            // FIXED: Use RuntimeModel method
+            WatchlistModel *watchlist = [[DataHub shared] createWatchlistModelWithName:name];
             [self loadWatchlists];
             
             // Select the new watchlist
@@ -887,6 +941,7 @@
     NSMutableDictionary *state = [[super serializeState] mutableCopy];
     
     if (self.currentWatchlist) {
+        // FIXED: Use RuntimeModel property
         state[@"currentWatchlistName"] = self.currentWatchlist.name;
     }
     
@@ -903,7 +958,8 @@
     NSString *watchlistName = state[@"currentWatchlistName"];
     if (watchlistName) {
         for (NSInteger i = 0; i < self.watchlists.count; i++) {
-            Watchlist *watchlist = self.watchlists[i];
+            // FIXED: Use RuntimeModel
+            WatchlistModel *watchlist = self.watchlists[i];
             if ([watchlist.name isEqualToString:watchlistName]) {
                 [self.watchlistPopup selectItemAtIndex:i];
                 self.currentWatchlist = watchlist;

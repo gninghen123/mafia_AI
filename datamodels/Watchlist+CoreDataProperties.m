@@ -2,7 +2,7 @@
 //  Watchlist+CoreDataProperties.m
 //  mafia_AI
 //
-//  Created by fabio gattone on 21/07/25.
+//  Created by fabio gattone on 30/07/25.
 //
 //
 

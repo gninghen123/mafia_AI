@@ -5,9 +5,6 @@
 
 #import <Foundation/Foundation.h>
 #import <CoreData/CoreData.h>
-#import "Watchlist+CoreDataProperties.h"
-
-@class Alert, StockConnection;
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -23,3 +20,4 @@ NS_ASSUME_NONNULL_BEGIN
 
 NS_ASSUME_NONNULL_END
 
+#import "Watchlist+CoreDataProperties.h"

@@ -363,7 +363,7 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     NSLog(@"SchwabDataSource: fetchQuoteForSymbol called for %@", symbol);
     NSLog(@"SchwabDataSource: Current token status - hasValidToken: %@", [self hasValidToken] ? @"YES" : @"NO");
     
-    [self fetchQuoteForSymbols:@[symbol] completion:^(NSDictionary *quotes, NSError *error) {
+    [self fetchQuotesForSymbols:@[symbol] completion:^(NSDictionary *quotes, NSError *error) {
         if (error) {
             NSLog(@"SchwabDataSource: fetchQuoteForSymbols failed: %@", error.localizedDescription);
             if (completion) completion(nil, error);
@@ -378,7 +378,7 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
 
 // Aggiornamento del metodo fetchQuoteForSymbols per aggiungere debug
 
-- (void)fetchQuoteForSymbols:(NSArray<NSString *> *)symbols
+- (void)fetchQuotesForSymbols:(NSArray<NSString *> *)symbols
                   completion:(void (^)(NSDictionary *quotes, NSError *error))completion {
     
     NSLog(@"SchwabDataSource: fetchQuoteForSymbols called with symbols: %@", symbols);

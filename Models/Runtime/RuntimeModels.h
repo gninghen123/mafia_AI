@@ -126,5 +126,25 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
+// =======================================
+// WATCHLIST MODEL - RUNTIME
+// =======================================
+
+@interface WatchlistModel : NSObject
+
+@property (nonatomic, strong) NSString *name;
+@property (nonatomic, strong) NSString * _Nullable colorHex;
+@property (nonatomic, strong) NSDate * _Nullable creationDate;
+@property (nonatomic, strong) NSDate * _Nullable lastModified;
+@property (nonatomic, assign) NSInteger sortOrder;
+@property (nonatomic, strong) NSArray<NSString *> *symbols;
+
+// Factory methods
++ (instancetype)watchlistFromDictionary:(NSDictionary *)dict;
+
+// Conversion
+- (NSDictionary *)toDictionary;
+
+@end
 NS_ASSUME_NONNULL_END
 

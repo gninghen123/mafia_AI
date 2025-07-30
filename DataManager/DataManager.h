@@ -46,7 +46,9 @@
 // Market data requests
 - (NSString *)requestQuoteForSymbol:(NSString *)symbol
                           completion:(void (^)(MarketData *quote, NSError *error))completion;
-
+// Batch quote request
+- (NSString *)requestQuotesForSymbols:(NSArray<NSString *> *)symbols
+                           completion:(void (^)(NSDictionary *quotes, NSError *error))completion;
 // Historical data - with date range
 // UPDATED: Now returns runtime models
 - (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
@@ -84,5 +86,8 @@
 - (BOOL)isConnected;
 - (NSArray<NSString *> *)availableDataSources;
 - (NSString *)activeDataSource;
+
+
+
 
 @end

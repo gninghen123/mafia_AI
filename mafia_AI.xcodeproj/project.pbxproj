@@ -20,6 +20,8 @@
 		954D30E32E2860F100C7DC88 /* PreferencesWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */; };
 		954D30E72E28612100C7DC88 /* AppSettings.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30E62E28612100C7DC88 /* AppSettings.m */; };
 		955B3CD12E2BFF55008CA475 /* WebullDataSource.m in Sources */ = {isa = PBXBuildFile; fileRef = 955B3CD02E2BFF55008CA475 /* WebullDataSource.m */; };
+		959A4B632E3A93FE00D83EB1 /* Watchlist+CoreDataClass.m in Sources */ = {isa = PBXBuildFile; fileRef = 959A4B602E3A93FE00D83EB1 /* Watchlist+CoreDataClass.m */; };
+		959A4B642E3A93FE00D83EB1 /* Watchlist+CoreDataProperties.m in Sources */ = {isa = PBXBuildFile; fileRef = 959A4B622E3A93FE00D83EB1 /* Watchlist+CoreDataProperties.m */; };
 		95F1AD532E2E475500D96BDD /* DataHub.m in Sources */ = {isa = PBXBuildFile; fileRef = 95F1AD522E2E475500D96BDD /* DataHub.m */; };
 /* End PBXBuildFile section */
 
@@ -70,6 +72,10 @@
 		954D30E62E28612100C7DC88 /* AppSettings.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppSettings.m; sourceTree = "<group>"; };
 		955B3CCF2E2BFF55008CA475 /* WebullDataSource.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WebullDataSource.h; sourceTree = "<group>"; };
 		955B3CD02E2BFF55008CA475 /* WebullDataSource.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WebullDataSource.m; sourceTree = "<group>"; };
+		959A4B5F2E3A93FE00D83EB1 /* Watchlist+CoreDataClass.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "Watchlist+CoreDataClass.h"; path = "datamodels/Watchlist+CoreDataClass.h"; sourceTree = "<group>"; };
+		959A4B602E3A93FE00D83EB1 /* Watchlist+CoreDataClass.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = "Watchlist+CoreDataClass.m"; path = "datamodels/Watchlist+CoreDataClass.m"; sourceTree = "<group>"; };
+		959A4B612E3A93FE00D83EB1 /* Watchlist+CoreDataProperties.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "Watchlist+CoreDataProperties.h"; path = "datamodels/Watchlist+CoreDataProperties.h"; sourceTree = "<group>"; };
+		959A4B622E3A93FE00D83EB1 /* Watchlist+CoreDataProperties.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = "Watchlist+CoreDataProperties.m"; path = "datamodels/Watchlist+CoreDataProperties.m"; sourceTree = "<group>"; };
 		95F1AD512E2E475500D96BDD /* DataHub.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DataHub.h; sourceTree = "<group>"; };
 		95F1AD522E2E475500D96BDD /* DataHub.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = DataHub.m; sourceTree = "<group>"; };
 		95F1AFC52E32037F00D96BDD /* CommonTypes.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CommonTypes.h; sourceTree = "<group>"; };
@@ -146,6 +152,10 @@
 		954D2FF72E28514A00C7DC88 = {
 			isa = PBXGroup;
 			children = (
+				959A4B5F2E3A93FE00D83EB1 /* Watchlist+CoreDataClass.h */,
+				959A4B602E3A93FE00D83EB1 /* Watchlist+CoreDataClass.m */,
+				959A4B612E3A93FE00D83EB1 /* Watchlist+CoreDataProperties.h */,
+				959A4B622E3A93FE00D83EB1 /* Watchlist+CoreDataProperties.m */,
 				959A4B4E2E3A1E6000D83EB1 /* Models */,
 				95F1AFC52E32037F00D96BDD /* CommonTypes.h */,
 				95F1AD762E2E517E00D96BDD /* UI */,
@@ -349,6 +359,8 @@
 			files = (
 				954D30E32E2860F100C7DC88 /* PreferencesWindowController.m in Sources */,
 				955B3CD12E2BFF55008CA475 /* WebullDataSource.m in Sources */,
+				959A4B632E3A93FE00D83EB1 /* Watchlist+CoreDataClass.m in Sources */,
+				959A4B642E3A93FE00D83EB1 /* Watchlist+CoreDataProperties.m in Sources */,
 				954D30E72E28612100C7DC88 /* AppSettings.m in Sources */,
 				95F1AD532E2E475500D96BDD /* DataHub.m in Sources */,
 				9549A30C2E33B4BF00E873AB /* DataHub+MarketData.m in Sources */,

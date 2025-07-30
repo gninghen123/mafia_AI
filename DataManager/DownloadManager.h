@@ -28,7 +28,8 @@ NS_ASSUME_NONNULL_BEGIN
 // Market data via HTTP REST calls
 - (void)fetchQuoteForSymbol:(NSString *)symbol
                  completion:(void (^)(id quote, NSError *error))completion;
-
+- (void)fetchQuotesForSymbols:(NSArray<NSString *> *)symbols
+                   completion:(void (^)(NSDictionary *quotes, NSError *error))completion;
 - (void)fetchHistoricalDataForSymbol:(NSString *)symbol
                            timeframe:(BarTimeframe)timeframe
                            startDate:(NSDate *)startDate

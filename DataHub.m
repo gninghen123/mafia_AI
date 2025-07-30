@@ -139,6 +139,104 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 
 #pragma mark - Watchlist Management
 
+#pragma mark - Watchlist Management (RuntimeModels for UI)
+
+- (NSArray<WatchlistModel *> *)getAllWatchlistModels {
+    NSArray<Watchlist *> *coreDataWatchlists = [self getAllWatchlists];
+    NSMutableArray<WatchlistModel *> *runtimeModels = [NSMutableArray array];
+    
+    for (Watchlist *coreDataWatchlist in coreDataWatchlists) {
+        WatchlistModel *runtimeModel = [self convertCoreDataToRuntimeModel:coreDataWatchlist];
+        if (runtimeModel) {
+            [runtimeModels addObject:runtimeModel];
+        }
+    }
+    
+    return [runtimeModels copy];
+}
+
+- (WatchlistModel *)createWatchlistModelWithName:(NSString *)name {
+    // Create in Core Data first
+    Watchlist *coreDataWatchlist = [self createWatchlistWithName:name];
+    
+    // Convert to RuntimeModel for UI
+    return [self convertCoreDataToRuntimeModel:coreDataWatchlist];
+}
+
+- (void)deleteWatchlistModel:(WatchlistModel *)watchlistModel {
+    if (!watchlistModel || !watchlistModel.name) return;
+    
+    // Find the corresponding Core Data object
+    Watchlist *coreDataWatchlist = [self findWatchlistByName:watchlistModel.name];
+    if (coreDataWatchlist) {
+        [self deleteWatchlist:coreDataWatchlist];
+    }
+}
+
+- (void)addSymbol:(NSString *)symbol toWatchlistModel:(WatchlistModel *)watchlistModel {
+    if (!watchlistModel || !watchlistModel.name || !symbol) return;
+    
+    // Find the corresponding Core Data object
+    Watchlist *coreDataWatchlist = [self findWatchlistByName:watchlistModel.name];
+    if (coreDataWatchlist) {
+        [self addSymbol:symbol toWatchlist:coreDataWatchlist];
+        
+        // Update the RuntimeModel
+        NSMutableArray *symbols = [watchlistModel.symbols mutableCopy] ?: [NSMutableArray array];
+        NSString *upperSymbol = symbol.uppercaseString;
+        if (![symbols containsObject:upperSymbol]) {
+            [symbols addObject:upperSymbol];
+            watchlistModel.symbols = symbols;
+            watchlistModel.lastModified = [NSDate date];
+        }
+    }
+}
+
+- (void)removeSymbol:(NSString *)symbol fromWatchlistModel:(WatchlistModel *)watchlistModel {
+    if (!watchlistModel || !watchlistModel.name || !symbol) return;
+    
+    // Find the corresponding Core Data object
+    Watchlist *coreDataWatchlist = [self findWatchlistByName:watchlistModel.name];
+    if (coreDataWatchlist) {
+        [self removeSymbol:symbol fromWatchlist:coreDataWatchlist];
+        
+        // Update the RuntimeModel
+        NSMutableArray *symbols = [watchlistModel.symbols mutableCopy];
+        NSString *upperSymbol = symbol.uppercaseString;
+        [symbols removeObject:upperSymbol];
+        watchlistModel.symbols = symbols;
+        watchlistModel.lastModified = [NSDate date];
+    }
+}
+
+- (NSArray<NSString *> *)getSymbolsForWatchlistModel:(WatchlistModel *)watchlistModel {
+    return watchlistModel.symbols ?: @[];
+}
+
+- (void)updateWatchlistModel:(WatchlistModel *)watchlistModel newName:(NSString *)newName {
+    if (!watchlistModel || !watchlistModel.name || !newName) return;
+    
+    // Find the corresponding Core Data object
+    Watchlist *coreDataWatchlist = [self findWatchlistByName:watchlistModel.name];
+    if (coreDataWatchlist) {
+        [self updateWatchlistName:coreDataWatchlist newName:newName];
+        
+        // Update the RuntimeModel
+        watchlistModel.name = newName;
+        watchlistModel.lastModified = [NSDate date];
+    }
+}
+
+#pragma mark - Helper Methods
+
+- (Watchlist *)findWatchlistByName:(NSString *)name {
+    for (Watchlist *watchlist in self.watchlists) {
+        if ([watchlist.name isEqualToString:name]) {
+            return watchlist;
+        }
+    }
+    return nil;
+}
 - (void)loadWatchlists {
     NSFetchRequest *request = [Watchlist fetchRequest];
     request.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"sortOrder" ascending:YES]];
@@ -513,4 +611,30 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
           @"Not loaded");
 }
 
+
+
+#pragma mark - Private Conversion Methods
+
+- (WatchlistModel *)convertCoreDataToRuntimeModel:(Watchlist *)coreDataWatchlist {
+    if (!coreDataWatchlist) return nil;
+    
+    WatchlistModel *model = [[WatchlistModel alloc] init];
+    model.name = coreDataWatchlist.name;
+    model.colorHex = coreDataWatchlist.colorHex;
+    model.creationDate = coreDataWatchlist.creationDate;
+    model.lastModified = coreDataWatchlist.lastModified;
+    model.sortOrder = coreDataWatchlist.sortOrder;
+    model.symbols = coreDataWatchlist.symbols ?: @[];
+    return model;
+}
+
+- (void)updateCoreDataFromRuntimeModel:(Watchlist *)coreDataWatchlist withModel:(WatchlistModel *)runtimeModel {
+    if (!coreDataWatchlist || !runtimeModel) return;
+    
+    coreDataWatchlist.name = runtimeModel.name;
+    coreDataWatchlist.colorHex = runtimeModel.colorHex;
+    coreDataWatchlist.lastModified = runtimeModel.lastModified;
+    coreDataWatchlist.sortOrder = runtimeModel.sortOrder;
+    coreDataWatchlist.symbols = runtimeModel.symbols;
+}
 @end

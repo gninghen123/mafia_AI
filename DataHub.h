@@ -7,6 +7,7 @@
 
 #import <Foundation/Foundation.h>
 #import <CoreData/CoreData.h>
+#import "RuntimeModels.h"
 
 // Forward declarations
 @class StockSymbol;
@@ -92,6 +93,15 @@ typedef NS_ENUM(NSInteger, ModelStatus) {
 - (void)updateWatchlistName:(Watchlist *)watchlist newName:(NSString *)newName;
 - (BOOL)isSymbolFavorite:(NSString *)symbol;
 - (void)setSymbol:(NSString *)symbol favorite:(BOOL)favorite;
+// MARK: - Watchlist Management (RuntimeModels for UI)
+- (NSArray<WatchlistModel *> *)getAllWatchlistModels;
+- (WatchlistModel *)createWatchlistModelWithName:(NSString *)name;
+- (void)deleteWatchlistModel:(WatchlistModel *)watchlistModel;
+- (void)addSymbol:(NSString *)symbol toWatchlistModel:(WatchlistModel *)watchlistModel;
+- (void)removeSymbol:(NSString *)symbol fromWatchlistModel:(WatchlistModel *)watchlistModel;
+- (NSArray<NSString *> *)getSymbolsForWatchlistModel:(WatchlistModel *)watchlistModel;
+- (void)updateWatchlistModel:(WatchlistModel *)watchlistModel newName:(NSString *)newName;
+
 
 // MARK: - Alert Management
 - (NSArray<Alert *> *)getAllAlerts;

@@ -24,9 +24,9 @@ typedef NS_ENUM(NSInteger, DataSourceType) {
     DataSourceTypeCustom
 };
 
-// Data request types
 typedef NS_ENUM(NSInteger, DataRequestType) {
     DataRequestTypeQuote,           // Current price quote
+    DataRequestTypeBatchQuotes,     // Multiple quotes in single request
     DataRequestTypeHistoricalBars,  // Historical OHLCV data
     DataRequestTypeOrderBook,       // Level 2 data
     DataRequestTypeTimeSales,       // Time and sales
@@ -43,7 +43,6 @@ typedef NS_ENUM(NSInteger, DataRequestType) {
     DataRequestTypeTopLosers = 102,
     DataRequestTypeETFList = 103,
 };
-
 // Bar timeframes
 typedef NS_ENUM(NSInteger, BarTimeframe) {
     BarTimeframe1Min,

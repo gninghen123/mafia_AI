@@ -30,7 +30,7 @@
         completion:(void (^)(BOOL success, NSError *error))completion;
 
 // Market data endpoints
-- (void)fetchQuoteForSymbols:(NSArray<NSString *> *)symbols
+- (void)fetchQuotesForSymbols:(NSArray<NSString *> *)symbols
                   completion:(void (^)(NSDictionary *quotes, NSError *error))completion;
 
 - (void)fetchMarketHours:(NSString *)market

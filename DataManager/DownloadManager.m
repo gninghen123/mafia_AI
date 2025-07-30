@@ -5,6 +5,7 @@
 
 #import "DownloadManager.h"
 #import "WebullDataSource.h"
+#import "MarketData.h"
 
 @interface DataSourceInfo : NSObject
 @property (nonatomic, strong) id<DataSource> dataSource;
@@ -244,6 +245,15 @@
                              requestID:requestID
                             completion:completion];
             break;
+        case DataRequestTypeBatchQuotes:
+                   [self executeBatchQuoteRequest:parameters
+                                   withDataSource:dataSource
+                                       sourceInfo:sourceInfo
+                                          sources:sources
+                                      sourceIndex:index
+                                        requestID:requestID
+                                       completion:completion];
+                   break;
             
         default:
             NSLog(@"Unsupported request type: %ld", (long)requestType);
@@ -258,6 +268,102 @@
 }
 
 #pragma mark - Specific Request Type Handlers
+
+- (void)executeBatchQuoteRequest:(NSDictionary *)parameters
+                  withDataSource:(id<DataSource>)dataSource
+                      sourceInfo:(DataSourceInfo *)sourceInfo
+                         sources:(NSArray<DataSourceInfo *> *)sources
+                     sourceIndex:(NSInteger)index
+                       requestID:(NSString *)requestID
+                      completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    NSArray<NSString *> *symbols = parameters[@"symbols"];
+    
+    NSLog(@"DownloadManager: Executing batch quote request for %lu symbols using %@ (index %ld of %lu)",
+          (unsigned long)symbols.count, dataSource.sourceName, (long)index, (unsigned long)sources.count);
+    
+    // Check if data source supports batch quotes
+    if ([dataSource respondsToSelector:@selector(fetchQuotesForSymbols:completion:)]) {
+        [dataSource fetchQuotesForSymbols:symbols completion:^(NSDictionary *quotes, NSError *error) {
+            if (!self.activeRequests[requestID]) {
+                return;
+            }
+            
+            if (error && self.fallbackEnabled && index < sources.count - 1) {
+                NSLog(@"DownloadManager: Batch quote request failed with %@, trying next source", dataSource.sourceName);
+                sourceInfo.failureCount++;
+                sourceInfo.lastFailureTime = [NSDate date];
+                
+                [self executeRequestWithSources:sources
+                                    requestType:DataRequestTypeBatchQuotes
+                                     parameters:parameters
+                                    sourceIndex:index + 1
+                                      requestID:requestID
+                                     completion:completion];
+            } else {
+                NSLog(@"DownloadManager: Batch quote request succeeded with %@ - got %lu quotes",
+                      dataSource.sourceName, (unsigned long)quotes.count);
+                [self.activeRequests removeObjectForKey:requestID];
+                if (completion) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        completion(quotes, sourceInfo.type, error);
+                    });
+                }
+            }
+        }];
+    } else {
+        // Fallback: data source doesn't support batch, use individual calls
+        NSLog(@"DownloadManager: %@ doesn't support batch quotes, falling back to individual calls", dataSource.sourceName);
+        
+        NSMutableDictionary *batchResult = [NSMutableDictionary dictionary];
+        __block NSInteger completedCount = 0;
+        __block NSError *lastError = nil;
+        
+        for (NSString *symbol in symbols) {
+            if ([dataSource respondsToSelector:@selector(fetchQuoteForSymbol:completion:)]) {
+                [dataSource fetchQuoteForSymbol:symbol completion:^(id quote, NSError *error) {
+                    @synchronized(batchResult) {
+                        if (quote) {
+                            // Convert quote to dictionary based on type
+                            if ([quote isKindOfClass:[NSDictionary class]]) {
+                                batchResult[symbol] = quote;
+                            } else if ([quote isKindOfClass:[MarketData class]]) {
+                                // MarketData object - call toDictionary
+                                if ([quote respondsToSelector:@selector(toDictionary)]) {
+                                    batchResult[symbol] = [quote toDictionary];
+                                } else {
+                                    NSLog(@"Warning: MarketData object doesn't have toDictionary method for %@", symbol);
+                                }
+                            } else {
+                                // Other types - try to convert or log warning
+                                NSLog(@"Warning: Unknown quote format (%@) for %@", [quote class], symbol);
+                                // Try to store as-is if it's a basic type
+                                if ([quote isKindOfClass:[NSNumber class]] || [quote isKindOfClass:[NSString class]]) {
+                                    batchResult[symbol] = @{@"last": quote, @"symbol": symbol};
+                                }
+                            }
+                        }
+                        if (error) {
+                            lastError = error;
+                        }
+                        
+                        completedCount++;
+                        if (completedCount == symbols.count) {
+                            [self.activeRequests removeObjectForKey:requestID];
+                            if (completion) {
+                                dispatch_async(dispatch_get_main_queue(), ^{
+                                    NSLog(@"DownloadManager: Fallback batch completed - %lu successful of %lu total",
+                                          (unsigned long)batchResult.count, (unsigned long)symbols.count);
+                                    completion([batchResult copy], sourceInfo.type, batchResult.count > 0 ? nil : lastError);
+                                });
+                            }
+                        }
+                    }
+                }];
+            }
+        }
+    }
+}
 
 - (void)executeMarketListRequest:(NSDictionary *)parameters
                   withDataSource:(id<DataSource>)dataSource
@@ -613,6 +719,8 @@
             return (capabilities & DataSourceCapabilityNews) != 0;
         case DataRequestTypeFundamentals:
             return (capabilities & DataSourceCapabilityFundamentals) != 0;
+        case DataRequestTypeBatchQuotes:
+               return (capabilities & DataSourceCapabilityQuotes) != 0;
         case DataRequestTypePositions:
         case DataRequestTypeOrders:
         case DataRequestTypeAccountInfo:
@@ -718,6 +826,22 @@
               }];
 }
 
+- (void)fetchQuotesForSymbols:(NSArray<NSString *> *)symbols
+                   completion:(void (^)(NSDictionary *quotes, NSError *error))completion {
+    NSDictionary *params = @{@"symbols": symbols};
+    
+    [self executeRequest:DataRequestTypeBatchQuotes
+              parameters:params
+              completion:^(id result, DataSourceType usedSource, NSError *error) {
+                  if (completion) {
+                      if ([result isKindOfClass:[NSDictionary class]]) {
+                          completion((NSDictionary *)result, error);
+                      } else {
+                          completion(@{}, error);
+                      }
+                  }
+              }];
+}
 - (void)fetchHistoricalDataForSymbol:(NSString *)symbol
                            timeframe:(BarTimeframe)timeframe
                            startDate:(NSDate *)startDate

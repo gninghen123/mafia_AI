@@ -97,7 +97,85 @@
     
     return requestID;
 }
-
+- (NSString *)requestQuotesForSymbols:(NSArray<NSString *> *)symbols
+                           completion:(void (^)(NSDictionary *quotes, NSError *error))completion {
+    
+    if (!symbols || symbols.count == 0) {
+        NSError *error = [NSError errorWithDomain:@"DataManager"
+                                             code:100
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid symbols array"}];
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, error);
+            });
+        }
+        return nil;
+    }
+    
+    NSLog(@"📊 DataManager: Requesting batch quotes for %lu symbols: %@", (unsigned long)symbols.count, symbols);
+    
+    NSString *requestID = [[NSUUID UUID] UUIDString];
+    NSMutableDictionary *requestInfo = [@{
+        @"type": @"batchQuotes",
+        @"symbols": symbols
+    } mutableCopy];
+    
+    if (completion) {
+        requestInfo[@"completion"] = [completion copy];
+    }
+    
+    self.activeRequests[requestID] = requestInfo;
+    
+    // Use SchwabDataSource directly for batch quotes (most efficient)
+    id<DataSource> schwabSource = [DataAdapterFactory adapterForDataSource:DataSourceTypeSchwab];
+    
+    if ([schwabSource respondsToSelector:@selector(fetchQuotesForSymbols:completion:)]) {
+        [schwabSource fetchQuotesForSymbols:symbols completion:^(NSDictionary *quotes, NSError *error) {
+            [self.activeRequests removeObjectForKey:requestID];
+            
+            if (completion) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (error) {
+                        NSLog(@"❌ DataManager: Batch quotes failed: %@", error.localizedDescription);
+                    } else {
+                        NSLog(@"✅ DataManager: Batch quotes succeeded, got %lu quotes", (unsigned long)quotes.count);
+                    }
+                    completion(quotes, error);
+                });
+            }
+        }];
+    } else {
+        // Fallback to individual calls if batch not supported
+        NSLog(@"⚠️ DataManager: Batch quotes not supported, falling back to individual calls");
+        
+        NSMutableDictionary *batchResult = [NSMutableDictionary dictionary];
+        __block NSInteger completedCount = 0;
+        __block NSError *lastError = nil;
+        
+        for (NSString *symbol in symbols) {
+            [self requestQuoteForSymbol:symbol completion:^(MarketData *quote, NSError *error) {
+                @synchronized(batchResult) {
+                    if (quote) {
+                        batchResult[symbol] = [quote toDictionary]; // Convert to dictionary format
+                    }
+                    if (error) {
+                        lastError = error;
+                    }
+                    
+                    completedCount++;
+                    if (completedCount == symbols.count) {
+                        [self.activeRequests removeObjectForKey:requestID];
+                        if (completion) {
+                            completion([batchResult copy], lastError);
+                        }
+                    }
+                }
+            }];
+        }
+    }
+    
+    return requestID;
+}
 // Historical data - with date range
 - (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
                                    timeframe:(BarTimeframe)timeframe

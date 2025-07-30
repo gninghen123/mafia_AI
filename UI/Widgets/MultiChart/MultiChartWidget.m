@@ -275,11 +275,73 @@
 #pragma mark - Data Loading
 
 - (void)loadDataFromDataHub {
-    for (MiniChart *miniChart in self.miniCharts) {
-        [self loadDataForMiniChart:miniChart];
+    if (self.symbols.count == 0) return;
+    
+    NSLog(@"📊 MultiChartWidget: Loading data for %lu symbols using BATCH API", (unsigned long)self.symbols.count);
+    
+    // Set loading state for all charts
+    for (MiniChart *chart in self.miniCharts) {
+        [chart setLoading:YES];
+    }
+    
+    // Disable refresh button during loading
+    self.refreshButton.enabled = NO;
+    
+    // Make SINGLE batch call for quotes
+    [[DataHub shared] getQuotesForSymbols:self.symbols completion:^(NSDictionary<NSString *,MarketQuoteModel *> *quotes, BOOL allLive) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSLog(@"✅ MultiChartWidget: Batch quotes received - %lu quotes (allLive: %@)",
+                  (unsigned long)quotes.count, allLive ? @"YES" : @"NO");
+            
+            // Update all charts with quote data
+            for (MiniChart *chart in self.miniCharts) {
+                MarketQuoteModel *quote = quotes[chart.symbol];
+                if (quote) {
+                    chart.currentPrice = quote.last;
+                    chart.priceChange = quote.change;
+                    chart.percentChange = quote.changePercent;
+                    NSLog(@"📈 Updated %@ with price: %@", chart.symbol, quote.last);
+                }
+            }
+            
+            // Now load historical data for each chart (these need individual calls)
+            [self loadHistoricalDataForAllCharts];
+        });
+    }];
+}
+- (void)loadHistoricalDataForAllCharts {
+    NSLog(@"📊 MultiChartWidget: Loading historical data for %lu charts", (unsigned long)self.miniCharts.count);
+    
+    __block NSInteger completedCount = 0;
+    NSInteger totalCount = self.miniCharts.count;
+    
+    for (MiniChart *chart in self.miniCharts) {
+        [[DataHub shared] getHistoricalBarsForSymbol:chart.symbol
+                                           timeframe:[self convertToBarTimeframe:self.timeframe]
+                                            barCount:self.maxBars
+                                          completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isLive) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completedCount++;
+                
+                [chart setLoading:NO];
+                
+                if (bars && bars.count > 0) {
+                    [chart updateWithHistoricalBars:bars];
+                    NSLog(@"📈 Loaded %lu bars for %@", (unsigned long)bars.count, chart.symbol);
+                } else {
+                    [chart setError:@"No data available"];
+                    NSLog(@"❌ No historical data for %@", chart.symbol);
+                }
+                
+                // Re-enable refresh button when all done
+                if (completedCount == totalCount) {
+                    self.refreshButton.enabled = YES;
+                    NSLog(@"✅ MultiChartWidget: All data loading completed");
+                }
+            });
+        }];
     }
 }
-
 - (void)loadDataForMiniChart:(MiniChart *)miniChart {
     NSString *symbol = miniChart.symbol;
     if (!symbol) return;
@@ -608,13 +670,38 @@
 #pragma mark - Public Methods
 
 - (void)refreshAllCharts {
+    NSLog(@"🔄 MultiChartWidget: Manual refresh triggered");
     [self loadDataFromDataHub];
 }
 
 - (void)refreshChartForSymbol:(NSString *)symbol {
+    NSLog(@"🔄 MultiChartWidget: Refreshing single chart for %@", symbol);
+    
     MiniChart *chart = [self miniChartForSymbol:symbol];
     if (chart) {
-        [self loadDataForMiniChart:chart];
+        // Use single symbol batch call (more consistent with architecture)
+        [[DataHub shared] getQuotesForSymbols:@[symbol] completion:^(NSDictionary<NSString *,MarketQuoteModel *> *quotes, BOOL allLive) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                MarketQuoteModel *quote = quotes[symbol];
+                if (quote) {
+                    chart.currentPrice = quote.last;
+                    chart.priceChange = quote.change;
+                    chart.percentChange = quote.changePercent;
+                }
+                
+                // Also refresh historical data
+                [[DataHub shared] getHistoricalBarsForSymbol:symbol
+                                                   timeframe:[self convertToBarTimeframe:self.timeframe]
+                                                    barCount:self.maxBars
+                                                  completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isLive) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        if (bars && bars.count > 0) {
+                            [chart updateWithHistoricalBars:bars];
+                        }
+                    });
+                }];
+            });
+        }];
     }
 }
 

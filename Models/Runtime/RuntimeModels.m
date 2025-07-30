@@ -266,3 +266,34 @@
 }
 
 @end
+
+
+// =======================================
+// WATCHLIST MODEL IMPLEMENTATION
+// =======================================
+
+@implementation WatchlistModel
+
++ (instancetype)watchlistFromDictionary:(NSDictionary *)dict {
+    WatchlistModel *model = [[WatchlistModel alloc] init];
+    model.name = dict[@"name"];
+    model.colorHex = dict[@"colorHex"];
+    model.creationDate = dict[@"creationDate"];
+    model.lastModified = dict[@"lastModified"];
+    model.sortOrder = [dict[@"sortOrder"] integerValue];
+    model.symbols = dict[@"symbols"] ?: @[];
+    return model;
+}
+
+- (NSDictionary *)toDictionary {
+    return @{
+        @"name": self.name ?: @"",
+        @"colorHex": self.colorHex ?: [NSNull null],
+        @"creationDate": self.creationDate ?: [NSNull null],
+        @"lastModified": self.lastModified ?: [NSNull null],
+        @"sortOrder": @(self.sortOrder),
+        @"symbols": self.symbols ?: @[]
+    };
+}
+
+@end

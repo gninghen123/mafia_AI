@@ -22,19 +22,19 @@
 @property (nonatomic, strong) NSArray<NSString *> *symbols;
 @property (nonatomic, copy) NSString *symbolsString;  // Simboli separati da virgola
 
-// UI Components
-@property (nonatomic, strong, readonly) NSTextField *symbolsTextField;
-@property (nonatomic, strong, readonly) NSPopUpButton *chartTypePopup;
-@property (nonatomic, strong, readonly) NSPopUpButton *timeframePopup;
-@property (nonatomic, strong, readonly) NSPopUpButton *scaleTypePopup;
-@property (nonatomic, strong, readonly) NSTextField *maxBarsField;
-@property (nonatomic, strong, readonly) NSButton *volumeCheckbox;
-@property (nonatomic, strong, readonly) NSSegmentedControl *columnsControl;
+// UI Components - REMOVED readonly to allow internal assignment
+@property (nonatomic, strong) NSTextField *symbolsTextField;
+@property (nonatomic, strong) NSPopUpButton *chartTypePopup;
+@property (nonatomic, strong) NSPopUpButton *timeframePopup;
+@property (nonatomic, strong) NSPopUpButton *scaleTypePopup;
+@property (nonatomic, strong) NSTextField *maxBarsField;
+@property (nonatomic, strong) NSButton *volumeCheckbox;
+@property (nonatomic, strong) NSSegmentedControl *columnsControl;
 
-// Mini charts container
-@property (nonatomic, strong, readonly) NSScrollView *scrollView;
-@property (nonatomic, strong, readonly) NSView *chartsContainer;
-@property (nonatomic, strong, readonly) NSMutableArray<MiniChart *> *miniCharts;
+// Mini charts container - REMOVED readonly to allow internal assignment
+@property (nonatomic, strong) NSScrollView *scrollView;
+@property (nonatomic, strong) NSView *chartsContainer;
+@property (nonatomic, strong) NSMutableArray<MiniChart *> *miniCharts;
 
 // Actions
 - (void)setSymbolsFromString:(NSString *)symbolsString;

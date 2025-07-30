@@ -3,9 +3,14 @@
 //  TradingApp
 //
 //  Lightweight chart view for grid display
+//  UPDATED: Uses RuntimeModels instead of Core Data
 //
 
 #import <Cocoa/Cocoa.h>
+#import "RuntimeModels.h"
+
+// Forward declaration
+@class HistoricalBarModel;
 
 typedef NS_ENUM(NSInteger, MiniChartType) {
     MiniChartTypeLine,
@@ -37,7 +42,7 @@ typedef NS_ENUM(NSInteger, MiniChartScaleType) {
 @property (nonatomic, assign) MiniChartType chartType;
 @property (nonatomic, assign) MiniChartTimeframe timeframe;
 @property (nonatomic, assign) MiniChartScaleType scaleType;
-@property (nonatomic, strong) NSArray *priceData;  // Array di HistoricalBar
+@property (nonatomic, strong) NSArray<HistoricalBarModel *> *priceData;  // UPDATED: Array di RuntimeModels
 @property (nonatomic, assign) NSInteger maxBars;  // Numero massimo di barre da visualizzare
 @property (nonatomic, assign) BOOL showVolume;    // Mostra volumi sovrapposti
 
@@ -57,6 +62,14 @@ typedef NS_ENUM(NSInteger, MiniChartScaleType) {
 @property (nonatomic, assign) BOOL hasError;
 @property (nonatomic, strong) NSString *errorMessage;
 
+// UI Components (read-only access)
+@property (nonatomic, strong, readonly) NSTextField *symbolLabel;
+@property (nonatomic, strong, readonly) NSTextField *priceLabel;
+@property (nonatomic, strong, readonly) NSTextField *changeLabel;
+@property (nonatomic, strong, readonly) NSView *chartArea;
+@property (nonatomic, strong, readonly) NSView *volumeArea;
+@property (nonatomic, strong, readonly) NSProgressIndicator *loadingIndicator;
+
 // Initialization
 + (instancetype)miniChartWithSymbol:(NSString *)symbol
                           chartType:(MiniChartType)chartType
@@ -65,8 +78,13 @@ typedef NS_ENUM(NSInteger, MiniChartScaleType) {
                             maxBars:(NSInteger)maxBars
                          showVolume:(BOOL)showVolume;
 
-// Data management
-- (void)updateWithPriceData:(NSArray *)priceData;
+// Data management - UPDATED for RuntimeModels
+- (void)updateWithHistoricalBars:(NSArray<HistoricalBarModel *> *)bars;
+
+// DEPRECATED: Remove old method
+// - (void)updateWithPriceData:(NSArray *)priceData;
+
+// UI State
 - (void)setLoading:(BOOL)loading;
 - (void)setError:(NSString *)errorMessage;
 - (void)clearError;

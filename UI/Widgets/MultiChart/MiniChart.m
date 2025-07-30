@@ -2,14 +2,12 @@
 //  MiniChart.m
 //  TradingApp
 //
-//  Implementation of lightweight chart view for grid display
+//  Lightweight chart view for grid display
+//  REWRITTEN: Uses ONLY RuntimeModels, removed all Core Data dependencies
 //
 
 #import "MiniChart.h"
-#import "HistoricalBar+CoreDataClass.h"
-#import "DataHub.h"
-#import "DataHub+MarketData.h"
-#import "CommonTypes.h"  // Per BarTimeframe
+#import "RuntimeModels.h"
 
 @interface MiniChart ()
 
@@ -18,38 +16,19 @@
 @property (nonatomic, strong) NSTextField *priceLabel;
 @property (nonatomic, strong) NSTextField *changeLabel;
 @property (nonatomic, strong) NSView *chartArea;
-@property (nonatomic, strong) NSView *volumeArea;  // Area per i volumi
+@property (nonatomic, strong) NSView *volumeArea;
 @property (nonatomic, strong) NSProgressIndicator *loadingIndicator;
 
-// Drawing
+// Chart drawing data
+@property (nonatomic, assign) double minPrice;
+@property (nonatomic, assign) double maxPrice;
+@property (nonatomic, assign) double maxVolume;
 @property (nonatomic, strong) NSBezierPath *chartPath;
-@property (nonatomic, strong) NSBezierPath *volumePath;  // Path per i volumi
-@property (nonatomic, strong) NSMutableArray *candlestickData;  // Dati per candlestick
-@property (nonatomic, assign) CGFloat minPrice;
-@property (nonatomic, assign) CGFloat maxPrice;
-@property (nonatomic, assign) CGFloat maxVolume;  // Volume massimo per normalizzazione
+@property (nonatomic, strong) NSBezierPath *volumePath;
 
 @end
 
 @implementation MiniChart
-
-#pragma mark - Class Methods
-
-+ (instancetype)miniChartWithSymbol:(NSString *)symbol
-                          chartType:(MiniChartType)chartType
-                          timeframe:(MiniChartTimeframe)timeframe
-                          scaleType:(MiniChartScaleType)scaleType
-                            maxBars:(NSInteger)maxBars
-                         showVolume:(BOOL)showVolume {
-    MiniChart *chart = [[MiniChart alloc] initWithFrame:NSMakeRect(0, 0, 200, 150)];
-    chart.symbol = symbol;
-    chart.chartType = chartType;
-    chart.timeframe = timeframe;
-    chart.scaleType = scaleType;
-    chart.maxBars = maxBars;
-    chart.showVolume = showVolume;
-    return chart;
-}
 
 #pragma mark - Initialization
 
@@ -63,227 +42,186 @@
     return self;
 }
 
+- (instancetype)init {
+    return [self initWithFrame:NSMakeRect(0, 0, 300, 200)];
+}
+
++ (instancetype)miniChartWithSymbol:(NSString *)symbol
+                          chartType:(MiniChartType)chartType
+                          timeframe:(MiniChartTimeframe)timeframe
+                          scaleType:(MiniChartScaleType)scaleType
+                            maxBars:(NSInteger)maxBars
+                         showVolume:(BOOL)showVolume {
+    
+    MiniChart *chart = [[MiniChart alloc] init];
+    chart.symbol = symbol;
+    chart.chartType = chartType;
+    chart.timeframe = timeframe;
+    chart.scaleType = scaleType;
+    chart.maxBars = maxBars;
+    chart.showVolume = showVolume;
+    return chart;
+}
+
 - (void)setupDefaults {
+    // Default configuration
+    _maxBars = 100;
+    _showVolume = YES;
+    _chartType = MiniChartTypeLine;
+    _timeframe = MiniChartTimeframeDaily;
+    _scaleType = MiniChartScaleLinear;
+    
     // Default colors
     _positiveColor = [NSColor systemGreenColor];
     _negativeColor = [NSColor systemRedColor];
     _backgroundColor = [NSColor controlBackgroundColor];
     _textColor = [NSColor labelColor];
     
-    // Default state
+    // Default price range
+    _minPrice = 0;
+    _maxPrice = 100;
+    _maxVolume = 1000000;
+    
+    // State
     _isLoading = NO;
     _hasError = NO;
-    _chartType = MiniChartTypeLine;
-    _timeframe = MiniChartTimeframeDaily;
-    _scaleType = MiniChartScaleLinear;
-    _maxBars = 100;
-    _showVolume = YES;
     
-    // View setup
+    // Border
     self.wantsLayer = YES;
-    self.layer.backgroundColor = _backgroundColor.CGColor;
     self.layer.borderWidth = 1.0;
     self.layer.borderColor = [NSColor separatorColor].CGColor;
     self.layer.cornerRadius = 4.0;
 }
 
 - (void)setupUI {
-    // Symbol label (top left)
+    // Symbol label
     self.symbolLabel = [[NSTextField alloc] init];
-    self.symbolLabel.stringValue = self.symbol ?: @"";
-    self.symbolLabel.textColor = [NSColor colorWithRed:1 green:1 blue:1 alpha:0.25];
-    self.symbolLabel.font = [NSFont boldSystemFontOfSize:18];
-    self.symbolLabel.backgroundColor = [NSColor clearColor];
-    self.symbolLabel.bordered = NO;
     self.symbolLabel.editable = NO;
-    self.symbolLabel.selectable = NO;
+    self.symbolLabel.bordered = NO;
+    self.symbolLabel.backgroundColor = [NSColor clearColor];
+    self.symbolLabel.font = [NSFont boldSystemFontOfSize:14];
+    self.symbolLabel.textColor = self.textColor;
     self.symbolLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [self addSubview:self.symbolLabel];
     
-    // Price label (top right)
+    // Price label
     self.priceLabel = [[NSTextField alloc] init];
-    self.priceLabel.stringValue = @"$0.00";
-    self.priceLabel.textColor = self.textColor;
-    self.priceLabel.font = [NSFont systemFontOfSize:18];
-    self.priceLabel.backgroundColor = [NSColor clearColor];
-    self.priceLabel.bordered = NO;
     self.priceLabel.editable = NO;
-    self.priceLabel.selectable = NO;
-    self.priceLabel.alignment = NSTextAlignmentRight;
+    self.priceLabel.bordered = NO;
+    self.priceLabel.backgroundColor = [NSColor clearColor];
+    self.priceLabel.font = [NSFont systemFontOfSize:12];
+    self.priceLabel.textColor = self.textColor;
     self.priceLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [self addSubview:self.priceLabel];
     
-    // Change label (bottom right)
+    // Change label
     self.changeLabel = [[NSTextField alloc] init];
-    self.changeLabel.stringValue = @"+0.00%";
-    self.changeLabel.textColor = self.positiveColor;
-    self.changeLabel.font = [NSFont systemFontOfSize:18];
-    self.changeLabel.backgroundColor = [NSColor clearColor];
-    self.changeLabel.bordered = NO;
     self.changeLabel.editable = NO;
-    self.changeLabel.selectable = NO;
-    self.changeLabel.alignment = NSTextAlignmentRight;
+    self.changeLabel.bordered = NO;
+    self.changeLabel.backgroundColor = [NSColor clearColor];
+    self.changeLabel.font = [NSFont systemFontOfSize:10];
+    self.changeLabel.textColor = self.textColor;
     self.changeLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [self addSubview:self.changeLabel];
     
-    // Chart area (area principale per prezzi)
+    // Chart area
     self.chartArea = [[NSView alloc] init];
     self.chartArea.wantsLayer = YES;
-    self.chartArea.layer.backgroundColor = [NSColor clearColor].CGColor;
+    self.chartArea.layer.backgroundColor = self.backgroundColor.CGColor;
     self.chartArea.translatesAutoresizingMaskIntoConstraints = NO;
     [self addSubview:self.chartArea];
     
-    // Volume area (area separata per volumi)
+    // Volume area
     self.volumeArea = [[NSView alloc] init];
     self.volumeArea.wantsLayer = YES;
-    self.volumeArea.layer.backgroundColor = [NSColor clearColor].CGColor;
+    self.volumeArea.layer.backgroundColor = [[NSColor systemBlueColor] colorWithAlphaComponent:0.1].CGColor;
     self.volumeArea.translatesAutoresizingMaskIntoConstraints = NO;
-    self.volumeArea.hidden = !self.showVolume; // Nascondi se volume disabilitato
     [self addSubview:self.volumeArea];
     
     // Loading indicator
     self.loadingIndicator = [[NSProgressIndicator alloc] init];
     self.loadingIndicator.style = NSProgressIndicatorStyleSpinning;
-    self.loadingIndicator.controlSize = NSControlSizeSmall;
-    self.loadingIndicator.translatesAutoresizingMaskIntoConstraints = NO;
     self.loadingIndicator.hidden = YES;
+    self.loadingIndicator.translatesAutoresizingMaskIntoConstraints = NO;
     [self addSubview:self.loadingIndicator];
 }
 
 - (void)setupConstraints {
+    CGFloat padding = 8;
+    CGFloat labelHeight = 20;
+    CGFloat volumeHeight = 30;
+    
+    // Symbol label (top left)
     [NSLayoutConstraint activateConstraints:@[
-        // Symbol label - top left
-        [self.symbolLabel.topAnchor constraintEqualToAnchor:self.topAnchor constant:4],
-        [self.symbolLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:4],
-        [self.symbolLabel.widthAnchor constraintLessThanOrEqualToConstant:60],
-        
-        // Price label - top right
-        [self.priceLabel.topAnchor constraintEqualToAnchor:self.topAnchor constant:4],
-        [self.priceLabel.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-4],
-        [self.priceLabel.leadingAnchor constraintGreaterThanOrEqualToAnchor:self.symbolLabel.trailingAnchor constant:4],
-        
-        // Change label - bottom right
-        [self.changeLabel.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-4],
-        [self.changeLabel.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-4],
-        [self.changeLabel.widthAnchor constraintLessThanOrEqualToConstant:50]
+        [self.symbolLabel.topAnchor constraintEqualToAnchor:self.topAnchor constant:padding],
+        [self.symbolLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:padding],
+        [self.symbolLabel.heightAnchor constraintEqualToConstant:labelHeight]
     ]];
     
-    if (self.showVolume) {
-        // Layout con volume: Chart area 70%, Volume area 25%, gap 5%
-        [NSLayoutConstraint activateConstraints:@[
-            // Chart area - area principale per prezzi
-            [self.chartArea.topAnchor constraintEqualToAnchor:self.symbolLabel.bottomAnchor constant:2],
-            [self.chartArea.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:4],
-            [self.chartArea.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-4],
-            [self.chartArea.heightAnchor constraintEqualToAnchor:self.heightAnchor multiplier:0.65], // 65% dell'altezza
-            
-            // Volume area - area separata per volumi
-            [self.volumeArea.topAnchor constraintEqualToAnchor:self.chartArea.bottomAnchor constant:4],
-            [self.volumeArea.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:4],
-            [self.volumeArea.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-4],
-            [self.volumeArea.bottomAnchor constraintEqualToAnchor:self.changeLabel.topAnchor constant:-2]
-        ]];
-    } else {
-        // Layout senza volume: Chart area occupa tutto lo spazio
-        [NSLayoutConstraint activateConstraints:@[
-            // Chart area - occupa tutto lo spazio disponibile
-            [self.chartArea.topAnchor constraintEqualToAnchor:self.symbolLabel.bottomAnchor constant:2],
-            [self.chartArea.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:4],
-            [self.chartArea.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-4],
-            [self.chartArea.bottomAnchor constraintEqualToAnchor:self.changeLabel.topAnchor constant:-2]
-        ]];
-    }
+    // Price label (top right)
+    [NSLayoutConstraint activateConstraints:@[
+        [self.priceLabel.topAnchor constraintEqualToAnchor:self.topAnchor constant:padding],
+        [self.priceLabel.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-padding],
+        [self.priceLabel.heightAnchor constraintEqualToConstant:labelHeight]
+    ]];
     
-    // Loading indicator - center
+    // Change label (below price)
+    [NSLayoutConstraint activateConstraints:@[
+        [self.changeLabel.topAnchor constraintEqualToAnchor:self.priceLabel.bottomAnchor],
+        [self.changeLabel.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-padding],
+        [self.changeLabel.heightAnchor constraintEqualToConstant:labelHeight]
+    ]];
+    
+    // Volume area (bottom)
+    [NSLayoutConstraint activateConstraints:@[
+        [self.volumeArea.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:padding],
+        [self.volumeArea.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-padding],
+        [self.volumeArea.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-padding],
+        [self.volumeArea.heightAnchor constraintEqualToConstant:volumeHeight]
+    ]];
+    
+    // Chart area (middle)
+    [NSLayoutConstraint activateConstraints:@[
+        [self.chartArea.topAnchor constraintEqualToAnchor:self.symbolLabel.bottomAnchor constant:padding],
+        [self.chartArea.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:padding],
+        [self.chartArea.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-padding],
+        [self.chartArea.bottomAnchor constraintEqualToAnchor:self.volumeArea.topAnchor constant:-padding]
+    ]];
+    
+    // Loading indicator (center)
     [NSLayoutConstraint activateConstraints:@[
         [self.loadingIndicator.centerXAnchor constraintEqualToAnchor:self.centerXAnchor],
         [self.loadingIndicator.centerYAnchor constraintEqualToAnchor:self.centerYAnchor]
     ]];
 }
 
-#pragma mark - Properties
+#pragma mark - Data Management (NEW - RuntimeModels ONLY)
 
-- (void)setSymbol:(NSString *)symbol {
-    _symbol = symbol;
-    self.symbolLabel.stringValue = symbol ?: @"";
-}
-
-- (void)setCurrentPrice:(NSNumber *)currentPrice {
-    _currentPrice = currentPrice;
-    if (currentPrice) {
-        self.priceLabel.stringValue = [NSString stringWithFormat:@"$%.2f", currentPrice.doubleValue];
-    } else {
-        self.priceLabel.stringValue = @"$0.00";
+- (void)updateWithHistoricalBars:(NSArray<HistoricalBarModel *> *)bars {
+    if (!bars || bars.count == 0) {
+        NSLog(@"⚠️ MiniChart[%@]: No bars to update", self.symbol ?: @"nil");
+        return;
     }
-}
-
-- (void)setPercentChange:(NSNumber *)percentChange {
-    _percentChange = percentChange;
-    if (percentChange) {
-        double change = percentChange.doubleValue;
-        NSString *sign = change >= 0 ? @"+" : @"";
-        self.changeLabel.stringValue = [NSString stringWithFormat:@"%@%.2f%%", sign, change];
-        self.changeLabel.textColor = change >= 0 ? self.positiveColor : self.negativeColor;
+    
+    NSLog(@"📊 MiniChart[%@]: Updating with %lu bars", self.symbol ?: @"nil", (unsigned long)bars.count);
+    
+    // Limit bars if necessary
+    if (bars.count > self.maxBars) {
+        NSInteger startIndex = bars.count - self.maxBars;
+        self.priceData = [bars subarrayWithRange:NSMakeRange(startIndex, self.maxBars)];
     } else {
-        self.changeLabel.stringValue = @"+0.00%";
-        self.changeLabel.textColor = self.textColor;
-    }
-}
-
-- (void)setShowVolume:(BOOL)showVolume {
-    _showVolume = showVolume;
-    self.volumeArea.hidden = !showVolume;
-    [self updateConstraintsIfNeeded];
-    [self setNeedsDisplay:YES];
-}
-
-- (void)updateConstraintsIfNeeded {
-    // Rimuovi tutti i constraints esistenti per chart e volume area
-    NSArray *constraintsToRemove = [self.constraints filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSLayoutConstraint *constraint, NSDictionary *bindings) {
-        return (constraint.firstItem == self.chartArea ||
-                constraint.firstItem == self.volumeArea ||
-                constraint.secondItem == self.chartArea ||
-                constraint.secondItem == self.volumeArea);
-    }]];
-    
-    [NSLayoutConstraint deactivateConstraints:constraintsToRemove];
-    
-    // Ricrea i constraints
-    [self setupConstraints];
-}
-
-#pragma mark - Data Management
-
-- (void)updateWithPriceData:(NSArray *)priceData {
-    self.priceData = priceData;
-    
-    // Limita il numero di barre se necessario
-    if (priceData.count > self.maxBars) {
-        NSInteger startIndex = priceData.count - self.maxBars;
-        self.priceData = [priceData subarrayWithRange:NSMakeRange(startIndex, self.maxBars)];
+        self.priceData = bars;
     }
     
     [self calculatePriceRange];
     [self calculateVolumeRange];
     [self generateChartPath];
     [self generateVolumePath];
-    [self updatePriceLabels];
-    [self setNeedsDisplay:YES];
-}
-
-- (void)calculateVolumeRange {
-    if (!self.priceData || self.priceData.count == 0) {
-        self.maxVolume = 1000000; // Default
-        return;
-    }
+    [self updatePriceLabelsFromBars];
     
-    self.maxVolume = 0;
-    for (HistoricalBar *bar in self.priceData) {
-        double volume = bar.volume;
-        if (volume > self.maxVolume) {
-            self.maxVolume = volume;
-        }
-    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self setNeedsDisplay:YES];
+    });
 }
 
 - (void)calculatePriceRange {
@@ -296,43 +234,86 @@
     self.minPrice = CGFLOAT_MAX;
     self.maxPrice = CGFLOAT_MIN;
     
-    // Per scala percentuale, usa il primo valore come base
-    double basePrice = 0;
-    if (self.scaleType == MiniChartScalePercent && self.priceData.count > 0) {
-        HistoricalBar *firstBar = self.priceData.firstObject;
-        basePrice = firstBar.close;
-    }
-    
-    for (HistoricalBar *bar in self.priceData) {
-        double lowPrice, highPrice;
+    for (HistoricalBarModel *bar in self.priceData) {
+        double low = bar.low;
+        double high = bar.high;
         
-        switch (self.scaleType) {
-            case MiniChartScaleLinear:
-                lowPrice = bar.low;
-                highPrice = bar.high;
-                break;
-                
-            case MiniChartScaleLog:
-                lowPrice = log(bar.low);
-                highPrice = log(bar.high);
-                break;
-                
-            case MiniChartScalePercent:
-                lowPrice = ((bar.low - basePrice) / basePrice) * 100.0;
-                highPrice = ((bar.high - basePrice) / basePrice) * 100.0;
-                break;
-        }
-        
-        if (lowPrice < self.minPrice) self.minPrice = lowPrice;
-        if (highPrice > self.maxPrice) self.maxPrice = highPrice;
+        if (low < self.minPrice) self.minPrice = low;
+        if (high > self.maxPrice) self.maxPrice = high;
     }
     
     // Add some padding
-    CGFloat range = self.maxPrice - self.minPrice;
-    CGFloat padding = range * 0.05; // 5% padding
+    double range = self.maxPrice - self.minPrice;
+    double padding = range * 0.05; // 5% padding
     self.minPrice -= padding;
     self.maxPrice += padding;
 }
+
+- (void)calculateVolumeRange {
+    if (!self.priceData || self.priceData.count == 0) {
+        self.maxVolume = 1000000; // Default
+        return;
+    }
+    
+    self.maxVolume = 0;
+    for (HistoricalBarModel *bar in self.priceData) {
+        if (bar.volume > self.maxVolume) {
+            self.maxVolume = bar.volume;
+        }
+    }
+}
+
+- (void)updatePriceLabelsFromBars {
+    if (!self.priceData || self.priceData.count == 0) return;
+    
+    HistoricalBarModel *lastBar = self.priceData.lastObject;
+    HistoricalBarModel *firstBar = self.priceData.firstObject;
+    
+    if (lastBar) {
+        // Update current price from last bar
+        if (!self.currentPrice) {
+            self.currentPrice = @(lastBar.close);
+        }
+        
+        // Calculate change from first to last bar if needed
+        if (firstBar && lastBar && !self.priceChange) {
+            double closePrice = lastBar.close;
+            double openPrice = firstBar.close;
+            double priceChange = closePrice - openPrice;
+            double percentChange = (priceChange / openPrice) * 100.0;
+            
+            self.priceChange = @(priceChange);
+            self.percentChange = @(percentChange);
+        }
+    }
+    
+    [self updateLabels];
+}
+
+- (void)updateLabels {
+    // Symbol label
+    self.symbolLabel.stringValue = self.symbol ?: @"";
+    
+    // Price label
+    if (self.currentPrice) {
+        self.priceLabel.stringValue = [NSString stringWithFormat:@"$%.2f", [self.currentPrice doubleValue]];
+    } else {
+        self.priceLabel.stringValue = @"--";
+    }
+    
+    // Change label
+    if (self.percentChange && self.priceChange) {
+        double change = [self.percentChange doubleValue];
+        NSString *sign = change >= 0 ? @"+" : @"";
+        self.changeLabel.stringValue = [NSString stringWithFormat:@"%@%.2f%%", sign, change];
+        self.changeLabel.textColor = change >= 0 ? self.positiveColor : self.negativeColor;
+    } else {
+        self.changeLabel.stringValue = @"+0.00%";
+        self.changeLabel.textColor = self.textColor;
+    }
+}
+
+#pragma mark - Chart Path Generation
 
 - (void)generateChartPath {
     if (!self.priceData || self.priceData.count == 0) {
@@ -341,79 +322,36 @@
     }
     
     NSBezierPath *path = [NSBezierPath bezierPath];
-    CGRect chartRect = self.chartArea.bounds;
     
     switch (self.chartType) {
         case MiniChartTypeLine:
-            [self generateLineChartPath:path inRect:chartRect];
+            [self generateLineChartPath:path];
             break;
         case MiniChartTypeCandle:
-            [self generateCandlestickChartPath:path inRect:chartRect];
+            [self generateCandleChartPath:path];
             break;
         case MiniChartTypeBar:
-            [self generateOHLCBarChartPath:path inRect:chartRect];
+            [self generateBarChartPath:path];
             break;
     }
     
     self.chartPath = path;
 }
 
-- (void)generateVolumePath {
-    if (!self.showVolume || !self.priceData || self.priceData.count == 0) {
-        self.volumePath = nil;
-        return;
-    }
+- (void)generateLineChartPath:(NSBezierPath *)path {
+    NSRect rect = self.chartArea.bounds;
+    if (NSIsEmptyRect(rect)) return;
     
-    NSBezierPath *path = [NSBezierPath bezierPath];
-    CGRect volumeRect = self.volumeArea.bounds;
+    double yRange = self.maxPrice - self.minPrice;
+    if (yRange <= 0) return;
     
-    CGFloat xStep = volumeRect.size.width / self.priceData.count;
-    CGFloat barWidth = xStep * 0.8;
+    CGFloat xStep = rect.size.width / (CGFloat)self.priceData.count;
     
     for (NSInteger i = 0; i < self.priceData.count; i++) {
-        HistoricalBar *bar = self.priceData[i];
-        CGFloat x = volumeRect.origin.x + (i * xStep) + (xStep * 0.1);
-        CGFloat barHeight = ((double)bar.volume / (double)self.maxVolume) * volumeRect.size.height;
+        HistoricalBarModel *bar = self.priceData[i];
         
-        NSRect barRect = NSMakeRect(x, volumeRect.origin.y, barWidth, barHeight);
-        [path appendBezierPathWithRect:barRect];
-    }
-    
-    self.volumePath = path;
-}
-
-- (CGFloat)transformedPriceValue:(double)price {
-    if (self.priceData.count == 0) return price;
-    
-    switch (self.scaleType) {
-        case MiniChartScaleLinear:
-            return price;
-            
-        case MiniChartScaleLog:
-            return log(price);
-            
-        case MiniChartScalePercent: {
-            HistoricalBar *firstBar = self.priceData.firstObject;
-            double basePrice = firstBar.close;
-            return ((price - basePrice) / basePrice) * 100.0;
-        }
-    }
-    return price;
-}
-
-- (void)generateLineChartPath:(NSBezierPath *)path inRect:(CGRect)rect {
-    if (self.priceData.count == 0) return;
-    
-    CGFloat xStep = rect.size.width / (self.priceData.count - 1);
-    CGFloat yRange = self.maxPrice - self.minPrice;
-    
-    for (NSInteger i = 0; i < self.priceData.count; i++) {
-        HistoricalBar *bar = self.priceData[i];
-        CGFloat x = rect.origin.x + (i * xStep);
-        
-        // Usa il valore trasformato in base alla scala
-        CGFloat transformedPrice = [self transformedPriceValue:bar.close];
-        CGFloat y = rect.origin.y + ((transformedPrice - self.minPrice) / yRange) * rect.size.height;
+        CGFloat x = rect.origin.x + i * xStep + xStep * 0.5;
+        CGFloat y = rect.origin.y + (([self transformedPriceValue:bar.close] - self.minPrice) / yRange) * rect.size.height;
         
         if (i == 0) {
             [path moveToPoint:NSMakePoint(x, y)];
@@ -423,51 +361,54 @@
     }
 }
 
-- (void)generateCandlestickChartPath:(NSBezierPath *)path inRect:(CGRect)rect {
-    if (!self.candlestickData) {
-        self.candlestickData = [NSMutableArray array];
-    } else {
-        [self.candlestickData removeAllObjects];
-    }
+- (void)generateCandleChartPath:(NSBezierPath *)path {
+    NSRect rect = self.chartArea.bounds;
+    if (NSIsEmptyRect(rect)) return;
     
-    CGFloat xStep = rect.size.width / self.priceData.count;
-    CGFloat candleWidth = xStep * 0.8;
-    CGFloat yRange = self.maxPrice - self.minPrice;
+    double yRange = self.maxPrice - self.minPrice;
+    if (yRange <= 0) return;
+    
+    CGFloat xStep = rect.size.width / (CGFloat)self.priceData.count;
+    CGFloat candleWidth = xStep * 0.6;
     
     for (NSInteger i = 0; i < self.priceData.count; i++) {
-        HistoricalBar *bar = self.priceData[i];
-        CGFloat x = rect.origin.x + (i * xStep) + (xStep * 0.1);
+        HistoricalBarModel *bar = self.priceData[i];
         
-        // Trasforma i prezzi in base alla scala
-        CGFloat openY = rect.origin.y + (([self transformedPriceValue:bar.open] - self.minPrice) / yRange) * rect.size.height;
-        CGFloat closeY = rect.origin.y + (([self transformedPriceValue:bar.close] - self.minPrice) / yRange) * rect.size.height;
+        CGFloat x = rect.origin.x + i * xStep + xStep * 0.5;
         CGFloat highY = rect.origin.y + (([self transformedPriceValue:bar.high] - self.minPrice) / yRange) * rect.size.height;
         CGFloat lowY = rect.origin.y + (([self transformedPriceValue:bar.low] - self.minPrice) / yRange) * rect.size.height;
+        CGFloat openY = rect.origin.y + (([self transformedPriceValue:bar.open] - self.minPrice) / yRange) * rect.size.height;
+        CGFloat closeY = rect.origin.y + (([self transformedPriceValue:bar.close] - self.minPrice) / yRange) * rect.size.height;
         
-        NSMutableDictionary *candleInfo = [NSMutableDictionary dictionary];
-        candleInfo[@"x"] = @(x);
-        candleInfo[@"width"] = @(candleWidth);
-        candleInfo[@"yOpen"] = @(openY);
-        candleInfo[@"yClose"] = @(closeY);
-        candleInfo[@"yHigh"] = @(highY);
-        candleInfo[@"yLow"] = @(lowY);
-        candleInfo[@"isGreen"] = @(bar.close >= bar.open);
+        // High-low line
+        [path moveToPoint:NSMakePoint(x, lowY)];
+        [path lineToPoint:NSMakePoint(x, highY)];
         
-        [self.candlestickData addObject:candleInfo];
+        // Body
+        CGFloat bodyTop = MAX(openY, closeY);
+        CGFloat bodyBottom = MIN(openY, closeY);
+        NSRect bodyRect = NSMakeRect(x - candleWidth * 0.5, bodyBottom, candleWidth, bodyTop - bodyBottom);
+        [path appendBezierPathWithRect:bodyRect];
     }
 }
 
-- (void)generateOHLCBarChartPath:(NSBezierPath *)path inRect:(CGRect)rect {
-    CGFloat xStep = rect.size.width / self.priceData.count;
-    CGFloat yRange = self.maxPrice - self.minPrice;
+- (void)generateBarChartPath:(NSBezierPath *)path {
+    NSRect rect = self.chartArea.bounds;
+    if (NSIsEmptyRect(rect)) return;
+    
+    double yRange = self.maxPrice - self.minPrice;
+    if (yRange <= 0) return;
+    
+    CGFloat xStep = rect.size.width / (CGFloat)self.priceData.count;
     
     for (NSInteger i = 0; i < self.priceData.count; i++) {
-        HistoricalBar *bar = self.priceData[i];
-        CGFloat x = rect.origin.x + (i * xStep) + (xStep * 0.5);
+        HistoricalBarModel *bar = self.priceData[i];
         
-        // Vertical line from low to high
-        CGFloat lowY = rect.origin.y + (([self transformedPriceValue:bar.low] - self.minPrice) / yRange) * rect.size.height;
+        CGFloat x = rect.origin.x + i * xStep + xStep * 0.5;
         CGFloat highY = rect.origin.y + (([self transformedPriceValue:bar.high] - self.minPrice) / yRange) * rect.size.height;
+        CGFloat lowY = rect.origin.y + (([self transformedPriceValue:bar.low] - self.minPrice) / yRange) * rect.size.height;
+        
+        // Main line (high to low)
         [path moveToPoint:NSMakePoint(x, lowY)];
         [path lineToPoint:NSMakePoint(x, highY)];
         
@@ -483,52 +424,268 @@
     }
 }
 
-- (void)updatePriceLabels {
-    if (!self.priceData || self.priceData.count == 0) return;
-    
-    HistoricalBar *lastBar = self.priceData.lastObject;
-    HistoricalBar *firstBar = self.priceData.firstObject;
-    
-    // Converti NSDecimalNumber a double se necessario
-    self.currentPrice = @(lastBar.close);
-    
-    if (firstBar && lastBar) {
-        double closePrice = lastBar.close;
-        double openPrice = firstBar.close;
-        double priceChange = closePrice - openPrice;
-        double percentChange = (priceChange / openPrice) * 100.0;
-        
-        self.priceChange = @(priceChange);
-        self.percentChange = @(percentChange);
+- (void)generateVolumePath {
+    if (!self.priceData || self.priceData.count == 0 || !self.showVolume) {
+        self.volumePath = nil;
+        return;
     }
+    
+    NSBezierPath *path = [NSBezierPath bezierPath];
+    NSRect rect = self.volumeArea.bounds;
+    if (NSIsEmptyRect(rect)) return;
+    
+    CGFloat xStep = rect.size.width / (CGFloat)self.priceData.count;
+    CGFloat barWidth = xStep * 0.8;
+    
+    for (NSInteger i = 0; i < self.priceData.count; i++) {
+        HistoricalBarModel *bar = self.priceData[i];
+        
+        CGFloat x = rect.origin.x + i * xStep + xStep * 0.5;
+        CGFloat height = (bar.volume / self.maxVolume) * rect.size.height;
+        
+        NSRect volumeRect = NSMakeRect(x - barWidth * 0.5, rect.origin.y, barWidth, height);
+        [path appendBezierPathWithRect:volumeRect];
+    }
+    
+    self.volumePath = path;
+}
+
+- (double)transformedPriceValue:(double)price {
+    switch (self.scaleType) {
+        case MiniChartScaleLinear:
+            return price;
+        case MiniChartScaleLog:
+            return log(price);
+        case MiniChartScalePercent: {
+            if (self.priceData.count > 0) {
+                HistoricalBarModel *firstBar = self.priceData.firstObject;
+                return ((price - firstBar.close) / firstBar.close) * 100.0;
+            }
+            return 0;
+        }
+    }
+}
+
+#pragma mark - Drawing
+
+- (void)drawRect:(NSRect)dirtyRect {
+    [super drawRect:dirtyRect];
+    
+    // Clear background
+    [self.backgroundColor setFill];
+    NSRectFill(dirtyRect);
+    
+    // Draw chart if we have data
+    if (self.chartPath && !self.isLoading && !self.hasError) {
+        [self drawChart];
+    }
+    
+    // Draw volume if enabled
+    if (self.volumePath && self.showVolume && !self.isLoading && !self.hasError) {
+        [self drawVolume];
+    }
+    
+    // Draw loading or error state
+    if (self.isLoading) {
+        [self drawLoadingState];
+    } else if (self.hasError) {
+        [self drawErrorState];
+    }
+}
+
+- (void)drawChart {
+    if (!self.chartPath) return;
+    
+    NSGraphicsContext *context = [NSGraphicsContext currentContext];
+    [context saveGraphicsState];
+    
+    // Clip to chart area
+    NSRect chartRect = [self convertRect:self.chartArea.bounds fromView:self.chartArea];
+    NSBezierPath *clipPath = [NSBezierPath bezierPathWithRect:chartRect];
+    [clipPath addClip];
+    
+    // Set stroke color based on price change
+    NSColor *strokeColor = self.textColor;
+    if (self.priceChange) {
+        double change = [self.priceChange doubleValue];
+        strokeColor = change >= 0 ? self.positiveColor : self.negativeColor;
+    }
+    
+    [strokeColor setStroke];
+    self.chartPath.lineWidth = 1.5;
+    [self.chartPath stroke];
+    
+    // Fill for candle charts
+    if (self.chartType == MiniChartTypeCandle) {
+        for (NSInteger i = 0; i < self.priceData.count; i++) {
+            HistoricalBarModel *bar = self.priceData[i];
+            NSColor *fillColor = (bar.close >= bar.open) ? self.positiveColor : self.negativeColor;
+            [fillColor setFill];
+        }
+    }
+    
+    [context restoreGraphicsState];
+}
+
+- (void)drawVolume {
+    if (!self.volumePath) return;
+    
+    NSGraphicsContext *context = [NSGraphicsContext currentContext];
+    [context saveGraphicsState];
+    
+    // Clip to volume area
+    NSRect volumeRect = [self convertRect:self.volumeArea.bounds fromView:self.volumeArea];
+    NSBezierPath *clipPath = [NSBezierPath bezierPathWithRect:volumeRect];
+    [clipPath addClip];
+    
+    // Set fill color with transparency
+    NSColor *volumeColor = [[NSColor systemBlueColor] colorWithAlphaComponent:0.3];
+    [volumeColor setFill];
+    [self.volumePath fill];
+    
+    [context restoreGraphicsState];
+}
+
+- (void)drawLoadingState {
+    NSRect bounds = self.bounds;
+    
+    // Semi-transparent overlay
+    [[NSColor colorWithWhite:0.5 alpha:0.5] setFill];
+    NSRectFillUsingOperation(bounds, NSCompositingOperationSourceOver);
+    
+    // Loading text
+    NSString *loadingText = @"Loading...";
+    NSDictionary *attributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:14],
+        NSForegroundColorAttributeName: self.textColor
+    };
+    
+    NSSize textSize = [loadingText sizeWithAttributes:attributes];
+    NSPoint textPoint = NSMakePoint(
+        (bounds.size.width - textSize.width) / 2,
+        (bounds.size.height - textSize.height) / 2
+    );
+    
+    [loadingText drawAtPoint:textPoint withAttributes:attributes];
+}
+
+- (void)drawErrorState {
+    NSRect bounds = self.bounds;
+    
+    // Error background
+    [[[NSColor systemRedColor] colorWithAlphaComponent:0.1] setFill];
+    NSRectFill(bounds);
+    
+    // Error text
+    NSString *errorText = self.errorMessage ?: @"Error";
+    NSDictionary *attributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:12],
+        NSForegroundColorAttributeName: [NSColor systemRedColor]
+    };
+    
+    NSSize textSize = [errorText sizeWithAttributes:attributes];
+    NSPoint textPoint = NSMakePoint(
+        (bounds.size.width - textSize.width) / 2,
+        (bounds.size.height - textSize.height) / 2
+    );
+    
+    [errorText drawAtPoint:textPoint withAttributes:attributes];
+}
+
+#pragma mark - Properties
+
+- (void)setSymbol:(NSString *)symbol {
+    _symbol = symbol;
+    [self updateLabels];
+}
+
+- (void)setCurrentPrice:(NSNumber *)currentPrice {
+    _currentPrice = currentPrice;
+    [self updateLabels];
+}
+
+- (void)setPriceChange:(NSNumber *)priceChange {
+    _priceChange = priceChange;
+    [self updateLabels];
+}
+
+- (void)setPercentChange:(NSNumber *)percentChange {
+    _percentChange = percentChange;
+    [self updateLabels];
+}
+
+- (void)setChartType:(MiniChartType)chartType {
+    _chartType = chartType;
+    [self generateChartPath];
+    [self setNeedsDisplay:YES];
+}
+
+- (void)setScaleType:(MiniChartScaleType)scaleType {
+    _scaleType = scaleType;
+    [self calculatePriceRange];
+    [self generateChartPath];
+    [self setNeedsDisplay:YES];
+}
+
+- (void)setShowVolume:(BOOL)showVolume {
+    _showVolume = showVolume;
+    self.volumeArea.hidden = !showVolume;
+    [self updateConstraintsIfNeeded];
+    [self setNeedsDisplay:YES];
+}
+
+- (void)updateConstraintsIfNeeded {
+    // Remove existing constraints for chart and volume area
+    NSArray *constraintsToRemove = [self.constraints filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NSLayoutConstraint *constraint, NSDictionary *bindings) {
+        return (constraint.firstItem == self.chartArea ||
+                constraint.firstItem == self.volumeArea ||
+                constraint.secondItem == self.chartArea ||
+                constraint.secondItem == self.volumeArea);
+    }]];
+    
+    [NSLayoutConstraint deactivateConstraints:constraintsToRemove];
+    
+    // Recreate constraints
+    [self setupConstraints];
 }
 
 #pragma mark - Loading State
 
 - (void)setLoading:(BOOL)loading {
     _isLoading = loading;
-    if (loading) {
-        self.loadingIndicator.hidden = NO;
-        [self.loadingIndicator startAnimation:nil];
-        self.chartArea.hidden = YES;
-    } else {
-        self.loadingIndicator.hidden = YES;
-        [self.loadingIndicator stopAnimation:nil];
-        self.chartArea.hidden = NO;
-    }
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (loading) {
+            self.loadingIndicator.hidden = NO;
+            [self.loadingIndicator startAnimation:nil];
+            self.chartArea.hidden = YES;
+            self.volumeArea.hidden = YES;
+        } else {
+            self.loadingIndicator.hidden = YES;
+            [self.loadingIndicator stopAnimation:nil];
+            self.chartArea.hidden = NO;
+            self.volumeArea.hidden = !self.showVolume;
+        }
+        
+        [self setNeedsDisplay:YES];
+    });
 }
 
 - (void)setError:(NSString *)errorMessage {
     _hasError = (errorMessage != nil);
     _errorMessage = errorMessage;
     
-    if (errorMessage) {
-        self.priceLabel.stringValue = @"Error";
-        self.changeLabel.stringValue = @"--";
-        self.layer.borderColor = [NSColor systemRedColor].CGColor;
-    } else {
-        self.layer.borderColor = [NSColor separatorColor].CGColor;
-    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (errorMessage) {
+            self.priceLabel.stringValue = @"Error";
+            self.changeLabel.stringValue = @"--";
+            self.layer.borderColor = [NSColor systemRedColor].CGColor;
+        } else {
+            self.layer.borderColor = [NSColor separatorColor].CGColor;
+        }
+        
+        [self setNeedsDisplay:YES];
+    });
 }
 
 - (void)clearError {
@@ -538,205 +695,49 @@
 #pragma mark - Actions
 
 - (void)refresh {
-    [self setLoading:YES];
-        
-    // Calcola le date in base al timeframe
-    NSDate *endDate = [NSDate date];
-    NSDate *startDate = [self calculateStartDateForTimeframe];
-    
-    // Converti MiniChartTimeframe a BarTimeframe
-    BarTimeframe barTimeframe = [self convertToBarTimeframe:self.timeframe];
-    
-    // CORREZIONE: Usa il metodo asincrono con completion block
-    [[DataHub shared] getHistoricalBarsForSymbol:self.symbol
-                                        timeframe:barTimeframe
-                                        startDate:startDate
-                                          endDate:endDate
-                                       completion:^(NSArray<HistoricalBar *> *bars, BOOL isFresh) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (bars && bars.count > 0) {
-                [self setLoading:NO];
-                [self clearError];
-                
-                // Limita al numero massimo di barre
-                NSArray<HistoricalBar *> *limitedBars = bars;
-                if (bars.count > self.maxBars) {
-                    NSInteger startIndex = bars.count - self.maxBars;
-                    limitedBars = [bars subarrayWithRange:NSMakeRange(startIndex, self.maxBars)];
-                }
-                
-                [self updateWithPriceData:limitedBars];
-            } else {
-                // Nessun dato disponibile
-                [self setLoading:NO];
-                [self setError:@"No data available"];
-            }
-        });
-    }];
+    // This method can be called to refresh data
+    // The actual data loading is handled by the parent MultiChartWidget
+    NSLog(@"🔄 MiniChart[%@]: Refresh requested", self.symbol ?: @"nil");
 }
 
+#pragma mark - Mouse Events
 
-#pragma mark - Drawing
+- (void)mouseDown:(NSEvent *)event {
+    // Handle click events - could show detailed chart
+    NSLog(@"🖱️ MiniChart[%@]: Mouse down", self.symbol ?: @"nil");
+}
 
-- (void)drawRect:(NSRect)dirtyRect {
-    [super drawRect:dirtyRect];
+#pragma mark - Appearance Updates
+
+- (void)viewDidChangeEffectiveAppearance {
+    [super viewDidChangeEffectiveAppearance];
     
-    if (self.hasError) return;
-    
-    // Disegna il grafico principale
-    if (self.chartType == MiniChartTypeCandle && self.candlestickData) {
-        // Disegna candlestick chart
-        [self drawCandlestickChart];
-    } else if (self.chartPath) {
-        // Disegna line chart o OHLC bar chart
-        NSColor *strokeColor = self.textColor;
-        if (self.percentChange) {
-            strokeColor = self.percentChange.doubleValue >= 0 ? self.positiveColor : self.negativeColor;
-        }
-        
-        [strokeColor setStroke];
-        [self.chartPath setLineWidth:1.0];
-        [self.chartPath stroke];
-        
-        // Fill area per line charts
-        if (self.chartType == MiniChartTypeLine && self.chartPath.elementCount > 0) {
-            NSBezierPath *fillPath = [self.chartPath copy];
-            CGRect chartRect = self.chartArea.bounds;
-            
-            // Chiudi il path per creare l'area di riempimento
-            [fillPath lineToPoint:NSMakePoint(chartRect.origin.x + chartRect.size.width, chartRect.origin.y)];
-            [fillPath lineToPoint:NSMakePoint(chartRect.origin.x, chartRect.origin.y)];
-            [fillPath closePath];
-            
-            [[strokeColor colorWithAlphaComponent:0.1] setFill];
-            [fillPath fill];
-        }
+    // Update colors for dark/light mode
+    if ([self.effectiveAppearance.name isEqualToString:NSAppearanceNameDarkAqua]) {
+        self.backgroundColor = [NSColor controlBackgroundColor];
+        self.textColor = [NSColor labelColor];
+    } else {
+        self.backgroundColor = [NSColor controlBackgroundColor];
+        self.textColor = [NSColor labelColor];
     }
     
-    // Disegna i volumi se attivi
-    if (self.showVolume && self.volumePath) {
-        // Disegna nell'area volume separata
-        NSGraphicsContext *context = [NSGraphicsContext currentContext];
-        [context saveGraphicsState];
-        
-        // Clip alla volume area
-        NSRectClip(self.volumeArea.bounds);
-        
-        [[NSColor colorWithWhite:0.6 alpha:0.5] setFill];
-        [self.volumePath fill];
-        
-        [[NSColor colorWithWhite:0.4 alpha:0.8] setStroke];
-        [self.volumePath setLineWidth:0.5];
-        [self.volumePath stroke];
-        
-        [context restoreGraphicsState];
+    [self setNeedsDisplay:YES];
+}
+
+#pragma mark - DEPRECATED Methods (Remove these)
+
+// OLD METHOD - DO NOT USE
+// This is kept temporarily for compatibility but should be removed
+- (void)updateWithPriceData:(NSArray *)priceData {
+    NSLog(@"⚠️ DEPRECATED: updateWithPriceData called on MiniChart[%@]. Use updateWithHistoricalBars: instead", self.symbol ?: @"nil");
+    
+    // For backward compatibility, attempt to convert if it's RuntimeModels
+    if (priceData.count > 0 && [priceData.firstObject isKindOfClass:[HistoricalBarModel class]]) {
+        [self updateWithHistoricalBars:(NSArray<HistoricalBarModel *> *)priceData];
+    } else {
+        NSLog(@"❌ Cannot convert priceData to HistoricalBarModel array");
+        [self setError:@"Invalid data format"];
     }
 }
 
-- (void)drawCandlestickChart {
-    for (NSDictionary *candleInfo in self.candlestickData) {
-        CGFloat x = [candleInfo[@"x"] floatValue];
-        CGFloat width = [candleInfo[@"width"] floatValue];
-        CGFloat yHigh = [candleInfo[@"yHigh"] floatValue];
-        CGFloat yLow = [candleInfo[@"yLow"] floatValue];
-        CGFloat yOpen = [candleInfo[@"yOpen"] floatValue];
-        CGFloat yClose = [candleInfo[@"yClose"] floatValue];
-        BOOL isGreen = [candleInfo[@"isGreen"] boolValue];
-        
-        NSColor *candleColor = isGreen ? self.positiveColor : self.negativeColor;
-        
-        // Disegna il wick (linea sottile High-Low)
-        NSBezierPath *wickPath = [NSBezierPath bezierPath];
-        [wickPath moveToPoint:NSMakePoint(x + width/2, yLow)];
-        [wickPath lineToPoint:NSMakePoint(x + width/2, yHigh)];
-        [wickPath setLineWidth:1.0];
-        [candleColor setStroke];
-        [wickPath stroke];
-        
-        // Disegna il corpo della candela
-        CGFloat bodyTop = MAX(yOpen, yClose);
-        CGFloat bodyBottom = MIN(yOpen, yClose);
-        CGFloat bodyHeight = bodyTop - bodyBottom;
-        
-        if (bodyHeight < 1.0) {
-            bodyHeight = 1.0; // Altezza minima per candele doji
-        }
-        
-        NSRect bodyRect = NSMakeRect(x, bodyBottom, width, bodyHeight);
-        NSBezierPath *bodyPath = [NSBezierPath bezierPathWithRect:bodyRect];
-        
-        if (isGreen) {
-            // Candela verde: corpo pieno
-            [candleColor setFill];
-            [bodyPath fill];
-        } else {
-            // Candela rossa: corpo vuoto con bordo
-            [[NSColor clearColor] setFill];
-            [bodyPath fill];
-            [candleColor setStroke];
-            [bodyPath setLineWidth:1.0];
-            [bodyPath stroke];
-        }
-    }
-}
-
-#pragma mark - Helper Methods
-
-- (NSDate *)calculateStartDateForTimeframe {
-    NSCalendar *calendar = [NSCalendar currentCalendar];
-    NSDateComponents *components = [[NSDateComponents alloc] init];
-    NSDate *now = [NSDate date];
-    
-    switch (self.timeframe) {
-        case MiniChartTimeframe1Min:
-            components.minute = -self.maxBars;
-            break;
-        case MiniChartTimeframe5Min:
-            components.minute = -self.maxBars * 5;
-            break;
-        case MiniChartTimeframe15Min:
-            components.minute = -self.maxBars * 15;
-            break;
-        case MiniChartTimeframe30Min:
-            components.minute = -self.maxBars * 30;
-            break;
-        case MiniChartTimeframe1Hour:
-            components.hour = -self.maxBars;
-            break;
-        case MiniChartTimeframeDaily:
-            components.day = -self.maxBars;
-            break;
-        case MiniChartTimeframeWeekly:
-            components.weekOfYear = -self.maxBars;
-            break;
-        case MiniChartTimeframeMonthly:
-            components.month = -self.maxBars;
-            break;
-    }
-    
-    return [calendar dateByAddingComponents:components toDate:now options:0];
-}
-
-- (BarTimeframe)convertToBarTimeframe:(MiniChartTimeframe)miniTimeframe {
-    switch (miniTimeframe) {
-        case MiniChartTimeframe1Min:
-            return BarTimeframe1Min;
-        case MiniChartTimeframe5Min:
-            return BarTimeframe5Min;
-        case MiniChartTimeframe15Min:
-            return BarTimeframe15Min;
-        case MiniChartTimeframe30Min:
-            return BarTimeframe30Min;
-        case MiniChartTimeframe1Hour:
-            return BarTimeframe1Hour;
-        case MiniChartTimeframeDaily:
-            return BarTimeframe1Day;
-        case MiniChartTimeframeWeekly:
-            return BarTimeframe1Week;
-        case MiniChartTimeframeMonthly:
-            return BarTimeframe1Month;
-        default:
-            return BarTimeframe1Day;
-    }
-}
 @end

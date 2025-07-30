@@ -98,7 +98,7 @@
     typeToClass[@"Watchlist"] = [WatchlistWidget class];
     typeToClass[@"Connection Status"] = [ConnectionStatusWidget class];
     typeToClass[@"MultiChart Widget"] = [MultiChartWidget class];  // <-- AGGIUNGI QUESTA LINEA
-    typeToClass[@"General Market"] = [GeneralMarketWidget class];
+   //todo 30luglio typeToClass[@"General Market"] = [GeneralMarketWidget class];
 
     // FIX: Map chart types to CHChartWidget
     typeToClass[@"Chart Widget"] = [CHChartWidget class];

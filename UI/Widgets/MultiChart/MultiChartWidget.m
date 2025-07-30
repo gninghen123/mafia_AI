@@ -3,39 +3,28 @@
 //  TradingApp
 //
 //  Implementation of multi-symbol chart grid widget
-//  Updated for full DataHub integration
+//  REWRITTEN: Uses ONLY DataHub+MarketData and RuntimeModels
 //
 
 #import "MultiChartWidget.h"
 #import "MiniChart.h"
-#import "DataHub.h"
 #import "DataHub+MarketData.h"
-#import "HistoricalBar+CoreDataClass.h"
-#import "MarketQuote+CoreDataClass.h"
+#import "RuntimeModels.h"
+
+// REMOVED: All Core Data imports
+// #import "HistoricalBar+CoreDataClass.h"
+// #import "MarketQuote+CoreDataClass.h"
 
 @interface MultiChartWidget ()
 
-// UI Components
+// UI Components - Only declare internal ones not in header
 @property (nonatomic, strong) NSView *controlsView;
-@property (nonatomic, strong) NSTextField *symbolsTextField;
-@property (nonatomic, strong) NSPopUpButton *chartTypePopup;
-@property (nonatomic, strong) NSPopUpButton *timeframePopup;
-@property (nonatomic, strong) NSPopUpButton *scaleTypePopup;
-@property (nonatomic, strong) NSTextField *maxBarsField;
-@property (nonatomic, strong) NSButton *volumeCheckbox;
-@property (nonatomic, strong) NSSegmentedControl *columnsControl;
 @property (nonatomic, strong) NSButton *refreshButton;
-
-// Content
-@property (nonatomic, strong) NSScrollView *scrollView;
-@property (nonatomic, strong) NSView *chartsContainer;
-@property (nonatomic, strong) NSMutableArray<MiniChart *> *miniCharts;
 
 // Layout
 @property (nonatomic, strong) NSMutableArray<NSLayoutConstraint *> *chartConstraints;
 
 // Data management
-@property (nonatomic, strong) NSOperationQueue *dataQueue;
 @property (nonatomic, strong) NSTimer *refreshTimer;
 
 @end
@@ -48,6 +37,8 @@
     self = [super initWithType:type panelType:panelType];
     if (self) {
         [self setupMultiChartDefaults];
+        [self setupUI];
+        [self registerForNotifications];
     }
     return self;
 }
@@ -63,132 +54,161 @@
     _symbols = @[];
     _symbolsString = @"";
     
-    // Arrays
+    // Initialize arrays that are in header
     _miniCharts = [NSMutableArray array];
     _chartConstraints = [NSMutableArray array];
-    
-    // Data queue
-    _dataQueue = [[NSOperationQueue alloc] init];
-    _dataQueue.maxConcurrentOperationCount = 4;
-    _dataQueue.name = @"MultiChartDataQueue";
 }
 
-#pragma mark - View Setup
-
-- (void)setupContentView {
-    [super setupContentView];
-    
-    // Setup UI components
+- (void)setupUI {
     [self setupControlsView];
-    [self setupChartsView];
-    [self setupConstraints];
-    
-    // Load initial data if we have symbols
-    if (self.symbols.count > 0) {
-        [self rebuildMiniCharts];
-    }
+    [self setupScrollView];
 }
 
 - (void)setupControlsView {
-    // Controls container
+    // Controls view at top
     self.controlsView = [[NSView alloc] init];
-    self.controlsView.wantsLayer = YES;
-    self.controlsView.layer.backgroundColor = [NSColor controlBackgroundColor].CGColor;
     self.controlsView.translatesAutoresizingMaskIntoConstraints = NO;
     [self.contentView addSubview:self.controlsView];
     
     // Symbols text field
     self.symbolsTextField = [[NSTextField alloc] init];
-    self.symbolsTextField.placeholderString = @"Enter symbols (e.g., AAPL,MSFT,GOOGL)";
-    self.symbolsTextField.stringValue = self.symbolsString;
-    self.symbolsTextField.target = self;
-    self.symbolsTextField.action = @selector(symbolsTextChanged:);
+    self.symbolsTextField.placeholderString = @"Enter symbols (AAPL, TSLA, MSFT...)";
     self.symbolsTextField.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.symbolsTextField setTarget:self];
+    [self.symbolsTextField setAction:@selector(symbolsChanged:)];
     [self.controlsView addSubview:self.symbolsTextField];
     
     // Chart type popup
     self.chartTypePopup = [[NSPopUpButton alloc] init];
-    [self.chartTypePopup addItemWithTitle:@"Line"];
-    [self.chartTypePopup addItemWithTitle:@"Candle"];
-    [self.chartTypePopup addItemWithTitle:@"Bar"];
-    [self.chartTypePopup selectItemAtIndex:self.chartType];
-    self.chartTypePopup.target = self;
-    self.chartTypePopup.action = @selector(chartTypeChanged:);
+    [self.chartTypePopup addItemsWithTitles:@[@"Line", @"Candle", @"Bar"]];
     self.chartTypePopup.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.chartTypePopup setTarget:self];
+    [self.chartTypePopup setAction:@selector(chartTypeChanged:)];
     [self.controlsView addSubview:self.chartTypePopup];
     
     // Timeframe popup
     self.timeframePopup = [[NSPopUpButton alloc] init];
-    [self.timeframePopup addItemWithTitle:@"1 Min"];
-    [self.timeframePopup addItemWithTitle:@"5 Min"];
-    [self.timeframePopup addItemWithTitle:@"15 Min"];
-    [self.timeframePopup addItemWithTitle:@"30 Min"];
-    [self.timeframePopup addItemWithTitle:@"1 Hour"];
-    [self.timeframePopup addItemWithTitle:@"Daily"];
-    [self.timeframePopup addItemWithTitle:@"Weekly"];
-    [self.timeframePopup addItemWithTitle:@"Monthly"];
-    [self.timeframePopup selectItemAtIndex:5]; // Daily
-    self.timeframePopup.target = self;
-    self.timeframePopup.action = @selector(timeframeChanged:);
+    [self.timeframePopup addItemsWithTitles:@[@"1m", @"5m", @"15m", @"30m", @"1h", @"1D", @"1W", @"1M"]];
+    [self.timeframePopup selectItemAtIndex:5]; // Default to Daily
     self.timeframePopup.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.timeframePopup setTarget:self];
+    [self.timeframePopup setAction:@selector(timeframeChanged:)];
     [self.controlsView addSubview:self.timeframePopup];
     
     // Scale type popup
     self.scaleTypePopup = [[NSPopUpButton alloc] init];
-    [self.scaleTypePopup addItemWithTitle:@"Linear"];
-    [self.scaleTypePopup addItemWithTitle:@"Log"];
-    [self.scaleTypePopup addItemWithTitle:@"Percent"];
-    [self.scaleTypePopup selectItemAtIndex:self.scaleType];
-    self.scaleTypePopup.target = self;
-    self.scaleTypePopup.action = @selector(scaleTypeChanged:);
+    [self.scaleTypePopup addItemsWithTitles:@[@"Linear", @"Log", @"Percent"]];
     self.scaleTypePopup.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.scaleTypePopup setTarget:self];
+    [self.scaleTypePopup setAction:@selector(scaleTypeChanged:)];
     [self.controlsView addSubview:self.scaleTypePopup];
     
     // Max bars field
     self.maxBarsField = [[NSTextField alloc] init];
-    self.maxBarsField.stringValue = [NSString stringWithFormat:@"%ld", (long)self.maxBars];
-    self.maxBarsField.target = self;
-    self.maxBarsField.action = @selector(maxBarsChanged:);
+    self.maxBarsField.stringValue = @"100";
     self.maxBarsField.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.maxBarsField setTarget:self];
+    [self.maxBarsField setAction:@selector(maxBarsChanged:)];
     [self.controlsView addSubview:self.maxBarsField];
     
     // Volume checkbox
-    self.volumeCheckbox = [[NSButton alloc] init];
-    self.volumeCheckbox.buttonType = NSSwitchButton;
-    self.volumeCheckbox.title = @"Volume";
-    self.volumeCheckbox.state = self.showVolume ? NSControlStateValueOn : NSControlStateValueOff;
-    self.volumeCheckbox.target = self;
-    self.volumeCheckbox.action = @selector(volumeCheckboxChanged:);
+    self.volumeCheckbox = [NSButton checkboxWithTitle:@"Volume" target:self action:@selector(volumeCheckboxChanged:)];
+    self.volumeCheckbox.state = NSControlStateValueOn;
     self.volumeCheckbox.translatesAutoresizingMaskIntoConstraints = NO;
     [self.controlsView addSubview:self.volumeCheckbox];
     
     // Columns control
     self.columnsControl = [[NSSegmentedControl alloc] init];
     self.columnsControl.segmentCount = 5;
-    for (int i = 0; i < 5; i++) {
-        [self.columnsControl setLabel:[NSString stringWithFormat:@"%d", i+1] forSegment:i];
-        [self.columnsControl setWidth:30.0 forSegment:i];
+    for (NSInteger i = 0; i < 5; i++) {
+        [self.columnsControl setLabel:[NSString stringWithFormat:@"%ld", i + 1] forSegment:i];
     }
-    self.columnsControl.selectedSegment = self.columnsCount - 1;
-    self.columnsControl.target = self;
-    self.columnsControl.action = @selector(columnsChanged:);
+    self.columnsControl.selectedSegment = 2; // Default to 3 columns
     self.columnsControl.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.columnsControl setTarget:self];
+    [self.columnsControl setAction:@selector(columnsChanged:)];
     [self.controlsView addSubview:self.columnsControl];
     
     // Refresh button
-    self.refreshButton = [[NSButton alloc] init];
-    self.refreshButton.bezelStyle = NSBezelStyleRounded;
-    self.refreshButton.title = @"Refresh";
-    self.refreshButton.target = self;
-    self.refreshButton.action = @selector(refreshButtonClicked:);
+    self.refreshButton = [NSButton buttonWithTitle:@"Refresh" target:self action:@selector(refreshButtonClicked:)];
     self.refreshButton.translatesAutoresizingMaskIntoConstraints = NO;
     [self.controlsView addSubview:self.refreshButton];
+    
+    [self setupControlsConstraints];
 }
 
-- (void)setupChartsView {
-    // Scroll view
+- (void)setupControlsConstraints {
+    CGFloat spacing = 8;
+    
+    // Controls view
+    [NSLayoutConstraint activateConstraints:@[
+        [self.controlsView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor],
+        [self.controlsView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
+        [self.controlsView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
+        [self.controlsView.heightAnchor constraintEqualToConstant:60]
+    ]];
+    
+    // Symbols field (takes most space)
+    [NSLayoutConstraint activateConstraints:@[
+        [self.symbolsTextField.leadingAnchor constraintEqualToAnchor:self.controlsView.leadingAnchor constant:spacing],
+        [self.symbolsTextField.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
+        [self.symbolsTextField.widthAnchor constraintEqualToConstant:200]
+    ]];
+    
+    // Chart type popup
+    [NSLayoutConstraint activateConstraints:@[
+        [self.chartTypePopup.leadingAnchor constraintEqualToAnchor:self.symbolsTextField.trailingAnchor constant:spacing],
+        [self.chartTypePopup.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
+        [self.chartTypePopup.widthAnchor constraintEqualToConstant:70]
+    ]];
+    
+    // Timeframe popup
+    [NSLayoutConstraint activateConstraints:@[
+        [self.timeframePopup.leadingAnchor constraintEqualToAnchor:self.chartTypePopup.trailingAnchor constant:spacing],
+        [self.timeframePopup.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
+        [self.timeframePopup.widthAnchor constraintEqualToConstant:50]
+    ]];
+    
+    // Scale type popup
+    [NSLayoutConstraint activateConstraints:@[
+        [self.scaleTypePopup.leadingAnchor constraintEqualToAnchor:self.timeframePopup.trailingAnchor constant:spacing],
+        [self.scaleTypePopup.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
+        [self.scaleTypePopup.widthAnchor constraintEqualToConstant:70]
+    ]];
+    
+    // Max bars field
+    [NSLayoutConstraint activateConstraints:@[
+        [self.maxBarsField.leadingAnchor constraintEqualToAnchor:self.scaleTypePopup.trailingAnchor constant:spacing],
+        [self.maxBarsField.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
+        [self.maxBarsField.widthAnchor constraintEqualToConstant:50]
+    ]];
+    
+    // Volume checkbox
+    [NSLayoutConstraint activateConstraints:@[
+        [self.volumeCheckbox.leadingAnchor constraintEqualToAnchor:self.maxBarsField.trailingAnchor constant:spacing],
+        [self.volumeCheckbox.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor]
+    ]];
+    
+    // Columns control
+    [NSLayoutConstraint activateConstraints:@[
+        [self.columnsControl.leadingAnchor constraintEqualToAnchor:self.volumeCheckbox.trailingAnchor constant:spacing],
+        [self.columnsControl.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
+        [self.columnsControl.widthAnchor constraintEqualToConstant:100]
+    ]];
+    
+    // Refresh button
+    [NSLayoutConstraint activateConstraints:@[
+        [self.refreshButton.leadingAnchor constraintEqualToAnchor:self.columnsControl.trailingAnchor constant:spacing],
+        [self.refreshButton.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
+        [self.refreshButton.trailingAnchor constraintLessThanOrEqualToAnchor:self.controlsView.trailingAnchor constant:-spacing]
+    ]];
+}
+
+- (void)setupScrollView {
+    // Scroll view for charts
     self.scrollView = [[NSScrollView alloc] init];
     self.scrollView.hasVerticalScroller = YES;
+    self.scrollView.hasHorizontalScroller = YES;
     self.scrollView.autohidesScrollers = YES;
     self.scrollView.translatesAutoresizingMaskIntoConstraints = NO;
     [self.contentView addSubview:self.scrollView];
@@ -197,52 +217,37 @@
     self.chartsContainer = [[NSView alloc] init];
     self.chartsContainer.translatesAutoresizingMaskIntoConstraints = NO;
     self.scrollView.documentView = self.chartsContainer;
+    
+    // Scroll view constraints
+    [NSLayoutConstraint activateConstraints:@[
+        [self.scrollView.topAnchor constraintEqualToAnchor:self.controlsView.bottomAnchor constant:8],
+        [self.scrollView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
+        [self.scrollView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
+        [self.scrollView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor]
+    ]];
 }
 
-- (void)setupConstraints {
-    NSDictionary *views = @{
-        @"controls": self.controlsView,
-        @"scroll": self.scrollView
-    };
+#pragma mark - Notifications
+
+- (void)registerForNotifications {
+    NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
     
-    // Main layout
-    [self.contentView addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|[controls]|"
-                                                                             options:0
-                                                                             metrics:nil
-                                                                               views:views]];
-    [self.contentView addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|[scroll]|"
-                                                                             options:0
-                                                                             metrics:nil
-                                                                               views:views]];
-    [self.contentView addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|[controls(40)][scroll]|"
-                                                                             options:0
-                                                                             metrics:nil
-                                                                               views:views]];
+    // Listen for DataHub quote updates
+    [nc addObserver:self
+           selector:@selector(quoteUpdated:)
+               name:@"DataHubQuoteUpdatedNotification"
+             object:nil];
     
-    // Controls layout
-    views = @{
-        @"symbols": self.symbolsTextField,
-        @"chart": self.chartTypePopup,
-        @"timeframe": self.timeframePopup,
-        @"scale": self.scaleTypePopup,
-        @"maxBars": self.maxBarsField,
-        @"volume": self.volumeCheckbox,
-        @"columns": self.columnsControl,
-        @"refresh": self.refreshButton
-    };
-    
-    [self.controlsView addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|-[symbols(>=200)]-[chart(80)]-[timeframe(80)]-[scale(100)]-[maxBars(60)]-[volume]-[columns(160)]-[refresh]-|"
-                                                                              options:NSLayoutFormatAlignAllCenterY
-                                                                              metrics:nil
-                                                                                views:views]];
-    
-    [self.controlsView addConstraint:[NSLayoutConstraint constraintWithItem:self.symbolsTextField
-                                                                  attribute:NSLayoutAttributeCenterY
-                                                                  relatedBy:NSLayoutRelationEqual
-                                                                     toItem:self.controlsView
-                                                                  attribute:NSLayoutAttributeCenterY
-                                                                 multiplier:1.0
-                                                                   constant:0]];
+    // Listen for DataHub historical data updates
+    [nc addObserver:self
+           selector:@selector(historicalDataUpdated:)
+               name:@"DataHubHistoricalDataUpdatedNotification"
+             object:nil];
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [self stopAutoRefresh];
 }
 
 #pragma mark - View Lifecycle
@@ -258,9 +263,11 @@
     [self stopAutoRefresh];
 }
 
-#pragma mark - Data Loading from DataHub
+#pragma mark - Data Loading (NEW - Runtime Models ONLY)
 
 - (void)loadDataFromDataHub {
+    NSLog(@"📊 MultiChartWidget: Loading data for %lu symbols", (unsigned long)self.symbols.count);
+    
     for (MiniChart *miniChart in self.miniCharts) {
         [self loadDataForMiniChart:miniChart];
     }
@@ -270,19 +277,26 @@
     NSString *symbol = miniChart.symbol;
     if (!symbol) return;
     
+    NSLog(@"📊 Loading data for MiniChart: %@", symbol);
+    
     // Mostra loading
     [miniChart setLoading:YES];
     
-    // Carica quote corrente con il nuovo metodo asincrono
-    [[DataHub shared] getQuoteForSymbol:symbol completion:^(MarketQuote *quote, BOOL isLive) {
+    // 1. Carica quote corrente usando il nuovo DataHub+MarketData
+    [[DataHub shared] getQuoteForSymbol:symbol
+                             completion:^(MarketQuoteModel *quote, BOOL isLive) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (quote) {
-                miniChart.currentPrice = @(quote.currentPrice);
-                miniChart.priceChange = @(quote.change);
-                miniChart.percentChange = @(quote.changePercent);
+                // Aggiorna le proprietà del MiniChart con i RuntimeModel data
+                miniChart.currentPrice = quote.last;
+                miniChart.priceChange = quote.change;
+                miniChart.percentChange = quote.changePercent;
+                
+                NSLog(@"📊 Quote loaded for %@: $%.2f (%.2f%%)", symbol,
+                      [quote.last doubleValue], [quote.changePercent doubleValue]);
             }
             
-            // Ora carica i dati storici
+            // 2. Ora carica i dati storici
             [self loadHistoricalDataForMiniChart:miniChart];
         });
     }];
@@ -293,26 +307,26 @@
     if (!symbol) return;
     
     BarTimeframe barTimeframe = [self barTimeframeFromMiniTimeframe:miniChart.timeframe];
-    NSDate *endDate = [NSDate date];
-    NSDate *startDate = [self calculateStartDateForTimeframe:barTimeframe bars:miniChart.maxBars];
+    NSInteger barCount = miniChart.maxBars;
     
+    NSLog(@"📊 Loading historical data for %@: timeframe=%ld, count=%ld",
+          symbol, (long)barTimeframe, (long)barCount);
+    
+    // Usa il nuovo DataHub+MarketData con Runtime Models
     [[DataHub shared] getHistoricalBarsForSymbol:symbol
-                                        timeframe:barTimeframe
-                                        startDate:startDate
-                                          endDate:endDate
-                                       completion:^(NSArray<HistoricalBar *> *bars, BOOL isFresh) {
+                                       timeframe:barTimeframe
+                                        barCount:barCount
+                                      completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (bars && bars.count > 0) {
-                // Limita al numero massimo di barre
-                NSArray<HistoricalBar *> *limitedBars = bars;
-                if (bars.count > miniChart.maxBars) {
-                    NSInteger startIndex = bars.count - miniChart.maxBars;
-                    limitedBars = [bars subarrayWithRange:NSMakeRange(startIndex, miniChart.maxBars)];
-                }
+                NSLog(@"📊 Historical data loaded for %@: %lu bars (fresh: %@)",
+                      symbol, (unsigned long)bars.count, isFresh ? @"YES" : @"NO");
                 
-                [miniChart updateWithPriceData:limitedBars];
+                // Aggiorna il MiniChart con i RuntimeModel data
+                [miniChart updateWithHistoricalBars:bars];
                 [miniChart setLoading:NO];
             } else {
+                NSLog(@"⚠️ No historical data for %@", symbol);
                 [miniChart setError:@"No data available"];
                 [miniChart setLoading:NO];
             }
@@ -320,9 +334,11 @@
     }];
 }
 
-#pragma mark - Data Updates
+#pragma mark - Data Updates (NEW - Runtime Models)
 
 - (void)refreshAllCharts {
+    NSLog(@"🔄 MultiChartWidget: Refreshing all charts");
+    
     for (MiniChart *miniChart in self.miniCharts) {
         [self refreshMiniChart:miniChart];
     }
@@ -339,21 +355,65 @@
     NSString *symbol = miniChart.symbol;
     if (!symbol) return;
     
-    // Forza refresh dei dati quote
-    [[DataHub shared] refreshQuoteForSymbol:symbol completion:^(MarketQuote *quote, NSError *error) {
+    NSLog(@"🔄 Refreshing MiniChart for %@", symbol);
+    
+    // Force refresh quote using new DataHub+MarketData
+    [[DataHub shared] refreshQuoteForSymbol:symbol
+                                 completion:^(MarketQuoteModel *quote, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (quote && !error) {
-                miniChart.currentPrice = @(quote.currentPrice);
-                miniChart.priceChange = @(quote.change);
-                miniChart.percentChange = @(quote.changePercent);
+                // Update MiniChart properties with RuntimeModel data
+                miniChart.currentPrice = quote.last;
+                miniChart.priceChange = quote.change;
+                miniChart.percentChange = quote.changePercent;
                 
-                // Aggiorna anche i dati storici
+                NSLog(@"✅ Quote refreshed for %@", symbol);
+                
+                // Refresh historical data too
                 [self loadHistoricalDataForMiniChart:miniChart];
             } else {
+                NSLog(@"❌ Quote refresh failed for %@: %@", symbol, error.localizedDescription);
                 [miniChart setError:@"Update failed"];
             }
         });
     }];
+}
+
+#pragma mark - Notification Handlers (NEW - Runtime Models)
+
+- (void)quoteUpdated:(NSNotification *)notification {
+    NSString *symbol = notification.userInfo[@"symbol"];
+    MarketQuoteModel *quote = notification.userInfo[@"quote"];
+    
+    if (!symbol || !quote) return;
+    
+    // Find MiniChart for this symbol and update
+    MiniChart *miniChart = [self miniChartForSymbol:symbol];
+    if (miniChart) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            miniChart.currentPrice = quote.last;
+            miniChart.priceChange = quote.change;
+            miniChart.percentChange = quote.changePercent;
+            
+            NSLog(@"📨 Quote notification for %@: $%.2f", symbol, [quote.last doubleValue]);
+        });
+    }
+}
+
+- (void)historicalDataUpdated:(NSNotification *)notification {
+    NSString *symbol = notification.userInfo[@"symbol"];
+    NSArray<HistoricalBarModel *> *bars = notification.userInfo[@"bars"];
+    
+    if (!symbol || !bars) return;
+    
+    // Find MiniChart for this symbol and update
+    MiniChart *miniChart = [self miniChartForSymbol:symbol];
+    if (miniChart) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [miniChart updateWithHistoricalBars:bars];
+            NSLog(@"📨 Historical data notification for %@: %lu bars", symbol, (unsigned long)bars.count);
+        });
+    }
 }
 
 #pragma mark - Helper Methods
@@ -376,44 +436,7 @@
             return BarTimeframe1Week;
         case MiniChartTimeframeMonthly:
             return BarTimeframe1Month;
-        default:
-            return BarTimeframe1Day;
     }
-}
-
-- (NSDate *)calculateStartDateForTimeframe:(BarTimeframe)timeframe bars:(NSInteger)bars {
-    NSDate *now = [NSDate date];
-    NSCalendar *calendar = [NSCalendar currentCalendar];
-    NSDateComponents *components = [[NSDateComponents alloc] init];
-    
-    switch (timeframe) {
-        case BarTimeframe1Min:
-            components.minute = -bars;
-            break;
-        case BarTimeframe5Min:
-            components.minute = -bars * 5;
-            break;
-        case BarTimeframe15Min:
-            components.minute = -bars * 15;
-            break;
-        case BarTimeframe30Min:
-            components.minute = -bars * 30;
-            break;
-        case BarTimeframe1Hour:
-            components.hour = -bars;
-            break;
-        case BarTimeframe1Day:
-            components.day = -bars;
-            break;
-        case BarTimeframe1Week:
-            components.weekOfYear = -bars;
-            break;
-        case BarTimeframe1Month:
-            components.month = -bars;
-            break;
-    }
-    
-    return [calendar dateByAddingComponents:components toDate:now options:0];
 }
 
 - (MiniChart *)miniChartForSymbol:(NSString *)symbol {
@@ -428,37 +451,41 @@
 #pragma mark - Auto Refresh
 
 - (void)startAutoRefresh {
-    if (self.refreshTimer) {
-        [self.refreshTimer invalidate];
-    }
+    [self stopAutoRefresh]; // Stop existing timer
     
-    // Refresh ogni 240 secondi
-    self.refreshTimer = [NSTimer scheduledTimerWithTimeInterval:240.0
+    // Refresh every 10 seconds
+    self.refreshTimer = [NSTimer scheduledTimerWithTimeInterval:10.0
                                                          target:self
-                                                       selector:@selector(autoRefreshTimerFired:)
+                                                       selector:@selector(autoRefreshTick:)
                                                        userInfo:nil
                                                         repeats:YES];
+    
+    NSLog(@"🔄 Started auto-refresh timer");
 }
 
 - (void)stopAutoRefresh {
-    [self.refreshTimer invalidate];
-    self.refreshTimer = nil;
+    if (self.refreshTimer) {
+        [self.refreshTimer invalidate];
+        self.refreshTimer = nil;
+        NSLog(@"⏹️ Stopped auto-refresh timer");
+    }
 }
 
-- (void)autoRefreshTimerFired:(NSTimer *)timer {
+- (void)autoRefreshTick:(NSTimer *)timer {
+    NSLog(@"⏰ Auto-refresh tick");
     [self refreshAllCharts];
 }
 
-#pragma mark - UI Actions
+#pragma mark - Actions
 
-- (void)symbolsTextChanged:(id)sender {
+- (void)symbolsChanged:(id)sender {
     [self setSymbolsFromString:self.symbolsTextField.stringValue];
 }
 
 - (void)chartTypeChanged:(id)sender {
     self.chartType = (MiniChartType)self.chartTypePopup.indexOfSelectedItem;
     
-    // Aggiorna tutti i chart
+    // Update all charts
     for (MiniChart *chart in self.miniCharts) {
         chart.chartType = self.chartType;
         [chart setNeedsDisplay:YES];
@@ -469,7 +496,7 @@
     NSInteger index = self.timeframePopup.indexOfSelectedItem;
     self.timeframe = (MiniChartTimeframe)index;
     
-    // Aggiorna tutti i chart e ricarica dati
+    // Update all charts and reload data
     for (MiniChart *chart in self.miniCharts) {
         chart.timeframe = self.timeframe;
     }
@@ -480,7 +507,7 @@
 - (void)scaleTypeChanged:(id)sender {
     self.scaleType = (MiniChartScaleType)self.scaleTypePopup.indexOfSelectedItem;
     
-    // Aggiorna tutti i chart
+    // Update all charts
     for (MiniChart *chart in self.miniCharts) {
         chart.scaleType = self.scaleType;
         [chart setNeedsDisplay:YES];
@@ -492,7 +519,7 @@
     if (newMaxBars > 0 && newMaxBars <= 500) {
         self.maxBars = newMaxBars;
         
-        // Aggiorna tutti i chart
+        // Update all charts
         for (MiniChart *chart in self.miniCharts) {
             chart.maxBars = self.maxBars;
         }
@@ -504,7 +531,7 @@
 - (void)volumeCheckboxChanged:(id)sender {
     self.showVolume = (self.volumeCheckbox.state == NSControlStateValueOn);
     
-    // Aggiorna tutti i chart
+    // Update all charts
     for (MiniChart *chart in self.miniCharts) {
         chart.showVolume = self.showVolume;
         [chart setNeedsDisplay:YES];
@@ -520,7 +547,7 @@
     self.refreshButton.enabled = NO;
     [self refreshAllCharts];
     
-    // Riabilita dopo 1 secondo per evitare spam
+    // Re-enable after 1 second to prevent spam
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         self.refreshButton.enabled = YES;
     });
@@ -530,6 +557,11 @@
 
 - (void)setSymbols:(NSArray<NSString *> *)symbols {
     _symbols = symbols ?: @[];
+    
+    // Update symbols text field
+    self.symbolsString = [_symbols componentsJoinedByString:@", "];
+    self.symbolsTextField.stringValue = self.symbolsString;
+    
     [self rebuildMiniCharts];
     [self loadDataFromDataHub];
 }
@@ -548,7 +580,9 @@
         }
     }
     
-    self.symbols = parsedSymbols;
+    _symbols = parsedSymbols;
+    [self rebuildMiniCharts];
+    [self loadDataFromDataHub];
 }
 
 - (void)addSymbol:(NSString *)symbol {
@@ -578,17 +612,19 @@
 #pragma mark - MiniChart Management
 
 - (void)rebuildMiniCharts {
-    // Rimuovi chart esistenti
+    NSLog(@"🔨 Rebuilding MiniCharts for %lu symbols", (unsigned long)self.symbols.count);
+    
+    // Remove existing charts
     for (MiniChart *chart in self.miniCharts) {
         [chart removeFromSuperview];
     }
     [self.miniCharts removeAllObjects];
     
-    // Rimuovi constraints
+    // Remove constraints
     [self.chartsContainer removeConstraints:self.chartConstraints];
     [self.chartConstraints removeAllObjects];
     
-    // Crea nuovi chart
+    // Create new charts
     for (NSString *symbol in self.symbols) {
         MiniChart *miniChart = [[MiniChart alloc] init];
         miniChart.symbol = symbol;
@@ -605,11 +641,6 @@
     
     // Layout charts
     [self layoutMiniCharts];
-    
-    // Carica dati per i nuovi chart
-    for (MiniChart *miniChart in self.miniCharts) {
-        [self loadDataForMiniChart:miniChart];
-    }
 }
 
 - (void)layoutMiniCharts {
@@ -622,37 +653,27 @@
     CGFloat chartHeight = 200;
     CGFloat spacing = 10;
     
-    // Calcola dimensione container
-    CGFloat containerWidth = columns * chartWidth + (columns - 1) * spacing + 2 * spacing;
-    CGFloat containerHeight = rows * chartHeight + (rows - 1) * spacing + 2 * spacing;
+    // Calculate container size
+    CGFloat containerWidth = columns * chartWidth + (columns - 1) * spacing;
+    CGFloat containerHeight = rows * chartHeight + (rows - 1) * spacing;
     
-    // Imposta dimensione container
-    [self.chartsContainer addConstraint:[NSLayoutConstraint constraintWithItem:self.chartsContainer
-                                                                     attribute:NSLayoutAttributeWidth
-                                                                     relatedBy:NSLayoutRelationEqual
-                                                                        toItem:nil
-                                                                     attribute:NSLayoutAttributeNotAnAttribute
-                                                                    multiplier:1.0
-                                                                      constant:containerWidth]];
+    // Set container size
+    [NSLayoutConstraint activateConstraints:@[
+        [self.chartsContainer.widthAnchor constraintEqualToConstant:containerWidth],
+        [self.chartsContainer.heightAnchor constraintEqualToConstant:containerHeight]
+    ]];
     
-    [self.chartsContainer addConstraint:[NSLayoutConstraint constraintWithItem:self.chartsContainer
-                                                                     attribute:NSLayoutAttributeHeight
-                                                                     relatedBy:NSLayoutRelationEqual
-                                                                        toItem:nil
-                                                                     attribute:NSLayoutAttributeNotAnAttribute
-                                                                    multiplier:1.0
-                                                                      constant:containerHeight]];
-    
-    // Layout mini charts
+    // Layout each chart
     for (NSInteger i = 0; i < self.miniCharts.count; i++) {
         MiniChart *chart = self.miniCharts[i];
+        
         NSInteger row = i / columns;
-        NSInteger col = i % columns;
+        NSInteger column = i % columns;
         
-        CGFloat x = spacing + col * (chartWidth + spacing);
-        CGFloat y = spacing + row * (chartHeight + spacing);
+        CGFloat x = column * (chartWidth + spacing);
+        CGFloat y = row * (chartHeight + spacing);
         
-        // Width constraint
+        // Chart size
         [self.chartConstraints addObject:[NSLayoutConstraint constraintWithItem:chart
                                                                       attribute:NSLayoutAttributeWidth
                                                                       relatedBy:NSLayoutRelationEqual
@@ -661,7 +682,6 @@
                                                                      multiplier:1.0
                                                                        constant:chartWidth]];
         
-        // Height constraint
         [self.chartConstraints addObject:[NSLayoutConstraint constraintWithItem:chart
                                                                       attribute:NSLayoutAttributeHeight
                                                                       relatedBy:NSLayoutRelationEqual
@@ -672,10 +692,10 @@
         
         // X position
         [self.chartConstraints addObject:[NSLayoutConstraint constraintWithItem:chart
-                                                                      attribute:NSLayoutAttributeLeading
+                                                                      attribute:NSLayoutAttributeLeft
                                                                       relatedBy:NSLayoutRelationEqual
                                                                          toItem:self.chartsContainer
-                                                                      attribute:NSLayoutAttributeLeading
+                                                                      attribute:NSLayoutAttributeLeft
                                                                      multiplier:1.0
                                                                        constant:x]];
         
@@ -712,7 +732,7 @@
 }
 
 - (void)optimizeLayoutForSize:(NSSize)size {
-    // Calcola numero ottimale di colonne basato sulla larghezza
+    // Calculate optimal number of columns based on width
     CGFloat chartWidth = 300;
     CGFloat spacing = 10;
     
@@ -763,7 +783,7 @@
     
     if (state[@"maxBars"]) {
         self.maxBars = [state[@"maxBars"] integerValue];
-        self.maxBarsField.stringValue = [NSString stringWithFormat:@"%ld", (long)self.maxBars];
+        self.maxBarsField.integerValue = self.maxBars;
     }
     
     if (state[@"showVolume"]) {
@@ -775,6 +795,18 @@
         self.columnsCount = [state[@"columnsCount"] integerValue];
         self.columnsControl.selectedSegment = self.columnsCount - 1;
     }
+    
+    // Apply configuration to existing charts
+    for (MiniChart *chart in self.miniCharts) {
+        chart.chartType = self.chartType;
+        chart.timeframe = self.timeframe;
+        chart.scaleType = self.scaleType;
+        chart.maxBars = self.maxBars;
+        chart.showVolume = self.showVolume;
+    }
+    
+    [self layoutMiniCharts];
+    [self loadDataFromDataHub];
 }
 
 @end

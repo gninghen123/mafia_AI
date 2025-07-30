@@ -316,20 +316,51 @@
         return;
     }
     
-    // Process and standardize historical data
+    // Standardizza i dati usando l'adapter
     id<DataSourceAdapter> adapter = [self getAdapterForCurrentDataSource];
-    NSArray<HistoricalBar *> *standardizedBars = [adapter standardizeHistoricalData:bars forSymbol:symbol];
+    if (!adapter) {
+        NSError *adapterError = [NSError errorWithDomain:@"DataManager"
+                                                     code:102
+                                                 userInfo:@{NSLocalizedDescriptionKey: @"No adapter for current data source"}];
+        [self.activeRequests removeObjectForKey:requestID];
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, adapterError);
+            });
+        }
+        return;
+    }
+    
+    // L'adapter ora restituisce array di dizionari
+    NSArray<NSDictionary *> *standardizedData = [adapter standardizeHistoricalData:bars forSymbol:symbol];
+    
+    if (!standardizedData || standardizedData.count == 0) {
+        NSError *standardizationError = [NSError errorWithDomain:@"DataManager"
+                                                             code:103
+                                                         userInfo:@{NSLocalizedDescriptionKey: @"Failed to standardize historical data"}];
+        [self.activeRequests removeObjectForKey:requestID];
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, standardizationError);
+            });
+        }
+        return;
+    }
     
     [self.activeRequests removeObjectForKey:requestID];
     
+    // Passa i dizionari al DataHub che li convertirà in oggetti Core Data
+    // Per ora restituiamo array vuoto nel completion ma notifichiamo i dati corretti
     if (completion) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            completion(standardizedBars, nil);
+            completion(@[], nil); // Il DataHub gestirà la conversione
         });
     }
     
-    [self notifyDelegatesOfHistoricalUpdate:standardizedBars forSymbol:symbol];
+    // Notifica con i dati standardizzati (array di dizionari)
+    [self notifyDelegatesOfHistoricalUpdate:standardizedData forSymbol:symbol];
 }
+
 
 - (void)handleOrderBookResponse:(id)orderBook
                           error:(NSError *)error

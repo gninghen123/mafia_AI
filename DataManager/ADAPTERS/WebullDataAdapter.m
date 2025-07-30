@@ -73,9 +73,7 @@
     return [[MarketData alloc] initWithDictionary:standardData];
 }
 
-- (NSArray<HistoricalBar *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol {
-    // TODO: Implement when needed
-    // Per ora restituiamo array di dizionari invece di HistoricalBar
+- (NSArray<NSDictionary *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol {
     NSMutableArray *bars = [NSMutableArray array];
     
     if ([rawData isKindOfClass:[NSArray class]]) {
@@ -89,12 +87,13 @@
             standardBar[@"low"] = barData[@"low"] ?: @0;
             standardBar[@"close"] = barData[@"close"] ?: @0;
             standardBar[@"volume"] = barData[@"volume"] ?: @0;
+            standardBar[@"adjustedClose"] = barData[@"close"] ?: @0;
             
             [bars addObject:standardBar];
         }
     }
     
-    return bars;
+    return [bars copy];
 }
 
 - (Position *)standardizePositionData:(NSDictionary *)rawData {

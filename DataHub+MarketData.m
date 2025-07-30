@@ -200,6 +200,18 @@
     }
 }
 
+// Il DataHub riceverà i dizionari e li convertirà in oggetti Core Data
+- (void)convertHistoricalDataDictionaries:(NSArray<NSDictionary *> *)dataDictionaries
+                                forSymbol:(NSString *)symbol
+                                timeframe:(BarTimeframe)timeframe {
+    
+    for (NSDictionary *barData in dataDictionaries) {
+        [self saveHistoricalBar:barData forSymbol:symbol timeframe:timeframe];
+    }
+    
+    [self saveContext];
+}
+
 #pragma mark - Company Info
 
 - (void)getCompanyInfoForSymbol:(NSString *)symbol
@@ -596,5 +608,7 @@
         return self.pendingRequests[requestKey] != nil;
     }
 }
+
+
 
 @end

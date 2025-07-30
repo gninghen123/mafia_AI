@@ -90,7 +90,7 @@
     return [[MarketData alloc] initWithDictionary:standardData];
 }
 
-- (NSArray<HistoricalBar *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol {
+- (NSArray<NSDictionary *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol {
     if (!rawData) return @[];
     
     NSArray *candles = nil;
@@ -117,10 +117,10 @@
         return @[];
     }
     
-    NSMutableArray<HistoricalBar *> *bars = [NSMutableArray array];
+    NSMutableArray<NSDictionary *> *bars = [NSMutableArray array];
     
     for (id candleItem in candles) {
-        HistoricalBar *bar = [[HistoricalBar alloc] init];
+        NSMutableDictionary *barDict = [NSMutableDictionary dictionary];
         
         if ([candleItem isKindOfClass:[NSDictionary class]]) {
             NSDictionary *candle = (NSDictionary *)candleItem;
@@ -129,40 +129,52 @@
             NSNumber *datetime = candle[@"datetime"];
             if (datetime) {
                 NSTimeInterval timestamp = [datetime doubleValue] / 1000.0;
-                bar.date = [NSDate dateWithTimeIntervalSince1970:timestamp];
+                barDict[@"date"] = [NSDate dateWithTimeIntervalSince1970:timestamp];
             }
             
-            bar.symbol = symbol;
+            barDict[@"symbol"] = symbol;
             
             // Converti valori numerici correttamente
-            bar.open = [candle[@"open"] doubleValue];
-            bar.high = [candle[@"high"] doubleValue];
-            bar.low = [candle[@"low"] doubleValue];
-            bar.close = [candle[@"close"] doubleValue];
-            bar.volume = [candle[@"volume"] longLongValue];
+            barDict[@"open"] = @([candle[@"open"] doubleValue]);
+            barDict[@"high"] = @([candle[@"high"] doubleValue]);
+            barDict[@"low"] = @([candle[@"low"] doubleValue]);
+            barDict[@"close"] = @([candle[@"close"] doubleValue]);
+            barDict[@"volume"] = @([candle[@"volume"] longLongValue]);
+            
+            // Aggiungi adjustedClose se disponibile (per ora uguale a close)
+            barDict[@"adjustedClose"] = barDict[@"close"];
         }
         // Supporta anche formato array [timestamp, open, high, low, close, volume]
         else if ([candleItem isKindOfClass:[NSArray class]]) {
             NSArray *candleArray = (NSArray *)candleItem;
             if (candleArray.count >= 6) {
                 NSNumber *timestamp = candleArray[0];
-                bar.date = [NSDate dateWithTimeIntervalSince1970:[timestamp doubleValue] / 1000.0];
-                bar.symbol = symbol;
-                bar.open = [candleArray[1] doubleValue];
-                bar.high = [candleArray[2] doubleValue];
-                bar.low = [candleArray[3] doubleValue];
-                bar.close = [candleArray[4] doubleValue];
-                bar.volume = [candleArray[5] longLongValue];
+                barDict[@"date"] = [NSDate dateWithTimeIntervalSince1970:[timestamp doubleValue] / 1000.0];
+                barDict[@"symbol"] = symbol;
+                barDict[@"open"] = @([candleArray[1] doubleValue]);
+                barDict[@"high"] = @([candleArray[2] doubleValue]);
+                barDict[@"low"] = @([candleArray[3] doubleValue]);
+                barDict[@"close"] = @([candleArray[4] doubleValue]);
+                barDict[@"volume"] = @([candleArray[5] longLongValue]);
+                barDict[@"adjustedClose"] = barDict[@"close"];
             }
         }
         
-        if (bar.date) {
-            [bars addObject:bar];
+        // Aggiungi solo se abbiamo una data valida
+        if (barDict[@"date"]) {
+            [bars addObject:barDict];
         }
     }
     
-    NSLog(@"SchwabAdapter: Standardized %lu bars", (unsigned long)bars.count);
-    return [bars copy];
+    // Ordina per data (dal più vecchio al più recente)
+    NSArray *sortedBars = [bars sortedArrayUsingComparator:^NSComparisonResult(NSDictionary *bar1, NSDictionary *bar2) {
+        NSDate *date1 = bar1[@"date"];
+        NSDate *date2 = bar2[@"date"];
+        return [date1 compare:date2];
+    }];
+    
+    NSLog(@"SchwabAdapter: Standardized %lu bars for symbol %@", (unsigned long)sortedBars.count, symbol);
+    return sortedBars;
 }
 
 - (NSDictionary *)standardizeOrderBookData:(id)rawData forSymbol:(NSString *)symbol {

@@ -26,16 +26,26 @@ NS_ASSUME_NONNULL_BEGIN
 
 @optional
 // Market data via HTTP REST calls
-// Metodo principale - il DownloadManager decide la priorità
-- (NSString *)executeRequest:(DataRequestType)requestType
-                  parameters:(NSDictionary *)parameters
-                  completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion;
+- (void)fetchQuoteForSymbol:(NSString *)symbol
+                 completion:(void (^)(id quote, NSError *error))completion;
 
-// Metodo avanzato - per casi speciali con source forzato
-- (NSString *)executeRequest:(DataRequestType)requestType
-                  parameters:(NSDictionary *)parameters
-             preferredSource:(DataSourceType)preferredSource
-                  completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion;
+- (void)fetchHistoricalDataForSymbol:(NSString *)symbol
+                           timeframe:(BarTimeframe)timeframe
+                           startDate:(NSDate *)startDate
+                             endDate:(NSDate *)endDate
+                          completion:(void (^)(NSArray *bars, NSError *error))completion;
+
+- (void)fetchOrderBookForSymbol:(NSString *)symbol
+                          depth:(NSInteger)depth
+                     completion:(void (^)(id orderBook, NSError *error))completion;
+
+- (void)fetchPositionsWithCompletion:(void (^)(NSArray *positions, NSError *error))completion;
+- (void)fetchOrdersWithCompletion:(void (^)(NSArray *orders, NSError *error))completion;
+
+// Market lists
+- (void)fetchMarketListForType:(DataRequestType)listType
+                    parameters:(NSDictionary *)parameters
+                    completion:(void (^)(NSArray *results, NSError *error))completion;
 
 // HTTP Polling subscription (NOT WebSocket - just symbol list management)
 - (void)subscribeToQuotes:(NSArray<NSString *> *)symbols;
@@ -72,8 +82,15 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) DataSourceType currentDataSource;
 
 // Request execution
+// Metodo principale - il DownloadManager decide la priorità
 - (NSString *)executeRequest:(DataRequestType)requestType
                   parameters:(NSDictionary *)parameters
+                  completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion;
+
+// Metodo avanzato - per casi speciali con source forzato
+- (NSString *)executeRequest:(DataRequestType)requestType
+                  parameters:(NSDictionary *)parameters
+             preferredSource:(DataSourceType)preferredSource
                   completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion;
 
 - (void)cancelRequest:(NSString *)requestID;

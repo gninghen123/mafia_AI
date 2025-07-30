@@ -6,9 +6,6 @@
 #import "DownloadManager.h"
 #import "WebullDataSource.h"
 
-
-
-
 @interface DataSourceInfo : NSObject
 @property (nonatomic, strong) id<DataSource> dataSource;
 @property (nonatomic, assign) DataSourceType type;
@@ -28,6 +25,7 @@
 @property (nonatomic, assign) NSInteger maxRetries;
 @property (nonatomic, assign) NSTimeInterval requestTimeout;
 @property (nonatomic, strong) dispatch_queue_t dataSourceQueue;
+@property (nonatomic, assign) DataSourceType currentDataSource;
 @end
 
 @implementation DownloadManager
@@ -87,136 +85,30 @@
     });
 }
 
-- (void)setDataSourcePriority:(NSInteger)priority forType:(DataSourceType)type {
-    dispatch_async(self.dataSourceQueue, ^{
-        DataSourceInfo *info = self.dataSources[@(type)];
-        if (info) {
-            info.priority = priority;
-        }
-    });
-}
+#pragma mark - Request Execution Methods
 
-#pragma mark - Configuration
-
-- (void)configureDataSource:(DataSourceType)type withCredentials:(NSDictionary *)credentials {
-    dispatch_async(self.dataSourceQueue, ^{
-        DataSourceInfo *info = self.dataSources[@(type)];
-        if (info) {
-            [info.dataSource connectWithCompletion:^(BOOL success, NSError *error) {
-                if (success) {
-                    NSLog(@"Successfully configured data source: %@", info.dataSource.sourceName);
-                } else {
-                    NSLog(@"Failed to configure data source %@: %@", info.dataSource.sourceName, error);
-                }
-            }];
-        }
-    });
-}
-
-#pragma mark - Request Execution
-- (void)executeMarketListRequest:(NSDictionary *)parameters
-                  withDataSource:(id<DataSource>)dataSource
-                      sourceInfo:(DataSourceInfo *)sourceInfo
-                         sources:(NSArray<DataSourceInfo *> *)sources
-                     sourceIndex:(NSInteger)index
-                       requestID:(NSString *)requestID
-                      completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
-    
-    // Check if this is a Webull data source
-    if ([dataSource isKindOfClass:[WebullDataSource class]]) {
-        WebullDataSource *webullSource = (WebullDataSource *)dataSource;
-        NSString *listType = parameters[@"listType"];
-        
-        if ([listType isEqualToString:@"topGainers"]) {
-            NSString *rankType = parameters[@"rankType"];
-            NSInteger pageSize = [parameters[@"pageSize"] integerValue];
-            
-            [webullSource fetchTopGainersWithRankType:rankType
-                                             pageSize:pageSize
-                                           completion:^(NSArray *gainers, NSError *error) {
-                if (error) {
-                    // Try next source
-                    [self executeRequestWithSources:sources
-                                        requestType:DataRequestTypeTopGainers
-                                         parameters:parameters
-                                        sourceIndex:index + 1
-                                          requestID:requestID
-                                         completion:completion];
-                } else {
-                    [self.activeRequests removeObjectForKey:requestID];
-                    if (completion) {
-                        dispatch_async(dispatch_get_main_queue(), ^{
-                            completion(gainers, sourceInfo.type, nil);
-                        });
-                    }
-                }
-            }];
-        } else if ([listType isEqualToString:@"topLosers"]) {
-            NSString *rankType = parameters[@"rankType"];
-            NSInteger pageSize = [parameters[@"pageSize"] integerValue];
-            
-            [webullSource fetchTopLosersWithRankType:rankType
-                                            pageSize:pageSize
-                                          completion:^(NSArray *losers, NSError *error) {
-                if (error) {
-                    // Try next source
-                    [self executeRequestWithSources:sources
-                                        requestType:DataRequestTypeTopLosers
-                                         parameters:parameters
-                                        sourceIndex:index + 1
-                                          requestID:requestID
-                                         completion:completion];
-                } else {
-                    [self.activeRequests removeObjectForKey:requestID];
-                    if (completion) {
-                        dispatch_async(dispatch_get_main_queue(), ^{
-                            completion(losers, sourceInfo.type, nil);
-                        });
-                    }
-                }
-            }];
-        } else if ([listType isEqualToString:@"etfList"]) {
-            [webullSource fetchETFListWithCompletion:^(NSArray *etfs, NSError *error) {
-                if (error) {
-                    // Try next source
-                    [self executeRequestWithSources:sources
-                                        requestType:DataRequestTypeETFList
-                                         parameters:parameters
-                                        sourceIndex:index + 1
-                                          requestID:requestID
-                                         completion:completion];
-                } else {
-                    [self.activeRequests removeObjectForKey:requestID];
-                    if (completion) {
-                        dispatch_async(dispatch_get_main_queue(), ^{
-                            completion(etfs, sourceInfo.type, nil);
-                        });
-                    }
-                }
-            }];
-        }
-    } else {
-        // This source doesn't support market lists
-        [self executeRequestWithSources:sources
-                            requestType:DataRequestTypeMarketList
-                             parameters:parameters
-                            sourceIndex:index + 1
-                              requestID:requestID
-                             completion:completion];
-    }
-}
-
-
+// Metodo principale - il DownloadManager decide la priorità
 - (NSString *)executeRequest:(DataRequestType)requestType
                   parameters:(NSDictionary *)parameters
-              preferredSource:(DataSourceType)preferredSource
+                  completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    return [self executeRequest:requestType
+                     parameters:parameters
+                preferredSource:-1  // -1 indica nessuna preferenza
+                     completion:completion];
+}
+
+// Metodo avanzato - per casi speciali con source forzato
+- (NSString *)executeRequest:(DataRequestType)requestType
+                  parameters:(NSDictionary *)parameters
+             preferredSource:(DataSourceType)preferredSource
                   completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
     
     NSString *requestID = [[NSUUID UUID] UUIDString];
     self.activeRequests[requestID] = parameters;
     
-    // Debug logging migliorato
-   
+    NSLog(@"DownloadManager: executeRequest type:%ld preferredSource:%ld requestID:%@",
+          (long)requestType, (long)preferredSource, requestID);
     
     // Get sorted data sources by priority
     NSArray<DataSourceInfo *> *sortedSources = [self sortedDataSourcesForRequestType:requestType
@@ -226,8 +118,8 @@
         NSError *error = [NSError errorWithDomain:@"DownloadManager"
                                              code:404
                                          userInfo:@{NSLocalizedDescriptionKey:
-                                                   [NSString stringWithFormat:@"No data sources available for %@ request",
-                                                    @"h"]}];
+                                                   [NSString stringWithFormat:@"No data sources available for request type %ld",
+                                                    (long)requestType]}];
         if (completion) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 completion(nil, -1, error);
@@ -236,7 +128,6 @@
         return requestID;
     }
     
- 
     // Try each data source in order
     [self executeRequestWithSources:sortedSources
                         requestType:requestType
@@ -247,6 +138,7 @@
     
     return requestID;
 }
+
 - (void)executeRequestWithSources:(NSArray<DataSourceInfo *> *)sources
                       requestType:(DataRequestType)requestType
                        parameters:(NSDictionary *)parameters
@@ -302,6 +194,7 @@
                                  requestID:requestID
                                 completion:completion];
             break;
+            
         case DataRequestTypeQuote:
             [self executeQuoteRequest:parameters
                        withDataSource:dataSource
@@ -364,9 +257,54 @@
     }
 }
 
-#pragma mark - Specific Request Types
+#pragma mark - Specific Request Type Handlers
 
-// Aggiornamento del metodo executeQuoteRequest nel DownloadManager.m
+- (void)executeMarketListRequest:(NSDictionary *)parameters
+                  withDataSource:(id<DataSource>)dataSource
+                      sourceInfo:(DataSourceInfo *)sourceInfo
+                         sources:(NSArray<DataSourceInfo *> *)sources
+                     sourceIndex:(NSInteger)index
+                       requestID:(NSString *)requestID
+                      completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    DataRequestType requestType = [parameters[@"requestType"] integerValue];
+    
+    if ([dataSource respondsToSelector:@selector(fetchMarketListForType:parameters:completion:)]) {
+        [dataSource fetchMarketListForType:requestType
+                                parameters:parameters
+                                completion:^(NSArray *results, NSError *error) {
+            if (!self.activeRequests[requestID]) {
+                return;
+            }
+            
+            if (error && self.fallbackEnabled && index < sources.count - 1) {
+                sourceInfo.failureCount++;
+                sourceInfo.lastFailureTime = [NSDate date];
+                
+                [self executeRequestWithSources:sources
+                                    requestType:requestType
+                                     parameters:parameters
+                                    sourceIndex:index + 1
+                                      requestID:requestID
+                                     completion:completion];
+            } else {
+                [self.activeRequests removeObjectForKey:requestID];
+                if (completion) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        completion(results, sourceInfo.type, error);
+                    });
+                }
+            }
+        }];
+    } else {
+        [self executeRequestWithSources:sources
+                            requestType:requestType
+                             parameters:parameters
+                            sourceIndex:index + 1
+                              requestID:requestID
+                             completion:completion];
+    }
+}
 
 - (void)executeQuoteRequest:(NSDictionary *)parameters
              withDataSource:(id<DataSource>)dataSource
@@ -382,53 +320,33 @@
           symbol, dataSource.sourceName, (long)index, (unsigned long)sources.count);
     
     if ([dataSource respondsToSelector:@selector(fetchQuoteForSymbol:completion:)]) {
-        NSLog(@"DownloadManager: Data source %@ supports fetchQuoteForSymbol", dataSource.sourceName);
-        
         [dataSource fetchQuoteForSymbol:symbol completion:^(id quote, NSError *error) {
             if (!self.activeRequests[requestID]) {
-                NSLog(@"DownloadManager: Request %@ was cancelled", requestID);
-                return; // Request was cancelled
+                return;
             }
             
-            if (error) {
-                NSLog(@"DownloadManager: Quote request failed with %@ (error: %@)", dataSource.sourceName, error.localizedDescription);
+            if (error && self.fallbackEnabled && index < sources.count - 1) {
+                NSLog(@"DownloadManager: Quote request failed with %@, trying next source", dataSource.sourceName);
+                sourceInfo.failureCount++;
+                sourceInfo.lastFailureTime = [NSDate date];
                 
-                if (self.fallbackEnabled && index < sources.count - 1) {
-                    NSLog(@"DownloadManager: Trying next data source...");
-                    sourceInfo.failureCount++;
-                    sourceInfo.lastFailureTime = [NSDate date];
-                    
-                    [self executeRequestWithSources:sources
-                                        requestType:DataRequestTypeQuote
-                                         parameters:parameters
-                                        sourceIndex:index + 1
-                                          requestID:requestID
-                                         completion:completion];
-                } else {
-                    NSLog(@"DownloadManager: No more data sources to try for %@", symbol);
-                    [self.activeRequests removeObjectForKey:requestID];
-                    if (completion) {
-                        dispatch_async(dispatch_get_main_queue(), ^{
-                            completion(nil, sourceInfo.type, error);
-                        });
-                    }
-                }
+                [self executeRequestWithSources:sources
+                                    requestType:DataRequestTypeQuote
+                                     parameters:parameters
+                                    sourceIndex:index + 1
+                                      requestID:requestID
+                                     completion:completion];
             } else {
-                NSLog(@"DownloadManager: Quote request succeeded with %@ for %@", dataSource.sourceName, symbol);
-                NSLog(@"DownloadManager: Quote result: %@", quote);
-                
+                NSLog(@"DownloadManager: Quote request succeeded with %@", dataSource.sourceName);
                 [self.activeRequests removeObjectForKey:requestID];
                 if (completion) {
                     dispatch_async(dispatch_get_main_queue(), ^{
-                        completion(quote, sourceInfo.type, nil);
+                        completion(quote, sourceInfo.type, error);
                     });
                 }
             }
         }];
     } else {
-        NSLog(@"DownloadManager: Data source %@ does NOT support fetchQuoteForSymbol", dataSource.sourceName);
-        
-        // This source doesn't support quotes, try next
         [self executeRequestWithSources:sources
                             requestType:DataRequestTypeQuote
                              parameters:parameters
@@ -450,19 +368,18 @@
     BarTimeframe timeframe = [parameters[@"timeframe"] integerValue];
     NSDate *startDate = parameters[@"startDate"];
     NSDate *endDate = parameters[@"endDate"];
- 
+    
     if ([dataSource respondsToSelector:@selector(fetchHistoricalDataForSymbol:timeframe:startDate:endDate:completion:)]) {
         [dataSource fetchHistoricalDataForSymbol:symbol
-                                      timeframe:timeframe
-                                      startDate:startDate
-                                        endDate:endDate
-                                     completion:^(NSArray *bars, NSError *error) {
+                                       timeframe:timeframe
+                                       startDate:startDate
+                                         endDate:endDate
+                                      completion:^(NSArray *bars, NSError *error) {
             if (!self.activeRequests[requestID]) {
-                return; // Request was cancelled
+                return;
             }
             
             if (error && self.fallbackEnabled && index < sources.count - 1) {
-                NSLog(@"Historical data request failed with %@, trying next source", dataSource.sourceName);
                 sourceInfo.failureCount++;
                 sourceInfo.lastFailureTime = [NSDate date];
                 
@@ -482,7 +399,6 @@
             }
         }];
     } else {
-        // This source doesn't support historical data, try next
         [self executeRequestWithSources:sources
                             requestType:DataRequestTypeHistoricalBars
                              parameters:parameters
@@ -504,13 +420,14 @@
     NSInteger depth = [parameters[@"depth"] integerValue];
     
     if ([dataSource respondsToSelector:@selector(fetchOrderBookForSymbol:depth:completion:)]) {
-        [dataSource fetchOrderBookForSymbol:symbol depth:depth completion:^(id orderBook, NSError *error) {
+        [dataSource fetchOrderBookForSymbol:symbol
+                                      depth:depth
+                                 completion:^(id orderBook, NSError *error) {
             if (!self.activeRequests[requestID]) {
-                return; // Request was cancelled
+                return;
             }
             
             if (error && self.fallbackEnabled && index < sources.count - 1) {
-                NSLog(@"Order book request failed with %@, trying next source", dataSource.sourceName);
                 sourceInfo.failureCount++;
                 sourceInfo.lastFailureTime = [NSDate date];
                 
@@ -530,7 +447,6 @@
             }
         }];
     } else {
-        // This source doesn't support order book, try next
         [self executeRequestWithSources:sources
                             requestType:DataRequestTypeOrderBook
                              parameters:parameters
@@ -551,27 +467,35 @@
     if ([dataSource respondsToSelector:@selector(fetchPositionsWithCompletion:)]) {
         [dataSource fetchPositionsWithCompletion:^(NSArray *positions, NSError *error) {
             if (!self.activeRequests[requestID]) {
-                return; // Request was cancelled
+                return;
             }
             
-            [self.activeRequests removeObjectForKey:requestID];
-            if (completion) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(positions, sourceInfo.type, error);
-                });
+            if (error && self.fallbackEnabled && index < sources.count - 1) {
+                sourceInfo.failureCount++;
+                sourceInfo.lastFailureTime = [NSDate date];
+                
+                [self executeRequestWithSources:sources
+                                    requestType:DataRequestTypePositions
+                                     parameters:parameters
+                                    sourceIndex:index + 1
+                                      requestID:requestID
+                                     completion:completion];
+            } else {
+                [self.activeRequests removeObjectForKey:requestID];
+                if (completion) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        completion(positions, sourceInfo.type, error);
+                    });
+                }
             }
         }];
     } else {
-        // This source doesn't support positions, return error
-        NSError *error = [NSError errorWithDomain:@"DownloadManager"
-                                             code:501
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Data source does not support position data"}];
-        [self.activeRequests removeObjectForKey:requestID];
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(nil, sourceInfo.type, error);
-            });
-        }
+        [self executeRequestWithSources:sources
+                            requestType:DataRequestTypePositions
+                             parameters:parameters
+                            sourceIndex:index + 1
+                              requestID:requestID
+                             completion:completion];
     }
 }
 
@@ -586,27 +510,35 @@
     if ([dataSource respondsToSelector:@selector(fetchOrdersWithCompletion:)]) {
         [dataSource fetchOrdersWithCompletion:^(NSArray *orders, NSError *error) {
             if (!self.activeRequests[requestID]) {
-                return; // Request was cancelled
+                return;
             }
             
-            [self.activeRequests removeObjectForKey:requestID];
-            if (completion) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(orders, sourceInfo.type, error);
-                });
+            if (error && self.fallbackEnabled && index < sources.count - 1) {
+                sourceInfo.failureCount++;
+                sourceInfo.lastFailureTime = [NSDate date];
+                
+                [self executeRequestWithSources:sources
+                                    requestType:DataRequestTypeOrders
+                                     parameters:parameters
+                                    sourceIndex:index + 1
+                                      requestID:requestID
+                                     completion:completion];
+            } else {
+                [self.activeRequests removeObjectForKey:requestID];
+                if (completion) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        completion(orders, sourceInfo.type, error);
+                    });
+                }
             }
         }];
     } else {
-        // This source doesn't support orders, return error
-        NSError *error = [NSError errorWithDomain:@"DownloadManager"
-                                             code:501
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Data source does not support order data"}];
-        [self.activeRequests removeObjectForKey:requestID];
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(nil, sourceInfo.type, error);
-            });
-        }
+        [self executeRequestWithSources:sources
+                            requestType:DataRequestTypeOrders
+                             parameters:parameters
+                            sourceIndex:index + 1
+                              requestID:requestID
+                             completion:completion];
     }
 }
 
@@ -618,9 +550,11 @@
     
     dispatch_sync(self.dataSourceQueue, ^{
         // First, check if preferred source is available and supports the request type
-        DataSourceInfo *preferredInfo = self.dataSources[@(preferredSource)];
-        if (preferredInfo && [self dataSource:preferredInfo.dataSource supportsRequestType:requestType]) {
-            [availableSources addObject:preferredInfo];
+        if (preferredSource >= 0) {
+            DataSourceInfo *preferredInfo = self.dataSources[@(preferredSource)];
+            if (preferredInfo && [self dataSource:preferredInfo.dataSource supportsRequestType:requestType]) {
+                [availableSources addObject:preferredInfo];
+            }
         }
         
         // Then add other sources sorted by priority
@@ -641,7 +575,7 @@
         
         for (NSNumber *key in sortedKeys) {
             DataSourceInfo *info = self.dataSources[key];
-            if (info.type != preferredSource &&
+            if ((preferredSource < 0 || info.type != preferredSource) &&
                 [self dataSource:info.dataSource supportsRequestType:requestType]) {
                 [availableSources addObject:info];
             }
@@ -651,18 +585,14 @@
     return availableSources;
 }
 
-// Nel file DownloadManager.m, modifica il metodo dataSource:supportsRequestType:
-
 - (BOOL)dataSource:(id<DataSource>)dataSource supportsRequestType:(DataRequestType)requestType {
     DataSourceCapabilities capabilities = dataSource.capabilities;
     
-    // Aggiungi supporto per i nuovi tipi di richiesta
-    // I valori 100-103 sono quelli definiti in DataManager+MarketLists.h
-    if (requestType == 100 || // DataRequestTypeMarketList
-        requestType == 101 || // DataRequestTypeTopGainers
-        requestType == 102 || // DataRequestTypeTopLosers
-        requestType == 103) { // DataRequestTypeETFList
-        
+    // Market list types
+    if (requestType == DataRequestTypeMarketList ||
+        requestType == DataRequestTypeTopGainers ||
+        requestType == DataRequestTypeTopLosers ||
+        requestType == DataRequestTypeETFList) {
         // Per ora, solo DataSourceTypeCustom (Webull) supporta questi tipi
         return dataSource.sourceType == DataSourceTypeCustom;
     }
@@ -691,6 +621,7 @@
             return NO;
     }
 }
+
 #pragma mark - Connection Management
 
 - (void)connectDataSource:(DataSourceType)type completion:(void (^)(BOOL success, NSError *error))completion {
@@ -721,7 +652,6 @@
         for (DataSourceInfo *info in self.dataSources.allValues) {
             if (info.dataSource.isConnected) {
                 [info.dataSource disconnect];
-                //todo 29lug
                 [info.dataSource connectWithCompletion:nil];
             }
         }
@@ -754,8 +684,8 @@
         DataSourceInfo *info = self.dataSources[@(type)];
         if (info) {
             stats = @{
-                @"name": info.dataSource.sourceName,
-                @"connected": @(info.dataSource.isConnected),
+                @"sourceName": info.dataSource.sourceName,
+                @"isConnected": @(info.dataSource.isConnected),
                 @"priority": @(info.priority),
                 @"failureCount": @(info.failureCount),
                 @"lastFailureTime": info.lastFailureTime ?: [NSNull null]
@@ -765,86 +695,77 @@
     return stats;
 }
 
-- (NSArray<NSNumber *> *)availableDataSourcesForRequest:(DataRequestType)requestType {
-    NSMutableArray *sources = [NSMutableArray array];
-    
-    dispatch_sync(self.dataSourceQueue, ^{
-        for (NSNumber *key in self.dataSources) {
-            DataSourceInfo *info = self.dataSources[key];
-            if ([self dataSource:info.dataSource supportsRequestType:requestType]) {
-                [sources addObject:key];
-            }
-        }
-    });
-    
-    return sources;
-}
+#pragma mark - Request Management
 
-#pragma mark - Rate Limiting
-
-- (NSInteger)remainingRequestsForDataSource:(DataSourceType)type {
-    __block NSInteger remaining = 0;
-    dispatch_sync(self.dataSourceQueue, ^{
-        DataSourceInfo *info = self.dataSources[@(type)];
-        if (info && [info.dataSource respondsToSelector:@selector(remainingRequests)]) {
-            remaining = [info.dataSource remainingRequests];
-        }
-    });
-    return remaining;
-}
-
-- (NSDate *)rateLimitResetDateForDataSource:(DataSourceType)type {
-    __block NSDate *resetDate = nil;
-    dispatch_sync(self.dataSourceQueue, ^{
-        DataSourceInfo *info = self.dataSources[@(type)];
-        if (info && [info.dataSource respondsToSelector:@selector(rateLimitResetDate)]) {
-            resetDate = [info.dataSource rateLimitResetDate];
-        }
-    });
-    return resetDate;
-}
-
-#pragma mark - Batch Requests
-
-- (NSString *)executeBatchRequests:(NSArray<NSDictionary *> *)requests
-                        completion:(void (^)(NSArray *results, NSArray<NSError *> *errors))completion {
-    NSString *batchID = [[NSUUID UUID] UUIDString];
-    NSMutableArray *results = [NSMutableArray arrayWithCapacity:requests.count];
-    NSMutableArray *errors = [NSMutableArray arrayWithCapacity:requests.count];
-    
-    dispatch_group_t group = dispatch_group_create();
-    
-    for (NSInteger i = 0; i < requests.count; i++) {
-        [results addObject:[NSNull null]];
-        [errors addObject:[NSNull null]];
-        
-        NSDictionary *request = requests[i];
-        DataRequestType requestType = [request[@"requestType"] integerValue];
-        NSDictionary *parameters = request[@"parameters"];
-        DataSourceType preferredSource = [request[@"preferredSource"] integerValue];
-        
-        dispatch_group_enter(group);
-        [self executeRequest:requestType
-                  parameters:parameters
-              preferredSource:preferredSource
-                  completion:^(id result, DataSourceType usedSource, NSError *error) {
-            if (result) {
-                results[i] = result;
-            }
-            if (error) {
-                errors[i] = error;
-            }
-            dispatch_group_leave(group);
-        }];
+- (void)cancelRequest:(NSString *)requestID {
+    if (requestID) {
+        [self.activeRequests removeObjectForKey:requestID];
     }
+}
+
+- (void)cancelAllRequests {
+    [self.activeRequests removeAllObjects];
+}
+
+#pragma mark - Convenience Methods
+
+- (void)fetchQuoteForSymbol:(NSString *)symbol
+                 completion:(void (^)(id quote, NSError *error))completion {
+    [self executeRequest:DataRequestTypeQuote
+              parameters:@{@"symbol": symbol}
+              completion:^(id result, DataSourceType usedSource, NSError *error) {
+                  if (completion) completion(result, error);
+              }];
+}
+
+- (void)fetchHistoricalDataForSymbol:(NSString *)symbol
+                           timeframe:(BarTimeframe)timeframe
+                           startDate:(NSDate *)startDate
+                             endDate:(NSDate *)endDate
+                          completion:(void (^)(NSArray *bars, NSError *error))completion {
+    NSDictionary *params = @{
+        @"symbol": symbol,
+        @"timeframe": @(timeframe),
+        @"startDate": startDate,
+        @"endDate": endDate
+    };
     
-    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
-        if (completion) {
-            completion(results, errors);
-        }
-    });
+    [self executeRequest:DataRequestTypeHistoricalBars
+              parameters:params
+              completion:^(id result, DataSourceType usedSource, NSError *error) {
+                  if (completion) completion(result, error);
+              }];
+}
+
+- (void)fetchOrderBookForSymbol:(NSString *)symbol
+                          depth:(NSInteger)depth
+                     completion:(void (^)(id orderBook, NSError *error))completion {
+    NSDictionary *params = @{
+        @"symbol": symbol,
+        @"depth": @(depth)
+    };
     
-    return batchID;
+    [self executeRequest:DataRequestTypeOrderBook
+              parameters:params
+              completion:^(id result, DataSourceType usedSource, NSError *error) {
+                  if (completion) completion(result, error);
+              }];
+}
+
+- (void)fetchPositionsWithCompletion:(void (^)(NSArray *positions, NSError *error))completion {
+    [self executeRequest:DataRequestTypePositions
+              parameters:@{}
+              completion:^(id result, DataSourceType usedSource, NSError *error) {
+                  if (completion) completion(result, error);
+              }];
+}
+
+- (void)fetchOrdersWithCompletion:(void (^)(NSArray *orders, NSError *error))completion {
+    [self executeRequest:DataRequestTypeOrders
+              parameters:@{}
+              completion:^(id result, DataSourceType usedSource, NSError *error) {
+                  if (completion) completion(result, error);
+              }];
 }
 
 @end

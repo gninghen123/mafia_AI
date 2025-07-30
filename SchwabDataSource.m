@@ -362,15 +362,6 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     
     NSLog(@"SchwabDataSource: fetchQuoteForSymbol called for %@", symbol);
     NSLog(@"SchwabDataSource: Current token status - hasValidToken: %@", [self hasValidToken] ? @"YES" : @"NO");
-    NSLog(@"SchwabDataSource: Access token exists: %@", self.accessToken ? @"YES" : @"NO");
-    NSLog(@"SchwabDataSource: Refresh token exists: %@", self.refreshToken ? @"YES" : @"NO");
-    
-    if (self.tokenExpiry) {
-        NSTimeInterval timeUntilExpiry = [self.tokenExpiry timeIntervalSinceNow];
-        NSLog(@"SchwabDataSource: Token expires in %.0f seconds", timeUntilExpiry);
-    } else {
-        NSLog(@"SchwabDataSource: No token expiry date set");
-    }
     
     [self fetchQuoteForSymbols:@[symbol] completion:^(NSDictionary *quotes, NSError *error) {
         if (error) {
@@ -378,8 +369,9 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
             if (completion) completion(nil, error);
         } else {
             NSLog(@"SchwabDataSource: fetchQuoteForSymbols succeeded, raw response: %@", quotes);
-            MarketData *quote = [self parseQuoteData:quotes[symbol] forSymbol:symbol];
-            if (completion) completion(quote, nil);
+            // CAMBIAMENTO: Restituisce i dati grezzi
+            NSDictionary *rawQuoteData = quotes[symbol];
+            if (completion) completion(rawQuoteData, nil);
         }
     }];
 }
@@ -509,8 +501,8 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
             if (error) {
                 if (completion) completion(nil, error);
             } else {
-                NSArray *bars = [self parseHistoricalData:priceHistory];
-                if (completion) completion(bars, nil);
+                // CAMBIAMENTO: Restituisce i dati grezzi invece di parseHistoricalData
+                if (completion) completion(priceHistory, nil);
             }
         }];
     }];
@@ -573,7 +565,6 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
         }
     }];
 }
-
 - (void)fetchPositionsForAccount:(NSString *)accountNumber
                       completion:(void (^)(NSArray *positions, NSError *error))completion {
     
@@ -609,22 +600,134 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
                 return;
             }
             
-            NSMutableArray *positions = [NSMutableArray array];
-            for (NSDictionary *posData in json) {
-                Position *position = [self parsePositionData:posData];
-                if (position) {
-                    [positions addObject:position];
-                }
-            }
-            
+            // CAMBIAMENTO: Restituisce i dati JSON grezzi invece di processarli
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (completion) completion(positions, nil);
+                if (completion) completion(json, nil);
             });
         }];
         
         [task resume];
     }];
 }
+
+- (void)fetchOrdersWithCompletion:(void (^)(NSArray *orders, NSError *error))completion {
+    [self fetchAccountNumbers:^(NSArray *accountNumbers, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        
+        // Fetch orders from first account
+        if (accountNumbers.count > 0) {
+            NSString *accountNumber = accountNumbers[0];
+            [self fetchOrdersForAccount:accountNumber completion:completion];
+        } else {
+            if (completion) completion(@[], nil);
+        }
+    }];
+}
+
+- (void)fetchOrdersForAccount:(NSString *)accountNumber
+                   completion:(void (^)(NSArray *orders, NSError *error))completion {
+    
+    [self refreshTokenIfNeeded:^(BOOL success, NSError *error) {
+        if (!success) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        
+        // Fetch orders from last 30 days
+        NSDate *fromDate = [[NSDate date] dateByAddingTimeInterval:-30*24*60*60];
+        NSDate *toDate = [NSDate date];
+        
+        NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+        formatter.dateFormat = @"yyyy-MM-dd'T'HH:mm:ss.SSSZ";
+        
+        NSString *urlString = [NSString stringWithFormat:@"%@/trader/v1/orders?accountNumber=%@&fromEnteredTime=%@&toEnteredTime=%@",
+                              kSchwabAPIBaseURL,
+                              accountNumber,
+                              [formatter stringFromDate:fromDate],
+                              [formatter stringFromDate:toDate]];
+        
+        NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
+        [request setValue:[NSString stringWithFormat:@"Bearer %@", self.accessToken]
+       forHTTPHeaderField:@"Authorization"];
+        
+        NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
+                                                     completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+            if (error) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (completion) completion(nil, error);
+                });
+                return;
+            }
+            
+            NSError *parseError;
+            NSArray *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
+            
+            if (parseError) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (completion) completion(nil, parseError);
+                });
+                return;
+            }
+            
+            // CAMBIAMENTO: Restituisce i dati JSON grezzi invece di processarli
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(json, nil);
+            });
+        }];
+        
+        [task resume];
+    }];
+}
+
+- (void)fetchOrderBookForSymbol:(NSString *)symbol
+                          depth:(NSInteger)depth
+                     completion:(void (^)(id orderBook, NSError *error))completion {
+    
+    [self refreshTokenIfNeeded:^(BOOL success, NSError *error) {
+        if (!success) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        
+        NSString *urlString = [NSString stringWithFormat:@"%@/marketdata/v1/quotes/%@/orderbook",
+                              kSchwabAPIBaseURL, symbol];
+        
+        NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
+        [request setValue:[NSString stringWithFormat:@"Bearer %@", self.accessToken]
+       forHTTPHeaderField:@"Authorization"];
+        
+        NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
+                                                     completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+            if (error) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (completion) completion(nil, error);
+                });
+                return;
+            }
+            
+            NSError *parseError;
+            NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
+            
+            if (parseError) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (completion) completion(nil, parseError);
+                });
+                return;
+            }
+            
+            // CAMBIAMENTO: Restituisce i dati JSON grezzi
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(json, nil);
+            });
+        }];
+        
+        [task resume];
+    }];
+}
+
 
 - (void)fetchAccountNumbers:(void (^)(NSArray *accountNumbers, NSError *error))completion {
     [self refreshTokenIfNeeded:^(BOOL success, NSError *error) {
@@ -720,8 +823,10 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     }
 }
 
-// Aggiornamento del metodo parseQuoteData nel SchwabDataSource.m
 
+// ATTENZIONE!!! parsing non necessario... il datamanager svolge la standardizzazione
+// Aggiornamento del metodo parseQuoteData nel SchwabDataSource.m
+/*
 - (MarketData *)parseQuoteData:(NSDictionary *)data forSymbol:(NSString *)symbol {
     if (!data) {
         return nil;
@@ -890,6 +995,8 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     // TODO: Implementare quando necessario
     return nil;
 }
+// fine parsing non necessario
+ */
 
 #pragma mark - Keychain Management
 

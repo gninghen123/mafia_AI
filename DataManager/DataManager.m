@@ -32,12 +32,10 @@
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _downloadManager = [[DownloadManager alloc] init];
+        _downloadManager = [DownloadManager sharedManager];
         _delegates = [NSMutableSet set];
         _delegateQueue = dispatch_queue_create("DataManagerDelegateQueue", DISPATCH_QUEUE_CONCURRENT);
         _activeRequests = [NSMutableDictionary dictionary];
-      
-        
     }
     return self;
 }
@@ -58,8 +56,8 @@
 
 #pragma mark - Market Data Requests
 
-
-(void (^)(MarketData *quote, NSError *error))completion {
+- (NSString *)requestQuoteForSymbol:(NSString *)symbol
+                         completion:(void (^)(MarketData *quote, NSError *error))completion {
     
     if (!symbol || symbol.length == 0) {
         NSError *error = [NSError errorWithDomain:@"DataManager"
@@ -73,9 +71,7 @@
         return nil;
     }
     
-    
     NSString *requestID = [[NSUUID UUID] UUIDString];
-    // Store the completion block directly without NSNull
     NSMutableDictionary *requestInfo = [@{
         @"type": @"quote",
         @"symbol": symbol
@@ -87,11 +83,15 @@
     
     self.activeRequests[requestID] = requestInfo;
     
+    // Usa executeRequest senza preferredSource - lascia decidere al DownloadManager
     [self.downloadManager executeRequest:DataRequestTypeQuote
                               parameters:@{@"symbol": symbol}
-                         preferredSource:DataSourceTypeYahoo
                               completion:^(id result, DataSourceType usedSource, NSError *error) {
-        [self handleQuoteResponse:result error:error forSymbol:symbol requestID:requestID completion:completion];
+        [self handleQuoteResponse:result
+                            error:error
+                        forSymbol:symbol
+                        requestID:requestID
+                       completion:completion];
     }];
     
     return requestID;
@@ -127,50 +127,35 @@
     
     self.activeRequests[requestID] = requestInfo;
     
-    [self.downloadManager fetchHistoricalDataForSymbol:symbol
-                                             timeframe:timeframe
-                                             startDate:startDate
-                                               endDate:endDate
-                                            completion:^(NSArray *bars, NSError *error) {
-        [self handleHistoricalResponse:bars error:error forSymbol:symbol requestID:requestID completion:completion];
+    NSDictionary *parameters = @{
+        @"symbol": symbol,
+        @"timeframe": @(timeframe),
+        @"startDate": startDate,
+        @"endDate": endDate
+    };
+    
+    // Usa executeRequest invece di fetchHistoricalDataForSymbol
+    [self.downloadManager executeRequest:DataRequestTypeHistoricalBars
+                              parameters:parameters
+                              completion:^(id result, DataSourceType usedSource, NSError *error) {
+        [self handleHistoricalResponse:result
+                                 error:error
+                             forSymbol:symbol
+                             requestID:requestID
+                            completion:completion];
     }];
     
     return requestID;
 }
-
 
 - (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
                                    timeframe:(BarTimeframe)timeframe
                                        count:(NSInteger)count
                                   completion:(void (^)(NSArray<HistoricalBar *> *bars, NSError *error))completion {
     
-    // Calculate date range based on count and timeframe
+    // Calculate date range based on count
     NSDate *endDate = [NSDate date];
-    NSDate *startDate;
-    
-    NSTimeInterval interval;
-    switch (timeframe) {
-        case BarTimeframe1Min:
-            interval = count * 60;
-            break;
-        case BarTimeframe5Min:
-            interval = count * 300;
-            break;
-        case BarTimeframe15Min:
-            interval = count * 900;
-            break;
-        case BarTimeframe1Hour:
-            interval = count * 3600;
-            break;
-        case BarTimeframe1Day:
-            interval = count * 86400;
-            break;
-        default:
-            interval = count * 86400;
-            break;
-    }
-    
-    startDate = [NSDate dateWithTimeInterval:-interval sinceDate:endDate];
+    NSDate *startDate = [self calculateStartDateForTimeframe:timeframe count:count fromDate:endDate];
     
     return [self requestHistoricalDataForSymbol:symbol
                                       timeframe:timeframe
@@ -208,22 +193,47 @@
     
     self.activeRequests[requestID] = requestInfo;
     
-    [self.downloadManager fetchOrderBookForSymbol:symbol
-                                            depth:20
-                                       completion:^(id orderBook, NSError *error) {
-        [self handleOrderBookResponse:orderBook error:error forSymbol:symbol requestID:requestID completion:completion];
+    NSDictionary *parameters = @{
+        @"symbol": symbol,
+        @"depth": @(20)
+    };
+    
+    // Usa executeRequest invece di fetchOrderBookForSymbol
+    [self.downloadManager executeRequest:DataRequestTypeOrderBook
+                              parameters:parameters
+                              completion:^(id result, DataSourceType usedSource, NSError *error) {
+        [self handleOrderBookResponse:result
+                                error:error
+                            forSymbol:symbol
+                            requestID:requestID
+                           completion:completion];
     }];
     
     return requestID;
 }
+
 #pragma mark - Account Data Requests
 
 - (void)requestPositionsWithCompletion:(void (^)(NSArray<Position *> *positions, NSError *error))completion {
-    [self.downloadManager fetchPositionsWithCompletion:completion];
+    // Usa executeRequest invece di fetchPositionsWithCompletion
+    [self.downloadManager executeRequest:DataRequestTypePositions
+                              parameters:@{}
+                              completion:^(id result, DataSourceType usedSource, NSError *error) {
+        if (completion) {
+            completion(result, error);
+        }
+    }];
 }
 
 - (void)requestOrdersWithCompletion:(void (^)(NSArray<Order *> *orders, NSError *error))completion {
-    [self.downloadManager fetchOrdersWithCompletion:completion];
+    // Usa executeRequest invece di fetchOrdersWithCompletion
+    [self.downloadManager executeRequest:DataRequestTypeOrders
+                              parameters:@{}
+                              completion:^(id result, DataSourceType usedSource, NSError *error) {
+        if (completion) {
+            completion(result, error);
+        }
+    }];
 }
 
 #pragma mark - Response Handlers
@@ -275,7 +285,6 @@
         }
         return;
     }
-    
     
     [self.activeRequests removeObjectForKey:requestID];
     
@@ -355,12 +364,59 @@
     }
 }
 
-
 #pragma mark - Helper Methods
 
 - (id<DataSourceAdapter>)getAdapterForCurrentDataSource {
     DataSourceType currentSource = self.downloadManager.currentDataSource;
     return [DataAdapterFactory adapterForDataSource:currentSource];
+}
+
+- (NSDate *)calculateStartDateForTimeframe:(BarTimeframe)timeframe count:(NSInteger)count fromDate:(NSDate *)endDate {
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDateComponents *components = [[NSDateComponents alloc] init];
+    
+    switch (timeframe) {
+        case BarTimeframe1Min:
+            components.minute = -count;
+            break;
+        case BarTimeframe5Min:
+            components.minute = -count * 5;
+            break;
+        case BarTimeframe15Min:
+            components.minute = -count * 15;
+            break;
+        case BarTimeframe30Min:
+            components.minute = -count * 30;
+            break;
+        case BarTimeframe1Hour:
+            components.hour = -count;
+            break;
+        case BarTimeframe4Hour:
+            components.hour = -count * 4;
+            break;
+        case BarTimeframe1Day:
+            components.day = -count;
+            break;
+        case BarTimeframe1Week:
+            components.weekOfYear = -count;
+            break;
+        case BarTimeframe1Month:
+            components.month = -count;
+            break;
+    }
+    
+    return [calendar dateByAddingComponents:components toDate:endDate options:0];
+}
+
+#pragma mark - Polling Management
+
+- (void)subscribeToQuotes:(NSArray<NSString *> *)symbols {
+    // For now, just store the symbols for potential polling
+    // In a real implementation, this would set up periodic requests
+}
+
+- (void)unsubscribeFromQuotes:(NSArray<NSString *> *)symbols {
+    // Remove symbols from polling list
 }
 
 #pragma mark - Delegate Notifications
@@ -405,10 +461,12 @@
 
 - (void)cancelRequest:(NSString *)requestID {
     [self.activeRequests removeObjectForKey:requestID];
+    [self.downloadManager cancelRequest:requestID];
 }
 
 - (void)cancelAllRequests {
     [self.activeRequests removeAllObjects];
+    [self.downloadManager cancelAllRequests];
 }
 
 #pragma mark - Connection Status

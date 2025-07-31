@@ -13,6 +13,7 @@
 
 @interface WatchlistPriceCellView : NSTableCellView
 @property (nonatomic, strong) NSTextField *priceField;
+
 @end
 
 @interface WatchlistChangeCellView : NSTableCellView

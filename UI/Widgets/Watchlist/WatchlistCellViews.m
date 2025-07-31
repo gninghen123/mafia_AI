@@ -61,8 +61,9 @@
         self.priceField.alignment = NSTextAlignmentRight;
         self.priceField.translatesAutoresizingMaskIntoConstraints = NO;
         
+       
         [self addSubview:self.priceField];
-        
+
         [NSLayoutConstraint activateConstraints:@[
             [self.priceField.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
             [self.priceField.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],

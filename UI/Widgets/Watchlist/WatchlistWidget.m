@@ -326,12 +326,16 @@
     [self.watchlistPopup addItemWithTitle:@"Manage Watchlists..."];
     
     // Select first watchlist if available
-    if (self.watchlists.count > 0) {
-        [self.watchlistPopup selectItemAtIndex:0];
-        self.currentWatchlist = self.watchlists[0];
-        [self loadSymbolsForCurrentWatchlist];
+    if (!self.currentWatchlist) {
+        if (self.watchlists.count > 0) {
+            [self.watchlistPopup selectItemAtIndex:0];
+            self.currentWatchlist = self.watchlists[0];
+            [self loadSymbolsForCurrentWatchlist];
+        }
+    }else {
+        [self.watchlistPopup selectItemWithTitle:[self.currentWatchlist name]];
     }
-    
+   
     // Update navigation buttons
     [self updateNavigationButtons];
 }
@@ -491,6 +495,7 @@
 }
 
 - (void)watchlistUpdated:(NSNotification *)notification {
+    
     dispatch_async(dispatch_get_main_queue(), ^{
         [self loadWatchlists];
     });
@@ -775,19 +780,16 @@
     [alert.window setInitialFirstResponder:input];
     
     if ([alert runModal] == NSAlertFirstButtonReturn) {
-        NSString *symbol = [input.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].uppercaseString;
-        if (symbol.length > 0) {
-            if (![self.symbols containsObject:symbol]) {
-                // FIXED: Use RuntimeModel method
-                [[DataHub shared] addSymbol:symbol toWatchlistModel:self.currentWatchlist];
-                [self loadSymbolsForCurrentWatchlist];
-                [self refreshSymbolData];
-            } else {
-                NSAlert *existsAlert = [[NSAlert alloc] init];
-                existsAlert.messageText = @"Symbol Already Exists";
-                existsAlert.informativeText = [NSString stringWithFormat:@"'%@' is already in this watchlist.", symbol];
-                [existsAlert addButtonWithTitle:@"OK"];
-                [existsAlert runModal];
+        NSString *symbols = input.stringValue.uppercaseString;
+        if (symbols.length > 0) {
+            for(NSString* symbol in [symbols componentsSeparatedByString:@","]){
+                NSString* c_symbol = [symbol  stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+                if (![self.symbols containsObject:c_symbol]) {
+                    // FIXED: Use RuntimeModel method
+                    [[DataHub shared] addSymbol:c_symbol toWatchlistModel:self.currentWatchlist];
+                    [self loadSymbolsForCurrentWatchlist];
+                    [self refreshSymbolData];
+                }
             }
         }
     }

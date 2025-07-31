@@ -634,7 +634,7 @@
     // Esegui la richiesta tramite DownloadManager
     [[DownloadManager sharedManager] executeRequest:requestType
                                          parameters:parameters
-                                         completion:^(id result, NSError *error) {
+                                         completion:^(id result, DataSourceType usedSource, NSError *error) {
         if (error) {
             NSLog(@"❌ DataManager: Market list request failed: %@", error.localizedDescription);
             if (completion) completion(@[], error);
@@ -646,8 +646,8 @@
                                                                               listType:listType
                                                                              timeframe:timeframe];
         
-        NSLog(@"✅ DataManager: Standardized %lu market performers for %@",
-              (unsigned long)performers.count, listType);
+        NSLog(@"✅ DataManager: Standardized %lu market performers for %@ (source: %ld)",
+              (unsigned long)performers.count, listType, (long)usedSource);
         
         if (completion) completion(performers, nil);
     }];

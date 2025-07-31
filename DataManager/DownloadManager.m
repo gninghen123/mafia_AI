@@ -699,8 +699,7 @@
         requestType == DataRequestTypeTopGainers ||
         requestType == DataRequestTypeTopLosers ||
         requestType == DataRequestTypeETFList) {
-        // Per ora, solo DataSourceTypeCustom (Webull) supporta questi tipi
-        return dataSource.sourceType == DataSourceTypeCustom;
+        return dataSource.sourceType == DataSourceTypeWebull;
     }
     
     // Gestione dei tipi esistenti

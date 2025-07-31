@@ -17,9 +17,6 @@
 #import "CompanyInfo+CoreDataClass.h"
 
 @interface DataHub () <DataManagerDelegate>
-// Market Lists Cache (NEW)
-@property (nonatomic, strong) NSMutableDictionary<NSString *, NSArray<MarketPerformerModel *> *> *marketListsCache;
-@property (nonatomic, strong) NSMutableDictionary<NSString *, NSDate *> *marketListsCacheTimestamps;
 
 @end
 
@@ -952,17 +949,6 @@
 
 #pragma mark - Cache Management
 
-- (void)clearMarketDataCache {
-    [self initializeMarketDataCaches];
-    
-    [self.quotesCache removeAllObjects];
-    [self.historicalCache removeAllObjects];
-    [self.companyInfoCache removeAllObjects];
-    [self.cacheTimestamps removeAllObjects];
-    
-    NSLog(@"DataHub: Cleared all market data cache");
-}
-
 - (void)clearCacheForSymbol:(NSString *)symbol {
     if (!symbol) return;
     
@@ -1137,10 +1123,11 @@
     [self.historicalCache removeAllObjects];
     [self.companyInfoCache removeAllObjects];
     [self.cacheTimestamps removeAllObjects];
-    
-    // NEW: Clear market lists cache too
     [self clearMarketListCache];
     
-    NSLog(@"DataHub: Cleared all market data cache including market lists");
 }
+
+
+
+
 @end

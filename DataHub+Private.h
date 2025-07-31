@@ -42,6 +42,10 @@
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSArray<HistoricalBarModel *> *> *historicalCache;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, CompanyInfoModel *> *companyInfoCache;
 
+// Market Lists Cache (NEW)
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSArray<MarketPerformerModel *> *> *marketListsCache;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSDate *> *marketListsCacheTimestamps;
+
 // Cache timestamps for TTL management
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSDate *> *cacheTimestamps;
 
@@ -73,6 +77,7 @@
 
 // Market data internal methods
 - (void)initializeMarketDataCaches;
+- (void)initializeMarketListsCache;
 
 // Core Data <-> Runtime Model conversion methods (ESSENTIAL)
 - (MarketQuoteModel *)convertCoreDataQuoteToRuntimeModel:(MarketQuote *)coreDataQuote;

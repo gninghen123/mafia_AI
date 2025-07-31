@@ -265,21 +265,145 @@ static NSString *const kChainSenderKey = @"sender";
     }
 }
 
+
+
+- (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
+    // Override in subclasses to handle updates
+}
+
+#pragma mark - Chain Helper Methods
+
+- (void)sendSymbolToChain:(NSString *)symbol {
+    if (self.chainActive && symbol.length > 0) {
+        [self broadcastUpdate:@{
+            @"action": @"setSymbols",
+            @"symbols": @[symbol]
+        }];
+        NSLog(@"%@: Sent symbol '%@' to chain", NSStringFromClass([self class]), symbol);
+    }
+}
+
+- (void)sendSymbolsToChain:(NSArray<NSString *> *)symbols {
+    if (self.chainActive && symbols.count > 0) {
+        [self broadcastUpdate:@{
+            @"action": @"setSymbols",
+            @"symbols": symbols
+        }];
+        NSLog(@"%@: Sent %lu symbols to chain", NSStringFromClass([self class]), (unsigned long)symbols.count);
+    }
+}
+
+- (NSMenu *)createChainColorSubmenuForSymbols:(NSArray<NSString *> *)symbols {
+    NSMenu *menu = [[NSMenu alloc] init];
+    
+    // Colori standard con nomi user-friendly
+    NSArray *colors = @[
+        @{@"name": @"Red", @"color": [NSColor systemRedColor]},
+        @{@"name": @"Green", @"color": [NSColor systemGreenColor]},
+        @{@"name": @"Blue", @"color": [NSColor systemBlueColor]},
+        @{@"name": @"Yellow", @"color": [NSColor systemYellowColor]},
+        @{@"name": @"Orange", @"color": [NSColor systemOrangeColor]},
+        @{@"name": @"Purple", @"color": [NSColor systemPurpleColor]}
+    ];
+    
+    for (NSDictionary *colorInfo in colors) {
+        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:colorInfo[@"name"]
+                                                      action:@selector(contextMenuSendToChainColor:)
+                                               keyEquivalent:@""];
+        item.target = self;
+        item.representedObject = @{
+            @"symbols": symbols,
+            @"color": colorInfo[@"color"],
+            @"colorName": colorInfo[@"name"]
+        };
+        
+        // Aggiungi un indicatore visivo del colore
+        NSImage *colorDot = [self createColorDotWithColor:colorInfo[@"color"]];
+        item.image = colorDot;
+        
+        [menu addItem:item];
+    }
+    
+    return menu;
+}
+
+#pragma mark - Chain Context Menu Actions
+
+- (IBAction)contextMenuSendSymbolToChain:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    NSString *symbol = menuItem.representedObject;
+    [self sendSymbolToChain:symbol];
+}
+
+- (IBAction)contextMenuSendSymbolsToChain:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    NSArray *symbols = menuItem.representedObject;
+    [self sendSymbolsToChain:symbols];
+}
+
+- (IBAction)contextMenuSendToChainColor:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    NSDictionary *actionData = menuItem.representedObject;
+    
+    NSArray *symbols = actionData[@"symbols"];
+    NSColor *chainColor = actionData[@"color"];
+    NSString *colorName = actionData[@"colorName"];
+    
+    if (symbols.count > 0 && chainColor) {
+        // Salva il colore originale
+        NSColor *originalColor = self.chainColor;
+        
+        // Cambia temporaneamente al colore scelto
+        [self setChainActive:YES withColor:chainColor];
+        [self sendSymbolsToChain:symbols];
+        
+        // Ripristina il colore originale dopo un breve delay
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self setChainActive:YES withColor:originalColor];
+        });
+        
+        NSLog(@"%@: Sent %lu symbols to %@ chain",
+              NSStringFromClass([self class]), (unsigned long)symbols.count, colorName);
+    }
+}
+
+#pragma mark - Helper Utilities
+
+- (NSImage *)createColorDotWithColor:(NSColor *)color {
+    NSSize size = NSMakeSize(12, 12);
+    NSImage *image = [[NSImage alloc] initWithSize:size];
+    
+    [image lockFocus];
+    
+    // Disegna un cerchio colorato
+    NSBezierPath *circle = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(1, 1, 10, 10)];
+    [color setFill];
+    [circle fill];
+    
+    // Aggiungi un bordo
+    [[NSColor tertiaryLabelColor] setStroke];
+    [circle setLineWidth:0.5];
+    [circle stroke];
+    
+    [image unlockFocus];
+    
+    return image;
+}
+
 - (BOOL)colorsMatch:(NSColor *)color1 with:(NSColor *)color2 {
+    if (!color1 || !color2) return NO;
+    
     // Confronta i colori convertendoli in RGB per evitare problemi con diversi color spaces
     NSColor *rgb1 = [color1 colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
     NSColor *rgb2 = [color2 colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
+    
+    if (!rgb1 || !rgb2) return NO;
     
     CGFloat tolerance = 0.01;
     return fabs(rgb1.redComponent - rgb2.redComponent) < tolerance &&
            fabs(rgb1.greenComponent - rgb2.greenComponent) < tolerance &&
            fabs(rgb1.blueComponent - rgb2.blueComponent) < tolerance;
 }
-
-- (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
-    // Override in subclasses to handle updates
-}
-
 #pragma mark - Actions
 
 - (void)closeWidget:(id)sender {

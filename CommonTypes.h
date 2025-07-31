@@ -14,13 +14,8 @@
 typedef NS_ENUM(NSInteger, DataSourceType) {
     DataSourceTypeSchwab,
     DataSourceTypeIBKR,
-    DataSourceTypeTDAmeritrade,
-    DataSourceTypeInteractiveBrokers,
-    DataSourceTypeAlpaca,
     DataSourceTypeYahoo,
     DataSourceTypeWebull,
-    DataSourceTypePolygon,
-    DataSourceTypeIEX,
     DataSourceTypeCustom
 };
 

@@ -28,8 +28,6 @@
 @property (nonatomic, assign) BOOL chainActive;
 @property (nonatomic, strong) NSColor *chainColor;  // Colore della chain quando attiva
 
-// REMOVED: @property (nonatomic, strong) NSMutableSet *chainedWidgets;
-
 - (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType;
 
 // Widget lifecycle
@@ -41,13 +39,20 @@
 - (NSDictionary *)serializeState;
 - (void)restoreState:(NSDictionary *)state;
 
-// Chain management - UPDATED METHODS
+// Chain management - CORE METHODS
 - (void)setChainActive:(BOOL)active withColor:(NSColor *)color;
 - (void)broadcastUpdate:(NSDictionary *)update;
 - (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender;
 
-// REMOVED: - (void)addChainedWidget:(BaseWidget *)widget;
-// REMOVED: - (void)removeChainedWidget:(BaseWidget *)widget;
+// Chain management - HELPER METHODS (NEW)
+- (void)sendSymbolToChain:(NSString *)symbol;
+- (void)sendSymbolsToChain:(NSArray<NSString *> *)symbols;
+- (NSMenu *)createChainColorSubmenuForSymbols:(NSArray<NSString *> *)symbols;
+
+// Chain context menu actions (NEW)
+- (IBAction)contextMenuSendSymbolToChain:(id)sender;
+- (IBAction)contextMenuSendSymbolsToChain:(id)sender;
+- (IBAction)contextMenuSendToChainColor:(id)sender;
 
 // Collapse functionality
 - (void)toggleCollapse;

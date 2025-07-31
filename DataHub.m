@@ -66,7 +66,9 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
         _activeHistoricalRequests = [NSMutableSet set];
         _subscribedSymbols = [NSMutableSet set];
         
-        NSLog(@"DataHub: Initialized market data caches");
+        // NEW: Initialize market lists cache
+        _marketListsCache = [NSMutableDictionary dictionary];
+        _marketListsCacheTimestamps = [NSMutableDictionary dictionary];
     }
 }
 

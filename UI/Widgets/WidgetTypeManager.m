@@ -97,8 +97,8 @@
     typeToClass[@"Quote"] = [QuoteWidget class];
     typeToClass[@"Watchlist"] = [WatchlistWidget class];
     typeToClass[@"Connection Status"] = [ConnectionStatusWidget class];
-    typeToClass[@"MultiChart Widget"] = [MultiChartWidget class];  // <-- AGGIUNGI QUESTA LINEA
-   //todo 30luglio typeToClass[@"General Market"] = [GeneralMarketWidget class];
+    typeToClass[@"MultiChart Widget"] = [MultiChartWidget class];
+    typeToClass[@"General Market"] = [GeneralMarketWidget class];
 
     // FIX: Map chart types to CHChartWidget
     typeToClass[@"Chart Widget"] = [CHChartWidget class];
@@ -131,7 +131,7 @@
         @"Market Depth": @"chart.bar.doc.horizontal",
         @"Volume Profile": @"chart.bar.fill",
         @"Heatmap": @"square.grid.3x3.fill.square",
-        @"MultiChart Widget": @"square.grid.3x3",  // <-- AGGIUNGI QUESTA LINEA
+        @"MultiChart Widget": @"square.grid.3x3",
 
         @"Order Entry": @"plus.square",
         @"Order Book": @"book",

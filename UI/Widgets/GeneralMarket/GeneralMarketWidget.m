@@ -1,4 +1,4 @@
-/*todo
+
  // GeneralMarketWidget.m - Versione che usa SOLO DataHub
 #import "GeneralMarketWidget.h"
 #import "DataHub.h"
@@ -454,4 +454,4 @@
 
   @end
 
-*/
+

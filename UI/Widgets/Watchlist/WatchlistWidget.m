@@ -72,6 +72,8 @@
     // Load data after UI is ready
     [self loadWatchlists];
     [self startRefreshTimer];
+    
+    [self setupContextMenu];
 }
 
 #pragma mark - UI Creation
@@ -188,6 +190,9 @@
     [self.mainTableView registerForDraggedTypes:@[NSPasteboardTypeString]];
     
     self.scrollView.documentView = self.mainTableView;
+    [self setupContextMenu];
+
+ 
 }
 
 - (void)setupConstraints {
@@ -912,30 +917,7 @@
 
 #pragma mark - Helper Methods
 
-- (void)showTemporaryMessage:(NSString *)message {
-    // Simple temporary message display
-    NSTextField *messageLabel = [NSTextField labelWithString:message];
-    messageLabel.backgroundColor = [NSColor controlAccentColor];
-    messageLabel.textColor = [NSColor controlTextColor];
-    messageLabel.drawsBackground = YES;
-    messageLabel.bordered = NO;
-    messageLabel.editable = NO;
-    messageLabel.alignment = NSTextAlignmentCenter;
-    messageLabel.font = [NSFont systemFontOfSize:11];
-    messageLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    
-    [self.contentView addSubview:messageLabel];
-    [NSLayoutConstraint activateConstraints:@[
-        [messageLabel.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
-        [messageLabel.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-10],
-        [messageLabel.heightAnchor constraintEqualToConstant:24]
-    ]];
-    
-    // Remove after 2 seconds
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [messageLabel removeFromSuperview];
-    });
-}
+
 
 #pragma mark - State Management
 
@@ -980,6 +962,502 @@
     
     // Restore favorites filter
     self.showOnlyFavorites = [state[@"showOnlyFavorites"] boolValue];
+}
+
+#pragma mark - Context Menu
+
+- (void)setupContextMenu {
+    // Crea il menu contestuale e assegnalo alla table view
+    self.mainTableView.menu = [self createContextMenuForTableView];
+    NSLog(@"WatchlistWidget: Context menu system initialized");
+}
+
+- (NSMenu *)createContextMenuForTableView {
+    // Crea un menu vuoto che sarà popolato dinamicamente in menuForEvent
+    NSMenu *menu = [[NSMenu alloc] init];
+    menu.delegate = self;
+    return menu;
+}
+
+#pragma mark - NSMenuDelegate
+
+- (void)menuWillOpen:(NSMenu *)menu {
+    // Prima che il menu si apra, popolalo con le opzioni correnti
+    [menu removeAllItems];
+    
+    NSIndexSet *selectedRows = self.mainTableView.selectedRowIndexes;
+    if (selectedRows.count == 0) {
+        // Nessuna selezione, non mostrare menu
+        return;
+    }
+    
+    // Ottieni simboli selezionati (escludi le righe vuote)
+    NSMutableArray *selectedSymbols = [NSMutableArray array];
+    [selectedRows enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL * _Nonnull stop) {
+        if (idx < self.filteredSymbols.count) {
+            NSString *symbol = self.filteredSymbols[idx];
+            if (symbol.length > 0) {
+                [selectedSymbols addObject:symbol];
+            }
+        }
+    }];
+    
+    if (selectedSymbols.count == 0) {
+        return;
+    }
+    
+    // === DELETE SYMBOL(S) ===
+    NSMenuItem *deleteItem = [[NSMenuItem alloc] init];
+    if (selectedSymbols.count == 1) {
+        deleteItem.title = [NSString stringWithFormat:@"Delete Symbol '%@'", selectedSymbols[0]];
+    } else {
+        deleteItem.title = [NSString stringWithFormat:@"Delete %lu Selected Symbols", (unsigned long)selectedSymbols.count];
+    }
+    deleteItem.action = @selector(deleteSelectedSymbols:);
+    deleteItem.target = self;
+    [menu addItem:deleteItem];
+    
+    [menu addItem:[NSMenuItem separatorItem]];
+    
+    // === SEND TO CHAIN ===
+    if (selectedSymbols.count == 1) {
+        // Send single symbol to chain
+        NSMenuItem *sendToChainItem = [[NSMenuItem alloc] init];
+        sendToChainItem.title = [NSString stringWithFormat:@"Send '%@' to Chain", selectedSymbols[0]];
+        sendToChainItem.action = @selector(sendSymbolToChain:);
+        sendToChainItem.target = self;
+        sendToChainItem.representedObject = selectedSymbols[0];
+        [menu addItem:sendToChainItem];
+        
+        // Send single symbol to specific chain color
+        NSMenuItem *sendToChainColorItem = [[NSMenuItem alloc] init];
+        sendToChainColorItem.title = [NSString stringWithFormat:@"Send '%@' to Chain", selectedSymbols[0]];
+        sendToChainColorItem.submenu = [self createChainColorSubmenuForSymbols:selectedSymbols isSingle:YES];
+        [menu addItem:sendToChainColorItem];
+    }
+    
+    if (selectedSymbols.count > 1) {
+        // Send multiple symbols to chain
+        NSMenuItem *sendMultipleToChainItem = [[NSMenuItem alloc] init];
+        sendMultipleToChainItem.title = [NSString stringWithFormat:@"Send %lu Selected Symbols to Chain", (unsigned long)selectedSymbols.count];
+        sendMultipleToChainItem.action = @selector(sendSelectedSymbolsToChain:);
+        sendMultipleToChainItem.target = self;
+        sendMultipleToChainItem.representedObject = selectedSymbols;
+        [menu addItem:sendMultipleToChainItem];
+        
+        // Send multiple symbols to specific chain color
+        NSMenuItem *sendMultipleToChainColorItem = [[NSMenuItem alloc] init];
+        sendMultipleToChainColorItem.title = [NSString stringWithFormat:@"Send %lu Selected Symbols to Chain", (unsigned long)selectedSymbols.count];
+        sendMultipleToChainColorItem.submenu = [self createChainColorSubmenuForSymbols:selectedSymbols isSingle:NO];
+        [menu addItem:sendMultipleToChainColorItem];
+    }
+}
+
+- (NSMenu *)createChainColorSubmenuForSymbols:(NSArray<NSString *> *)symbols isSingle:(BOOL)isSingle {
+    NSMenu *submenu = [[NSMenu alloc] init];
+    
+    // Array di colori disponibili per le chain
+    NSArray *chainColors = @[
+        @{@"name": @"Red Chain", @"color": [NSColor systemRedColor]},
+        @{@"name": @"Green Chain", @"color": [NSColor systemGreenColor]},
+        @{@"name": @"Blue Chain", @"color": [NSColor systemBlueColor]},
+        @{@"name": @"Yellow Chain", @"color": [NSColor systemYellowColor]},
+        @{@"name": @"Orange Chain", @"color": [NSColor systemOrangeColor]},
+        @{@"name": @"Purple Chain", @"color": [NSColor systemPurpleColor]},
+        @{@"name": @"Gray Chain", @"color": [NSColor systemGrayColor]}
+    ];
+    
+    for (NSDictionary *colorInfo in chainColors) {
+        NSMenuItem *colorItem = [[NSMenuItem alloc] init];
+        
+        if (isSingle && symbols.count == 1) {
+            colorItem.title = [NSString stringWithFormat:@"%@ (%@)", colorInfo[@"name"], symbols[0]];
+        } else {
+            colorItem.title = [NSString stringWithFormat:@"%@ (%lu symbols)", colorInfo[@"name"], (unsigned long)symbols.count];
+        }
+        
+        colorItem.action = @selector(sendSymbolsToSpecificChain:);
+        colorItem.target = self;
+        
+        // Memorizza sia i simboli che il colore
+        NSDictionary *actionData = @{
+            @"symbols": symbols,
+            @"color": colorInfo[@"color"],
+            @"colorName": colorInfo[@"name"]
+        };
+        colorItem.representedObject = actionData;
+        
+        // Aggiungi indicatore visivo del colore
+        NSImage *colorIndicator = [self createColorIndicatorWithColor:colorInfo[@"color"]];
+        colorItem.image = colorIndicator;
+        
+        [submenu addItem:colorItem];
+    }
+    
+    return submenu;
+}
+
+- (NSImage *)createColorIndicatorWithColor:(NSColor *)color {
+    NSSize size = NSMakeSize(16, 16);
+    NSImage *image = [[NSImage alloc] initWithSize:size];
+    
+    [image lockFocus];
+    
+    // Disegna un cerchio colorato
+    NSBezierPath *circle = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(2, 2, 12, 12)];
+    [color setFill];
+    [circle fill];
+    
+    // Bordo nero sottile
+    [[NSColor blackColor] setStroke];
+    circle.lineWidth = 0.5;
+    [circle stroke];
+    
+    [image unlockFocus];
+    
+    return image;
+}
+
+#pragma mark - Context Menu Actions
+
+- (void)deleteSelectedSymbols:(id)sender {
+    NSIndexSet *selectedRows = self.mainTableView.selectedRowIndexes;
+    if (selectedRows.count == 0) return;
+    
+    NSMutableArray *symbolsToDelete = [NSMutableArray array];
+    [selectedRows enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL * _Nonnull stop) {
+        if (idx < self.filteredSymbols.count) {
+            NSString *symbol = self.filteredSymbols[idx];
+            if (symbol.length > 0) {
+                [symbolsToDelete addObject:symbol];
+            }
+        }
+    }];
+    
+    if (symbolsToDelete.count == 0) return;
+    
+    // Conferma eliminazione
+    NSAlert *alert = [[NSAlert alloc] init];
+    if (symbolsToDelete.count == 1) {
+        alert.messageText = @"Delete Symbol?";
+        alert.informativeText = [NSString stringWithFormat:@"Are you sure you want to remove '%@' from this watchlist?", symbolsToDelete[0]];
+    } else {
+        alert.messageText = @"Delete Multiple Symbols?";
+        alert.informativeText = [NSString stringWithFormat:@"Are you sure you want to remove %lu symbols from this watchlist?", (unsigned long)symbolsToDelete.count];
+    }
+    
+    [alert addButtonWithTitle:@"Delete"];
+    [alert addButtonWithTitle:@"Cancel"];
+    alert.alertStyle = NSAlertStyleWarning;
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        // Rimuovi i simboli dalla watchlist corrente
+        for (NSString *symbol in symbolsToDelete) {
+            [[DataHub shared] removeSymbol:symbol fromWatchlistModel:self.currentWatchlist];
+        }
+        
+        // Ricarica i dati
+        [self loadSymbolsForCurrentWatchlist];
+        
+        NSLog(@"WatchlistWidget: Deleted %lu symbols", (unsigned long)symbolsToDelete.count);
+    }
+}
+
+- (void)sendSymbolToChain:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    NSString *symbol = menuItem.representedObject;
+    
+    if (symbol.length == 0) return;
+    
+    // Invia il simbolo alla chain usando il sistema BaseWidget
+    [self broadcastUpdate:@{
+        @"action": @"setSymbols",
+        @"symbols": @[symbol]
+    }];
+    
+    NSLog(@"WatchlistWidget: Sent symbol '%@' to chain", symbol);
+}
+
+- (void)sendSelectedSymbolsToChain:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    NSArray *symbols = menuItem.representedObject;
+    
+    if (symbols.count == 0) return;
+    
+    // Invia tutti i simboli selezionati alla chain
+    [self broadcastUpdate:@{
+        @"action": @"setSymbols",
+        @"symbols": symbols
+    }];
+    
+    NSLog(@"WatchlistWidget: Sent %lu symbols to chain", (unsigned long)symbols.count);
+}
+
+- (void)sendSymbolsToSpecificChain:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    NSDictionary *actionData = menuItem.representedObject;
+    
+    NSArray *symbols = actionData[@"symbols"];
+    NSColor *chainColor = actionData[@"color"];
+    NSString *colorName = actionData[@"colorName"];
+    
+    if (symbols.count == 0 || !chainColor) return;
+    
+    // Attiva la chain con il colore specifico
+    [self setChainActive:YES withColor:chainColor];
+    
+    // Invia i simboli alla chain con il colore specifico
+    [self broadcastUpdate:@{
+        @"action": @"setSymbols",
+        @"symbols": symbols
+    }];
+    
+    NSLog(@"WatchlistWidget: Sent %lu symbols to %@ chain", (unsigned long)symbols.count, colorName);
+    
+    // Mostra feedback temporaneo
+    [self showTemporaryMessage:[NSString stringWithFormat:@"Sent to %@", colorName]];
+}
+
+- (void)showTemporaryMessage:(NSString *)message {
+    // Crea un label temporaneo per feedback
+    NSTextField *messageLabel = [NSTextField labelWithString:message];
+    messageLabel.backgroundColor = [NSColor controlAccentColor];
+    messageLabel.textColor = [NSColor controlTextColor];
+    messageLabel.drawsBackground = YES;
+    messageLabel.bordered = NO;
+    messageLabel.editable = NO;
+    messageLabel.alignment = NSTextAlignmentCenter;
+    messageLabel.font = [NSFont systemFontOfSize:11];
+    messageLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    [self.contentView addSubview:messageLabel];
+    [NSLayoutConstraint activateConstraints:@[
+        [messageLabel.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
+        [messageLabel.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-10],
+        [messageLabel.heightAnchor constraintEqualToConstant:20],
+        [messageLabel.widthAnchor constraintEqualToConstant:120]
+    ]];
+    
+    // Rimuovi dopo 2 secondi
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [messageLabel removeFromSuperview];
+    });
+}
+
+#pragma mark - TableView Integration
+
+// Override del metodo rightMouseDown per gestire il click destro
+- (void)rightMouseDown:(NSEvent *)event {
+    // Determina se il click è sulla table view
+    NSPoint locationInContentView = [self.contentView convertPoint:event.locationInWindow fromView:nil];
+    NSPoint locationInTableView = [self.mainTableView convertPoint:locationInContentView fromView:self.contentView];
+    
+    if (NSPointInRect(locationInTableView, self.mainTableView.bounds)) {
+        // Gestisci il menu contestuale
+        NSMenu *contextMenu = [self.mainTableView menuForEvent:event];
+        if (contextMenu) {
+            [NSMenu popUpContextMenu:contextMenu withEvent:event forView:self.mainTableView];
+        }
+    } else {
+        [super rightMouseDown:event];
+    }
+}
+
+// Aggiungi questo metodo alla setupTableView per abilitare il context menu
+- (void)enableTableViewContextMenu {
+    // Assicurati che la table view possa ricevere eventi del mouse
+    self.mainTableView.menu = [[NSMenu alloc] init]; // Menu vuoto per abilitare menuForEvent
+}
+
+#pragma mark - Chain Update Reception
+
+// Override del metodo receiveUpdate per gestire aggiornamenti da altre chain
+- (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
+    NSString *action = update[@"action"];
+    
+    if ([action isEqualToString:@"setSymbols"]) {
+        NSArray *symbols = update[@"symbols"];
+        if (symbols.count > 0) {
+            [self handleSymbolsFromChain:symbols fromWidget:sender];
+        }
+    }
+}
+
+- (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
+    if (!self.currentWatchlist) {
+        NSLog(@"WatchlistWidget: No active watchlist to receive symbols");
+        return;
+    }
+    
+    // Verifica se i simboli sono già nella watchlist
+    NSMutableArray *newSymbols = [NSMutableArray array];
+    NSArray *existingSymbols = [[DataHub shared] getSymbolsForWatchlistModel:self.currentWatchlist];
+    
+    for (NSString *symbol in symbols) {
+        if (![existingSymbols containsObject:symbol]) {
+            [newSymbols addObject:symbol];
+        }
+    }
+    
+    if (newSymbols.count > 0) {
+        // Aggiungi i nuovi simboli alla watchlist
+        for (NSString *symbol in newSymbols) {
+            [[DataHub shared] addSymbol:symbol toWatchlistModel:self.currentWatchlist];
+        }
+        
+        // Ricarica i dati
+        [self loadSymbolsForCurrentWatchlist];
+        
+        // Mostra feedback
+        NSString *message = newSymbols.count == 1 ?
+            [NSString stringWithFormat:@"Added %@", newSymbols[0]] :
+            [NSString stringWithFormat:@"Added %lu symbols", (unsigned long)newSymbols.count];
+        
+        [self showTemporaryMessage:message];
+        
+        NSLog(@"WatchlistWidget: Added %lu symbols from chain", (unsigned long)newSymbols.count);
+    } else {
+        NSLog(@"WatchlistWidget: All symbols already exist in watchlist");
+    }
+}
+
+#pragma mark - Context Menu Helper Methods
+
+- (BOOL)hasValidSymbolSelection {
+    NSIndexSet *selectedRows = self.mainTableView.selectedRowIndexes;
+    if (selectedRows.count == 0) return NO;
+    
+    __block BOOL hasValidSymbol = NO;
+    [selectedRows enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL * _Nonnull stop) {
+        if (idx < self.filteredSymbols.count) {
+            NSString *symbol = self.filteredSymbols[idx];
+            if (symbol.length > 0) {
+                hasValidSymbol = YES;
+                *stop = YES;
+            }
+        }
+    }];
+    
+    return hasValidSymbol;
+}
+
+- (NSArray<NSString *> *)getSelectedValidSymbols {
+    NSMutableArray *validSymbols = [NSMutableArray array];
+    NSIndexSet *selectedRows = self.mainTableView.selectedRowIndexes;
+    
+    [selectedRows enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL * _Nonnull stop) {
+        if (idx < self.filteredSymbols.count) {
+            NSString *symbol = self.filteredSymbols[idx];
+            if (symbol.length > 0) {
+                [validSymbols addObject:symbol];
+            }
+        }
+    }];
+    
+    return [validSymbols copy];
+}
+
+#pragma mark - Enhanced Chain Functionality
+
+// Metodo per inviare simboli a una chain specifica con feedback visivo
+- (void)sendSymbols:(NSArray<NSString *> *)symbols toChainWithColor:(NSColor *)color {
+    if (symbols.count == 0 || !color) return;
+    
+    // Salva lo stato precedente della chain
+    BOOL wasChainActive = self.chainActive;
+    NSColor *previousColor = self.chainColor;
+    
+    // Attiva la chain con il nuovo colore
+    [self setChainActive:YES withColor:color];
+    
+    // Invia i simboli
+    [self broadcastUpdate:@{
+        @"action": @"setSymbols",
+        @"symbols": symbols
+    }];
+    
+    // Ripristina lo stato precedente se necessario
+    if (!wasChainActive) {
+        // Se la chain non era attiva prima, mostra un timer per disattivarla automaticamente
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(5.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            if (self.chainActive && [self colorsMatch:self.chainColor with:color]) {
+                [self setChainActive:NO withColor:nil];
+            }
+        });
+    } else if (previousColor && ![self colorsMatch:previousColor with:color]) {
+        // Se aveva un colore diverso, ripristinalo dopo un breve delay
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self setChainActive:YES withColor:previousColor];
+        });
+    }
+}
+
+#pragma mark - Keyboard Shortcuts
+
+// NOTA: I keyboard shortcuts funzioneranno solo se la table view ha il focus
+// Gli utenti dovranno cliccare sulla table view prima di usare i shortcuts
+
+- (void)copySelectedSymbols {
+    NSArray<NSString *> *selectedSymbols = [self getSelectedValidSymbols];
+    if (selectedSymbols.count > 0) {
+        NSString *symbolsString = [selectedSymbols componentsJoinedByString:@"\n"];
+        NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+        [pasteboard clearContents];
+        [pasteboard setString:symbolsString forType:NSPasteboardTypeString];
+        
+        NSLog(@"WatchlistWidget: Copied %lu symbols to clipboard", (unsigned long)selectedSymbols.count);
+    }
+}
+
+- (void)pasteSymbols {
+    NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+    NSString *clipboardString = [pasteboard stringForType:NSPasteboardTypeString];
+    
+    if (clipboardString.length > 0) {
+        // Dividi per newline, comma, o spazi
+        NSCharacterSet *separators = [NSCharacterSet characterSetWithCharactersInString:@"\n,; \t"];
+        NSArray *symbolsToPaste = [clipboardString componentsSeparatedByCharactersInSet:separators];
+        
+        NSMutableArray *validSymbols = [NSMutableArray array];
+        for (NSString *symbol in symbolsToPaste) {
+            NSString *cleanSymbol = [symbol stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+            if (cleanSymbol.length > 0) {
+                [validSymbols addObject:cleanSymbol.uppercaseString];
+            }
+        }
+        
+        if (validSymbols.count > 0 && self.currentWatchlist) {
+            // Aggiungi i simboli alla watchlist corrente
+            NSMutableArray *addedSymbols = [NSMutableArray array];
+            NSArray *existingSymbols = [[DataHub shared] getSymbolsForWatchlistModel:self.currentWatchlist];
+            
+            for (NSString *symbol in validSymbols) {
+                if (![existingSymbols containsObject:symbol]) {
+                    [[DataHub shared] addSymbol:symbol toWatchlistModel:self.currentWatchlist];
+                    [addedSymbols addObject:symbol];
+                }
+            }
+            
+            if (addedSymbols.count > 0) {
+                [self loadSymbolsForCurrentWatchlist];
+                [self showTemporaryMessage:[NSString stringWithFormat:@"Added %lu symbols", (unsigned long)addedSymbols.count]];
+                NSLog(@"WatchlistWidget: Pasted %lu symbols", (unsigned long)addedSymbols.count);
+            }
+        }
+    }
+}
+
+// Metodo helper per verificare se due colori sono uguali
+- (BOOL)colorsMatch:(NSColor *)color1 with:(NSColor *)color2 {
+    if (!color1 || !color2) return NO;
+    
+    NSColor *rgb1 = [color1 colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
+    NSColor *rgb2 = [color2 colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
+    
+    CGFloat tolerance = 0.01;
+    return fabs(rgb1.redComponent - rgb2.redComponent) < tolerance &&
+           fabs(rgb1.greenComponent - rgb2.greenComponent) < tolerance &&
+           fabs(rgb1.blueComponent - rgb2.blueComponent) < tolerance;
 }
 
 @end

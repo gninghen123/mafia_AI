@@ -484,13 +484,15 @@
     });
 }
 
+// Fix per loadHistoricalDataFromCoreData - Thread Safety con performBlock
+
 - (void)loadHistoricalDataFromCoreData:(NSString *)symbol
                              timeframe:(BarTimeframe)timeframe
                               barCount:(NSInteger)barCount
                             completion:(void(^)(NSArray<HistoricalBarModel *> *bars))completion {
     
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        
+    // FIXED: Usa performBlock per garantire thread safety
+    [self.mainContext performBlock:^{
         NSFetchRequest *request = [HistoricalBar fetchRequest];
         request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@ AND timeframe == %d", symbol, (int)timeframe];
         request.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"date" ascending:YES]];
@@ -502,6 +504,14 @@
         NSError *error = nil;
         NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
         
+        if (error) {
+            NSLog(@"❌ DataHub: Core Data fetch error for %@ %d: %@", symbol, (int)timeframe, error.localizedDescription);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(@[]);
+            });
+            return;
+        }
+        
         NSMutableArray<HistoricalBarModel *> *runtimeBars = [NSMutableArray array];
         for (HistoricalBar *coreDataBar in results) {
             HistoricalBarModel *runtimeBar = [self convertCoreDataBarToRuntimeModel:coreDataBar];
@@ -510,10 +520,14 @@
             }
         }
         
+        NSLog(@"✅ DataHub: Loaded %lu historical bars for %@ %d from Core Data",
+              (unsigned long)runtimeBars.count, symbol, (int)timeframe);
+        
+        // IMPORTANTE: Il completion deve essere chiamato sul main thread
         dispatch_async(dispatch_get_main_queue(), ^{
             completion([runtimeBars copy]);
         });
-    });
+    }];
 }
 
 - (void)loadCompanyInfoFromCoreData:(NSString *)symbol completion:(void(^)(CompanyInfoModel *info))completion {

@@ -58,17 +58,18 @@
 #pragma mark - BaseWidget Override
 
 - (void)setupContentView {
-    // CRITICAL: Call super first to create contentView
     [super setupContentView];
-    
-    // Remove BaseWidget's placeholder
-    for (NSView *subview in self.contentView.subviews) {
-        [subview removeFromSuperview];
-    }
-    
-    // Now setup our UI
-    [self setupControlsView];
-    [self setupScrollView];
+     
+     // Remove BaseWidget's placeholder
+     for (NSView *subview in self.contentView.subviews) {
+         [subview removeFromSuperview];
+     }
+     
+     // Setup UI
+     [self setupControlsView];
+     [self setupScrollView];
+    [self initializeSettingsSystem];
+
 }
 
 #pragma mark - UI Setup
@@ -257,6 +258,8 @@
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [self stopAutoRefresh];
+    [self saveSettingsOnExit];
+
 }
 
 #pragma mark - View Lifecycle
@@ -468,7 +471,7 @@
     [self.chartsContainer removeConstraints:self.chartConstraints];
     [self.chartConstraints removeAllObjects];
     
-    // Create new charts
+    // Create new charts with chain support
     for (NSString *symbol in self.symbols) {
         MiniChart *miniChart = [[MiniChart alloc] init];
         miniChart.symbol = symbol;
@@ -479,12 +482,85 @@
         miniChart.showVolume = self.showVolume;
         miniChart.translatesAutoresizingMaskIntoConstraints = NO;
         
+        // Setup chain integration
+        [self setupChartClickHandler:miniChart];
+        [self setupChartContextMenu:miniChart];
+        
         [self.chartsContainer addSubview:miniChart];
         [self.miniCharts addObject:miniChart];
     }
     
     // Layout charts
     [self layoutMiniCharts];
+    
+    NSLog(@"MultiChartWidget: Rebuilt %lu mini charts with chain support", (unsigned long)self.miniCharts.count);
+}
+
+- (void)setupChartClickHandler:(MiniChart *)chart {
+    // Aggiungi gesture recognizer per gestire i click
+    NSClickGestureRecognizer *clickGesture = [[NSClickGestureRecognizer alloc]
+                                              initWithTarget:self
+                                              action:@selector(miniChartClicked:)];
+    [chart addGestureRecognizer:clickGesture];
+    
+    // Configura il chart per essere selezionabile visivamente
+    [self setupChartSelectionAppearance:chart];
+}
+
+- (void)setupChartSelectionAppearance:(MiniChart *)chart {
+    // Aggiungi bordo per indicare lo stato di selezione
+    chart.wantsLayer = YES;
+    chart.layer.borderWidth = 0.0;
+    chart.layer.borderColor = [NSColor controlAccentColor].CGColor;
+    chart.layer.cornerRadius = 4.0;
+}
+
+- (void)miniChartClicked:(NSClickGestureRecognizer *)gesture {
+    MiniChart *clickedChart = (MiniChart *)gesture.view;
+    NSString *symbol = clickedChart.symbol;
+    
+    NSLog(@"MultiChartWidget: Mini chart clicked for symbol: %@", symbol);
+    
+    // Aggiorna la selezione visuale
+    [self updateChartSelection:clickedChart];
+    
+    // Broadcast del simbolo selezionato alla chain
+    if (self.chainActive && symbol.length > 0) {
+        [self broadcastUpdate:@{
+            @"action": @"setSymbols",
+            @"symbols": @[symbol]
+        }];
+        
+        NSLog(@"MultiChartWidget: Broadcasted symbol '%@' to chain", symbol);
+        
+        // Mostra feedback temporaneo
+        [self showTemporaryMessage:[NSString stringWithFormat:@"Sent %@ to chain", symbol]];
+    }
+}
+
+- (void)updateChartSelection:(MiniChart *)selectedChart {
+    // Rimuovi selezione da tutti i chart
+    for (MiniChart *chart in self.miniCharts) {
+        chart.layer.borderWidth = 0.0;
+    }
+    
+    // Aggiungi selezione al chart cliccato
+    selectedChart.layer.borderWidth = 2.0;
+    selectedChart.layer.borderColor = [NSColor controlAccentColor].CGColor;
+    
+    // Animazione per evidenziare la selezione
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.2;
+        selectedChart.layer.backgroundColor = (__bridge CGColorRef _Nullable)([[NSColor controlAccentColor] blendedColorWithFraction:0.9 ofColor:[NSColor controlBackgroundColor]]);
+    } completionHandler:^{
+        // Rimuovi l'highlight dopo un breve periodo
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+                context.duration = 0.3;
+                selectedChart.layer.backgroundColor = [NSColor clearColor].CGColor;
+            }];
+        });
+    }];
 }
 
 - (void)layoutMiniCharts {
@@ -569,6 +645,178 @@
                                                                    constant:containerHeight]];
     
     [self.chartsContainer addConstraints:self.chartConstraints];
+}
+
+
+- (void)setupChartContextMenu:(MiniChart *)chart {
+    NSMenu *contextMenu = [[NSMenu alloc] init];
+    
+    // Send to chain
+    NSMenuItem *sendToChainItem = [[NSMenuItem alloc] init];
+    sendToChainItem.title = [NSString stringWithFormat:@"Send '%@' to Chain", chart.symbol];
+    sendToChainItem.action = @selector(sendChartSymbolToChain:);
+    sendToChainItem.target = self;
+    sendToChainItem.representedObject = chart.symbol;
+    [contextMenu addItem:sendToChainItem];
+    
+    [contextMenu addItem:[NSMenuItem separatorItem]];
+    
+    // Send to specific chain colors
+    NSMenuItem *sendToChainColorsItem = [[NSMenuItem alloc] init];
+    sendToChainColorsItem.title = [NSString stringWithFormat:@"Send '%@' to Chain Color", chart.symbol];
+    sendToChainColorsItem.submenu = [self createChainColorSubmenuForSymbol:chart.symbol];
+    [contextMenu addItem:sendToChainColorsItem];
+    
+    [contextMenu addItem:[NSMenuItem separatorItem]];
+    
+    // Remove from grid
+    NSMenuItem *removeItem = [[NSMenuItem alloc] init];
+    removeItem.title = [NSString stringWithFormat:@"Remove '%@'", chart.symbol];
+    removeItem.action = @selector(removeChartSymbol:);
+    removeItem.target = self;
+    removeItem.representedObject = chart.symbol;
+    [contextMenu addItem:removeItem];
+    
+    chart.menu = contextMenu;
+}
+
+- (NSMenu *)createChainColorSubmenuForSymbol:(NSString *)symbol {
+    NSMenu *submenu = [[NSMenu alloc] init];
+    
+    NSArray *chainColors = @[
+        @{@"name": @"Red Chain", @"color": [NSColor systemRedColor]},
+        @{@"name": @"Green Chain", @"color": [NSColor systemGreenColor]},
+        @{@"name": @"Blue Chain", @"color": [NSColor systemBlueColor]},
+        @{@"name": @"Yellow Chain", @"color": [NSColor systemYellowColor]},
+        @{@"name": @"Orange Chain", @"color": [NSColor systemOrangeColor]},
+        @{@"name": @"Purple Chain", @"color": [NSColor systemPurpleColor]},
+        @{@"name": @"Gray Chain", @"color": [NSColor systemGrayColor]}
+    ];
+    
+    for (NSDictionary *colorInfo in chainColors) {
+        NSMenuItem *colorItem = [[NSMenuItem alloc] init];
+        colorItem.title = [NSString stringWithFormat:@"%@ (%@)", colorInfo[@"name"], symbol];
+        colorItem.action = @selector(sendSymbolToSpecificChain:);
+        colorItem.target = self;
+        
+        NSDictionary *actionData = @{
+            @"symbol": symbol,
+            @"color": colorInfo[@"color"],
+            @"colorName": colorInfo[@"name"]
+        };
+        colorItem.representedObject = actionData;
+        
+        // Aggiungi indicatore visivo del colore
+        NSImage *colorIndicator = [self createColorIndicatorWithColor:colorInfo[@"color"]];
+        colorItem.image = colorIndicator;
+        
+        [submenu addItem:colorItem];
+    }
+    
+    return submenu;
+}
+
+- (NSImage *)createColorIndicatorWithColor:(NSColor *)color {
+    NSSize size = NSMakeSize(16, 16);
+    NSImage *image = [[NSImage alloc] initWithSize:size];
+    
+    [image lockFocus];
+    
+    NSBezierPath *circle = [NSBezierPath bezierPathWithOvalInRect:NSMakeRect(2, 2, 12, 12)];
+    [color setFill];
+    [circle fill];
+    
+    [[NSColor blackColor] setStroke];
+    circle.lineWidth = 0.5;
+    [circle stroke];
+    
+    [image unlockFocus];
+    
+    return image;
+}
+
+#pragma mark - Context Menu Actions
+
+- (void)sendChartSymbolToChain:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    NSString *symbol = menuItem.representedObject;
+    
+    if (symbol.length > 0) {
+        [self broadcastUpdate:@{
+            @"action": @"setSymbols",
+            @"symbols": @[symbol]
+        }];
+        
+        [self showTemporaryMessage:[NSString stringWithFormat:@"Sent %@ to chain", symbol]];
+    }
+}
+
+- (void)sendSymbolToSpecificChain:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    NSDictionary *actionData = menuItem.representedObject;
+    
+    NSString *symbol = actionData[@"symbol"];
+    NSColor *chainColor = actionData[@"color"];
+    NSString *colorName = actionData[@"colorName"];
+    
+    if (symbol.length > 0 && chainColor) {
+        // Attiva la chain con il colore specifico
+        [self setChainActive:YES withColor:chainColor];
+        
+        // Invia il simbolo
+        [self broadcastUpdate:@{
+            @"action": @"setSymbols",
+            @"symbols": @[symbol]
+        }];
+        
+        [self showTemporaryMessage:[NSString stringWithFormat:@"Sent %@ to %@", symbol, colorName]];
+    }
+}
+
+- (void)removeChartSymbol:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    NSString *symbol = menuItem.representedObject;
+    
+    if (symbol.length > 0) {
+        [self removeSymbol:symbol];
+        
+        // Aggiorna il campo di testo
+        self.symbolsString = [self.symbols componentsJoinedByString:@", "];
+        self.symbolsTextField.stringValue = self.symbolsString;
+        
+        // Ricostruisci i chart
+        [self rebuildMiniCharts];
+        
+        [self showTemporaryMessage:[NSString stringWithFormat:@"Removed %@", symbol]];
+    }
+}
+
+#pragma mark - UI Feedback
+
+- (void)showTemporaryMessage:(NSString *)message {
+    // Crea un label temporaneo per feedback
+    NSTextField *messageLabel = [NSTextField labelWithString:message];
+    messageLabel.backgroundColor = [NSColor controlAccentColor];
+    messageLabel.textColor = [NSColor controlTextColor];
+    messageLabel.drawsBackground = YES;
+    messageLabel.bordered = NO;
+    messageLabel.editable = NO;
+    messageLabel.alignment = NSTextAlignmentCenter;
+    messageLabel.font = [NSFont systemFontOfSize:11];
+    messageLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    [self.contentView addSubview:messageLabel];
+    [NSLayoutConstraint activateConstraints:@[
+        [messageLabel.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
+        [messageLabel.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-10],
+        [messageLabel.heightAnchor constraintEqualToConstant:20],
+        [messageLabel.widthAnchor constraintGreaterThanOrEqualToConstant:100]
+    ]];
+    
+    // Rimuovi dopo 2 secondi
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [messageLabel removeFromSuperview];
+    });
 }
 
 #pragma mark - Layout Management
@@ -766,58 +1014,380 @@
     }
 }
 
-#pragma mark - State Management
+#pragma mark - Chain Integration
 
+// Override del metodo BaseWidget per ricevere simboli dalle chain
+- (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
+    NSString *action = update[@"action"];
+    
+    if ([action isEqualToString:@"setSymbols"]) {
+        NSArray *symbols = update[@"symbols"];
+        if (symbols.count > 0) {
+            [self handleSymbolsFromChain:symbols fromWidget:sender];
+        }
+    }
+}
+
+- (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
+    NSLog(@"MultiChartWidget: Received %lu symbols from chain", (unsigned long)symbols.count);
+    
+    // Combina i simboli ricevuti con quelli esistenti
+    NSMutableSet *combinedSymbols = [NSMutableSet setWithArray:self.symbols];
+    [combinedSymbols addObjectsFromArray:symbols];
+    
+    // Aggiorna la lista simboli
+    NSArray *newSymbolsArray = [combinedSymbols.allObjects sortedArrayUsingSelector:@selector(compare:)];
+    self.symbols = newSymbolsArray;
+    
+    // Aggiorna il campo di testo
+    self.symbolsString = [newSymbolsArray componentsJoinedByString:@", "];
+    self.symbolsTextField.stringValue = self.symbolsString;
+    
+    // Ricostruisci i mini chart
+    [self rebuildMiniCharts];
+    [self loadDataFromDataHub];
+    
+    // Mostra feedback temporaneo
+    NSString *senderType = NSStringFromClass([sender class]);
+    NSString *message = symbols.count == 1 ?
+        [NSString stringWithFormat:@"Added %@ from %@", symbols[0], senderType] :
+        [NSString stringWithFormat:@"Added %lu symbols from %@", (unsigned long)symbols.count, senderType];
+    
+    [self showTemporaryMessage:message];
+}
+
+#pragma mark - Enhanced BaseWidget State Management
+
+// Override del metodo BaseWidget per includere le impostazioni UI
 - (NSDictionary *)serializeState {
     NSMutableDictionary *state = [[super serializeState] mutableCopy];
     
-    state[@"symbols"] = self.symbolsString ?: @"";
+    // Includi le impostazioni UI nello stato del widget
     state[@"chartType"] = @(self.chartType);
     state[@"timeframe"] = @(self.timeframe);
     state[@"scaleType"] = @(self.scaleType);
     state[@"maxBars"] = @(self.maxBars);
     state[@"showVolume"] = @(self.showVolume);
     state[@"columnsCount"] = @(self.columnsCount);
+    state[@"symbolsString"] = self.symbolsString ?: @"";
     
     return state;
 }
 
+// Override del metodo BaseWidget per ripristinare le impostazioni UI
 - (void)restoreState:(NSDictionary *)state {
     [super restoreState:state];
     
-    if (state[@"symbols"]) {
-        [self setSymbolsFromString:state[@"symbols"]];
-    }
-    
+    // Ripristina le impostazioni UI dallo stato salvato
     if (state[@"chartType"]) {
         self.chartType = [state[@"chartType"] integerValue];
-        [self.chartTypePopup selectItemAtIndex:self.chartType];
     }
     
     if (state[@"timeframe"]) {
         self.timeframe = [state[@"timeframe"] integerValue];
-        [self.timeframePopup selectItemAtIndex:self.timeframe];
     }
     
     if (state[@"scaleType"]) {
         self.scaleType = [state[@"scaleType"] integerValue];
-        [self.scaleTypePopup selectItemAtIndex:self.scaleType];
     }
     
     if (state[@"maxBars"]) {
         self.maxBars = [state[@"maxBars"] integerValue];
-        self.maxBarsField.integerValue = self.maxBars;
     }
     
     if (state[@"showVolume"]) {
         self.showVolume = [state[@"showVolume"] boolValue];
-        self.volumeCheckbox.state = self.showVolume ? NSControlStateValueOn : NSControlStateValueOff;
     }
     
     if (state[@"columnsCount"]) {
         self.columnsCount = [state[@"columnsCount"] integerValue];
-        [self setColumnsCount:self.columnsCount animated:NO];
     }
+    
+    if (state[@"symbolsString"]) {
+        self.symbolsString = state[@"symbolsString"];
+        [self setSymbolsFromString:self.symbolsString];
+    }
+    
+    // Aggiorna l'UI dopo il ripristino
+    [self updateUIFromSettings];
+    
+    // Ricostruisci i chart con le nuove impostazioni
+    [self rebuildMiniCharts];
+    
+    NSLog(@"MultiChartWidget: Restored state from layout");
 }
 
+//
+// MultiChartWidget Settings Persistence
+// Aggiungi questo codice al MultiChartWidget.m
+//
+
+#pragma mark - Settings Persistence Keys
+
+// Keys per NSUserDefaults - prefisso per evitare conflitti
+static NSString *const kMultiChartChartTypeKey = @"MultiChart_ChartType";
+static NSString *const kMultiChartTimeframeKey = @"MultiChart_Timeframe";
+static NSString *const kMultiChartScaleTypeKey = @"MultiChart_ScaleType";
+static NSString *const kMultiChartMaxBarsKey = @"MultiChart_MaxBars";
+static NSString *const kMultiChartShowVolumeKey = @"MultiChart_ShowVolume";
+static NSString *const kMultiChartColumnsCountKey = @"MultiChart_ColumnsCount";
+static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
+
+#pragma mark - Settings Management
+
+- (void)loadSettingsFromUserDefaults {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    // Carica le impostazioni salvate o usa i default
+    NSInteger savedChartType = [defaults integerForKey:kMultiChartChartTypeKey];
+    NSInteger savedTimeframe = [defaults integerForKey:kMultiChartTimeframeKey];
+    NSInteger savedScaleType = [defaults integerForKey:kMultiChartScaleTypeKey];
+    NSInteger savedMaxBars = [defaults integerForKey:kMultiChartMaxBarsKey];
+    BOOL savedShowVolume = [defaults boolForKey:kMultiChartShowVolumeKey];
+    NSInteger savedColumnsCount = [defaults integerForKey:kMultiChartColumnsCountKey];
+    NSString *savedSymbols = [defaults stringForKey:kMultiChartSymbolsKey];
+    
+    // Applica le impostazioni caricate con validazione
+    
+    // Chart Type (default: Line se non salvato)
+    if (savedChartType >= MiniChartTypeLine && savedChartType <= MiniChartTypeCandle) {
+        self.chartType = (MiniChartType)savedChartType;
+    } else {
+        self.chartType = MiniChartTypeLine; // Default
+    }
+    
+    // Timeframe (default: Daily se non salvato)
+    if (savedTimeframe >= MiniChartTimeframe5Min && savedTimeframe <= MiniChartTimeframeMonthly) {
+        self.timeframe = (MiniChartTimeframe)savedTimeframe;
+    } else {
+        self.timeframe = MiniChartTimeframeDaily; // Default
+    }
+    
+    // Scale Type (default: Linear se non salvato)
+    if (savedScaleType >= MiniChartScaleLinear && savedScaleType <= MiniChartScaleLog) {
+        self.scaleType = (MiniChartScaleType)savedScaleType;
+    } else {
+        self.scaleType = MiniChartScaleLinear; // Default
+    }
+    
+    // Max Bars (default: 100 se non salvato o fuori range)
+    if (savedMaxBars > 0 && savedMaxBars <= 500) {
+        self.maxBars = savedMaxBars;
+    } else {
+        self.maxBars = 100; // Default
+    }
+    
+    // Show Volume (default: YES se non salvato)
+    // boolForKey ritorna NO se la key non esiste, quindi controlliamo se la key esiste
+    if ([defaults objectForKey:kMultiChartShowVolumeKey] != nil) {
+        self.showVolume = savedShowVolume;
+    } else {
+        self.showVolume = YES; // Default
+    }
+    
+    // Columns Count (default: 3 se non salvato o fuori range)
+    if (savedColumnsCount >= 1 && savedColumnsCount <= 5) {
+        self.columnsCount = savedColumnsCount;
+    } else {
+        self.columnsCount = 3; // Default
+    }
+    
+    // Symbols (default: vuoto se non salvato)
+    if (savedSymbols && savedSymbols.length > 0) {
+        self.symbolsString = savedSymbols;
+        [self setSymbolsFromString:savedSymbols];
+    } else {
+        self.symbolsString = @"";
+        self.symbols = @[];
+    }
+    
+    NSLog(@"MultiChartWidget: Loaded settings - ChartType:%ld, Timeframe:%ld, ScaleType:%ld, MaxBars:%ld, ShowVolume:%@, Columns:%ld, Symbols:%@",
+          (long)self.chartType, (long)self.timeframe, (long)self.scaleType, (long)self.maxBars,
+          self.showVolume ? @"YES" : @"NO", (long)self.columnsCount, self.symbolsString);
+}
+
+- (void)saveSettingsToUserDefaults {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    // Salva tutte le impostazioni correnti
+    [defaults setInteger:self.chartType forKey:kMultiChartChartTypeKey];
+    [defaults setInteger:self.timeframe forKey:kMultiChartTimeframeKey];
+    [defaults setInteger:self.scaleType forKey:kMultiChartScaleTypeKey];
+    [defaults setInteger:self.maxBars forKey:kMultiChartMaxBarsKey];
+    [defaults setBool:self.showVolume forKey:kMultiChartShowVolumeKey];
+    [defaults setInteger:self.columnsCount forKey:kMultiChartColumnsCountKey];
+    [defaults setObject:self.symbolsString forKey:kMultiChartSymbolsKey];
+    
+    // Forza la sincronizzazione immediata
+    [defaults synchronize];
+    
+    NSLog(@"MultiChartWidget: Saved settings - ChartType:%ld, Timeframe:%ld, ScaleType:%ld, MaxBars:%ld, ShowVolume:%@, Columns:%ld, Symbols:%@",
+          (long)self.chartType, (long)self.timeframe, (long)self.scaleType, (long)self.maxBars,
+          self.showVolume ? @"YES" : @"NO", (long)self.columnsCount, self.symbolsString);
+}
+
+- (void)updateUIFromSettings {
+    // Aggiorna i controlli UI per riflettere le impostazioni caricate
+    
+    // Chart Type Popup
+    if (self.chartTypePopup && self.chartType < self.chartTypePopup.numberOfItems) {
+        [self.chartTypePopup selectItemAtIndex:self.chartType];
+    }
+    
+    // Timeframe Popup
+    if (self.timeframePopup && self.timeframe < self.timeframePopup.numberOfItems) {
+        [self.timeframePopup selectItemAtIndex:self.timeframe];
+    }
+    
+    // Scale Type Popup
+    if (self.scaleTypePopup && self.scaleType < self.scaleTypePopup.numberOfItems) {
+        [self.scaleTypePopup selectItemAtIndex:self.scaleType];
+    }
+    
+    // Max Bars Field
+    if (self.maxBarsField) {
+        self.maxBarsField.integerValue = self.maxBars;
+    }
+    
+    // Volume Checkbox
+    if (self.volumeCheckbox) {
+        self.volumeCheckbox.state = self.showVolume ? NSControlStateValueOn : NSControlStateValueOff;
+    }
+    
+    // Columns Control
+    if (self.columnsControl && self.columnsCount >= 1 && self.columnsCount <= 5) {
+        self.columnsControl.selectedSegment = self.columnsCount - 1;
+    }
+    
+    // Symbols Text Field
+    if (self.symbolsTextField) {
+        self.symbolsTextField.stringValue = self.symbolsString ?: @"";
+    }
+    
+    NSLog(@"MultiChartWidget: Updated UI from settings");
+}
+
+#pragma mark - Enhanced Action Methods with Auto-Save
+
+// Override dei metodi action esistenti per aggiungere auto-save
+
+- (void)chartTypeChangedWithAutoSave:(id)sender {
+    // Chiama il metodo originale
+    [self chartTypeChanged:sender];
+    
+    // Salva automaticamente
+    [self saveSettingsToUserDefaults];
+}
+
+- (void)timeframeChangedWithAutoSave:(id)sender {
+    // Chiama il metodo originale
+    [self timeframeChanged:sender];
+    
+    // Salva automaticamente
+    [self saveSettingsToUserDefaults];
+}
+
+- (void)scaleTypeChangedWithAutoSave:(id)sender {
+    // Chiama il metodo originale
+    [self scaleTypeChanged:sender];
+    
+    // Salva automaticamente
+    [self saveSettingsToUserDefaults];
+}
+
+- (void)maxBarsChangedWithAutoSave:(id)sender {
+    // Chiama il metodo originale
+    [self maxBarsChanged:sender];
+    
+    // Salva automaticamente
+    [self saveSettingsToUserDefaults];
+}
+
+- (void)volumeCheckboxChangedWithAutoSave:(id)sender {
+    // Chiama il metodo originale
+    [self volumeCheckboxChanged:sender];
+    
+    // Salva automaticamente
+    [self saveSettingsToUserDefaults];
+}
+
+- (void)columnsChangedWithAutoSave:(id)sender {
+    // Chiama il metodo originale
+    [self columnsChanged:sender];
+    
+    // Salva automaticamente
+    [self saveSettingsToUserDefaults];
+}
+
+- (void)symbolsChangedWithAutoSave:(id)sender {
+    // Chiama il metodo originale
+    [self symbolsChanged:sender];
+    
+    // Salva automaticamente
+    [self saveSettingsToUserDefaults];
+}
+
+
+#pragma mark - Lifecycle Integration
+
+// Metodo da chiamare in setupContentView DOPO aver creato i controlli UI
+- (void)initializeSettingsSystem {
+    // Carica le impostazioni salvate
+    [self loadSettingsFromUserDefaults];
+    
+    // Aggiorna l'UI per riflettere le impostazioni
+    [self updateUIFromSettings];
+    
+    // Collega gli action methods enhanced con auto-save
+    [self setupAutoSaveActionMethods];
+    
+    NSLog(@"MultiChartWidget: Settings system initialized");
+}
+
+- (void)setupAutoSaveActionMethods {
+    // Ricollega i controlli UI ai metodi enhanced con auto-save
+    
+    if (self.chartTypePopup) {
+        self.chartTypePopup.target = self;
+        self.chartTypePopup.action = @selector(chartTypeChangedWithAutoSave:);
+    }
+    
+    if (self.timeframePopup) {
+        self.timeframePopup.target = self;
+        self.timeframePopup.action = @selector(timeframeChangedWithAutoSave:);
+    }
+    
+    if (self.scaleTypePopup) {
+        self.scaleTypePopup.target = self;
+        self.scaleTypePopup.action = @selector(scaleTypeChangedWithAutoSave:);
+    }
+    
+    if (self.maxBarsField) {
+        self.maxBarsField.target = self;
+        self.maxBarsField.action = @selector(maxBarsChangedWithAutoSave:);
+    }
+    
+    if (self.volumeCheckbox) {
+        self.volumeCheckbox.target = self;
+        self.volumeCheckbox.action = @selector(volumeCheckboxChangedWithAutoSave:);
+    }
+    
+    if (self.columnsControl) {
+        self.columnsControl.target = self;
+        self.columnsControl.action = @selector(columnsChangedWithAutoSave:);
+    }
+    
+    if (self.symbolsTextField) {
+        self.symbolsTextField.target = self;
+        self.symbolsTextField.action = @selector(symbolsChangedWithAutoSave:);
+    }
+    
+    NSLog(@"MultiChartWidget: Auto-save action methods connected");
+}
+
+// Metodo da chiamare quando il widget viene deallocato
+- (void)saveSettingsOnExit {
+    [self saveSettingsToUserDefaults];
+    NSLog(@"MultiChartWidget: Final settings save on exit");
+}
 @end

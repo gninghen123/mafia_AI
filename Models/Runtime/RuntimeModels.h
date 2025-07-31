@@ -194,5 +194,38 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSString *)formattedMarketCap;
 
 @end
+
+// =======================================
+// ALERT MODEL - RUNTIME
+// =======================================
+
+@interface AlertModel : NSObject
+
+// Basic properties
+@property (nonatomic, strong) NSString *symbol;
+@property (nonatomic, assign) double triggerValue;
+@property (nonatomic, strong) NSString *conditionString; // "above", "below", "crosses_above", "crosses_below"
+@property (nonatomic, assign) BOOL isActive;
+@property (nonatomic, assign) BOOL isTriggered;
+@property (nonatomic, assign) BOOL notificationEnabled;
+
+// Metadata
+@property (nonatomic, strong) NSString * _Nullable notes;
+@property (nonatomic, strong) NSDate *creationDate;
+@property (nonatomic, strong) NSDate * _Nullable triggerDate;
+
+// Factory methods
++ (instancetype)alertFromDictionary:(NSDictionary *)dict;
+
+// Conversion
+- (NSDictionary *)toDictionary;
+
+// Convenience methods
+- (NSString *)formattedTriggerValue;
+- (NSString *)statusString;
+- (BOOL)shouldTriggerWithCurrentPrice:(double)currentPrice previousPrice:(double)previousPrice;
+
+@end
+
 NS_ASSUME_NONNULL_END
 

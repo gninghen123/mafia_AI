@@ -466,3 +466,82 @@
 }
 
 @end
+@implementation AlertModel
+
+#pragma mark - Factory Methods
+
++ (instancetype)alertFromDictionary:(NSDictionary *)dict {
+    if (!dict) return nil;
+    
+    AlertModel *alert = [[AlertModel alloc] init];
+    alert.symbol = dict[@"symbol"];
+    alert.triggerValue = [dict[@"triggerValue"] doubleValue];
+    alert.conditionString = dict[@"conditionString"];
+    alert.isActive = [dict[@"isActive"] boolValue];
+    alert.isTriggered = [dict[@"isTriggered"] boolValue];
+    alert.notificationEnabled = [dict[@"notificationEnabled"] boolValue];
+    alert.notes = dict[@"notes"];
+    alert.creationDate = dict[@"creationDate"];
+    alert.triggerDate = dict[@"triggerDate"];
+    
+    return alert;
+}
+
+#pragma mark - Conversion
+
+- (NSDictionary *)toDictionary {
+    NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+    
+    if (self.symbol) dict[@"symbol"] = self.symbol;
+    dict[@"triggerValue"] = @(self.triggerValue);
+    if (self.conditionString) dict[@"conditionString"] = self.conditionString;
+    dict[@"isActive"] = @(self.isActive);
+    dict[@"isTriggered"] = @(self.isTriggered);
+    dict[@"notificationEnabled"] = @(self.notificationEnabled);
+    if (self.notes) dict[@"notes"] = self.notes;
+    if (self.creationDate) dict[@"creationDate"] = self.creationDate;
+    if (self.triggerDate) dict[@"triggerDate"] = self.triggerDate;
+    
+    return [dict copy];
+}
+
+#pragma mark - Convenience Methods
+
+- (NSString *)formattedTriggerValue {
+    NSNumberFormatter *formatter = [[NSNumberFormatter alloc] init];
+    formatter.numberStyle = NSNumberFormatterCurrencyStyle;
+    formatter.minimumFractionDigits = 2;
+    formatter.maximumFractionDigits = 2;
+    
+    return [formatter stringFromNumber:@(self.triggerValue)];
+}
+
+- (NSString *)statusString {
+    if (self.isTriggered) {
+        return @"Triggered";
+    } else if (self.isActive) {
+        return @"Active";
+    } else {
+        return @"Inactive";
+    }
+}
+
+- (BOOL)shouldTriggerWithCurrentPrice:(double)currentPrice previousPrice:(double)previousPrice {
+    if (!self.isActive || self.isTriggered) {
+        return NO;
+    }
+    
+    if ([self.conditionString isEqualToString:@"above"]) {
+        return currentPrice > self.triggerValue;
+    } else if ([self.conditionString isEqualToString:@"below"]) {
+        return currentPrice < self.triggerValue;
+    } else if ([self.conditionString isEqualToString:@"crosses_above"]) {
+        return (previousPrice <= self.triggerValue) && (currentPrice > self.triggerValue);
+    } else if ([self.conditionString isEqualToString:@"crosses_below"]) {
+        return (previousPrice >= self.triggerValue) && (currentPrice < self.triggerValue);
+    }
+    
+    return NO;
+}
+
+@end

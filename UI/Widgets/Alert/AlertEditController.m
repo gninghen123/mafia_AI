@@ -2,29 +2,35 @@
 //  AlertEditController.m
 //  mafia_AI
 //
+//  Window controller per creare/modificare alert
+//  UPDATED: Usa solo DataHub e RuntimeModels
+//
 
 #import "AlertEditController.h"
 #import "DataHub.h"
-#import "Alert+CoreDataClass.h"
 
-@interface AlertEditController () <NSTextFieldDelegate>
+@interface AlertEditController ()
+
+// UI Components
 @property (nonatomic, strong) NSTextField *symbolField;
 @property (nonatomic, strong) NSPopUpButton *conditionPopup;
-@property (nonatomic, strong) NSTextField *priceField;
-@property (nonatomic, strong) NSButton *activeCheckbox;
+@property (nonatomic, strong) NSTextField *valueField;
+@property (nonatomic, strong) NSButton *notificationCheckbox;
 @property (nonatomic, strong) NSTextField *notesField;
 @property (nonatomic, strong) NSButton *saveButton;
 @property (nonatomic, strong) NSButton *cancelButton;
-@property (nonatomic, strong) NSTextField *currentPriceLabel;
-@property (nonatomic, strong) NSProgressIndicator *priceLoadingIndicator;
+
+// State
+@property (nonatomic, assign) BOOL isEditing;
+
 @end
 
 @implementation AlertEditController
 
-- (instancetype)initWithAlert:(Alert *)alert {
-    self = [super initWithWindowNibName:@""];
-    if (self) {
-        self.alert = alert;
+- (instancetype)initWithAlert:(AlertModel *)alert {
+    if (self = [super init]) {
+        _alert = alert;
+        _isEditing = (alert != nil);
         [self setupWindow];
     }
     return self;
@@ -32,242 +38,276 @@
 
 - (void)setupWindow {
     // Create window
-    NSRect frame = NSMakeRect(0, 0, 400, 300);
-    NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
+    NSRect windowFrame = NSMakeRect(0, 0, 400, 300);
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:windowFrame
                                                    styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
                                                      backing:NSBackingStoreBuffered
                                                        defer:NO];
-    window.title = self.alert ? @"Edit Alert" : @"New Alert";
+    
+    window.title = self.isEditing ? @"Edit Alert" : @"New Alert";
+    window.level = NSFloatingWindowLevel;
+    [window center];
+    
     self.window = window;
     
-    NSView *contentView = window.contentView;
+    [self setupContentView];
+    [self populateFields];
+}
+
+- (void)setupContentView {
+    NSView *contentView = self.window.contentView;
     
     // Symbol field
-    NSTextField *symbolLabel = [NSTextField labelWithString:@"Symbol:"];
-    symbolLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    
-    self.symbolField = [[NSTextField alloc] init];
-    self.symbolField.placeholderString = @"AAPL";
-    self.symbolField.translatesAutoresizingMaskIntoConstraints = NO;
+    NSTextField *symbolLabel = [self createLabel:@"Symbol:"];
+    self.symbolField = [self createTextField];
+    self.symbolField.placeholderString = @"e.g., AAPL";
     self.symbolField.delegate = self;
     
-    // Current price label
-    self.currentPriceLabel = [NSTextField labelWithString:@""];
-    self.currentPriceLabel.font = [NSFont systemFontOfSize:11];
-    self.currentPriceLabel.textColor = [NSColor secondaryLabelColor];
-    self.currentPriceLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    
-    self.priceLoadingIndicator = [[NSProgressIndicator alloc] init];
-    self.priceLoadingIndicator.style = NSProgressIndicatorStyleSpinning;
-    self.priceLoadingIndicator.controlSize = NSControlSizeSmall;
-    self.priceLoadingIndicator.hidden = YES;
-    self.priceLoadingIndicator.translatesAutoresizingMaskIntoConstraints = NO;
-    
     // Condition popup
-    NSTextField *conditionLabel = [NSTextField labelWithString:@"Alert when price:"];
-    conditionLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    
+    NSTextField *conditionLabel = [self createLabel:@"Condition:"];
     self.conditionPopup = [[NSPopUpButton alloc] init];
-    [self.conditionPopup addItemsWithTitles:@[@"Goes Above", @"Goes Below"]];
-    self.conditionPopup.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.conditionPopup addItemWithTitle:@"Above"];
+    [self.conditionPopup addItemWithTitle:@"Below"];
+    [self.conditionPopup addItemWithTitle:@"Crosses Above"];
+    [self.conditionPopup addItemWithTitle:@"Crosses Below"];
     
-    // Price field
-    NSTextField *priceLabel = [NSTextField labelWithString:@"Price:"];
-    priceLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    // Value field
+    NSTextField *valueLabel = [self createLabel:@"Trigger Value:"];
+    self.valueField = [self createTextField];
+    self.valueField.placeholderString = @"0.00";
+    self.valueField.delegate = self;
     
-    self.priceField = [[NSTextField alloc] init];
-    self.priceField.placeholderString = @"150.00";
-    self.priceField.translatesAutoresizingMaskIntoConstraints = NO;
-    
-    // Active checkbox
-    self.activeCheckbox = [NSButton checkboxWithTitle:@"Alert is active" target:nil action:nil];
-    self.activeCheckbox.state = NSControlStateValueOn;
-    self.activeCheckbox.translatesAutoresizingMaskIntoConstraints = NO;
+    // Notification checkbox
+    self.notificationCheckbox = [[NSButton alloc] init];
+    [self.notificationCheckbox setButtonType:NSButtonTypeSwitch];
+    self.notificationCheckbox.title = @"Show notification when triggered";
+    self.notificationCheckbox.state = NSControlStateValueOn;
     
     // Notes field
-    NSTextField *notesLabel = [NSTextField labelWithString:@"Notes:"];
-    notesLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    
-    self.notesField = [[NSTextField alloc] init];
+    NSTextField *notesLabel = [self createLabel:@"Notes:"];
+    self.notesField = [self createTextField];
     self.notesField.placeholderString = @"Optional notes...";
-    self.notesField.translatesAutoresizingMaskIntoConstraints = NO;
     
     // Buttons
-    self.cancelButton = [NSButton buttonWithTitle:@"Cancel" target:self action:@selector(cancel:)];
-    self.cancelButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.cancelButton = [[NSButton alloc] init];
+    [self.cancelButton setTitle:@"Cancel"];
+    self.cancelButton.bezelStyle = NSBezelStyleRounded;
+    self.cancelButton.target = self;
+    self.cancelButton.action = @selector(cancel:);
     
-    self.saveButton = [NSButton buttonWithTitle:@"Save" target:self action:@selector(save:)];
-    self.saveButton.keyEquivalent = @"\r";
-    self.saveButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.saveButton = [[NSButton alloc] init];
+    [self.saveButton setTitle:self.isEditing ? @"Update" : @"Create"];
+    self.saveButton.bezelStyle = NSBezelStyleRounded;
+    self.saveButton.keyEquivalent = @"\r"; // Enter key
+    self.saveButton.target = self;
+    self.saveButton.action = @selector(save:);
     
-    // Add all subviews
-    [contentView addSubview:symbolLabel];
-    [contentView addSubview:self.symbolField];
-    [contentView addSubview:self.currentPriceLabel];
-    [contentView addSubview:self.priceLoadingIndicator];
-    [contentView addSubview:conditionLabel];
-    [contentView addSubview:self.conditionPopup];
-    [contentView addSubview:priceLabel];
-    [contentView addSubview:self.priceField];
-    [contentView addSubview:self.activeCheckbox];
-    [contentView addSubview:notesLabel];
-    [contentView addSubview:self.notesField];
-    [contentView addSubview:self.cancelButton];
-    [contentView addSubview:self.saveButton];
+    // Layout all components
+    [self layoutComponents:@[
+        symbolLabel, self.symbolField,
+        conditionLabel, self.conditionPopup,
+        valueLabel, self.valueField,
+        self.notificationCheckbox,
+        notesLabel, self.notesField,
+        self.cancelButton, self.saveButton
+    ] inContentView:contentView];
+}
+
+- (NSTextField *)createLabel:(NSString *)text {
+    NSTextField *label = [[NSTextField alloc] init];
+    label.stringValue = text;
+    label.editable = NO;
+    label.bezeled = NO;
+    label.backgroundColor = [NSColor clearColor];
+    label.font = [NSFont boldSystemFontOfSize:12];
+    return label;
+}
+
+- (NSTextField *)createTextField {
+    NSTextField *textField = [[NSTextField alloc] init];
+    textField.bezelStyle = NSTextFieldSquareBezel;
+    textField.bezeled = YES;
+    return textField;
+}
+
+- (void)layoutComponents:(NSArray *)components inContentView:(NSView *)contentView {
+    for (NSView *component in components) {
+        component.translatesAutoresizingMaskIntoConstraints = NO;
+        [contentView addSubview:component];
+    }
     
-    // Setup constraints
+    // Create constraints
+    NSTextField *symbolLabel = components[0];
+    NSTextField *conditionLabel = components[2];
+    NSTextField *valueLabel = components[4];
+    NSTextField *notesLabel = components[7];
+    
     [NSLayoutConstraint activateConstraints:@[
-        // Symbol row
-        [symbolLabel.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:20],
+        // Symbol
         [symbolLabel.topAnchor constraintEqualToAnchor:contentView.topAnchor constant:20],
+        [symbolLabel.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:20],
+        [symbolLabel.widthAnchor constraintEqualToConstant:100],
         
+        [self.symbolField.topAnchor constraintEqualToAnchor:symbolLabel.topAnchor],
         [self.symbolField.leadingAnchor constraintEqualToAnchor:symbolLabel.trailingAnchor constant:10],
-        [self.symbolField.centerYAnchor constraintEqualToAnchor:symbolLabel.centerYAnchor],
-        [self.symbolField.widthAnchor constraintEqualToConstant:100],
+        [self.symbolField.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20],
         
-        [self.currentPriceLabel.leadingAnchor constraintEqualToAnchor:self.symbolField.trailingAnchor constant:10],
-        [self.currentPriceLabel.centerYAnchor constraintEqualToAnchor:self.symbolField.centerYAnchor],
-        
-        [self.priceLoadingIndicator.leadingAnchor constraintEqualToAnchor:self.symbolField.trailingAnchor constant:10],
-        [self.priceLoadingIndicator.centerYAnchor constraintEqualToAnchor:self.symbolField.centerYAnchor],
-        
-        // Condition row
-        [conditionLabel.leadingAnchor constraintEqualToAnchor:symbolLabel.leadingAnchor],
+        // Condition
         [conditionLabel.topAnchor constraintEqualToAnchor:symbolLabel.bottomAnchor constant:20],
+        [conditionLabel.leadingAnchor constraintEqualToAnchor:symbolLabel.leadingAnchor],
+        [conditionLabel.widthAnchor constraintEqualToConstant:100],
         
-        [self.conditionPopup.leadingAnchor constraintEqualToAnchor:self.symbolField.leadingAnchor],
-        [self.conditionPopup.centerYAnchor constraintEqualToAnchor:conditionLabel.centerYAnchor],
-        [self.conditionPopup.widthAnchor constraintEqualToConstant:150],
+        [self.conditionPopup.topAnchor constraintEqualToAnchor:conditionLabel.topAnchor],
+        [self.conditionPopup.leadingAnchor constraintEqualToAnchor:conditionLabel.trailingAnchor constant:10],
+        [self.conditionPopup.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20],
         
-        // Price row
-        [priceLabel.leadingAnchor constraintEqualToAnchor:symbolLabel.leadingAnchor],
-        [priceLabel.topAnchor constraintEqualToAnchor:conditionLabel.bottomAnchor constant:20],
+        // Value
+        [valueLabel.topAnchor constraintEqualToAnchor:conditionLabel.bottomAnchor constant:20],
+        [valueLabel.leadingAnchor constraintEqualToAnchor:symbolLabel.leadingAnchor],
+        [valueLabel.widthAnchor constraintEqualToConstant:100],
         
-        [self.priceField.leadingAnchor constraintEqualToAnchor:self.symbolField.leadingAnchor],
-        [self.priceField.centerYAnchor constraintEqualToAnchor:priceLabel.centerYAnchor],
-        [self.priceField.widthAnchor constraintEqualToConstant:100],
+        [self.valueField.topAnchor constraintEqualToAnchor:valueLabel.topAnchor],
+        [self.valueField.leadingAnchor constraintEqualToAnchor:valueLabel.trailingAnchor constant:10],
+        [self.valueField.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20],
         
-        // Active checkbox
-        [self.activeCheckbox.leadingAnchor constraintEqualToAnchor:self.symbolField.leadingAnchor],
-        [self.activeCheckbox.topAnchor constraintEqualToAnchor:priceLabel.bottomAnchor constant:20],
+        // Notification checkbox
+        [self.notificationCheckbox.topAnchor constraintEqualToAnchor:valueLabel.bottomAnchor constant:20],
+        [self.notificationCheckbox.leadingAnchor constraintEqualToAnchor:symbolLabel.leadingAnchor],
+        [self.notificationCheckbox.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20],
         
-        // Notes row
+        // Notes
+        [notesLabel.topAnchor constraintEqualToAnchor:self.notificationCheckbox.bottomAnchor constant:20],
         [notesLabel.leadingAnchor constraintEqualToAnchor:symbolLabel.leadingAnchor],
-        [notesLabel.topAnchor constraintEqualToAnchor:self.activeCheckbox.bottomAnchor constant:20],
+        [notesLabel.widthAnchor constraintEqualToConstant:100],
         
-        [self.notesField.leadingAnchor constraintEqualToAnchor:self.symbolField.leadingAnchor],
-        [self.notesField.centerYAnchor constraintEqualToAnchor:notesLabel.centerYAnchor],
+        [self.notesField.topAnchor constraintEqualToAnchor:notesLabel.topAnchor],
+        [self.notesField.leadingAnchor constraintEqualToAnchor:notesLabel.trailingAnchor constant:10],
         [self.notesField.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20],
         
         // Buttons
-        [self.cancelButton.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor constant:-20],
-        [self.cancelButton.trailingAnchor constraintEqualToAnchor:self.saveButton.leadingAnchor constant:-10],
-        
         [self.saveButton.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor constant:-20],
-        [self.saveButton.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20]
-    ]];
-    
-    // Populate fields if editing
-    if (self.alert) {
-        self.symbolField.stringValue = self.alert.symbol ?: @"";
-        self.conditionPopup.selectedItem.title = [self.alert.conditionString isEqualToString:@"below"] ? @"Goes Below" : @"Goes Above";
-        self.priceField.stringValue = [NSString stringWithFormat:@"%.2f", self.alert.triggerValue];
-        self.activeCheckbox.state = self.alert.isActive ? NSControlStateValueOn : NSControlStateValueOff;
-        self.notesField.stringValue = self.alert.notes ?: @"";
+        [self.saveButton.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20],
+        [self.saveButton.widthAnchor constraintEqualToConstant:80],
         
-        [self updateCurrentPrice];
-    }
+        [self.cancelButton.bottomAnchor constraintEqualToAnchor:self.saveButton.bottomAnchor],
+        [self.cancelButton.trailingAnchor constraintEqualToAnchor:self.saveButton.leadingAnchor constant:-10],
+        [self.cancelButton.widthAnchor constraintEqualToConstant:80]
+    ]];
 }
 
-- (void)updateCurrentPrice {
-    NSString *symbol = self.symbolField.stringValue;
-    if (symbol.length == 0) {
-        self.currentPriceLabel.stringValue = @"";
-        return;
-    }
-    
-    NSDictionary *data = [[DataHub shared] getDataForSymbol:symbol];
-    if (data) {
-        double price = [data[@"price"] doubleValue];
-        double change = [data[@"changePercent"] doubleValue];
+- (void)populateFields {
+    if (self.alert) {
+        self.symbolField.stringValue = self.alert.symbol ?: @"";
+        self.valueField.stringValue = [NSString stringWithFormat:@"%.2f", self.alert.triggerValue];
+        self.notificationCheckbox.state = self.alert.notificationEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+        self.notesField.stringValue = self.alert.notes ?: @"";
         
-        self.currentPriceLabel.stringValue = [NSString stringWithFormat:@"Current: $%.2f (%.2f%%)", price, change];
-        
-        if (change > 0) {
-            self.currentPriceLabel.textColor = [NSColor systemGreenColor];
-        } else if (change < 0) {
-            self.currentPriceLabel.textColor = [NSColor systemRedColor];
-        } else {
-            self.currentPriceLabel.textColor = [NSColor secondaryLabelColor];
+        // Set condition popup
+        if ([self.alert.conditionString isEqualToString:@"above"]) {
+            [self.conditionPopup selectItemAtIndex:0];
+        } else if ([self.alert.conditionString isEqualToString:@"below"]) {
+            [self.conditionPopup selectItemAtIndex:1];
+        } else if ([self.alert.conditionString isEqualToString:@"crosses_above"]) {
+            [self.conditionPopup selectItemAtIndex:2];
+        } else if ([self.alert.conditionString isEqualToString:@"crosses_below"]) {
+            [self.conditionPopup selectItemAtIndex:3];
         }
-    } else {
-        self.currentPriceLabel.stringValue = @"Price not available";
-        self.currentPriceLabel.textColor = [NSColor secondaryLabelColor];
     }
 }
 
 #pragma mark - Actions
 
 - (void)save:(id)sender {
-    // Validate
-    NSString *symbol = [self.symbolField.stringValue uppercaseString];
+    // Validate input
+    NSString *symbol = [self.symbolField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].uppercaseString;
+    NSString *valueString = [self.valueField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    
     if (symbol.length == 0) {
-        NSBeep();
+        [self showErrorAlert:@"Please enter a symbol."];
         return;
     }
     
-    double price = [self.priceField doubleValue];
-    if (price <= 0) {
-        NSBeep();
+    if (valueString.length == 0) {
+        [self showErrorAlert:@"Please enter a trigger value."];
         return;
     }
     
-    NSString *condition = [self.conditionPopup.selectedItem.title isEqualToString:@"Goes Above"] ? @"above" : @"below";
-    BOOL isActive = (self.activeCheckbox.state == NSControlStateValueOn);
+    double triggerValue = valueString.doubleValue;
+    if (triggerValue <= 0) {
+        [self showErrorAlert:@"Please enter a valid trigger value greater than 0."];
+        return;
+    }
     
-    DataHub *hub = [DataHub shared];
+    // Get condition string
+    NSString *conditionString;
+    NSInteger selectedIndex = self.conditionPopup.indexOfSelectedItem;
+    switch (selectedIndex) {
+        case 0: conditionString = @"above"; break;
+        case 1: conditionString = @"below"; break;
+        case 2: conditionString = @"crosses_above"; break;
+        case 3: conditionString = @"crosses_below"; break;
+        default: conditionString = @"above"; break;
+    }
     
-    if (self.alert) {
-        // Update existing
+    BOOL notificationEnabled = (self.notificationCheckbox.state == NSControlStateValueOn);
+    NSString *notes = [self.notesField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if (notes.length == 0) notes = nil;
+    
+    // Create or update alert
+    AlertModel *resultAlert;
+    
+    if (self.isEditing) {
+        // Update existing alert
         self.alert.symbol = symbol;
-        self.alert.conditionString = condition;
-        self.alert.triggerValue = price;
-        self.alert.isActive = isActive;
-        self.alert.notes = self.notesField.stringValue;
-        [hub updateAlert:self.alert];
+        self.alert.triggerValue = triggerValue;
+        self.alert.conditionString = conditionString;
+        self.alert.notificationEnabled = notificationEnabled;
+        self.alert.notes = notes;
+        
+        [[DataHub shared] updateAlertModel:self.alert];
+        resultAlert = self.alert;
     } else {
-        // Create new
-        self.alert = [hub createAlertForSymbol:symbol
-                                     condition:condition
-                                         value:price
-                                        active:isActive];
-        self.alert.notes = self.notesField.stringValue;
-        [hub updateAlert:self.alert];
+        // Create new alert
+        resultAlert = [[DataHub shared] createAlertModelWithSymbol:symbol
+                                                       triggerValue:triggerValue
+                                                    conditionString:conditionString
+                                               notificationEnabled:notificationEnabled
+                                                              notes:notes];
     }
+    
+    // Close and call completion
+    [self.window.sheetParent endSheet:self.window returnCode:NSModalResponseOK];
     
     if (self.completionHandler) {
-        self.completionHandler(self.alert, YES);
+        self.completionHandler(resultAlert, YES);
     }
-    
-    [self.window.sheetParent endSheet:self.window returnCode:NSModalResponseOK];
 }
 
 - (void)cancel:(id)sender {
+    [self.window.sheetParent endSheet:self.window returnCode:NSModalResponseCancel];
+    
     if (self.completionHandler) {
         self.completionHandler(nil, NO);
     }
-    
-    [self.window.sheetParent endSheet:self.window returnCode:NSModalResponseCancel];
 }
 
-#pragma mark - NSTextFieldDelegate
+- (void)showErrorAlert:(NSString *)message {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Invalid Input";
+    alert.informativeText = message;
+    [alert addButtonWithTitle:@"OK"];
+    alert.alertStyle = NSAlertStyleWarning;
+    
+    [alert beginSheetModalForWindow:self.window completionHandler:nil];
+}
 
-- (void)controlTextDidChange:(NSNotification *)notification {
-    if (notification.object == self.symbolField) {
-        // Cancella qualsiasi update precedente in coda
-        [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(updateCurrentPrice) object:nil];
-        // Aggiorna dopo 0.5 secondi di pausa nella digitazione
-        [self performSelector:@selector(updateCurrentPrice) withObject:nil afterDelay:0.5];
+#pragma mark - Text Field Delegate
+
+- (void)controlTextDidChange:(NSNotification *)obj {
+    // Auto-uppercase symbol field
+    if (obj.object == self.symbolField) {
+        NSString *text = self.symbolField.stringValue;
+        self.symbolField.stringValue = text.uppercaseString;
     }
 }
 

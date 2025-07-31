@@ -351,14 +351,7 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
                                                            repeats:YES];
 }
 
-- (NSArray<Alert *> *)getAllAlerts {
-    return [self.alerts copy];
-}
 
-- (NSArray<Alert *> *)getActiveAlerts {
-    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"isActive == YES"];
-    return [self.alerts filteredArrayUsingPredicate:predicate];
-}
 
 - (NSArray<Alert *> *)getAlertsForSymbol:(NSString *)symbol {
     NSPredicate *predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbol];
@@ -387,12 +380,6 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 }
 
 - (void)updateAlert:(Alert *)alert {
-    [self saveContext];
-}
-
-- (void)deleteAlert:(Alert *)alert {
-    [self.alerts removeObject:alert];
-    [self.mainContext deleteObject:alert];
     [self saveContext];
 }
 
@@ -615,28 +602,216 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 
 
 
-#pragma mark - Private Conversion Methods
 
-- (WatchlistModel *)convertCoreDataToRuntimeModel:(Watchlist *)coreDataWatchlist {
-    if (!coreDataWatchlist) return nil;
+
+#pragma mark - Alert Management (RuntimeModels for UI)
+
+- (NSArray<AlertModel *> *)getAllAlertModels {
+    NSArray<Alert *> *coreDataAlerts = [self getAllAlerts];
+    NSMutableArray<AlertModel *> *runtimeModels = [NSMutableArray array];
     
-    WatchlistModel *model = [[WatchlistModel alloc] init];
-    model.name = coreDataWatchlist.name;
-    model.colorHex = coreDataWatchlist.colorHex;
-    model.creationDate = coreDataWatchlist.creationDate;
-    model.lastModified = coreDataWatchlist.lastModified;
-    model.sortOrder = coreDataWatchlist.sortOrder;
-    model.symbols = coreDataWatchlist.symbols ?: @[];
+    for (Alert *coreDataAlert in coreDataAlerts) {
+        AlertModel *runtimeModel = [self convertCoreDataToRuntimeModel:coreDataAlert];
+        if (runtimeModel) {
+            [runtimeModels addObject:runtimeModel];
+        }
+    }
+    
+    return [runtimeModels copy];
+}
+
+- (AlertModel *)createAlertModelWithSymbol:(NSString *)symbol
+                              triggerValue:(double)triggerValue
+                           conditionString:(NSString *)conditionString
+                      notificationEnabled:(BOOL)notificationEnabled
+                                     notes:(NSString *)notes {
+    // Create in Core Data first
+    Alert *coreDataAlert = [self createAlertWithSymbol:symbol
+                                           triggerValue:triggerValue
+                                        conditionString:conditionString
+                                   notificationEnabled:notificationEnabled
+                                                  notes:notes];
+    
+    // Convert to RuntimeModel for UI
+    return [self convertCoreDataToRuntimeModel:coreDataAlert];
+}
+
+- (void)deleteAlertModel:(AlertModel *)alertModel {
+    if (!alertModel || !alertModel.symbol) return;
+    
+    // Find the corresponding Core Data object
+    Alert *coreDataAlert = [self findAlertBySymbolAndValue:alertModel.symbol
+                                               triggerValue:alertModel.triggerValue
+                                            conditionString:alertModel.conditionString];
+    if (coreDataAlert) {
+        [self deleteAlert:coreDataAlert];
+    }
+}
+
+- (void)updateAlertModel:(AlertModel *)alertModel {
+    if (!alertModel || !alertModel.symbol) return;
+    
+    // Find the corresponding Core Data object
+    Alert *coreDataAlert = [self findAlertBySymbolAndValue:alertModel.symbol
+                                               triggerValue:alertModel.triggerValue
+                                            conditionString:alertModel.conditionString];
+    if (coreDataAlert) {
+        [self updateCoreDataFromRuntimeModel:coreDataAlert withModel:alertModel];
+        [self saveContext];
+        
+        // Notify UI
+        [[NSNotificationCenter defaultCenter] postNotificationName:DataHubAlertTriggeredNotification
+                                                            object:self
+                                                          userInfo:@{@"alert": alertModel}];
+    }
+}
+
+#pragma mark - Alert Core Data Operations (Private)
+
+- (NSArray<Alert *> *)getAllAlerts {
+    NSFetchRequest *request = [Alert fetchRequest];
+    request.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"creationDate" ascending:NO]];
+    
+    NSError *error;
+    NSArray *alerts = [self.mainContext executeFetchRequest:request error:&error];
+    if (error) {
+        NSLog(@"Error fetching alerts: %@", error);
+        return @[];
+    }
+    
+    return alerts ?: @[];
+}
+
+- (Alert *)createAlertWithSymbol:(NSString *)symbol
+                    triggerValue:(double)triggerValue
+                 conditionString:(NSString *)conditionString
+            notificationEnabled:(BOOL)notificationEnabled
+                           notes:(NSString *)notes {
+    
+    Alert *alert = [NSEntityDescription insertNewObjectForEntityForName:@"Alert"
+                                                 inManagedObjectContext:self.mainContext];
+    alert.symbol = symbol.uppercaseString;
+    alert.triggerValue = triggerValue;
+    alert.conditionString = conditionString;
+    alert.isActive = YES;
+    alert.isTriggered = NO;
+    alert.notificationEnabled = notificationEnabled;
+    alert.notes = notes;
+    alert.creationDate = [NSDate date];
+    
+    [self saveContext];
+    return alert;
+}
+
+- (void)deleteAlert:(Alert *)alert {
+    [self.mainContext deleteObject:alert];
+    [self saveContext];
+}
+
+- (Alert *)findAlertBySymbolAndValue:(NSString *)symbol
+                        triggerValue:(double)triggerValue
+                     conditionString:(NSString *)conditionString {
+    NSFetchRequest *request = [Alert fetchRequest];
+    request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@ AND triggerValue == %f AND conditionString == %@",
+                        symbol.uppercaseString, triggerValue, conditionString];
+    request.fetchLimit = 1;
+    
+    NSError *error;
+    NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
+    if (error) {
+        NSLog(@"Error finding alert: %@", error);
+        return nil;
+    }
+    
+    return results.firstObject;
+}
+
+#pragma mark - Alert Conversion Methods (Private)
+
+- (AlertModel *)convertCoreDataToRuntimeModel:(Alert *)coreDataAlert {
+    if (!coreDataAlert) return nil;
+    
+    AlertModel *model = [[AlertModel alloc] init];
+    model.symbol = coreDataAlert.symbol;
+    model.triggerValue = coreDataAlert.triggerValue;
+    model.conditionString = coreDataAlert.conditionString;
+    model.isActive = coreDataAlert.isActive;
+    model.isTriggered = coreDataAlert.isTriggered;
+    model.notificationEnabled = coreDataAlert.notificationEnabled;
+    model.notes = coreDataAlert.notes;
+    model.creationDate = coreDataAlert.creationDate;
+    model.triggerDate = coreDataAlert.triggerDate;
+    
     return model;
 }
 
-- (void)updateCoreDataFromRuntimeModel:(Watchlist *)coreDataWatchlist withModel:(WatchlistModel *)runtimeModel {
-    if (!coreDataWatchlist || !runtimeModel) return;
+- (void)updateCoreDataFromRuntimeModel:(Alert *)coreDataAlert withModel:(AlertModel *)runtimeModel {
+    if (!coreDataAlert || !runtimeModel) return;
     
-    coreDataWatchlist.name = runtimeModel.name;
-    coreDataWatchlist.colorHex = runtimeModel.colorHex;
-    coreDataWatchlist.lastModified = runtimeModel.lastModified;
-    coreDataWatchlist.sortOrder = runtimeModel.sortOrder;
-    coreDataWatchlist.symbols = runtimeModel.symbols;
+    coreDataAlert.symbol = runtimeModel.symbol;
+    coreDataAlert.triggerValue = runtimeModel.triggerValue;
+    coreDataAlert.conditionString = runtimeModel.conditionString;
+    coreDataAlert.isActive = runtimeModel.isActive;
+    coreDataAlert.isTriggered = runtimeModel.isTriggered;
+    coreDataAlert.notificationEnabled = runtimeModel.notificationEnabled;
+    coreDataAlert.notes = runtimeModel.notes;
+    coreDataAlert.triggerDate = runtimeModel.triggerDate;
 }
+
+#pragma mark - Alert Monitoring
+
+- (void)checkAlertsWithCurrentPrices:(NSDictionary<NSString *, NSNumber *> *)currentPrices {
+    NSArray<AlertModel *> *activeAlerts = [self getActiveAlerts];
+    
+    for (AlertModel *alert in activeAlerts) {
+        NSNumber *currentPriceNumber = currentPrices[alert.symbol];
+        if (currentPriceNumber) {
+            double currentPrice = currentPriceNumber.doubleValue;
+            
+            // Get previous price for crosses detection
+            double previousPrice = [self getPreviousPriceForSymbol:alert.symbol];
+            
+            if ([alert shouldTriggerWithCurrentPrice:currentPrice previousPrice:previousPrice]) {
+                [self triggerAlertModel:alert];
+            }
+        }
+    }
+}
+
+- (NSArray<AlertModel *> *)getActiveAlerts {
+    NSArray<AlertModel *> *allAlerts = [self getAllAlertModels];
+    NSPredicate *activePredicate = [NSPredicate predicateWithFormat:@"isActive == YES AND isTriggered == NO"];
+    return [allAlerts filteredArrayUsingPredicate:activePredicate];
+}
+
+- (void)triggerAlertModel:(AlertModel *)alert {
+    alert.isTriggered = YES;
+    alert.triggerDate = [NSDate date];
+    [self updateAlertModel:alert];
+    
+    if (alert.notificationEnabled) {
+        [self showNotificationForAlertModel:alert];
+    }
+}
+
+- (void)showNotificationForAlertModel:(AlertModel *)alert {
+    NSUserNotification *notification = [[NSUserNotification alloc] init];
+    notification.title = @"Price Alert";
+    notification.informativeText = [NSString stringWithFormat:@"%@ has %@ %@",
+                                   alert.symbol,
+                                   alert.conditionString,
+                                   [alert formattedTriggerValue]];
+    notification.soundName = NSUserNotificationDefaultSoundName;
+    
+    [[NSUserNotificationCenter defaultUserNotificationCenter] deliverNotification:notification];
+}
+
+- (double)getPreviousPriceForSymbol:(NSString *)symbol {
+    // Implement this based on your price history storage
+    // For now, return current price (no crosses detection)
+    MarketQuoteModel *quote = [self getDataForSymbol:symbol];
+    return quote ? quote.last.doubleValue : 0.0;
+}
+
+
 @end

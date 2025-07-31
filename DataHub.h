@@ -23,7 +23,7 @@ extern NSString *const DataHubAlertTriggeredNotification;
 extern NSString *const DataHubConnectionsUpdatedNotification;
 extern NSString *const DataHubModelsUpdatedNotification;
 extern NSString *const DataHubDataLoadedNotification;
-
+@class AlertModel;  
 // Connection types
 typedef NS_ENUM(NSInteger, ConnectionType) {
     ConnectionTypePartnership,
@@ -54,7 +54,6 @@ typedef NS_ENUM(NSInteger, ModelStatus) {
 };
 
 @interface DataHub : NSObject
-
 // Core Data
 @property (nonatomic, strong, readonly) NSPersistentContainer *persistentContainer;
 @property (nonatomic, strong, readonly) NSManagedObjectContext *mainContext;
@@ -158,6 +157,45 @@ typedef NS_ENUM(NSInteger, ModelStatus) {
 - (NSArray<TradingModel *> *)filterModels:(NSDictionary *)criteria;
 
 
+#pragma mark - Alert Management (RuntimeModels)
 
+/**
+ * Recupera tutti gli alert come RuntimeModels per l'UI
+ * @return Array di AlertModel per l'interfaccia utente
+ */
+- (NSArray<AlertModel *> *)getAllAlertModels;
+
+/**
+ * Crea un nuovo alert
+ * @param symbol Simbolo da monitorare (es. "AAPL")
+ * @param triggerValue Prezzo di trigger
+ * @param conditionString Condizione: "above", "below", "crosses_above", "crosses_below"
+ * @param notificationEnabled Se mostrare notifiche sistema
+ * @param notes Note opzionali
+ * @return Il nuovo AlertModel creato
+ */
+- (AlertModel *)createAlertModelWithSymbol:(NSString *)symbol
+                              triggerValue:(double)triggerValue
+                           conditionString:(NSString *)conditionString
+                      notificationEnabled:(BOOL)notificationEnabled
+                                     notes:(NSString * _Nullable)notes;
+
+/**
+ * Elimina un alert
+ * @param alertModel L'AlertModel da eliminare
+ */
+- (void)deleteAlertModel:(AlertModel *)alertModel;
+
+/**
+ * Aggiorna un alert esistente
+ * @param alertModel L'AlertModel modificato da salvare
+ */
+- (void)updateAlertModel:(AlertModel *)alertModel;
+
+/**
+ * Controlla tutti gli alert attivi con i prezzi correnti
+ * @param currentPrices Dictionary con simbolo -> prezzo corrente
+ */
+- (void)checkAlertsWithCurrentPrices:(NSDictionary<NSString *, NSNumber *> *)currentPrices;
 
 @end

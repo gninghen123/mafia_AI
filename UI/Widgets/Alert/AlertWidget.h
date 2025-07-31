@@ -3,11 +3,11 @@
 //  mafia_AI
 //
 //  Widget per la gestione degli alert di prezzo
+//  UPDATED: Usa solo RuntimeModels, no CoreData
 //
 
 #import "BaseWidget.h"
-
-@class Alert;
+#import "RuntimeModels.h"
 
 @interface AlertWidget : BaseWidget <NSTableViewDelegate, NSTableViewDataSource>
 
@@ -19,9 +19,9 @@
 @property (nonatomic, strong) NSSegmentedControl *filterControl;
 @property (nonatomic, strong) NSTextField *statusLabel;
 
-// Data
-@property (nonatomic, strong) NSArray<Alert *> *alerts;
-@property (nonatomic, strong) NSArray<Alert *> *filteredAlerts;
+// Data - ONLY RuntimeModels
+@property (nonatomic, strong) NSArray<AlertModel *> *alerts;
+@property (nonatomic, strong) NSArray<AlertModel *> *filteredAlerts;
 @property (nonatomic, assign) NSInteger currentFilter; // 0=All, 1=Active, 2=Triggered
 
 @end

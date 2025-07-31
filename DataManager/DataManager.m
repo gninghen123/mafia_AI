@@ -592,4 +592,131 @@
     return @"None";
 }
 
+#pragma mark - Market Lists Implementation
+
+- (void)getMarketPerformersForList:(NSString *)listType
+                         timeframe:(NSString *)timeframe
+                        completion:(void (^)(NSArray<MarketPerformerModel *> *performers, NSError *error))completion {
+    
+    if (!listType || !timeframe) {
+        NSError *error = [NSError errorWithDomain:@"DataManagerError"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid listType or timeframe"}];
+        if (completion) completion(@[], error);
+        return;
+    }
+    
+    NSLog(@"DataManager: Getting market performers for list:%@ timeframe:%@", listType, timeframe);
+    
+    // Determina il tipo di richiesta in base al listType
+    DataRequestType requestType;
+    NSMutableDictionary *parameters = [NSMutableDictionary dictionary];
+    
+    if ([listType isEqualToString:@"gainers"]) {
+        requestType = DataRequestTypeTopGainers;
+        parameters[@"rankType"] = timeframe; // "1d" o "52w"
+        parameters[@"pageSize"] = @50;
+    } else if ([listType isEqualToString:@"losers"]) {
+        requestType = DataRequestTypeTopLosers;
+        parameters[@"rankType"] = timeframe;
+        parameters[@"pageSize"] = @50;
+    } else if ([listType isEqualToString:@"etf"]) {
+        requestType = DataRequestTypeETFList;
+        // ETF non ha timeframe specifico
+    } else {
+        NSError *error = [NSError errorWithDomain:@"DataManagerError"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Unsupported list type: %@", listType]}];
+        if (completion) completion(@[], error);
+        return;
+    }
+    
+    // Esegui la richiesta tramite DownloadManager
+    [[DownloadManager sharedManager] executeRequest:requestType
+                                         parameters:parameters
+                                         completion:^(id result, NSError *error) {
+        if (error) {
+            NSLog(@"❌ DataManager: Market list request failed: %@", error.localizedDescription);
+            if (completion) completion(@[], error);
+            return;
+        }
+        
+        // Standardizza i dati raw in MarketPerformerModel
+        NSArray<MarketPerformerModel *> *performers = [self standardizeMarketListData:result
+                                                                              listType:listType
+                                                                             timeframe:timeframe];
+        
+        NSLog(@"✅ DataManager: Standardized %lu market performers for %@",
+              (unsigned long)performers.count, listType);
+        
+        if (completion) completion(performers, nil);
+    }];
+}
+
+- (NSArray<MarketPerformerModel *> *)standardizeMarketListData:(id)rawData
+                                                      listType:(NSString *)listType
+                                                     timeframe:(NSString *)timeframe {
+    
+    if (!rawData || ![rawData isKindOfClass:[NSArray class]]) {
+        NSLog(@"⚠️ DataManager: Invalid raw data for market list standardization");
+        return @[];
+    }
+    
+    NSArray *rawArray = (NSArray *)rawData;
+    NSMutableArray<MarketPerformerModel *> *performers = [NSMutableArray arrayWithCapacity:rawArray.count];
+    
+    NSInteger rank = 1;
+    for (NSDictionary *rawItem in rawArray) {
+        if (![rawItem isKindOfClass:[NSDictionary class]]) continue;
+        
+        // Standardizza il dizionario grezzo
+        NSMutableDictionary *standardizedDict = [NSMutableDictionary dictionary];
+        
+        // Basic info
+        standardizedDict[@"symbol"] = rawItem[@"symbol"] ?: @"";
+        standardizedDict[@"name"] = rawItem[@"name"] ?: standardizedDict[@"symbol"];
+        standardizedDict[@"exchange"] = rawItem[@"exchange"];
+        standardizedDict[@"sector"] = rawItem[@"sector"];
+        
+        // Price data - standardizza i nomi dei campi
+        standardizedDict[@"price"] = rawItem[@"price"] ?: rawItem[@"close"];
+        standardizedDict[@"change"] = rawItem[@"change"];
+        standardizedDict[@"changePercent"] = rawItem[@"changePercent"];
+        standardizedDict[@"volume"] = rawItem[@"volume"];
+        
+        // Market data
+        standardizedDict[@"marketCap"] = rawItem[@"marketCap"];
+        standardizedDict[@"avgVolume"] = rawItem[@"avgVolume"];
+        
+        // List metadata
+        standardizedDict[@"listType"] = listType;
+        standardizedDict[@"timeframe"] = timeframe;
+        standardizedDict[@"rank"] = @(rank++);
+        standardizedDict[@"timestamp"] = [NSDate date];
+        
+        // Crea il MarketPerformerModel
+        MarketPerformerModel *performer = [MarketPerformerModel performerFromDictionary:standardizedDict];
+        if (performer && performer.symbol.length > 0) {
+            [performers addObject:performer];
+        }
+    }
+    
+    NSLog(@"DataManager: Standardized %lu performers from %lu raw items for %@",
+          (unsigned long)performers.count, (unsigned long)rawArray.count, listType);
+    
+    return [performers copy];
+}
+
+- (void)refreshMarketListCache:(NSString *)listType timeframe:(NSString *)timeframe {
+    // Per ora non implementiamo cache in DataManager,
+    // la cache viene gestita da DataHub
+    NSLog(@"DataManager: Market list cache refresh requested for %@:%@", listType, timeframe);
+}
+
+- (NSArray<MarketPerformerModel *> *)getCachedMarketPerformers:(NSString *)listType timeframe:(NSString *)timeframe {
+    // Per ora non implementiamo cache in DataManager,
+    // la cache viene gestita da DataHub
+    NSLog(@"DataManager: Cached market performers requested for %@:%@", listType, timeframe);
+    return @[];
+}
 @end

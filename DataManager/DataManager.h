@@ -88,6 +88,13 @@
 - (NSString *)activeDataSource;
 
 
+#pragma mark - Market Lists (NEW)
+- (void)getMarketPerformersForList:(NSString *)listType
+                         timeframe:(NSString *)timeframe
+                        completion:(void (^)(NSArray<MarketPerformerModel *> *performers, NSError *error))completion;
+
+- (void)refreshMarketListCache:(NSString *)listType timeframe:(NSString *)timeframe;
+- (NSArray<MarketPerformerModel *> *)getCachedMarketPerformers:(NSString *)listType timeframe:(NSString *)timeframe;
 
 
 @end

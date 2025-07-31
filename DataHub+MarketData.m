@@ -17,6 +17,10 @@
 #import "CompanyInfo+CoreDataClass.h"
 
 @interface DataHub () <DataManagerDelegate>
+// Market Lists Cache (NEW)
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSArray<MarketPerformerModel *> *> *marketListsCache;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSDate *> *marketListsCacheTimestamps;
+
 @end
 
 @implementation DataHub (MarketData)
@@ -996,4 +1000,147 @@
     };
 }
 
+#pragma mark - Market Lists Implementation
+
+- (void)getMarketPerformersForList:(NSString *)listType
+                         timeframe:(NSString *)timeframe
+                        completion:(void (^)(NSArray<MarketPerformerModel *> *performers, BOOL isFresh))completion {
+    
+    if (!listType || !timeframe) {
+        NSLog(@"❌ DataHub: Invalid parameters for market performers request");
+        if (completion) completion(@[], NO);
+        return;
+    }
+    
+    [self initializeMarketListsCache];
+    
+    NSString *cacheKey = [NSString stringWithFormat:@"%@:%@", listType, timeframe];
+    
+    // Check cache first
+    NSArray<MarketPerformerModel *> *cachedPerformers = self.marketListsCache[cacheKey];
+    NSDate *cacheTimestamp = self.marketListsCacheTimestamps[cacheKey];
+    
+    // Cache validity: 5 minutes for market lists
+    NSTimeInterval cacheMaxAge = 300.0; // 5 minutes
+    BOOL isCacheValid = cacheTimestamp &&
+                       [[NSDate date] timeIntervalSinceDate:cacheTimestamp] < cacheMaxAge;
+    
+    if (isCacheValid && cachedPerformers.count > 0) {
+        NSLog(@"✅ DataHub: Returning cached market performers for %@ (%lu items)",
+              cacheKey, (unsigned long)cachedPerformers.count);
+        if (completion) completion(cachedPerformers, NO);
+        return;
+    }
+    
+    NSLog(@"🔄 DataHub: Fetching fresh market performers for %@", cacheKey);
+    
+    // Fetch from DataManager
+    [[DataManager sharedManager] getMarketPerformersForList:listType
+                                                   timeframe:timeframe
+                                                  completion:^(NSArray<MarketPerformerModel *> *performers, NSError *error) {
+        if (error) {
+            NSLog(@"❌ DataHub: Failed to fetch market performers: %@", error.localizedDescription);
+            
+            // Return cached data if available, even if stale
+            if (cachedPerformers.count > 0) {
+                NSLog(@"📦 DataHub: Returning stale cached data due to error");
+                if (completion) completion(cachedPerformers, NO);
+            } else {
+                if (completion) completion(@[], NO);
+            }
+            return;
+        }
+        
+        // Update cache
+        if (performers.count > 0) {
+            self.marketListsCache[cacheKey] = performers;
+            self.marketListsCacheTimestamps[cacheKey] = [NSDate date];
+            
+            NSLog(@"✅ DataHub: Cached %lu market performers for %@",
+                  (unsigned long)performers.count, cacheKey);
+        }
+        
+        if (completion) completion(performers, YES);
+        
+        // Post notification for UI updates
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"DataHubMarketListUpdated"
+                                                            object:nil
+                                                          userInfo:@{
+                                                              @"listType": listType,
+                                                              @"timeframe": timeframe,
+                                                              @"performers": performers
+                                                          }];
+    }];
+}
+
+- (void)refreshMarketListForType:(NSString *)listType timeframe:(NSString *)timeframe {
+    if (!listType || !timeframe) return;
+    
+    [self initializeMarketListsCache];
+    
+    NSString *cacheKey = [NSString stringWithFormat:@"%@:%@", listType, timeframe];
+    
+    // Clear cache for this specific list
+    [self.marketListsCache removeObjectForKey:cacheKey];
+    [self.marketListsCacheTimestamps removeObjectForKey:cacheKey];
+    
+    NSLog(@"🔄 DataHub: Forcing refresh for market list %@", cacheKey);
+    
+    // Fetch fresh data
+    [self getMarketPerformersForList:listType timeframe:timeframe completion:nil];
+}
+
+- (void)clearMarketListCache {
+    [self initializeMarketListsCache];
+    
+    [self.marketListsCache removeAllObjects];
+    [self.marketListsCacheTimestamps removeAllObjects];
+    
+    NSLog(@"🗑️ DataHub: Cleared all market lists cache");
+}
+
+- (NSDictionary *)getMarketListCacheStatistics {
+    [self initializeMarketListsCache];
+    
+    NSMutableDictionary *stats = [NSMutableDictionary dictionary];
+    
+    for (NSString *cacheKey in self.marketListsCache) {
+        NSArray *performers = self.marketListsCache[cacheKey];
+        NSDate *timestamp = self.marketListsCacheTimestamps[cacheKey];
+        
+        stats[cacheKey] = @{
+            @"count": @(performers.count),
+            @"timestamp": timestamp ?: [NSNull null],
+            @"ageMinutes": timestamp ? @([[NSDate date] timeIntervalSinceDate:timestamp] / 60.0) : @(-1)
+        };
+    }
+    
+    return [stats copy];
+}
+
+#pragma mark - Market Lists Cache Management
+
+- (void)initializeMarketListsCache {
+    if (!self.marketListsCache) {
+        self.marketListsCache = [NSMutableDictionary dictionary];
+    }
+    if (!self.marketListsCacheTimestamps) {
+        self.marketListsCacheTimestamps = [NSMutableDictionary dictionary];
+    }
+}
+
+// Aggiungi questo al metodo clearMarketDataCache esistente
+- (void)clearMarketDataCache {
+    [self initializeMarketDataCaches];
+    
+    [self.quotesCache removeAllObjects];
+    [self.historicalCache removeAllObjects];
+    [self.companyInfoCache removeAllObjects];
+    [self.cacheTimestamps removeAllObjects];
+    
+    // NEW: Clear market lists cache too
+    [self clearMarketListCache];
+    
+    NSLog(@"DataHub: Cleared all market data cache including market lists");
+}
 @end

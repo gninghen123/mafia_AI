@@ -146,5 +146,53 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSDictionary *)toDictionary;
 
 @end
+
+// =======================================
+// MARKET PERFORMER MODEL - RUNTIME
+// =======================================
+
+@interface MarketPerformerModel : NSObject
+
+// Basic info
+@property (nonatomic, strong) NSString *symbol;
+@property (nonatomic, strong, nullable) NSString *name;
+@property (nonatomic, strong, nullable) NSString *exchange;
+@property (nonatomic, strong, nullable) NSString *sector;
+
+// Price data
+@property (nonatomic, strong, nullable) NSNumber *price;
+@property (nonatomic, strong, nullable) NSNumber *change;
+@property (nonatomic, strong, nullable) NSNumber *changePercent;
+@property (nonatomic, strong, nullable) NSNumber *volume;
+
+// Market data
+@property (nonatomic, strong, nullable) NSNumber *marketCap;
+@property (nonatomic, strong, nullable) NSNumber *avgVolume;
+
+// List metadata
+@property (nonatomic, strong) NSString *listType;  // "gainers", "losers", "etf"
+@property (nonatomic, strong) NSString *timeframe; // "1d", "52w", etc.
+@property (nonatomic, assign) NSInteger rank;      // Position in the list
+
+// Timestamp
+@property (nonatomic, strong) NSDate *timestamp;
+
+// Factory methods
++ (instancetype)performerFromDictionary:(NSDictionary *)dict;
++ (NSArray<MarketPerformerModel *> *)performersFromDictionaries:(NSArray<NSDictionary *> *)dictionaries;
+
+// Conversion
+- (NSDictionary *)toDictionary;
+
+// Convenience methods
+- (BOOL)isGainer;
+- (BOOL)isLoser;
+- (NSString *)formattedPrice;
+- (NSString *)formattedChange;
+- (NSString *)formattedChangePercent;
+- (NSString *)formattedVolume;
+- (NSString *)formattedMarketCap;
+
+@end
 NS_ASSUME_NONNULL_END
 

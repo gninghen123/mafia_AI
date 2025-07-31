@@ -297,3 +297,172 @@
 }
 
 @end
+
+// =======================================
+// MARKET PERFORMER MODEL IMPLEMENTATION
+// =======================================
+
+@implementation MarketPerformerModel
+
+#pragma mark - Factory Methods
+
++ (instancetype)performerFromDictionary:(NSDictionary *)dict {
+    if (!dict) return nil;
+    
+    MarketPerformerModel *performer = [[MarketPerformerModel alloc] init];
+    performer.symbol = dict[@"symbol"];
+    performer.name = dict[@"name"];
+    performer.exchange = dict[@"exchange"];
+    performer.sector = dict[@"sector"];
+    
+    // Price data
+    performer.price = dict[@"price"] ?: dict[@"close"];
+    performer.change = dict[@"change"];
+    performer.changePercent = dict[@"changePercent"];
+    performer.volume = dict[@"volume"];
+    
+    // Market data
+    performer.marketCap = dict[@"marketCap"];
+    performer.avgVolume = dict[@"avgVolume"];
+    
+    // List metadata
+    performer.listType = dict[@"listType"] ?: @"unknown";
+    performer.timeframe = dict[@"timeframe"] ?: @"1d";
+    performer.rank = dict[@"rank"] ? [dict[@"rank"] integerValue] : 0;
+    
+    // Timestamp
+    performer.timestamp = dict[@"timestamp"] ?: [NSDate date];
+    
+    return performer;
+}
+
++ (NSArray<MarketPerformerModel *> *)performersFromDictionaries:(NSArray<NSDictionary *> *)dictionaries {
+    if (!dictionaries) return @[];
+    
+    NSMutableArray *performers = [NSMutableArray arrayWithCapacity:dictionaries.count];
+    
+    for (NSDictionary *dict in dictionaries) {
+        MarketPerformerModel *performer = [self performerFromDictionary:dict];
+        if (performer) {
+            [performers addObject:performer];
+        }
+    }
+    
+    return [performers copy];
+}
+
+#pragma mark - Conversion
+
+- (NSDictionary *)toDictionary {
+    NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+    
+    // Basic info
+    if (self.symbol) dict[@"symbol"] = self.symbol;
+    if (self.name) dict[@"name"] = self.name;
+    if (self.exchange) dict[@"exchange"] = self.exchange;
+    if (self.sector) dict[@"sector"] = self.sector;
+    
+    // Price data
+    if (self.price) dict[@"price"] = self.price;
+    if (self.change) dict[@"change"] = self.change;
+    if (self.changePercent) dict[@"changePercent"] = self.changePercent;
+    if (self.volume) dict[@"volume"] = self.volume;
+    
+    // Market data
+    if (self.marketCap) dict[@"marketCap"] = self.marketCap;
+    if (self.avgVolume) dict[@"avgVolume"] = self.avgVolume;
+    
+    // List metadata
+    if (self.listType) dict[@"listType"] = self.listType;
+    if (self.timeframe) dict[@"timeframe"] = self.timeframe;
+    dict[@"rank"] = @(self.rank);
+    
+    // Timestamp
+    if (self.timestamp) dict[@"timestamp"] = self.timestamp;
+    
+    return [dict copy];
+}
+
+#pragma mark - Convenience Methods
+
+- (BOOL)isGainer {
+    return self.changePercent && [self.changePercent doubleValue] > 0;
+}
+
+- (BOOL)isLoser {
+    return self.changePercent && [self.changePercent doubleValue] < 0;
+}
+
+- (NSString *)formattedPrice {
+    if (!self.price) return @"--";
+    return [NSString stringWithFormat:@"$%.2f", [self.price doubleValue]];
+}
+
+- (NSString *)formattedChange {
+    if (!self.change) return @"--";
+    double changeValue = [self.change doubleValue];
+    NSString *sign = changeValue >= 0 ? @"+" : @"";
+    return [NSString stringWithFormat:@"%@%.2f", sign, changeValue];
+}
+
+- (NSString *)formattedChangePercent {
+    if (!self.changePercent) return @"--";
+    double changeValue = [self.changePercent doubleValue];
+    NSString *sign = changeValue >= 0 ? @"+" : @"";
+    return [NSString stringWithFormat:@"%@%.2f%%", sign, changeValue];
+}
+
+- (NSString *)formattedVolume {
+    if (!self.volume) return @"--";
+    
+    long long vol = [self.volume longLongValue];
+    
+    if (vol >= 1000000000) {
+        return [NSString stringWithFormat:@"%.1fB", vol / 1000000000.0];
+    } else if (vol >= 1000000) {
+        return [NSString stringWithFormat:@"%.1fM", vol / 1000000.0];
+    } else if (vol >= 1000) {
+        return [NSString stringWithFormat:@"%.1fK", vol / 1000.0];
+    } else {
+        return [NSString stringWithFormat:@"%lld", vol];
+    }
+}
+
+- (NSString *)formattedMarketCap {
+    if (!self.marketCap) return @"--";
+    
+    double cap = [self.marketCap doubleValue];
+    
+    if (cap >= 1000000000000) {
+        return [NSString stringWithFormat:@"$%.1fT", cap / 1000000000000.0];
+    } else if (cap >= 1000000000) {
+        return [NSString stringWithFormat:@"$%.1fB", cap / 1000000000.0];
+    } else if (cap >= 1000000) {
+        return [NSString stringWithFormat:@"$%.1fM", cap / 1000000.0];
+    } else {
+        return [NSString stringWithFormat:@"$%.0f", cap];
+    }
+}
+
+#pragma mark - NSObject
+
+- (NSString *)description {
+    return [NSString stringWithFormat:@"<MarketPerformerModel: %@ (%@) %@ %@>",
+            self.symbol, self.name, [self formattedPrice], [self formattedChangePercent]];
+}
+
+- (BOOL)isEqual:(id)object {
+    if (self == object) return YES;
+    if (![object isKindOfClass:[MarketPerformerModel class]]) return NO;
+    
+    MarketPerformerModel *other = (MarketPerformerModel *)object;
+    return [self.symbol isEqualToString:other.symbol] &&
+           [self.listType isEqualToString:other.listType] &&
+           [self.timeframe isEqualToString:other.timeframe];
+}
+
+- (NSUInteger)hash {
+    return [self.symbol hash] ^ [self.listType hash] ^ [self.timeframe hash];
+}
+
+@end

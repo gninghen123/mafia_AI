@@ -82,6 +82,16 @@ NS_ASSUME_NONNULL_BEGIN
 // Get cache statistics for debugging
 - (NSDictionary *)getCacheStatistics;
 
+#pragma mark - Market Lists (NEW)
+- (void)getMarketPerformersForList:(NSString *)listType
+                         timeframe:(NSString *)timeframe
+                        completion:(void (^)(NSArray<MarketPerformerModel *> *performers, BOOL isFresh))completion;
+
+- (void)refreshMarketListForType:(NSString *)listType timeframe:(NSString *)timeframe;
+- (void)clearMarketListCache;
+- (NSDictionary *)getMarketListCacheStatistics;
+
+
 @end
 
 NS_ASSUME_NONNULL_END

@@ -5,8 +5,6 @@
 #import <Cocoa/Cocoa.h>
 #import "BaseWidget.h"
 
-#import "MarketPerformer+CoreDataClass.h"
-
 @interface GeneralMarketWidget : BaseWidget <NSOutlineViewDelegate, NSOutlineViewDataSource>
 
 // UI Components

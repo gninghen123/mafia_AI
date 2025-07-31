@@ -36,7 +36,7 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _sourceType = DataSourceTypeCustom; // Using Custom type for Webull
+        _sourceType = DataSourceTypeWebull; // FIXED: Use correct WebullDataSource type
         _sourceName = @"Webull";
         _capabilities = DataSourceCapabilityQuotes |
                        DataSourceCapabilityHistorical |
@@ -61,6 +61,43 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
         _session = [NSURLSession sessionWithConfiguration:config];
     }
     return self;
+}
+#pragma mark - DataSource Protocol - Market Lists
+
+- (void)fetchMarketListForType:(DataRequestType)listType
+                    parameters:(NSDictionary *)parameters
+                    completion:(void (^)(NSArray *results, NSError *error))completion {
+    
+    switch (listType) {
+        case DataRequestTypeTopGainers: {
+            NSString *rankType = parameters[@"rankType"] ?: @"1d";
+            NSInteger pageSize = [parameters[@"pageSize"] integerValue] ?: 20;
+            [self fetchTopGainersWithRankType:rankType
+                                     pageSize:pageSize
+                                   completion:completion];
+            break;
+        }
+        case DataRequestTypeTopLosers: {
+            NSString *rankType = parameters[@"rankType"] ?: @"1d";
+            NSInteger pageSize = [parameters[@"pageSize"] integerValue] ?: 20;
+            [self fetchTopLosersWithRankType:rankType
+                                    pageSize:pageSize
+                                  completion:completion];
+            break;
+        }
+        case DataRequestTypeETFList: {
+            [self fetchETFListWithCompletion:completion];
+            break;
+        }
+        default: {
+            NSError *error = [NSError errorWithDomain:@"WebullDataSource"
+                                                 code:400
+                                             userInfo:@{NSLocalizedDescriptionKey:
+                                                       [NSString stringWithFormat:@"Unsupported market list type: %ld", (long)listType]}];
+            if (completion) completion(nil, error);
+            break;
+        }
+    }
 }
 
 #pragma mark - DataSourceProtocol Required Methods

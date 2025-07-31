@@ -8,7 +8,8 @@
 #import <Foundation/Foundation.h>
 #import "DownloadManager.h"
 
-@interface WebullDataSource : NSObject 
+@interface WebullDataSource : NSObject <DataSource>
+
 
 // Market Lists
 - (void)fetchTopGainersWithRankType:(NSString *)rankType
@@ -20,6 +21,11 @@
                         completion:(void (^)(NSArray *losers, NSError *error))completion;
 
 - (void)fetchETFListWithCompletion:(void (^)(NSArray *etfs, NSError *error))completion;
+
+// DataSource Protocol - Market Lists (NEW)
+- (void)fetchMarketListForType:(DataRequestType)listType
+                    parameters:(NSDictionary *)parameters
+                    completion:(void (^)(NSArray *results, NSError *error))completion;
 
 // Quotes
 - (void)fetchQuotesForSymbols:(NSArray<NSString *> *)symbols

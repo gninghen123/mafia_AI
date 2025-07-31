@@ -25,7 +25,6 @@
 }
 
 #pragma mark - Setup
-
 - (void)setupContentView {
     [super setupContentView];
     
@@ -46,6 +45,7 @@
     self.scrollView.translatesAutoresizingMaskIntoConstraints = NO;
     self.scrollView.hasVerticalScroller = YES;
     self.scrollView.autohidesScrollers = YES;
+    self.scrollView.borderType = NSBezelBorder;
     [containerView addSubview:self.scrollView];
     
     // Outline view
@@ -87,27 +87,34 @@
     
     // Constraints
     [NSLayoutConstraint activateConstraints:@[
+        // Container view fills the content view
         [containerView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor],
         [containerView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
         [containerView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
         [containerView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor],
         
-        [toolbar.topAnchor constraintEqualToAnchor:containerView.topAnchor],
-        [toolbar.leadingAnchor constraintEqualToAnchor:containerView.leadingAnchor],
-        [toolbar.trailingAnchor constraintEqualToAnchor:containerView.trailingAnchor],
+        // Toolbar at top
+        [toolbar.topAnchor constraintEqualToAnchor:containerView.topAnchor constant:5],
+        [toolbar.leadingAnchor constraintEqualToAnchor:containerView.leadingAnchor constant:5],
+        [toolbar.trailingAnchor constraintEqualToAnchor:containerView.trailingAnchor constant:-5],
         [toolbar.heightAnchor constraintEqualToConstant:30],
         
-        [self.scrollView.topAnchor constraintEqualToAnchor:toolbar.bottomAnchor],
-        [self.scrollView.leadingAnchor constraintEqualToAnchor:containerView.leadingAnchor],
-        [self.scrollView.trailingAnchor constraintEqualToAnchor:containerView.trailingAnchor],
-        [self.scrollView.bottomAnchor constraintEqualToAnchor:containerView.bottomAnchor]
+        // Scroll view fills remaining space
+        [self.scrollView.topAnchor constraintEqualToAnchor:toolbar.bottomAnchor constant:5],
+        [self.scrollView.leadingAnchor constraintEqualToAnchor:containerView.leadingAnchor constant:5],
+        [self.scrollView.trailingAnchor constraintEqualToAnchor:containerView.trailingAnchor constant:-5],
+        [self.scrollView.bottomAnchor constraintEqualToAnchor:containerView.bottomAnchor constant:-5]
     ]];
+    
+    // Force layout update
+    [self.contentView setNeedsUpdateConstraints:YES];
+    [self.contentView layoutSubtreeIfNeeded];
     
     [self setupInitialDataStructure];
     [self registerForNotifications];
     [self loadDataFromDataHub];
+     [self debugOutlineViewState];
 }
-
 - (void)setupInitialDataStructure {
     NSLog(@"GeneralMarketWidget: Setting up initial data structure...");
     
@@ -283,6 +290,7 @@
 
 #pragma mark - Data Loading from DataHub with RuntimeModels
 
+
 - (void)refreshData {
     if (self.isLoading) return;
     
@@ -334,20 +342,23 @@
                     marketList[@"lastUpdate"] = [NSDate date];
                     
                     // Aggiorna la vista
-                    [self.outlineView reloadItem:marketList reloadChildren:YES];
-                    
-                    completedRequests++;
-                    if (completedRequests >= pendingRequests) {
-                        self.isLoading = NO;
-                        self.progressIndicator.hidden = YES;
-                        [self.progressIndicator stopAnimation:nil];
-                        self.refreshButton.enabled = YES;
-                        
-                        NSString *message = isFresh ? @"Data refreshed" : @"Loaded from cache";
-                        [self showTemporaryMessage:message];
-                        
-                        NSLog(@"GeneralMarketWidget: Refresh completed");
-                    }
+                    [self.outlineView reloadData];
+                               
+                               completedRequests++;
+                               if (completedRequests >= pendingRequests) {
+                                   self.isLoading = NO;
+                                   self.progressIndicator.hidden = YES;
+                                   [self.progressIndicator stopAnimation:nil];
+                                   self.refreshButton.enabled = YES;
+                                   
+                                   // Espandi tutte le categorie dopo il reload
+                                   [self expandAllCategories];
+                                   
+                                   NSString *message = isFresh ? @"Data refreshed" : @"Loaded from cache";
+                                   [self showTemporaryMessage:message];
+                                   
+                                   NSLog(@"GeneralMarketWidget: Refresh completed");
+                               }
                 });
             }];
         }
@@ -375,6 +386,9 @@
         @"ETF": @{@"type": @"etf", @"timeframe": @"1d"}
     };
     
+    __block NSInteger pendingRequests = listMappings.count;
+    __block NSInteger completedRequests = 0;
+    
     for (NSMutableDictionary *marketList in self.marketLists) {
         NSString *listName = marketList[@"type"];
         NSDictionary *mapping = listMappings[listName];
@@ -391,15 +405,30 @@
                     marketList[@"isLoading"] = @NO;
                     marketList[@"lastUpdate"] = [NSDate date];
                     
-                    [self.outlineView reloadItem:marketList reloadChildren:YES];
-                    
-                    if (!isFresh) {
-                        [self showTemporaryMessage:@"Showing cached data"];
+                    completedRequests++;
+                    if (completedRequests >= pendingRequests) {
+                        // Reload completo quando tutti i dati sono arrivati
+                        [self.outlineView reloadData];
+                        
+                        
+                        if (!isFresh) {
+                            [self showTemporaryMessage:@"Showing cached data"];
+                        }
                     }
                 });
             }];
         }
     }
+}
+
+- (void)expandAllCategories {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSLog(@"GeneralMarketWidget: Expanding all categories...");
+        for (NSMutableDictionary *marketList in self.marketLists) {
+            [self.outlineView expandItem:marketList];
+            marketList[@"expanded"] = @YES;
+        }
+    });
 }
 
 #pragma mark - Notifications
@@ -457,18 +486,19 @@
     
     if ([item isKindOfClass:[NSDictionary class]] && item[@"type"]) {
         // This is a category header
+        NSTextField *textField = [outlineView makeViewWithIdentifier:@"CategoryCell" owner:self];
+        if (!textField) {
+            textField = [[NSTextField alloc] init];
+            textField.identifier = @"CategoryCell";
+            textField.bordered = NO;
+            textField.backgroundColor = [NSColor clearColor];
+            textField.font = [NSFont boldSystemFontOfSize:13];
+            textField.editable = NO;
+            textField.textColor = [NSColor controlAccentColor];
+        }
+        
+        // Show category name only in the first column
         if ([identifier isEqualToString:@"symbol"]) {
-            NSTextField *textField = [outlineView makeViewWithIdentifier:@"CategoryCell" owner:self];
-            if (!textField) {
-                textField = [[NSTextField alloc] init];
-                textField.identifier = @"CategoryCell";
-                textField.bordered = NO;
-                textField.backgroundColor = [NSColor clearColor];
-                textField.font = [NSFont boldSystemFontOfSize:13];
-                textField.editable = NO;
-                textField.textColor = [NSColor controlAccentColor];
-            }
-            
             NSString *categoryName = item[@"type"];
             NSArray *performers = item[@"performers"];
             BOOL isLoading = [item[@"isLoading"] boolValue];
@@ -478,10 +508,13 @@
             } else {
                 textField.stringValue = [NSString stringWithFormat:@"%@ (%lu)", categoryName, (unsigned long)performers.count];
             }
-            
-            return textField;
+        } else {
+            // Empty string for other columns
+            textField.stringValue = item[@"type"];
         }
-        return nil;
+        
+        return textField;
+        
     } else if ([item isKindOfClass:[MarketPerformerModel class]]) {
         // This is a MarketPerformerModel
         MarketPerformerModel *performer = (MarketPerformerModel *)item;
@@ -521,7 +554,6 @@
     
     return nil;
 }
-
 - (BOOL)outlineView:(NSOutlineView *)outlineView isGroupItem:(id)item {
     // Return YES for category headers
     return ([item isKindOfClass:[NSDictionary class]] && item[@"type"]);
@@ -673,6 +705,33 @@
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [self.refreshTimer invalidate];
+}
+
+
+
+
+
+
+- (void)debugOutlineViewState {
+    NSLog(@"=== DEBUG OutlineView State ===");
+    NSLog(@"OutlineView: %@", self.outlineView);
+    NSLog(@"ScrollView: %@", self.scrollView);
+    NSLog(@"Number of rows: %ld", (long)[self.outlineView numberOfRows]);
+    NSLog(@"Number of columns: %ld", (long)[self.outlineView numberOfColumns]);
+    
+    for (int i = 0; i < self.marketLists.count; i++) {
+        NSMutableDictionary *list = self.marketLists[i];
+        NSLog(@"List %d: %@ - Performers: %lu - Expanded: %@",
+              i,
+              list[@"type"],
+              (unsigned long)[list[@"performers"] count],
+              list[@"expanded"]);
+    }
+    
+    NSLog(@"OutlineView frame: %@", NSStringFromRect(self.outlineView.frame));
+    NSLog(@"ScrollView frame: %@", NSStringFromRect(self.scrollView.frame));
+    NSLog(@"ContentView frame: %@", NSStringFromRect(self.contentView.frame));
+    NSLog(@"=== END DEBUG ===");
 }
 
 @end

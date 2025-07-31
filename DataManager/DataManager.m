@@ -616,12 +616,15 @@
         requestType = DataRequestTypeTopGainers;
         parameters[@"rankType"] = timeframe; // "1d" o "52w"
         parameters[@"pageSize"] = @50;
+        parameters[@"requestType"] = @(requestType); // ✅ AGGIUNTO
     } else if ([listType isEqualToString:@"losers"]) {
         requestType = DataRequestTypeTopLosers;
         parameters[@"rankType"] = timeframe;
         parameters[@"pageSize"] = @50;
+        parameters[@"requestType"] = @(requestType); // ✅ AGGIUNTO
     } else if ([listType isEqualToString:@"etf"]) {
         requestType = DataRequestTypeETFList;
+        parameters[@"requestType"] = @(requestType); // ✅ AGGIUNTO
         // ETF non ha timeframe specifico
     } else {
         NSError *error = [NSError errorWithDomain:@"DataManagerError"

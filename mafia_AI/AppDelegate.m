@@ -52,11 +52,13 @@
                                withType:DataSourceTypeSchwab
                                priority:1];
     
-    // Registra Webull data source
+    // Registra Webull data source - FIXED: Use correct type
     WebullDataSource *webullSource = [[WebullDataSource alloc] init];
     [downloadManager registerDataSource:webullSource
-                               withType:DataSourceTypeCustom  // Usa Custom per Webull
+                               withType:DataSourceTypeWebull  // FIXED: Use correct type
                                priority:2];  // Priority più bassa di Schwab
+    
+    NSLog(@"AppDelegate: Registered Schwab (priority 1) and Webull (priority 2) data sources");
 }
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification {

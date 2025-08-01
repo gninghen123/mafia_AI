@@ -85,6 +85,8 @@ static NSString * const kConnectionCellIdentifier = @"ConnectionCell";
     
     // Setup auto-refresh
     [self startAutoRefresh];
+    self.connectionsTableViewInternal.doubleAction = @selector(tableViewDoubleClick:);
+    self.connectionsTableViewInternal.target = self;
 }
 
 #pragma mark - UI Creation
@@ -645,6 +647,15 @@ static NSString * const kConnectionCellIdentifier = @"ConnectionCell";
 
 
 #pragma mark - Actions (Simplified for now)
+
+- (void)tableViewDoubleClick:(id)sender {
+    NSInteger clickedRow = self.connectionsTableViewInternal.clickedRow;
+    if (clickedRow >= 0 && clickedRow < self.filteredConnections.count) {
+        ConnectionModel *connection = self.filteredConnections[clickedRow];
+        [self editConnection:connection];
+    }
+}
+
 - (void)createConnectionFromSymbols:(NSArray<NSString *> *)symbols {
     NSLog(@"ConnectionsWidget: Creating connection from symbols: %@", symbols);
     
@@ -712,7 +723,7 @@ static NSString * const kConnectionCellIdentifier = @"ConnectionCell";
     
     editController.onSave = ^(ConnectionModel *newConnectionModel) {
         NSLog(@"Connection created: %@", newConnectionModel.title);
-        [self refreshConnectionsList];
+        [self refreshConnections];
         [self showTemporaryMessage:@"Connection created successfully"];
     };
     
@@ -720,15 +731,20 @@ static NSString * const kConnectionCellIdentifier = @"ConnectionCell";
         NSLog(@"Connection creation cancelled");
     };
     
-    [editController showWindow];
+    // Usa i metodi standard di NSWindowController
+    [editController.window makeKeyAndOrderFront:nil];
+    [editController.window center];
 }
 
-- (void)editConnection:(ConnectionModel *)connectionModel {
-    ConnectionEditController *editController = [ConnectionEditController controllerForEditing:connectionModel];
+
+- (void)editConnection:(ConnectionModel *)connection {
+    NSLog(@"ConnectionsWidget: Editing connection: %@", connection.title);
+    
+    ConnectionEditController *editController = [ConnectionEditController controllerForEditing:connection];
     
     editController.onSave = ^(ConnectionModel *updatedModel) {
         NSLog(@"Connection updated: %@", updatedModel.title);
-        [self refreshConnectionsList];
+        [self refreshConnections];
         [self showTemporaryMessage:@"Connection updated successfully"];
     };
     
@@ -736,9 +752,10 @@ static NSString * const kConnectionCellIdentifier = @"ConnectionCell";
         NSLog(@"Connection editing cancelled");
     };
     
-    [editController showWindow];
+    [editController.window makeKeyAndOrderFront:nil];
+    [editController.window center];
+    
 }
-
 // Helper method per creare labels
 - (NSTextField *)createLabel:(NSString *)text at:(NSPoint)point {
     NSTextField *label = [NSTextField labelWithString:text];
@@ -794,10 +811,6 @@ static NSString * const kConnectionCellIdentifier = @"ConnectionCell";
     }
 }
 
-- (void)editConnection:(ConnectionModel *)connection {
-    NSLog(@"ConnectionsWidget: Editing connection: %@", connection.title);
-    [self showAlert:@"Coming Soon" message:@"Connection editing will be available soon."];
-}
 
 - (void)deleteConnection:(ConnectionModel *)connection {
     NSAlert *alert = [[NSAlert alloc] init];
@@ -897,15 +910,38 @@ static NSString * const kConnectionCellIdentifier = @"ConnectionCell";
         self.statusLabelInternal.textColor = [NSColor secondaryLabelColor];
     });
 }
-
 - (void)setupContextMenu {
     NSMenu *contextMenu = [[NSMenu alloc] init];
     
-    [contextMenu addItemWithTitle:@"Delete Connection"
-                           action:@selector(contextMenuDeleteConnection:)
-                    keyEquivalent:@""];
+    NSMenuItem *editItem = [[NSMenuItem alloc] initWithTitle:@"Edit Connection"
+                                                      action:@selector(editSelectedConnection:)
+                                               keyEquivalent:@""];
+    editItem.target = self;
+    [contextMenu addItem:editItem];
+    
+    NSMenuItem *deleteItem = [[NSMenuItem alloc] initWithTitle:@"Delete Connection"
+                                                        action:@selector(deleteSelectedConnection:)
+                                                 keyEquivalent:@""];
+    deleteItem.target = self;
+    [contextMenu addItem:deleteItem];
     
     self.connectionsTableViewInternal.menu = contextMenu;
+}
+
+- (void)editSelectedConnection:(id)sender {
+    NSInteger selectedRow = self.connectionsTableViewInternal.selectedRow;
+    if (selectedRow >= 0 && selectedRow < self.filteredConnections.count) {
+        ConnectionModel *connection = self.filteredConnections[selectedRow];
+        [self editConnection:connection];
+    }
+}
+
+- (void)deleteSelectedConnection:(id)sender {
+    NSInteger selectedRow = self.connectionsTableViewInternal.selectedRow;
+    if (selectedRow >= 0 && selectedRow < self.filteredConnections.count) {
+        ConnectionModel *connection = self.filteredConnections[selectedRow];
+        [self deleteConnection:connection];
+    }
 }
 
 - (void)contextMenuDeleteConnection:(NSMenuItem *)sender {

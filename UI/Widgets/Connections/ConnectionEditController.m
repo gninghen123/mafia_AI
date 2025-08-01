@@ -4,8 +4,9 @@
 //
 
 #import "ConnectionEditController.h"
-#import <objc/runtime.h>
 #import "ConnectionModel.h"
+#import "DataHub+Connections.h"
+#import <objc/runtime.h>
 
 @interface ConnectionEditController ()
 
@@ -51,6 +52,7 @@
     controller.connectionModel = connectionModel; // Edit mode
     return controller;
 }
+
 #pragma mark - Lifecycle
 
 - (instancetype)init {
@@ -69,15 +71,10 @@
 }
 
 - (BOOL)isEditing {
-    return self.connection != nil;
+    return self.connectionModel != nil;
 }
 
 #pragma mark - Setup
-
-
-- (BOOL)isEditing {
-    return self.connectionModel != nil;
-}
 
 - (void)setupWindow {
     NSWindow *window = self.window;
@@ -350,7 +347,7 @@
     metaTextView.font = [NSFont fontWithName:@"Monaco" size:10];
     metaTextView.string = self.isEditing ?
         [NSString stringWithFormat:@"Connection ID: %@\nCreation Date: %@\nLast Modified: Will be updated\nStrength Update: Now",
-         self.connection.objectID, self.connection.creationDate] :
+         self.connectionModel.connectionID, self.connectionModel.creationDate] :
         @"Connection ID: Will be auto-generated\nCreation Date: Now\nLast Modified: Now\nStrength Update: Now";
     metaScrollView.documentView = metaTextView;
     metaScrollView.hasVerticalScroller = YES;
@@ -398,8 +395,9 @@
 
 - (void)populateTypeComboBox {
     NSArray *connectionTypes = @[
-        @"Partnership", @"Competition", @"Supply Chain", @"Market Correlation",
-        @"Industry Trend", @"M&A Activity", @"Regulatory Impact", @"Technology Shift"
+        @"News", @"Personal Note", @"Sympathy Move", @"Collaboration",
+        @"Merger/Acquisition", @"Partnership", @"Supplier Relationship", @"Competitor",
+        @"Correlation", @"Same Sector", @"Custom"
     ];
     
     for (NSString *type in connectionTypes) {
@@ -408,49 +406,78 @@
     [self.typeComboBox selectItemAtIndex:0];
 }
 
-
 - (void)populateFieldsFromConnection {
     if (!self.connectionModel) return;
     
-    // Popola i campi con i dati dal RuntimeModel
+    // Basic fields
     self.titleField.stringValue = self.connectionModel.title ?: @"";
-    self.symbolsField.stringValue = [self.connectionModel.symbols componentsJoinedByString:@", "] ?: @"";
-    self.urlField.stringValue = self.connectionModel.sourceURL ?: @"";
     
-    // Popola il tipo di connessione
-    [self.typeComboBox selectItemWithObjectValue:self.connectionModel.connectionType ?: @"Partnership"];
-    
-    // Popola direction
-    if ([self.connectionModel.direction isEqualToString:@"Bidirectional"]) {
-        self.directionSegmented.selectedSegment = 0;
-    } else if ([self.connectionModel.direction isEqualToString:@"Directional"]) {
-        self.directionSegmented.selectedSegment = 1;
-    } else if ([self.connectionModel.direction isEqualToString:@"Chain"]) {
-        self.directionSegmented.selectedSegment = 2;
+    // Symbols - usa allInvolvedSymbols per ottenere tutti i simboli
+    NSArray *allSymbols = [self.connectionModel allInvolvedSymbols];
+    if (allSymbols && allSymbols.count > 0) {
+        self.symbolsField.stringValue = [allSymbols componentsJoinedByString:@", "];
     }
     
-    // Popola altri campi
+    self.urlField.stringValue = self.connectionModel.url ?: @"";
+    
+    // Connection type
+    NSString *typeString = [self connectionTypeToString:self.connectionModel.connectionType];
+    [self.typeComboBox selectItemWithObjectValue:typeString];
+    
+    // Direction
+    if (self.connectionModel.bidirectional) {
+        self.directionSegmented.selectedSegment = 0; // Bidirectional
+    } else {
+        self.directionSegmented.selectedSegment = 1; // Directional
+    }
+    
+    // Content
     NSTextView *descTextView = (NSTextView *)self.descScrollView.documentView;
     descTextView.string = self.connectionModel.connectionDescription ?: @"";
     
     NSTextView *notesTextView = (NSTextView *)self.notesScrollView.documentView;
     notesTextView.string = self.connectionModel.notes ?: @"";
     
-    self.tagsField.stringValue = [self.connectionModel.tags componentsJoinedByString:@", "] ?: @"";
+    // Tags
+    if (self.connectionModel.tags && self.connectionModel.tags.count > 0) {
+        self.tagsField.stringValue = [self.connectionModel.tags componentsJoinedByString:@", "];
+    }
     
-    // Popola strength settings
-    self.initialSlider.doubleValue = self.connectionModel.strength;
+    // Strength
+    self.initialSlider.doubleValue = self.connectionModel.currentStrength;
     [self initialStrengthChanged:self.initialSlider];
 }
-
-- (NSString *)connectionTypeToString:(int64_t)type {
+- (NSString *)connectionTypeToString:(StockConnectionType)type {
     switch (type) {
-        case ConnectionTypePartnership: return @"Partnership";
-        case ConnectionTypeCompetitor: return @"Competition";
-        case ConnectionTypeSupplier: return @"Supply Chain";
-        case ConnectionTypeSympathy: return @"Market Correlation";
-        default: return @"Partnership";
+        case StockConnectionTypeNews: return @"News";
+        case StockConnectionTypePersonalNote: return @"Personal Note";
+        case StockConnectionTypeSympathy: return @"Sympathy Move";
+        case StockConnectionTypeCollaboration: return @"Collaboration";
+        case StockConnectionTypeMerger: return @"Merger/Acquisition";
+        case StockConnectionTypePartnership: return @"Partnership";
+        case StockConnectionTypeSupplier: return @"Supplier Relationship";
+        case StockConnectionTypeCompetitor: return @"Competitor";
+        case StockConnectionTypeCorrelation: return @"Correlation";
+        case StockConnectionTypeSector: return @"Same Sector";
+        case StockConnectionTypeCustom: return @"Custom";
+        default: return @"News";
     }
+}
+
+- (StockConnectionType)stringToConnectionType:(NSString *)typeString {
+    if ([typeString isEqualToString:@"News"]) return StockConnectionTypeNews;
+    if ([typeString isEqualToString:@"Personal Note"]) return StockConnectionTypePersonalNote;
+    if ([typeString isEqualToString:@"Sympathy Move"]) return StockConnectionTypeSympathy;
+    if ([typeString isEqualToString:@"Collaboration"]) return StockConnectionTypeCollaboration;
+    if ([typeString isEqualToString:@"Merger/Acquisition"]) return StockConnectionTypeMerger;
+    if ([typeString isEqualToString:@"Partnership"]) return StockConnectionTypePartnership;
+    if ([typeString isEqualToString:@"Supplier Relationship"]) return StockConnectionTypeSupplier;
+    if ([typeString isEqualToString:@"Competitor"]) return StockConnectionTypeCompetitor;
+    if ([typeString isEqualToString:@"Correlation"]) return StockConnectionTypeCorrelation;
+    if ([typeString isEqualToString:@"Same Sector"]) return StockConnectionTypeSector;
+    if ([typeString isEqualToString:@"Custom"]) return StockConnectionTypeCustom;
+    
+    return StockConnectionTypeNews; // Default
 }
 
 #pragma mark - Actions
@@ -504,33 +531,57 @@
     // TODO: Show preview of connection
     NSLog(@"Preview connection");
 }
-
-
 - (void)save:(id)sender {
+    // Validate and save
     if (![self validateFields]) return;
     
-    ConnectionModel *modelToSave;
+    ConnectionModel *connectionToSave;
     
     if (self.isEditing) {
-        // Update existing model
-        modelToSave = self.connectionModel;
-        [self updateConnectionModelFromFields:modelToSave];
+        // Update existing connection
+        connectionToSave = self.connectionModel;
+        [self updateConnectionModelFromFields:connectionToSave];
+        
+        // Save via DataHub
+        DataHub *hub = [DataHub shared];
+        [hub updateConnection:connectionToSave];
     } else {
-        // Create new model
-        modelToSave = [self createConnectionModelFromFields];
-    }
-    
-    // Il DataHub si occuperà della conversione a Core Data
-    DataHub *hub = [DataHub shared];
-    if (self.isEditing) {
-        [hub updateConnectionModel:modelToSave];
-    } else {
-        [hub createConnectionFromModel:modelToSave];
+        // Create new connection
+        connectionToSave = [self createConnectionModelFromFields];
+        
+        // Save via DataHub usando i metodi factory esistenti
+        DataHub *hub = [DataHub shared];
+        
+        // Usa i metodi factory del DataHub+Connections
+        BOOL isBidirectional = (self.directionSegmented.selectedSegment == 0);
+        
+        if (isBidirectional) {
+            connectionToSave = [hub createBidirectionalConnectionWithSymbols:connectionToSave.symbols
+                                                                        type:connectionToSave.connectionType
+                                                                       title:connectionToSave.title];
+        } else {
+            connectionToSave = [hub createDirectionalConnectionFromSymbol:connectionToSave.sourceSymbol
+                                                                toSymbols:connectionToSave.targetSymbols
+                                                                     type:connectionToSave.connectionType
+                                                                    title:connectionToSave.title];
+        }
+        
+        // Aggiorna con i campi aggiuntivi
+        if (connectionToSave) {
+            connectionToSave.url = self.urlField.stringValue;
+            NSTextView *descTextView = (NSTextView *)self.descScrollView.documentView;
+            connectionToSave.connectionDescription = descTextView.string;
+            NSTextView *notesTextView = (NSTextView *)self.notesScrollView.documentView;
+            connectionToSave.notes = notesTextView.string;
+            // Altri campi...
+            
+            [hub updateConnection:connectionToSave];
+        }
     }
     
     // Call success callback
     if (self.onSave) {
-        self.onSave(modelToSave);
+        self.onSave(connectionToSave);
     }
     
     [self.window close];
@@ -543,6 +594,12 @@
     [self.window close];
 }
 
+- (void)showWindow:(id)sender {
+    [self.window makeKeyAndOrderFront:sender];
+    [self.window center];
+}
+
+
 #pragma mark - Data Processing
 
 - (BOOL)validateFields {
@@ -554,12 +611,63 @@
 }
 
 - (ConnectionModel *)createConnectionModelFromFields {
-    ConnectionModel *model = [[ConnectionModel alloc] init];
+    // Symbols
+    NSArray *symbolsArray = [self.symbolsField.stringValue componentsSeparatedByString:@","];
+    NSMutableArray *cleanSymbols = [NSMutableArray array];
+    for (NSString *symbol in symbolsArray) {
+        NSString *clean = [symbol stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]].uppercaseString;
+        if (clean.length > 0) [cleanSymbols addObject:clean];
+    }
     
-    // Basic info
+    // Usa il factory method appropriato del ConnectionModel esistente
+    BOOL isBidirectional = (self.directionSegmented.selectedSegment == 0);
+    
+    ConnectionModel *model;
+    if (isBidirectional) {
+        model = [[ConnectionModel alloc] initBidirectionalWithSymbols:cleanSymbols
+                                                                 type:[self stringToConnectionType:self.typeComboBox.stringValue]
+                                                                title:self.titleField.stringValue];
+    } else {
+        // Per directional, usa il primo simbolo come source e il resto come target
+        NSString *sourceSymbol = cleanSymbols.count > 0 ? cleanSymbols[0] : @"";
+        NSArray *targetSymbols = cleanSymbols.count > 1 ? [cleanSymbols subarrayWithRange:NSMakeRange(1, cleanSymbols.count - 1)] : @[];
+        
+        model = [[ConnectionModel alloc] initDirectionalFromSymbol:sourceSymbol
+                                                         toSymbols:targetSymbols
+                                                              type:[self stringToConnectionType:self.typeComboBox.stringValue]
+                                                             title:self.titleField.stringValue];
+    }
+    
+    // Popola altri campi
+    model.url = self.urlField.stringValue;
+    
+    NSTextView *descTextView = (NSTextView *)self.descScrollView.documentView;
+    model.connectionDescription = descTextView.string;
+    
+    NSTextView *notesTextView = (NSTextView *)self.notesScrollView.documentView;
+    model.notes = notesTextView.string;
+    
+    // Tags
+    NSArray *tagsArray = [self.tagsField.stringValue componentsSeparatedByString:@","];
+    NSMutableArray *cleanTags = [NSMutableArray array];
+    for (NSString *tag in tagsArray) {
+        NSString *clean = [tag stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+        if (clean.length > 0) [cleanTags addObject:clean];
+    }
+    model.tags = cleanTags;
+    
+    // Strength
+    model.currentStrength = self.initialSlider.doubleValue;
+    model.initialStrength = self.initialSlider.doubleValue;
+    
+    return model;
+}
+
+- (void)updateConnectionModelFromFields:(ConnectionModel *)model {
+    // Aggiorna il RuntimeModel esistente
     model.title = self.titleField.stringValue;
-    model.connectionType = self.typeComboBox.stringValue;
-    model.sourceURL = self.urlField.stringValue;
+    model.connectionType = [self stringToConnectionType:self.typeComboBox.stringValue];
+    model.url = self.urlField.stringValue;
     
     // Symbols
     NSArray *symbolsArray = [self.symbolsField.stringValue componentsSeparatedByString:@","];
@@ -568,17 +676,21 @@
         NSString *clean = [symbol stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]].uppercaseString;
         if (clean.length > 0) [cleanSymbols addObject:clean];
     }
-    model.symbols = cleanSymbols;
     
-    // Direction
-    NSString *direction;
-    switch (self.directionSegmented.selectedSegment) {
-        case 0: direction = @"Bidirectional"; break;
-        case 1: direction = @"Directional"; break;
-        case 2: direction = @"Chain"; break;
-        default: direction = @"Bidirectional";
+    // Update bidirectional flag
+    model.bidirectional = (self.directionSegmented.selectedSegment == 0);
+    
+    if (model.bidirectional) {
+        model.symbols = cleanSymbols;
+    } else {
+        model.sourceSymbol = cleanSymbols.count > 0 ? cleanSymbols[0] : @"";
+        model.targetSymbols = cleanSymbols.count > 1 ? [cleanSymbols subarrayWithRange:NSMakeRange(1, cleanSymbols.count - 1)] : @[];
+        
+        // Update legacy symbols array
+        NSMutableArray *allSymbols = [NSMutableArray arrayWithObject:model.sourceSymbol];
+        [allSymbols addObjectsFromArray:model.targetSymbols];
+        model.symbols = allSymbols;
     }
-    model.direction = direction;
     
     // Content
     NSTextView *descTextView = (NSTextView *)self.descScrollView.documentView;
@@ -597,23 +709,12 @@
     model.tags = cleanTags;
     
     // Strength
-    model.strength = self.initialSlider.doubleValue;
+    model.currentStrength = self.initialSlider.doubleValue;
+    model.initialStrength = self.initialSlider.doubleValue;
     
-    // Metadata
-    model.creationDate = [NSDate date];
+    // Update timestamp
     model.lastModified = [NSDate date];
-    
-    return model;
-
-    - (void)updateConnectionModelFromFields:(ConnectionModel *)model {
-        // Aggiorna il RuntimeModel esistente
-        model.title = self.titleField.stringValue;
-        model.connectionType = self.typeComboBox.stringValue;
-        model.sourceURL = self.urlField.stringValue;
-        
-        // ... stesso codice di createConnectionModelFromFields ma aggiorna model esistente
-        model.lastModified = [NSDate date];
-    }
+}
 
 - (void)showAlert:(NSString *)title message:(NSString *)message {
     NSAlert *alert = [[NSAlert alloc] init];

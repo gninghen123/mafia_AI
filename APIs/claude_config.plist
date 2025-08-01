@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Claude API Configuration -->
+    <!-- IMPORTANTE: NON commitare mai la vera API key nel repository! -->
+    
+    <!-- API Key - da sostituire con la vera chiave -->
+    <key>apiKey</key>
+    <string>your-claude-api-key-here</string>
+    
+    <!-- Base URL per Claude API -->
+    <key>baseURL</key>
+    <string>https://api.anthropic.com/v1/messages</string>
+    
+    <!-- Modello Claude da usare -->
+    <key>model</key>
+    <string>claude-3-haiku-20240307</string>
+    
+    <!-- Timeout per le richieste (secondi) -->
+    <key>timeout</key>
+    <integer>30</integer>
+    
+    <!-- Parametri di default per i summary -->
+    <key>defaultMaxTokens</key>
+    <integer>500</integer>
+    
+    <key>defaultTemperature</key>
+    <real>0.3</real>
+    
+    <!-- Prompt templates -->
+    <key>newsPromptTemplate</key>
+    <string>Please provide a concise summary of the following news article. Focus on the key points, companies mentioned, and any market-relevant information. Keep the summary under 200 words and highlight any stock symbols or financial impacts.</string>
+    
+    <key>textPromptTemplate</key>
+    <string>Please provide a concise summary of the following text. Focus on the key points and any market-relevant information. Keep the summary under 200 words.</string>
+    
+    <!-- Rate limiting settings -->
+    <key>maxRequestsPerMinute</key>
+    <integer>20</integer>
+    
+    <key>maxRequestsPerHour</key>
+    <integer>1000</integer>
+    
+    <!-- Retry settings -->
+    <key>maxRetries</key>
+    <integer>3</integer>
+    
+    <key>retryDelay</key>
+    <integer>5</integer>
+</dict>
+</plist>

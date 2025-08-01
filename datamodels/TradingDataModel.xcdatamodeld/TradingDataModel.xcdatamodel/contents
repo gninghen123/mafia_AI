@@ -81,12 +81,44 @@
         </fetchIndex>
     </entity>
     <entity name="StockConnection" representedClassName="StockConnection" syncable="YES">
+        <attribute name="autoDelete" optional="YES" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="bidirectional" optional="YES" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
         <attribute name="connectionDescription" optional="YES" attributeType="String"/>
+        <attribute name="connectionID" attributeType="String"/>
         <attribute name="connectionType" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="creationDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="currentStrength" optional="YES" attributeType="Double" defaultValueString="1.0" usesScalarValueType="YES"/>
+        <attribute name="decayRate" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <attribute name="initialStrength" optional="YES" attributeType="Double" defaultValueString="1.0" usesScalarValueType="YES"/>
+        <attribute name="isActive" optional="YES" attributeType="Boolean" defaultValueString="YES" usesScalarValueType="YES"/>
+        <attribute name="lastModified" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="lastStrengthUpdate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="manualSummary" optional="YES" attributeType="String"/>
+        <attribute name="minimumStrength" optional="YES" attributeType="Double" defaultValueString="0.1" usesScalarValueType="YES"/>
+        <attribute name="notes" optional="YES" attributeType="String"/>
+        <attribute name="originalSummary" optional="YES" attributeType="String"/>
         <attribute name="source" optional="YES" attributeType="String"/>
+        <attribute name="sourceSymbol" optional="YES" attributeType="String"/>
+        <attribute name="strengthHorizon" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="summarySource" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="symbols" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
+        <attribute name="tags" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
+        <attribute name="targetSymbols" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
+        <attribute name="title" optional="YES" attributeType="String"/>
         <attribute name="url" optional="YES" attributeType="String"/>
+        <fetchIndex name="byConnectionID">
+            <fetchIndexElement property="connectionID" type="Binary" order="ascending"/>
+        </fetchIndex>
+        <fetchIndex name="bySymbols">
+            <fetchIndexElement property="sourceSymbol" type="Binary" order="ascending"/>
+        </fetchIndex>
+        <fetchIndex name="byType">
+            <fetchIndexElement property="connectionType" type="Binary" order="ascending"/>
+        </fetchIndex>
+        <fetchIndex name="byActiveDate">
+            <fetchIndexElement property="isActive" type="Binary" order="descending"/>
+            <fetchIndexElement property="creationDate" type="Binary" order="descending"/>
+        </fetchIndex>
     </entity>
     <entity name="TradingModel" representedClassName="TradingModel" syncable="YES">
         <attribute name="currentOutcome" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>

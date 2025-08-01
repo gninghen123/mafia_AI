@@ -5,8 +5,8 @@
 
 #import "DataHub.h"
 #import "DataHub+Private.h"
-#import "datamodels/Watchlist+CoreDataClass.h"
-#import "datamodels/Watchlist+CoreDataProperties.h"
+#import "Watchlist+CoreDataClass.h"
+#import "Watchlist+CoreDataProperties.h"
 #import "Alert+CoreDataClass.h"
 #import "StockConnection+CoreDataClass.h"
 #import "TradingModel+CoreDataClass.h"

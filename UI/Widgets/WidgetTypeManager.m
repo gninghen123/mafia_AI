@@ -13,6 +13,8 @@
 #import "MultiChartWidget.h"
 #import "MiniChart.h"
 #import "GeneralMarketWidget.h"
+#import "ConnectionsWidget.h"
+
 
 @interface WidgetTypeManager ()
 @property (nonatomic, strong) NSDictionary<NSString *, NSArray<NSString *> *> *widgetCategories;
@@ -77,7 +79,8 @@
             @"Economic Calendar",
             @"Market Overview",
             @"Symbol Info",
-            @"Time & Sales"
+            @"Time & Sales",
+            @"Connections"
         ],
         @"Tools": @[
             @"Connection Status",
@@ -99,6 +102,7 @@
     typeToClass[@"Connection Status"] = [ConnectionStatusWidget class];
     typeToClass[@"MultiChart Widget"] = [MultiChartWidget class];
     typeToClass[@"General Market"] = [GeneralMarketWidget class];
+    typeToClass[@"Connections"] = [ConnectionsWidget class];
 
     // FIX: Map chart types to CHChartWidget
     typeToClass[@"Chart Widget"] = [CHChartWidget class];
@@ -132,6 +136,7 @@
         @"Volume Profile": @"chart.bar.fill",
         @"Heatmap": @"square.grid.3x3.fill.square",
         @"MultiChart Widget": @"square.grid.3x3",
+        @"Connections": @"link",
 
         @"Order Entry": @"plus.square",
         @"Order Book": @"book",

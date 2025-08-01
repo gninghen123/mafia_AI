@@ -5,6 +5,7 @@
 
 #import "DownloadManager.h"
 #import "WebullDataSource.h"
+#import "ClaudeDataSource.h"
 #import "MarketData.h"
 
 @interface DataSourceInfo : NSObject
@@ -140,6 +141,8 @@
     return requestID;
 }
 
+  
+
 - (void)executeRequestWithSources:(NSArray<DataSourceInfo *> *)sources
                       requestType:(DataRequestType)requestType
                        parameters:(NSDictionary *)parameters
@@ -254,6 +257,17 @@
                                         requestID:requestID
                                        completion:completion];
                    break;
+        case DataRequestTypeNewsSummary:
+        case DataRequestTypeTextSummary:
+        case DataRequestTypeAIAnalysis:
+            [self executeAIRequest:parameters
+                    withDataSource:dataSource
+                        sourceInfo:sourceInfo
+                           sources:sources
+                       sourceIndex:index
+                         requestID:requestID
+                        completion:completion];
+            break;
             
         default:
             NSLog(@"Unsupported request type: %ld", (long)requestType);
@@ -724,6 +738,10 @@
         case DataRequestTypeOrders:
         case DataRequestTypeAccountInfo:
             return (capabilities & DataSourceCapabilityAccounts) != 0;
+        case DataRequestTypeNewsSummary:
+               case DataRequestTypeTextSummary:
+               case DataRequestTypeAIAnalysis:
+                   return (capabilities & DataSourceCapabilityAI) != 0;
         default:
             return NO;
     }
@@ -889,6 +907,130 @@
               completion:^(id result, DataSourceType usedSource, NSError *error) {
                   if (completion) completion(result, error);
               }];
+}
+
+#pragma mark - AI Request Support (NUOVO)
+
+// Aggiungere questo case nel metodo executeRequestWithSources
+
+
+// NUOVO: AI Request Handler
+- (void)executeAIRequest:(NSDictionary *)parameters
+          withDataSource:(id<DataSource>)dataSource
+              sourceInfo:(DataSourceInfo *)sourceInfo
+                 sources:(NSArray<DataSourceInfo *> *)sources
+             sourceIndex:(NSInteger)index
+               requestID:(NSString *)requestID
+              completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    NSString *requestType = parameters[@"requestType"];
+    NSLog(@"DownloadManager: Executing AI request '%@' using %@", requestType, dataSource.sourceName);
+    
+    // Ensure we have a Claude data source
+    if (![dataSource isKindOfClass:[ClaudeDataSource class]]) {
+        NSLog(@"DownloadManager: Data source %@ does not support AI requests", dataSource.sourceName);
+        [self executeRequestWithSources:sources
+                            requestType:DataRequestTypeNewsSummary
+                             parameters:parameters
+                            sourceIndex:index + 1
+                              requestID:requestID
+                             completion:completion];
+        return;
+    }
+    
+    ClaudeDataSource *claudeSource = (ClaudeDataSource *)dataSource;
+    
+    // Handle different AI request types
+    if ([requestType isEqualToString:@"newsSummary"]) {
+        NSString *url = parameters[@"url"];
+        NSInteger maxTokens = [parameters[@"maxTokens"] integerValue] ?: 500;
+        float temperature = [parameters[@"temperature"] floatValue] ?: 0.3f;
+        
+        [claudeSource summarizeFromURL:url
+                             maxTokens:maxTokens
+                           temperature:temperature
+                            completion:^(NSString * _Nullable summary, NSError * _Nullable error) {
+            [self handleAIRequestCompletion:summary
+                                      error:error
+                                 sourceInfo:sourceInfo
+                                    sources:sources
+                                sourceIndex:index
+                                  requestID:requestID
+                                 completion:completion];
+        }];
+        
+    } else if ([requestType isEqualToString:@"textSummary"]) {
+        NSString *text = parameters[@"text"];
+        NSInteger maxTokens = [parameters[@"maxTokens"] integerValue] ?: 500;
+        float temperature = [parameters[@"temperature"] floatValue] ?: 0.3f;
+        
+        [claudeSource summarizeText:text
+                          maxTokens:maxTokens
+                        temperature:temperature
+                         completion:^(NSString * _Nullable summary, NSError * _Nullable error) {
+            [self handleAIRequestCompletion:summary
+                                      error:error
+                                 sourceInfo:sourceInfo
+                                    sources:sources
+                                sourceIndex:index
+                                  requestID:requestID
+                                 completion:completion];
+        }];
+        
+    } else {
+        NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey:
+                                             [NSString stringWithFormat:@"Unknown AI request type: %@", requestType]}];
+        [self handleAIRequestCompletion:nil
+                                  error:error
+                             sourceInfo:sourceInfo
+                                sources:sources
+                            sourceIndex:index
+                              requestID:requestID
+                             completion:completion];
+    }
+}
+
+// NUOVO: AI Request Completion Handler
+- (void)handleAIRequestCompletion:(NSString *)summary
+                            error:(NSError *)error
+                       sourceInfo:(DataSourceInfo *)sourceInfo
+                          sources:(NSArray<DataSourceInfo *> *)sources
+                      sourceIndex:(NSInteger)index
+                        requestID:(NSString *)requestID
+                       completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    [self.activeRequests removeObjectForKey:requestID];
+    
+    if (error) {
+        NSLog(@"DownloadManager: AI request failed with %@: %@", sourceInfo.dataSource.sourceName, error.localizedDescription);
+        
+        // Increment failure count
+        sourceInfo.failureCount++;
+        sourceInfo.lastFailureTime = [NSDate date];
+        
+        // Try next source if available
+        [self executeRequestWithSources:sources
+                            requestType:DataRequestTypeNewsSummary
+                             parameters:@{} // Parameters already consumed
+                            sourceIndex:index + 1
+                              requestID:requestID
+                             completion:completion];
+    } else {
+        NSLog(@"DownloadManager: AI request successful with %@", sourceInfo.dataSource.sourceName);
+        
+        // Reset failure count on success
+        sourceInfo.failureCount = 0;
+        sourceInfo.lastFailureTime = nil;
+        
+        // Return successful result
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(summary, sourceInfo.type, nil);
+            });
+        }
+    }
 }
 
 @end

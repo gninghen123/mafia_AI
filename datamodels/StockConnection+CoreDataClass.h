@@ -2,7 +2,7 @@
 //  StockConnection+CoreDataClass.h
 //  mafia_AI
 //
-//  Created by fabio gattone on 21/07/25.
+//  Created by fabio gattone on 31/07/25.
 //
 //
 

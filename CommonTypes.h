@@ -16,7 +16,8 @@ typedef NS_ENUM(NSInteger, DataSourceType) {
     DataSourceTypeIBKR,
     DataSourceTypeYahoo,
     DataSourceTypeWebull,
-    DataSourceTypeCustom
+    DataSourceTypeCustom,
+    DataSourceTypeClaude        // NUOVO: Claude AI per summaries
 };
 
 typedef NS_ENUM(NSInteger, DataRequestType) {
@@ -37,7 +38,13 @@ typedef NS_ENUM(NSInteger, DataRequestType) {
     DataRequestTypeTopGainers = 101,
     DataRequestTypeTopLosers = 102,
     DataRequestTypeETFList = 103,
+    
+    // AI Services - NUOVO
+    DataRequestTypeNewsSummary = 200,      // Claude AI news summary
+    DataRequestTypeTextSummary = 201,      // Claude AI text summary
+    DataRequestTypeAIAnalysis = 202        // Future: AI analysis requests
 };
+
 // Bar timeframes
 typedef NS_ENUM(NSInteger, BarTimeframe) {
     BarTimeframe1Min,
@@ -51,13 +58,14 @@ typedef NS_ENUM(NSInteger, BarTimeframe) {
     BarTimeframe1Month
 };
 
-// MOVED FROM DataHub+MarketData.h: Data freshness types for caching
+// Data freshness types for caching
 typedef NS_ENUM(NSInteger, DataFreshnessType) {
     DataFreshnessTypeQuote,           // TTL: 5-10 seconds
     DataFreshnessTypeMarketOverview,  // TTL: 1 minute
     DataFreshnessTypeHistorical,      // TTL: 5 minutes
     DataFreshnessTypeCompanyInfo,     // TTL: 24 hours
-    DataFreshnessTypeWatchlist        // TTL: Infinite (user managed)
+    DataFreshnessTypeWatchlist,       // TTL: Infinite (user managed)
+    DataFreshnessTypeAISummary        // TTL: 24 hours (AI summaries are stable)
 };
 
 // Data source capabilities
@@ -71,7 +79,8 @@ typedef NS_OPTIONS(NSUInteger, DataSourceCapabilities) {
     DataSourceCapabilityFundamentals    = 1 << 6,
     DataSourceCapabilityAccounts        = 1 << 7,
     DataSourceCapabilityTrading         = 1 << 8,
-    DataSourceCapabilityRealtime        = 1 << 9
+    DataSourceCapabilityRealtime        = 1 << 9,
+    DataSourceCapabilityAI              = 1 << 10   // NUOVO: AI capabilities
 };
 
 #endif /* CommonTypes_h */

@@ -11,6 +11,7 @@
 #import "SchwabDataSource.h"
 #import "WebullDataSource.h"
 #import "DataHub.h"
+#import "ClaudeDataSource.h"
 
 
 @interface AppDelegate ()
@@ -41,6 +42,8 @@
      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
          [self autoConnectToSchwab];
      });
+    [self setupClaudeDataSource];
+
 }
 
 - (void)registerDataSources {
@@ -140,6 +143,150 @@
             });
         }
     }
+}
+
+#pragma mark - cluade api
+
+- (void)setupClaudeDataSource {
+    NSLog(@"AppDelegate: Setting up Claude AI Data Source");
+    
+    // Load API key from secure storage or settings
+    NSString *claudeApiKey = [self loadClaudeAPIKey];
+    
+    if (!claudeApiKey || claudeApiKey.length == 0) {
+        NSLog(@"AppDelegate: Claude API key not found - AI features will be disabled");
+        NSLog(@"AppDelegate: Please configure Claude API key in app settings");
+        return;
+    }
+    
+    // Create and configure Claude data source
+    ClaudeDataSource *claudeSource = [[ClaudeDataSource alloc] initWithAPIKey:claudeApiKey];
+    
+    // Optional: Update configuration from app settings
+    NSDictionary *claudeConfig = [self loadClaudeConfiguration];
+    if (claudeConfig) {
+        [claudeSource updateConfiguration:claudeConfig];
+    }
+    
+    // Register with DownloadManager
+    DownloadManager *downloadManager = [DownloadManager sharedManager];
+    [downloadManager registerDataSource:claudeSource
+                                withType:DataSourceTypeClaude
+                                priority:1]; // High priority for AI requests
+    
+    // Test connection
+    [claudeSource connectWithCompletion:^(BOOL success, NSError *error) {
+        if (success) {
+            NSLog(@"AppDelegate: Claude AI connected successfully");
+        } else {
+            NSLog(@"AppDelegate: Claude AI connection failed: %@", error.localizedDescription);
+        }
+    }];
+}
+
+// NUOVO: Load API key from secure storage
+- (NSString *)loadClaudeAPIKey {
+    // In production, questo dovrebbe essere caricato dal Keychain o da un file di configurazione sicuro
+    // Per ora, supportiamo alcune opzioni:
+    
+    // 1. Check environment variable (for development)
+    NSString *envKey = [[[NSProcessInfo processInfo] environment] objectForKey:@"CLAUDE_API_KEY"];
+    if (envKey && envKey.length > 0) {
+        return envKey;
+    }
+    
+    // 2. Check app settings/preferences
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *settingsKey = [defaults stringForKey:@"ClaudeAPIKey"];
+    if (settingsKey && settingsKey.length > 0) {
+        return settingsKey;
+    }
+    
+    // 3. Check configuration file (claude_config.plist in app bundle)
+    NSString *configPath = [[NSBundle mainBundle] pathForResource:@"claude_config" ofType:@"plist"];
+    if (configPath) {
+        NSDictionary *config = [NSDictionary dictionaryWithContentsOfFile:configPath];
+        NSString *configKey = config[@"apiKey"];
+        if (configKey && configKey.length > 0) {
+            return configKey;
+        }
+    }
+    
+    // 4. TODO: Load from macOS Keychain (most secure option)
+    // NSString *keychainKey = [self loadFromKeychain:@"ClaudeAPIKey"];
+    
+    return nil;
+}
+
+// NUOVO: Load Claude configuration
+- (NSDictionary *)loadClaudeConfiguration {
+    NSMutableDictionary *config = [NSMutableDictionary dictionary];
+    
+    // Load from app settings
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    NSString *baseURL = [defaults stringForKey:@"ClaudeBaseURL"];
+    if (baseURL) config[@"baseURL"] = baseURL;
+    
+    NSString *model = [defaults stringForKey:@"ClaudeModel"];
+    if (model) config[@"model"] = model;
+    
+    NSNumber *timeout = [defaults objectForKey:@"ClaudeTimeout"];
+    if (timeout) config[@"timeout"] = timeout;
+    
+    // Load from config file if exists
+    NSString *configPath = [[NSBundle mainBundle] pathForResource:@"claude_config" ofType:@"plist"];
+    if (configPath) {
+        NSDictionary *fileConfig = [NSDictionary dictionaryWithContentsOfFile:configPath];
+        [config addEntriesFromDictionary:fileConfig];
+    }
+    
+    return config.count > 0 ? [config copy] : nil;
+}
+
+// NUOVO: Utility method to save API key (for preferences window)
+- (void)saveClaudeAPIKey:(NSString *)apiKey {
+    if (!apiKey) return;
+    
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    [defaults setObject:apiKey forKey:@"ClaudeAPIKey"];
+    [defaults synchronize];
+    
+    NSLog(@"AppDelegate: Claude API key saved to preferences");
+    
+    // Restart Claude data source with new key
+    [self setupClaudeDataSource];
+}
+
+// NUOVO: Utility method to test Claude connection
+- (void)testClaudeConnection:(void (^)(BOOL success, NSError *error))completion {
+    DownloadManager *downloadManager = [DownloadManager sharedManager];
+    
+    if (![downloadManager isDataSourceConnected:DataSourceTypeClaude]) {
+        NSError *error = [NSError errorWithDomain:@"AppDelegate"
+                                             code:503
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Claude data source not connected"}];
+        if (completion) completion(NO, error);
+        return;
+    }
+    
+    // Execute a simple test request
+    NSDictionary *testParams = @{
+        @"text": @"Hello, this is a test.",
+        @"maxTokens": @(10),
+        @"temperature": @(0.1),
+        @"requestType": @"textSummary"
+    };
+    
+    [downloadManager executeRequest:DataRequestTypeTextSummary
+                         parameters:testParams
+                         completion:^(id result, DataSourceType usedSource, NSError *error) {
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(error == nil, error);
+            });
+        }
+    }];
 }
 
 @end

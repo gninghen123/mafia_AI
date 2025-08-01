@@ -59,6 +59,7 @@
         case DataFreshnessTypeWatchlist:
             return INFINITY; // Never expires
     }
+    return INFINITY;
 }
 
 - (BOOL)isCacheStale:(NSString *)cacheKey dataType:(DataFreshnessType)type {

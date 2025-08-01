@@ -7,10 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		9549A30C2E33B4BF00E873AB /* DataHub+MarketData.m in Sources */ = {isa = PBXBuildFile; fileRef = 9549A30B2E33B4BF00E873AB /* DataHub+MarketData.m */; };
-		954D30BB2E28530E00C7DC88 /* SchwabDataSource.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30B02E28530E00C7DC88 /* SchwabDataSource.m */; };
-		954D30BD2E28530E00C7DC88 /* YahooDataSource.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30B22E28530E00C7DC88 /* YahooDataSource.m */; };
-		954D30BE2E28530E00C7DC88 /* SchwabConfig.plist in Resources */ = {isa = PBXBuildFile; fileRef = 954D30AE2E28530E00C7DC88 /* SchwabConfig.plist */; };
 		954D30D52E28531C00C7DC88 /* LayoutManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30CA2E28531C00C7DC88 /* LayoutManager.m */; };
 		954D30D72E28531C00C7DC88 /* ToolbarController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30C82E28531C00C7DC88 /* ToolbarController.m */; };
 		954D30D82E28531C00C7DC88 /* PanelHeaderView.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30C42E28531C00C7DC88 /* PanelHeaderView.m */; };
@@ -19,10 +15,8 @@
 		954D30DD2E28531C00C7DC88 /* PROJECT_ARCHITECTURE.md in Resources */ = {isa = PBXBuildFile; fileRef = 954D30C02E28531C00C7DC88 /* PROJECT_ARCHITECTURE.md */; };
 		954D30E32E2860F100C7DC88 /* PreferencesWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */; };
 		954D30E72E28612100C7DC88 /* AppSettings.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30E62E28612100C7DC88 /* AppSettings.m */; };
-		955B3CD12E2BFF55008CA475 /* WebullDataSource.m in Sources */ = {isa = PBXBuildFile; fileRef = 955B3CD02E2BFF55008CA475 /* WebullDataSource.m */; };
-		959A4B632E3A93FE00D83EB1 /* Watchlist+CoreDataClass.m in Sources */ = {isa = PBXBuildFile; fileRef = 959A4B602E3A93FE00D83EB1 /* Watchlist+CoreDataClass.m */; };
-		959A4B642E3A93FE00D83EB1 /* Watchlist+CoreDataProperties.m in Sources */ = {isa = PBXBuildFile; fileRef = 959A4B622E3A93FE00D83EB1 /* Watchlist+CoreDataProperties.m */; };
-		95F1AD532E2E475500D96BDD /* DataHub.m in Sources */ = {isa = PBXBuildFile; fileRef = 95F1AD522E2E475500D96BDD /* DataHub.m */; };
+		9560C4042E3BC337003FCF67 /* Watchlist+CoreDataClass.m in Sources */ = {isa = PBXBuildFile; fileRef = 9560C3EE2E3BC337003FCF67 /* Watchlist+CoreDataClass.m */; };
+		9560C4052E3BC337003FCF67 /* Watchlist+CoreDataProperties.m in Sources */ = {isa = PBXBuildFile; fileRef = 9560C3F02E3BC337003FCF67 /* Watchlist+CoreDataProperties.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -43,17 +37,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		95334AE92E3615AE00C43F8F /* DataHub+Private.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "DataHub+Private.h"; sourceTree = "<group>"; };
-		9549A3072E33B41100E873AB /* DataHub+MarketData.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "DataHub+MarketData.h"; sourceTree = "<group>"; };
-		9549A30B2E33B4BF00E873AB /* DataHub+MarketData.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "DataHub+MarketData.m"; sourceTree = "<group>"; };
 		954D30002E28514A00C7DC88 /* mafia_AI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = mafia_AI.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		954D30122E28514B00C7DC88 /* mafia_AITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = mafia_AITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		954D301C2E28514C00C7DC88 /* mafia_AIUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = mafia_AIUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		954D30AE2E28530E00C7DC88 /* SchwabConfig.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = SchwabConfig.plist; sourceTree = "<group>"; };
-		954D30AF2E28530E00C7DC88 /* SchwabDataSource.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = SchwabDataSource.h; sourceTree = "<group>"; };
-		954D30B02E28530E00C7DC88 /* SchwabDataSource.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SchwabDataSource.m; sourceTree = "<group>"; };
-		954D30B12E28530E00C7DC88 /* YahooDataSource.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = YahooDataSource.h; sourceTree = "<group>"; };
-		954D30B22E28530E00C7DC88 /* YahooDataSource.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = YahooDataSource.m; sourceTree = "<group>"; };
 		954D30BF2E28531C00C7DC88 /* TradingAppTypes.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TradingAppTypes.h; sourceTree = "<group>"; };
 		954D30C02E28531C00C7DC88 /* PROJECT_ARCHITECTURE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PROJECT_ARCHITECTURE.md; sourceTree = "<group>"; };
 		954D30C32E28531C00C7DC88 /* PanelHeaderView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PanelHeaderView.h; sourceTree = "<group>"; };
@@ -70,14 +56,10 @@
 		954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PreferencesWindowController.m; sourceTree = "<group>"; };
 		954D30E52E28612100C7DC88 /* AppSettings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppSettings.h; sourceTree = "<group>"; };
 		954D30E62E28612100C7DC88 /* AppSettings.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppSettings.m; sourceTree = "<group>"; };
-		955B3CCF2E2BFF55008CA475 /* WebullDataSource.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WebullDataSource.h; sourceTree = "<group>"; };
-		955B3CD02E2BFF55008CA475 /* WebullDataSource.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WebullDataSource.m; sourceTree = "<group>"; };
-		959A4B5F2E3A93FE00D83EB1 /* Watchlist+CoreDataClass.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "Watchlist+CoreDataClass.h"; path = "datamodels/Watchlist+CoreDataClass.h"; sourceTree = "<group>"; };
-		959A4B602E3A93FE00D83EB1 /* Watchlist+CoreDataClass.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = "Watchlist+CoreDataClass.m"; path = "datamodels/Watchlist+CoreDataClass.m"; sourceTree = "<group>"; };
-		959A4B612E3A93FE00D83EB1 /* Watchlist+CoreDataProperties.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "Watchlist+CoreDataProperties.h"; path = "datamodels/Watchlist+CoreDataProperties.h"; sourceTree = "<group>"; };
-		959A4B622E3A93FE00D83EB1 /* Watchlist+CoreDataProperties.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = "Watchlist+CoreDataProperties.m"; path = "datamodels/Watchlist+CoreDataProperties.m"; sourceTree = "<group>"; };
-		95F1AD512E2E475500D96BDD /* DataHub.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DataHub.h; sourceTree = "<group>"; };
-		95F1AD522E2E475500D96BDD /* DataHub.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = DataHub.m; sourceTree = "<group>"; };
+		9560C3ED2E3BC337003FCF67 /* Watchlist+CoreDataClass.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Watchlist+CoreDataClass.h"; sourceTree = "<group>"; };
+		9560C3EE2E3BC337003FCF67 /* Watchlist+CoreDataClass.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "Watchlist+CoreDataClass.m"; sourceTree = "<group>"; };
+		9560C3EF2E3BC337003FCF67 /* Watchlist+CoreDataProperties.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Watchlist+CoreDataProperties.h"; sourceTree = "<group>"; };
+		9560C3F02E3BC337003FCF67 /* Watchlist+CoreDataProperties.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "Watchlist+CoreDataProperties.m"; sourceTree = "<group>"; };
 		95F1AFC52E32037F00D96BDD /* CommonTypes.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CommonTypes.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -95,6 +77,11 @@
 		954D301F2E28514C00C7DC88 /* mafia_AIUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = mafia_AIUITests;
+			sourceTree = "<group>";
+		};
+		9560C46D2E3BF8E2003FCF67 /* APIs */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = APIs;
 			sourceTree = "<group>";
 		};
 		959A4A832E39284300D83EB1 /* chchart */ = {
@@ -117,9 +104,9 @@
 			path = UI;
 			sourceTree = "<group>";
 		};
-		95F1AFB42E31131100D96BDD /* DataManager */ = {
+		95F1AFB42E31131100D96BDD /* Gestione Dati */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = DataManager;
+			path = "Gestione Dati";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -152,20 +139,11 @@
 		954D2FF72E28514A00C7DC88 = {
 			isa = PBXGroup;
 			children = (
-				959A4B5F2E3A93FE00D83EB1 /* Watchlist+CoreDataClass.h */,
-				959A4B602E3A93FE00D83EB1 /* Watchlist+CoreDataClass.m */,
-				959A4B612E3A93FE00D83EB1 /* Watchlist+CoreDataProperties.h */,
-				959A4B622E3A93FE00D83EB1 /* Watchlist+CoreDataProperties.m */,
-				959A4B4E2E3A1E6000D83EB1 /* Models */,
+				9560C3ED2E3BC337003FCF67 /* Watchlist+CoreDataClass.h */,
+				9560C3EE2E3BC337003FCF67 /* Watchlist+CoreDataClass.m */,
+				9560C3EF2E3BC337003FCF67 /* Watchlist+CoreDataProperties.h */,
+				9560C3F02E3BC337003FCF67 /* Watchlist+CoreDataProperties.m */,
 				95F1AFC52E32037F00D96BDD /* CommonTypes.h */,
-				95F1AD762E2E517E00D96BDD /* UI */,
-				95F1AD752E2E4EE100D96BDD /* datamodels */,
-				95F1AFB42E31131100D96BDD /* DataManager */,
-				95F1AD512E2E475500D96BDD /* DataHub.h */,
-				95F1AD522E2E475500D96BDD /* DataHub.m */,
-				95334AE92E3615AE00C43F8F /* DataHub+Private.h */,
-				9549A3072E33B41100E873AB /* DataHub+MarketData.h */,
-				9549A30B2E33B4BF00E873AB /* DataHub+MarketData.m */,
 				954D30E52E28612100C7DC88 /* AppSettings.h */,
 				954D30E62E28612100C7DC88 /* AppSettings.m */,
 				954D30E02E2860F100C7DC88 /* PreferencesWindowController.h */,
@@ -182,13 +160,11 @@
 				954D30CF2E28531C00C7DC88 /* PanelController.m */,
 				954D30D12E28531C00C7DC88 /* MainWindowController.h */,
 				954D30D22E28531C00C7DC88 /* MainWindowController.m */,
-				954D30AE2E28530E00C7DC88 /* SchwabConfig.plist */,
-				955B3CCF2E2BFF55008CA475 /* WebullDataSource.h */,
-				955B3CD02E2BFF55008CA475 /* WebullDataSource.m */,
-				954D30AF2E28530E00C7DC88 /* SchwabDataSource.h */,
-				954D30B02E28530E00C7DC88 /* SchwabDataSource.m */,
-				954D30B12E28530E00C7DC88 /* YahooDataSource.h */,
-				954D30B22E28530E00C7DC88 /* YahooDataSource.m */,
+				95F1AD762E2E517E00D96BDD /* UI */,
+				959A4B4E2E3A1E6000D83EB1 /* Models */,
+				95F1AD752E2E4EE100D96BDD /* datamodels */,
+				95F1AFB42E31131100D96BDD /* Gestione Dati */,
+				9560C46D2E3BF8E2003FCF67 /* APIs */,
 				959A4A832E39284300D83EB1 /* chchart */,
 				954D30022E28514A00C7DC88 /* mafia_AI */,
 				954D30152E28514B00C7DC88 /* mafia_AITests */,
@@ -224,11 +200,12 @@
 			);
 			fileSystemSynchronizedGroups = (
 				954D30022E28514A00C7DC88 /* mafia_AI */,
+				9560C46D2E3BF8E2003FCF67 /* APIs */,
 				959A4A832E39284300D83EB1 /* chchart */,
 				959A4B4E2E3A1E6000D83EB1 /* Models */,
 				95F1AD752E2E4EE100D96BDD /* datamodels */,
 				95F1AD762E2E517E00D96BDD /* UI */,
-				95F1AFB42E31131100D96BDD /* DataManager */,
+				95F1AFB42E31131100D96BDD /* Gestione Dati */,
 			);
 			name = mafia_AI;
 			packageProductDependencies = (
@@ -332,7 +309,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				954D30DD2E28531C00C7DC88 /* PROJECT_ARCHITECTURE.md in Resources */,
-				954D30BE2E28530E00C7DC88 /* SchwabConfig.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -358,19 +334,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				954D30E32E2860F100C7DC88 /* PreferencesWindowController.m in Sources */,
-				955B3CD12E2BFF55008CA475 /* WebullDataSource.m in Sources */,
-				959A4B632E3A93FE00D83EB1 /* Watchlist+CoreDataClass.m in Sources */,
-				959A4B642E3A93FE00D83EB1 /* Watchlist+CoreDataProperties.m in Sources */,
 				954D30E72E28612100C7DC88 /* AppSettings.m in Sources */,
-				95F1AD532E2E475500D96BDD /* DataHub.m in Sources */,
-				9549A30C2E33B4BF00E873AB /* DataHub+MarketData.m in Sources */,
 				954D30D52E28531C00C7DC88 /* LayoutManager.m in Sources */,
 				954D30D72E28531C00C7DC88 /* ToolbarController.m in Sources */,
 				954D30D82E28531C00C7DC88 /* PanelHeaderView.m in Sources */,
+				9560C4042E3BC337003FCF67 /* Watchlist+CoreDataClass.m in Sources */,
+				9560C4052E3BC337003FCF67 /* Watchlist+CoreDataProperties.m in Sources */,
 				954D30DA2E28531C00C7DC88 /* PanelController.m in Sources */,
 				954D30DB2E28531C00C7DC88 /* MainWindowController.m in Sources */,
-				954D30BB2E28530E00C7DC88 /* SchwabDataSource.m in Sources */,
-				954D30BD2E28530E00C7DC88 /* YahooDataSource.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

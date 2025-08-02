@@ -16,12 +16,20 @@
 @class StockConnection;
 @class TradingModel;
 
-// Forward declarations for Runtime Models
 @class MarketQuoteModel;
 @class HistoricalBarModel;
 @class CompanyInfoModel;
+@class SeasonalDataModel;
+
 
 @interface DataHub ()
+
+
+
+
+// Seasonal Data Cache (NEW)
+@property (nonatomic, strong) NSMutableDictionary<NSString *, SeasonalDataModel *> *seasonalDataCache;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSDate *> *seasonalCacheTimestamps;
 
 // Core Data
 @property (nonatomic, strong) NSPersistentContainer *persistentContainer;

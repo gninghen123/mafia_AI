@@ -97,5 +97,13 @@
 - (void)refreshMarketListCache:(NSString *)listType timeframe:(NSString *)timeframe;
 - (NSArray<MarketPerformerModel *> *)getCachedMarketPerformers:(NSString *)listType timeframe:(NSString *)timeframe;
 
+#pragma mark - Seasonal/Zacks Data
 
+/**
+ * Request Zacks chart data for seasonal analysis
+ * @param parameters Dictionary with "symbol" and "wrapper" keys
+ * @param completion Completion block with raw Zacks data or error
+ */
+- (void)requestZacksData:(NSDictionary *)parameters
+              completion:(void (^)(NSDictionary * _Nullable data, NSError * _Nullable error))completion;
 @end

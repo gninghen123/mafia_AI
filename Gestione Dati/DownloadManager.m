@@ -707,16 +707,33 @@
 
 - (BOOL)dataSource:(id<DataSource>)dataSource supportsRequestType:(DataRequestType)requestType {
     DataSourceCapabilities capabilities = dataSource.capabilities;
+    DataSourceType sourceType = dataSource.sourceType;
     
-    // Market list types
+    // Market list types - handled by Webull and OtherDataSource
     if (requestType == DataRequestTypeMarketList ||
         requestType == DataRequestTypeTopGainers ||
         requestType == DataRequestTypeTopLosers ||
         requestType == DataRequestTypeETFList) {
-        return dataSource.sourceType == DataSourceTypeWebull;
+        return sourceType == DataSourceTypeWebull || sourceType == DataSourceTypeOther;
     }
     
-    // Gestione dei tipi esistenti
+    // NEW: OtherDataSource specific request types
+    if (requestType >= DataRequestType52WeekHigh && requestType <= DataRequestTypePMMovers) {
+        // Market overview data - only OtherDataSource
+        return sourceType == DataSourceTypeOther;
+    }
+    
+    if (requestType >= DataRequestTypeCompanyNews && requestType <= DataRequestTypeAnalystMomentum) {
+        // Company specific data - only OtherDataSource
+        return sourceType == DataSourceTypeOther;
+    }
+    
+    if (requestType >= DataRequestTypeFinvizStatements && requestType <= DataRequestTypeOpenInsider) {
+        // External data sources - only OtherDataSource
+        return sourceType == DataSourceTypeOther;
+    }
+    
+    // Existing request types with capability checks
     switch (requestType) {
         case DataRequestTypeQuote:
             return (capabilities & DataSourceCapabilityQuotes) != 0;
@@ -733,15 +750,15 @@
         case DataRequestTypeFundamentals:
             return (capabilities & DataSourceCapabilityFundamentals) != 0;
         case DataRequestTypeBatchQuotes:
-               return (capabilities & DataSourceCapabilityQuotes) != 0;
+            return (capabilities & DataSourceCapabilityQuotes) != 0;
         case DataRequestTypePositions:
         case DataRequestTypeOrders:
         case DataRequestTypeAccountInfo:
             return (capabilities & DataSourceCapabilityAccounts) != 0;
         case DataRequestTypeNewsSummary:
-               case DataRequestTypeTextSummary:
-               case DataRequestTypeAIAnalysis:
-                   return (capabilities & DataSourceCapabilityAI) != 0;
+        case DataRequestTypeTextSummary:
+        case DataRequestTypeAIAnalysis:
+            return (capabilities & DataSourceCapabilityAI) != 0;
         default:
             return NO;
     }

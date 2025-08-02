@@ -722,4 +722,64 @@
     NSLog(@"DataManager: Cached market performers requested for %@:%@", listType, timeframe);
     return @[];
 }
+
+
+#pragma mark - Seasonal/Zacks Data
+
+- (void)requestZacksData:(NSDictionary *)parameters
+              completion:(void (^)(NSDictionary * _Nullable data, NSError * _Nullable error))completion {
+    
+    if (!parameters || !parameters[@"symbol"] || !parameters[@"wrapper"]) {
+        NSError *error = [NSError errorWithDomain:@"DataManager"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid parameters for Zacks request"}];
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, error);
+            });
+        }
+        return;
+    }
+    
+    NSString *symbol = parameters[@"symbol"];
+    NSString *wrapper = parameters[@"wrapper"];
+    
+    NSLog(@"📊 DataManager: Requesting Zacks data for %@ (%@)", symbol, wrapper);
+    
+    // Create request for OtherDataSource via DownloadManager
+    [self.downloadManager executeRequest:DataRequestTypeZacksCharts
+                              parameters:parameters
+                              completion:^(id result, DataSourceType usedSource, NSError *error) {
+        
+        if (error) {
+            NSLog(@"❌ DataManager: Zacks request failed: %@", error.localizedDescription);
+            if (completion) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(nil, error);
+                });
+            }
+            return;
+        }
+        
+        // OtherDataSource should return NSDictionary with Zacks chart data
+        if ([result isKindOfClass:[NSDictionary class]]) {
+            NSLog(@"✅ DataManager: Received Zacks data for %@", symbol);
+            if (completion) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion((NSDictionary *)result, nil);
+                });
+            }
+        } else {
+            NSError *formatError = [NSError errorWithDomain:@"DataManager"
+                                                       code:500
+                                                   userInfo:@{NSLocalizedDescriptionKey: @"Invalid Zacks data format"}];
+            if (completion) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(nil, formatError);
+                });
+            }
+        }
+    }];
+}
+
 @end

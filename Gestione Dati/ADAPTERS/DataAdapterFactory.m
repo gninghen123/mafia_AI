@@ -1,20 +1,23 @@
 // DataAdapterFactory.m
-// Fixed implementation with correct DataSourceType values
+// Updated implementation with OtherDataAdapter
 
 #import "DataAdapterFactory.h"
 #import "SchwabDataAdapter.h"
 #import "WebullDataAdapter.h"
+#import "OtherDataAdapter.h"
 
 @implementation DataAdapterFactory
-
 
 + (id<DataSourceAdapter>)adapterForDataSource:(DataSourceType)sourceType {
     switch (sourceType) {
         case DataSourceTypeSchwab:
             return [[SchwabDataAdapter alloc] init];
             
-        case DataSourceTypeWebull:  // FIXED: Handle Webull correctly
+        case DataSourceTypeWebull:
             return [[WebullDataAdapter alloc] init];
+            
+        case DataSourceTypeOther:  // NUOVO: OtherDataSource adapter
+            return [[OtherDataAdapter alloc] init];
             
         case DataSourceTypeCustom:
             // Keep for any actual custom implementations
@@ -25,4 +28,5 @@
             return nil;
     }
 }
+
 @end

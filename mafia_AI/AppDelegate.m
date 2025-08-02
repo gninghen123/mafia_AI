@@ -1,22 +1,14 @@
-//
-//  AppDelegate.m
-//  trading app
-//
-//  Created by fabio gattone on 16/07/25.
-//
-
 #import "AppDelegate.h"
 #import "MainWindowController.h"
 #import "DownloadManager.h"
 #import "SchwabDataSource.h"
 #import "WebullDataSource.h"
+#import "OtherDataSource.h"      // NUOVO: Import per OtherDataSource
 #import "DataHub.h"
 #import "ClaudeDataSource.h"
 
-
 @interface AppDelegate ()
 @property (nonatomic, strong) MainWindowController *mainWindowController;
-
 @end
 
 @implementation AppDelegate
@@ -43,25 +35,36 @@
          [self autoConnectToSchwab];
      });
     [self setupClaudeDataSource];
-
 }
 
 - (void)registerDataSources {
     DownloadManager *downloadManager = [DownloadManager sharedManager];
     
-    // Registra Schwab data source
+    // Registra Schwab data source (priorità 1 - alta)
     SchwabDataSource *schwabSource = [[SchwabDataSource alloc] init];
     [downloadManager registerDataSource:schwabSource
-                               withType:DataSourceTypeSchwab
-                               priority:1];
+                                withType:DataSourceTypeSchwab
+                                priority:1];
     
-    // Registra Webull data source - FIXED: Use correct type
+    // Registra Webull data source (priorità 50 - media)
     WebullDataSource *webullSource = [[WebullDataSource alloc] init];
     [downloadManager registerDataSource:webullSource
-                               withType:DataSourceTypeWebull  // FIXED: Use correct type
-                               priority:2];  // Priority più bassa di Schwab
+                                withType:DataSourceTypeWebull
+                                priority:50];
     
-    NSLog(@"AppDelegate: Registered Schwab (priority 1) and Webull (priority 2) data sources");
+    // NUOVO: Registra Other data source (priorità 100 - bassa, come fallback)
+    OtherDataSource *otherSource = [[OtherDataSource alloc] init];
+    [downloadManager registerDataSource:otherSource
+                                withType:DataSourceTypeOther
+                                priority:100];
+    
+    // Registra Claude data source (priorità 200 - molto bassa, solo per AI)
+    ClaudeDataSource *claudeSource = [ClaudeDataSource sharedInstance];
+    [downloadManager registerDataSource:claudeSource
+                                withType:DataSourceTypeClaude
+                                priority:200];
+    
+    NSLog(@"AppDelegate: Registered all data sources (Schwab, Webull, Other, Claude)");
 }
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification {

@@ -15,6 +15,7 @@
 #import "GeneralMarketWidget.h"
 #import "ConnectionsWidget.h"
 #import "SymbolDataBase/SymbolDataBaseWidget.h"
+#import "SeasonalChartWidget.h"
 
 @interface WidgetTypeManager ()
 @property (nonatomic, strong) NSDictionary<NSString *, NSArray<NSString *> *> *widgetCategories;
@@ -53,6 +54,8 @@
             @"Market Depth",
             @"Volume Profile",
             @"Heatmap"
+            @"Seasonal Chart",        // NUOVO: Aggiunto SeasonalChart
+
         ],
         @"Trading": @[
             @"Order Entry",
@@ -114,6 +117,7 @@
     typeToClass[@"Heatmap"] = [CHChartWidget class];
     typeToClass[@"Alerts"] = [AlertWidget class];
     typeToClass[@"Alert"] = [AlertWidget class];
+    typeToClass[@"Seasonal Chart"] = [SeasonalChartWidget class];
 
     // Map all other types to BaseWidget for now
     for (NSArray *types in self.widgetCategories.allValues) {
@@ -138,7 +142,8 @@
         @"MultiChart Widget": @"square.grid.3x3",
         @"Connections": @"link",
         @"SymbolDatabase":@"tray.2",
-        
+        @"Seasonal Chart": @"chart.bar.xaxis",
+
         @"Order Entry": @"plus.square",
         @"Order Book": @"book",
         @"Positions": @"briefcase",

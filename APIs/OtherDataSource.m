@@ -757,20 +757,14 @@ static NSString *const kStockCatalystURL = @"https://www.thestockcatalyst.com/NY
     NSString *urlString = [NSString stringWithFormat:@"%@?ticker=%@&wrapper=%@",
                           kZacksChartURL, symbol, wrapper];
     
-    [self executeGenericRequest:urlString completion:^(id response, NSError *error) {
+    // Usa il nuovo metodo per Zacks
+    [self executeZacksRequest:urlString completion:^(id response, NSError *error) {
         if (error) {
             if (completion) completion(nil, error);
             return;
         }
         
-        NSDictionary *data = response;
-        if ([response isKindOfClass:[NSDictionary class]]) {
-            data = response;
-        } else {
-            data = @{@"raw_data": response};
-        }
-        
-        if (completion) completion(data, nil);
+        if (completion) completion(response, nil);
     }];
 }
 
@@ -895,6 +889,166 @@ static NSString *const kStockCatalystURL = @"https://www.thestockcatalyst.com/NY
             if (completion) completion(jsonResponse, nil);
         }
     }] resume];
+}
+
+- (void)executeZacksRequest:(NSString *)urlString
+                 completion:(void (^)(id response, NSError *error))completion {
+    
+    NSLog(@"🔍 OtherDataSource: Making Zacks request to: %@", urlString);
+
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        NSError *err = nil;
+        NSString *responseString = [NSString stringWithContentsOfURL:[NSURL URLWithString:urlString]
+                                                            encoding:NSUTF8StringEncoding
+                                                               error:&err];
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (err) {
+                NSLog(@"❌ Zacks request error: %@", err.localizedDescription);
+                if (completion) completion(nil, err);
+                return;
+            }
+
+            if (!responseString) {
+                NSError *encodingError = [NSError errorWithDomain:@"OtherDataSource"
+                                                             code:500
+                                                         userInfo:@{NSLocalizedDescriptionKey: @"Failed to decode response"}];
+                NSLog(@"❌ Zacks encoding error");
+                if (completion) completion(nil, encodingError);
+                return;
+            }
+
+            NSLog(@"🔍 Zacks raw response (first 200 chars): %@", [responseString substringToIndex:MIN(200, responseString.length)]);
+            
+            // Try to parse as JSON
+            NSData *data = [responseString dataUsingEncoding:NSUTF8StringEncoding];
+            NSError *jsonError = nil;
+            id jsonResponse = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
+            
+            if (!jsonError && jsonResponse) {
+                NSLog(@"✅ Zacks response parsed as JSON successfully");
+                if (completion) completion(jsonResponse, nil);
+                return;
+            }
+
+            NSLog(@"⚠️ Zacks JSON parsing failed: %@", jsonError.localizedDescription);
+            NSLog(@"Trying to extract JSON from JSONP/JavaScript...");
+            
+            NSDictionary *extractedJSON = [self extractJSONFromZacksResponse:responseString];
+            if (extractedJSON) {
+                NSLog(@"✅ Zacks JSON extracted from JSONP/JavaScript");
+                if (completion) completion(extractedJSON, nil);
+            } else {
+                NSLog(@"❌ Failed to extract JSON from Zacks response");
+                NSError *parseError = [NSError errorWithDomain:@"OtherDataSource"
+                                                          code:500
+                                                      userInfo:@{NSLocalizedDescriptionKey: @"Failed to parse Zacks response"}];
+                if (completion) completion(nil, parseError);
+            }
+        });
+    });
+}
+// Metodo per estrarre JSON da JSONP o JavaScript - VERSIONE MIGLIORATA
+- (NSDictionary *)extractJSONFromZacksResponse:(NSString *)responseString {
+    if (!responseString || responseString.length == 0) return nil;
+    
+    NSLog(@"🔍 Full response length: %lu", (unsigned long)responseString.length);
+    
+    // Prima cerca direttamente il pattern del JSON che hai mostrato
+    // Pattern: {"revenue":{"06\/30\/25":"N\/A",...}}
+    
+    // Trova l'inizio del JSON con chiave specifica (revenue, eps_diluted, etc)
+    NSRange jsonStart = [responseString rangeOfString:@"{\""];
+    if (jsonStart.location == NSNotFound) {
+        NSLog(@"❌ No JSON start found");
+        return nil;
+    }
+    
+    // Trova la fine del JSON - cerca l'ultima parentesi graffa
+    NSString *fromStart = [responseString substringFromIndex:jsonStart.location];
+    NSRange jsonEnd = [fromStart rangeOfString:@"}}" options:NSBackwardsSearch];
+    
+    if (jsonEnd.location == NSNotFound) {
+        // Prova con una sola parentesi graffa
+        jsonEnd = [fromStart rangeOfString:@"}" options:NSBackwardsSearch];
+        if (jsonEnd.location == NSNotFound) {
+            NSLog(@"❌ No JSON end found");
+            return nil;
+        }
+    }
+    
+    // Estrai il JSON
+    NSString *jsonString = [fromStart substringToIndex:jsonEnd.location + jsonEnd.length];
+    
+    NSLog(@"🔍 Extracted JSON (first 200 chars): %@", [jsonString substringToIndex:MIN(200, jsonString.length)]);
+    
+    // Pulisci gli escape characters
+    jsonString = [jsonString stringByReplacingOccurrencesOfString:@"\\/" withString:@"/"];
+    
+    return [self parseJSONString:jsonString];
+}
+
+// Helper per parsing JSON string - VERSIONE MIGLIORATA
+- (NSDictionary *)parseJSONString:(NSString *)jsonString {
+    if (!jsonString || jsonString.length == 0) return nil;
+    
+    NSLog(@"🔍 Attempting to parse JSON (length: %lu)", (unsigned long)jsonString.length);
+    
+    NSData *jsonData = [jsonString dataUsingEncoding:NSUTF8StringEncoding];
+    if (!jsonData) {
+        NSLog(@"❌ Failed to convert string to data");
+        return nil;
+    }
+    
+    NSError *error;
+    id jsonObject = [NSJSONSerialization JSONObjectWithData:jsonData
+                                                    options:NSJSONReadingAllowFragments
+                                                      error:&error];
+    
+    if (error) {
+        NSLog(@"❌ JSON parsing error: %@", error.localizedDescription);
+        
+        // Debug: mostra caratteri problematici
+        NSLog(@"JSON string preview: %@", [jsonString substringToIndex:MIN(500, jsonString.length)]);
+        
+        // Prova a pulire ulteriormente il JSON
+        NSString *cleanedJSON = [self cleanZacksJSON:jsonString];
+        if (cleanedJSON && ![cleanedJSON isEqualToString:jsonString]) {
+            NSLog(@"🔧 Trying with cleaned JSON...");
+            return [self parseJSONString:cleanedJSON];
+        }
+        
+        return nil;
+    }
+    
+    if ([jsonObject isKindOfClass:[NSDictionary class]]) {
+        NSLog(@"✅ Successfully parsed JSON with keys: %@", [(NSDictionary *)jsonObject allKeys]);
+        return (NSDictionary *)jsonObject;
+    }
+    
+    NSLog(@"❌ JSON object is not a dictionary: %@", [jsonObject class]);
+    return nil;
+}
+
+// Nuovo metodo per pulire il JSON di Zacks
+- (NSString *)cleanZacksJSON:(NSString *)rawJSON {
+    if (!rawJSON) return nil;
+    
+    NSString *cleaned = rawJSON;
+    
+    // Rimuovi caratteri di controllo invisibili
+    cleaned = [cleaned stringByReplacingOccurrencesOfString:@"\r" withString:@""];
+    cleaned = [cleaned stringByReplacingOccurrencesOfString:@"\n" withString:@""];
+    cleaned = [cleaned stringByReplacingOccurrencesOfString:@"\t" withString:@""];
+    
+    // Rimuovi spazi extra
+    cleaned = [cleaned stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    
+    // Fix common escape issues
+    cleaned = [cleaned stringByReplacingOccurrencesOfString:@"\\/" withString:@"/"];
+    cleaned = [cleaned stringByReplacingOccurrencesOfString:@"\\\"" withString:@"\""];
+    
+    return cleaned;
 }
 
 - (NSArray *)extractDataFromNasdaqResponse:(id)response {

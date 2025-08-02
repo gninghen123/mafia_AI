@@ -53,8 +53,8 @@
             @"Bar Chart",
             @"Market Depth",
             @"Volume Profile",
-            @"Heatmap"
-            @"Seasonal Chart",        // NUOVO: Aggiunto SeasonalChart
+            @"Heatmap",
+            @"Seasonal Chart"       // NUOVO: Aggiunto SeasonalChart
 
         ],
         @"Trading": @[
@@ -131,8 +131,8 @@
     
     // Map widget types to icons (using SF Symbols)
     self.widgetTypeToIcon = @{
-        // FIX: Icone per i chart widgets
         @"Chart Widget": @"chart.xyaxis.line",
+        @"Seasonal Chart": @"chart.bar.xaxis",
         @"Candlestick Chart": @"chart.bar",
         @"Line Chart": @"chart.line.uptrend.xyaxis",
         @"Bar Chart": @"chart.bar.xaxis",
@@ -142,7 +142,6 @@
         @"MultiChart Widget": @"square.grid.3x3",
         @"Connections": @"link",
         @"SymbolDatabase":@"tray.2",
-        @"Seasonal Chart": @"chart.bar.xaxis",
 
         @"Order Entry": @"plus.square",
         @"Order Book": @"book",

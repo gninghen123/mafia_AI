@@ -63,14 +63,24 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
     self.isMouseInChart = NO;
 }
 
-- (void)viewDidLoad {
-    [super viewDidLoad];
+
+
+#pragma mark - UI Setup
+
+- (void)setupContentView {
+    [super setupContentView];
+    
+    // CRITICO: Rimuove il placeholder di BaseWidget
+    for (NSView *subview in self.contentView.subviews) {
+        [subview removeFromSuperview];
+    }
+    
+    // Setup dell'UI del SeasonalChart
     [self setupUI];
     [self setupConstraints];
     [self setupDefaults];
 }
 
-#pragma mark - UI Setup
 
 - (void)setupUI {
     // Header controls

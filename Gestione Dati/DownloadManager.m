@@ -7,6 +7,8 @@
 #import "WebullDataSource.h"
 #import "ClaudeDataSource.h"
 #import "MarketData.h"
+#import "OtherDataSource.h"      // AGGIUNGI QUESTA RIGA
+
 
 @interface DataSourceInfo : NSObject
 @property (nonatomic, strong) id<DataSource> dataSource;
@@ -268,7 +270,15 @@
                          requestID:requestID
                         completion:completion];
             break;
-            
+        case DataRequestTypeZacksCharts:
+            [self executeZacksChartRequest:parameters
+                            withDataSource:dataSource
+                                sourceInfo:sourceInfo
+                                   sources:sources
+                               sourceIndex:index
+                                 requestID:requestID
+                                completion:completion];
+            break;
         default:
             NSLog(@"Unsupported request type: %ld", (long)requestType);
             [self executeRequestWithSources:sources
@@ -1049,5 +1059,64 @@
         }
     }
 }
+
+
+
+- (void)executeZacksChartRequest:(NSDictionary *)parameters
+                  withDataSource:(id<DataSource>)dataSource
+                      sourceInfo:(DataSourceInfo *)sourceInfo
+                         sources:(NSArray<DataSourceInfo *> *)sources
+                     sourceIndex:(NSInteger)index
+                       requestID:(NSString *)requestID
+                      completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    NSLog(@"🔍 DownloadManager: Executing Zacks chart request with %@", dataSource.sourceName);
+    
+    // CORREZIONE: Il metodo si chiama fetchZacksChartForSymbol:wrapper:completion:
+    if ([dataSource respondsToSelector:@selector(fetchZacksChartForSymbol:wrapper:completion:)]) {
+        NSString *symbol = parameters[@"symbol"];
+        NSString *wrapper = parameters[@"wrapper"];
+        
+        [(OtherDataSource*) dataSource fetchZacksChartForSymbol:symbol
+                                     wrapper:wrapper
+                                  completion:^(NSDictionary *result, NSError *error) {
+            if (!self.activeRequests[requestID]) {
+                return; // Request was cancelled
+            }
+            
+            if (error && self.fallbackEnabled && index < sources.count - 1) {
+                NSLog(@"❌ DownloadManager: Zacks request failed with %@, trying next source", dataSource.sourceName);
+                sourceInfo.failureCount++;
+                sourceInfo.lastFailureTime = [NSDate date];
+                
+                // Prova il prossimo data source
+                [self executeRequestWithSources:sources
+                                    requestType:DataRequestTypeZacksCharts
+                                     parameters:parameters
+                                    sourceIndex:index + 1
+                                      requestID:requestID
+                                     completion:completion];
+            } else {
+                NSLog(@"✅ DownloadManager: Zacks request completed");
+                [self.activeRequests removeObjectForKey:requestID];
+                if (completion) {
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        completion(result, sourceInfo.type, error);
+                    });
+                }
+            }
+        }];
+    } else {
+        NSLog(@"❌ DownloadManager: DataSource %@ doesn't support fetchZacksChartForSymbol", dataSource.sourceName);
+        // Prova il prossimo data source
+        [self executeRequestWithSources:sources
+                            requestType:DataRequestTypeZacksCharts
+                             parameters:parameters
+                            sourceIndex:index + 1
+                              requestID:requestID
+                             completion:completion];
+    }
+}
+
 
 @end

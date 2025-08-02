@@ -283,8 +283,12 @@
     
     NSArray *lastThree = [self lastNQuarters:3];
     
-    return (lastThree[1].value > lastThree[0].value &&
-            lastThree[2].value > lastThree[1].value);
+    // CAST ESPLICITO per accedere agli elementi dell'array
+    QuarterlyDataPoint *first = (QuarterlyDataPoint *)lastThree[0];
+    QuarterlyDataPoint *second = (QuarterlyDataPoint *)lastThree[1];
+    QuarterlyDataPoint *third = (QuarterlyDataPoint *)lastThree[2];
+    
+    return (second.value > first.value && third.value > second.value);
 }
 
 #pragma mark - Data Management
@@ -414,13 +418,14 @@
     
     NSInteger count = sortedValues.count;
     if (count % 2 == 0) {
-        // Even number of elements
-        QuarterlyDataPoint *mid1 = sortedValues[count/2 - 1];
-        QuarterlyDataPoint *mid2 = sortedValues[count/2];
+        // Even number of elements - CAST ESPLICITO
+        QuarterlyDataPoint *mid1 = (QuarterlyDataPoint *)sortedValues[count/2 - 1];
+        QuarterlyDataPoint *mid2 = (QuarterlyDataPoint *)sortedValues[count/2];
         return (mid1.value + mid2.value) / 2.0;
     } else {
-        // Odd number of elements
-        return ((QuarterlyDataPoint *)sortedValues[count/2]).value;
+        // Odd number of elements - CAST ESPLICITO
+        QuarterlyDataPoint *midPoint = (QuarterlyDataPoint *)sortedValues[count/2];
+        return midPoint.value;
     }
 }
 

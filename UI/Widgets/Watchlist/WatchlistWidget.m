@@ -11,6 +11,11 @@
 #import "WatchlistCellViews.h"
 #import "RuntimeModels.h"  // Add this import
 #import <QuartzCore/QuartzCore.h>
+#import <objc/runtime.h>
+
+static NSString *const kWidgetSymbolsPasteboardType = @"com.tradingapp.widget.symbols";
+
+
 @interface WatchlistWidget ()
 
 // UPDATED: Use MarketQuoteModel cache instead of NSDictionary
@@ -73,9 +78,20 @@
     [self loadWatchlists];
     [self startRefreshTimer];
     
-    [self setupContextMenu];
-}
+    
+    [self enableAsDragSource];
+      [self enableAsDropTarget];
+      
+      // Configura drag&drop specifico per la table view
+      [self setupTableViewDragDrop];
+    [self setupTableViewContextMenu];
 
+}
+- (void)setupTableViewContextMenu {
+    // Configura la table view per usare il context menu di BaseWidget
+    self.mainTableView.menu = [[NSMenu alloc] init];
+    self.mainTableView.menu.delegate = self;
+}
 #pragma mark - UI Creation
 
 - (void)createToolbar {
@@ -190,7 +206,6 @@
     [self.mainTableView registerForDraggedTypes:@[NSPasteboardTypeString]];
     
     self.scrollView.documentView = self.mainTableView;
-    [self setupContextMenu];
 
  
 }
@@ -728,36 +743,83 @@
 
 #pragma mark - NSTextFieldDelegate
 
+
 - (void)controlTextDidEndEditing:(NSNotification *)notification {
-    NSTextField *textField = notification.object;
-    NSString *newText = [textField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    NSTextField *textField = [notification object];
     
-    if (newText.length > 0) {
-        NSString *upperSymbol = newText.uppercaseString;
+    // ✅ Verifica se è il titleComboBox di BaseWidget - lascia gestire a BaseWidget
+    if (textField == self.titleComboBox) {
+        [super controlTextDidEndEditing:notification];
+        return;
+    }
+    
+    // ✅ Verifica se è un field della table view (symbol editing)
+    if ([textField.superview.superview isKindOfClass:[NSTableCellView class]]) {
+        NSTableCellView *cellView = (NSTableCellView *)textField.superview.superview;
+        NSInteger row = [self.mainTableView rowForView:cellView];
         
-        if (![self.symbols containsObject:upperSymbol]) {
-            // FIXED: Use RuntimeModel method
-            [[DataHub shared] addSymbol:upperSymbol toWatchlistModel:self.currentWatchlist];
+        if (row >= 0 && row < self.filteredSymbols.count) {
+            NSString *currentSymbol = self.filteredSymbols[row];
+            NSString *newSymbol = [textField.stringValue.uppercaseString stringByTrimmingCharactersInSet:
+                                  [NSCharacterSet whitespaceAndNewlineCharacterSet]];
             
-            // Reload data
-            [self loadSymbolsForCurrentWatchlist];
+            // Se è la riga vuota e c'è del testo, aggiungi nuovo simbolo
+            if (currentSymbol.length == 0 && newSymbol.length > 0) {
+                [self addSymbolToCurrentWatchlist:newSymbol];
+                textField.stringValue = @""; // Pulisci il campo
+                return;
+            }
             
-            // Refresh data for new symbol
-            [self refreshSymbolData];
-        } else {
-            // Symbol already exists - show alert
-            NSAlert *alert = [[NSAlert alloc] init];
-            alert.messageText = @"Symbol Already Exists";
-            alert.informativeText = [NSString stringWithFormat:@"'%@' is already in this watchlist.", upperSymbol];
-            [alert addButtonWithTitle:@"OK"];
-            [alert runModal];
-            
-            // Clear the field
-            textField.stringValue = @"";
+            // Se è un simbolo esistente modificato, sostituiscilo
+            if (currentSymbol.length > 0 && newSymbol.length > 0 && ![currentSymbol isEqualToString:newSymbol]) {
+                [self replaceSymbol:currentSymbol withSymbol:newSymbol];
+                return;
+            }
         }
     }
+    
+    // ✅ Per tutti gli altri field, comportamento standard
+    // (search field, etc.)
 }
 
+
+- (void)addSymbolToCurrentWatchlist:(NSString *)symbol {
+    if (!self.currentWatchlist || symbol.length == 0) return;
+    
+    // Verifica se il simbolo esiste già
+    NSArray *existingSymbols = [[DataHub shared] getSymbolsForWatchlistModel:self.currentWatchlist];
+    if ([existingSymbols containsObject:symbol]) {
+        NSLog(@"WatchlistWidget: Symbol %@ already exists in watchlist", symbol);
+        return;
+    }
+    
+    // Aggiungi il simbolo
+    [[DataHub shared] addSymbol:symbol toWatchlistModel:self.currentWatchlist];
+    [self loadSymbolsForCurrentWatchlist];
+    [self refreshSymbolData];
+    
+    NSLog(@"WatchlistWidget: Added symbol %@ to watchlist", symbol);
+}
+
+- (void)replaceSymbol:(NSString *)oldSymbol withSymbol:(NSString *)newSymbol {
+    if (!self.currentWatchlist || oldSymbol.length == 0 || newSymbol.length == 0) return;
+    
+    // Verifica se il nuovo simbolo esiste già
+    NSArray *existingSymbols = [[DataHub shared] getSymbolsForWatchlistModel:self.currentWatchlist];
+    if ([existingSymbols containsObject:newSymbol]) {
+        NSLog(@"WatchlistWidget: Symbol %@ already exists, cannot replace", newSymbol);
+        [self loadSymbolsForCurrentWatchlist]; // Ripristina la vista
+        return;
+    }
+    
+    // Rimuovi il vecchio e aggiungi il nuovo
+    [[DataHub shared] removeSymbol:oldSymbol fromWatchlistModel:self.currentWatchlist];
+    [[DataHub shared] addSymbol:newSymbol toWatchlistModel:self.currentWatchlist];
+    [self loadSymbolsForCurrentWatchlist];
+    [self refreshSymbolData];
+    
+    NSLog(@"WatchlistWidget: Replaced symbol %@ with %@", oldSymbol, newSymbol);
+}
 #pragma mark - Actions
 
 - (void)watchlistChanged:(id)sender {
@@ -989,7 +1051,7 @@
 }
 
 #pragma mark - Context Menu
-
+/*
 - (void)setupContextMenu {
     // Crea il menu contestuale e assegnalo alla table view
     self.mainTableView.menu = [self createContextMenuForTableView];
@@ -1090,6 +1152,7 @@
         [menu addItem:detailsItem];
     }
 }
+ */
 
 - (NSMenu *)createChainColorSubmenuForSymbols:(NSArray<NSString *> *)symbols isSingle:(BOOL)isSingle {
     NSMenu *submenu = [[NSMenu alloc] init];
@@ -1355,11 +1418,13 @@
     if ([action isEqualToString:@"setSymbols"]) {
         NSArray *symbols = update[@"symbols"];
         if (symbols.count > 0) {
-            [self handleSymbolsFromChain:symbols fromWidget:sender];
+            // NUOVO: Solo highlight/sync, NON aggiungere alla watchlist
+            [self highlightSymbolsFromChain:symbols fromWidget:sender];
         }
     }
 }
 
+/*
 - (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
     if (!self.currentWatchlist) {
         NSLog(@"WatchlistWidget: No active watchlist to receive symbols");
@@ -1397,7 +1462,67 @@
         NSLog(@"WatchlistWidget: All symbols already exist in watchlist");
     }
 }
+ */
+- (void)highlightSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
+    NSLog(@"WatchlistWidget: Received %lu symbols from chain for highlighting", (unsigned long)symbols.count);
+    
+    // Trova i simboli che sono già nella watchlist corrente per evidenziarli
+    NSArray *existingSymbols = [[DataHub shared] getSymbolsForWatchlistModel:self.currentWatchlist];
+    NSMutableArray *symbolsToHighlight = [NSMutableArray array];
+    
+    for (NSString *symbol in symbols) {
+        if ([existingSymbols containsObject:symbol]) {
+            [symbolsToHighlight addObject:symbol];
+        }
+    }
+    
+    if (symbolsToHighlight.count > 0) {
+        // Evidenzia i simboli nella table view
+        [self highlightSymbolsInTable:symbolsToHighlight];
+        
+        // Mostra feedback che indica la sincronizzazione (NON aggiunta)
+        NSString *senderType = NSStringFromClass([sender class]);
+        NSString *message = symbolsToHighlight.count == 1 ?
+            [NSString stringWithFormat:@"📍 %@ (from %@)", symbolsToHighlight[0], senderType] :
+            [NSString stringWithFormat:@"📍 %lu symbols highlighted", (unsigned long)symbolsToHighlight.count];
+        [self showTemporaryMessage:message];
+    } else {
+        // Nessun simbolo trovato nella watchlist corrente
+        NSString *senderType = NSStringFromClass([sender class]);
+        NSString *message = [NSString stringWithFormat:@"👁️ Viewing %@ (not in this watchlist)", symbols[0]];
+        [self showTemporaryMessage:message];
+    }
+    
+    NSLog(@"WatchlistWidget: Highlighted %lu symbols from %@ chain",
+          (unsigned long)symbolsToHighlight.count, NSStringFromClass([sender class]));
+}
 
+// NUOVO: Metodo per evidenziare simboli specifici nella table view
+- (void)highlightSymbolsInTable:(NSArray<NSString *> *)symbols {
+    // Trova gli indici dei simboli da evidenziare
+    NSMutableIndexSet *rowsToHighlight = [NSMutableIndexSet indexSet];
+    
+    for (NSInteger i = 0; i < self.filteredSymbols.count; i++) {
+        NSString *symbol = self.filteredSymbols[i];
+        if ([symbols containsObject:symbol]) {
+            [rowsToHighlight addIndex:i];
+        }
+    }
+    
+    if (rowsToHighlight.count > 0) {
+        // Seleziona e scrolla ai simboli evidenziati
+        [self.mainTableView selectRowIndexes:rowsToHighlight byExtendingSelection:NO];
+        
+        // Scrolla al primo simbolo selezionato
+        NSInteger firstRow = rowsToHighlight.firstIndex;
+        [self.mainTableView scrollRowToVisible:firstRow];
+        
+        // Rimuovi la selezione dopo 2 secondi per un effetto di "flash"
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self.mainTableView deselectAll:nil];
+        });
+    }
+}
 #pragma mark - Context Menu Helper Methods
 
 - (BOOL)hasValidSymbolSelection {
@@ -1537,4 +1662,801 @@
            fabs(rgb1.blueComponent - rgb2.blueComponent) < tolerance;
 }
 
+
+/*
+
+#pragma mark - Drag & Drop Setup
+
+- (void)setupTableViewDragDrop {
+    // Registra la table view per drag&drop interno
+    [self.mainTableView registerForDraggedTypes:@[kWidgetSymbolsPasteboardType, NSPasteboardTypeString]];
+    
+    // Abilita drag from table view
+    [self.mainTableView setDraggingSourceOperationMask:NSDragOperationCopy | NSDragOperationMove forLocal:NO];
+    [self.mainTableView setDraggingSourceOperationMask:NSDragOperationCopy | NSDragOperationMove forLocal:YES];
+}
+
+#pragma mark - Drag Source Implementation (Override BaseWidget)
+
+- (NSArray *)draggableData {
+    // Ritorna i simboli selezionati nella table view
+    NSIndexSet *selectedRows = self.mainTableView.selectedRowIndexes;
+    if (selectedRows.count == 0) {
+        // Se nessuna selezione, ritorna il simbolo sotto il mouse (se c'è)
+        NSPoint mouseLocation = [self.mainTableView convertPoint:self.view.window.mouseLocationOutsideOfEventStream fromView:nil];
+        NSInteger rowAtMouse = [self.mainTableView rowAtPoint:mouseLocation];
+        if (rowAtMouse >= 0 && rowAtMouse < self.filteredSymbols.count) {
+            NSString *symbol = self.filteredSymbols[rowAtMouse];
+            if (symbol.length > 0) {
+                return @[symbol];
+            }
+        }
+        return @[];
+    }
+    
+    // Raccoglie simboli selezionati (escludendo righe vuote)
+    NSMutableArray *selectedSymbols = [NSMutableArray array];
+    [selectedRows enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL *stop) {
+        if (idx < self.filteredSymbols.count) {
+            NSString *symbol = self.filteredSymbols[idx];
+            if (symbol.length > 0) { // Escludi righe vuote
+                [selectedSymbols addObject:symbol];
+            }
+        }
+    }];
+    
+    return [selectedSymbols copy];
+}
+
+- (NSImage *)dragImageForData:(NSArray *)data {
+    if (data.count == 0) return nil;
+    
+    // Crea un'immagine personalizzata per i simboli trascinati
+    NSString *text;
+    if (data.count == 1) {
+        text = data[0];
+    } else {
+        text = [NSString stringWithFormat:@"%ld symbols", (long)data.count];
+    }
+    
+    // Attributi del testo
+    NSDictionary *attributes = @{
+        NSFontAttributeName: [NSFont boldSystemFontOfSize:14],
+        NSForegroundColorAttributeName: [NSColor labelColor],
+        NSStrokeColorAttributeName: [NSColor controlBackgroundColor],
+        NSStrokeWidthAttributeName: @(-3.0)
+    };
+    
+    NSSize textSize = [text sizeWithAttributes:attributes];
+    NSSize imageSize = NSMakeSize(textSize.width + 20, textSize.height + 16);
+    
+    NSImage *image = [[NSImage alloc] initWithSize:imageSize];
+    [image lockFocus];
+    
+    // Background con angoli arrotondati
+    NSBezierPath *backgroundPath = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(2, 2, imageSize.width - 4, imageSize.height - 4)
+                                                                   xRadius:8
+                                                                   yRadius:8];
+    [[NSColor controlAccentColor] setFill];
+    [backgroundPath fill];
+    
+    // Border
+    [[NSColor tertiaryLabelColor] setStroke];
+    backgroundPath.lineWidth = 1.0;
+    [backgroundPath stroke];
+    
+    // Testo
+    NSPoint textPoint = NSMakePoint((imageSize.width - textSize.width) / 2,
+                                   (imageSize.height - textSize.height) / 2);
+    [text drawAtPoint:textPoint withAttributes:attributes];
+    
+    [image unlockFocus];
+    return image;
+}
+
+- (NSDragOperation)draggingSourceOperationMaskForLocal:(BOOL)isLocal {
+    return NSDragOperationCopy; // Simboli si copiano sempre, non si spostano
+}
+
+#pragma mark - Drop Target Implementation (Override BaseWidget)
+
+- (BOOL)canAcceptDraggedData:(id)data operation:(NSDragOperation)operation {
+    // Accetta array di simboli validi
+    if ([data isKindOfClass:[NSArray class]]) {
+        NSArray *symbols = (NSArray *)data;
+        
+        // Verifica che siano stringhe non vuote
+        for (id item in symbols) {
+            if (![item isKindOfClass:[NSString class]] ||
+                [(NSString *)item length] == 0) {
+                return NO;
+            }
+        }
+        
+        // Accetta solo se abbiamo una watchlist attiva
+        return self.currentWatchlist != nil;
+    }
+    
+    return NO;
+}
+
+- (BOOL)handleDroppedData:(id)data operation:(NSDragOperation)operation {
+    if (![data isKindOfClass:[NSArray class]] || !self.currentWatchlist) {
+        return NO;
+    }
+    
+    NSArray *symbols = (NSArray *)data;
+    NSMutableArray *addedSymbols = [NSMutableArray array];
+    NSMutableArray *duplicateSymbols = [NSMutableArray array];
+    
+    // Ottieni simboli esistenti per verificare duplicati
+    NSArray *existingSymbols = [[DataHub shared] getSymbolsForWatchlistModel:self.currentWatchlist];
+    
+    for (NSString *symbol in symbols) {
+        NSString *cleanSymbol = [symbol.uppercaseString stringByTrimmingCharactersInSet:
+                                [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        
+        if (cleanSymbol.length == 0) continue;
+        
+        if ([existingSymbols containsObject:cleanSymbol]) {
+            [duplicateSymbols addObject:cleanSymbol];
+        } else {
+            [[DataHub shared] addSymbol:cleanSymbol toWatchlistModel:self.currentWatchlist];
+            [addedSymbols addObject:cleanSymbol];
+        }
+    }
+    
+    if (addedSymbols.count > 0) {
+        [self loadSymbolsForCurrentWatchlist];
+        [self refreshSymbolData];
+        
+        // Messaggio di feedback
+        NSString *message;
+        if (duplicateSymbols.count > 0) {
+            message = [NSString stringWithFormat:@"Added %ld symbols (%ld duplicates ignored)",
+                      (long)addedSymbols.count, (long)duplicateSymbols.count];
+        } else {
+            message = [NSString stringWithFormat:@"Added %ld symbols", (long)addedSymbols.count];
+        }
+        [self showTemporaryMessage:message];
+        
+        return YES;
+    } else if (duplicateSymbols.count > 0) {
+        [self showTemporaryMessage:@"All symbols already in watchlist"];
+        return YES;
+    }
+    
+    return NO;
+}
+
+- (NSDragOperation)draggingUpdatedForData:(id)data {
+    // Mostra sempre operazione di copia per simboli
+    return NSDragOperationCopy;
+}
+
+#pragma mark - Table View Drag & Drop Support
+
+// Aggiungi supporto per drag da righe specifiche della table view
+- (void)tableView:(NSTableView *)tableView
+draggingSession:(NSDraggingSession *)session
+willBeginAtPoint:(NSPoint)screenPoint
+         forRowIndexes:(NSIndexSet *)rowIndexes {
+    
+    // Raccoglie simboli dalle righe specifiche
+    NSMutableArray *draggedSymbols = [NSMutableArray array];
+    [rowIndexes enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL *stop) {
+        if (idx < self.filteredSymbols.count) {
+            NSString *symbol = self.filteredSymbols[idx];
+            if (symbol.length > 0) {
+                [draggedSymbols addObject:symbol];
+            }
+        }
+    }];
+    
+    if (draggedSymbols.count > 0) {
+        // Store dragged symbols for the session
+        objc_setAssociatedObject(session, "draggedSymbols", draggedSymbols, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        
+        // Callback
+        if (self.onDragBegan) {
+            self.onDragBegan(self, draggedSymbols);
+        }
+    }
+}
+
+- (void)tableView:(NSTableView *)tableView
+draggingSession:(NSDraggingSession *)session
+    endedAtPoint:(NSPoint)screenPoint
+       operation:(NSDragOperation)operation {
+    
+    NSArray *draggedSymbols = objc_getAssociatedObject(session, "draggedSymbols");
+    
+    // Callback
+    if (self.onDragEnded) {
+        self.onDragEnded(self, operation != NSDragOperationNone);
+    }
+    
+    // Log per debug
+    if (draggedSymbols.count > 0) {
+        NSLog(@"WatchlistWidget: Drag ended for %ld symbols, operation: %ld",
+              (long)draggedSymbols.count, (long)operation);
+    }
+}
+
+#pragma mark - Enhanced Visual Feedback
+
+- (void)updateDragVisualFeedback {
+    [super updateDragVisualFeedback]; // Chiama il comportamento base
+    
+    // Feedback aggiuntivo specifico per watchlist
+    if (self.isDragging) {
+        // Evidenzia le righe selezionate durante il drag
+        [self.mainTableView.selectedRowIndexes enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL *stop) {
+            NSTableRowView *rowView = [self.mainTableView rowViewAtRow:idx makeIfNecessary:NO];
+            if (rowView) {
+                rowView.alphaValue = 0.7;
+            }
+        }];
+    } else {
+        // Ripristina opacità normale
+        for (NSInteger row = 0; row < [self.mainTableView numberOfRows]; row++) {
+            NSTableRowView *rowView = [self.mainTableView rowViewAtRow:row makeIfNecessary:NO];
+            if (rowView) {
+                rowView.alphaValue = 1.0;
+            }
+        }
+    }
+}
+
+- (void)highlightAsDropTarget:(BOOL)highlight {
+    [super highlightAsDropTarget:highlight];
+    
+    // Feedback aggiuntivo per la table view
+    if (highlight) {
+        self.mainTableView.layer.backgroundColor = [[NSColor controlAccentColor] colorWithAlphaComponent:0.1].CGColor;
+    } else {
+        self.mainTableView.layer.backgroundColor = [NSColor clearColor].CGColor;
+    }
+}
+*/
+
+#pragma mark - Drag & Drop Setup
+
+- (void)setupTableViewDragDrop {
+    // Registra la table view per drag&drop interno
+    [self.mainTableView registerForDraggedTypes:@[kWidgetSymbolsPasteboardType, NSPasteboardTypeString]];
+    
+    // Abilita drag from table view
+    [self.mainTableView setDraggingSourceOperationMask:NSDragOperationCopy | NSDragOperationMove forLocal:NO];
+    [self.mainTableView setDraggingSourceOperationMask:NSDragOperationCopy | NSDragOperationMove forLocal:YES];
+}
+
+#pragma mark - Drag Source Implementation (Override BaseWidget)
+
+- (NSArray *)draggableData {
+    // Ritorna i simboli selezionati nella table view
+    NSIndexSet *selectedRows = self.mainTableView.selectedRowIndexes;
+    if (selectedRows.count == 0) {
+        // Se nessuna selezione, ritorna il simbolo sotto il mouse (se c'è)
+        NSPoint mouseLocation = [self.mainTableView convertPoint:self.view.window.mouseLocationOutsideOfEventStream fromView:nil];
+        NSInteger rowAtMouse = [self.mainTableView rowAtPoint:mouseLocation];
+        if (rowAtMouse >= 0 && rowAtMouse < self.filteredSymbols.count) {
+            NSString *symbol = self.filteredSymbols[rowAtMouse];
+            if (symbol.length > 0) {
+                return @[symbol];
+            }
+        }
+        return @[];
+    }
+    
+    // Raccoglie simboli selezionati (escludendo righe vuote)
+    NSMutableArray *selectedSymbols = [NSMutableArray array];
+    [selectedRows enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL *stop) {
+        if (idx < self.filteredSymbols.count) {
+            NSString *symbol = self.filteredSymbols[idx];
+            if (symbol.length > 0) { // Escludi righe vuote
+                [selectedSymbols addObject:symbol];
+            }
+        }
+    }];
+    
+    return [selectedSymbols copy];
+}
+
+- (NSImage *)dragImageForData:(NSArray *)data {
+    if (data.count == 0) return nil;
+    
+    // Crea un'immagine personalizzata per i simboli trascinati
+    NSString *text;
+    if (data.count == 1) {
+        text = data[0];
+    } else {
+        text = [NSString stringWithFormat:@"%ld symbols", (long)data.count];
+    }
+    
+    // Attributi del testo
+    NSDictionary *attributes = @{
+        NSFontAttributeName: [NSFont boldSystemFontOfSize:14],
+        NSForegroundColorAttributeName: [NSColor labelColor],
+        NSStrokeColorAttributeName: [NSColor controlBackgroundColor],
+        NSStrokeWidthAttributeName: @(-3.0)
+    };
+    
+    NSSize textSize = [text sizeWithAttributes:attributes];
+    NSSize imageSize = NSMakeSize(textSize.width + 20, textSize.height + 16);
+    
+    NSImage *image = [[NSImage alloc] initWithSize:imageSize];
+    [image lockFocus];
+    
+    // Background con angoli arrotondati
+    NSBezierPath *backgroundPath = [NSBezierPath bezierPathWithRoundedRect:NSMakeRect(2, 2, imageSize.width - 4, imageSize.height - 4)
+                                                                   xRadius:8
+                                                                   yRadius:8];
+    [[NSColor controlAccentColor] setFill];
+    [backgroundPath fill];
+    
+    // Border
+    [[NSColor tertiaryLabelColor] setStroke];
+    backgroundPath.lineWidth = 1.0;
+    [backgroundPath stroke];
+    
+    // Testo
+    NSPoint textPoint = NSMakePoint((imageSize.width - textSize.width) / 2,
+                                   (imageSize.height - textSize.height) / 2);
+    [text drawAtPoint:textPoint withAttributes:attributes];
+    
+    [image unlockFocus];
+    return image;
+}
+
+- (NSDragOperation)draggingSourceOperationMaskForLocal:(BOOL)isLocal {
+    return NSDragOperationCopy; // Simboli si copiano sempre, non si spostano
+}
+
+#pragma mark - Drop Target Implementation (Override BaseWidget)
+
+- (BOOL)canAcceptDraggedData:(id)data operation:(NSDragOperation)operation {
+    // Accetta array di simboli validi
+    if ([data isKindOfClass:[NSArray class]]) {
+        NSArray *symbols = (NSArray *)data;
+        
+        // Verifica che siano stringhe non vuote
+        for (id item in symbols) {
+            if (![item isKindOfClass:[NSString class]] ||
+                [(NSString *)item length] == 0) {
+                return NO;
+            }
+        }
+        
+        // Accetta solo se abbiamo una watchlist attiva
+        return self.currentWatchlist != nil;
+    }
+    
+    return NO;
+}
+
+- (BOOL)handleDroppedData:(id)data operation:(NSDragOperation)operation {
+    if (![data isKindOfClass:[NSArray class]] || !self.currentWatchlist) {
+        return NO;
+    }
+    
+    NSArray *symbols = (NSArray *)data;
+    NSMutableArray *addedSymbols = [NSMutableArray array];
+    NSMutableArray *duplicateSymbols = [NSMutableArray array];
+    
+    // Ottieni simboli esistenti per verificare duplicati
+    NSArray *existingSymbols = [[DataHub shared] getSymbolsForWatchlistModel:self.currentWatchlist];
+    
+    for (NSString *symbol in symbols) {
+        NSString *cleanSymbol = [symbol.uppercaseString stringByTrimmingCharactersInSet:
+                                [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        
+        if (cleanSymbol.length == 0) continue;
+        
+        if ([existingSymbols containsObject:cleanSymbol]) {
+            [duplicateSymbols addObject:cleanSymbol];
+        } else {
+            [[DataHub shared] addSymbol:cleanSymbol toWatchlistModel:self.currentWatchlist];
+            [addedSymbols addObject:cleanSymbol];
+        }
+    }
+    
+    if (addedSymbols.count > 0) {
+        [self loadSymbolsForCurrentWatchlist];
+        [self refreshSymbolData];
+        
+        // Messaggio di feedback
+        NSString *message;
+        if (duplicateSymbols.count > 0) {
+            message = [NSString stringWithFormat:@"Added %ld symbols (%ld duplicates ignored)",
+                      (long)addedSymbols.count, (long)duplicateSymbols.count];
+        } else {
+            message = [NSString stringWithFormat:@"Added %ld symbols", (long)addedSymbols.count];
+        }
+        [self showTemporaryMessage:message];
+        
+        return YES;
+    } else if (duplicateSymbols.count > 0) {
+        [self showTemporaryMessage:@"All symbols already in watchlist"];
+        return YES;
+    }
+    
+    return NO;
+}
+
+- (NSDragOperation)draggingUpdatedForData:(id)data {
+    // Mostra sempre operazione di copia per simboli
+    return NSDragOperationCopy;
+}
+
+// Aggiungi supporto per drag da righe specifiche della table view
+- (BOOL)tableView:(NSTableView *)tableView writeRowsWithIndexes:(NSIndexSet *)rowIndexes toPasteboard:(NSPasteboard *)pasteboard {
+    // Raccoglie simboli dalle righe specifiche
+    NSMutableArray *draggedSymbols = [NSMutableArray array];
+    [rowIndexes enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL *stop) {
+        if (idx < self.filteredSymbols.count) {
+            NSString *symbol = self.filteredSymbols[idx];
+            if (symbol.length > 0) {
+                [draggedSymbols addObject:symbol];
+            }
+        }
+    }];
+    
+    if (draggedSymbols.count > 0) {
+        // Prepara pasteboard
+        [pasteboard clearContents];
+        NSData *draggedData = [NSJSONSerialization dataWithJSONObject:draggedSymbols options:0 error:nil];
+        [pasteboard setData:draggedData forType:kWidgetSymbolsPasteboardType];
+        
+        // Anche come testo semplice per compatibilità
+        NSString *symbolsString = [draggedSymbols componentsJoinedByString:@","];
+        [pasteboard setString:symbolsString forType:NSPasteboardTypeString];
+        
+        // Callback
+        if (self.onDragBegan) {
+            self.onDragBegan(self, draggedSymbols);
+        }
+        
+        return YES;
+    }
+    
+    return NO;
+}
+
+- (NSDragOperation)tableView:(NSTableView *)tableView validateDrop:(id<NSDraggingInfo>)info proposedRow:(NSInteger)row proposedDropOperation:(NSTableViewDropOperation)dropOperation {
+    // Accetta drop solo se abbiamo una watchlist attiva
+    if (!self.currentWatchlist) {
+        return NSDragOperationNone;
+    }
+    
+    NSPasteboard *pasteboard = info.draggingPasteboard;
+    
+    // Verifica se possiamo gestire i dati
+    NSData *data = [pasteboard dataForType:kWidgetSymbolsPasteboardType];
+    if (data) {
+        return NSDragOperationCopy;
+    }
+    
+    NSString *stringData = [pasteboard stringForType:NSPasteboardTypeString];
+    if (stringData) {
+        return NSDragOperationCopy;
+    }
+    
+    return NSDragOperationNone;
+}
+
+- (BOOL)tableView:(NSTableView *)tableView acceptDrop:(id<NSDraggingInfo>)info row:(NSInteger)row dropOperation:(NSTableViewDropOperation)dropOperation {
+    NSPasteboard *pasteboard = info.draggingPasteboard;
+    
+    // Prova formato interno
+    NSData *data = [pasteboard dataForType:kWidgetSymbolsPasteboardType];
+    if (data) {
+        NSError *error;
+        NSArray *symbols = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
+        if (symbols && !error) {
+            return [self handleDroppedData:symbols operation:info.draggingSourceOperationMask];
+        }
+    }
+    
+    // Fallback testo semplice
+    NSString *stringData = [pasteboard stringForType:NSPasteboardTypeString];
+    if (stringData) {
+        NSArray *symbols = [stringData componentsSeparatedByString:@","];
+        return [self handleDroppedData:symbols operation:info.draggingSourceOperationMask];
+    }
+    
+    return NO;
+}
+
+#pragma mark - Enhanced Visual Feedback
+
+- (void)updateDragVisualFeedback {
+    [super updateDragVisualFeedback]; // Chiama il comportamento base
+    
+    // Feedback aggiuntivo specifico per watchlist
+    if (self.isDragging) {
+        // Evidenzia le righe selezionate durante il drag
+        [self.mainTableView.selectedRowIndexes enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL *stop) {
+            NSTableRowView *rowView = [self.mainTableView rowViewAtRow:idx makeIfNecessary:NO];
+            if (rowView) {
+                rowView.alphaValue = 0.7;
+            }
+        }];
+    } else {
+        // Ripristina opacità normale
+        for (NSInteger row = 0; row < [self.mainTableView numberOfRows]; row++) {
+            NSTableRowView *rowView = [self.mainTableView rowViewAtRow:row makeIfNecessary:NO];
+            if (rowView) {
+                rowView.alphaValue = 1.0;
+            }
+        }
+    }
+}
+
+- (void)highlightAsDropTarget:(BOOL)highlight {
+    [super highlightAsDropTarget:highlight];
+    
+    // Feedback aggiuntivo per la table view
+    if (highlight) {
+        self.mainTableView.layer.backgroundColor = [[NSColor controlAccentColor] colorWithAlphaComponent:0.1].CGColor;
+    } else {
+        self.mainTableView.layer.backgroundColor = [NSColor clearColor].CGColor;
+    }
+}
+
+#pragma mark - BaseWidget Context Menu Data Source (Override)
+- (void)menuNeedsUpdate:(NSMenu *)menu {
+    // Rimuovi items esistenti
+    [menu removeAllItems];
+    
+    // Usa il menu standard di BaseWidget
+    NSMenu *standardMenu = [self createStandardContextMenu];
+    
+    // Copia tutti gli items nel menu della table view
+    for (NSMenuItem *item in standardMenu.itemArray) {
+        [menu addItem:[item copy]];
+    }
+}
+- (NSArray<NSString *> *)selectedSymbols {
+    // Ritorna simboli selezionati nella table view
+    NSIndexSet *selectedRows = self.mainTableView.selectedRowIndexes;
+    if (selectedRows.count == 0) {
+        return @[];
+    }
+    
+    NSMutableArray *selectedSymbols = [NSMutableArray array];
+    [selectedRows enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL *stop) {
+        if (idx < self.filteredSymbols.count) {
+            NSString *symbol = self.filteredSymbols[idx];
+            if (symbol.length > 0) { // Escludi righe vuote
+                [selectedSymbols addObject:symbol];
+            }
+        }
+    }];
+    
+    return [selectedSymbols copy];
+}
+
+- (NSArray<NSString *> *)contextualSymbols {
+    // Se non c'è selezione, ritorna tutti i simboli visibili nella watchlist
+    if (!self.currentWatchlist || self.filteredSymbols.count == 0) {
+        return @[];
+    }
+    
+    // Filtra simboli vuoti
+    NSMutableArray *validSymbols = [NSMutableArray array];
+    for (NSString *symbol in self.filteredSymbols) {
+        if (symbol.length > 0) {
+            [validSymbols addObject:symbol];
+        }
+    }
+    
+    return [validSymbols copy];
+}
+
+- (NSString *)contextMenuTitle {
+    NSArray<NSString *> *selected = [self selectedSymbols];
+    
+    if (selected.count > 0) {
+        if (selected.count == 1) {
+            return selected[0];
+        } else {
+            return [NSString stringWithFormat:@"Selection (%ld)", (long)selected.count];
+        }
+    } else {
+        // Fallback al nome della watchlist corrente
+        if (self.currentWatchlist && self.currentWatchlist.name) {
+            return self.currentWatchlist.name;
+        }
+        return @"Watchlist";
+    }
+}
+
+- (void)appendWidgetSpecificItemsToMenu:(NSMenu *)menu {
+    // Aggiungi items specifici per WatchlistWidget
+    
+    NSArray<NSString *> *symbols = [self selectedSymbols];
+    if (symbols.count == 0) {
+        symbols = [self contextualSymbols];
+    }
+    
+    if (symbols.count == 0) return;
+    
+    // === WATCHLIST-SPECIFIC ACTIONS ===
+    
+    // Remove from watchlist
+    if (self.currentWatchlist && symbols.count > 0) {
+        NSString *removeTitle = symbols.count == 1 ?
+            [NSString stringWithFormat:@"🗑️ Remove %@ from Watchlist", symbols[0]] :
+            [NSString stringWithFormat:@"🗑️ Remove %ld symbols from Watchlist", (long)symbols.count];
+        
+        NSMenuItem *removeItem = [[NSMenuItem alloc] initWithTitle:removeTitle
+                                                           action:@selector(removeSymbolsFromWatchlist:)
+                                                    keyEquivalent:@""];
+        removeItem.target = self;
+        removeItem.representedObject = symbols;
+        [menu addItem:removeItem];
+    }
+    
+    // Move to different watchlist
+    if (self.watchlists.count > 1) {
+        NSMenuItem *moveItem = [[NSMenuItem alloc] initWithTitle:@"📋 Move to Watchlist"
+                                                          action:nil
+                                                   keyEquivalent:@""];
+        moveItem.submenu = [self createMoveToWatchlistSubmenuForSymbols:symbols];
+        [menu addItem:moveItem];
+    }
+    
+    // Create new watchlist from selection
+    if (symbols.count > 1) {
+        NSMenuItem *createWatchlistItem = [[NSMenuItem alloc] initWithTitle:@"📝 Create Watchlist from Selection"
+                                                                     action:@selector(createWatchlistFromSelection:)
+                                                              keyEquivalent:@""];
+        createWatchlistItem.target = self;
+        createWatchlistItem.representedObject = symbols;
+        [menu addItem:createWatchlistItem];
+    }
+}
+
+#pragma mark - Watchlist-Specific Actions
+
+- (void)removeSymbolsFromWatchlist:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    NSArray<NSString *> *symbols = menuItem.representedObject;
+    
+    if (!symbols || symbols.count == 0 || !self.currentWatchlist) return;
+    
+    // Conferma se molti simboli
+    if (symbols.count > 5) {
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"Remove Symbols";
+        alert.informativeText = [NSString stringWithFormat:@"Remove %ld symbols from watchlist?", (long)symbols.count];
+        alert.alertStyle = NSAlertStyleWarning;
+        [alert addButtonWithTitle:@"Remove"];
+        [alert addButtonWithTitle:@"Cancel"];
+        
+        if ([alert runModal] != NSAlertFirstButtonReturn) {
+            return;
+        }
+    }
+    
+    // Rimuovi simboli
+    for (NSString *symbol in symbols) {
+        [[DataHub shared] removeSymbol:symbol fromWatchlistModel:self.currentWatchlist];
+    }
+    
+    [self loadSymbolsForCurrentWatchlist];
+    
+    NSString *message = symbols.count == 1 ?
+        [NSString stringWithFormat:@"Removed %@", symbols[0]] :
+        [NSString stringWithFormat:@"Removed %ld symbols", (long)symbols.count];
+    [self showTemporaryMessage:message];
+}
+
+- (NSMenu *)createMoveToWatchlistSubmenuForSymbols:(NSArray<NSString *> *)symbols {
+    NSMenu *submenu = [[NSMenu alloc] init];
+    
+    for (WatchlistModel *watchlist in self.watchlists) {
+        // Non includere la watchlist corrente
+        if ([watchlist isEqual:self.currentWatchlist]) continue;
+        
+        NSMenuItem *watchlistItem = [[NSMenuItem alloc] initWithTitle:watchlist.name
+                                                               action:@selector(moveSymbolsToWatchlist:)
+                                                        keyEquivalent:@""];
+        watchlistItem.target = self;
+        watchlistItem.representedObject = @{
+            @"symbols": symbols,
+            @"watchlist": watchlist
+        };
+        [submenu addItem:watchlistItem];
+    }
+    
+    return submenu;
+}
+
+- (void)moveSymbolsToWatchlist:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    NSDictionary *data = menuItem.representedObject;
+    NSArray<NSString *> *symbols = data[@"symbols"];
+    WatchlistModel *targetWatchlist = data[@"watchlist"];
+    
+    if (!symbols || !targetWatchlist) return;
+    
+    // Sposta simboli
+    for (NSString *symbol in symbols) {
+        [[DataHub shared] removeSymbol:symbol fromWatchlistModel:self.currentWatchlist];
+        [[DataHub shared] addSymbol:symbol toWatchlistModel:targetWatchlist];
+    }
+    
+    [self loadSymbolsForCurrentWatchlist];
+    
+    NSString *message = [NSString stringWithFormat:@"Moved %ld symbols to %@",
+                        (long)symbols.count, targetWatchlist.name];
+    [self showTemporaryMessage:message];
+}
+
+- (void)createWatchlistFromSelection:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    NSArray<NSString *> *symbols = menuItem.representedObject;
+    
+    if (symbols.count == 0) return;
+    
+    // Dialog per nome watchlist
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Create Watchlist";
+    alert.informativeText = [NSString stringWithFormat:@"Create new watchlist with %ld symbols:", (long)symbols.count];
+    [alert addButtonWithTitle:@"Create"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.placeholderString = @"Watchlist name";
+    input.stringValue = [NSString stringWithFormat:@"Selection %@",
+                        [[NSDate date] descriptionWithCalendarFormat:@"%m/%d" timeZone:nil locale:nil]];
+    alert.accessoryView = input;
+    [alert.window setInitialFirstResponder:input];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        NSString *watchlistName = [input.stringValue stringByTrimmingCharactersInSet:
+                                  [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (watchlistName.length > 0) {
+            WatchlistModel *newWatchlist = [[DataHub shared] createWatchlistWithName:watchlistName];
+            for (NSString *symbol in symbols) {
+                [[DataHub shared] addSymbol:symbol toWatchlistModel:newWatchlist];
+            }
+            
+            [self loadWatchlists];
+            
+            // Seleziona la nuova watchlist
+            NSInteger newIndex = [self.watchlists indexOfObject:newWatchlist];
+            if (newIndex != NSNotFound) {
+                [self.watchlistPopup selectItemAtIndex:newIndex];
+                self.currentWatchlist = newWatchlist;
+                [self loadSymbolsForCurrentWatchlist];
+            }
+            
+            [self showTemporaryMessage:[NSString stringWithFormat:@"Created watchlist '%@'", watchlistName]];
+        }
+    }
+}
+
+#pragma mark - Context Menu Callbacks (Override BaseWidget)
+
+- (void)onContextMenuWillShow:(BaseWidget *)widget menu:(NSMenu *)menu {
+    // Personalizzazione aggiuntiva del menu se necessaria
+    // Ad esempio, disabilitare certe opzioni in base allo stato
+}
+
+- (void)onSymbolsCopied:(BaseWidget *)widget symbols:(NSArray<NSString *> *)symbols {
+    // Feedback personalizzato per copy
+    NSString *message = symbols.count == 1 ?
+        [NSString stringWithFormat:@"Copied %@", symbols[0]] :
+        [NSString stringWithFormat:@"Copied %ld symbols", (long)symbols.count];
+    [self showTemporaryMessage:message];
+}
+
+- (void)onTagsAdded:(BaseWidget *)widget symbols:(NSArray<NSString *> *)symbols tags:(NSArray<NSString *> *)tags {
+    // Feedback personalizzato per tag
+    [self showTemporaryMessage:[NSString stringWithFormat:@"Added %ld tags to %ld symbols",
+                               (long)tags.count, (long)symbols.count]];
+}
 @end

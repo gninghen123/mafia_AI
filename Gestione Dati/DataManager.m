@@ -8,7 +8,9 @@
 #import "DataManager.h"
 #import "DownloadManager.h"
 #import "MarketData.h"
+#import "OtherDataAdapter.h"
 #import "DataAdapterFactory.h"
+#import "SeasonalDataModel.h"
 #import "DataSourceAdapter.h"
 #import "OrderBookEntry.h"
 #import "RuntimeModels.h"  // Add runtime models import
@@ -727,7 +729,7 @@
 #pragma mark - Seasonal/Zacks Data
 
 - (void)requestZacksData:(NSDictionary *)parameters
-              completion:(void (^)(NSDictionary * _Nullable data, NSError * _Nullable error))completion {
+              completion:(void (^)(SeasonalDataModel * _Nullable data, NSError * _Nullable error))completion {
     
     if (!parameters || !parameters[@"symbol"] || !parameters[@"wrapper"]) {
         NSError *error = [NSError errorWithDomain:@"DataManager"
@@ -761,25 +763,82 @@
             return;
         }
         
-        // OtherDataSource should return NSDictionary with Zacks chart data
-        if ([result isKindOfClass:[NSDictionary class]]) {
-            NSLog(@"✅ DataManager: Received Zacks data for %@", symbol);
-            if (completion) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion((NSDictionary *)result, nil);
-                });
-            }
-        } else {
+        // OtherDataSource should return NSDictionary with raw Zacks data
+        if (![result isKindOfClass:[NSDictionary class]]) {
             NSError *formatError = [NSError errorWithDomain:@"DataManager"
                                                        code:500
-                                                   userInfo:@{NSLocalizedDescriptionKey: @"Invalid Zacks data format"}];
+                                                   userInfo:@{NSLocalizedDescriptionKey: @"Invalid Zacks data format from source"}];
             if (completion) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     completion(nil, formatError);
                 });
             }
+            return;
+        }
+        
+        NSDictionary *rawData = (NSDictionary *)result;
+        NSLog(@"✅ DataManager: Received raw Zacks data for %@ with keys: %@", symbol, rawData.allKeys);
+        
+        // Get OtherDataAdapter for standardization
+        id<DataSourceAdapter> adapter = [self getAdapterForDataSource:usedSource];
+        if (!adapter) {
+            NSError *adapterError = [NSError errorWithDomain:@"DataManager"
+                                                        code:102
+                                                    userInfo:@{NSLocalizedDescriptionKey: @"No adapter found for OtherDataSource"}];
+            if (completion) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(nil, adapterError);
+                });
+            }
+            return;
+        }
+        
+        // Verify it's OtherDataAdapter and convert using its specific method
+        if (![adapter isKindOfClass:[OtherDataAdapter class]]) {
+            NSError *adapterTypeError = [NSError errorWithDomain:@"DataManager"
+                                                            code:103
+                                                        userInfo:@{NSLocalizedDescriptionKey: @"Wrong adapter type for Zacks data"}];
+            if (completion) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(nil, adapterTypeError);
+                });
+            }
+            return;
+        }
+        
+        OtherDataAdapter *otherAdapter = (OtherDataAdapter *)adapter;
+        
+        // Convert raw Zacks data to SeasonalDataModel using adapter
+        SeasonalDataModel *seasonalModel = [otherAdapter convertZacksChartToSeasonalModel:rawData
+                                                                                   symbol:symbol
+                                                                                 dataType:wrapper];
+        
+        if (!seasonalModel) {
+            NSError *conversionError = [NSError errorWithDomain:@"DataManager"
+                                                           code:104
+                                                       userInfo:@{NSLocalizedDescriptionKey: @"Failed to convert Zacks data to SeasonalDataModel"}];
+            if (completion) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(nil, conversionError);
+                });
+            }
+            return;
+        }
+        
+        NSLog(@"✅ DataManager: Successfully converted Zacks data to SeasonalDataModel for %@ (%lu quarters)",
+              symbol, (unsigned long)seasonalModel.quarters.count);
+        
+        // Return standardized SeasonalDataModel
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(seasonalModel, nil);
+            });
         }
     }];
+}
+
+- (id<DataSourceAdapter>)getAdapterForDataSource:(DataSourceType)sourceType {
+    return [DataAdapterFactory adapterForDataSource:sourceType];
 }
 
 @end

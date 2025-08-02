@@ -261,23 +261,48 @@
 }
 
 - (NSNumber *)safeNumber:(id)value {
+    NSLog(@"🔍 safeNumber input: '%@' (class: %@)", value, [value class]);
+    
     if ([value isKindOfClass:[NSNumber class]]) {
+        NSLog(@"✅ safeNumber: Already NSNumber: %@", value);
         return value;
     }
+    
     if ([value isKindOfClass:[NSString class]]) {
-        NSString *str = [(NSString *)value stringByReplacingOccurrencesOfString:@"," withString:@""];
+        NSString *str = (NSString *)value;
+        NSLog(@"🔍 safeNumber: Processing string: '%@'", str);
+        
+        // Rimuovi caratteri non numerici eccetto punto e segno meno
+        str = [str stringByReplacingOccurrencesOfString:@"," withString:@""];
         str = [str stringByReplacingOccurrencesOfString:@"$" withString:@""];
         str = [str stringByReplacingOccurrencesOfString:@"%" withString:@""];
         str = [str stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
         
-        if (str.length == 0 || [str isEqualToString:@"N/A"]) {
+        NSLog(@"🔍 safeNumber: Cleaned string: '%@'", str);
+        
+        if (str.length == 0 || [str isEqualToString:@"N/A"] || [str isEqualToString:@"--"]) {
+            NSLog(@"⚠️ safeNumber: Empty or N/A string");
             return nil;
         }
         
-        NSNumberFormatter *formatter = [[NSNumberFormatter alloc] init];
-        formatter.numberStyle = NSNumberFormatterDecimalStyle;
-        return [formatter numberFromString:str];
+        // Usa doubleValue per parsing diretto che è più robusto
+        double doubleValue = [str doubleValue];
+        
+        // doubleValue restituisce 0.0 sia per errore che per vero zero
+        // Controlliamo se la stringa inizia davvero con "0"
+        if (doubleValue == 0.0 && ![str hasPrefix:@"0"] && ![str hasPrefix:@"-0"]) {
+            NSLog(@"❌ safeNumber: Failed to parse '%@' (doubleValue returned 0 but string doesn't start with 0)", str);
+            return nil;
+        }
+        
+        NSNumber *result = @(doubleValue);
+        NSLog(@"✅ safeNumber: Successfully parsed '%@' -> %@", str, result);
+        return result;
     }
+    
+    NSLog(@"❌ safeNumber: Unsupported type: %@", [value class]);
     return nil;
 }
+
+
 @end

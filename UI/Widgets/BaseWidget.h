@@ -5,8 +5,10 @@
 
 #import <Cocoa/Cocoa.h>
 #import "TradingAppTypes.h"
+#import "TagManagementWindowController.h"
 
-@interface BaseWidget : NSViewController
+
+@interface BaseWidget : NSViewController <TagManagementDelegate>
 
 @property (nonatomic, strong) NSString *widgetType;
 @property (nonatomic, strong) NSString *widgetID;
@@ -18,6 +20,7 @@
 @property (nonatomic, strong, readonly) NSView *headerView;
 @property (nonatomic, strong, readonly) NSView *contentView;
 @property (nonatomic, strong, readonly) NSTextField *titleField;
+@property (nonatomic, strong) NSComboBox *titleComboBox;
 
 // Callbacks
 @property (nonatomic, copy) void (^onRemoveRequest)(BaseWidget *widget);
@@ -60,4 +63,98 @@
 - (CGFloat)expandedHeight;
 - (void)setupViews;
 
+#pragma mark - Drag & Drop Infrastructure
+
+// Drag & Drop State
+@property (nonatomic, assign) BOOL isDragSource;
+@property (nonatomic, assign) BOOL isDropTarget;
+@property (nonatomic, assign) BOOL isDragging;
+@property (nonatomic, assign) BOOL isHovering;
+
+// Drag & Drop Callbacks
+@property (nonatomic, copy) void (^onDragBegan)(BaseWidget *widget, id draggedData);
+@property (nonatomic, copy) void (^onDragEnded)(BaseWidget *widget, BOOL succeeded);
+@property (nonatomic, copy) void (^onDropReceived)(BaseWidget *widget, id droppedData, NSDragOperation operation);
+
+#pragma mark - Drag & Drop Core Methods
+
+// Drag Source Configuration
+- (void)enableAsDragSource;
+- (void)disableAsDragSource;
+
+// Drop Target Configuration
+- (void)enableAsDropTarget;
+- (void)disableAsDropTarget;
+
+// Drag Source Protocol (Override in subclasses)
+- (NSArray *)draggableData;                     // Data to drag from this widget
+- (NSImage *)dragImageForData:(NSArray *)data;  // Custom drag image
+- (NSDragOperation)draggingSourceOperationMaskForLocal:(BOOL)isLocal;
+
+// Drop Target Protocol (Override in subclasses)
+- (BOOL)canAcceptDraggedData:(id)data operation:(NSDragOperation)operation;
+- (BOOL)handleDroppedData:(id)data operation:(NSDragOperation)operation;
+- (NSDragOperation)draggingUpdatedForData:(id)data;
+
+// Visual Feedback Methods
+- (void)updateDragVisualFeedback;
+- (void)showDropIndicator:(BOOL)show;
+- (void)highlightAsDropTarget:(BOOL)highlight;
+
+// Drag Operation Helpers
+- (void)startDragWithData:(NSArray *)data fromEvent:(NSEvent *)event;
+- (NSString *)pasteboardTypeForDraggedData;
+
+#pragma mark - Default Drag & Drop Behavior
+
+// Generic symbol dragging (works for most widgets)
+- (NSArray *)defaultDraggableSymbols;
+- (BOOL)defaultHandleDroppedSymbols:(NSArray *)symbols operation:(NSDragOperation)operation;
+
+#pragma mark - Standard Context Menu
+
+// Context menu callbacks - Override in subclasses per personalizzare
+@property (nonatomic, copy) void (^onContextMenuWillShow)(BaseWidget *widget, NSMenu *menu);
+@property (nonatomic, copy) void (^onSymbolsCopied)(BaseWidget *widget, NSArray<NSString *> *symbols);
+@property (nonatomic, copy) void (^onTagsAdded)(BaseWidget *widget, NSArray<NSString *> *symbols, NSArray<NSString *> *tags);
+
+#pragma mark - Context Menu Core Methods
+
+// Menu creation and management
+- (NSMenu *)createStandardContextMenu;
+- (void)showContextMenuAtPoint:(NSPoint)point;
+- (void)appendWidgetSpecificItemsToMenu:(NSMenu *)menu;
+
+// Data source methods - Override in subclasses
+- (NSArray<NSString *> *)selectedSymbols;        // Simboli attualmente selezionati
+- (NSArray<NSString *> *)contextualSymbols;      // Simboli nel contesto corrente
+- (NSString *)contextMenuTitle;                  // Titolo per il menu (es. "Selection" vs "AAPL")
+
+#pragma mark - Standard Context Menu Actions
+
+// Copy operations
+- (IBAction)copySelectedSymbols:(id)sender;
+- (IBAction)copyAllSymbols:(id)sender;
+
+// Chain operations
+- (IBAction)sendToChain:(id)sender;
+- (IBAction)sendToChainWithColor:(id)sender;
+
+// Tag operations
+- (IBAction)addTagsToSelection:(id)sender;
+- (IBAction)showTagManagementPopup:(id)sender;
+
+#pragma mark - Chain Color Management
+
+// Chain color submenu creation
+- (NSMenu *)createChainColorSubmenu;
+- (NSArray<NSColor *> *)availableChainColors;
+- (NSString *)nameForChainColor:(NSColor *)color;
+
+#pragma mark - Default Implementations
+
+// Default behavior that works for most widgets
+- (void)copySymbolsToClipboard:(NSArray<NSString *> *)symbols;
+- (void)sendSymbolsToChainWithColor:(NSArray<NSString *> *)symbols color:(NSColor *)color;
+- (void)addTagsToSymbols:(NSArray<NSString *> *)symbols tags:(NSArray<NSString *> *)tags;
 @end

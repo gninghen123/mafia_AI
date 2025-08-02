@@ -5,16 +5,20 @@
 
 #import "BaseWidget.h"
 #import "WidgetTypeManager.h"
+#import "DataHub.h"
+#import "TagManagementWindowController.h"
+
 
 // Notification name for chain updates
 static NSString *const kWidgetChainUpdateNotification = @"WidgetChainUpdateNotification";
-
+static NSString *const kWidgetSymbolsPasteboardType = @"com.tradingapp.widget.symbols";
+static NSString *const kWidgetConfigurationPasteboardType = @"com.tradingapp.widget.configuration";
 // Keys for notification userInfo
 static NSString *const kChainColorKey = @"chainColor";
 static NSString *const kChainUpdateKey = @"update";
 static NSString *const kChainSenderKey = @"sender";
 
-@interface BaseWidget () <NSTextFieldDelegate, NSTextViewDelegate, NSComboBoxDataSource, NSComboBoxDelegate>
+@interface BaseWidget () <NSTextFieldDelegate, NSTextViewDelegate, NSComboBoxDataSource, NSComboBoxDelegate, NSDraggingSource, NSDraggingDestination,TagManagementDelegate>
 
 - (NSButton *)createHeaderButton:(NSString *)title action:(SEL)action;
 + (instancetype)widgetWithType:(NSString *)type
@@ -30,10 +34,14 @@ static NSString *const kChainSenderKey = @"sender";
 @property (nonatomic, strong) NSView *headerViewInternal;
 @property (nonatomic, strong) NSView *contentViewInternal;
 @property (nonatomic, strong) NSTextField *titleFieldInternal;
-@property (nonatomic, strong) NSComboBox *titleComboBox;
 @property (nonatomic, strong) NSStackView *mainStackView;
 @property (nonatomic, strong) NSArray<NSString *> *availableWidgetTypes;
 @property (nonatomic, strong) NSMenu *chainColorMenu;
+
+@property (nonatomic, strong) NSView *dropIndicatorView;
+@property (nonatomic, assign) NSPoint dragStartPoint;
+@property (nonatomic, strong) TagManagementWindowController *tagManagementController;
+
 @end
 
 @implementation BaseWidget
@@ -92,9 +100,9 @@ static NSString *const kChainSenderKey = @"sender";
     self.mainStackView.orientation = NSUserInterfaceLayoutOrientationVertical;
     self.mainStackView.spacing = 0;
     self.mainStackView.distribution = NSStackViewDistributionFill;
-
+    
     [self setupHeaderView];
-
+    
     [self.view addSubview:self.mainStackView];
     self.mainStackView.translatesAutoresizingMaskIntoConstraints = NO;
     [NSLayoutConstraint activateConstraints:@[
@@ -686,6 +694,714 @@ static NSString *const kChainSenderKey = @"sender";
 
 - (NSWindow *)parentWindow {
     return self.view.window;
+}
+
+
+#pragma mark - Drag & Drop Infrastructure
+
+- (void)enableAsDragSource {
+    self.isDragSource = YES;
+    // Aggiungi gesture recognizer per iniziare il drag
+    NSPanGestureRecognizer *panGesture = [[NSPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePanGesture:)];
+    [self.contentView addGestureRecognizer:panGesture];
+}
+
+- (void)disableAsDragSource {
+    self.isDragSource = NO;
+    // Rimuovi gesture recognizers esistenti
+    for (NSGestureRecognizer *recognizer in self.contentView.gestureRecognizers) {
+        if ([recognizer isKindOfClass:[NSPanGestureRecognizer class]]) {
+            [self.contentView removeGestureRecognizer:recognizer];
+        }
+    }
+}
+
+- (void)enableAsDropTarget {
+    self.isDropTarget = YES;
+    [self.view registerForDraggedTypes:@[kWidgetSymbolsPasteboardType, kWidgetConfigurationPasteboardType, NSPasteboardTypeString]];
+}
+
+- (void)disableAsDropTarget {
+    self.isDropTarget = NO;
+    [self.view unregisterDraggedTypes];
+}
+
+#pragma mark - Drag Source Implementation
+
+- (void)handlePanGesture:(NSPanGestureRecognizer *)gesture {
+    if (!self.isDragSource) return;
+    
+    switch (gesture.state) {
+        case NSGestureRecognizerStateBegan: {
+            self.dragStartPoint = [gesture locationInView:self.view];
+            break;
+        }
+        case NSGestureRecognizerStateChanged: {
+            NSPoint currentPoint = [gesture locationInView:self.view];
+            CGFloat distance = sqrt(pow(currentPoint.x - self.dragStartPoint.x, 2) +
+                                  pow(currentPoint.y - self.dragStartPoint.y, 2));
+            
+            // Inizia il drag dopo un movimento minimo
+            if (distance > 10.0 && !self.isDragging) {
+                [self beginDragFromPoint:self.dragStartPoint];
+            }
+            break;
+        }
+        case NSGestureRecognizerStateEnded:
+        case NSGestureRecognizerStateCancelled:
+            [self endDrag];
+            break;
+        default:
+            break;
+    }
+}
+
+- (void)beginDragFromPoint:(NSPoint)point {
+    NSArray *dragData = [self draggableData];
+    if (!dragData || dragData.count == 0) return;
+    
+    self.isDragging = YES;
+    
+    // Crea l'evento sintetico per il drag
+    NSEvent *dragEvent = [NSEvent mouseEventWithType:NSEventTypeLeftMouseDragged
+                                            location:point
+                                       modifierFlags:0
+                                           timestamp:[[NSProcessInfo processInfo] systemUptime]
+                                        windowNumber:self.view.window.windowNumber
+                                             context:nil
+                                         eventNumber:0
+                                          clickCount:1
+                                            pressure:1.0];
+    
+    [self startDragWithData:dragData fromEvent:dragEvent];
+}
+
+- (void)startDragWithData:(NSArray *)data fromEvent:(NSEvent *)event {
+    if (!data || data.count == 0) return;
+    
+    // Prepara il pasteboard
+    NSPasteboard *pasteboard = [NSPasteboard pasteboardWithName:NSDragPboard];
+    [pasteboard clearContents];
+    
+    // Aggiungi i dati nel formato appropriato
+    NSString *pasteboardType = [self pasteboardTypeForDraggedData];
+    NSData *draggedData = [NSJSONSerialization dataWithJSONObject:data options:0 error:nil];
+    [pasteboard setData:draggedData forType:pasteboardType];
+    
+    // Crea l'immagine del drag
+    NSImage *dragImage = [self dragImageForData:data];
+    if (!dragImage) {
+        dragImage = [self defaultDragImageForData:data];
+    }
+    
+    // Avvia il drag
+    NSDragOperation dragOperation = [self draggingSourceOperationMaskForLocal:YES];
+    
+    [self.view dragImage:dragImage
+                      at:event.locationInWindow
+                  offset:NSZeroSize
+                   event:event
+              pasteboard:pasteboard
+                  source:self
+               slideBack:YES];
+    
+    // Callback
+    if (self.onDragBegan) {
+        self.onDragBegan(self, data);
+    }
+}
+
+- (void)endDrag {
+    self.isDragging = NO;
+    [self updateDragVisualFeedback];
+}
+
+#pragma mark - Drop Target Implementation
+
+- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
+    if (!self.isDropTarget) return NSDragOperationNone;
+    
+    self.isHovering = YES;
+    [self updateDragVisualFeedback];
+    
+    return [self validateDrop:sender];
+}
+
+- (NSDragOperation)draggingUpdated:(id<NSDraggingInfo>)sender {
+    return [self validateDrop:sender];
+}
+
+- (void)draggingExited:(id<NSDraggingInfo>)sender {
+    self.isHovering = NO;
+    [self updateDragVisualFeedback];
+}
+
+- (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
+    self.isHovering = NO;
+    [self updateDragVisualFeedback];
+    
+    NSPasteboard *pasteboard = sender.draggingPasteboard;
+    
+    // Prova a ottenere i dati nel formato simboli
+    NSData *data = [pasteboard dataForType:kWidgetSymbolsPasteboardType];
+    if (data) {
+        NSError *error;
+        NSArray *symbols = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
+        if (symbols && !error) {
+            BOOL handled = [self handleDroppedData:symbols operation:sender.draggingSourceOperationMask];
+            
+            // Callback
+            if (self.onDropReceived) {
+                self.onDropReceived(self, symbols, sender.draggingSourceOperationMask);
+            }
+            
+            return handled;
+        }
+    }
+    
+    // Fallback per testo semplice
+    NSString *stringData = [pasteboard stringForType:NSPasteboardTypeString];
+    if (stringData) {
+        NSArray *symbols = [stringData componentsSeparatedByString:@","];
+        BOOL handled = [self handleDroppedData:symbols operation:sender.draggingSourceOperationMask];
+        
+        if (self.onDropReceived) {
+            self.onDropReceived(self, symbols, sender.draggingSourceOperationMask);
+        }
+        
+        return handled;
+    }
+    
+    return NO;
+}
+
+- (NSDragOperation)validateDrop:(id<NSDraggingInfo>)sender {
+    NSPasteboard *pasteboard = sender.draggingPasteboard;
+    
+    // Verifica se possiamo accettare i dati
+    NSData *data = [pasteboard dataForType:kWidgetSymbolsPasteboardType];
+    if (data) {
+        NSError *error;
+        NSArray *symbols = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
+        if (symbols && !error) {
+            if ([self canAcceptDraggedData:symbols operation:sender.draggingSourceOperationMask]) {
+                return [self draggingUpdatedForData:symbols];
+            }
+        }
+    }
+    
+    // Fallback per testo
+    NSString *stringData = [pasteboard stringForType:NSPasteboardTypeString];
+    if (stringData) {
+        NSArray *symbols = [stringData componentsSeparatedByString:@","];
+        if ([self canAcceptDraggedData:symbols operation:sender.draggingSourceOperationMask]) {
+            return [self draggingUpdatedForData:symbols];
+        }
+    }
+    
+    return NSDragOperationNone;
+}
+
+#pragma mark - NSDraggingSource Protocol
+
+- (void)draggingSession:(NSDraggingSession *)session endedAtPoint:(NSPoint)screenPoint operation:(NSDragOperation)operation {
+    self.isDragging = NO;
+    [self updateDragVisualFeedback];
+    
+    if (self.onDragEnded) {
+        self.onDragEnded(self, operation != NSDragOperationNone);
+    }
+}
+
+#pragma mark - Default Implementations (Override in subclasses)
+
+- (NSArray *)draggableData {
+    // Default: ritorna simboli se disponibili
+    return [self defaultDraggableSymbols];
+}
+
+- (NSImage *)dragImageForData:(NSArray *)data {
+    // Subclasses possono override per immagini personalizzate
+    return nil;
+}
+
+- (NSDragOperation)draggingSourceOperationMaskForLocal:(BOOL)isLocal {
+    return NSDragOperationCopy | NSDragOperationMove;
+}
+
+- (BOOL)canAcceptDraggedData:(id)data operation:(NSDragOperation)operation {
+    // Default: accetta array di simboli
+    return [data isKindOfClass:[NSArray class]];
+}
+
+- (BOOL)handleDroppedData:(id)data operation:(NSDragOperation)operation {
+    // Default: prova ad applicare simboli
+    if ([data isKindOfClass:[NSArray class]]) {
+        return [self defaultHandleDroppedSymbols:data operation:operation];
+    }
+    return NO;
+}
+
+- (NSDragOperation)draggingUpdatedForData:(id)data {
+    return NSDragOperationCopy;
+}
+
+#pragma mark - Visual Feedback
+
+- (void)updateDragVisualFeedback {
+    if (self.isDragging) {
+        // Mostra feedback visivo durante il drag
+        self.view.alphaValue = 0.7;
+    } else if (self.isHovering) {
+        // Highlight quando si riceve un drop
+        [self highlightAsDropTarget:YES];
+    } else {
+        // Stato normale
+        self.view.alphaValue = 1.0;
+        [self highlightAsDropTarget:NO];
+        [self showDropIndicator:NO];
+    }
+}
+
+- (void)showDropIndicator:(BOOL)show {
+    if (show && !self.dropIndicatorView) {
+        self.dropIndicatorView = [[NSView alloc] init];
+        self.dropIndicatorView.wantsLayer = YES;
+        self.dropIndicatorView.layer.backgroundColor = [NSColor systemBlueColor].CGColor;
+        self.dropIndicatorView.layer.borderColor = [NSColor systemBlueColor].CGColor;
+        self.dropIndicatorView.layer.borderWidth = 2.0;
+        self.dropIndicatorView.layer.opacity = 0.3;
+        self.dropIndicatorView.translatesAutoresizingMaskIntoConstraints = NO;
+        
+        [self.contentView addSubview:self.dropIndicatorView];
+        [NSLayoutConstraint activateConstraints:@[
+            [self.dropIndicatorView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor],
+            [self.dropIndicatorView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
+            [self.dropIndicatorView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
+            [self.dropIndicatorView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor]
+        ]];
+    } else if (!show && self.dropIndicatorView) {
+        [self.dropIndicatorView removeFromSuperview];
+        self.dropIndicatorView = nil;
+    }
+}
+
+- (void)highlightAsDropTarget:(BOOL)highlight {
+    if (highlight) {
+        self.contentView.layer.borderColor = [NSColor systemBlueColor].CGColor;
+        self.contentView.layer.borderWidth = 2.0;
+    } else {
+        self.contentView.layer.borderWidth = 0.0;
+    }
+}
+#pragma mark - Helper Methods
+
+- (NSString *)pasteboardTypeForDraggedData {
+    return kWidgetSymbolsPasteboardType;
+}
+
+- (NSImage *)defaultDragImageForData:(NSArray *)data {
+    // Crea un'immagine semplice con il numero di elementi
+    NSString *text = [NSString stringWithFormat:@"%ld items", (long)data.count];
+    
+    NSDictionary *attributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:12],
+        NSForegroundColorAttributeName: [NSColor labelColor]
+    };
+    
+    NSSize textSize = [text sizeWithAttributes:attributes];
+    NSSize imageSize = NSMakeSize(textSize.width + 10, textSize.height + 10);
+    
+    NSImage *image = [[NSImage alloc] initWithSize:imageSize];
+    [image lockFocus];
+    
+    [[NSColor controlBackgroundColor] setFill];
+    NSRectFill(NSMakeRect(0, 0, imageSize.width, imageSize.height));
+    
+    [text drawAtPoint:NSMakePoint(5, 5) withAttributes:attributes];
+    
+    [image unlockFocus];
+    return image;
+}
+
+#pragma mark - Default Behavior
+
+- (NSArray *)defaultDraggableSymbols {
+    // Subclasses should override
+    return @[];
+}
+
+- (BOOL)defaultHandleDroppedSymbols:(NSArray *)symbols operation:(NSDragOperation)operation {
+    // Default: invia simboli alla chain se attiva
+    if (self.chainActive && symbols.count > 0) {
+        [self sendSymbolsToChain:symbols];
+        return YES;
+    }
+    return NO;
+}
+
+
+
+#pragma mark - Standard Context Menu Implementation
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    
+    // Setup del context menu standard
+    [self setupStandardContextMenu];
+}
+
+- (void)setupStandardContextMenu {
+    // Aggiungi gesture recognizer per right click
+    NSClickGestureRecognizer *rightClickGesture = [[NSClickGestureRecognizer alloc]
+                                                  initWithTarget:self
+                                                  action:@selector(handleRightClick:)];
+    rightClickGesture.buttonMask = 0x2; // Right mouse button
+    [self.view addGestureRecognizer:rightClickGesture];
+}
+
+- (void)handleRightClick:(NSClickGestureRecognizer *)gesture {
+    if (gesture.state == NSGestureRecognizerStateEnded) {
+        NSPoint clickPoint = [gesture locationInView:self.view];
+        [self showContextMenuAtPoint:clickPoint];
+    }
+}
+
+- (void)showContextMenuAtPoint:(NSPoint)point {
+    NSMenu *contextMenu = [self createStandardContextMenu];
+    if (contextMenu.itemArray.count > 0) {
+        [contextMenu popUpMenuPositioningItem:nil
+                                   atLocation:point
+                                       inView:self.view];
+    }
+}
+
+- (NSMenu *)createStandardContextMenu {
+    NSMenu *menu = [[NSMenu alloc] init];
+    
+    NSArray<NSString *> *symbols = [self selectedSymbols];
+    NSArray<NSString *> *contextSymbols = [self contextualSymbols];
+    
+    // Se non ci sono simboli, non mostrare menu
+    if (symbols.count == 0 && contextSymbols.count == 0) {
+        return menu;
+    }
+    
+    // Determina quale set di simboli usare
+    NSArray<NSString *> *targetSymbols = symbols.count > 0 ? symbols : contextSymbols;
+    NSString *titleContext = [self contextMenuTitle];
+    
+    // === COPY SECTION ===
+    NSString *copyTitle = [NSString stringWithFormat:@"📋 Copy %@", titleContext];
+    NSMenuItem *copyItem = [[NSMenuItem alloc] initWithTitle:copyTitle
+                                                      action:@selector(copySelectedSymbols:)
+                                               keyEquivalent:@"c"];
+    copyItem.target = self;
+    copyItem.representedObject = targetSymbols;
+    [menu addItem:copyItem];
+    
+    // === CHAIN SECTION ===
+    [menu addItem:[NSMenuItem separatorItem]];
+    
+    NSString *chainTitle = [NSString stringWithFormat:@"🔗 Send %@ to Chain", titleContext];
+    NSMenuItem *chainItem = [[NSMenuItem alloc] initWithTitle:chainTitle
+                                                       action:@selector(sendToChain:)
+                                                keyEquivalent:@""];
+    chainItem.target = self;
+    chainItem.representedObject = targetSymbols;
+    [menu addItem:chainItem];
+    
+    // Chain color submenu
+    NSMenuItem *chainColorItem = [[NSMenuItem alloc] initWithTitle:@"🔗 Send to Specific Chain"
+                                                            action:nil
+                                                     keyEquivalent:@""];
+    chainColorItem.submenu = [self createChainColorSubmenuForSymbols:targetSymbols];
+    [menu addItem:chainColorItem];
+    
+    // === TAG SECTION ===
+    [menu addItem:[NSMenuItem separatorItem]];
+    
+    NSString *tagTitle = [NSString stringWithFormat:@"🏷️ Add Tags to %@", titleContext];
+    NSMenuItem *tagItem = [[NSMenuItem alloc] initWithTitle:tagTitle
+                                                     action:@selector(showTagManagementPopup:)
+                                              keyEquivalent:@""];
+    tagItem.target = self;
+    tagItem.representedObject = targetSymbols;
+    [menu addItem:tagItem];
+    
+    // === WIDGET-SPECIFIC SECTION ===
+    [menu addItem:[NSMenuItem separatorItem]];
+    [self appendWidgetSpecificItemsToMenu:menu];
+    
+    // Callback per personalizzazione
+    if (self.onContextMenuWillShow) {
+        self.onContextMenuWillShow(self, menu);
+    }
+    
+    return menu;
+}
+
+- (NSMenu *)createChainColorSubmenu {
+    NSMenu *submenu = [[NSMenu alloc] init];
+    
+    NSArray<NSColor *> *colors = [self availableChainColors];
+    for (NSColor *color in colors) {
+        NSString *colorName = [self nameForChainColor:color];
+        NSString *title = [NSString stringWithFormat:@"%@ %@", [self emojiForChainColor:color], colorName];
+        
+        NSMenuItem *colorItem = [[NSMenuItem alloc] initWithTitle:title
+                                                           action:@selector(sendToChainWithColor:)
+                                                    keyEquivalent:@""];
+        colorItem.target = self;
+        colorItem.representedObject = color;
+        [submenu addItem:colorItem];
+    }
+    
+    // Separatore e "New Chain"
+    [submenu addItem:[NSMenuItem separatorItem]];
+    NSMenuItem *newChainItem = [[NSMenuItem alloc] initWithTitle:@"⚪ New Chain..."
+                                                          action:@selector(createNewChain:)
+                                                   keyEquivalent:@""];
+    newChainItem.target = self;
+    [submenu addItem:newChainItem];
+    
+    return submenu;
+}
+
+#pragma mark - Default Data Source Implementations
+
+- (NSArray<NSString *> *)selectedSymbols {
+    // Default: nessuna selezione
+    // Subclasses dovrebbero override questo metodo
+    return @[];
+}
+
+- (NSArray<NSString *> *)contextualSymbols {
+    // Default: prova a ottenere dal defaultDraggableSymbols
+    return [self defaultDraggableSymbols];
+}
+
+- (NSString *)contextMenuTitle {
+    NSArray<NSString *> *selected = [self selectedSymbols];
+    NSArray<NSString *> *contextual = [self contextualSymbols];
+    
+    if (selected.count > 0) {
+        if (selected.count == 1) {
+            return selected[0];
+        } else {
+            return [NSString stringWithFormat:@"Selection (%ld)", (long)selected.count];
+        }
+    } else if (contextual.count > 0) {
+        if (contextual.count == 1) {
+            return contextual[0];
+        } else {
+            return [NSString stringWithFormat:@"Symbols (%ld)", (long)contextual.count];
+        }
+    }
+    
+    return @"Symbols";
+}
+
+- (void)appendWidgetSpecificItemsToMenu:(NSMenu *)menu {
+    // Default: nessun item specifico
+    // Subclasses possono override per aggiungere items personalizzati
+}
+
+#pragma mark - Standard Actions Implementation
+
+- (IBAction)copySelectedSymbols:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    NSArray<NSString *> *symbols = menuItem.representedObject;
+    
+    [self copySymbolsToClipboard:symbols];
+    
+    // Callback
+    if (self.onSymbolsCopied) {
+        self.onSymbolsCopied(self, symbols);
+    }
+}
+
+- (IBAction)sendToChain:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    NSArray<NSString *> *symbols = menuItem.representedObject;
+    
+    [self sendSymbolsToChain:symbols];
+}
+
+- (IBAction)sendToChainWithColor:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    NSColor *color = menuItem.representedObject;
+    
+    // Ottieni simboli dal contesto corrente
+    NSArray<NSString *> *symbols = [self selectedSymbols];
+    if (symbols.count == 0) {
+        symbols = [self contextualSymbols];
+    }
+    
+    [self sendSymbolsToChainWithColor:symbols color:color];
+}
+
+- (IBAction)showTagManagementPopup:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    NSArray<NSString *> *symbols = menuItem.representedObject;
+    
+    [self showTagManagementPopupForSymbols:symbols];
+}
+
+- (IBAction)createNewChain:(id)sender {
+    // Implementa creazione nuova chain con colore random
+    NSArray<NSColor *> *colors = [self availableChainColors];
+    NSColor *randomColor = colors[arc4random_uniform((uint32_t)colors.count)];
+    
+    NSArray<NSString *> *symbols = [self selectedSymbols];
+    if (symbols.count == 0) {
+        symbols = [self contextualSymbols];
+    }
+    
+    [self sendSymbolsToChainWithColor:symbols color:randomColor];
+}
+
+- (void)showTagManagementPopupForSymbols:(NSArray<NSString *> *)symbols {
+    if (symbols.count == 0) return;
+    
+    // Crea il controller del popup
+    self.tagManagementController = [TagManagementWindowController windowControllerForSymbols:symbols];
+    self.tagManagementController.delegate = self;
+    
+    // Mostra come sheet modal
+    [self.tagManagementController showModalForWindow:self.view.window];
+}
+
+#pragma mark - Chain Color Helpers
+
+- (NSArray<NSColor *> *)availableChainColors {
+    return @[
+        [NSColor systemRedColor],
+        [NSColor systemBlueColor],
+        [NSColor systemGreenColor],
+        [NSColor systemOrangeColor],
+        [NSColor systemPurpleColor],
+        [NSColor systemYellowColor],
+        [NSColor systemPinkColor],
+        [NSColor systemTealColor]
+    ];
+}
+
+- (NSString *)nameForChainColor:(NSColor *)color {
+    if ([color isEqual:[NSColor systemRedColor]]) return @"Red Chain";
+    if ([color isEqual:[NSColor systemBlueColor]]) return @"Blue Chain";
+    if ([color isEqual:[NSColor systemGreenColor]]) return @"Green Chain";
+    if ([color isEqual:[NSColor systemOrangeColor]]) return @"Orange Chain";
+    if ([color isEqual:[NSColor systemPurpleColor]]) return @"Purple Chain";
+    if ([color isEqual:[NSColor systemYellowColor]]) return @"Yellow Chain";
+    if ([color isEqual:[NSColor systemPinkColor]]) return @"Pink Chain";
+    if ([color isEqual:[NSColor systemTealColor]]) return @"Teal Chain";
+    return @"Custom Chain";
+}
+
+- (NSString *)emojiForChainColor:(NSColor *)color {
+    if ([color isEqual:[NSColor systemRedColor]]) return @"🔴";
+    if ([color isEqual:[NSColor systemBlueColor]]) return @"🔵";
+    if ([color isEqual:[NSColor systemGreenColor]]) return @"🟢";
+    if ([color isEqual:[NSColor systemOrangeColor]]) return @"🟠";
+    if ([color isEqual:[NSColor systemPurpleColor]]) return @"🟣";
+    if ([color isEqual:[NSColor systemYellowColor]]) return @"🟡";
+    if ([color isEqual:[NSColor systemPinkColor]]) return @"🩷";
+    if ([color isEqual:[NSColor systemTealColor]]) return @"🔷";
+    return @"⚪";
+}
+
+#pragma mark - Default Implementations
+
+- (void)copySymbolsToClipboard:(NSArray<NSString *> *)symbols {
+    if (symbols.count == 0) return;
+    
+    NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+    [pasteboard clearContents];
+    
+    // Formato testo semplice
+    NSString *symbolsText = [symbols componentsJoinedByString:@"\n"];
+    [pasteboard setString:symbolsText forType:NSPasteboardTypeString];
+    
+    // Formato JSON per altre app
+    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:symbols options:0 error:nil];
+    if (jsonData) {
+        [pasteboard setData:jsonData forType:@"com.tradingapp.symbols"];
+    }
+    
+    NSLog(@"BaseWidget: Copied %ld symbols to clipboard", (long)symbols.count);
+}
+
+- (void)sendSymbolsToChainWithColor:(NSArray<NSString *> *)symbols color:(NSColor *)color {
+    if (symbols.count == 0) return;
+    
+    // Attiva la chain con il colore scelto
+    [self setChainActive:YES withColor:color];
+    
+    // Invia simboli alla chain
+    [self broadcastUpdate:@{
+        @"action": @"setSymbols",
+        @"symbols": symbols
+    }];
+    
+    NSString *colorName = [self nameForChainColor:color];
+    NSLog(@"BaseWidget: Sent %ld symbols to %@", (long)symbols.count, colorName);
+}
+
+- (void)addTagsToSymbols:(NSArray<NSString *> *)symbols tags:(NSArray<NSString *> *)tags {
+    if (symbols.count == 0 || tags.count == 0) return;
+    
+    DataHub *dataHub = [DataHub shared];
+    
+    for (NSString *symbolName in symbols) {
+        Symbol *symbol = [dataHub getSymbolWithName:symbolName];
+        if (!symbol) {
+            symbol = [dataHub createSymbolWithName:symbolName];
+        }
+        
+        for (NSString *tag in tags) {
+            [dataHub addTag:tag toSymbol:symbol];
+        }
+    }
+    
+    // Callback
+    if (self.onTagsAdded) {
+        self.onTagsAdded(self, symbols, tags);
+    }
+    
+    NSLog(@"BaseWidget: Added %ld tags to %ld symbols", (long)tags.count, (long)symbols.count);
+}
+
+#pragma mark - TagManagementDelegate
+
+- (void)tagManagement:(TagManagementWindowController *)controller
+       didSelectTags:(NSArray<NSString *> *)tags
+          forSymbols:(NSArray<NSString *> *)symbols {
+    
+    // Applica i tag ai simboli
+    [self addTagsToSymbols:symbols tags:tags];
+    
+    // Cleanup
+    self.tagManagementController = nil;
+    
+    // Feedback visivo
+    NSString *message;
+    if (tags.count == 1 && symbols.count == 1) {
+        message = [NSString stringWithFormat:@"Added tag '%@' to %@", tags[0], symbols[0]];
+    } else if (tags.count == 1) {
+        message = [NSString stringWithFormat:@"Added tag '%@' to %ld symbols", tags[0], (long)symbols.count];
+    } else if (symbols.count == 1) {
+        message = [NSString stringWithFormat:@"Added %ld tags to %@", (long)tags.count, symbols[0]];
+    } else {
+        message = [NSString stringWithFormat:@"Added %ld tags to %ld symbols", (long)tags.count, (long)symbols.count];
+    }
+    
+    // Mostra notifica temporanea (se il widget ha questo metodo)
+    if ([self respondsToSelector:@selector(showTemporaryMessage:)]) {
+        [self performSelector:@selector(showTemporaryMessage:) withObject:message];
+    } else {
+        NSLog(@"BaseWidget: %@", message);
+    }
 }
 
 @end

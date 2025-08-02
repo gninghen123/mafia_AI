@@ -11,7 +11,7 @@
 #import <Foundation/Foundation.h>
 #import "CommonTypes.h"
 #import "RuntimeModels.h"  // Import runtime models
-
+#import "SeasonalDataModel.h"
 
 // Forward declarations - SOLO runtime objects
 @class MarketData;
@@ -105,5 +105,5 @@
  * @param completion Completion block with raw Zacks data or error
  */
 - (void)requestZacksData:(NSDictionary *)parameters
-              completion:(void (^)(NSDictionary * _Nullable data, NSError * _Nullable error))completion;
+              completion:(void (^)(SeasonalDataModel * _Nullable data, NSError * _Nullable error))completion;
 @end

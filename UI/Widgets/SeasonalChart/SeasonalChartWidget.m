@@ -24,7 +24,91 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
 @property (nonatomic, assign) double maxValue;
 @property (nonatomic, assign) double minTTMValue;
 @property (nonatomic, assign) double maxTTMValue;
+// Drawing methods (used by SeasonalChartView)
+- (void)drawChartInRect:(CGRect)rect;
+- (void)drawEmptyState:(CGRect)rect;
+- (void)drawGrid;
+- (void)drawBars;
+- (void)drawTTMLine;
+- (void)drawAxes;
+- (void)drawLabels;
+- (void)drawBubbles;
+- (void)drawCrosshair;
+- (void)drawSegmentLabel:(NSString *)label atPoint:(CGPoint)point color:(NSColor *)color;
 
+@end
+
+@interface SeasonalChartView : NSView
+@property (nonatomic, weak) SeasonalChartWidget *widget;
+
+@end
+@implementation SeasonalChartView
+
+- (void)drawRect:(NSRect)dirtyRect {
+    NSLog(@"🎨 SeasonalChartView drawRect called with rect: %@", NSStringFromRect(dirtyRect));
+    
+    // Clear background
+    [[NSColor controlBackgroundColor] setFill];
+    NSRectFill(dirtyRect);
+    
+    if (self.widget) {
+        [self.widget drawChartInRect:dirtyRect];
+    } else {
+        // Fallback - draw error message
+        NSString *message = @"Chart widget not connected";
+        NSDictionary *attributes = @{
+            NSFontAttributeName: [NSFont systemFontOfSize:16],
+            NSForegroundColorAttributeName: [NSColor secondaryLabelColor]
+        };
+        
+        NSSize textSize = [message sizeWithAttributes:attributes];
+        CGPoint textPoint = CGPointMake(
+            dirtyRect.origin.x + (dirtyRect.size.width - textSize.width) / 2,
+            dirtyRect.origin.y + (dirtyRect.size.height - textSize.height) / 2
+        );
+        
+        [message drawAtPoint:textPoint withAttributes:attributes];
+    }
+}
+
+- (BOOL)isFlipped {
+    return NO; // Coordinate system con origine in basso-sinistra
+}
+- (void)scrollWheel:(NSEvent *)event {
+    NSLog(@"🖱️ scrollWheel event: deltaY=%.2f", event.scrollingDeltaY);
+    
+    if (self.widget) {
+        // Determina la direzione dello scroll
+        // deltaY positivo = scroll up = zoom out (più anni)
+        // deltaY negativo = scroll down = zoom in (meno anni)
+        
+        CGFloat deltaY = event.scrollingDeltaY;
+        
+        // Soglia minima per evitare zoom troppo sensibili
+        if (fabs(deltaY) < 1.0) return;
+        
+        // Calcola il nuovo livello di zoom
+        NSInteger currentZoom = self.widget.yearsToShow;
+        NSInteger newZoom = currentZoom;
+        
+        if (deltaY < 0) {
+            // Scroll up = zoom out (più anni)
+            newZoom = currentZoom + 1;
+        } else {
+            // Scroll down = zoom in (meno anni)
+            newZoom = currentZoom - 1;
+        }
+        
+        // Applica il nuovo zoom tramite il widget
+        [self.widget setZoomLevel:newZoom];
+        
+        NSLog(@"🔍 Zoom changed from %ld to %ld years", (long)currentZoom, (long)newZoom);
+    }
+}
+
+- (BOOL)acceptsFirstResponder {
+    return YES;
+}
 @end
 
 @implementation SeasonalChartWidget
@@ -79,8 +163,10 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
     [self setupUI];
     [self setupConstraints];
     [self setupDefaults];
+    
+    // NUOVO: Setup context menu per chain integration
+    [self setupChartContextMenu];
 }
-
 
 - (void)setupUI {
     // Header controls
@@ -119,23 +205,37 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
 }
 
 - (void)setupChartView {
-    self.chartView = [[NSView alloc] init];
+    NSLog(@"🎯 setupChartView called");
+    
+    // Crea la custom view invece di NSView normale
+    SeasonalChartView *chartView = [[SeasonalChartView alloc] init];
+    chartView.widget = self;
+    self.chartView = chartView;
+    
     self.chartView.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    // Configurazione layer per border e styling
     self.chartView.wantsLayer = YES;
-    self.chartView.layer.backgroundColor = [NSColor controlBackgroundColor].CGColor;
     self.chartView.layer.borderColor = [NSColor separatorColor].CGColor;
     self.chartView.layer.borderWidth = 1.0;
     self.chartView.layer.cornerRadius = 6.0;
     
     [self.contentView addSubview:self.chartView];
     
-    // Add mouse tracking
+    // Add mouse tracking (esistente)
     NSTrackingArea *trackingArea = [[NSTrackingArea alloc]
         initWithRect:NSZeroRect
         options:(NSTrackingActiveInKeyWindow | NSTrackingInVisibleRect | NSTrackingMouseMoved | NSTrackingMouseEnteredAndExited)
         owner:self
         userInfo:nil];
     [self.chartView addTrackingArea:trackingArea];
+    
+    NSLog(@"🎯 chartView created and added to contentView");
+}
+
+- (void)setupDefaults {
+    NSLog(@"🎯 setupDefaults called");
+    // Non serve più impostare layer delegate, drawRect si occupa di tutto
 }
 
 - (void)setupFooterControls {
@@ -207,15 +307,11 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
     ]];
 }
 
-- (void)setupDefaults {
-    // Override the chart view's drawRect
-    self.chartView.layer.delegate = self;
-    [self.chartView.layer setNeedsDisplay];
-}
-
 #pragma mark - Data Loading
 
 - (void)loadDataForSymbol:(NSString *)symbol dataType:(NSString *)dataType {
+    NSLog(@"🎯 loadDataForSymbol: %@ dataType: %@", symbol, dataType);
+    
     if (symbol.length == 0) return;
     
     self.currentSymbol = [symbol uppercaseString];
@@ -231,17 +327,24 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
             [self.loadingIndicator stopAnimation:nil];
             
             if (error) {
-                NSLog(@"Error loading seasonal data: %@", error.localizedDescription);
-                // TODO: Show error state
+                NSLog(@"❌ Error loading seasonal data: %@", error.localizedDescription);
+                // Forza comunque il redraw per mostrare l'errore
+                [self.chartView setNeedsDisplay:YES];
                 return;
             }
             
+            NSLog(@"✅ Received seasonal data with %lu quarters", (unsigned long)data.quarters.count);
+            
             self.seasonalData = data;
             [self updateDisplayData];
-            [self.chartView.layer setNeedsDisplay];
+            
+            NSLog(@"🎯 About to call setNeedsDisplay on chartView");
+            [self.chartView setNeedsDisplay:YES];
+            NSLog(@"🎯 setNeedsDisplay called");
         });
     }];
 }
+
 
 - (void)refreshCurrentData {
     if (self.currentSymbol.length > 0) {
@@ -252,15 +355,24 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
 #pragma mark - Display Data Management
 
 - (void)updateDisplayData {
+    NSLog(@"🎯 updateDisplayData called");
+    NSLog(@"🎯 seasonalData: %@", self.seasonalData ? @"present" : @"nil");
+    
     if (!self.seasonalData) {
         self.displayQuarters = @[];
+        NSLog(@"🎯 No seasonal data, setting empty displayQuarters");
+        [self.chartView setNeedsDisplay:YES];
         return;
     }
     
     // Get quarters to display based on zoom level
     NSArray<QuarterlyDataPoint *> *allQuarters = self.seasonalData.quarters;
+    NSLog(@"🎯 All quarters count: %lu", (unsigned long)allQuarters.count);
+    
     if (allQuarters.count == 0) {
         self.displayQuarters = @[];
+        NSLog(@"🎯 No quarters in seasonalData, setting empty displayQuarters");
+        [self.chartView setNeedsDisplay:YES];
         return;
     }
     
@@ -268,8 +380,12 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
     QuarterlyDataPoint *latestQuarter = [self.seasonalData latestQuarter];
     if (!latestQuarter) {
         self.displayQuarters = @[];
+        NSLog(@"🎯 No latest quarter found, setting empty displayQuarters");
+        [self.chartView setNeedsDisplay:YES];
         return;
     }
+    
+    NSLog(@"🎯 Latest quarter: Q%ld'%ld, yearsToShow: %ld", (long)latestQuarter.quarter, (long)latestQuarter.year, (long)self.yearsToShow);
     
     NSInteger startYear = latestQuarter.year - self.yearsToShow + 1;
     NSMutableArray *filteredQuarters = [NSMutableArray array];
@@ -277,10 +393,12 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
     for (QuarterlyDataPoint *quarter in allQuarters) {
         if (quarter.year >= startYear) {
             [filteredQuarters addObject:quarter];
+            NSLog(@"🎯 Including quarter: Q%ld'%ld = %.2f", (long)quarter.quarter, (long)quarter.year, quarter.value);
         }
     }
     
     self.displayQuarters = filteredQuarters;
+    NSLog(@"🎯 Final displayQuarters count: %lu", (unsigned long)self.displayQuarters.count);
     
     // Calculate value ranges for Y-axis scaling
     [self calculateValueRanges];
@@ -290,7 +408,12 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
         QuarterlyDataPoint *oldestQuarter = [self.seasonalData oldestQuarter];
         self.maxYears = latestQuarter.year - oldestQuarter.year + 1;
         self.zoomSlider.maxValue = MIN(self.maxYears, 10);
+        NSLog(@"🎯 Updated maxYears: %ld", (long)self.maxYears);
     }
+    
+    // Force redraw
+    NSLog(@"🎯 Forcing view redraw...");
+    [self.chartView setNeedsDisplay:YES];
 }
 
 - (void)calculateValueRanges {
@@ -426,23 +549,31 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
         
         CGRect barRect = CGRectMake(x, y, self.barWidth, height);
         
-        // Color based on YoY performance
+        // COLORE BARRA: Basato su YoY performance se disponibile
         NSColor *barColor;
         if ([self.seasonalData canCalculateYoyForQuarter:quarter.quarter year:quarter.year]) {
             double yoyChange = [self.seasonalData yoyPercentChangeForQuarter:quarter.quarter year:quarter.year];
             barColor = (yoyChange >= 0) ? [NSColor systemGreenColor] : [NSColor systemRedColor];
         } else {
-            barColor = [NSColor systemGrayColor]; // No YoY data available
+            // Default color se non c'è YoY comparison
+            barColor = [NSColor systemBlueColor];
+        }
+        
+        // Highlight la barra se è quella in hover
+        if (quarter == self.hoveredQuarter) {
+            barColor = [barColor colorWithAlphaComponent:0.8]; // Più opaca
+        } else {
+            barColor = [barColor colorWithAlphaComponent:0.6]; // Più trasparente
         }
         
         [barColor setFill];
-        NSBezierPath *barPath = [NSBezierPath bezierPathWithRect:barRect];
-        [barPath fill];
-        
-        // Draw bar border
+        NSRectFill(barRect);
+        /*
+        // Border della barra
         [[NSColor labelColor] setStroke];
-        barPath.lineWidth = 0.5;
-        [barPath stroke];
+        NSBezierPath *borderPath = [NSBezierPath bezierPathWithRect:barRect];
+        borderPath.lineWidth = 1.0;
+        [borderPath stroke];*/
     }
 }
 
@@ -564,34 +695,145 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
 }
 
 - (void)drawBubbles {
-    if (self.displayQuarters.count == 0) return;
-    
-    NSDictionary *bubbleAttributes = @{
-        NSFontAttributeName: [NSFont boldSystemFontOfSize:12],
-        NSForegroundColorAttributeName: [NSColor controlBackgroundColor]
-    };
-    
-    // Latest quarter bubble
-    QuarterlyDataPoint *latestQuarter = self.displayQuarters.lastObject;
-    NSString *latestValue = [self formatValue:latestQuarter.value];
-    
-    CGFloat x = self.chartRect.origin.x + (self.displayQuarters.count - 1) * (self.barWidth + self.barSpacing) + self.barWidth;
-    CGFloat normalizedValue = (latestQuarter.value - self.minValue) / (self.maxValue - self.minValue);
-    CGFloat y = self.chartRect.origin.y + normalizedValue * self.chartRect.size.height;
-    
-    [self drawBubbleWithText:latestValue atPoint:CGPointMake(x + 5, y) color:[NSColor systemBlueColor]];
-    
-    // Latest TTM bubble
-    if ([self.seasonalData canCalculateTTMForQuarter:latestQuarter.quarter year:latestQuarter.year]) {
-        double ttmValue = [self.seasonalData ttmValueForQuarter:latestQuarter.quarter year:latestQuarter.year];
-        NSString *ttmText = [self formatValue:ttmValue];
-        
-        CGFloat normalizedTTM = (ttmValue - self.minTTMValue) / (self.maxTTMValue - self.minTTMValue);
-        CGFloat ttmY = self.chartRect.origin.y + normalizedTTM * self.chartRect.size.height;
-        
-        [self drawBubbleWithText:ttmText atPoint:CGPointMake(x + 5, ttmY + 20) color:[NSColor systemYellowColor]];
+    // Disegna i segmenti solo se c'è un quarter selezionato dal mouse
+    if (self.isMouseInChart && self.hoveredQuarter) {
+        [self drawSegmentsForHoveredQuarter];
     }
 }
+
+- (void)drawSegmentsForHoveredQuarter {
+    QuarterlyDataPoint *quarter = self.hoveredQuarter;
+    NSInteger hoveredIndex = [self.displayQuarters indexOfObject:quarter];
+    
+    if (hoveredIndex == NSNotFound) return;
+    
+    // Calculate hovered bar center position
+    CGFloat x = self.chartRect.origin.x + hoveredIndex * (self.barWidth + self.barSpacing) + self.barWidth / 2;
+    CGFloat normalizedValue = (quarter.value - self.minValue) / (self.maxValue - self.minValue);
+    CGFloat y = self.chartRect.origin.y + normalizedValue * self.chartRect.size.height;
+    
+    // YoY Comparison Segment (Verde/Rosso basato su incremento)
+    if ([self.seasonalData canCalculateYoyForQuarter:quarter.quarter year:quarter.year]) {
+        QuarterlyDataPoint *yoyQuarter = [self.seasonalData yoyComparisonQuarterFor:quarter.quarter year:quarter.year];
+        NSInteger yoyIndex = [self.displayQuarters indexOfObject:yoyQuarter];
+        
+        if (yoyIndex != NSNotFound) {
+            CGFloat yoyX = self.chartRect.origin.x + yoyIndex * (self.barWidth + self.barSpacing) + self.barWidth / 2;
+            CGFloat yoyNormalizedValue = (yoyQuarter.value - self.minValue) / (self.maxValue - self.minValue);
+            CGFloat yoyY = self.chartRect.origin.y + yoyNormalizedValue * self.chartRect.size.height;
+            
+            double yoyPercent = [self.seasonalData yoyPercentChangeForQuarter:quarter.quarter year:quarter.year];
+            
+            // COLORE CONDIZIONALE: Verde se positivo, Rosso se negativo
+            NSColor *segmentColor = (yoyPercent >= 0) ? [NSColor systemGreenColor] : [NSColor systemRedColor];
+            
+            [self drawSquaredArcFrom:CGPointMake(yoyX, yoyY)
+                                  to:CGPointMake(x, y)
+                               color:segmentColor
+                             yOffset:30];
+            
+            // YoY percentage label con colore condizionale
+            NSString *yoyLabel = [NSString stringWithFormat:@"YoY %@", [self formatPercentChange:yoyPercent]];
+            CGPoint midPoint = CGPointMake((yoyX + x) / 2, MAX(yoyY, y) + 40);
+            [self drawLargeSegmentLabel:yoyLabel atPoint:midPoint color:segmentColor];
+        }
+    }
+    
+    // QoQ Comparison Segment (Verde/Rosso basato su incremento)
+    if ([self.seasonalData canCalculateQoqForQuarter:quarter.quarter year:quarter.year]) {
+        QuarterlyDataPoint *qoqQuarter = [self.seasonalData qoqComparisonQuarterFor:quarter.quarter year:quarter.year];
+        NSInteger qoqIndex = [self.displayQuarters indexOfObject:qoqQuarter];
+        
+        if (qoqIndex != NSNotFound) {
+            CGFloat qoqX = self.chartRect.origin.x + qoqIndex * (self.barWidth + self.barSpacing) + self.barWidth / 2;
+            CGFloat qoqNormalizedValue = (qoqQuarter.value - self.minValue) / (self.maxValue - self.minValue);
+            CGFloat qoqY = self.chartRect.origin.y + qoqNormalizedValue * self.chartRect.size.height;
+            
+            double qoqPercent = [self.seasonalData qoqPercentChangeForQuarter:quarter.quarter year:quarter.year];
+            
+            // COLORE CONDIZIONALE: Verde se positivo, Rosso se negativo
+            NSColor *segmentColor = (qoqPercent >= 0) ? [NSColor systemGreenColor] : [NSColor systemRedColor];
+            
+            [self drawSquaredArcFrom:CGPointMake(qoqX, qoqY)
+                                  to:CGPointMake(x, y)
+                               color:segmentColor
+                             yOffset:-40];
+            
+            // QoQ percentage label con colore condizionale
+            NSString *qoqLabel = [NSString stringWithFormat:@"QoQ %@", [self formatPercentChange:qoqPercent]];
+            CGPoint midPoint = CGPointMake((qoqX + x) / 2, MIN(qoqY, y) - 50);
+            [self drawLargeSegmentLabel:qoqLabel atPoint:midPoint color:segmentColor];
+        }
+    }
+    
+    // TTM Comparison (se disponibile) - Blu/Arancione per differenziare
+    if ([self.seasonalData canCalculateTTMForQuarter:quarter.quarter year:quarter.year]) {
+        double ttmPercent = [self.seasonalData ttmPercentChangeForQuarter:quarter.quarter year:quarter.year];
+        if (ttmPercent != 0) {
+            // COLORE CONDIZIONALE: Blu scuro se positivo, Arancione se negativo
+            NSColor *ttmColor = (ttmPercent >= 0) ? [NSColor systemBlueColor] : [NSColor systemOrangeColor];
+            
+            // TTM line indicator (orizzontale)
+            CGFloat ttmY = y + ((ttmPercent >= 0) ? 60 : -60);
+            
+            [ttmColor setStroke];
+            NSBezierPath *ttmIndicator = [NSBezierPath bezierPath];
+            ttmIndicator.lineWidth = 3.0;
+            [ttmIndicator moveToPoint:CGPointMake(x - 25, ttmY)];
+            [ttmIndicator lineToPoint:CGPointMake(x + 25, ttmY)];
+            [ttmIndicator stroke];
+            
+            // TTM percentage label
+            NSString *ttmLabel = [NSString stringWithFormat:@"TTM %@", [self formatPercentChange:ttmPercent]];
+            CGPoint ttmPoint = CGPointMake(x + 35, ttmY);
+            [self drawLargeSegmentLabel:ttmLabel atPoint:ttmPoint color:ttmColor];
+        }
+    }
+}
+
+- (void)drawSquaredArcFrom:(CGPoint)startPoint to:(CGPoint)endPoint color:(NSColor *)color yOffset:(CGFloat)yOffset {
+    [color setStroke];
+    NSBezierPath *arcPath = [NSBezierPath bezierPath];
+    arcPath.lineWidth = 2.5;
+    
+    // Calcola il punto medio orizzontale per l'arco
+    CGFloat midX = (startPoint.x + endPoint.x) / 2;
+    CGFloat arcY = MAX(startPoint.y, endPoint.y) + yOffset;
+    
+    // Disegna l'arco squadrato: verticale -> orizzontale -> verticale
+    [arcPath moveToPoint:startPoint];
+    [arcPath lineToPoint:CGPointMake(startPoint.x, arcY)]; // Verticale su
+    [arcPath lineToPoint:CGPointMake(endPoint.x, arcY)];   // Orizzontale
+    [arcPath lineToPoint:endPoint];                        // Verticale giù
+    
+    [arcPath stroke];
+}
+
+// NUOVO: Metodo per etichette grandi dei segmenti
+- (void)drawLargeSegmentLabel:(NSString *)label atPoint:(CGPoint)point color:(NSColor *)color {
+    NSDictionary *labelAttributes = @{
+        NSFontAttributeName: [NSFont boldSystemFontOfSize:16], // FONT GRANDE
+        NSForegroundColorAttributeName: color
+    };
+    
+    NSSize labelSize = [label sizeWithAttributes:labelAttributes];
+    CGRect labelRect = CGRectMake(point.x - labelSize.width/2 - 8, point.y - labelSize.height/2 - 4,
+                                  labelSize.width + 16, labelSize.height + 8);
+    
+    // Draw label background con più padding
+    [[NSColor controlBackgroundColor] setFill];
+    NSBezierPath *labelBg = [NSBezierPath bezierPathWithRoundedRect:labelRect xRadius:6 yRadius:6];
+    [labelBg fill];
+    
+    // Draw label border più spesso
+    [color setStroke];
+    labelBg.lineWidth = 2.0;
+    [labelBg stroke];
+    
+    // Draw label text
+    [label drawAtPoint:CGPointMake(labelRect.origin.x + 8, labelRect.origin.y + 4) withAttributes:labelAttributes];
+}
+
 
 - (void)drawBubbleWithText:(NSString *)text atPoint:(CGPoint)point color:(NSColor *)color {
     NSDictionary *textAttributes = @{
@@ -617,31 +859,89 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
 - (void)drawCrosshair {
     if (!self.hoveredQuarter) return;
     
-    // Find hovered quarter index
     NSInteger hoveredIndex = [self.displayQuarters indexOfObject:self.hoveredQuarter];
     if (hoveredIndex == NSNotFound) return;
     
-    QuarterlyDataPoint *hoveredQuarter = self.hoveredQuarter;
-    
     // Calculate crosshair position
     CGFloat x = self.chartRect.origin.x + hoveredIndex * (self.barWidth + self.barSpacing) + self.barWidth / 2;
-    CGFloat normalizedValue = (hoveredQuarter.value - self.minValue) / (self.maxValue - self.minValue);
+    CGFloat normalizedValue = (self.hoveredQuarter.value - self.minValue) / (self.maxValue - self.minValue);
     CGFloat y = self.chartRect.origin.y + normalizedValue * self.chartRect.size.height;
     
-    // Draw vertical crosshair line
     [[NSColor systemGrayColor] setStroke];
     NSBezierPath *crosshairPath = [NSBezierPath bezierPath];
     crosshairPath.lineWidth = 1.0;
+    
+    // Vertical line (esistente)
     [crosshairPath moveToPoint:CGPointMake(x, self.chartRect.origin.y)];
     [crosshairPath lineToPoint:CGPointMake(x, self.chartRect.origin.y + self.chartRect.size.height)];
+    
+    // NUOVO: Horizontal line
+    [crosshairPath moveToPoint:CGPointMake(self.chartRect.origin.x, y)];
+    [crosshairPath lineToPoint:CGPointMake(self.chartRect.origin.x + self.chartRect.size.width, y)];
+    
     [crosshairPath stroke];
     
-    // Draw comparison segments
-    [self drawComparisonSegmentsForQuarter:hoveredQuarter atIndex:hoveredIndex];
+    // NUOVO: Value bubble sulla linea orizzontale
+    [self drawValueBubbleAtPoint:CGPointMake(self.chartRect.origin.x + self.chartRect.size.width + 5, y)
+                           value:self.hoveredQuarter.value];
     
-    // Draw crosshair value bubble
-    NSString *valueText = [self formatValue:hoveredQuarter.value];
-    [self drawBubbleWithText:valueText atPoint:CGPointMake(x + 10, y) color:[NSColor systemBlueColor]];
+    // Quarter info bubble (esistente, spostato leggermente)
+    [self drawQuarterInfoBubbleAtPoint:CGPointMake(x, self.chartRect.origin.y + self.chartRect.size.height + 5)
+                               quarter:self.hoveredQuarter];
+}
+
+- (void)drawQuarterInfoBubbleAtPoint:(CGPoint)point quarter:(QuarterlyDataPoint *)quarter {
+    NSString *quarterText = [NSString stringWithFormat:@"Q%ld'%ld", (long)quarter.quarter, (long)quarter.year];
+    
+    NSDictionary *attributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:11],
+        NSForegroundColorAttributeName: [NSColor controlTextColor]
+    };
+    
+    NSSize textSize = [quarterText sizeWithAttributes:attributes];
+    CGRect bubbleRect = CGRectMake(point.x - textSize.width/2 - 6, point.y,
+                                   textSize.width + 12, textSize.height + 6);
+    
+    // Draw bubble background
+    [[NSColor controlBackgroundColor] setFill];
+    NSBezierPath *bubblePath = [NSBezierPath bezierPathWithRoundedRect:bubbleRect xRadius:3 yRadius:3];
+    [bubblePath fill];
+    
+    // Draw bubble border
+    [[NSColor systemGrayColor] setStroke];
+    bubblePath.lineWidth = 1.0;
+    [bubblePath stroke];
+    
+    // Draw text
+    [quarterText drawAtPoint:CGPointMake(bubbleRect.origin.x + 6, bubbleRect.origin.y + 3)
+              withAttributes:attributes];
+}
+
+- (void)drawValueBubbleAtPoint:(CGPoint)point value:(double)value {
+    NSString *valueText = [self formatValue:value];
+    
+    NSDictionary *attributes = @{
+        NSFontAttributeName: [NSFont boldSystemFontOfSize:12],
+        NSForegroundColorAttributeName: [NSColor controlTextColor]
+    };
+    
+    NSSize textSize = [valueText sizeWithAttributes:attributes];
+    CGRect bubbleRect = CGRectMake(point.x, point.y - textSize.height/2 - 4,
+                                   textSize.width + 12, textSize.height + 8);
+    
+    // Draw bubble background
+    [[NSColor controlBackgroundColor] setFill];
+    NSBezierPath *bubblePath = [NSBezierPath bezierPathWithRoundedRect:bubbleRect xRadius:4 yRadius:4];
+    [bubblePath fill];
+    
+    // Draw bubble border
+    [[NSColor systemGrayColor] setStroke];
+    bubblePath.lineWidth = 1.0;
+    [bubblePath stroke];
+    
+    // Draw text
+    [valueText drawAtPoint:CGPointMake(bubbleRect.origin.x + 6, bubbleRect.origin.y + 4)
+            withAttributes:attributes];
 }
 
 - (void)drawComparisonSegmentsForQuarter:(QuarterlyDataPoint *)quarter atIndex:(NSInteger)index {
@@ -787,6 +1087,9 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
         NSString *symbol = self.symbolTextField.stringValue;
         if (symbol.length > 0) {
             [self loadDataForSymbol:symbol dataType:self.currentDataType];
+            
+            // NUOVO: Invia automaticamente il simbolo alla chain se attiva
+            [self sendCurrentSymbolToChain];
         }
     }
 }
@@ -819,13 +1122,62 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
 #pragma mark - Zoom Control
 
 - (void)setZoomLevel:(NSInteger)years {
-    self.yearsToShow = MAX(2, MIN(years, self.maxYears));
-    self.zoomSlider.integerValue = self.yearsToShow;
+    // Assicurati che il nuovo valore sia nei limiti validi
+    NSInteger minYears = 2;
+    NSInteger maxYears = MIN(self.maxYears, 15); // Limite massimo ragionevole
     
-    [self updateDisplayData];
-    [self.chartView.layer setNeedsDisplay];
+    NSInteger newYears = MAX(minYears, MIN(years, maxYears));
+    
+    // Solo aggiorna se il valore è effettivamente cambiato
+    if (newYears != self.yearsToShow) {
+        NSLog(@"🔍 Setting zoom level from %ld to %ld years (requested: %ld)",
+              (long)self.yearsToShow, (long)newYears, (long)years);
+        
+        self.yearsToShow = newYears;
+        
+        // Aggiorna lo slider per riflettere il cambiamento
+        self.zoomSlider.integerValue = self.yearsToShow;
+        
+        // Aggiorna i dati visualizzati e ridisegna
+        [self updateDisplayData];
+        [self.chartView setNeedsDisplay:YES];
+        
+        // Feedback visivo opzionale
+        [self showZoomFeedback];
+    } else {
+        NSLog(@"🔍 Zoom level unchanged: %ld years (at limit)", (long)self.yearsToShow);
+    }
 }
 
+- (void)showZoomFeedback {
+    // Crea un label temporaneo per mostrare il livello di zoom corrente
+    NSTextField *feedbackLabel = [NSTextField labelWithString:[NSString stringWithFormat:@"%ld Years", (long)self.yearsToShow]];
+    feedbackLabel.backgroundColor = [[NSColor labelColor] colorWithAlphaComponent:0.8];
+    feedbackLabel.textColor = [NSColor controlBackgroundColor];
+    feedbackLabel.font = [NSFont boldSystemFontOfSize:14];
+    feedbackLabel.alignment = NSTextAlignmentCenter;
+    
+    // Posiziona il feedback nell'angolo in alto a destra del chart
+    feedbackLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.chartView addSubview:feedbackLabel];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [feedbackLabel.topAnchor constraintEqualToAnchor:self.chartView.topAnchor constant:10],
+        [feedbackLabel.trailingAnchor constraintEqualToAnchor:self.chartView.trailingAnchor constant:-10],
+        [feedbackLabel.widthAnchor constraintEqualToConstant:80],
+        [feedbackLabel.heightAnchor constraintEqualToConstant:25]
+    ]];
+    
+    // Anima la scomparsa dopo 1 secondo
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = 0.3;
+            feedbackLabel.animator.alphaValue = 0.0;
+        } completionHandler:^{
+            [feedbackLabel removeFromSuperview];
+        }];
+    });
+}
 - (void)zoomIn {
     [self setZoomLevel:self.yearsToShow - 1];
 }
@@ -878,6 +1230,7 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
     // Type is always "SeasonalChart"
 }
 
+
 - (NSDictionary *)serializeState {
     NSMutableDictionary *state = [[super serializeState] mutableCopy];
     
@@ -903,6 +1256,129 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
     // Reload data if we have a symbol
     if (self.currentSymbol.length > 0) {
         [self loadDataForSymbol:self.currentSymbol dataType:self.currentDataType];
+    }
+}
+
+#pragma mark - Chain Integration
+
+// Override del metodo BaseWidget per ricevere simboli dalle chain
+- (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
+    NSString *action = update[@"action"];
+    
+    if ([action isEqualToString:@"setSymbols"]) {
+        NSArray *symbols = update[@"symbols"];
+        if (symbols.count > 0) {
+            [self handleSymbolsFromChain:symbols fromWidget:sender];
+        }
+    }
+}
+
+- (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
+    NSLog(@"SeasonalChartWidget: Received %lu symbols from chain", (unsigned long)symbols.count);
+    
+    // Prendi il primo simbolo (SeasonalChart mostra un simbolo alla volta)
+    NSString *newSymbol = symbols.firstObject;
+    if (!newSymbol || newSymbol.length == 0) return;
+    
+    // Aggiorna il campo di input
+    self.symbolTextField.stringValue = [newSymbol uppercaseString];
+    
+    // Carica i dati per il nuovo simbolo
+    [self loadDataForSymbol:newSymbol dataType:self.currentDataType];
+    
+    // Mostra feedback temporaneo
+    NSString *senderType = NSStringFromClass([sender class]);
+    NSString *message = [NSString stringWithFormat:@"📊 Loaded %@ from %@", newSymbol, senderType];
+    [self showChainFeedback:message];
+    
+    NSLog(@"SeasonalChartWidget: Loaded symbol '%@' from %@ chain", newSymbol, senderType);
+}
+
+// Invia il simbolo corrente alla chain quando l'utente ne inserisce uno nuovo
+- (void)sendCurrentSymbolToChain {
+    if (self.chainActive && self.currentSymbol.length > 0) {
+        [self broadcastUpdate:@{
+            @"action": @"setSymbols",
+            @"symbols": @[self.currentSymbol]
+        }];
+        
+        NSLog(@"SeasonalChartWidget: Sent symbol '%@' to chain", self.currentSymbol);
+        [self showChainFeedback:[NSString stringWithFormat:@"📤 Sent %@ to chain", self.currentSymbol]];
+    }
+}
+
+// NUOVO: Metodo per mostrare feedback temporaneo
+- (void)showChainFeedback:(NSString *)message {
+    // Crea un label temporaneo per feedback
+    NSTextField *feedbackLabel = [NSTextField labelWithString:message];
+    feedbackLabel.backgroundColor = [[NSColor systemBlueColor] colorWithAlphaComponent:0.9];
+    feedbackLabel.textColor = [NSColor controlBackgroundColor];
+    feedbackLabel.font = [NSFont boldSystemFontOfSize:12];
+    feedbackLabel.alignment = NSTextAlignmentCenter;
+    feedbackLabel.drawsBackground = YES;
+    feedbackLabel.bordered = NO;
+    feedbackLabel.editable = NO;
+    
+    // Posiziona il feedback nell'angolo in basso a sinistra del chart
+    feedbackLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.chartView addSubview:feedbackLabel];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [feedbackLabel.bottomAnchor constraintEqualToAnchor:self.chartView.bottomAnchor constant:-10],
+        [feedbackLabel.leadingAnchor constraintEqualToAnchor:self.chartView.leadingAnchor constant:10],
+        [feedbackLabel.heightAnchor constraintEqualToConstant:25]
+    ]];
+    
+    // Anima la scomparsa dopo 2.5 secondi
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = 0.5;
+            feedbackLabel.animator.alphaValue = 0.0;
+        } completionHandler:^{
+            [feedbackLabel removeFromSuperview];
+        }];
+    });
+}
+
+#pragma mark - Context Menu Integration
+
+// Aggiungi context menu al chart per inviare simbolo alla chain
+- (void)setupChartContextMenu {
+    NSMenu *contextMenu = [[NSMenu alloc] init];
+    
+    // Menu item per inviare simbolo corrente alla chain
+    NSMenuItem *sendToChainItem = [[NSMenuItem alloc] initWithTitle:@"Send Symbol to Chain"
+                                                             action:@selector(contextMenuSendSymbolToChain:)
+                                                      keyEquivalent:@""];
+    sendToChainItem.target = self;
+    [contextMenu addItem:sendToChainItem];
+    
+    // Separator
+    [contextMenu addItem:[NSMenuItem separatorItem]];
+    
+    // Menu item per copiare simbolo
+    NSMenuItem *copySymbolItem = [[NSMenuItem alloc] initWithTitle:@"Copy Symbol"
+                                                            action:@selector(contextMenuCopySymbol:)
+                                                     keyEquivalent:@""];
+    copySymbolItem.target = self;
+    [contextMenu addItem:copySymbolItem];
+    
+    self.chartView.menu = contextMenu;
+}
+
+- (IBAction)contextMenuSendSymbolToChain:(id)sender {
+    if (self.currentSymbol.length > 0) {
+        [self sendCurrentSymbolToChain];
+    }
+}
+
+- (IBAction)contextMenuCopySymbol:(id)sender {
+    if (self.currentSymbol.length > 0) {
+        NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+        [pasteboard clearContents];
+        [pasteboard setString:self.currentSymbol forType:NSPasteboardTypeString];
+        
+        [self showChainFeedback:[NSString stringWithFormat:@"📋 Copied %@", self.currentSymbol]];
     }
 }
 

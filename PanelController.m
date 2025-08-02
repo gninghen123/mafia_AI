@@ -202,7 +202,7 @@
                        relativeToWidget:sourceWidget
                           inDirection:direction];
     
-    // Configura i callback per il nuovo widget
+    // ✅ Configura TUTTI i callback per il nuovo widget
     __weak typeof(self) weakSelf = self;
     newWidget.onRemoveRequest = ^(BaseWidget *widgetToRemove) {
         [weakSelf removeWidget:widgetToRemove];
@@ -210,6 +210,11 @@
     
     newWidget.onAddRequest = ^(BaseWidget *sourceWidget, WidgetAddDirection direction) {
         [weakSelf addNewWidgetFromWidget:sourceWidget inDirection:direction];
+    };
+    
+    // ✅ AGGIUNTO: Callback mancante per la trasformazione
+    newWidget.onTypeChange = ^(BaseWidget *sourceWidget, NSString *newType) {
+        [weakSelf transformWidget:sourceWidget toType:newType];
     };
 }
 

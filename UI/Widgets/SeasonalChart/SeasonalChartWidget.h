@@ -61,6 +61,7 @@ NS_ASSUME_NONNULL_BEGIN
 // Formatting helpers
 - (NSString *)formatValue:(double)value;
 - (NSString *)formatPercentChange:(double)percentChange;
+- (void)drawChartInRect:(CGRect)rect;
 
 @end
 

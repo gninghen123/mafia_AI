@@ -8,6 +8,10 @@
 #import <Foundation/Foundation.h>
 #import <CoreData/CoreData.h>
 #import "RuntimeModels.h"
+#import "TradingModel+CoreDataClass.h"
+#import "Symbol+CoreDataClass.h"
+#import "Symbol+CoreDataProperties.h"
+
 
 // Forward declarations
 @class StockSymbol;
@@ -15,6 +19,8 @@
 @class Alert;
 @class StockConnection;
 @class TradingModel;
+@class Symbol;
+
 
 // Notification names
 extern NSString *const DataHubSymbolsUpdatedNotification;
@@ -57,7 +63,8 @@ typedef NS_ENUM(NSInteger, ModelStatus) {
 // Core Data
 @property (nonatomic, strong, readonly) NSPersistentContainer *persistentContainer;
 @property (nonatomic, strong, readonly) NSManagedObjectContext *mainContext;
-
+//symbol
+@property (nonatomic, strong, readwrite) NSMutableArray<Symbol *> *symbols;
 // Data caches
 @property (nonatomic, strong, readonly) NSMutableDictionary *symbolDataCache;
 @property (nonatomic, strong, readonly) NSMutableArray *watchlists;
@@ -198,4 +205,23 @@ typedef NS_ENUM(NSInteger, ModelStatus) {
  */
 - (void)checkAlertsWithCurrentPrices:(NSDictionary<NSString *, NSNumber *> *)currentPrices;
 
+// ====== AGGIUNGI QUESTE DICHIARAZIONI A DataHub.h ======
+
+// Dopo le dichiarazioni esistenti, aggiungi questa sezione:
+
+// MARK: - Symbol Management
+- (Symbol *)createSymbolWithName:(NSString *)symbolName;
+- (Symbol *)getSymbolWithName:(NSString *)symbolName;
+- (void)deleteSymbol:(Symbol *)symbol;
+- (void)incrementInteractionForSymbol:(Symbol *)symbol;
+- (void)incrementInteractionForSymbolName:(NSString *)symbolName;
+
+// MARK: - Symbol Tag Management
+- (void)addTag:(NSString *)tag toSymbol:(Symbol *)symbol;
+- (void)removeTag:(NSString *)tag fromSymbol:(Symbol *)symbol;
+- (NSArray<NSString *> *)getAllTags;
+- (NSArray<Symbol *> *)getSymbolsWithTag:(NSString *)tag;
+// MARK: - Symbol Tracking
+- (void)trackExplicitSymbolInteraction:(NSString *)symbolName context:(NSString *)context;
+- (void)trackExplicitSymbolInteractions:(NSArray<NSString *> *)symbols context:(NSString *)context;
 @end

@@ -33,7 +33,7 @@
     StockConnection *coreDataConnection = [NSEntityDescription insertNewObjectForEntityForName:@"StockConnection"
                                                                         inManagedObjectContext:self.mainContext];
     
-    [self updateCoreDataFromRuntimeModel:connection coreDataConnection:coreDataConnection];
+    [self updateConnectionCoreDataFromRuntimeModel:connection coreDataConnection:coreDataConnection];
     
     // Aggiungi alla collezione
     [self.connections addObject:coreDataConnection];
@@ -66,8 +66,8 @@
     StockConnection *coreDataConnection = [NSEntityDescription insertNewObjectForEntityForName:@"StockConnection"
                                                                         inManagedObjectContext:self.mainContext];
     
-    [self updateCoreDataFromRuntimeModel:connection coreDataConnection:coreDataConnection];
-    
+    [self updateConnectionCoreDataFromRuntimeModel:connection coreDataConnection:coreDataConnection];
+
     // Aggiungi alla collezione
     [self.connections addObject:coreDataConnection];
     
@@ -95,7 +95,7 @@
     
     if (coreDataConnection) {
         connection.lastModified = [NSDate date];
-        [self updateCoreDataFromRuntimeModel:connection coreDataConnection:coreDataConnection];
+        [self updateConnectionCoreDataFromRuntimeModel:connection coreDataConnection:coreDataConnection];
         [self saveContext];
         
         [[NSNotificationCenter defaultCenter] postNotificationName:DataHubConnectionsUpdatedNotification
@@ -142,7 +142,7 @@
     NSMutableArray<ConnectionModel *> *runtimeModels = [NSMutableArray array];
     
     for (StockConnection *coreDataConnection in self.connections) {
-        ConnectionModel *runtimeModel = [self convertCoreDataToRuntimeModel:coreDataConnection];
+        ConnectionModel *runtimeModel = [self convertConnectionCoreDataToRuntimeModel:coreDataConnection];
         if (runtimeModel) {
             [runtimeModels addObject:runtimeModel];
         }
@@ -488,7 +488,7 @@
     return nil;
 }
 
-- (ConnectionModel *)convertCoreDataToRuntimeModel:(StockConnection *)coreDataConnection {
+- (ConnectionModel *)convertConnectionCoreDataToRuntimeModel:(StockConnection *)coreDataConnection {
     if (!coreDataConnection) return nil;
     
     ConnectionModel *model = [[ConnectionModel alloc] init];
@@ -531,8 +531,8 @@
     return model;
 }
 
-- (void)updateCoreDataFromRuntimeModel:(ConnectionModel *)runtimeModel
-                     coreDataConnection:(StockConnection *)coreDataConnection {
+- (void)updateConnectionCoreDataFromRuntimeModel:(ConnectionModel *)runtimeModel
+                                coreDataConnection:(StockConnection *)coreDataConnection {
     
     // Basic fields
     coreDataConnection.connectionID = runtimeModel.connectionID;
@@ -614,7 +614,7 @@
             // Create new
             StockConnection *coreDataConnection = [NSEntityDescription insertNewObjectForEntityForName:@"StockConnection"
                                                                                 inManagedObjectContext:self.mainContext];
-            [self updateCoreDataFromRuntimeModel:connection coreDataConnection:coreDataConnection];
+            [self updateConnectionCoreDataFromRuntimeModel:connection coreDataConnection:coreDataConnection];
             [self.connections addObject:coreDataConnection];
         }
         

@@ -5,6 +5,9 @@
 
 #import "PreferencesWindowController.h"
 #import "AppSettings.h"
+#import "datahub.h"
+#import "connectionmodel.h"
+
 
 @interface PreferencesWindowController ()
 
@@ -90,8 +93,127 @@
     [self setupDataSourceTab];
     [self setupAppearanceTab];
     [self setupButtons];
+    [self setupDatabaseTab]; // ← AGGIUNGI QUESTA RIGA
+
 }
 
+- (void)setupDatabaseTab {
+    NSLog(@"🔍 setupDatabaseTab - START");
+    
+    NSTabViewItem *databaseTab = [[NSTabViewItem alloc] init];
+    databaseTab.label = @"Database";
+    
+    // ✅ CREA UNA VIEW SEMPLICE CON FRAME FISSO
+    NSView *databaseView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 550, 600)];
+    databaseView.wantsLayer = YES;
+    databaseView.layer.backgroundColor = [NSColor controlBackgroundColor].CGColor;
+    
+    NSLog(@"🔍 Created databaseView with frame: %@", NSStringFromRect(databaseView.frame));
+    
+    databaseTab.view = databaseView;
+    
+    // ✅ TEST CON UN SOLO ELEMENTO SEMPLICE
+    NSTextField *testLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 550, 500, 30)];
+    testLabel.stringValue = @"🧪 TEST: Database Management";
+    testLabel.editable = NO;
+    testLabel.bordered = NO;
+    testLabel.backgroundColor = [NSColor clearColor];
+    testLabel.font = [NSFont boldSystemFontOfSize:16];
+    [databaseView addSubview:testLabel];
+    
+    // Status label con frame fisso
+    self.databaseStatusLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 450, 500, 80)];
+    self.databaseStatusLabel.stringValue = @"Loading database status...";
+    self.databaseStatusLabel.editable = NO;
+    self.databaseStatusLabel.bordered = YES;
+    self.databaseStatusLabel.backgroundColor = [NSColor controlBackgroundColor];
+    self.databaseStatusLabel.textColor = [NSColor secondaryLabelColor];
+    self.databaseStatusLabel.font = [NSFont systemFontOfSize:11];
+    self.databaseStatusLabel.maximumNumberOfLines = 0;
+    self.databaseStatusLabel.lineBreakMode = NSLineBreakByWordWrapping;
+    [databaseView addSubview:self.databaseStatusLabel];
+    
+    // Bottoni con frame fissi
+    self.resetSymbolsButton = [[NSButton alloc] initWithFrame:NSMakeRect(20, 380, 200, 32)];
+    self.resetSymbolsButton.title = @"Reset Symbol Database";
+    self.resetSymbolsButton.bezelStyle = NSBezelStyleRounded;
+    self.resetSymbolsButton.target = self;
+    self.resetSymbolsButton.action = @selector(resetSymbolDatabase:);
+    self.resetSymbolsButton.contentTintColor = [NSColor systemOrangeColor];
+    [databaseView addSubview:self.resetSymbolsButton];
+    
+    self.resetWatchlistsButton = [[NSButton alloc] initWithFrame:NSMakeRect(20, 340, 200, 32)];
+    self.resetWatchlistsButton.title = @"Reset All Watchlists";
+    self.resetWatchlistsButton.bezelStyle = NSBezelStyleRounded;
+    self.resetWatchlistsButton.target = self;
+    self.resetWatchlistsButton.action = @selector(resetWatchlists:);
+    self.resetWatchlistsButton.contentTintColor = [NSColor systemOrangeColor];
+    [databaseView addSubview:self.resetWatchlistsButton];
+    
+    self.resetAlertsButton = [[NSButton alloc] initWithFrame:NSMakeRect(20, 300, 200, 32)];
+    self.resetAlertsButton.title = @"Reset All Alerts";
+    self.resetAlertsButton.bezelStyle = NSBezelStyleRounded;
+    self.resetAlertsButton.target = self;
+    self.resetAlertsButton.action = @selector(resetAlerts:);
+    self.resetAlertsButton.contentTintColor = [NSColor systemOrangeColor];
+    [databaseView addSubview:self.resetAlertsButton];
+    
+    self.resetConnectionsButton = [[NSButton alloc] initWithFrame:NSMakeRect(20, 260, 200, 32)];
+    self.resetConnectionsButton.title = @"Reset All Connections";
+    self.resetConnectionsButton.bezelStyle = NSBezelStyleRounded;
+    self.resetConnectionsButton.target = self;
+    self.resetConnectionsButton.action = @selector(resetConnections:);
+    self.resetConnectionsButton.contentTintColor = [NSColor systemOrangeColor];
+    [databaseView addSubview:self.resetConnectionsButton];
+    
+    // Separator
+    NSBox *separator = [[NSBox alloc] initWithFrame:NSMakeRect(20, 220, 500, 1)];
+    separator.boxType = NSBoxSeparator;
+    [databaseView addSubview:separator];
+    
+    // Nuclear button
+    self.resetAllDatabasesButton = [[NSButton alloc] initWithFrame:NSMakeRect(150, 150, 250, 40)];
+    self.resetAllDatabasesButton.title = @"🚨 RESET EVERYTHING 🚨";
+    self.resetAllDatabasesButton.bezelStyle = NSBezelStyleRounded;
+    self.resetAllDatabasesButton.target = self;
+    self.resetAllDatabasesButton.action = @selector(resetAllDatabases:);
+    self.resetAllDatabasesButton.contentTintColor = [NSColor systemRedColor];
+    self.resetAllDatabasesButton.font = [NSFont boldSystemFontOfSize:14];
+    [databaseView addSubview:self.resetAllDatabasesButton];
+    
+    // Warning
+    NSTextField *warningLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 100, 500, 40)];
+    warningLabel.stringValue = @"⚠️ Warning: These actions cannot be undone. All data will be permanently deleted.";
+    warningLabel.editable = NO;
+    warningLabel.bordered = NO;
+    warningLabel.backgroundColor = [NSColor clearColor];
+    warningLabel.textColor = [NSColor systemRedColor];
+    warningLabel.font = [NSFont systemFontOfSize:12];
+    warningLabel.maximumNumberOfLines = 0;
+    warningLabel.lineBreakMode = NSLineBreakByWordWrapping;
+    [databaseView addSubview:warningLabel];
+    
+    NSTextField *nuclearWarning = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 50, 500, 40)];
+    nuclearWarning.stringValue = @"Nuclear option will delete ALL data: symbols, watchlists, alerts, connections, settings";
+    nuclearWarning.editable = NO;
+    nuclearWarning.bordered = NO;
+    nuclearWarning.backgroundColor = [NSColor clearColor];
+    nuclearWarning.textColor = [NSColor systemRedColor];
+    nuclearWarning.font = [NSFont systemFontOfSize:10];
+    nuclearWarning.alignment = NSTextAlignmentCenter;
+    nuclearWarning.maximumNumberOfLines = 0;
+    nuclearWarning.lineBreakMode = NSLineBreakByWordWrapping;
+    [databaseView addSubview:nuclearWarning];
+    
+    [self.tabView addTabViewItem:databaseTab];
+    NSLog(@"🔍 Added tab to tabView");
+    
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+          NSLog(@"🔍 Calling updateDatabaseStatus...");
+          [self updateDatabaseStatus];
+      });
+   
+}
 - (void)setupGeneralTab {
     NSTabViewItem *generalTab = [[NSTabViewItem alloc] init];
     generalTab.label = @"General";
@@ -459,5 +581,225 @@
     [NSLayoutConstraint activateConstraints:@[
         [self.tabView.bottomAnchor constraintEqualToAnchor:buttonContainer.topAnchor constant:-20]
     ]];
+}
+
+
+// ====== HELPER METHODS ======
+
+- (NSButton *)createResetButton:(NSString *)title action:(SEL)action {
+    NSButton *button = [[NSButton alloc] init];
+    button.title = title;
+    button.bezelStyle = NSBezelStyleRounded;
+    button.controlSize = NSControlSizeRegular;
+    button.target = self;
+    button.action = action;
+    button.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    // Warning color
+    button.contentTintColor = [NSColor systemOrangeColor];
+    
+    return button;
+}
+
+- (NSButton *)createDangerButton:(NSString *)title action:(SEL)action {
+    NSButton *button = [[NSButton alloc] init];
+    button.title = title;
+    button.bezelStyle = NSBezelStyleRounded;
+    button.controlSize = NSControlSizeLarge;
+    button.target = self;
+    button.action = action;
+    button.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    // Danger styling
+    button.contentTintColor = [NSColor systemRedColor];
+    button.font = [NSFont boldSystemFontOfSize:14];
+    
+    return button;
+}
+
+// ====== AGGIUNGI DEBUG A updateDatabaseStatus ======
+
+- (void)updateDatabaseStatus {
+    NSLog(@"🔍 updateDatabaseStatus CALLED");
+    
+    DataHub *dataHub = [DataHub shared];
+    NSLog(@"🔍 DataHub instance: %@", dataHub);
+    
+    NSUInteger symbolsCount = [dataHub getAllSymbols].count;
+    NSUInteger watchlistsCount = [dataHub getAllWatchlists].count;
+    NSUInteger alertsCount = [dataHub getAllAlerts].count;
+    NSUInteger connectionsCount = 0; // Update quando implementato
+    
+    NSLog(@"🔍 Counts - Symbols: %lu, Watchlists: %lu, Alerts: %lu, Connections: %lu",
+          (unsigned long)symbolsCount, (unsigned long)watchlistsCount,
+          (unsigned long)alertsCount, (unsigned long)connectionsCount);
+    
+    NSString *status = [NSString stringWithFormat:
+                       @"Current database status:\n\n"
+                       @"• %lu symbols in database\n"
+                       @"• %lu watchlists\n"
+                       @"• %lu alerts\n"
+                       @"• %lu connections\n\n"
+                       @"Click individual buttons to reset specific data types, or use the nuclear option to reset everything.",
+                       (unsigned long)symbolsCount,
+                       (unsigned long)watchlistsCount,
+                       (unsigned long)alertsCount,
+                       (unsigned long)connectionsCount];
+    
+    NSLog(@"🔍 Status text: %@", status);
+    NSLog(@"🔍 Status label: %@", self.databaseStatusLabel);
+    NSLog(@"🔍 Status label frame: %@", NSStringFromRect(self.databaseStatusLabel.frame));
+    
+    if (self.databaseStatusLabel) {
+        self.databaseStatusLabel.stringValue = status;
+        NSLog(@"✅ Status updated in label");
+        
+        // Force redraw
+        [self.databaseStatusLabel setNeedsDisplay:YES];
+        [self.databaseStatusLabel.superview setNeedsDisplay:YES];
+    } else {
+        NSLog(@"❌ databaseStatusLabel is nil!");
+    }
+}
+
+// ====== RESET ACTION METHODS ======
+
+- (void)resetSymbolDatabase:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Reset Symbol Database?";
+    alert.informativeText = @"This will delete all symbols and their usage statistics. Watchlists will be preserved but may reference missing symbols.";
+    alert.alertStyle = NSAlertStyleWarning;
+    [alert addButtonWithTitle:@"Reset"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        DataHub *dataHub = [DataHub shared];
+        
+        // Delete all symbols
+        NSArray *allSymbols = [dataHub getAllSymbols];
+        for (Symbol *symbol in allSymbols) {
+            [dataHub deleteSymbol:symbol];
+        }
+        
+        [self updateDatabaseStatus];
+        [self showResetCompletedAlert:@"Symbol database reset completed"];
+    }
+}
+
+- (void)resetWatchlists:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Reset All Watchlists?";
+    alert.informativeText = @"This will delete all watchlists and their symbols.";
+    alert.alertStyle = NSAlertStyleWarning;
+    [alert addButtonWithTitle:@"Reset"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        DataHub *dataHub = [DataHub shared];
+        
+        // Delete all watchlists
+        NSArray *allWatchlists = [dataHub getAllWatchlists];
+        for (Watchlist *watchlist in [allWatchlists copy]) {
+            [dataHub deleteWatchlist:watchlist];
+        }
+        
+        [self updateDatabaseStatus];
+        [self showResetCompletedAlert:@"All watchlists reset completed"];
+    }
+}
+
+- (void)resetAlerts:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Reset All Alerts?";
+    alert.informativeText = @"This will delete all price alerts and notifications.";
+    alert.alertStyle = NSAlertStyleWarning;
+    [alert addButtonWithTitle:@"Reset"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        DataHub *dataHub = [DataHub shared];
+        
+        // Delete all alerts
+        NSArray *allAlerts = [dataHub getAllAlerts];
+        for (Alert *alert in [allAlerts copy]) {
+            [dataHub deleteAlert:alert];
+        }
+        
+        [self updateDatabaseStatus];
+        [self showResetCompletedAlert:@"All alerts reset completed"];
+    }
+}
+
+- (void)resetConnections:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Reset All Connections?";
+    alert.informativeText = @"This will delete all symbol connections and relationships.";
+    alert.alertStyle = NSAlertStyleWarning;
+    [alert addButtonWithTitle:@"Reset"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        DataHub *dataHub = [DataHub shared];
+        
+        // Delete all connections
+        NSArray *allConnections = [dataHub getAllConnections];
+        for (ConnectionModel *connection in allConnections) {
+            [dataHub deleteConnection:connection];
+        }
+        
+        [self updateDatabaseStatus];
+        [self showResetCompletedAlert:@"All connections reset completed"];
+    }
+}
+
+- (void)resetAllDatabases:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"🚨 NUCLEAR RESET 🚨";
+    alert.informativeText = @"This will delete EVERYTHING:\n\n"
+                           @"• All symbols and usage data\n"
+                           @"• All watchlists\n"
+                           @"• All alerts\n"
+                           @"• All connections\n"
+                           @"• All app preferences\n\n"
+                           @"This action CANNOT be undone!";
+    alert.alertStyle = NSAlertStyleCritical;
+    [alert addButtonWithTitle:@"🚨 DELETE EVERYTHING"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    // Make user type confirmation
+    NSTextField *confirmField = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    confirmField.placeholderString = @"Type DELETE to confirm";
+    alert.accessoryView = confirmField;
+    [alert.window setInitialFirstResponder:confirmField];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        if ([confirmField.stringValue isEqualToString:@"DELETE"]) {
+            // Reset everything
+            [self resetSymbolDatabase:nil];
+            [self resetWatchlists:nil];
+            [self resetAlerts:nil];
+            [self resetConnections:nil];
+            
+            // Reset app settings
+            [[AppSettings sharedSettings] resetToDefaults];
+            
+            [self updateDatabaseStatus];
+            [self showResetCompletedAlert:@"🚨 NUCLEAR RESET COMPLETED - All data deleted"];
+        } else {
+            NSAlert *errorAlert = [[NSAlert alloc] init];
+            errorAlert.messageText = @"Reset Cancelled";
+            errorAlert.informativeText = @"You must type 'DELETE' exactly to confirm.";
+            [errorAlert runModal];
+        }
+    }
+}
+
+- (void)showResetCompletedAlert:(NSString *)message {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Reset Completed";
+    alert.informativeText = message;
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
 }
 @end

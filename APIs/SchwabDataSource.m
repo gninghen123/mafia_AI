@@ -368,7 +368,6 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
             NSLog(@"SchwabDataSource: fetchQuoteForSymbols failed: %@", error.localizedDescription);
             if (completion) completion(nil, error);
         } else {
-            NSLog(@"SchwabDataSource: fetchQuoteForSymbols succeeded, raw response: %@", quotes);
             // CAMBIAMENTO: Restituisce i dati grezzi
             NSDictionary *rawQuoteData = quotes[symbol];
             if (completion) completion(rawQuoteData, nil);
@@ -416,12 +415,9 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
             }
             
             NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
-            NSLog(@"SchwabDataSource: HTTP Status Code: %ld", (long)httpResponse.statusCode);
-            NSLog(@"SchwabDataSource: Response headers: %@", httpResponse.allHeaderFields);
             
             if (data) {
                 NSString *responseString = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-                NSLog(@"SchwabDataSource: Raw response: %@", responseString);
             }
             
             if (httpResponse.statusCode == 401) {
@@ -450,14 +446,12 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
             NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
             
             if (parseError) {
-                NSLog(@"SchwabDataSource: JSON parsing error: %@", parseError.localizedDescription);
                 dispatch_async(dispatch_get_main_queue(), ^{
                     if (completion) completion(nil, parseError);
                 });
                 return;
             }
             
-            NSLog(@"SchwabDataSource: Successfully parsed JSON: %@", json);
             
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (completion) completion(json, nil);
@@ -823,180 +817,6 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     }
 }
 
-
-// ATTENZIONE!!! parsing non necessario... il datamanager svolge la standardizzazione
-// Aggiornamento del metodo parseQuoteData nel SchwabDataSource.m
-/*
-- (MarketData *)parseQuoteData:(NSDictionary *)data forSymbol:(NSString *)symbol {
-    if (!data) {
-        return nil;
-    }
-    
-  
-    
-    // Schwab restituisce la struttura: data[@"quote"] contiene i prezzi principali
-    NSDictionary *quoteData = data[@"quote"];
-    NSDictionary *regularData = data[@"regular"];
-    NSDictionary *referenceData = data[@"reference"];
-    
-    if (!quoteData) {
-        return nil;
-    }
-    
-    
-    
-    // Crea dictionary per inizializzare MarketData
-    NSMutableDictionary *marketDataDict = [NSMutableDictionary dictionary];
-    marketDataDict[@"symbol"] = symbol;
-    
-    // Mappiamo i campi di Schwab ai nostri campi MarketData
-    // Schwab usa "lastPrice" per l'ultimo prezzo
-    if (quoteData[@"lastPrice"]) {
-        marketDataDict[@"last"] = quoteData[@"lastPrice"];
-    }
-    
-    // Bid e Ask
-    if (quoteData[@"bidPrice"]) {
-        marketDataDict[@"bid"] = quoteData[@"bidPrice"];
-    }
-    
-    if (quoteData[@"askPrice"]) {
-        marketDataDict[@"ask"] = quoteData[@"askPrice"];
-    }
-    
-    // Open, High, Low, Close
-    if (quoteData[@"openPrice"]) {
-        marketDataDict[@"open"] = quoteData[@"openPrice"];
-    }
-    
-    if (quoteData[@"highPrice"]) {
-        marketDataDict[@"high"] = quoteData[@"highPrice"];
-    }
-    
-    if (quoteData[@"lowPrice"]) {
-        marketDataDict[@"low"] = quoteData[@"lowPrice"];
-    }
-    
-    if (quoteData[@"closePrice"]) {
-        marketDataDict[@"previousClose"] = quoteData[@"closePrice"];
-    }
-    
-    // Volume
-    if (quoteData[@"totalVolume"]) {
-        marketDataDict[@"volume"] = quoteData[@"totalVolume"];
-    }
-    
-    // Bid/Ask sizes
-    if (quoteData[@"bidSize"]) {
-        marketDataDict[@"bidSize"] = quoteData[@"bidSize"];
-    }
-    
-    if (quoteData[@"askSize"]) {
-        marketDataDict[@"askSize"] = quoteData[@"askSize"];
-    }
-    
-    // Change e Change Percent (se disponibili)
-    if (quoteData[@"netChange"]) {
-        marketDataDict[@"change"] = quoteData[@"netChange"];
-    }
-    
-    if (quoteData[@"netPercentChange"]) {
-        marketDataDict[@"changePercent"] = quoteData[@"netPercentChange"];
-    }
-    
-    // Exchange
-    if (referenceData[@"exchangeName"]) {
-        marketDataDict[@"exchange"] = referenceData[@"exchangeName"];
-    }
-    
-    // Timestamp (Schwab usa millisecondi)
-    if (quoteData[@"quoteTime"]) {
-        NSNumber *quoteTimeMs = quoteData[@"quoteTime"];
-        NSTimeInterval quoteTimeSeconds = [quoteTimeMs doubleValue] / 1000.0;
-        marketDataDict[@"timestamp"] = @(quoteTimeSeconds);
-    }
-    
-    // Market status
-    if (quoteData[@"securityStatus"]) {
-        NSString *status = quoteData[@"securityStatus"];
-        marketDataDict[@"isMarketOpen"] = @([status isEqualToString:@"Normal"]);
-    }
-    
-    
-    // Crea MarketData object
-    MarketData *quote = [[MarketData alloc] initWithDictionary:marketDataDict];
-    
-    if (!quote) {
-      
-        NSLog(@"SchwabDataSource: Failed to create MarketData for %@", symbol);
-    }
-    
-    return quote;
-}
-
-- (NSArray *)parseHistoricalData:(NSDictionary *)data {
-    NSArray *candles = data[@"candles"];
-    if (!candles) return @[];
-    
-    NSMutableArray *bars = [NSMutableArray array];
-    
-    for (NSDictionary *candle in candles) {
-        NSMutableDictionary *barDict = [NSMutableDictionary dictionary];
-        
-        // Usa 'date' invece di 'timestamp'
-        barDict[@"date"] = [NSDate dateWithTimeIntervalSince1970:[candle[@"datetime"] doubleValue] / 1000.0];
-        
-        // I valori potrebbero essere già NSNumber o NSDecimalNumber
-        if (candle[@"open"]) {
-            if ([candle[@"open"] isKindOfClass:[NSDecimalNumber class]]) {
-                barDict[@"open"] = @([candle[@"open"] doubleValue]);
-            } else {
-                barDict[@"open"] = candle[@"open"];
-            }
-        }
-        
-        if (candle[@"high"]) {
-            if ([candle[@"high"] isKindOfClass:[NSDecimalNumber class]]) {
-                barDict[@"high"] = @([candle[@"high"] doubleValue]);
-            } else {
-                barDict[@"high"] = candle[@"high"];
-            }
-        }
-        
-        if (candle[@"low"]) {
-            if ([candle[@"low"] isKindOfClass:[NSDecimalNumber class]]) {
-                barDict[@"low"] = @([candle[@"low"] doubleValue]);
-            } else {
-                barDict[@"low"] = candle[@"low"];
-            }
-        }
-        
-        if (candle[@"close"]) {
-            if ([candle[@"close"] isKindOfClass:[NSDecimalNumber class]]) {
-                barDict[@"close"] = @([candle[@"close"] doubleValue]);
-            } else {
-                barDict[@"close"] = candle[@"close"];
-            }
-        }
-        
-        if (candle[@"volume"]) {
-            barDict[@"volume"] = candle[@"volume"];
-        }
-        
-        [bars addObject:barDict];
-    }
-    
-    return bars;
-}
-
-
-- (Position *)parsePositionData:(NSDictionary *)data {
-    // Per ora restituiamo nil perché Position dovrebbe essere creato tramite factory o builder
-    // TODO: Implementare quando necessario
-    return nil;
-}
-// fine parsing non necessario
- */
 
 #pragma mark - Keychain Management
 

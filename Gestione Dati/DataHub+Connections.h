@@ -113,8 +113,8 @@ FOUNDATION_EXPORT NSString * const DataHubConnectionsUpdatedNotification;
 - (void)clearConnectionsCache;
 
 // Conversion helpers (internal use)
-- (ConnectionModel *)convertCoreDataToRuntimeModel:(StockConnection *)coreDataConnection;
-- (void)updateCoreDataFromRuntimeModel:(ConnectionModel *)runtimeModel coreDataConnection:(StockConnection *)coreDataConnection;
+- (ConnectionModel *)convertConnectionCoreDataToRuntimeModel:(StockConnection *)coreDataConnection;
+- (void)updateConnectionCoreDataFromRuntimeModel:(ConnectionModel *)runtimeModel coreDataConnection:(StockConnection *)coreDataConnection;
 
 @end
 

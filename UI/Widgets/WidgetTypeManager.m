@@ -14,7 +14,7 @@
 #import "MiniChart.h"
 #import "GeneralMarketWidget.h"
 #import "ConnectionsWidget.h"
-
+#import "SymbolDataBase/SymbolDataBaseWidget.h"
 
 @interface WidgetTypeManager ()
 @property (nonatomic, strong) NSDictionary<NSString *, NSArray<NSString *> *> *widgetCategories;
@@ -45,8 +45,8 @@
     // Define widget categories and types
     self.widgetCategories = @{
         @"Charts": @[
-            @"Chart Widget",        // FIX: Aggiunto Chart Widget generico
-            @"MultiChart Widget",  // <-- AGGIUNGI QUESTA LINEA
+            @"Chart Widget",
+            @"MultiChart Widget",  
             @"Candlestick Chart",
             @"Line Chart",
             @"Bar Chart",
@@ -74,13 +74,14 @@
         @"Information": @[
             @"Quote",
             @"Watchlist",
-            @"General Market",     // <-- AGGIUNGI QUESTA LINEA
+            @"General Market",
             @"News Feed",
             @"Economic Calendar",
             @"Market Overview",
             @"Symbol Info",
             @"Time & Sales",
-            @"Connections"
+            @"Connections",
+            @"SymbolDatabase"
         ],
         @"Tools": @[
             @"Connection Status",
@@ -103,8 +104,7 @@
     typeToClass[@"MultiChart Widget"] = [MultiChartWidget class];
     typeToClass[@"General Market"] = [GeneralMarketWidget class];
     typeToClass[@"Connections"] = [ConnectionsWidget class];
-
-    // FIX: Map chart types to CHChartWidget
+    typeToClass[@"SymbolDatabase"] = [SymbolDatabaseWidget class];
     typeToClass[@"Chart Widget"] = [CHChartWidget class];
     typeToClass[@"Candlestick Chart"] = [CHChartWidget class];
     typeToClass[@"Line Chart"] = [CHChartWidget class];
@@ -137,7 +137,8 @@
         @"Heatmap": @"square.grid.3x3.fill.square",
         @"MultiChart Widget": @"square.grid.3x3",
         @"Connections": @"link",
-
+        @"SymbolDatabase":@"tray.2",
+        
         @"Order Entry": @"plus.square",
         @"Order Book": @"book",
         @"Positions": @"briefcase",

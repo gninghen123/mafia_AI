@@ -120,6 +120,24 @@
             <fetchIndexElement property="creationDate" type="Binary" order="descending"/>
         </fetchIndex>
     </entity>
+    <entity name="Symbol" representedClassName="Symbol" syncable="YES" codeGenerationType="class">
+        <attribute name="creationDate" attributeType="Date"/>
+        <attribute name="firstInteraction" optional="YES" attributeType="Date"/>
+        <attribute name="interactionCount" attributeType="Integer 32" defaultValueString="0"/>
+        <attribute name="isFavorite" attributeType="Boolean" defaultValueString="NO"/>
+        <attribute name="lastInteraction" optional="YES" attributeType="Date"/>
+        <attribute name="notes" optional="YES" attributeType="String"/>
+        <attribute name="symbol" attributeType="String"/>
+        <attribute name="tags" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
+        <fetchIndex name="bySymbolIndex">
+            <fetchIndexElement property="symbol" type="Binary" order="ascending"/>
+        </fetchIndex>
+        <uniquenessConstraints>
+            <uniquenessConstraint>
+                <constraint value="symbol"/>
+            </uniquenessConstraint>
+        </uniquenessConstraints>
+    </entity>
     <entity name="TradingModel" representedClassName="TradingModel" syncable="YES">
         <attribute name="currentOutcome" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
         <attribute name="entryDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>

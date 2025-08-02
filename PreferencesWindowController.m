@@ -57,7 +57,7 @@
 }
 
 - (void)setupWindow {
-    NSRect frame = NSMakeRect(0, 0, 600, 500);
+    NSRect frame = NSMakeRect(0, 0, 600, 700);
     NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
                                                    styleMask:NSWindowStyleMaskTitled |
                         NSWindowStyleMaskClosable
@@ -98,28 +98,19 @@
 }
 
 - (void)setupDatabaseTab {
-    NSLog(@"🔍 setupDatabaseTab - START");
-    
+   
+   
     NSTabViewItem *databaseTab = [[NSTabViewItem alloc] init];
     databaseTab.label = @"Database";
     
     // ✅ CREA UNA VIEW SEMPLICE CON FRAME FISSO
-    NSView *databaseView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 550, 600)];
+    NSView *databaseView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 550, 700)];
     databaseView.wantsLayer = YES;
     databaseView.layer.backgroundColor = [NSColor controlBackgroundColor].CGColor;
     
     NSLog(@"🔍 Created databaseView with frame: %@", NSStringFromRect(databaseView.frame));
     
     databaseTab.view = databaseView;
-    
-    // ✅ TEST CON UN SOLO ELEMENTO SEMPLICE
-    NSTextField *testLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 550, 500, 30)];
-    testLabel.stringValue = @"🧪 TEST: Database Management";
-    testLabel.editable = NO;
-    testLabel.bordered = NO;
-    testLabel.backgroundColor = [NSColor clearColor];
-    testLabel.font = [NSFont boldSystemFontOfSize:16];
-    [databaseView addSubview:testLabel];
     
     // Status label con frame fisso
     self.databaseStatusLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 450, 500, 80)];
@@ -129,7 +120,9 @@
     self.databaseStatusLabel.backgroundColor = [NSColor controlBackgroundColor];
     self.databaseStatusLabel.textColor = [NSColor secondaryLabelColor];
     self.databaseStatusLabel.font = [NSFont systemFontOfSize:11];
-    self.databaseStatusLabel.maximumNumberOfLines = 0;
+    self.databaseStatusLabel.usesSingleLineMode = NO;
+    self.databaseStatusLabel.cell.wraps = YES;
+    self.databaseStatusLabel.cell.lineBreakMode = NSLineBreakByWordWrapping;
     self.databaseStatusLabel.lineBreakMode = NSLineBreakByWordWrapping;
     [databaseView addSubview:self.databaseStatusLabel];
     
@@ -207,7 +200,7 @@
     
     [self.tabView addTabViewItem:databaseTab];
     NSLog(@"🔍 Added tab to tabView");
-    
+    NSLog(@"🔍 setupDatabaseTab - START");
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
           NSLog(@"🔍 Calling updateDatabaseStatus...");
           [self updateDatabaseStatus];
@@ -802,4 +795,6 @@
     [alert addButtonWithTitle:@"OK"];
     [alert runModal];
 }
+
+
 @end

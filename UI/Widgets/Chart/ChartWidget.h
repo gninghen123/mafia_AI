@@ -13,6 +13,8 @@
 #import "ChartCoordinator.h"
 #import "RuntimeModels.h"
 #import "IndicatorRenderer.h"
+#import "IndicatorsPanelController.h"
+
 
 NS_ASSUME_NONNULL_BEGIN
 

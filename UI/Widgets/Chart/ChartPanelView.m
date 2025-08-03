@@ -291,7 +291,9 @@
         }
     }
 }
-
+- (BOOL)isFlipped{
+    return YES;
+}
 #pragma mark - Mouse Event Handling
 
 - (void)mouseDown:(NSEvent *)event {

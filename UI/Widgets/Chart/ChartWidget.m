@@ -61,10 +61,6 @@
     NSLog(@"📊 ChartWidget: Initialized with symbol %@", _currentSymbol);
 }
 
-- (void)dealloc {
-    [[NSNotificationCenter defaultCenter] removeObserver:self];
-    [self.refreshTimer invalidate];
-}
 
 #pragma mark - Properties
 
@@ -187,13 +183,17 @@
         [self.toolbarView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
         [self.toolbarView.heightAnchor constraintEqualToConstant:40],
         
-        // Chart scroll view
+        // Chart scroll view - CORREZIONE: si estende per tutto lo spazio disponibile
         [self.chartScrollView.topAnchor constraintEqualToAnchor:self.toolbarView.bottomAnchor],
         [self.chartScrollView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
         [self.chartScrollView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
         [self.chartScrollView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor],
         
-        // Stack view width
+        // CORREZIONE: Stack view constraints - si espande completamente
+        [self.panelsStackView.topAnchor constraintEqualToAnchor:self.chartScrollView.topAnchor],
+        [self.panelsStackView.leadingAnchor constraintEqualToAnchor:self.chartScrollView.leadingAnchor],
+        [self.panelsStackView.trailingAnchor constraintEqualToAnchor:self.chartScrollView.trailingAnchor],
+        [self.panelsStackView.bottomAnchor constraintEqualToAnchor:self.chartScrollView.bottomAnchor],
         [self.panelsStackView.widthAnchor constraintEqualToAnchor:self.chartScrollView.widthAnchor],
         
         // Toolbar components
@@ -215,8 +215,9 @@
         [self.indicatorsButton.centerYAnchor constraintEqualToAnchor:self.toolbarView.centerYAnchor]
     ]];
     
-    NSLog(@"✅ ChartWidget: Constraints setup complete");
+    NSLog(@"✅ ChartWidget: Constraints setup complete with height fix");
 }
+
 
 #pragma mark - Panel Management
 
@@ -238,58 +239,6 @@
     return panel;
 }
 
-- (void)addPanelWithModel:(ChartPanelModel *)panelModel {
-    // Add to data model
-    [self.panelModels addObject:panelModel];
-    
-    // Create view for panel
-    ChartPanelView *panelView = [[ChartPanelView alloc] initWithPanelModel:panelModel
-                                                                coordinator:self.coordinator
-                                                                chartWidget:self];
-    
-    // Set historical data if available
-    if (self.historicalData) {
-        [panelView updateWithHistoricalData:self.historicalData];
-    }
-    
-    // Add to collections and UI
-    [self.panelViews addObject:panelView];
-    [self.panelsStackView addArrangedSubview:panelView];
-    
-    // Set height constraint based on panel type - CORREZIONE: uso Required priority
-    CGFloat height = (panelModel.panelType == ChartPanelTypeMain) ? 400 : 150;
-    NSLayoutConstraint *heightConstraint = [panelView.heightAnchor constraintEqualToConstant:height];
-    heightConstraint.priority = NSLayoutPriorityRequired; // CORREZIONE
-    heightConstraint.active = YES;
-    
-    // Width constraint
-    NSLayoutConstraint *widthConstraint = [panelView.widthAnchor constraintEqualToAnchor:self.panelsStackView.widthAnchor];
-    widthConstraint.active = YES;
-    
-    NSLog(@"📊 ChartWidget: Added panel '%@' (height: %.0f)", panelModel.title, height);
-}
-
-- (void)removePanelWithModel:(ChartPanelModel *)panelModel {
-    NSInteger index = [self.panelModels indexOfObject:panelModel];
-    if (index == NSNotFound) return;
-    
-    // Cannot delete main panel
-    if (panelModel.panelType == ChartPanelTypeMain) {
-        NSLog(@"⚠️ ChartWidget: Cannot delete main panel");
-        return;
-    }
-    
-    // Remove from collections
-    ChartPanelView *panelView = self.panelViews[index];
-    [self.panelModels removeObjectAtIndex:index];
-    [self.panelViews removeObjectAtIndex:index];
-    
-    // Remove from UI
-    [self.panelsStackView removeArrangedSubview:panelView];
-    [panelView removeFromSuperview];
-    
-    NSLog(@"🗑️ ChartWidget: Removed panel '%@'", panelModel.title);
-}
 
 - (void)requestDeletePanel:(ChartPanelModel *)panelModel {
     if (!panelModel.canBeDeleted) {
@@ -422,9 +371,7 @@
     [self refreshCurrentData];
 }
 
-- (IBAction)indicatorsButtonClicked:(id)sender {
-    [self.indicatorsPanelController togglePanel];
-}
+
 
 #pragma mark - Utility Methods
 
@@ -477,5 +424,105 @@
         [self refreshCurrentData];
     }
 }
+
+
+#pragma mark - Indicators Panel Integration
+
+- (IBAction)indicatorsButtonClicked:(id)sender {
+    // Inizializza il controller se non esiste
+    if (!self.indicatorsPanelController) {
+        self.indicatorsPanelController = [[IndicatorsPanelController alloc] initWithChartWidget:self];
+    }
+    
+    // Toggle del popup
+    [self.indicatorsPanelController togglePanel];
+    
+    NSLog(@"🎛️ ChartWidget: Indicators panel toggled");
+}
+
+// AGGIUNTA: Metodo per notificare il panel quando i panel cambiano
+- (void)notifyIndicatorsPanelOfChanges {
+    if (self.indicatorsPanelController && self.indicatorsPanelController.isVisible) {
+        [self.indicatorsPanelController refreshPanelsList];
+    }
+}
+
+// MODIFICA per addPanelWithModel - aggiungi notifica
+- (void)addPanelWithModel:(ChartPanelModel *)panelModel {
+    // Add to data model
+    [self.panelModels addObject:panelModel];
+    
+    // Create view for panel
+    ChartPanelView *panelView = [[ChartPanelView alloc] initWithPanelModel:panelModel
+                                                                coordinator:self.coordinator
+                                                                chartWidget:self];
+    
+    // Set historical data if available
+    if (self.historicalData) {
+        [panelView updateWithHistoricalData:self.historicalData];
+    }
+    
+    // Add to collections and UI
+    [self.panelViews addObject:panelView];
+    [self.panelsStackView addArrangedSubview:panelView];
+    
+    // CORREZIONE: Usa priorità flessibile per l'altezza dei panel
+    CGFloat height = (panelModel.panelType == ChartPanelTypeMain) ? 400 : 150;
+    
+    // Height constraint con priorità più bassa per consentire flessibilità
+    NSLayoutConstraint *heightConstraint = [panelView.heightAnchor constraintGreaterThanOrEqualToConstant:height];
+    heightConstraint.priority = NSLayoutPriorityDefaultHigh; // Non Required
+    heightConstraint.active = YES;
+    
+    // Se è il main panel, aggiungi anche un constraint di crescita
+    if (panelModel.panelType == ChartPanelTypeMain) {
+        // Il main panel cresce per riempire lo spazio disponibile
+        NSLayoutConstraint *expandConstraint = [panelView.heightAnchor constraintEqualToAnchor:self.panelsStackView.heightAnchor
+                                                                                     multiplier:1]; // 70% dello spazio
+        expandConstraint.priority = NSLayoutPriorityDefaultHigh - 1;
+        expandConstraint.active = YES;
+    }
+    
+    // Width constraint
+    NSLayoutConstraint *widthConstraint = [panelView.widthAnchor constraintEqualToAnchor:self.panelsStackView.widthAnchor];
+    widthConstraint.active = YES;
+    
+    NSLog(@"📊 ChartWidget: Added panel '%@' (min height: %.0f)", panelModel.title, height);
+}
+
+// MODIFICA per removePanelWithModel - aggiungi notifica
+- (void)removePanelWithModel:(ChartPanelModel *)panelModel {
+    NSInteger index = [self.panelModels indexOfObject:panelModel];
+    if (index == NSNotFound) return;
+    
+    // Cannot delete main panel
+    if (panelModel.panelType == ChartPanelTypeMain) {
+        NSLog(@"⚠️ ChartWidget: Cannot delete main panel");
+        return;
+    }
+    
+    // Remove from collections
+    ChartPanelView *panelView = self.panelViews[index];
+    [self.panelModels removeObjectAtIndex:index];
+    [self.panelViews removeObjectAtIndex:index];
+    
+    // Remove from UI
+    [self.panelsStackView removeArrangedSubview:panelView];
+    [panelView removeFromSuperview];
+    
+    // Notifica il popup se è visibile
+    [self notifyIndicatorsPanelOfChanges];
+    
+    NSLog(@"🗑️ ChartWidget: Removed panel '%@' and notified indicators panel", panelModel.title);
+}
+
+// AGGIUNTA al dealloc per cleanup
+- (void)dealloc {
+    // Nascondi il popup se è visibile
+    if (self.indicatorsPanelController.isVisible) {
+        [self.indicatorsPanelController hidePanel];
+    }
+}
+
 
 @end

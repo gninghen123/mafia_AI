@@ -45,7 +45,6 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
 @implementation SeasonalChartView
 
 - (void)drawRect:(NSRect)dirtyRect {
-    NSLog(@"🎨 SeasonalChartView drawRect called with rect: %@", NSStringFromRect(dirtyRect));
     
     // Clear background
     [[NSColor controlBackgroundColor] setFill];
@@ -75,7 +74,6 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
     return NO; // Coordinate system con origine in basso-sinistra
 }
 - (void)scrollWheel:(NSEvent *)event {
-    NSLog(@"🖱️ scrollWheel event: deltaY=%.2f", event.scrollingDeltaY);
     
     if (self.widget) {
         // Determina la direzione dello scroll
@@ -102,7 +100,6 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
         // Applica il nuovo zoom tramite il widget
         [self.widget setZoomLevel:newZoom];
         
-        NSLog(@"🔍 Zoom changed from %ld to %ld years", (long)currentZoom, (long)newZoom);
     }
 }
 

@@ -74,10 +74,7 @@
     self.crosshairPosition = point;
     self.crosshairVisible = YES;
     
-    // Log for debugging
-    NSInteger barIndex = [self barIndexForXPosition:point.x inRect:rect];
-    NSLog(@"🎯 Crosshair at %.1f,%.1f -> bar index %ld",
-          point.x, point.y, (long)barIndex);
+
 }
 
 - (void)handleScroll:(CGFloat)deltaX deltaY:(CGFloat)deltaY inRect:(NSRect)rect {
@@ -96,7 +93,6 @@
     self.visibleBarsRange = newRange;
     self.panOffset += deltaX;
     
-    NSLog(@"📜 Scroll: deltaX=%.1f, new range: %@", deltaX, NSStringFromRange(newRange));
 }
 
 - (void)handleZoom:(CGFloat)factor atPoint:(NSPoint)point inRect:(NSRect)rect {

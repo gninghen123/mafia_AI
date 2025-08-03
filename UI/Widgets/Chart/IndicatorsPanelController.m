@@ -2,7 +2,7 @@
 //  IndicatorsPanelController.m
 //  TradingApp
 //
-//  Slide-out panel for managing chart indicators and templates
+//  Floating popup panel for managing chart indicators and templates
 //
 
 #import "IndicatorsPanelController.h"
@@ -16,17 +16,19 @@
 #import "VolumeRenderer.h"
 
 static const CGFloat kPanelWidth = 300.0;
-static const CGFloat kAnimationDuration = 0.25;
+static const CGFloat kPanelHeight = 500.0;
+static const CGFloat kAnimationDuration = 0.3;
 static const CGFloat kPanelRowHeight = 60.0;
 static const CGFloat kIndicatorRowHeight = 28.0;
+static const CGFloat kCornerRadius = 12.0;
+static const CGFloat kShadowRadius = 20.0;
 
 @interface IndicatorsPanelController ()
 @property (nonatomic, strong) NSMutableArray<NSView *> *panelRowViews;
 @property (nonatomic, strong) TemplateManager *templateManager;
-@property (nonatomic, strong) NSLayoutConstraint *panelTrailingConstraint;
-@property (nonatomic, strong) NSLayoutConstraint *panelLeadingConstraint;
+@property (nonatomic, strong) NSWindow *popupWindow;
 
-// UI Components not in header - internal use only
+// UI Components
 @property (nonatomic, strong) NSTableView *indicatorsTableView;
 @property (nonatomic, strong) NSScrollView *indicatorsScrollView;
 @end
@@ -69,58 +71,61 @@ static const CGFloat kIndicatorRowHeight = 28.0;
 #pragma mark - UI Setup
 
 - (void)setupUI {
-    // Create main panel view with backdrop
-    self.backdropView = [[NSVisualEffectView alloc] init];
-    self.backdropView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.backdropView.material = NSVisualEffectMaterialSidebar;
-    self.backdropView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
-    self.backdropView.state = NSVisualEffectStateActive;
-    [self.view addSubview:self.backdropView];
+    // Create main panel view with modern styling
+    self.panelView = [[NSVisualEffectView alloc] init];
+    NSVisualEffectView *effectView = (NSVisualEffectView *)self.panelView;
+    effectView.material = NSVisualEffectMaterialPopover;
+    effectView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
+    effectView.state = NSVisualEffectStateActive;
+    effectView.wantsLayer = YES;
+    effectView.layer.cornerRadius = kCornerRadius;
+    effectView.layer.masksToBounds = YES;
     
-    self.panelView = [[NSView alloc] init];
     self.panelView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.panelView.wantsLayer = YES;
-    self.panelView.layer.borderWidth = 1.0;
-    self.panelView.layer.borderColor = [NSColor separatorColor].CGColor;
-    [self.backdropView addSubview:self.panelView];
+    [self.view addSubview:self.panelView];
     
-    // Create sections
     [self createHeader];
     [self createTemplateSection];
     [self createPanelsSection];
-    [self createAvailableIndicatorsSection];
+    [self createIndicatorsSection];
 }
 
 - (void)createHeader {
     // Header label
     self.headerLabel = [[NSTextField alloc] init];
     self.headerLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.headerLabel.stringValue = @"INDICATORS MANAGEMENT";
-    self.headerLabel.font = [NSFont boldSystemFontOfSize:12];
-    self.headerLabel.textColor = [NSColor secondaryLabelColor];
+    self.headerLabel.stringValue = @"Chart Indicators";
+    self.headerLabel.font = [NSFont boldSystemFontOfSize:16];
+    self.headerLabel.textColor = [NSColor labelColor];
     self.headerLabel.editable = NO;
     self.headerLabel.bordered = NO;
     self.headerLabel.backgroundColor = [NSColor clearColor];
     [self.panelView addSubview:self.headerLabel];
     
-    // Close button
+    // Close button with modern styling
     self.closeButton = [[NSButton alloc] init];
     self.closeButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.closeButton.title = @"✕";
-    self.closeButton.font = [NSFont systemFontOfSize:14];
     self.closeButton.buttonType = NSButtonTypeMomentaryPushIn;
     self.closeButton.bordered = NO;
+    self.closeButton.title = @"✕";
+    self.closeButton.font = [NSFont systemFontOfSize:14];
     self.closeButton.target = self;
     self.closeButton.action = @selector(closeButtonClicked:);
+    
+    // Style close button
+    self.closeButton.wantsLayer = YES;
+    self.closeButton.layer.cornerRadius = 12;
+    self.closeButton.layer.backgroundColor = [[NSColor controlAccentColor] colorWithAlphaComponent:0.1].CGColor;
     [self.panelView addSubview:self.closeButton];
 }
 
 - (void)createTemplateSection {
-    // Template label
+    // Template section label
     self.templateLabel = [[NSTextField alloc] init];
     self.templateLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.templateLabel.stringValue = @"Template:";
-    self.templateLabel.font = [NSFont systemFontOfSize:11];
+    self.templateLabel.stringValue = @"Templates";
+    self.templateLabel.font = [NSFont boldSystemFontOfSize:13];
+    self.templateLabel.textColor = [NSColor secondaryLabelColor];
     self.templateLabel.editable = NO;
     self.templateLabel.bordered = NO;
     self.templateLabel.backgroundColor = [NSColor clearColor];
@@ -129,35 +134,44 @@ static const CGFloat kIndicatorRowHeight = 28.0;
     // Template combo box
     self.templateComboBox = [[NSComboBox alloc] init];
     self.templateComboBox.translatesAutoresizingMaskIntoConstraints = NO;
-    self.templateComboBox.font = [NSFont systemFontOfSize:11];
+    self.templateComboBox.editable = NO;
     [self.templateComboBox addItemsWithObjectValues:self.savedTemplates];
     [self.templateComboBox selectItemAtIndex:0];
     [self.panelView addSubview:self.templateComboBox];
     
-    // Save button
+    // Save template button
     self.saveTemplateButton = [[NSButton alloc] init];
     self.saveTemplateButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.saveTemplateButton.title = @"💾";
-    self.saveTemplateButton.font = [NSFont systemFontOfSize:14];
     self.saveTemplateButton.buttonType = NSButtonTypeMomentaryPushIn;
-    self.saveTemplateButton.bordered = YES;
+    self.saveTemplateButton.title = @"💾";
     self.saveTemplateButton.target = self;
     self.saveTemplateButton.action = @selector(saveTemplateButtonClicked:);
+    self.saveTemplateButton.toolTip = @"Save current layout as template";
     [self.panelView addSubview:self.saveTemplateButton];
     
-    // Load button
+    // Load template button
     self.loadTemplateButton = [[NSButton alloc] init];
     self.loadTemplateButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.loadTemplateButton.title = @"📁";
-    self.loadTemplateButton.font = [NSFont systemFontOfSize:14];
     self.loadTemplateButton.buttonType = NSButtonTypeMomentaryPushIn;
-    self.loadTemplateButton.bordered = YES;
+    self.loadTemplateButton.title = @"📁";
     self.loadTemplateButton.target = self;
     self.loadTemplateButton.action = @selector(loadTemplateButtonClicked:);
+    self.loadTemplateButton.toolTip = @"Load selected template";
     [self.panelView addSubview:self.loadTemplateButton];
 }
 
 - (void)createPanelsSection {
+    // Panels label
+    NSTextField *panelsLabel = [[NSTextField alloc] init];
+    panelsLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    panelsLabel.stringValue = @"Chart Panels";
+    panelsLabel.font = [NSFont boldSystemFontOfSize:13];
+    panelsLabel.textColor = [NSColor secondaryLabelColor];
+    panelsLabel.editable = NO;
+    panelsLabel.bordered = NO;
+    panelsLabel.backgroundColor = [NSColor clearColor];
+    [self.panelView addSubview:panelsLabel];
+    
     // Panels scroll view
     self.panelsScrollView = [[NSScrollView alloc] init];
     self.panelsScrollView.translatesAutoresizingMaskIntoConstraints = NO;
@@ -165,35 +179,42 @@ static const CGFloat kIndicatorRowHeight = 28.0;
     self.panelsScrollView.hasHorizontalScroller = NO;
     self.panelsScrollView.autohidesScrollers = YES;
     self.panelsScrollView.borderType = NSLineBorder;
+    self.panelsScrollView.wantsLayer = YES;
+    self.panelsScrollView.layer.cornerRadius = 6;
     [self.panelView addSubview:self.panelsScrollView];
     
-    // Panels stack view
+    // Panels stack view (document view)
     self.panelsStackView = [[NSStackView alloc] init];
     self.panelsStackView.translatesAutoresizingMaskIntoConstraints = NO;
     self.panelsStackView.orientation = NSUserInterfaceLayoutOrientationVertical;
-    self.panelsStackView.spacing = 1;
-    self.panelsStackView.distribution = NSStackViewDistributionFill;
     self.panelsStackView.alignment = NSLayoutAttributeLeading;
+    self.panelsStackView.distribution = NSStackViewDistributionFill;
+    self.panelsStackView.spacing = 2;
     self.panelsScrollView.documentView = self.panelsStackView;
     
     // Add panel button
     self.addPanelButton = [[NSButton alloc] init];
     self.addPanelButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.addPanelButton.title = @"➕ ADD PANEL";
-    self.addPanelButton.font = [NSFont systemFontOfSize:11];
     self.addPanelButton.buttonType = NSButtonTypeMomentaryPushIn;
-    self.addPanelButton.bordered = YES;
+    self.addPanelButton.title = @"+ Add Panel";
     self.addPanelButton.target = self;
     self.addPanelButton.action = @selector(addPanelButtonClicked:);
     [self.panelView addSubview:self.addPanelButton];
+    
+    // Set constraints for panels label
+    [NSLayoutConstraint activateConstraints:@[
+        [panelsLabel.topAnchor constraintEqualToAnchor:self.templateComboBox.bottomAnchor constant:20],
+        [panelsLabel.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:16]
+    ]];
 }
 
-- (void)createAvailableIndicatorsSection {
+- (void)createIndicatorsSection {
     // Available indicators label
     self.availableLabel = [[NSTextField alloc] init];
     self.availableLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.availableLabel.stringValue = @"Available Indicators:";
-    self.availableLabel.font = [NSFont systemFontOfSize:11];
+    self.availableLabel.stringValue = @"Available Indicators";
+    self.availableLabel.font = [NSFont boldSystemFontOfSize:13];
+    self.availableLabel.textColor = [NSColor secondaryLabelColor];
     self.availableLabel.editable = NO;
     self.availableLabel.bordered = NO;
     self.availableLabel.backgroundColor = [NSColor clearColor];
@@ -206,6 +227,8 @@ static const CGFloat kIndicatorRowHeight = 28.0;
     self.availableScrollView.hasHorizontalScroller = NO;
     self.availableScrollView.autohidesScrollers = YES;
     self.availableScrollView.borderType = NSLineBorder;
+    self.availableScrollView.wantsLayer = YES;
+    self.availableScrollView.layer.cornerRadius = 6;
     [self.panelView addSubview:self.availableScrollView];
     
     // Available indicators table
@@ -229,33 +252,27 @@ static const CGFloat kIndicatorRowHeight = 28.0;
 
 - (void)setupConstraints {
     [NSLayoutConstraint activateConstraints:@[
-        // Backdrop view fills entire view
-        [self.backdropView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
-        [self.backdropView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
-        [self.backdropView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.backdropView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
-        
-        // Panel view
-        [self.panelView.topAnchor constraintEqualToAnchor:self.backdropView.topAnchor],
-        [self.panelView.leadingAnchor constraintEqualToAnchor:self.backdropView.leadingAnchor],
-        [self.panelView.trailingAnchor constraintEqualToAnchor:self.backdropView.trailingAnchor],
-        [self.panelView.bottomAnchor constraintEqualToAnchor:self.backdropView.bottomAnchor],
+        // Panel view - centered in parent with fixed size
+        [self.panelView.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [self.panelView.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
+        [self.panelView.widthAnchor constraintEqualToConstant:kPanelWidth],
+        [self.panelView.heightAnchor constraintEqualToConstant:kPanelHeight],
         
         // Header
-        [self.headerLabel.topAnchor constraintEqualToAnchor:self.panelView.topAnchor constant:12],
-        [self.headerLabel.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:12],
+        [self.headerLabel.topAnchor constraintEqualToAnchor:self.panelView.topAnchor constant:16],
+        [self.headerLabel.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:16],
         
-        [self.closeButton.topAnchor constraintEqualToAnchor:self.panelView.topAnchor constant:8],
-        [self.closeButton.trailingAnchor constraintEqualToAnchor:self.panelView.trailingAnchor constant:-8],
+        [self.closeButton.topAnchor constraintEqualToAnchor:self.panelView.topAnchor constant:12],
+        [self.closeButton.trailingAnchor constraintEqualToAnchor:self.panelView.trailingAnchor constant:-12],
         [self.closeButton.widthAnchor constraintEqualToConstant:24],
         [self.closeButton.heightAnchor constraintEqualToConstant:24],
         
         // Template section
-        [self.templateLabel.topAnchor constraintEqualToAnchor:self.headerLabel.bottomAnchor constant:16],
-        [self.templateLabel.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:12],
+        [self.templateLabel.topAnchor constraintEqualToAnchor:self.headerLabel.bottomAnchor constant:20],
+        [self.templateLabel.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:16],
         
-        [self.templateComboBox.topAnchor constraintEqualToAnchor:self.templateLabel.bottomAnchor constant:4],
-        [self.templateComboBox.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:12],
+        [self.templateComboBox.topAnchor constraintEqualToAnchor:self.templateLabel.bottomAnchor constant:6],
+        [self.templateComboBox.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:16],
         [self.templateComboBox.widthAnchor constraintEqualToConstant:180],
         
         [self.saveTemplateButton.centerYAnchor constraintEqualToAnchor:self.templateComboBox.centerYAnchor],
@@ -267,96 +284,111 @@ static const CGFloat kIndicatorRowHeight = 28.0;
         [self.loadTemplateButton.widthAnchor constraintEqualToConstant:30],
         
         // Panels section
-        [self.panelsScrollView.topAnchor constraintEqualToAnchor:self.templateComboBox.bottomAnchor constant:16],
-        [self.panelsScrollView.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:12],
-        [self.panelsScrollView.trailingAnchor constraintEqualToAnchor:self.panelView.trailingAnchor constant:-12],
-        [self.panelsScrollView.heightAnchor constraintEqualToConstant:200],
+        [self.panelsScrollView.topAnchor constraintEqualToAnchor:self.templateComboBox.bottomAnchor constant:40],
+        [self.panelsScrollView.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:16],
+        [self.panelsScrollView.trailingAnchor constraintEqualToAnchor:self.panelView.trailingAnchor constant:-16],
+        [self.panelsScrollView.heightAnchor constraintEqualToConstant:120],
         
         [self.addPanelButton.topAnchor constraintEqualToAnchor:self.panelsScrollView.bottomAnchor constant:8],
-        [self.addPanelButton.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:12],
-        [self.addPanelButton.trailingAnchor constraintEqualToAnchor:self.panelView.trailingAnchor constant:-12],
+        [self.addPanelButton.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:16],
+        [self.addPanelButton.trailingAnchor constraintEqualToAnchor:self.panelView.trailingAnchor constant:-16],
         
         // Available indicators section
-        [self.availableLabel.topAnchor constraintEqualToAnchor:self.addPanelButton.bottomAnchor constant:16],
-        [self.availableLabel.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:12],
+        [self.availableLabel.topAnchor constraintEqualToAnchor:self.addPanelButton.bottomAnchor constant:20],
+        [self.availableLabel.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:16],
         
         [self.availableScrollView.topAnchor constraintEqualToAnchor:self.availableLabel.bottomAnchor constant:8],
-        [self.availableScrollView.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:12],
-        [self.availableScrollView.trailingAnchor constraintEqualToAnchor:self.panelView.trailingAnchor constant:-12],
-        [self.availableScrollView.bottomAnchor constraintEqualToAnchor:self.panelView.bottomAnchor constant:-12]
+        [self.availableScrollView.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:16],
+        [self.availableScrollView.trailingAnchor constraintEqualToAnchor:self.panelView.trailingAnchor constant:-16],
+        [self.availableScrollView.bottomAnchor constraintEqualToAnchor:self.panelView.bottomAnchor constant:-16]
     ]];
-    
-    // Fixed width for the view
-    [self.view.widthAnchor constraintEqualToConstant:kPanelWidth].active = YES;
 }
 
-#pragma mark - Show/Hide Panel
+#pragma mark - Popup Window Management
 
 - (void)showPanel {
     if (self.isVisible) return;
     
-    NSView *parentView = self.chartWidget.contentView;
-    if (!parentView) {
-        NSLog(@"⚠️ IndicatorsPanelController: No parent view");
+    NSWindow *parentWindow = self.chartWidget.view.window;
+    if (!parentWindow) {
+        NSLog(@"⚠️ IndicatorsPanelController: No parent window");
         return;
     }
     
-    // Add to parent view
-    [parentView addSubview:self.view];
+    // Create popup window
+    NSRect popupRect = NSMakeRect(0, 0, kPanelWidth + 40, kPanelHeight + 40);
+    self.popupWindow = [[NSWindow alloc] initWithContentRect:popupRect
+                                                   styleMask:NSWindowStyleMaskBorderless
+                                                     backing:NSBackingStoreBuffered
+                                                       defer:NO];
     
-    // CORREZIONE: Setup constraints stabili
-    NSLayoutConstraint *topConstraint = [self.view.topAnchor constraintEqualToAnchor:parentView.topAnchor];
-    NSLayoutConstraint *bottomConstraint = [self.view.bottomAnchor constraintEqualToAnchor:parentView.bottomAnchor];
-    NSLayoutConstraint *widthConstraint = [self.view.widthAnchor constraintEqualToConstant:kPanelWidth];
+    self.popupWindow.backgroundColor = [NSColor clearColor];
+    self.popupWindow.opaque = NO;
+    self.popupWindow.hasShadow = YES;
+    self.popupWindow.level = NSFloatingWindowLevel;
+    self.popupWindow.contentView = self.view;
     
-    // Start off-screen
-    self.panelLeadingConstraint = [self.view.leadingAnchor constraintEqualToAnchor:parentView.trailingAnchor];
+    // Position popup near the indicators button
+    NSRect chartFrame = [self.chartWidget.view convertRect:self.chartWidget.view.bounds toView:nil];
+    NSRect screenFrame = [parentWindow convertRectToScreen:chartFrame];
     
-    [NSLayoutConstraint activateConstraints:@[topConstraint, bottomConstraint, widthConstraint, self.panelLeadingConstraint]];
-    [parentView layoutSubtreeIfNeeded];
+    // Position at top-right of chart widget
+    CGFloat popupX = screenFrame.origin.x + screenFrame.size.width - kPanelWidth - 20;
+    CGFloat popupY = screenFrame.origin.y + screenFrame.size.height - kPanelHeight - 20;
     
-    // Animate in
+    NSRect finalFrame = NSMakeRect(popupX, popupY, kPanelWidth + 40, kPanelHeight + 40);
+    [self.popupWindow setFrame:finalFrame display:NO];
+    
+    // Add shadow effect
+    self.popupWindow.contentView.wantsLayer = YES;
+    self.popupWindow.contentView.shadow = [[NSShadow alloc] init];
+    self.popupWindow.contentView.shadow.shadowOffset = NSMakeSize(0, -8);
+    self.popupWindow.contentView.shadow.shadowBlurRadius = kShadowRadius;
+    self.popupWindow.contentView.shadow.shadowColor = [[NSColor blackColor] colorWithAlphaComponent:0.3];
+    
+    // Show with animation
+    self.popupWindow.alphaValue = 0.0;
+    NSRect startFrame = finalFrame;
+    startFrame.origin.y += 20; // Start slightly lower
+    [self.popupWindow setFrame:startFrame display:NO];
+    
+    [parentWindow addChildWindow:self.popupWindow ordered:NSWindowAbove];
+    [self.popupWindow makeKeyAndOrderFront:nil];
+    
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = kAnimationDuration;
-        context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+        context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
         
-        // CORREZIONE: sostituisci il constraint invece di modificarlo
-        [self.panelLeadingConstraint setActive:NO];
-        self.panelTrailingConstraint = [self.view.trailingAnchor constraintEqualToAnchor:parentView.trailingAnchor];
-        [self.panelTrailingConstraint setActive:YES];
-        
-        [parentView.animator layoutSubtreeIfNeeded];
+        self.popupWindow.animator.alphaValue = 1.0;
+        [self.popupWindow.animator setFrame:finalFrame display:YES];
         
     } completionHandler:^{
         self.isVisible = YES;
         [self refreshPanelsList];
-        NSLog(@"✅ IndicatorsPanelController: Panel shown");
+        NSLog(@"✅ IndicatorsPanelController: Popup shown");
     }];
 }
 
 - (void)hidePanel {
-    if (!self.isVisible) return;
-    
-    NSView *parentView = self.view.superview;
-    if (!parentView) return;
+    if (!self.isVisible || !self.popupWindow) return;
     
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = kAnimationDuration;
-        context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+        context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseIn];
         
-        // CORREZIONE: animazione stabile per nascondere
-        [self.panelTrailingConstraint setActive:NO];
-        self.panelLeadingConstraint = [self.view.leadingAnchor constraintEqualToAnchor:parentView.trailingAnchor];
-        [self.panelLeadingConstraint setActive:YES];
+        self.popupWindow.animator.alphaValue = 0.0;
         
-        [parentView.animator layoutSubtreeIfNeeded];
+        // Animate out slightly upward
+        NSRect currentFrame = self.popupWindow.frame;
+        currentFrame.origin.y += 20;
+        [self.popupWindow.animator setFrame:currentFrame display:YES];
         
     } completionHandler:^{
-        [self.view removeFromSuperview];
+        [self.popupWindow.parentWindow removeChildWindow:self.popupWindow];
+        [self.popupWindow orderOut:nil];
+        self.popupWindow = nil;
         self.isVisible = NO;
-        self.panelTrailingConstraint = nil;
-        self.panelLeadingConstraint = nil;
-        NSLog(@"✅ IndicatorsPanelController: Panel hidden");
+        NSLog(@"✅ IndicatorsPanelController: Popup hidden");
     }];
 }
 
@@ -368,68 +400,10 @@ static const CGFloat kIndicatorRowHeight = 28.0;
     }
 }
 
-#pragma mark - Actions
-
-- (IBAction)closeButtonClicked:(id)sender {
-    [self hidePanel];
-}
-
-- (IBAction)addPanelButtonClicked:(id)sender {
-    // Create new secondary panel
-    ChartPanelModel *newPanel = [ChartPanelModel secondaryPanelWithTitle:@"New Panel"];
-    [self.chartWidget addPanelWithModel:newPanel];
-    [self refreshPanelsList];
-}
-
-- (IBAction)saveTemplateButtonClicked:(id)sender {
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Save Template";
-    alert.informativeText = @"Enter a name for this template:";
-    alert.alertStyle = NSAlertStyleInformational;
-    [alert addButtonWithTitle:@"Save"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
-    input.stringValue = @"My Template";
-    alert.accessoryView = input;
-    
-    [alert beginSheetModalForWindow:self.chartWidget.view.window completionHandler:^(NSModalResponse returnCode) {
-        if (returnCode == NSAlertFirstButtonReturn) {
-            NSString *templateName = input.stringValue;
-            if (templateName.length > 0) {
-                [self saveTemplateWithName:templateName];
-            }
-        }
-    }];
-}
-
-- (IBAction)loadTemplateButtonClicked:(id)sender {
-    NSString *selectedTemplate = self.templateComboBox.stringValue;
-    if (selectedTemplate.length > 0) {
-        [self loadTemplateWithName:selectedTemplate];
-    }
-}
-
-- (void)indicatorDoubleClicked:(id)sender {
-    NSInteger selectedRow = self.indicatorsTableView.selectedRow;
-    if (selectedRow >= 0 && selectedRow < self.availableIndicatorTypes.count) {
-        [self addIndicatorToSelectedPanel:self.availableIndicatorTypes[selectedRow]];
-    }
-}
-
-- (void)deletePanelButtonClicked:(NSButton *)sender {
-    NSInteger index = sender.tag;
-    if (index < self.chartWidget.panelModels.count) {
-        ChartPanelModel *panelModel = self.chartWidget.panelModels[index];
-        [self.chartWidget requestDeletePanel:panelModel];
-        [self refreshPanelsList];
-    }
-}
-
-#pragma mark - Data Updates
+#pragma mark - Panel Management
 
 - (void)refreshPanelsList {
-    // Clear existing panel rows
+    // Clear existing rows
     for (NSView *rowView in self.panelRowViews) {
         [self.panelsStackView removeArrangedSubview:rowView];
         [rowView removeFromSuperview];
@@ -444,51 +418,36 @@ static const CGFloat kIndicatorRowHeight = 28.0;
         [self.panelsStackView addArrangedSubview:rowView];
     }
     
-    NSLog(@"📊 IndicatorsPanelController: Refreshed %lu panels", (unsigned long)self.chartWidget.panelModels.count);
+    NSLog(@"🔄 IndicatorsPanelController: Refreshed panels list (%ld panels)", self.chartWidget.panelModels.count);
 }
-
-- (void)refreshTemplatesList {
-    [self.templateComboBox removeAllItems];
-    [self.templateComboBox addItemsWithObjectValues:self.savedTemplates];
-    if (self.savedTemplates.count > 0) {
-        [self.templateComboBox selectItemAtIndex:0];
-    }
-}
-
-#pragma mark - Panel Row Creation
 
 - (NSView *)createPanelRowForModel:(ChartPanelModel *)panelModel atIndex:(NSInteger)index {
     NSView *rowView = [[NSView alloc] init];
     rowView.translatesAutoresizingMaskIntoConstraints = NO;
     rowView.wantsLayer = YES;
-    rowView.layer.backgroundColor = [NSColor controlBackgroundColor].CGColor;
-    rowView.layer.borderWidth = 0.5;
-    rowView.layer.borderColor = [NSColor separatorColor].CGColor;
+    rowView.layer.backgroundColor = [[NSColor controlBackgroundColor] colorWithAlphaComponent:0.5].CGColor;
+    rowView.layer.cornerRadius = 6;
     
     // Panel title
-    NSString *panelTitle = [NSString stringWithFormat:@"PANEL %ld: %@", (long)(index + 1), panelModel.title];
-    if (panelModel.panelType == ChartPanelTypeMain) {
-        panelTitle = [panelTitle stringByAppendingString:@" (Main)"];
-    }
-    
     NSTextField *titleLabel = [[NSTextField alloc] init];
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    titleLabel.stringValue = panelTitle;
-    titleLabel.font = [NSFont boldSystemFontOfSize:10];
+    titleLabel.stringValue = panelModel.title;
+    titleLabel.font = [NSFont boldSystemFontOfSize:12];
     titleLabel.editable = NO;
     titleLabel.bordered = NO;
     titleLabel.backgroundColor = [NSColor clearColor];
+    titleLabel.textColor = [NSColor labelColor];
     [rowView addSubview:titleLabel];
     
-    // Delete button (if deletable)
+    // Delete button (only for deletable panels)
     NSButton *deleteButton = nil;
     if (panelModel.canBeDeleted) {
         deleteButton = [[NSButton alloc] init];
         deleteButton.translatesAutoresizingMaskIntoConstraints = NO;
-        deleteButton.title = @"❌";
-        deleteButton.font = [NSFont systemFontOfSize:12];
         deleteButton.buttonType = NSButtonTypeMomentaryPushIn;
         deleteButton.bordered = NO;
+        deleteButton.title = @"🗑";
+        deleteButton.font = [NSFont systemFontOfSize:12];
         deleteButton.tag = index;
         deleteButton.target = self;
         deleteButton.action = @selector(deletePanelButtonClicked:);
@@ -524,7 +483,7 @@ static const CGFloat kIndicatorRowHeight = 28.0;
     [NSLayoutConstraint activateConstraints:@[
         [rowView.heightAnchor constraintEqualToConstant:kPanelRowHeight],
         
-        [titleLabel.topAnchor constraintEqualToAnchor:rowView.topAnchor constant:4],
+        [titleLabel.topAnchor constraintEqualToAnchor:rowView.topAnchor constant:6],
         [titleLabel.leadingAnchor constraintEqualToAnchor:rowView.leadingAnchor constant:8],
         
         [indicatorsLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:2],
@@ -557,65 +516,105 @@ static const CGFloat kIndicatorRowHeight = 28.0;
     return icons[indicatorType] ?: @"📊";
 }
 
-#pragma mark - Template Management
-
-- (void)saveTemplateWithName:(NSString *)templateName {
-    // TODO: Implement template saving
-    if (![self.savedTemplates containsObject:templateName]) {
-        [self.savedTemplates addObject:templateName];
-        [self refreshTemplatesList];
-        [self.templateComboBox setStringValue:templateName];
-        
-        NSLog(@"💾 IndicatorsPanelController: Saved template '%@'", templateName);
-    }
-}
-
-- (void)loadTemplateWithName:(NSString *)templateName {
-    // TODO: Implement template loading
-    NSLog(@"📁 IndicatorsPanelController: Loading template '%@'", templateName);
-}
-
-#pragma mark - NSTableViewDataSource
+#pragma mark - Table View Data Source & Delegate
 
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
     return self.availableIndicatorTypes.count;
 }
 
-#pragma mark - NSTableViewDelegate
-
 - (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
-    NSString *identifier = @"IndicatorCell";
-    NSTableCellView *cellView = [tableView makeViewWithIdentifier:identifier owner:self];
+    NSTableCellView *cellView = [tableView makeViewWithIdentifier:@"IndicatorCell" owner:self];
     
     if (!cellView) {
         cellView = [[NSTableCellView alloc] init];
-        cellView.identifier = identifier;
+        cellView.identifier = @"IndicatorCell";
         
         NSTextField *textField = [[NSTextField alloc] init];
-        textField.translatesAutoresizingMaskIntoConstraints = NO;
+        textField.editable = NO;
         textField.bordered = NO;
         textField.backgroundColor = [NSColor clearColor];
-        textField.editable = NO;
-        
-        cellView.textField = textField;
+        textField.font = [NSFont systemFontOfSize:12];
+        textField.translatesAutoresizingMaskIntoConstraints = NO;
         [cellView addSubview:textField];
+        cellView.textField = textField;
         
         [NSLayoutConstraint activateConstraints:@[
-            [textField.centerYAnchor constraintEqualToAnchor:cellView.centerYAnchor],
             [textField.leadingAnchor constraintEqualToAnchor:cellView.leadingAnchor constant:8],
-            [textField.trailingAnchor constraintEqualToAnchor:cellView.trailingAnchor constant:-8]
+            [textField.trailingAnchor constraintEqualToAnchor:cellView.trailingAnchor constant:-8],
+            [textField.centerYAnchor constraintEqualToAnchor:cellView.centerYAnchor]
         ]];
     }
     
-    cellView.textField.stringValue = self.availableIndicatorTypes[row];
+    NSString *indicatorType = self.availableIndicatorTypes[row];
+    NSString *icon = [self iconForIndicatorType:indicatorType];
+    cellView.textField.stringValue = [NSString stringWithFormat:@"%@ %@", icon, indicatorType];
+    
     return cellView;
 }
 
 - (void)tableView:(NSTableView *)tableView didSelectRowAtIndexOfColumn:(NSInteger)column {
-    // Handle double-click to add indicator
+    // Handle selection
     NSInteger selectedRow = tableView.selectedRow;
     if (selectedRow >= 0 && selectedRow < self.availableIndicatorTypes.count) {
         [self addIndicatorToSelectedPanel:self.availableIndicatorTypes[selectedRow]];
+    }
+}
+
+#pragma mark - Actions
+
+- (IBAction)closeButtonClicked:(id)sender {
+    [self hidePanel];
+}
+
+- (IBAction)addPanelButtonClicked:(id)sender {
+    // Create new secondary panel
+    ChartPanelModel *newPanel = [ChartPanelModel secondaryPanelWithTitle:@"New Panel"];
+    [self.chartWidget addPanelWithModel:newPanel];
+    [self refreshPanelsList];
+}
+
+- (IBAction)saveTemplateButtonClicked:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Save Template";
+    alert.informativeText = @"Enter a name for this template:";
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"Save"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.stringValue = @"My Template";
+    alert.accessoryView = input;
+    
+    [alert beginSheetModalForWindow:self.popupWindow completionHandler:^(NSModalResponse returnCode) {
+        if (returnCode == NSAlertFirstButtonReturn) {
+            NSString *templateName = input.stringValue;
+            if (templateName.length > 0) {
+                [self saveTemplateWithName:templateName];
+            }
+        }
+    }];
+}
+
+- (IBAction)loadTemplateButtonClicked:(id)sender {
+    NSString *selectedTemplate = self.templateComboBox.stringValue;
+    if (selectedTemplate.length > 0) {
+        [self loadTemplateWithName:selectedTemplate];
+    }
+}
+
+- (void)indicatorDoubleClicked:(id)sender {
+    NSInteger selectedRow = self.indicatorsTableView.selectedRow;
+    if (selectedRow >= 0 && selectedRow < self.availableIndicatorTypes.count) {
+        [self addIndicatorToSelectedPanel:self.availableIndicatorTypes[selectedRow]];
+    }
+}
+
+- (void)deletePanelButtonClicked:(NSButton *)sender {
+    NSInteger index = sender.tag;
+    if (index < self.chartWidget.panelModels.count) {
+        ChartPanelModel *panelModel = self.chartWidget.panelModels[index];
+        [self.chartWidget requestDeletePanel:panelModel];
+        [self refreshPanelsList];
     }
 }
 
@@ -651,39 +650,16 @@ static const CGFloat kIndicatorRowHeight = 28.0;
     // Volume indicators should go to volume panels
     if ([indicatorType isEqualToString:@"Volume"]) {
         for (ChartPanelModel *panel in self.chartWidget.panelModels) {
-            if ([panel hasIndicatorOfType:@"Volume"]) {
-                return panel;
-            }
-        }
-    }
-    
-    // Oscillators (RSI, MACD) can share panels
-    NSArray *oscillators = @[@"RSI", @"MACD"];
-    if ([oscillators containsObject:indicatorType]) {
-        for (ChartPanelModel *panel in self.chartWidget.panelModels) {
-            if (panel.panelType == ChartPanelTypeSecondary) {
-                // Check if panel has compatible indicators
-                BOOL hasCompatibleIndicator = NO;
-                for (id<IndicatorRenderer> existingIndicator in panel.indicators) {
-                    if ([oscillators containsObject:[existingIndicator indicatorType]]) {
-                        hasCompatibleIndicator = YES;
-                        break;
-                    }
-                }
-                if (hasCompatibleIndicator || panel.indicators.count == 0) {
-                    return panel;
-                }
-            }
-        }
-    }
-    
-    // Price-based indicators (SMA, Bollinger Bands) go to main panel
-    NSArray *priceIndicators = @[@"SMA", @"Bollinger Bands"];
-    if ([priceIndicators containsObject:indicatorType]) {
-        for (ChartPanelModel *panel in self.chartWidget.panelModels) {
             if (panel.panelType == ChartPanelTypeMain) {
                 return panel;
             }
+        }
+    }
+    
+    // Other indicators can go to any secondary panel
+    for (ChartPanelModel *panel in self.chartWidget.panelModels) {
+        if (panel.panelType == ChartPanelTypeSecondary) {
+            return panel;
         }
     }
     
@@ -691,21 +667,47 @@ static const CGFloat kIndicatorRowHeight = 28.0;
 }
 
 - (NSString *)titleForIndicatorType:(NSString *)indicatorType {
-    NSDictionary *titles = @{
-        @"Volume": @"Volume",
-        @"RSI": @"RSI",
-        @"MACD": @"MACD",
-        @"SMA": @"Moving Averages",
-        @"Bollinger Bands": @"Bollinger Bands"
-    };
+    if ([indicatorType isEqualToString:@"Volume"]) {
+        return @"Volume";
+    } else if ([indicatorType isEqualToString:@"RSI"]) {
+        return @"RSI";
+    } else if ([indicatorType isEqualToString:@"MACD"]) {
+        return @"MACD";
+    } else if ([indicatorType isEqualToString:@"SMA"]) {
+        return @"Moving Averages";
+    } else if ([indicatorType isEqualToString:@"Bollinger Bands"]) {
+        return @"Bollinger Bands";
+    }
     
-    return titles[indicatorType] ?: indicatorType;
+    return @"Indicators";
 }
 
-#pragma mark - Cleanup
+#pragma mark - Template Management
 
-- (void)dealloc {
-    NSLog(@"🧹 IndicatorsPanelController: Deallocated");
+- (void)saveTemplateWithName:(NSString *)templateName {
+    // TODO: Implement template saving
+    if (![self.savedTemplates containsObject:templateName]) {
+        [self.savedTemplates addObject:templateName];
+        [self.templateComboBox removeAllItems];
+        [self.templateComboBox addItemsWithObjectValues:self.savedTemplates];
+        [self.templateComboBox selectItemWithObjectValue:templateName];
+        
+        NSLog(@"💾 IndicatorsPanelController: Saved template '%@'", templateName);
+    }
+}
+
+- (void)loadTemplateWithName:(NSString *)templateName {
+    // TODO: Implement template loading
+    NSLog(@"📁 IndicatorsPanelController: Loading template '%@'", templateName);
+}
+
+#pragma mark - Window Delegate
+
+- (void)windowWillClose:(NSNotification *)notification {
+    if (notification.object == self.popupWindow) {
+        self.isVisible = NO;
+        self.popupWindow = nil;
+    }
 }
 
 @end

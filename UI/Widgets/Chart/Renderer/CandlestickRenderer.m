@@ -147,6 +147,7 @@
     return self.upColor;
 }
 
+
 - (IndicatorSettings *)settings {
     return _settings;
 }

@@ -8,7 +8,7 @@
 #import "QuoteWidget.h"
 #import "ConnectionStatusWidget.h"
 #import "WatchlistWidget.h"
-#import "CHChartWidget.h"  // FIX: Aggiunto import per CHChartWidget
+#import "ChartWidget.h"
 #import "AlertWidget.h"
 #import "MultiChartWidget.h"
 #import "MiniChart.h"
@@ -109,18 +109,18 @@
     typeToClass[@"General Market"] = [GeneralMarketWidget class];
     typeToClass[@"Connections"] = [ConnectionsWidget class];
     typeToClass[@"SymbolDatabase"] = [SymbolDatabaseWidget class];
-    typeToClass[@"Chart Widget"] = [CHChartWidget class];
-    typeToClass[@"Candlestick Chart"] = [CHChartWidget class];
-    typeToClass[@"Line Chart"] = [CHChartWidget class];
-    typeToClass[@"Bar Chart"] = [CHChartWidget class];
-    typeToClass[@"Market Depth"] = [CHChartWidget class];
-    typeToClass[@"Volume Profile"] = [CHChartWidget class];
-    typeToClass[@"Heatmap"] = [CHChartWidget class];
     typeToClass[@"Alerts"] = [AlertWidget class];
     typeToClass[@"Alert"] = [AlertWidget class];
     typeToClass[@"Seasonal Chart"] = [SeasonalChartWidget class];
     typeToClass[@"Tick Chart"] = [TickChartWidget class];
 
+    typeToClass[@"Chart Widget"] = [ChartWidget class];
+      typeToClass[@"Candlestick Chart"] = [ChartWidget class];
+      typeToClass[@"Line Chart"] = [ChartWidget class];
+      typeToClass[@"Bar Chart"] = [ChartWidget class];
+      typeToClass[@"Market Depth"] = [ChartWidget class];
+      typeToClass[@"Volume Profile"] = [ChartWidget class];
+    typeToClass[@"Heatmap"] = [ChartWidget class];
     // Map all other types to BaseWidget for now
     for (NSArray *types in self.widgetCategories.allValues) {
         for (NSString *type in types) {

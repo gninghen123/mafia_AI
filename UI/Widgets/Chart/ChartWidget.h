@@ -1,0 +1,67 @@
+//
+//  ChartWidget.h
+//  TradingApp
+//
+//  Main chart widget with multi-panel indicator support
+//  Clean architecture with separate files
+//
+
+#import "BaseWidget.h"
+#import "ChartTypes.h"
+#import "ChartPanelModel.h"
+#import "ChartPanelView.h"
+#import "ChartCoordinator.h"
+#import "RuntimeModels.h"
+#import "IndicatorRenderer.h"
+
+NS_ASSUME_NONNULL_BEGIN
+
+@interface ChartWidget : BaseWidget
+
+#pragma mark - Core Properties
+@property (nonatomic, strong) NSString *currentSymbol;
+@property (nonatomic, strong, nullable) NSArray<HistoricalBarModel *> *historicalData;
+@property (nonatomic, strong) ChartCoordinator *coordinator;
+
+#pragma mark - Panels Management
+@property (nonatomic, strong) NSMutableArray<ChartPanelModel *> *panelModels;
+@property (nonatomic, strong) NSMutableArray<ChartPanelView *> *panelViews;
+
+#pragma mark - UI Components
+// Top toolbar
+@property (nonatomic, strong) NSView *toolbarView;
+@property (nonatomic, strong) NSComboBox *symbolComboBox;
+@property (nonatomic, strong) NSSegmentedControl *timeframeControl;
+@property (nonatomic, strong) NSButton *refreshButton;
+@property (nonatomic, strong) NSButton *indicatorsButton;
+@property (nonatomic, strong) NSProgressIndicator *loadingIndicator;
+
+// Main chart area
+@property (nonatomic, strong) NSScrollView *chartScrollView;
+@property (nonatomic, strong) NSStackView *panelsStackView;
+
+#pragma mark - Settings
+@property (nonatomic, assign) NSInteger selectedTimeframe; // 0=1m, 1=5m, 2=15m, 3=1h, 4=1d, 5=1w
+@property (nonatomic, assign) NSInteger maxBarsToDisplay;
+
+#pragma mark - Data Management
+- (void)loadHistoricalDataForSymbol:(NSString *)symbol;
+- (void)refreshCurrentData;
+- (void)updateAllPanelsWithData:(NSArray<HistoricalBarModel *> *)data;
+
+#pragma mark - Panel Management
+- (void)addPanelWithModel:(ChartPanelModel *)panelModel;
+- (void)removePanelWithModel:(ChartPanelModel *)panelModel;
+- (void)requestDeletePanel:(ChartPanelModel *)panelModel;
+- (ChartPanelModel *)createMainSecurityPanel;
+
+#pragma mark - UI Updates
+- (void)refreshAllPanels;
+- (void)updateToolbarState;
+
+#pragma mark - Factory Methods for Indicators
+- (id<IndicatorRenderer>)createIndicatorOfType:(NSString *)indicatorType;
+
+@end
+
+NS_ASSUME_NONNULL_END

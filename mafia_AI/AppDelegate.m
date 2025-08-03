@@ -15,26 +15,27 @@
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
     NSLog(@"AppDelegate: applicationDidFinishLaunching called");
-    [DataHub shared];
+       
+       // ADD THESE LINES to fix window restoration crashes:
+       [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"NSQuitAlwaysKeepsWindows"];
+       [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"NSCloseAlwaysConfirmsChanges"];
+       
+       [DataHub shared];
 
-     // Registra data sources
-     [self registerDataSources];
-     
-     // Crea e mostra la finestra principale
-     NSLog(@"AppDelegate: Creating MainWindowController");
-     self.mainWindowController = [[MainWindowController alloc] init];
-     
-     NSLog(@"AppDelegate: Showing window");
-     [self.mainWindowController showWindow:self];
-     
-     // IMPORTANTE: Porta l'app in primo piano
-     [NSApp activateIgnoringOtherApps:YES];
-     
-     // NUOVO: Connetti automaticamente a Schwab dopo un breve delay
-     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-         [self autoConnectToSchwab];
-     });
-    [self setupClaudeDataSource];
+    [self registerDataSources];
+      
+      NSLog(@"AppDelegate: Creating MainWindowController");
+      self.mainWindowController = [[MainWindowController alloc] init];
+      
+      NSLog(@"AppDelegate: Showing window");
+      [self.mainWindowController showWindow:self];
+      
+      [NSApp activateIgnoringOtherApps:YES];
+      
+      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+          [self autoConnectToSchwab];
+      });
+      [self setupClaudeDataSource];
 }
 
 - (void)registerDataSources {
@@ -68,17 +69,20 @@
 }
 
 - (void)applicationWillTerminate:(NSNotification *)aNotification {
-    // Cleanup code
-}
+    // Clear any restoration state
+      [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"NSQuitAlwaysKeepsWindows"];
+      [[NSUserDefaults standardUserDefaults] synchronize];}
 
 - (BOOL)applicationSupportsSecureRestorableState:(NSApplication *)app {
-    return YES;
+    return NO;
 }
 
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
     return YES;
 }
-
+- (BOOL)application:(NSApplication *)application willContinueUserActivityWithType:(NSString *)userActivityType {
+    return NO;
+}
 
 - (void)autoConnectToSchwabWithPreferences {
     // Controlla se l'utente ha abilitato la connessione automatica

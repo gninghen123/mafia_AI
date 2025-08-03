@@ -70,6 +70,10 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
     self.layer.borderWidth = 1;
     self.layer.borderColor = [[NSColor separatorColor] colorWithAlphaComponent:0.5].CGColor;
     
+    // IMPORTANTE: Imposta hugging priority per permettere espansione orizzontale
+    [self setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [self setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    
     // Title label
     self.titleLabel = [[NSTextField alloc] init];
     self.titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -113,38 +117,38 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
     self.tableScrollView.hasVerticalScroller = YES;
     self.tableScrollView.hasHorizontalScroller = NO;
     self.tableScrollView.autohidesScrollers = YES;
-    self.tableScrollView.borderType = NSNoBorder;
+    self.tableScrollView.borderType = NSLineBorder;
+    self.tableScrollView.wantsLayer = YES;
+    self.tableScrollView.layer.cornerRadius = 4;
     [self addSubview:self.tableScrollView];
     
     // Table view
     self.tableView = [[NSTableView alloc] init];
     self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.tableView.rowHeight = 24;
+    self.tableView.rowHeight = 20;
     self.tableView.headerView = nil;
     self.tableView.dataSource = self.controller;
     self.tableView.delegate = self.controller;
-    self.tableView.allowsMultipleSelection = NO;
-    self.tableView.intercellSpacing = NSMakeSize(0, 1);
     
     // Enable drag & drop
-    [self.tableView registerForDraggedTypes:@[kAvailableIndicatorPasteboardType, kIndicatorPasteboardType]];
+    [self.tableView setDraggingSourceOperationMask:NSDragOperationMove forLocal:YES];
+    [self.tableView registerForDraggedTypes:@[kAvailableIndicatorPasteboardType]];
     
     // Add column
-    NSTableColumn *column = [[NSTableColumn alloc] initWithIdentifier:@"indicator"];
+    NSTableColumn *column = [[NSTableColumn alloc] initWithIdentifier:@"indicators"];
     column.title = @"Indicators";
-    column.width = 250;
+    column.resizingMask = NSTableColumnAutoresizingMask;
     [self.tableView addTableColumn:column];
     
     self.tableScrollView.documentView = self.tableView;
 }
 
-
 - (void)setupConstraints {
     [NSLayoutConstraint activateConstraints:@[
-        // Title
+        // Title label
         [self.titleLabel.topAnchor constraintEqualToAnchor:self.topAnchor constant:8],
-        [self.titleLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:12],
-        [self.titleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.addIndicatorButton.leadingAnchor constant:-8],
+        [self.titleLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
+        [self.titleLabel.heightAnchor constraintEqualToConstant:20],
         
         // Add button
         [self.addIndicatorButton.centerYAnchor constraintEqualToAnchor:self.titleLabel.centerYAnchor],
@@ -152,13 +156,13 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
         [self.addIndicatorButton.widthAnchor constraintEqualToConstant:20],
         [self.addIndicatorButton.heightAnchor constraintEqualToConstant:20],
         
-        // Table scroll view - CORREZIONE: Assicura che occupi tutto lo spazio
+        // Table scroll view - CORREZIONE: Si espande completamente
         [self.tableScrollView.topAnchor constraintEqualToAnchor:self.titleLabel.bottomAnchor constant:8],
         [self.tableScrollView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
         [self.tableScrollView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
         [self.tableScrollView.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-8],
         
-        // AGGIUNTA: Constraint minimo per l'altezza della table
+        // Height minimo per garantire visibilità
         [self.tableScrollView.heightAnchor constraintGreaterThanOrEqualToConstant:60]
     ]];
     
@@ -171,7 +175,6 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
         ]];
     }
     
-    // CORREZIONE: Force layout subito dopo i constraints
     [self layoutSubtreeIfNeeded];
 }
 
@@ -227,30 +230,54 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
 #pragma mark - UI Setup
 
 - (void)setupUI {
-    // Create main panel view with modern styling
-    self.panelView = [[NSVisualEffectView alloc] init];
-    NSVisualEffectView *effectView = (NSVisualEffectView *)self.panelView;
-    effectView.material = NSVisualEffectMaterialPopover;
-    effectView.blendingMode = NSVisualEffectBlendingModeBehindWindow;
-    effectView.state = NSVisualEffectStateActive;
-    effectView.wantsLayer = YES;
-    effectView.layer.cornerRadius = kCornerRadius;
-    effectView.layer.masksToBounds = YES;
-    
+    // Panel view - contenitore principale con corner radius e shadow
+    self.panelView = [[NSView alloc] init];
     self.panelView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.panelView.wantsLayer = YES;
+    self.panelView.layer.backgroundColor = [[NSColor windowBackgroundColor] colorWithAlphaComponent:0.95].CGColor;
+    self.panelView.layer.cornerRadius = kCornerRadius;
+    self.panelView.layer.shadowColor = [NSColor blackColor].CGColor;
+    self.panelView.layer.shadowOffset = NSMakeSize(0, -2);
+    self.panelView.layer.shadowRadius = kShadowRadius;
+    self.panelView.layer.shadowOpacity = 0.3;
     [self.view addSubview:self.panelView];
     
-    [self createHeader];
-    [self createTemplateSection];
-    [self createMainSplitView];
+    // Header
+    [self setupHeader];
+    
+    // Template section
+    [self setupTemplateSection];
+    
+    // CORREZIONE: Main split view con proporzioni corrette
+    self.mainSplitView = [[NSSplitView alloc] init];
+    self.mainSplitView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.mainSplitView.vertical = NO; // Horizontal split (pannelli sopra, available sotto)
+    self.mainSplitView.dividerStyle = NSSplitViewDividerStyleThin;
+    self.mainSplitView.delegate = self;
+    [self.panelView addSubview:self.mainSplitView];
+    
+    // Create top and bottom sections
+    NSView *topSection = [self createTopSection];    // Pannelli esistenti
+    NSView *bottomSection = [self createBottomSection]; // Available indicators
+    
+    [self.mainSplitView addSubview:topSection];
+    [self.mainSplitView addSubview:bottomSection];
+    
+    // IMPORTANTE: Imposta le proporzioni del split view dopo che il layout è completato
+    dispatch_async(dispatch_get_main_queue(), ^{
+        CGFloat totalHeight = self.mainSplitView.frame.size.height;
+        if (totalHeight > 0) {
+            [self.mainSplitView setPosition:totalHeight * 0.7 ofDividerAtIndex:0];
+        }
+    });
 }
 
-- (void)createHeader {
+- (void)setupHeader {
     // Header label
     self.headerLabel = [[NSTextField alloc] init];
     self.headerLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.headerLabel.stringValue = @"Chart Indicators";
-    self.headerLabel.font = [NSFont boldSystemFontOfSize:16];
+    self.headerLabel.font = [NSFont boldSystemFontOfSize:18];
     self.headerLabel.textColor = [NSColor labelColor];
     self.headerLabel.editable = NO;
     self.headerLabel.bordered = NO;
@@ -264,20 +291,18 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
     self.closeButton.bordered = NO;
     self.closeButton.title = @"✕";
     self.closeButton.font = [NSFont systemFontOfSize:14];
+    self.closeButton.toolTip = @"Close";
     self.closeButton.target = self;
     self.closeButton.action = @selector(closeButtonClicked:);
-    self.closeButton.wantsLayer = YES;
-    self.closeButton.layer.cornerRadius = 12;
-    self.closeButton.layer.backgroundColor = [[NSColor controlAccentColor] colorWithAlphaComponent:0.1].CGColor;
     [self.panelView addSubview:self.closeButton];
 }
 
-- (void)createTemplateSection {
-    // Template section label
+- (void)setupTemplateSection {
+    // Template label
     self.templateLabel = [[NSTextField alloc] init];
     self.templateLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.templateLabel.stringValue = @"Templates";
-    self.templateLabel.font = [NSFont boldSystemFontOfSize:13];
+    self.templateLabel.stringValue = @"Templates:";
+    self.templateLabel.font = [NSFont systemFontOfSize:13];
     self.templateLabel.textColor = [NSColor secondaryLabelColor];
     self.templateLabel.editable = NO;
     self.templateLabel.bordered = NO;
@@ -287,52 +312,33 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
     // Template combo box
     self.templateComboBox = [[NSComboBox alloc] init];
     self.templateComboBox.translatesAutoresizingMaskIntoConstraints = NO;
-    self.templateComboBox.editable = NO;
     [self.templateComboBox addItemsWithObjectValues:self.savedTemplates];
-    [self.templateComboBox selectItemAtIndex:0];
+    self.templateComboBox.target = self;
+    self.templateComboBox.action = @selector(templateSelected:);
     [self.panelView addSubview:self.templateComboBox];
     
-    // Save/Load buttons
+    // Save template button
     self.saveTemplateButton = [[NSButton alloc] init];
     self.saveTemplateButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.saveTemplateButton.buttonType = NSButtonTypeMomentaryPushIn;
     self.saveTemplateButton.title = @"💾";
+    self.saveTemplateButton.toolTip = @"Save Template";
     self.saveTemplateButton.target = self;
     self.saveTemplateButton.action = @selector(saveTemplateButtonClicked:);
-    self.saveTemplateButton.toolTip = @"Save current layout as template";
     [self.panelView addSubview:self.saveTemplateButton];
     
+    // Load template button
     self.loadTemplateButton = [[NSButton alloc] init];
     self.loadTemplateButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.loadTemplateButton.buttonType = NSButtonTypeMomentaryPushIn;
     self.loadTemplateButton.title = @"📁";
+    self.loadTemplateButton.toolTip = @"Load Template";
     self.loadTemplateButton.target = self;
     self.loadTemplateButton.action = @selector(loadTemplateButtonClicked:);
-    self.loadTemplateButton.toolTip = @"Load selected template";
     [self.panelView addSubview:self.loadTemplateButton];
 }
 
-- (void)createMainSplitView {
-    // Main split view
-    self.mainSplitView = [[NSSplitView alloc] init];
-    self.mainSplitView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.mainSplitView.vertical = NO; // Horizontal split
-    self.mainSplitView.dividerStyle = NSSplitViewDividerStyleThin;
-    [self.panelView addSubview:self.mainSplitView];
-    
-    // Top part: Panels with their indicators
-    NSView *panelsContainerView = [self createPanelsContainerView];
-    [self.mainSplitView addSubview:panelsContainerView];
-    
-    // Bottom part: Available indicators
-    NSView *availableIndicatorsView = [self createAvailableIndicatorsView];
-    [self.mainSplitView addSubview:availableIndicatorsView];
-    
-    // Set initial split proportions (70% panels, 30% available)
-    [self.mainSplitView setPosition:(kPanelHeight - 140) * 0.65 ofDividerAtIndex:0];
-}
-
-- (NSView *)createPanelsContainerView {
+- (NSView *)createTopSection {
     NSView *containerView = [[NSView alloc] init];
     containerView.translatesAutoresizingMaskIntoConstraints = NO;
     
@@ -340,8 +346,8 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
     NSTextField *titleLabel = [[NSTextField alloc] init];
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     titleLabel.stringValue = @"Chart Panels";
-    titleLabel.font = [NSFont boldSystemFontOfSize:13];
-    titleLabel.textColor = [NSColor secondaryLabelColor];
+    titleLabel.font = [NSFont boldSystemFontOfSize:16];
+    titleLabel.textColor = [NSColor labelColor];
     titleLabel.editable = NO;
     titleLabel.bordered = NO;
     titleLabel.backgroundColor = [NSColor clearColor];
@@ -369,29 +375,43 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
     self.panelsStackView = [[NSStackView alloc] init];
     self.panelsStackView.translatesAutoresizingMaskIntoConstraints = NO;
     self.panelsStackView.orientation = NSUserInterfaceLayoutOrientationVertical;
-    self.panelsStackView.alignment = NSLayoutAttributeLeading;
+    self.panelsStackView.alignment = NSLayoutAttributeWidth; // CAMBIATO: per espansione completa
     self.panelsStackView.distribution = NSStackViewDistributionFill;
     self.panelsStackView.spacing = 8;
+    
+    // CORREZIONE: Assicura che lo stack view si espanda orizzontalmente
+    [self.panelsStackView setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [self.panelsStackView setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    
     self.panelsScrollView.documentView = self.panelsStackView;
     
-    // Constraints
+    // CORREZIONE: Constraints per espansione orizzontale completa
     [NSLayoutConstraint activateConstraints:@[
         [titleLabel.topAnchor constraintEqualToAnchor:containerView.topAnchor constant:8],
-        [titleLabel.leadingAnchor constraintEqualToAnchor:containerView.leadingAnchor constant:12],
+        [titleLabel.leadingAnchor constraintEqualToAnchor:containerView.leadingAnchor constant:8],
         
         [addPanelButton.centerYAnchor constraintEqualToAnchor:titleLabel.centerYAnchor],
-        [addPanelButton.trailingAnchor constraintEqualToAnchor:containerView.trailingAnchor constant:-12],
+        [addPanelButton.trailingAnchor constraintEqualToAnchor:containerView.trailingAnchor constant:-8],
         
         [self.panelsScrollView.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:8],
         [self.panelsScrollView.leadingAnchor constraintEqualToAnchor:containerView.leadingAnchor constant:8],
         [self.panelsScrollView.trailingAnchor constraintEqualToAnchor:containerView.trailingAnchor constant:-8],
-        [self.panelsScrollView.bottomAnchor constraintEqualToAnchor:containerView.bottomAnchor constant:-8]
+        [self.panelsScrollView.bottomAnchor constraintEqualToAnchor:containerView.bottomAnchor constant:-8],
+        
+        // IMPORTANTE: Stack view deve riempire tutto lo scroll view
+        [self.panelsStackView.topAnchor constraintEqualToAnchor:self.panelsScrollView.topAnchor],
+        [self.panelsStackView.leadingAnchor constraintEqualToAnchor:self.panelsScrollView.leadingAnchor],
+        [self.panelsStackView.trailingAnchor constraintEqualToAnchor:self.panelsScrollView.trailingAnchor],
+        [self.panelsStackView.bottomAnchor constraintGreaterThanOrEqualToAnchor:self.panelsScrollView.bottomAnchor],
+        
+        // CRUCIALE: Width constraint per forzare espansione orizzontale
+        [self.panelsStackView.widthAnchor constraintEqualToAnchor:self.panelsScrollView.widthAnchor]
     ]];
     
     return containerView;
 }
 
-- (NSView *)createAvailableIndicatorsView {
+- (NSView *)createBottomSection {
     NSView *containerView = [[NSView alloc] init];
     containerView.translatesAutoresizingMaskIntoConstraints = NO;
     
@@ -429,23 +449,29 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
     // Enable drag from available indicators
     [self.availableIndicatorsTable setDraggingSourceOperationMask:NSDragOperationCopy forLocal:NO];
     
-    // Add column
+    // Add column - CORREZIONE: Colonna si adatta al container
     NSTableColumn *column = [[NSTableColumn alloc] initWithIdentifier:@"available"];
     column.title = @"Available";
-    column.width = 280;
+    column.resizingMask = NSTableColumnAutoresizingMask;
     [self.availableIndicatorsTable addTableColumn:column];
     
     self.availableIndicatorsScrollView.documentView = self.availableIndicatorsTable;
     
-    // Constraints
+    // CORREZIONE: Constraints per assicurare visibilità completa
     [NSLayoutConstraint activateConstraints:@[
+        // Label in alto
         [self.availableLabel.topAnchor constraintEqualToAnchor:containerView.topAnchor constant:8],
-        [self.availableLabel.leadingAnchor constraintEqualToAnchor:containerView.leadingAnchor constant:12],
+        [self.availableLabel.leadingAnchor constraintEqualToAnchor:containerView.leadingAnchor constant:8],
+        [self.availableLabel.trailingAnchor constraintEqualToAnchor:containerView.trailingAnchor constant:-8],
         
+        // Table view occupa tutto lo spazio restante
         [self.availableIndicatorsScrollView.topAnchor constraintEqualToAnchor:self.availableLabel.bottomAnchor constant:8],
         [self.availableIndicatorsScrollView.leadingAnchor constraintEqualToAnchor:containerView.leadingAnchor constant:8],
         [self.availableIndicatorsScrollView.trailingAnchor constraintEqualToAnchor:containerView.trailingAnchor constant:-8],
-        [self.availableIndicatorsScrollView.bottomAnchor constraintEqualToAnchor:containerView.bottomAnchor constant:-8]
+        [self.availableIndicatorsScrollView.bottomAnchor constraintEqualToAnchor:containerView.bottomAnchor constant:-8],
+        
+        // IMPORTANTE: Height minimo per garantire visibilità
+        [self.availableIndicatorsScrollView.heightAnchor constraintGreaterThanOrEqualToConstant:100]
     ]];
     
     return containerView;
@@ -453,7 +479,7 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
 
 - (void)setupConstraints {
     [NSLayoutConstraint activateConstraints:@[
-        // Panel view - centered in parent with fixed size
+        // Panel view - contenitore principale centrato
         [self.panelView.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
         [self.panelView.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
         [self.panelView.widthAnchor constraintEqualToConstant:kPanelWidth],
@@ -484,11 +510,11 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
         [self.loadTemplateButton.leadingAnchor constraintEqualToAnchor:self.saveTemplateButton.trailingAnchor constant:4],
         [self.loadTemplateButton.widthAnchor constraintEqualToConstant:30],
         
-        // Main split view
+        // CORREZIONE: Main split view occupa tutto lo spazio rimanente
         [self.mainSplitView.topAnchor constraintEqualToAnchor:self.templateComboBox.bottomAnchor constant:16],
-        [self.mainSplitView.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:12],
-        [self.mainSplitView.trailingAnchor constraintEqualToAnchor:self.panelView.trailingAnchor constant:-12],
-        [self.mainSplitView.bottomAnchor constraintEqualToAnchor:self.panelView.bottomAnchor constant:-12]
+        [self.mainSplitView.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:8],
+        [self.mainSplitView.trailingAnchor constraintEqualToAnchor:self.panelView.trailingAnchor constant:-8],
+        [self.mainSplitView.bottomAnchor constraintEqualToAnchor:self.panelView.bottomAnchor constant:-8]
     ]];
 }
 
@@ -504,7 +530,7 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
     }
     
     // Create popup window
-    NSRect popupRect = NSMakeRect(0, 0, kPanelWidth + 40, kPanelHeight + 40);
+    NSRect popupRect = NSMakeRect(0, 0, kPanelWidth, kPanelHeight);
     self.popupWindow = [[NSWindow alloc] initWithContentRect:popupRect
                                                    styleMask:NSWindowStyleMaskBorderless
                                                      backing:NSBackingStoreBuffered
@@ -516,14 +542,23 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
     self.popupWindow.level = NSFloatingWindowLevel;
     self.popupWindow.contentView = self.view;
     
-    // Position popup
+    // Position popup - controlla bordi schermo
     NSRect chartFrame = [self.chartWidget.view convertRect:self.chartWidget.view.bounds toView:nil];
     NSRect screenFrame = [parentWindow convertRectToScreen:chartFrame];
     
     CGFloat popupX = screenFrame.origin.x + screenFrame.size.width - kPanelWidth - 20;
     CGFloat popupY = screenFrame.origin.y + screenFrame.size.height - kPanelHeight - 20;
     
-    NSRect finalFrame = NSMakeRect(popupX, popupY, kPanelWidth + 40, kPanelHeight + 40);
+    // Controlla se il popup esce dai bordi dello schermo
+    NSRect screenBounds = [[NSScreen mainScreen] visibleFrame];
+    if (popupX < screenBounds.origin.x) {
+        popupX = screenBounds.origin.x + 10;
+    }
+    if (popupY < screenBounds.origin.y) {
+        popupY = screenBounds.origin.y + 10;
+    }
+    
+    NSRect finalFrame = NSMakeRect(popupX, popupY, kPanelWidth, kPanelHeight);
     [self.popupWindow setFrame:finalFrame display:NO];
     
     [parentWindow addChildWindow:self.popupWindow ordered:NSWindowAbove];
@@ -531,12 +566,20 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
     
     self.isVisible = YES;
     
-    // CORREZIONE: Chiama refresh subito dopo aver mostrato il panel
     [self refreshPanelsList];
     
-    NSLog(@"✅ IndicatorsPanelController: Interactive popup shown and refreshed");
+    // CORREZIONE: Imposta proporzioni split dopo che la finestra è visibile
+    dispatch_async(dispatch_get_main_queue(), ^{
+        CGFloat totalHeight = self.mainSplitView.frame.size.height;
+        if (totalHeight > 0) {
+            // 70% per pannelli, 30% per available indicators
+            [self.mainSplitView setPosition:totalHeight * 0.7 ofDividerAtIndex:0];
+            NSLog(@"✅ Split view position set: %.0f of %.0f", totalHeight * 0.7, totalHeight);
+        }
+    });
+    
+    NSLog(@"✅ IndicatorsPanelController: Interactive popup shown (%.0fx%.0f)", kPanelWidth, kPanelHeight);
 }
-
 
 - (void)hidePanel {
     if (!self.isVisible || !self.popupWindow) return;
@@ -560,6 +603,14 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
     }];
 }
 
+- (void)togglePanel {
+    if (self.isVisible) {
+        [self hidePanel];
+    } else {
+        [self showPanel];
+    }
+}
+
 - (void)showPanelIfNotVisible {
     if (!self.isVisible) {
         [self showPanel];
@@ -568,7 +619,6 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
 
 #pragma mark - Panel Management
 
-// CORREZIONE nel metodo refreshPanelsList - usa priorità diverse
 - (void)refreshPanelsList {
     NSLog(@"🔄 REFRESH START - ChartWidget: %@", self.chartWidget);
     NSLog(@"🔄 Panel models count: %ld", self.chartWidget.panelModels.count);
@@ -588,39 +638,33 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
         [self.panelContainers addObject:container];
         [self.panelsStackView addArrangedSubview:container];
         
-        // CORREZIONE: Usa hugging priority invece di fixed height
-        [container setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationVertical];
-        [container setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh forOrientation:NSLayoutConstraintOrientationVertical];
-        
-        // Height constraint più flessibile
-        NSLayoutConstraint *heightConstraint = [container.heightAnchor constraintEqualToConstant:120];
-        heightConstraint.priority = NSLayoutPriorityDefaultHigh; // Non Required
-        heightConstraint.active = YES;
-        
-        // Width constraint
+        // CORREZIONE: Width constraint per espansione orizzontale completa - NESSUN CONSTANT NEGATIVO
         NSLayoutConstraint *widthConstraint = [container.widthAnchor constraintEqualToAnchor:self.panelsStackView.widthAnchor];
+        widthConstraint.priority = NSLayoutPriorityRequired;
         widthConstraint.active = YES;
+        
+        // IMPORTANTE: Imposta content hugging priority per permettere espansione
+        [container setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+        [container setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+        
+        // Height constraint flessibile
+        NSLayoutConstraint *heightConstraint = [container.heightAnchor constraintGreaterThanOrEqualToConstant:80];
+        heightConstraint.priority = NSLayoutPriorityDefaultHigh;
+        heightConstraint.active = YES;
     }
     
-    // CORREZIONE: Force layout prima di reload
+    // Force layout
     [self.view layoutSubtreeIfNeeded];
     [self.panelsStackView layoutSubtreeIfNeeded];
     
-    // Delay leggermente il reload per dare tempo ai constraints
     dispatch_async(dispatch_get_main_queue(), ^{
-        // Refresh all table views
         for (PanelTableViewContainer *container in self.panelContainers) {
-            NSLog(@"🔄 Reloading table for panel: %@ (frame: %@)",
-                  container.panelModel.title, NSStringFromRect(container.frame));
             [container.tableView reloadData];
         }
-        
         [self.availableIndicatorsTable reloadData];
-        NSLog(@"🔄 REFRESH COMPLETE - %ld panels, %ld containers",
-              self.chartWidget.panelModels.count, self.panelContainers.count);
+        NSLog(@"🔄 REFRESH COMPLETE - Available indicators table reloaded");
     });
 }
-
 
 - (void)deletePanelModel:(ChartPanelModel *)panelModel {
     [self.chartWidget requestDeletePanel:panelModel];
@@ -661,7 +705,64 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
         NSLog(@"✅ IndicatorsPanelController: Added %@ to panel '%@'", indicatorType, panel.title);
     }
 }
-#pragma mark - Utility Methods - CORREZIONE
+
+#pragma mark - Action Methods
+
+- (void)closeButtonClicked:(id)sender {
+    [self hidePanel];
+}
+
+- (void)addPanelButtonClicked:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Add New Panel";
+    alert.informativeText = @"Enter a name for the new panel:";
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"Create"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.stringValue = @"New Panel";
+    alert.accessoryView = input;
+    
+    [alert beginSheetModalForWindow:self.popupWindow completionHandler:^(NSModalResponse returnCode) {
+        if (returnCode == NSAlertFirstButtonReturn) {
+            NSString *panelName = input.stringValue;
+            if (panelName.length > 0) {
+                ChartPanelModel *newPanel = [ChartPanelModel secondaryPanelWithTitle:panelName];
+                [self.chartWidget addPanelWithModel:newPanel];
+                [self refreshPanelsList];
+            }
+        }
+    }];
+}
+
+- (void)templateSelected:(id)sender {
+    NSString *selectedTemplate = self.templateComboBox.stringValue;
+    NSLog(@"📋 Template selected: %@", selectedTemplate);
+    // TODO: Implement template loading logic
+}
+
+- (void)saveTemplateButtonClicked:(id)sender {
+    NSString *templateName = self.templateComboBox.stringValue;
+    if (templateName && templateName.length > 0) {
+        // TODO: Implement template saving logic
+        if (![self.savedTemplates containsObject:templateName]) {
+            [self.savedTemplates addObject:templateName];
+            [self.templateComboBox addItemWithObjectValue:templateName];
+        }
+        NSLog(@"💾 Template saved: %@", templateName);
+    }
+}
+
+- (void)loadTemplateButtonClicked:(id)sender {
+    NSString *templateName = self.templateComboBox.stringValue;
+    if (templateName && templateName.length > 0) {
+        NSLog(@"📁 Loading template: %@", templateName);
+        // TODO: Implement template loading logic
+    }
+}
+
+#pragma mark - Utility Methods
 
 - (NSString *)displayNameForIndicatorType:(NSString *)indicatorType {
     NSDictionary *displayNames = @{
@@ -697,6 +798,7 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
 }
 
 #pragma mark - Table View Data Source & Delegate
+
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
     if (tableView == self.availableIndicatorsTable) {
         NSLog(@"📊 Available indicators table: %ld rows", self.availableIndicatorTypes.count);
@@ -766,7 +868,7 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
     return cellView;
 }
 
-- (void)tableView:(NSTableView *)tableView didSelectRowAtIndexOfColumn:(NSInteger)column {
+- (void)tableView:(NSTableView *)tableView didSelectRowAtIndex:(NSInteger)row {
     // Handle selection for context menu or double-click
 }
 
@@ -840,10 +942,8 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
                 NSUInteger index = [rowIndexes firstIndex];
                 if (index < container.panelModel.indicators.count) {
                     id<IndicatorRenderer> indicator = container.panelModel.indicators[index];
-                    NSString *indicatorInfo = [NSString stringWithFormat:@"%@|%@",
-                                             container.panelModel.panelId, [indicator indicatorType]];
                     [pboard declareTypes:@[kIndicatorPasteboardType] owner:self];
-                    [pboard setString:indicatorInfo forType:kIndicatorPasteboardType];
+                    [pboard setString:[indicator indicatorType] forType:kIndicatorPasteboardType];
                     return YES;
                 }
                 break;
@@ -856,13 +956,14 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
 
 - (NSDragOperation)tableView:(NSTableView *)tableView validateDrop:(id<NSDraggingInfo>)info proposedRow:(NSInteger)row proposedDropOperation:(NSTableViewDropOperation)dropOperation {
     if (tableView == self.availableIndicatorsTable) {
-        return NSDragOperationNone; // Can't drop into available indicators
+        return NSDragOperationNone; // Can't drop on available indicators
     }
     
-    // Check if we have valid drag data
     NSPasteboard *pboard = [info draggingPasteboard];
-    if ([pboard availableTypeFromArray:@[kAvailableIndicatorPasteboardType]] ||
-        [pboard availableTypeFromArray:@[kIndicatorPasteboardType]]) {
+    if ([pboard.types containsObject:kAvailableIndicatorPasteboardType]) {
+        return NSDragOperationCopy;
+    }
+    if ([pboard.types containsObject:kIndicatorPasteboardType]) {
         return NSDragOperationMove;
     }
     
@@ -872,146 +973,50 @@ static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.ava
 - (BOOL)tableView:(NSTableView *)tableView acceptDrop:(id<NSDraggingInfo>)info row:(NSInteger)row dropOperation:(NSTableViewDropOperation)dropOperation {
     NSPasteboard *pboard = [info draggingPasteboard];
     
-    // Find target panel
-    ChartPanelModel *targetPanel = nil;
+    // Find which panel this table belongs to
+    PanelTableViewContainer *targetContainer = nil;
     for (PanelTableViewContainer *container in self.panelContainers) {
         if (container.tableView == tableView) {
-            targetPanel = container.panelModel;
+            targetContainer = container;
             break;
         }
     }
     
-    if (!targetPanel) return NO;
+    if (!targetContainer) return NO;
     
-    if ([pboard availableTypeFromArray:@[kAvailableIndicatorPasteboardType]]) {
-        // Dragging from available indicators
+    if ([pboard.types containsObject:kAvailableIndicatorPasteboardType]) {
+        // Dropping from available indicators
         NSString *indicatorType = [pboard stringForType:kAvailableIndicatorPasteboardType];
-        [self addIndicatorType:indicatorType toPanel:targetPanel];
+        [self addIndicatorType:indicatorType toPanel:targetContainer.panelModel];
         return YES;
-        
-    } else if ([pboard availableTypeFromArray:@[kIndicatorPasteboardType]]) {
-        // Moving indicator between panels
-        NSString *indicatorInfo = [pboard stringForType:kIndicatorPasteboardType];
-        NSArray *components = [indicatorInfo componentsSeparatedByString:@"|"];
-        
-        if (components.count == 2) {
-            NSString *sourcePanelId = components[0];
-            NSString *indicatorType = components[1];
-            
-            // Find source panel and remove indicator
-            ChartPanelModel *sourcePanel = nil;
-            id<IndicatorRenderer> indicatorToMove = nil;
-            
-            for (ChartPanelModel *panel in self.chartWidget.panelModels) {
-                if ([panel.panelId isEqualToString:sourcePanelId]) {
-                    sourcePanel = panel;
-                    for (id<IndicatorRenderer> indicator in panel.indicators) {
-                        if ([[indicator indicatorType] isEqualToString:indicatorType]) {
-                            indicatorToMove = indicator;
-                            break;
-                        }
-                    }
-                    break;
-                }
-            }
-            
-            if (sourcePanel && indicatorToMove && sourcePanel != targetPanel) {
-                [sourcePanel removeIndicator:indicatorToMove];
-                [targetPanel addIndicator:indicatorToMove];
-                
-                [self.chartWidget refreshAllPanels];
-                [self refreshPanelsList];
-                return YES;
-            }
-        }
     }
     
+    // TODO: Handle moving indicators between panels
     return NO;
 }
 
-#pragma mark - Actions
+#pragma mark - NSSplitViewDelegate
 
-- (IBAction)closeButtonClicked:(id)sender {
-    [self hidePanel];
+- (BOOL)splitView:(NSSplitView *)splitView canCollapseSubview:(NSView *)subview {
+    return NO; // Non permettere il collasso delle sezioni
 }
 
-- (IBAction)addPanelButtonClicked:(id)sender {
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"New Panel";
-    alert.informativeText = @"Enter a name for the new panel:";
-    alert.alertStyle = NSAlertStyleInformational;
-    [alert addButtonWithTitle:@"Create"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
-    input.stringValue = @"New Panel";
-    alert.accessoryView = input;
-    
-    [alert beginSheetModalForWindow:self.popupWindow completionHandler:^(NSModalResponse returnCode) {
-        if (returnCode == NSAlertFirstButtonReturn) {
-            NSString *panelName = input.stringValue;
-            if (panelName.length > 0) {
-                ChartPanelModel *newPanel = [ChartPanelModel secondaryPanelWithTitle:panelName];
-                [self.chartWidget addPanelWithModel:newPanel];
-                [self refreshPanelsList];
-            }
-        }
-    }];
+- (CGFloat)splitView:(NSSplitView *)splitView constrainMinCoordinate:(CGFloat)proposedMinimumPosition ofSubviewAt:(NSInteger)dividerIndex {
+    // La sezione superiore (pannelli) deve avere almeno 200px
+    return 200;
 }
 
-- (IBAction)saveTemplateButtonClicked:(id)sender {
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Save Template";
-    alert.informativeText = @"Enter a name for this template:";
-    alert.alertStyle = NSAlertStyleInformational;
-    [alert addButtonWithTitle:@"Save"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
-    input.stringValue = @"My Template";
-    alert.accessoryView = input;
-    
-    [alert beginSheetModalForWindow:self.popupWindow completionHandler:^(NSModalResponse returnCode) {
-        if (returnCode == NSAlertFirstButtonReturn) {
-            NSString *templateName = input.stringValue;
-            if (templateName.length > 0) {
-                [self saveTemplateWithName:templateName];
-            }
-        }
-    }];
+- (CGFloat)splitView:(NSSplitView *)splitView constrainMaxCoordinate:(CGFloat)proposedMaximumPosition ofSubviewAt:(NSInteger)dividerIndex {
+    // La sezione inferiore (available indicators) deve avere almeno 150px
+    CGFloat totalHeight = splitView.frame.size.height;
+    return totalHeight - 150;
 }
 
-- (IBAction)loadTemplateButtonClicked:(id)sender {
-    NSString *selectedTemplate = self.templateComboBox.stringValue;
-    if (selectedTemplate.length > 0) {
-        [self loadTemplateWithName:selectedTemplate];
-    }
-}
-
-#pragma mark - Template Management
-
-- (void)saveTemplateWithName:(NSString *)templateName {
-    if (![self.savedTemplates containsObject:templateName]) {
-        [self.savedTemplates addObject:templateName];
-        [self.templateComboBox removeAllItems];
-        [self.templateComboBox addItemsWithObjectValues:self.savedTemplates];
-        [self.templateComboBox selectItemWithObjectValue:templateName];
-        
-        NSLog(@"💾 IndicatorsPanelController: Saved template '%@'", templateName);
-    }
-}
-
-- (void)loadTemplateWithName:(NSString *)templateName {
-    NSLog(@"📁 IndicatorsPanelController: Loading template '%@'", templateName);
-}
-
-#pragma mark - Window Delegate
-
-- (void)windowWillClose:(NSNotification *)notification {
-    if (notification.object == self.popupWindow) {
-        self.isVisible = NO;
-        self.popupWindow = nil;
-    }
+- (void)splitViewDidResizeSubviews:(NSNotification *)notification {
+    // Force reload della table degli available indicators quando il split cambia
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.availableIndicatorsTable reloadData];
+    });
 }
 
 @end

@@ -463,7 +463,6 @@
     }
 }
 
-// MODIFICA per addPanelWithModel - aggiungi notifica
 - (void)addPanelWithModel:(ChartPanelModel *)panelModel {
     // Add to data model
     [self.panelModels addObject:panelModel];
@@ -482,32 +481,51 @@
     [self.panelViews addObject:panelView];
     [self.panelsStackView addArrangedSubview:panelView];
     
-    // CORREZIONE: Usa priorità flessibile per l'altezza dei panel
-    CGFloat height = (panelModel.panelType == ChartPanelTypeMain) ? 400 : 150;
+    // CORREZIONE: Height constraints basati su heightRatio del panel model
+    CGFloat heightRatio = panelModel.heightRatio; // 0.6 per main, 0.2 per secondary
+    CGFloat minHeight = panelModel.minHeight; // 100px minimo
     
-    // Height constraint con priorità più bassa per consentire flessibilità
-    NSLayoutConstraint *heightConstraint = [panelView.heightAnchor constraintGreaterThanOrEqualToConstant:height];
-    heightConstraint.priority = NSLayoutPriorityDefaultHigh; // Non Required
-    heightConstraint.active = YES;
+    // Height constraint minimo
+    NSLayoutConstraint *minHeightConstraint = [panelView.heightAnchor constraintGreaterThanOrEqualToConstant:minHeight];
+    minHeightConstraint.priority = NSLayoutPriorityRequired;
+    minHeightConstraint.active = YES;
     
-    // Se è il main panel, aggiungi anche un constraint di crescita
+    // CORREZIONE: Invece di un constraint assoluto, usa weight/priority per la distribuzione
     if (panelModel.panelType == ChartPanelTypeMain) {
-        // Il main panel cresce per riempire lo spazio disponibile
-        NSLayoutConstraint *expandConstraint = [panelView.heightAnchor constraintEqualToAnchor:self.panelsStackView.heightAnchor
-                                                                                     multiplier:1]; // 70% dello spazio
-        expandConstraint.priority = NSLayoutPriorityDefaultHigh - 1;
-        expandConstraint.active = YES;
+        // Main panel: priorità alta per crescere
+        [panelView setContentHuggingPriority:NSLayoutPriorityDefaultLow - 100 forOrientation:NSLayoutConstraintOrientationVertical];
+        [panelView setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh forOrientation:NSLayoutConstraintOrientationVertical];
+        
+        // Constraint preferenziale per essere più alto degli altri
+        NSLayoutConstraint *preferredHeightConstraint = [panelView.heightAnchor constraintEqualToConstant:400];
+        preferredHeightConstraint.priority = NSLayoutPriorityDefaultHigh - 50; // Priorità media-alta
+        preferredHeightConstraint.active = YES;
+        
+    } else {
+        // Secondary panels: priorità più bassa
+        [panelView setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationVertical];
+        [panelView setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh - 100 forOrientation:NSLayoutConstraintOrientationVertical];
+        
+        // Constraint preferenziale per altezza più piccola
+        NSLayoutConstraint *preferredHeightConstraint = [panelView.heightAnchor constraintEqualToConstant:150];
+        preferredHeightConstraint.priority = NSLayoutPriorityDefaultHigh - 100; // Priorità più bassa del main
+        preferredHeightConstraint.active = YES;
     }
     
-    // Width constraint
+    // Width constraint (invariato)
     NSLayoutConstraint *widthConstraint = [panelView.widthAnchor constraintEqualToAnchor:self.panelsStackView.widthAnchor];
     widthConstraint.active = YES;
+    
+    // IMPORTANTE: Force layout update
+    [self.panelsStackView layoutSubtreeIfNeeded];
     
     // Notifica il popup se è visibile
     [self notifyIndicatorsPanelOfChanges];
     
-    NSLog(@"📊 ChartWidget: Added panel '%@' and notified indicators panel", panelModel.title);
+    NSLog(@"📊 ChartWidget: Added panel '%@' (type: %ld, ratio: %.2f) and notified indicators panel",
+          panelModel.title, (long)panelModel.panelType, heightRatio);
 }
+
 
 // MODIFICA per removePanelWithModel - aggiungi notifica
 - (void)removePanelWithModel:(ChartPanelModel *)panelModel {

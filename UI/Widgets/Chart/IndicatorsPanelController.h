@@ -2,7 +2,7 @@
 //  IndicatorsPanelController.h
 //  TradingApp
 //
-//  Floating popup panel for managing chart indicators and templates
+//  Interactive indicators panel with split view and table views for each panel
 //
 
 #import <Cocoa/Cocoa.h>
@@ -10,13 +10,14 @@
 NS_ASSUME_NONNULL_BEGIN
 
 @class ChartWidget;
-@class TemplateManager;
+@class ChartPanelModel;
 
-@interface IndicatorsPanelController : NSViewController <NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate>
+@interface IndicatorsPanelController : NSViewController <NSTableViewDataSource, NSTableViewDelegate, NSWindowDelegate, NSSplitViewDelegate>
 
 // Properties
 @property (nonatomic, weak) ChartWidget *chartWidget;
 @property (nonatomic, assign) BOOL isVisible;
+@property (nonatomic, strong, readonly) NSWindow *popupWindow; // AGGIUNTO per controllare lo stato
 
 // Available indicators
 @property (nonatomic, strong) NSArray<NSString *> *availableIndicatorTypes;
@@ -35,14 +36,12 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSButton *saveTemplateButton;
 @property (nonatomic, strong) NSButton *loadTemplateButton;
 
-// Panels Section
+// Split View Structure
 @property (nonatomic, strong) NSScrollView *panelsScrollView;
 @property (nonatomic, strong) NSStackView *panelsStackView;
-@property (nonatomic, strong) NSButton *addPanelButton;
 
-// Indicators Section
+// Available Indicators Section
 @property (nonatomic, strong) NSTextField *availableLabel;
-@property (nonatomic, strong) NSScrollView *availableScrollView;
 
 // Initialization
 - (instancetype)initWithChartWidget:(ChartWidget *)chartWidget;
@@ -54,6 +53,15 @@ NS_ASSUME_NONNULL_BEGIN
 
 // Content updates
 - (void)refreshPanelsList;
+
+// Panel operations
+- (void)deletePanelModel:(ChartPanelModel *)panelModel;
+- (void)showAddIndicatorPopupForPanel:(ChartPanelModel *)panel sourceButton:(NSButton *)button;
+- (void)addIndicatorType:(NSString *)indicatorType toPanel:(ChartPanelModel *)panel;
+
+// Utility methods
+- (NSString *)displayNameForIndicatorType:(NSString *)indicatorType;
+- (NSString *)iconForIndicatorType:(NSString *)indicatorType;
 
 @end
 

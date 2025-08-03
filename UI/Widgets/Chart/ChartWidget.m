@@ -434,10 +434,26 @@
         self.indicatorsPanelController = [[IndicatorsPanelController alloc] initWithChartWidget:self];
     }
     
-    // Toggle del popup
-    [self.indicatorsPanelController togglePanel];
-    
-    NSLog(@"🎛️ ChartWidget: Indicators panel toggled");
+    // CORREZIONE: Gestione popup window invece di toggle
+    if (self.indicatorsPanelController.isVisible) {
+        // Se è già visibile, nascondilo
+        [self.indicatorsPanelController hidePanel];
+        NSLog(@"🎛️ ChartWidget: Indicators popup hidden");
+    } else {
+        // Se non è visibile, mostralo
+        [self.indicatorsPanelController showPanel];
+        NSLog(@"🎛️ ChartWidget: Indicators popup shown");
+    }
+}
+
+// METODO HELPER: Controlla se il popup è ancora valido (non chiuso dall'utente)
+- (void)checkIndicatorsPanelStatus {
+    // Questo metodo può essere chiamato periodicamente per sincronizzare lo stato
+    // se l'utente chiude il popup cliccando fuori
+    if (self.indicatorsPanelController && !self.indicatorsPanelController.popupWindow) {
+        // Il popup è stato chiuso dall'utente
+        self.indicatorsPanelController.isVisible = NO;
+    }
 }
 
 // AGGIUNTA: Metodo per notificare il panel quando i panel cambiano
@@ -487,7 +503,10 @@
     NSLayoutConstraint *widthConstraint = [panelView.widthAnchor constraintEqualToAnchor:self.panelsStackView.widthAnchor];
     widthConstraint.active = YES;
     
-    NSLog(@"📊 ChartWidget: Added panel '%@' (min height: %.0f)", panelModel.title, height);
+    // Notifica il popup se è visibile
+    [self notifyIndicatorsPanelOfChanges];
+    
+    NSLog(@"📊 ChartWidget: Added panel '%@' and notified indicators panel", panelModel.title);
 }
 
 // MODIFICA per removePanelWithModel - aggiungi notifica
@@ -518,11 +537,10 @@
 
 // AGGIUNTA al dealloc per cleanup
 - (void)dealloc {
-    // Nascondi il popup se è visibile
+    // Nascondi il popup se è visibile per cleanup
     if (self.indicatorsPanelController.isVisible) {
         [self.indicatorsPanelController hidePanel];
     }
 }
-
 
 @end

@@ -2,7 +2,7 @@
 //  IndicatorsPanelController.m
 //  TradingApp
 //
-//  Floating popup panel for managing chart indicators and templates
+//  Interactive indicators panel with split view and table views for each panel
 //
 
 #import "IndicatorsPanelController.h"
@@ -15,22 +15,174 @@
 // Renderers imports
 #import "VolumeRenderer.h"
 
-static const CGFloat kPanelWidth = 300.0;
-static const CGFloat kPanelHeight = 500.0;
+static const CGFloat kPanelWidth = 350;
+static const CGFloat kPanelHeight = 600;
 static const CGFloat kAnimationDuration = 0.3;
-static const CGFloat kPanelRowHeight = 60.0;
-static const CGFloat kIndicatorRowHeight = 28.0;
 static const CGFloat kCornerRadius = 12.0;
 static const CGFloat kShadowRadius = 20.0;
 
-@interface IndicatorsPanelController ()
-@property (nonatomic, strong) NSMutableArray<NSView *> *panelRowViews;
-@property (nonatomic, strong) TemplateManager *templateManager;
-@property (nonatomic, strong) NSWindow *popupWindow;
+// Drag & Drop
+static NSString * const kIndicatorPasteboardType = @"com.tradingapp.indicator";
+static NSString * const kAvailableIndicatorPasteboardType = @"com.tradingapp.available-indicator";
 
-// UI Components
-@property (nonatomic, strong) NSTableView *indicatorsTableView;
-@property (nonatomic, strong) NSScrollView *indicatorsScrollView;
+@class IndicatorsPanelController;
+
+@interface PanelTableViewContainer : NSView
+@property (nonatomic, strong) NSTextField *titleLabel;
+@property (nonatomic, strong) NSButton *deleteButton;
+@property (nonatomic, strong) NSButton *addIndicatorButton;
+@property (nonatomic, strong) NSScrollView *tableScrollView;
+@property (nonatomic, strong) NSTableView *tableView;
+@property (nonatomic, strong) ChartPanelModel *panelModel;
+@property (nonatomic, weak) IndicatorsPanelController *controller;
+
+- (instancetype)initWithPanelModel:(ChartPanelModel *)panelModel controller:(IndicatorsPanelController *)controller;
+@end
+
+@interface IndicatorsPanelController ()
+@property (nonatomic, strong) NSMutableArray<PanelTableViewContainer *> *panelContainers;
+@property (nonatomic, strong) NSWindow *popupWindow;
+@property (nonatomic, strong) NSSplitView *mainSplitView;
+
+// Available indicators table
+@property (nonatomic, strong) NSTableView *availableIndicatorsTable;
+@property (nonatomic, strong) NSScrollView *availableIndicatorsScrollView;
+@end
+
+@implementation PanelTableViewContainer
+
+- (instancetype)initWithPanelModel:(ChartPanelModel *)panelModel controller:(IndicatorsPanelController *)controller {
+    self = [super init];
+    if (self) {
+        _panelModel = panelModel;
+        _controller = controller;
+        [self setupUI];
+        [self setupConstraints];
+    }
+    return self;
+}
+
+- (void)setupUI {
+    self.translatesAutoresizingMaskIntoConstraints = NO;
+    self.wantsLayer = YES;
+    self.layer.backgroundColor = [[NSColor controlBackgroundColor] colorWithAlphaComponent:0.3].CGColor;
+    self.layer.cornerRadius = 8;
+    self.layer.borderWidth = 1;
+    self.layer.borderColor = [[NSColor separatorColor] colorWithAlphaComponent:0.5].CGColor;
+    
+    // Title label
+    self.titleLabel = [[NSTextField alloc] init];
+    self.titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.titleLabel.stringValue = self.panelModel.title;
+    self.titleLabel.font = [NSFont boldSystemFontOfSize:13];
+    self.titleLabel.editable = NO;
+    self.titleLabel.bordered = NO;
+    self.titleLabel.backgroundColor = [NSColor clearColor];
+    self.titleLabel.textColor = [NSColor labelColor];
+    [self addSubview:self.titleLabel];
+    
+    // Delete button (only for deletable panels)
+    if (self.panelModel.canBeDeleted) {
+        self.deleteButton = [[NSButton alloc] init];
+        self.deleteButton.translatesAutoresizingMaskIntoConstraints = NO;
+        self.deleteButton.buttonType = NSButtonTypeMomentaryPushIn;
+        self.deleteButton.bordered = NO;
+        self.deleteButton.title = @"🗑";
+        self.deleteButton.font = [NSFont systemFontOfSize:12];
+        self.deleteButton.toolTip = @"Delete Panel";
+        self.deleteButton.target = self;
+        self.deleteButton.action = @selector(deleteButtonClicked:);
+        [self addSubview:self.deleteButton];
+    }
+    
+    // Add indicator button
+    self.addIndicatorButton = [[NSButton alloc] init];
+    self.addIndicatorButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.addIndicatorButton.buttonType = NSButtonTypeMomentaryPushIn;
+    self.addIndicatorButton.bordered = NO;
+    self.addIndicatorButton.title = @"➕";
+    self.addIndicatorButton.font = [NSFont systemFontOfSize:10];
+    self.addIndicatorButton.toolTip = @"Add Indicator to Panel";
+    self.addIndicatorButton.target = self;
+    self.addIndicatorButton.action = @selector(addIndicatorButtonClicked:);
+    [self addSubview:self.addIndicatorButton];
+    
+    // Table scroll view
+    self.tableScrollView = [[NSScrollView alloc] init];
+    self.tableScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.tableScrollView.hasVerticalScroller = YES;
+    self.tableScrollView.hasHorizontalScroller = NO;
+    self.tableScrollView.autohidesScrollers = YES;
+    self.tableScrollView.borderType = NSNoBorder;
+    [self addSubview:self.tableScrollView];
+    
+    // Table view
+    self.tableView = [[NSTableView alloc] init];
+    self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.tableView.rowHeight = 24;
+    self.tableView.headerView = nil;
+    self.tableView.dataSource = self.controller;
+    self.tableView.delegate = self.controller;
+    self.tableView.allowsMultipleSelection = NO;
+    self.tableView.intercellSpacing = NSMakeSize(0, 1);
+    
+    // Enable drag & drop
+    [self.tableView registerForDraggedTypes:@[kAvailableIndicatorPasteboardType, kIndicatorPasteboardType]];
+    
+    // Add column
+    NSTableColumn *column = [[NSTableColumn alloc] initWithIdentifier:@"indicator"];
+    column.title = @"Indicators";
+    column.width = 250;
+    [self.tableView addTableColumn:column];
+    
+    self.tableScrollView.documentView = self.tableView;
+}
+
+
+- (void)setupConstraints {
+    [NSLayoutConstraint activateConstraints:@[
+        // Title
+        [self.titleLabel.topAnchor constraintEqualToAnchor:self.topAnchor constant:8],
+        [self.titleLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:12],
+        [self.titleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.addIndicatorButton.leadingAnchor constant:-8],
+        
+        // Add button
+        [self.addIndicatorButton.centerYAnchor constraintEqualToAnchor:self.titleLabel.centerYAnchor],
+        [self.addIndicatorButton.trailingAnchor constraintEqualToAnchor:self.deleteButton ? self.deleteButton.leadingAnchor : self.trailingAnchor constant:self.deleteButton ? -4 : -8],
+        [self.addIndicatorButton.widthAnchor constraintEqualToConstant:20],
+        [self.addIndicatorButton.heightAnchor constraintEqualToConstant:20],
+        
+        // Table scroll view - CORREZIONE: Assicura che occupi tutto lo spazio
+        [self.tableScrollView.topAnchor constraintEqualToAnchor:self.titleLabel.bottomAnchor constant:8],
+        [self.tableScrollView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
+        [self.tableScrollView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
+        [self.tableScrollView.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-8],
+        
+        // AGGIUNTA: Constraint minimo per l'altezza della table
+        [self.tableScrollView.heightAnchor constraintGreaterThanOrEqualToConstant:60]
+    ]];
+    
+    if (self.deleteButton) {
+        [NSLayoutConstraint activateConstraints:@[
+            [self.deleteButton.centerYAnchor constraintEqualToAnchor:self.titleLabel.centerYAnchor],
+            [self.deleteButton.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
+            [self.deleteButton.widthAnchor constraintEqualToConstant:20],
+            [self.deleteButton.heightAnchor constraintEqualToConstant:20]
+        ]];
+    }
+    
+    // CORREZIONE: Force layout subito dopo i constraints
+    [self layoutSubtreeIfNeeded];
+}
+
+- (void)deleteButtonClicked:(id)sender {
+    [self.controller deletePanelModel:self.panelModel];
+}
+
+- (void)addIndicatorButtonClicked:(id)sender {
+    [self.controller showAddIndicatorPopupForPanel:self.panelModel sourceButton:sender];
+}
+
 @end
 
 @implementation IndicatorsPanelController
@@ -42,7 +194,7 @@ static const CGFloat kShadowRadius = 20.0;
     if (self) {
         _chartWidget = chartWidget;
         _isVisible = NO;
-        _panelRowViews = [NSMutableArray array];
+        _panelContainers = [NSMutableArray array];
         
         // Initialize available indicator types
         _availableIndicatorTypes = @[
@@ -50,10 +202,14 @@ static const CGFloat kShadowRadius = 20.0;
             @"RSI",
             @"MACD",
             @"SMA",
-            @"Bollinger Bands"
+            @"EMA",
+            @"Bollinger Bands",
+            @"Stochastic",
+            @"CCI",
+            @"Williams %R"
         ];
         
-        _savedTemplates = [NSMutableArray arrayWithArray:@[@"Default"]];
+        _savedTemplates = [NSMutableArray arrayWithArray:@[@"Default", @"Technical", @"Volume Analysis"]];
         
         NSLog(@"✅ IndicatorsPanelController: Initialized with chart widget");
     }
@@ -86,8 +242,7 @@ static const CGFloat kShadowRadius = 20.0;
     
     [self createHeader];
     [self createTemplateSection];
-    [self createPanelsSection];
-    [self createIndicatorsSection];
+    [self createMainSplitView];
 }
 
 - (void)createHeader {
@@ -102,7 +257,7 @@ static const CGFloat kShadowRadius = 20.0;
     self.headerLabel.backgroundColor = [NSColor clearColor];
     [self.panelView addSubview:self.headerLabel];
     
-    // Close button with modern styling
+    // Close button
     self.closeButton = [[NSButton alloc] init];
     self.closeButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.closeButton.buttonType = NSButtonTypeMomentaryPushIn;
@@ -111,8 +266,6 @@ static const CGFloat kShadowRadius = 20.0;
     self.closeButton.font = [NSFont systemFontOfSize:14];
     self.closeButton.target = self;
     self.closeButton.action = @selector(closeButtonClicked:);
-    
-    // Style close button
     self.closeButton.wantsLayer = YES;
     self.closeButton.layer.cornerRadius = 12;
     self.closeButton.layer.backgroundColor = [[NSColor controlAccentColor] colorWithAlphaComponent:0.1].CGColor;
@@ -139,7 +292,7 @@ static const CGFloat kShadowRadius = 20.0;
     [self.templateComboBox selectItemAtIndex:0];
     [self.panelView addSubview:self.templateComboBox];
     
-    // Save template button
+    // Save/Load buttons
     self.saveTemplateButton = [[NSButton alloc] init];
     self.saveTemplateButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.saveTemplateButton.buttonType = NSButtonTypeMomentaryPushIn;
@@ -149,7 +302,6 @@ static const CGFloat kShadowRadius = 20.0;
     self.saveTemplateButton.toolTip = @"Save current layout as template";
     [self.panelView addSubview:self.saveTemplateButton];
     
-    // Load template button
     self.loadTemplateButton = [[NSButton alloc] init];
     self.loadTemplateButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.loadTemplateButton.buttonType = NSButtonTypeMomentaryPushIn;
@@ -160,94 +312,143 @@ static const CGFloat kShadowRadius = 20.0;
     [self.panelView addSubview:self.loadTemplateButton];
 }
 
-- (void)createPanelsSection {
-    // Panels label
-    NSTextField *panelsLabel = [[NSTextField alloc] init];
-    panelsLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    panelsLabel.stringValue = @"Chart Panels";
-    panelsLabel.font = [NSFont boldSystemFontOfSize:13];
-    panelsLabel.textColor = [NSColor secondaryLabelColor];
-    panelsLabel.editable = NO;
-    panelsLabel.bordered = NO;
-    panelsLabel.backgroundColor = [NSColor clearColor];
-    [self.panelView addSubview:panelsLabel];
+- (void)createMainSplitView {
+    // Main split view
+    self.mainSplitView = [[NSSplitView alloc] init];
+    self.mainSplitView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.mainSplitView.vertical = NO; // Horizontal split
+    self.mainSplitView.dividerStyle = NSSplitViewDividerStyleThin;
+    [self.panelView addSubview:self.mainSplitView];
     
-    // Panels scroll view
+    // Top part: Panels with their indicators
+    NSView *panelsContainerView = [self createPanelsContainerView];
+    [self.mainSplitView addSubview:panelsContainerView];
+    
+    // Bottom part: Available indicators
+    NSView *availableIndicatorsView = [self createAvailableIndicatorsView];
+    [self.mainSplitView addSubview:availableIndicatorsView];
+    
+    // Set initial split proportions (70% panels, 30% available)
+    [self.mainSplitView setPosition:(kPanelHeight - 140) * 0.65 ofDividerAtIndex:0];
+}
+
+- (NSView *)createPanelsContainerView {
+    NSView *containerView = [[NSView alloc] init];
+    containerView.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    // Title
+    NSTextField *titleLabel = [[NSTextField alloc] init];
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    titleLabel.stringValue = @"Chart Panels";
+    titleLabel.font = [NSFont boldSystemFontOfSize:13];
+    titleLabel.textColor = [NSColor secondaryLabelColor];
+    titleLabel.editable = NO;
+    titleLabel.bordered = NO;
+    titleLabel.backgroundColor = [NSColor clearColor];
+    [containerView addSubview:titleLabel];
+    
+    // Add panel button
+    NSButton *addPanelButton = [[NSButton alloc] init];
+    addPanelButton.translatesAutoresizingMaskIntoConstraints = NO;
+    addPanelButton.buttonType = NSButtonTypeMomentaryPushIn;
+    addPanelButton.title = @"+ Add Panel";
+    addPanelButton.target = self;
+    addPanelButton.action = @selector(addPanelButtonClicked:);
+    [containerView addSubview:addPanelButton];
+    
+    // Scroll view for panels
     self.panelsScrollView = [[NSScrollView alloc] init];
     self.panelsScrollView.translatesAutoresizingMaskIntoConstraints = NO;
     self.panelsScrollView.hasVerticalScroller = YES;
     self.panelsScrollView.hasHorizontalScroller = NO;
     self.panelsScrollView.autohidesScrollers = YES;
-    self.panelsScrollView.borderType = NSLineBorder;
-    self.panelsScrollView.wantsLayer = YES;
-    self.panelsScrollView.layer.cornerRadius = 6;
-    [self.panelView addSubview:self.panelsScrollView];
+    self.panelsScrollView.borderType = NSNoBorder;
+    [containerView addSubview:self.panelsScrollView];
     
-    // Panels stack view (document view)
+    // Stack view for panel containers
     self.panelsStackView = [[NSStackView alloc] init];
     self.panelsStackView.translatesAutoresizingMaskIntoConstraints = NO;
     self.panelsStackView.orientation = NSUserInterfaceLayoutOrientationVertical;
     self.panelsStackView.alignment = NSLayoutAttributeLeading;
     self.panelsStackView.distribution = NSStackViewDistributionFill;
-    self.panelsStackView.spacing = 2;
+    self.panelsStackView.spacing = 8;
     self.panelsScrollView.documentView = self.panelsStackView;
     
-    // Add panel button
-    self.addPanelButton = [[NSButton alloc] init];
-    self.addPanelButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.addPanelButton.buttonType = NSButtonTypeMomentaryPushIn;
-    self.addPanelButton.title = @"+ Add Panel";
-    self.addPanelButton.target = self;
-    self.addPanelButton.action = @selector(addPanelButtonClicked:);
-    [self.panelView addSubview:self.addPanelButton];
-    
-    // Set constraints for panels label
+    // Constraints
     [NSLayoutConstraint activateConstraints:@[
-        [panelsLabel.topAnchor constraintEqualToAnchor:self.templateComboBox.bottomAnchor constant:20],
-        [panelsLabel.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:16]
+        [titleLabel.topAnchor constraintEqualToAnchor:containerView.topAnchor constant:8],
+        [titleLabel.leadingAnchor constraintEqualToAnchor:containerView.leadingAnchor constant:12],
+        
+        [addPanelButton.centerYAnchor constraintEqualToAnchor:titleLabel.centerYAnchor],
+        [addPanelButton.trailingAnchor constraintEqualToAnchor:containerView.trailingAnchor constant:-12],
+        
+        [self.panelsScrollView.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:8],
+        [self.panelsScrollView.leadingAnchor constraintEqualToAnchor:containerView.leadingAnchor constant:8],
+        [self.panelsScrollView.trailingAnchor constraintEqualToAnchor:containerView.trailingAnchor constant:-8],
+        [self.panelsScrollView.bottomAnchor constraintEqualToAnchor:containerView.bottomAnchor constant:-8]
     ]];
+    
+    return containerView;
 }
 
-- (void)createIndicatorsSection {
-    // Available indicators label
+- (NSView *)createAvailableIndicatorsView {
+    NSView *containerView = [[NSView alloc] init];
+    containerView.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    // Title
     self.availableLabel = [[NSTextField alloc] init];
     self.availableLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.availableLabel.stringValue = @"Available Indicators";
+    self.availableLabel.stringValue = @"Available Indicators (drag to panels above)";
     self.availableLabel.font = [NSFont boldSystemFontOfSize:13];
     self.availableLabel.textColor = [NSColor secondaryLabelColor];
     self.availableLabel.editable = NO;
     self.availableLabel.bordered = NO;
     self.availableLabel.backgroundColor = [NSColor clearColor];
-    [self.panelView addSubview:self.availableLabel];
+    [containerView addSubview:self.availableLabel];
     
     // Available indicators scroll view
-    self.availableScrollView = [[NSScrollView alloc] init];
-    self.availableScrollView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.availableScrollView.hasVerticalScroller = YES;
-    self.availableScrollView.hasHorizontalScroller = NO;
-    self.availableScrollView.autohidesScrollers = YES;
-    self.availableScrollView.borderType = NSLineBorder;
-    self.availableScrollView.wantsLayer = YES;
-    self.availableScrollView.layer.cornerRadius = 6;
-    [self.panelView addSubview:self.availableScrollView];
+    self.availableIndicatorsScrollView = [[NSScrollView alloc] init];
+    self.availableIndicatorsScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.availableIndicatorsScrollView.hasVerticalScroller = YES;
+    self.availableIndicatorsScrollView.hasHorizontalScroller = NO;
+    self.availableIndicatorsScrollView.autohidesScrollers = YES;
+    self.availableIndicatorsScrollView.borderType = NSLineBorder;
+    self.availableIndicatorsScrollView.wantsLayer = YES;
+    self.availableIndicatorsScrollView.layer.cornerRadius = 6;
+    [containerView addSubview:self.availableIndicatorsScrollView];
     
     // Available indicators table
-    self.indicatorsTableView = [[NSTableView alloc] init];
-    self.indicatorsTableView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.indicatorsTableView.rowHeight = kIndicatorRowHeight;
-    self.indicatorsTableView.headerView = nil;
-    self.indicatorsTableView.dataSource = self;
-    self.indicatorsTableView.delegate = self;
-    self.indicatorsTableView.doubleAction = @selector(indicatorDoubleClicked:);
-    self.indicatorsTableView.target = self;
+    self.availableIndicatorsTable = [[NSTableView alloc] init];
+    self.availableIndicatorsTable.translatesAutoresizingMaskIntoConstraints = NO;
+    self.availableIndicatorsTable.rowHeight = 24;
+    self.availableIndicatorsTable.headerView = nil;
+    self.availableIndicatorsTable.dataSource = self;
+    self.availableIndicatorsTable.delegate = self;
+    self.availableIndicatorsTable.allowsMultipleSelection = NO;
     
-    // Add column for indicator names
-    NSTableColumn *column = [[NSTableColumn alloc] initWithIdentifier:@"indicator"];
-    column.title = @"Indicator";
-    column.width = kPanelWidth - 40;
-    [self.indicatorsTableView addTableColumn:column];
+    // Enable drag from available indicators
+    [self.availableIndicatorsTable setDraggingSourceOperationMask:NSDragOperationCopy forLocal:NO];
     
-    self.availableScrollView.documentView = self.indicatorsTableView;
+    // Add column
+    NSTableColumn *column = [[NSTableColumn alloc] initWithIdentifier:@"available"];
+    column.title = @"Available";
+    column.width = 280;
+    [self.availableIndicatorsTable addTableColumn:column];
+    
+    self.availableIndicatorsScrollView.documentView = self.availableIndicatorsTable;
+    
+    // Constraints
+    [NSLayoutConstraint activateConstraints:@[
+        [self.availableLabel.topAnchor constraintEqualToAnchor:containerView.topAnchor constant:8],
+        [self.availableLabel.leadingAnchor constraintEqualToAnchor:containerView.leadingAnchor constant:12],
+        
+        [self.availableIndicatorsScrollView.topAnchor constraintEqualToAnchor:self.availableLabel.bottomAnchor constant:8],
+        [self.availableIndicatorsScrollView.leadingAnchor constraintEqualToAnchor:containerView.leadingAnchor constant:8],
+        [self.availableIndicatorsScrollView.trailingAnchor constraintEqualToAnchor:containerView.trailingAnchor constant:-8],
+        [self.availableIndicatorsScrollView.bottomAnchor constraintEqualToAnchor:containerView.bottomAnchor constant:-8]
+    ]];
+    
+    return containerView;
 }
 
 - (void)setupConstraints {
@@ -268,7 +469,7 @@ static const CGFloat kShadowRadius = 20.0;
         [self.closeButton.heightAnchor constraintEqualToConstant:24],
         
         // Template section
-        [self.templateLabel.topAnchor constraintEqualToAnchor:self.headerLabel.bottomAnchor constant:20],
+        [self.templateLabel.topAnchor constraintEqualToAnchor:self.headerLabel.bottomAnchor constant:16],
         [self.templateLabel.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:16],
         
         [self.templateComboBox.topAnchor constraintEqualToAnchor:self.templateLabel.bottomAnchor constant:6],
@@ -283,24 +484,11 @@ static const CGFloat kShadowRadius = 20.0;
         [self.loadTemplateButton.leadingAnchor constraintEqualToAnchor:self.saveTemplateButton.trailingAnchor constant:4],
         [self.loadTemplateButton.widthAnchor constraintEqualToConstant:30],
         
-        // Panels section
-        [self.panelsScrollView.topAnchor constraintEqualToAnchor:self.templateComboBox.bottomAnchor constant:40],
-        [self.panelsScrollView.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:16],
-        [self.panelsScrollView.trailingAnchor constraintEqualToAnchor:self.panelView.trailingAnchor constant:-16],
-        [self.panelsScrollView.heightAnchor constraintEqualToConstant:120],
-        
-        [self.addPanelButton.topAnchor constraintEqualToAnchor:self.panelsScrollView.bottomAnchor constant:8],
-        [self.addPanelButton.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:16],
-        [self.addPanelButton.trailingAnchor constraintEqualToAnchor:self.panelView.trailingAnchor constant:-16],
-        
-        // Available indicators section
-        [self.availableLabel.topAnchor constraintEqualToAnchor:self.addPanelButton.bottomAnchor constant:20],
-        [self.availableLabel.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:16],
-        
-        [self.availableScrollView.topAnchor constraintEqualToAnchor:self.availableLabel.bottomAnchor constant:8],
-        [self.availableScrollView.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:16],
-        [self.availableScrollView.trailingAnchor constraintEqualToAnchor:self.panelView.trailingAnchor constant:-16],
-        [self.availableScrollView.bottomAnchor constraintEqualToAnchor:self.panelView.bottomAnchor constant:-16]
+        // Main split view
+        [self.mainSplitView.topAnchor constraintEqualToAnchor:self.templateComboBox.bottomAnchor constant:16],
+        [self.mainSplitView.leadingAnchor constraintEqualToAnchor:self.panelView.leadingAnchor constant:12],
+        [self.mainSplitView.trailingAnchor constraintEqualToAnchor:self.panelView.trailingAnchor constant:-12],
+        [self.mainSplitView.bottomAnchor constraintEqualToAnchor:self.panelView.bottomAnchor constant:-12]
     ]];
 }
 
@@ -311,7 +499,7 @@ static const CGFloat kShadowRadius = 20.0;
     
     NSWindow *parentWindow = self.chartWidget.view.window;
     if (!parentWindow) {
-        NSLog(@"⚠️ IndicatorsPanelController: No parent window");
+        NSLog(@"⚠️ No parent window found");
         return;
     }
     
@@ -328,46 +516,27 @@ static const CGFloat kShadowRadius = 20.0;
     self.popupWindow.level = NSFloatingWindowLevel;
     self.popupWindow.contentView = self.view;
     
-    // Position popup near the indicators button
+    // Position popup
     NSRect chartFrame = [self.chartWidget.view convertRect:self.chartWidget.view.bounds toView:nil];
     NSRect screenFrame = [parentWindow convertRectToScreen:chartFrame];
     
-    // Position at top-right of chart widget
     CGFloat popupX = screenFrame.origin.x + screenFrame.size.width - kPanelWidth - 20;
     CGFloat popupY = screenFrame.origin.y + screenFrame.size.height - kPanelHeight - 20;
     
     NSRect finalFrame = NSMakeRect(popupX, popupY, kPanelWidth + 40, kPanelHeight + 40);
     [self.popupWindow setFrame:finalFrame display:NO];
     
-    // Add shadow effect
-    self.popupWindow.contentView.wantsLayer = YES;
-    self.popupWindow.contentView.shadow = [[NSShadow alloc] init];
-    self.popupWindow.contentView.shadow.shadowOffset = NSMakeSize(0, -8);
-    self.popupWindow.contentView.shadow.shadowBlurRadius = kShadowRadius;
-    self.popupWindow.contentView.shadow.shadowColor = [[NSColor blackColor] colorWithAlphaComponent:0.3];
-    
-    // Show with animation
-    self.popupWindow.alphaValue = 0.0;
-    NSRect startFrame = finalFrame;
-    startFrame.origin.y += 20; // Start slightly lower
-    [self.popupWindow setFrame:startFrame display:NO];
-    
     [parentWindow addChildWindow:self.popupWindow ordered:NSWindowAbove];
     [self.popupWindow makeKeyAndOrderFront:nil];
     
-    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-        context.duration = kAnimationDuration;
-        context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseOut];
-        
-        self.popupWindow.animator.alphaValue = 1.0;
-        [self.popupWindow.animator setFrame:finalFrame display:YES];
-        
-    } completionHandler:^{
-        self.isVisible = YES;
-        [self refreshPanelsList];
-        NSLog(@"✅ IndicatorsPanelController: Popup shown");
-    }];
+    self.isVisible = YES;
+    
+    // CORREZIONE: Chiama refresh subito dopo aver mostrato il panel
+    [self refreshPanelsList];
+    
+    NSLog(@"✅ IndicatorsPanelController: Interactive popup shown and refreshed");
 }
+
 
 - (void)hidePanel {
     if (!self.isVisible || !self.popupWindow) return;
@@ -378,7 +547,6 @@ static const CGFloat kShadowRadius = 20.0;
         
         self.popupWindow.animator.alphaValue = 0.0;
         
-        // Animate out slightly upward
         NSRect currentFrame = self.popupWindow.frame;
         currentFrame.origin.y += 20;
         [self.popupWindow.animator setFrame:currentFrame display:YES];
@@ -388,119 +556,127 @@ static const CGFloat kShadowRadius = 20.0;
         [self.popupWindow orderOut:nil];
         self.popupWindow = nil;
         self.isVisible = NO;
-        NSLog(@"✅ IndicatorsPanelController: Popup hidden");
+        NSLog(@"✅ IndicatorsPanelController: Interactive popup hidden");
     }];
 }
 
-- (void)togglePanel {
-    if (self.isVisible) {
-        [self hidePanel];
-    } else {
+- (void)showPanelIfNotVisible {
+    if (!self.isVisible) {
         [self showPanel];
     }
 }
 
 #pragma mark - Panel Management
 
+// CORREZIONE nel metodo refreshPanelsList - usa priorità diverse
 - (void)refreshPanelsList {
-    // Clear existing rows
-    for (NSView *rowView in self.panelRowViews) {
-        [self.panelsStackView removeArrangedSubview:rowView];
-        [rowView removeFromSuperview];
+    NSLog(@"🔄 REFRESH START - ChartWidget: %@", self.chartWidget);
+    NSLog(@"🔄 Panel models count: %ld", self.chartWidget.panelModels.count);
+    
+    // Clear existing containers
+    for (PanelTableViewContainer *container in self.panelContainers) {
+        [self.panelsStackView removeArrangedSubview:container];
+        [container removeFromSuperview];
     }
-    [self.panelRowViews removeAllObjects];
+    [self.panelContainers removeAllObjects];
     
-    // Add rows for each panel
-    for (NSInteger i = 0; i < self.chartWidget.panelModels.count; i++) {
-        ChartPanelModel *panelModel = self.chartWidget.panelModels[i];
-        NSView *rowView = [self createPanelRowForModel:panelModel atIndex:i];
-        [self.panelRowViews addObject:rowView];
-        [self.panelsStackView addArrangedSubview:rowView];
-    }
-    
-    NSLog(@"🔄 IndicatorsPanelController: Refreshed panels list (%ld panels)", self.chartWidget.panelModels.count);
-}
-
-- (NSView *)createPanelRowForModel:(ChartPanelModel *)panelModel atIndex:(NSInteger)index {
-    NSView *rowView = [[NSView alloc] init];
-    rowView.translatesAutoresizingMaskIntoConstraints = NO;
-    rowView.wantsLayer = YES;
-    rowView.layer.backgroundColor = [[NSColor controlBackgroundColor] colorWithAlphaComponent:0.5].CGColor;
-    rowView.layer.cornerRadius = 6;
-    
-    // Panel title
-    NSTextField *titleLabel = [[NSTextField alloc] init];
-    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    titleLabel.stringValue = panelModel.title;
-    titleLabel.font = [NSFont boldSystemFontOfSize:12];
-    titleLabel.editable = NO;
-    titleLabel.bordered = NO;
-    titleLabel.backgroundColor = [NSColor clearColor];
-    titleLabel.textColor = [NSColor labelColor];
-    [rowView addSubview:titleLabel];
-    
-    // Delete button (only for deletable panels)
-    NSButton *deleteButton = nil;
-    if (panelModel.canBeDeleted) {
-        deleteButton = [[NSButton alloc] init];
-        deleteButton.translatesAutoresizingMaskIntoConstraints = NO;
-        deleteButton.buttonType = NSButtonTypeMomentaryPushIn;
-        deleteButton.bordered = NO;
-        deleteButton.title = @"🗑";
-        deleteButton.font = [NSFont systemFontOfSize:12];
-        deleteButton.tag = index;
-        deleteButton.target = self;
-        deleteButton.action = @selector(deletePanelButtonClicked:);
-        [rowView addSubview:deleteButton];
+    // Create containers for each panel
+    for (ChartPanelModel *panelModel in self.chartWidget.panelModels) {
+        NSLog(@"🔄 Creating container for panel: %@", panelModel.title);
+        
+        PanelTableViewContainer *container = [[PanelTableViewContainer alloc] initWithPanelModel:panelModel controller:self];
+        [self.panelContainers addObject:container];
+        [self.panelsStackView addArrangedSubview:container];
+        
+        // CORREZIONE: Usa hugging priority invece di fixed height
+        [container setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationVertical];
+        [container setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh forOrientation:NSLayoutConstraintOrientationVertical];
+        
+        // Height constraint più flessibile
+        NSLayoutConstraint *heightConstraint = [container.heightAnchor constraintEqualToConstant:120];
+        heightConstraint.priority = NSLayoutPriorityDefaultHigh; // Non Required
+        heightConstraint.active = YES;
+        
+        // Width constraint
+        NSLayoutConstraint *widthConstraint = [container.widthAnchor constraintEqualToAnchor:self.panelsStackView.widthAnchor];
+        widthConstraint.active = YES;
     }
     
-    // Indicators list
-    NSMutableString *indicatorsText = [NSMutableString string];
-    for (id<IndicatorRenderer> indicator in panelModel.indicators) {
-        if (indicatorsText.length > 0) {
-            [indicatorsText appendString:@"\n"];
+    // CORREZIONE: Force layout prima di reload
+    [self.view layoutSubtreeIfNeeded];
+    [self.panelsStackView layoutSubtreeIfNeeded];
+    
+    // Delay leggermente il reload per dare tempo ai constraints
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // Refresh all table views
+        for (PanelTableViewContainer *container in self.panelContainers) {
+            NSLog(@"🔄 Reloading table for panel: %@ (frame: %@)",
+                  container.panelModel.title, NSStringFromRect(container.frame));
+            [container.tableView reloadData];
         }
         
-        NSString *icon = [self iconForIndicatorType:[indicator indicatorType]];
-        [indicatorsText appendFormat:@"└ %@ %@ (%@)", icon, [indicator displayName], [indicator indicatorType]];
+        [self.availableIndicatorsTable reloadData];
+        NSLog(@"🔄 REFRESH COMPLETE - %ld panels, %ld containers",
+              self.chartWidget.panelModels.count, self.panelContainers.count);
+    });
+}
+
+
+- (void)deletePanelModel:(ChartPanelModel *)panelModel {
+    [self.chartWidget requestDeletePanel:panelModel];
+    [self refreshPanelsList];
+}
+
+- (void)showAddIndicatorPopupForPanel:(ChartPanelModel *)panel sourceButton:(NSButton *)button {
+    NSMenu *menu = [[NSMenu alloc] init];
+    
+    for (NSString *indicatorType in self.availableIndicatorTypes) {
+        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:[self displayNameForIndicatorType:indicatorType]
+                                                      action:@selector(addIndicatorToPanel:)
+                                               keyEquivalent:@""];
+        item.target = self;
+        item.representedObject = @{@"panel": panel, @"indicator": indicatorType};
+        [menu addItem:item];
     }
     
-    if (indicatorsText.length == 0) {
-        [indicatorsText appendString:@"└ No indicators"];
-    }
+    [menu popUpMenuPositioningItem:nil atLocation:NSMakePoint(0, button.frame.size.height) inView:button];
+}
+
+- (void)addIndicatorToPanel:(NSMenuItem *)menuItem {
+    NSDictionary *info = menuItem.representedObject;
+    ChartPanelModel *panel = info[@"panel"];
+    NSString *indicatorType = info[@"indicator"];
     
-    NSTextField *indicatorsLabel = [[NSTextField alloc] init];
-    indicatorsLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    indicatorsLabel.stringValue = indicatorsText;
-    indicatorsLabel.font = [NSFont systemFontOfSize:9];
-    indicatorsLabel.editable = NO;
-    indicatorsLabel.bordered = NO;
-    indicatorsLabel.backgroundColor = [NSColor clearColor];
-    indicatorsLabel.textColor = [NSColor secondaryLabelColor];
-    [rowView addSubview:indicatorsLabel];
-    
-    // Constraints
-    [NSLayoutConstraint activateConstraints:@[
-        [rowView.heightAnchor constraintEqualToConstant:kPanelRowHeight],
+    [self addIndicatorType:indicatorType toPanel:panel];
+}
+
+- (void)addIndicatorType:(NSString *)indicatorType toPanel:(ChartPanelModel *)panel {
+    // Create the indicator renderer
+    id<IndicatorRenderer> indicator = [self.chartWidget createIndicatorOfType:indicatorType];
+    if (indicator) {
+        [panel addIndicator:indicator];
+        [self.chartWidget refreshAllPanels];
+        [self refreshPanelsList];
         
-        [titleLabel.topAnchor constraintEqualToAnchor:rowView.topAnchor constant:6],
-        [titleLabel.leadingAnchor constraintEqualToAnchor:rowView.leadingAnchor constant:8],
-        
-        [indicatorsLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:2],
-        [indicatorsLabel.leadingAnchor constraintEqualToAnchor:rowView.leadingAnchor constant:16],
-        [indicatorsLabel.trailingAnchor constraintEqualToAnchor:rowView.trailingAnchor constant:-8],
-    ]];
-    
-    if (deleteButton) {
-        [NSLayoutConstraint activateConstraints:@[
-            [deleteButton.centerYAnchor constraintEqualToAnchor:rowView.centerYAnchor],
-            [deleteButton.trailingAnchor constraintEqualToAnchor:rowView.trailingAnchor constant:-8],
-            [deleteButton.widthAnchor constraintEqualToConstant:20],
-            [deleteButton.heightAnchor constraintEqualToConstant:20]
-        ]];
+        NSLog(@"✅ IndicatorsPanelController: Added %@ to panel '%@'", indicatorType, panel.title);
     }
+}
+#pragma mark - Utility Methods - CORREZIONE
+
+- (NSString *)displayNameForIndicatorType:(NSString *)indicatorType {
+    NSDictionary *displayNames = @{
+        @"Volume": @"📈 Volume",
+        @"RSI": @"📉 RSI (Relative Strength Index)",
+        @"MACD": @"📊 MACD",
+        @"SMA": @"〰️ Simple Moving Average",
+        @"EMA": @"〰️ Exponential Moving Average",
+        @"Bollinger Bands": @"📏 Bollinger Bands",
+        @"Stochastic": @"🔄 Stochastic Oscillator",
+        @"CCI": @"📈 Commodity Channel Index",
+        @"Williams %R": @"📉 Williams %R"
+    };
     
-    return rowView;
+    return displayNames[indicatorType] ?: [NSString stringWithFormat:@"📊 %@", indicatorType];
 }
 
 - (NSString *)iconForIndicatorType:(NSString *)indicatorType {
@@ -510,30 +686,49 @@ static const CGFloat kShadowRadius = 20.0;
         @"RSI": @"📉",
         @"MACD": @"📊",
         @"SMA": @"〰️",
-        @"Bollinger Bands": @"📏"
+        @"EMA": @"〰️",
+        @"Bollinger Bands": @"📏",
+        @"Stochastic": @"🔄",
+        @"CCI": @"📈",
+        @"Williams %R": @"📉"
     };
     
     return icons[indicatorType] ?: @"📊";
 }
 
 #pragma mark - Table View Data Source & Delegate
-
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
-    return self.availableIndicatorTypes.count;
+    if (tableView == self.availableIndicatorsTable) {
+        NSLog(@"📊 Available indicators table: %ld rows", self.availableIndicatorTypes.count);
+        return self.availableIndicatorTypes.count;
+    }
+    
+    // Find which panel table this is
+    for (PanelTableViewContainer *container in self.panelContainers) {
+        if (container.tableView == tableView) {
+            NSInteger count = container.panelModel.indicators.count;
+            NSLog(@"📊 Panel '%@' table: %ld rows", container.panelModel.title, count);
+            return count;
+        }
+    }
+    
+    NSLog(@"⚠️ Unknown table view - returning 0 rows");
+    return 0;
 }
 
 - (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
-    NSTableCellView *cellView = [tableView makeViewWithIdentifier:@"IndicatorCell" owner:self];
+    NSString *identifier = tableColumn.identifier;
+    NSTableCellView *cellView = [tableView makeViewWithIdentifier:identifier owner:self];
     
     if (!cellView) {
         cellView = [[NSTableCellView alloc] init];
-        cellView.identifier = @"IndicatorCell";
+        cellView.identifier = identifier;
         
         NSTextField *textField = [[NSTextField alloc] init];
         textField.editable = NO;
         textField.bordered = NO;
         textField.backgroundColor = [NSColor clearColor];
-        textField.font = [NSFont systemFontOfSize:12];
+        textField.font = [NSFont systemFontOfSize:11];
         textField.translatesAutoresizingMaskIntoConstraints = NO;
         [cellView addSubview:textField];
         cellView.textField = textField;
@@ -545,19 +740,193 @@ static const CGFloat kShadowRadius = 20.0;
         ]];
     }
     
-    NSString *indicatorType = self.availableIndicatorTypes[row];
-    NSString *icon = [self iconForIndicatorType:indicatorType];
-    cellView.textField.stringValue = [NSString stringWithFormat:@"%@ %@", icon, indicatorType];
+    if (tableView == self.availableIndicatorsTable) {
+        // Available indicators table
+        if (row < self.availableIndicatorTypes.count) {
+            NSString *indicatorType = self.availableIndicatorTypes[row];
+            cellView.textField.stringValue = [self displayNameForIndicatorType:indicatorType];
+            NSLog(@"📊 Available indicator row %ld: %@", row, indicatorType);
+        }
+    } else {
+        // Panel indicators table
+        for (PanelTableViewContainer *container in self.panelContainers) {
+            if (container.tableView == tableView) {
+                if (row < container.panelModel.indicators.count) {
+                    id<IndicatorRenderer> indicator = container.panelModel.indicators[row];
+                    NSString *icon = [self iconForIndicatorType:[indicator indicatorType]];
+                    NSString *displayText = [NSString stringWithFormat:@"%@ %@", icon, [indicator displayName]];
+                    cellView.textField.stringValue = displayText;
+                    NSLog(@"📊 Panel indicator row %ld: %@", row, displayText);
+                }
+                break;
+            }
+        }
+    }
     
     return cellView;
 }
 
 - (void)tableView:(NSTableView *)tableView didSelectRowAtIndexOfColumn:(NSInteger)column {
-    // Handle selection
-    NSInteger selectedRow = tableView.selectedRow;
-    if (selectedRow >= 0 && selectedRow < self.availableIndicatorTypes.count) {
-        [self addIndicatorToSelectedPanel:self.availableIndicatorTypes[selectedRow]];
+    // Handle selection for context menu or double-click
+}
+
+- (NSMenu *)tableView:(NSTableView *)tableView menuForRows:(NSIndexSet *)rows {
+    if (tableView == self.availableIndicatorsTable) {
+        return nil; // No context menu for available indicators
     }
+    
+    // Context menu for panel indicators
+    NSMenu *menu = [[NSMenu alloc] init];
+    
+    NSMenuItem *removeItem = [[NSMenuItem alloc] initWithTitle:@"Remove Indicator"
+                                                        action:@selector(removeIndicatorFromPanel:)
+                                                 keyEquivalent:@""];
+    removeItem.target = self;
+    removeItem.representedObject = @{@"tableView": tableView, @"rows": rows};
+    [menu addItem:removeItem];
+    
+    NSMenuItem *configureItem = [[NSMenuItem alloc] initWithTitle:@"Configure..."
+                                                           action:@selector(configureIndicator:)
+                                                    keyEquivalent:@""];
+    configureItem.target = self;
+    configureItem.representedObject = @{@"tableView": tableView, @"rows": rows};
+    [menu addItem:configureItem];
+    
+    return menu;
+}
+
+- (void)removeIndicatorFromPanel:(NSMenuItem *)menuItem {
+    NSDictionary *info = menuItem.representedObject;
+    NSTableView *tableView = info[@"tableView"];
+    NSIndexSet *rows = info[@"rows"];
+    
+    // Find the panel container
+    for (PanelTableViewContainer *container in self.panelContainers) {
+        if (container.tableView == tableView) {
+            [rows enumerateIndexesWithOptions:NSEnumerationReverse usingBlock:^(NSUInteger idx, BOOL *stop) {
+                if (idx < container.panelModel.indicators.count) {
+                    [container.panelModel removeIndicatorAtIndex:idx];
+                }
+            }];
+            
+            [self.chartWidget refreshAllPanels];
+            [self refreshPanelsList];
+            break;
+        }
+    }
+}
+
+- (void)configureIndicator:(NSMenuItem *)menuItem {
+    // TODO: Implement indicator configuration
+    NSLog(@"🔧 Configure indicator - to be implemented");
+}
+
+#pragma mark - Drag & Drop Support
+
+- (BOOL)tableView:(NSTableView *)tableView writeRowsWithIndexes:(NSIndexSet *)rowIndexes toPasteboard:(NSPasteboard *)pboard {
+    if (tableView == self.availableIndicatorsTable) {
+        // Dragging from available indicators
+        NSUInteger index = [rowIndexes firstIndex];
+        if (index < self.availableIndicatorTypes.count) {
+            NSString *indicatorType = self.availableIndicatorTypes[index];
+            [pboard declareTypes:@[kAvailableIndicatorPasteboardType] owner:self];
+            [pboard setString:indicatorType forType:kAvailableIndicatorPasteboardType];
+            return YES;
+        }
+    } else {
+        // Dragging from panel indicators
+        for (PanelTableViewContainer *container in self.panelContainers) {
+            if (container.tableView == tableView) {
+                NSUInteger index = [rowIndexes firstIndex];
+                if (index < container.panelModel.indicators.count) {
+                    id<IndicatorRenderer> indicator = container.panelModel.indicators[index];
+                    NSString *indicatorInfo = [NSString stringWithFormat:@"%@|%@",
+                                             container.panelModel.panelId, [indicator indicatorType]];
+                    [pboard declareTypes:@[kIndicatorPasteboardType] owner:self];
+                    [pboard setString:indicatorInfo forType:kIndicatorPasteboardType];
+                    return YES;
+                }
+                break;
+            }
+        }
+    }
+    
+    return NO;
+}
+
+- (NSDragOperation)tableView:(NSTableView *)tableView validateDrop:(id<NSDraggingInfo>)info proposedRow:(NSInteger)row proposedDropOperation:(NSTableViewDropOperation)dropOperation {
+    if (tableView == self.availableIndicatorsTable) {
+        return NSDragOperationNone; // Can't drop into available indicators
+    }
+    
+    // Check if we have valid drag data
+    NSPasteboard *pboard = [info draggingPasteboard];
+    if ([pboard availableTypeFromArray:@[kAvailableIndicatorPasteboardType]] ||
+        [pboard availableTypeFromArray:@[kIndicatorPasteboardType]]) {
+        return NSDragOperationMove;
+    }
+    
+    return NSDragOperationNone;
+}
+
+- (BOOL)tableView:(NSTableView *)tableView acceptDrop:(id<NSDraggingInfo>)info row:(NSInteger)row dropOperation:(NSTableViewDropOperation)dropOperation {
+    NSPasteboard *pboard = [info draggingPasteboard];
+    
+    // Find target panel
+    ChartPanelModel *targetPanel = nil;
+    for (PanelTableViewContainer *container in self.panelContainers) {
+        if (container.tableView == tableView) {
+            targetPanel = container.panelModel;
+            break;
+        }
+    }
+    
+    if (!targetPanel) return NO;
+    
+    if ([pboard availableTypeFromArray:@[kAvailableIndicatorPasteboardType]]) {
+        // Dragging from available indicators
+        NSString *indicatorType = [pboard stringForType:kAvailableIndicatorPasteboardType];
+        [self addIndicatorType:indicatorType toPanel:targetPanel];
+        return YES;
+        
+    } else if ([pboard availableTypeFromArray:@[kIndicatorPasteboardType]]) {
+        // Moving indicator between panels
+        NSString *indicatorInfo = [pboard stringForType:kIndicatorPasteboardType];
+        NSArray *components = [indicatorInfo componentsSeparatedByString:@"|"];
+        
+        if (components.count == 2) {
+            NSString *sourcePanelId = components[0];
+            NSString *indicatorType = components[1];
+            
+            // Find source panel and remove indicator
+            ChartPanelModel *sourcePanel = nil;
+            id<IndicatorRenderer> indicatorToMove = nil;
+            
+            for (ChartPanelModel *panel in self.chartWidget.panelModels) {
+                if ([panel.panelId isEqualToString:sourcePanelId]) {
+                    sourcePanel = panel;
+                    for (id<IndicatorRenderer> indicator in panel.indicators) {
+                        if ([[indicator indicatorType] isEqualToString:indicatorType]) {
+                            indicatorToMove = indicator;
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+            
+            if (sourcePanel && indicatorToMove && sourcePanel != targetPanel) {
+                [sourcePanel removeIndicator:indicatorToMove];
+                [targetPanel addIndicator:indicatorToMove];
+                
+                [self.chartWidget refreshAllPanels];
+                [self refreshPanelsList];
+                return YES;
+            }
+        }
+    }
+    
+    return NO;
 }
 
 #pragma mark - Actions
@@ -567,10 +936,27 @@ static const CGFloat kShadowRadius = 20.0;
 }
 
 - (IBAction)addPanelButtonClicked:(id)sender {
-    // Create new secondary panel
-    ChartPanelModel *newPanel = [ChartPanelModel secondaryPanelWithTitle:@"New Panel"];
-    [self.chartWidget addPanelWithModel:newPanel];
-    [self refreshPanelsList];
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"New Panel";
+    alert.informativeText = @"Enter a name for the new panel:";
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"Create"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.stringValue = @"New Panel";
+    alert.accessoryView = input;
+    
+    [alert beginSheetModalForWindow:self.popupWindow completionHandler:^(NSModalResponse returnCode) {
+        if (returnCode == NSAlertFirstButtonReturn) {
+            NSString *panelName = input.stringValue;
+            if (panelName.length > 0) {
+                ChartPanelModel *newPanel = [ChartPanelModel secondaryPanelWithTitle:panelName];
+                [self.chartWidget addPanelWithModel:newPanel];
+                [self refreshPanelsList];
+            }
+        }
+    }];
 }
 
 - (IBAction)saveTemplateButtonClicked:(id)sender {
@@ -602,90 +988,9 @@ static const CGFloat kShadowRadius = 20.0;
     }
 }
 
-- (void)indicatorDoubleClicked:(id)sender {
-    NSInteger selectedRow = self.indicatorsTableView.selectedRow;
-    if (selectedRow >= 0 && selectedRow < self.availableIndicatorTypes.count) {
-        [self addIndicatorToSelectedPanel:self.availableIndicatorTypes[selectedRow]];
-    }
-}
-
-- (void)deletePanelButtonClicked:(NSButton *)sender {
-    NSInteger index = sender.tag;
-    if (index < self.chartWidget.panelModels.count) {
-        ChartPanelModel *panelModel = self.chartWidget.panelModels[index];
-        [self.chartWidget requestDeletePanel:panelModel];
-        [self refreshPanelsList];
-    }
-}
-
-#pragma mark - Indicator Management
-
-- (void)addIndicatorToSelectedPanel:(NSString *)indicatorType {
-    // For now, add to the last panel (or create a new one if needed)
-    ChartPanelModel *targetPanel = nil;
-    
-    if (self.chartWidget.panelModels.count > 0) {
-        // Find a suitable panel for this indicator
-        targetPanel = [self findSuitablePanelForIndicatorType:indicatorType];
-    }
-    
-    // If no suitable panel found, create a new one
-    if (!targetPanel) {
-        targetPanel = [ChartPanelModel secondaryPanelWithTitle:[self titleForIndicatorType:indicatorType]];
-        [self.chartWidget addPanelWithModel:targetPanel];
-    }
-    
-    // Create the indicator renderer
-    id<IndicatorRenderer> indicator = [self.chartWidget createIndicatorOfType:indicatorType];
-    if (indicator) {
-        [targetPanel addIndicator:indicator];
-        [self.chartWidget refreshAllPanels];
-        [self refreshPanelsList];
-        
-        NSLog(@"✅ IndicatorsPanelController: Added %@ to panel '%@'", indicatorType, targetPanel.title);
-    }
-}
-
-- (ChartPanelModel *)findSuitablePanelForIndicatorType:(NSString *)indicatorType {
-    // Volume indicators should go to volume panels
-    if ([indicatorType isEqualToString:@"Volume"]) {
-        for (ChartPanelModel *panel in self.chartWidget.panelModels) {
-            if (panel.panelType == ChartPanelTypeMain) {
-                return panel;
-            }
-        }
-    }
-    
-    // Other indicators can go to any secondary panel
-    for (ChartPanelModel *panel in self.chartWidget.panelModels) {
-        if (panel.panelType == ChartPanelTypeSecondary) {
-            return panel;
-        }
-    }
-    
-    return nil; // Will create new panel
-}
-
-- (NSString *)titleForIndicatorType:(NSString *)indicatorType {
-    if ([indicatorType isEqualToString:@"Volume"]) {
-        return @"Volume";
-    } else if ([indicatorType isEqualToString:@"RSI"]) {
-        return @"RSI";
-    } else if ([indicatorType isEqualToString:@"MACD"]) {
-        return @"MACD";
-    } else if ([indicatorType isEqualToString:@"SMA"]) {
-        return @"Moving Averages";
-    } else if ([indicatorType isEqualToString:@"Bollinger Bands"]) {
-        return @"Bollinger Bands";
-    }
-    
-    return @"Indicators";
-}
-
 #pragma mark - Template Management
 
 - (void)saveTemplateWithName:(NSString *)templateName {
-    // TODO: Implement template saving
     if (![self.savedTemplates containsObject:templateName]) {
         [self.savedTemplates addObject:templateName];
         [self.templateComboBox removeAllItems];
@@ -697,7 +1002,6 @@ static const CGFloat kShadowRadius = 20.0;
 }
 
 - (void)loadTemplateWithName:(NSString *)templateName {
-    // TODO: Implement template loading
     NSLog(@"📁 IndicatorsPanelController: Loading template '%@'", templateName);
 }
 

@@ -76,7 +76,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (IBAction)timeframeChanged:(id)sender;
 - (IBAction)refreshButtonClicked:(id)sender;
 - (IBAction)indicatorsButtonClicked:(id)sender;
-
+- (void)checkIndicatorsPanelStatus;
 @end
 
 NS_ASSUME_NONNULL_END

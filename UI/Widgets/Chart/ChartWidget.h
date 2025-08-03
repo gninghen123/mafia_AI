@@ -16,6 +16,8 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+@class IndicatorsPanelController;
+
 @interface ChartWidget : BaseWidget
 
 #pragma mark - Core Properties
@@ -26,6 +28,7 @@ NS_ASSUME_NONNULL_BEGIN
 #pragma mark - Panels Management
 @property (nonatomic, strong) NSMutableArray<ChartPanelModel *> *panelModels;
 @property (nonatomic, strong) NSMutableArray<ChartPanelView *> *panelViews;
+@property (nonatomic, strong) IndicatorsPanelController *indicatorsPanelController;
 
 #pragma mark - UI Components
 // Top toolbar
@@ -61,6 +64,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 #pragma mark - Factory Methods for Indicators
 - (id<IndicatorRenderer>)createIndicatorOfType:(NSString *)indicatorType;
+
+#pragma mark - Indicators Panel
+- (IBAction)indicatorsButtonClicked:(id)sender;
 
 @end
 

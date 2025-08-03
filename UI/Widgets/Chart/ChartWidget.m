@@ -9,7 +9,7 @@
 #import "ChartPanelModel.h"
 #import "ChartPanelView.h"
 #import "ChartCoordinator.h"
-#import "DataHub.h"
+#import "DataHub+MarketData.h"
 #import "IndicatorsPanelController.h"
 
 // Renderers imports
@@ -17,46 +17,82 @@
 #import "VolumeRenderer.h"
 
 
+@interface ChartWidget ()
+@property (nonatomic, strong) NSTimer *refreshTimer;
+@property (nonatomic, assign) BOOL isLoading;
+@end
+
+// Private category to access BaseWidget's internal properties
+@interface BaseWidget ()
+@property (nonatomic, strong) NSView *contentViewInternal;
+@end
+
 @implementation ChartWidget
 
 #pragma mark - Initialization
 
-- (instancetype)init {
-    self = [super init];
+- (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType {
+    self = [super initWithType:type panelType:panelType];
     if (self) {
-        // Initialize properties
-        _currentSymbol = @"AAPL";
-        _selectedTimeframe = 4; // 1d default
-        _maxBarsToDisplay = 200;
-        
-        // Initialize collections
-        _panelModels = [NSMutableArray array];
-        _panelViews = [NSMutableArray array];
-        
-        // Initialize coordinator
-        _coordinator = [[ChartCoordinator alloc] init];
-        
-        // Initialize indicators panel controller
-        _indicatorsPanelController = [[IndicatorsPanelController alloc] initWithChartWidget:self];
-        
-        NSLog(@"✅ ChartWidget: Initialized");
+        [self setupDefaults];
+        [self registerForNotifications];
     }
     return self;
 }
 
-- (void)setupUI {
-    [super setupUI];
+- (void)setupDefaults {
+    self.widgetType = @"Chart Widget";
+    _currentSymbol = @"AAPL";
+    _selectedTimeframe = 4; // Daily
+    _maxBarsToDisplay = 200;
+    _isLoading = NO;
+    
+    // Initialize collections
+    _panelModels = [NSMutableArray array];
+    _panelViews = [NSMutableArray array];
+    
+    // Create coordinator
+    _coordinator = [[ChartCoordinator alloc] init];
+    _coordinator.maxVisibleBars = _maxBarsToDisplay;
+    
+    // Initialize indicators panel controller
+    _indicatorsPanelController = [[IndicatorsPanelController alloc] initWithChartWidget:self];
+    
+    NSLog(@"📊 ChartWidget: Initialized with symbol %@", _currentSymbol);
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [self.refreshTimer invalidate];
+}
+
+#pragma mark - Properties
+
+- (NSView *)contentView {
+    return self.contentViewInternal;
+}
+
+#pragma mark - BaseWidget Override
+
+- (void)setupContentView {
+    [super setupContentView];
+    
+    NSLog(@"📊 ChartWidget: Setting up content view...");
+    
+    // Remove BaseWidget's placeholder
+    for (NSView *subview in self.contentView.subviews) {
+        [subview removeFromSuperview];
+    }
     
     [self createToolbar];
     [self createChartArea];
     [self setupConstraints];
     [self createMainPanel];
-    [self setupNotifications];
     
     // Load initial data
     [self loadHistoricalDataForSymbol:self.currentSymbol];
     
-    NSLog(@"✅ ChartWidget: UI setup complete");
+    NSLog(@"✅ ChartWidget: Content view setup complete");
 }
 
 #pragma mark - UI Setup Methods
@@ -227,25 +263,32 @@
     [self.panelsStackView addArrangedSubview:panelView];
     
     // Set height constraint based on panel type
-    CGFloat height = (panelModel.panelType == ChartPanelTypeMain) ? 300 : 150;
-    [panelView.heightAnchor constraintEqualToConstant:height].active = YES;
+    CGFloat height = (panelModel.panelType == ChartPanelTypeMain) ? 400 : 150;
+    NSLayoutConstraint *heightConstraint = [panelView.heightAnchor constraintEqualToConstant:height];
+    heightConstraint.priority = NSLayoutPriorityDefaultHigh;
+    heightConstraint.active = YES;
     
-    NSLog(@"📊 ChartWidget: Added panel '%@' with %lu indicators",
-          panelModel.title, (unsigned long)panelModel.indicators.count);
+    NSLog(@"📊 ChartWidget: Added panel '%@' (height: %.0f)", panelModel.title, height);
 }
 
 - (void)removePanelWithModel:(ChartPanelModel *)panelModel {
     NSInteger index = [self.panelModels indexOfObject:panelModel];
     if (index == NSNotFound) return;
     
-    // Remove from UI
-    ChartPanelView *panelView = self.panelViews[index];
-    [self.panelsStackView removeArrangedSubview:panelView];
-    [panelView removeFromSuperview];
+    // Cannot delete main panel
+    if (panelModel.panelType == ChartPanelTypeMain) {
+        NSLog(@"⚠️ ChartWidget: Cannot delete main panel");
+        return;
+    }
     
     // Remove from collections
-    [self.panelViews removeObjectAtIndex:index];
+    ChartPanelView *panelView = self.panelViews[index];
     [self.panelModels removeObjectAtIndex:index];
+    [self.panelViews removeObjectAtIndex:index];
+    
+    // Remove from UI
+    [self.panelsStackView removeArrangedSubview:panelView];
+    [panelView removeFromSuperview];
     
     NSLog(@"🗑️ ChartWidget: Removed panel '%@'", panelModel.title);
 }
@@ -262,11 +305,13 @@
 #pragma mark - Factory Methods for Indicators
 
 - (id<IndicatorRenderer>)createIndicatorOfType:(NSString *)indicatorType {
-    if ([indicatorType isEqualToString:@"Volume"]) {
+    if ([indicatorType isEqualToString:@"Security"]) {
+        return [[CandlestickRenderer alloc] init];
+    } else if ([indicatorType isEqualToString:@"Volume"]) {
         return [[VolumeRenderer alloc] init];
     }
     
-    NSLog(@"⚠️ ChartWidget: Unknown indicator type '%@'", indicatorType);
+    NSLog(@"⚠️ ChartWidget: Unknown indicator type: %@", indicatorType);
     return nil;
 }
 
@@ -274,43 +319,51 @@
 
 - (void)refreshAllPanels {
     for (ChartPanelView *panelView in self.panelViews) {
-        [panelView setNeedsDisplay:YES];
+        [panelView refreshDisplay];
     }
 }
 
 - (void)updateToolbarState {
     self.symbolComboBox.stringValue = self.currentSymbol;
     self.timeframeControl.selectedSegment = self.selectedTimeframe;
+    self.refreshButton.enabled = !self.isLoading;
 }
 
 #pragma mark - Data Management
 
 - (void)loadHistoricalDataForSymbol:(NSString *)symbol {
-    if (symbol.length == 0) return;
+    if (!symbol || symbol.length == 0) return;
     
+    self.isLoading = YES;
     [self.loadingIndicator startAnimation:nil];
+    self.refreshButton.enabled = NO;
     
+    // Convert selectedTimeframe to BarTimeframe enum
     BarTimeframe timeframe = [self timeframeEnumForIndex:self.selectedTimeframe];
     
+    NSLog(@"📈 ChartWidget: Loading data for %@ timeframe %ld", symbol, (long)timeframe);
+    
     [[DataHub shared] getHistoricalBarsForSymbol:symbol
-                                                timeframe:timeframe
-                                                 barCount:self.maxBarsToDisplay
-                                               completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
-          dispatch_async(dispatch_get_main_queue(), ^{
-              [self.loadingIndicator stopAnimation:nil];
-              
-              if (!bars || bars.count == 0) {
-                  NSLog(@"⚠️ ChartWidget: No data received for %@", symbol);
-                  return;
-              }
-              
-              self.historicalData = bars;
-              [self updateAllPanelsWithData:bars];
-              
-              NSLog(@"✅ ChartWidget: Loaded %lu bars for %@ (fresh: %@)",
-                    (unsigned long)bars.count, symbol, isFresh ? @"YES" : @"NO");
-          });
-      }];
+                                       timeframe:timeframe
+                                        barCount:self.maxBarsToDisplay
+                                      completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.isLoading = NO;
+            [self.loadingIndicator stopAnimation:nil];
+            self.refreshButton.enabled = YES;
+            
+            if (!bars || bars.count == 0) {
+                NSLog(@"⚠️ ChartWidget: No data received for %@", symbol);
+                return;
+            }
+            
+            NSLog(@"✅ ChartWidget: Loaded %lu bars for %@ (isFresh: %@)",
+                  (unsigned long)bars.count, symbol, isFresh ? @"YES" : @"NO");
+            
+            [self updateAllPanelsWithData:bars];
+        });
+    }];
 }
 
 - (void)refreshCurrentData {
@@ -318,29 +371,41 @@
 }
 
 - (void)updateAllPanelsWithData:(NSArray<HistoricalBarModel *> *)data {
+    self.historicalData = data;
+    
+    // Update coordinator with new data
+    [self.coordinator updateHistoricalData:data];
+    
+    // Update all panel views
     for (ChartPanelView *panelView in self.panelViews) {
         [panelView updateWithHistoricalData:data];
     }
+    
+    NSLog(@"📊 ChartWidget: Updated %lu panels with %lu data points",
+          (unsigned long)self.panelViews.count, (unsigned long)data.count);
 }
 
 #pragma mark - Actions
 
-- (void)symbolChanged:(NSComboBox *)sender {
-    NSString *newSymbol = sender.stringValue.uppercaseString;
-    if (newSymbol.length > 0 && ![newSymbol isEqualToString:self.currentSymbol]) {
+- (IBAction)symbolChanged:(id)sender {
+    NSString *newSymbol = self.symbolComboBox.stringValue.uppercaseString;
+    if (![newSymbol isEqualToString:self.currentSymbol] && newSymbol.length > 0) {
         self.currentSymbol = newSymbol;
         [self loadHistoricalDataForSymbol:newSymbol];
+        NSLog(@"📊 ChartWidget: Symbol changed to %@", newSymbol);
     }
 }
 
-- (void)timeframeChanged:(NSSegmentedControl *)sender {
-    if (sender.selectedSegment != self.selectedTimeframe) {
-        self.selectedTimeframe = sender.selectedSegment;
+- (IBAction)timeframeChanged:(id)sender {
+    NSInteger newTimeframe = self.timeframeControl.selectedSegment;
+    if (newTimeframe != self.selectedTimeframe) {
+        self.selectedTimeframe = newTimeframe;
         [self loadHistoricalDataForSymbol:self.currentSymbol];
+        NSLog(@"📊 ChartWidget: Timeframe changed to %ld", (long)newTimeframe);
     }
 }
 
-- (void)refreshButtonClicked:(NSButton *)sender {
+- (IBAction)refreshButtonClicked:(id)sender {
     [self refreshCurrentData];
 }
 
@@ -358,11 +423,33 @@
     
     NSLog(@"📊 ChartWidget: Indicators panel %@",
           self.indicatorsPanelController.isVisible ? @"shown" : @"hidden");
+    
+    // Also add demo volume panel if none exists (for testing)
+    if (self.indicatorsPanelController.isVisible) {
+        [self addDemoVolumePanelIfNeeded];
+    }
+}
+
+- (void)addDemoVolumePanelIfNeeded {
+    // Check if volume panel already exists
+    for (ChartPanelModel *panel in self.panelModels) {
+        if ([panel hasIndicatorOfType:@"Volume"]) {
+            return; // Already exists
+        }
+    }
+    
+    // Create volume panel for demo
+    ChartPanelModel *volumePanel = [ChartPanelModel secondaryPanelWithTitle:@"Volume"];
+    VolumeRenderer *volumeRenderer = [[VolumeRenderer alloc] init];
+    [volumePanel addIndicator:volumeRenderer];
+    
+    [self addPanelWithModel:volumePanel];
+    NSLog(@"📊 ChartWidget: Added demo volume panel");
 }
 
 #pragma mark - Notifications
 
-- (void)setupNotifications {
+- (void)registerForNotifications {
     NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
     
     [nc addObserver:self
@@ -405,11 +492,5 @@
     }
 }
 
-#pragma mark - Cleanup
-
-- (void)dealloc {
-    [[NSNotificationCenter defaultCenter] removeObserver:self];
-    NSLog(@"🧹 ChartWidget: Deallocated");
-}
 
 @end

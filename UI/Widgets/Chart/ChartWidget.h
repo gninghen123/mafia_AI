@@ -65,7 +65,14 @@ NS_ASSUME_NONNULL_BEGIN
 #pragma mark - Factory Methods for Indicators
 - (id<IndicatorRenderer>)createIndicatorOfType:(NSString *)indicatorType;
 
-#pragma mark - Indicators Panel
+#pragma mark - Utility Methods
+- (BarTimeframe)timeframeEnumForIndex:(NSInteger)index;
+- (NSDate *)startDateForTimeframe;
+
+#pragma mark - Actions
+- (IBAction)symbolChanged:(id)sender;
+- (IBAction)timeframeChanged:(id)sender;
+- (IBAction)refreshButtonClicked:(id)sender;
 - (IBAction)indicatorsButtonClicked:(id)sender;
 
 @end

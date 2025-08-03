@@ -51,7 +51,7 @@
     _panelModels = [NSMutableArray array];
     _panelViews = [NSMutableArray array];
     
-    // Create coordinator
+    // Create coordinator - IMPORTANTE: inizializzarlo prima di creare i panels
     _coordinator = [[ChartCoordinator alloc] init];
     _coordinator.maxVisibleBars = _maxBarsToDisplay;
     
@@ -84,18 +84,19 @@
         [subview removeFromSuperview];
     }
     
+    // Create UI components
     [self createToolbar];
     [self createChartArea];
     [self setupConstraints];
     [self createMainPanel];
     
-    // Load initial data
+    // Initial data load
     [self loadHistoricalDataForSymbol:self.currentSymbol];
     
     NSLog(@"✅ ChartWidget: Content view setup complete");
 }
 
-#pragma mark - UI Setup Methods
+#pragma mark - UI Creation
 
 - (void)createToolbar {
     // Toolbar container
@@ -131,7 +132,7 @@
     // Refresh button
     self.refreshButton = [[NSButton alloc] init];
     self.refreshButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.refreshButton.title = @"↻";
+    self.refreshButton.title = @"⟳";
     self.refreshButton.target = self;
     self.refreshButton.action = @selector(refreshButtonClicked:);
     [self.toolbarView addSubview:self.refreshButton];
@@ -164,12 +165,12 @@
     self.chartScrollView.autohidesScrollers = YES;
     [self.contentView addSubview:self.chartScrollView];
     
-    // Stack view for panels (vertical layout)
+    // Stack view for panels - CORREZIONE: uso Fill invece di FillProportionally
     self.panelsStackView = [[NSStackView alloc] init];
     self.panelsStackView.translatesAutoresizingMaskIntoConstraints = NO;
     self.panelsStackView.orientation = NSUserInterfaceLayoutOrientationVertical;
     self.panelsStackView.spacing = 2;
-    self.panelsStackView.distribution = NSStackViewDistributionFillProportionally;
+    self.panelsStackView.distribution = NSStackViewDistributionFill; // CORREZIONE
     self.panelsStackView.alignment = NSLayoutAttributeLeading;
     
     // Set stack view as document view
@@ -186,23 +187,16 @@
         [self.toolbarView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
         [self.toolbarView.heightAnchor constraintEqualToConstant:40],
         
-        // Chart scroll view constraints
-        [self.chartScrollView.topAnchor constraintEqualToAnchor:self.toolbarView.bottomAnchor constant:8],
+        // Chart scroll view
+        [self.chartScrollView.topAnchor constraintEqualToAnchor:self.toolbarView.bottomAnchor],
         [self.chartScrollView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
         [self.chartScrollView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
         [self.chartScrollView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor],
         
-        // Stack view constraints
-        [self.panelsStackView.topAnchor constraintEqualToAnchor:self.chartScrollView.topAnchor],
-        [self.panelsStackView.leadingAnchor constraintEqualToAnchor:self.chartScrollView.leadingAnchor],
-        [self.panelsStackView.trailingAnchor constraintEqualToAnchor:self.chartScrollView.trailingAnchor],
-        [self.panelsStackView.bottomAnchor constraintEqualToAnchor:self.chartScrollView.bottomAnchor],
+        // Stack view width
         [self.panelsStackView.widthAnchor constraintEqualToAnchor:self.chartScrollView.widthAnchor],
-        [self.panelsStackView.heightAnchor constraintGreaterThanOrEqualToConstant:400]
-    ]];
-    
-    // Toolbar elements constraints
-    [NSLayoutConstraint activateConstraints:@[
+        
+        // Toolbar components
         [self.symbolComboBox.leadingAnchor constraintEqualToAnchor:self.toolbarView.leadingAnchor constant:8],
         [self.symbolComboBox.centerYAnchor constraintEqualToAnchor:self.toolbarView.centerYAnchor],
         [self.symbolComboBox.widthAnchor constraintEqualToConstant:100],
@@ -262,11 +256,15 @@
     [self.panelViews addObject:panelView];
     [self.panelsStackView addArrangedSubview:panelView];
     
-    // Set height constraint based on panel type
+    // Set height constraint based on panel type - CORREZIONE: uso Required priority
     CGFloat height = (panelModel.panelType == ChartPanelTypeMain) ? 400 : 150;
     NSLayoutConstraint *heightConstraint = [panelView.heightAnchor constraintEqualToConstant:height];
-    heightConstraint.priority = NSLayoutPriorityDefaultHigh;
+    heightConstraint.priority = NSLayoutPriorityRequired; // CORREZIONE
     heightConstraint.active = YES;
+    
+    // Width constraint
+    NSLayoutConstraint *widthConstraint = [panelView.widthAnchor constraintEqualToAnchor:self.panelsStackView.widthAnchor];
+    widthConstraint.active = YES;
     
     NSLog(@"📊 ChartWidget: Added panel '%@' (height: %.0f)", panelModel.title, height);
 }
@@ -318,9 +316,13 @@
 #pragma mark - UI Updates
 
 - (void)refreshAllPanels {
-    for (ChartPanelView *panelView in self.panelViews) {
-        [panelView refreshDisplay];
-    }
+    // CORREZIONE: forza il refresh di tutti i panels
+    dispatch_async(dispatch_get_main_queue(), ^{
+        for (ChartPanelView *panelView in self.panelViews) {
+            [panelView setNeedsDisplay:YES];
+            [panelView refreshDisplay];
+        }
+    });
 }
 
 - (void)updateToolbarState {
@@ -355,6 +357,8 @@
             
             if (!bars || bars.count == 0) {
                 NSLog(@"⚠️ ChartWidget: No data received for %@", symbol);
+                // CORREZIONE: forza il refresh anche senza dati
+                [self updateAllPanelsWithData:nil];
                 return;
             }
             
@@ -373,36 +377,45 @@
 - (void)updateAllPanelsWithData:(NSArray<HistoricalBarModel *> *)data {
     self.historicalData = data;
     
-    // Update coordinator with new data
-    [self.coordinator updateHistoricalData:data];
-    
-    // Update all panel views
-    for (ChartPanelView *panelView in self.panelViews) {
-        [panelView updateWithHistoricalData:data];
+    // CORREZIONE: validazione del coordinator prima di aggiornare
+    if (self.coordinator) {
+        [self.coordinator updateHistoricalData:data];
+    } else {
+        NSLog(@"⚠️ ChartWidget: Coordinator not initialized!");
+        self.coordinator = [[ChartCoordinator alloc] init];
+        self.coordinator.maxVisibleBars = self.maxBarsToDisplay;
+        [self.coordinator updateHistoricalData:data];
     }
     
+    // Update all panel views - CORREZIONE: forza il display update
+    dispatch_async(dispatch_get_main_queue(), ^{
+        for (ChartPanelView *panelView in self.panelViews) {
+            [panelView updateWithHistoricalData:data];
+            [panelView setNeedsDisplay:YES];
+        }
+    });
+    
     NSLog(@"📊 ChartWidget: Updated %lu panels with %lu data points",
-          (unsigned long)self.panelViews.count, (unsigned long)data.count);
+          (unsigned long)self.panelViews.count, (unsigned long)(data ? data.count : 0));
 }
 
 #pragma mark - Actions
 
 - (IBAction)symbolChanged:(id)sender {
     NSString *newSymbol = self.symbolComboBox.stringValue.uppercaseString;
-    if (![newSymbol isEqualToString:self.currentSymbol] && newSymbol.length > 0) {
-        self.currentSymbol = newSymbol;
-        [self loadHistoricalDataForSymbol:newSymbol];
-        NSLog(@"📊 ChartWidget: Symbol changed to %@", newSymbol);
-    }
+    if (!newSymbol || newSymbol.length == 0) return;
+    
+    self.currentSymbol = newSymbol;
+    [self loadHistoricalDataForSymbol:newSymbol];
+    
+    NSLog(@"📊 ChartWidget: Symbol changed to %@", newSymbol);
 }
 
 - (IBAction)timeframeChanged:(id)sender {
-    NSInteger newTimeframe = self.timeframeControl.selectedSegment;
-    if (newTimeframe != self.selectedTimeframe) {
-        self.selectedTimeframe = newTimeframe;
-        [self loadHistoricalDataForSymbol:self.currentSymbol];
-        NSLog(@"📊 ChartWidget: Timeframe changed to %ld", (long)newTimeframe);
-    }
+    self.selectedTimeframe = self.timeframeControl.selectedSegment;
+    [self loadHistoricalDataForSymbol:self.currentSymbol];
+    
+    NSLog(@"📊 ChartWidget: Timeframe changed to %ld", (long)self.selectedTimeframe);
 }
 
 - (IBAction)refreshButtonClicked:(id)sender {
@@ -411,71 +424,6 @@
 
 - (IBAction)indicatorsButtonClicked:(id)sender {
     [self.indicatorsPanelController togglePanel];
-    
-    // Update button appearance based on panel visibility
-    if (self.indicatorsPanelController.isVisible) {
-        self.indicatorsButton.title = @"INDICATORS ▶";
-        self.indicatorsButton.contentTintColor = [NSColor controlAccentColor];
-    } else {
-        self.indicatorsButton.title = @"INDICATORS";
-        self.indicatorsButton.contentTintColor = nil;
-    }
-    
-    NSLog(@"📊 ChartWidget: Indicators panel %@",
-          self.indicatorsPanelController.isVisible ? @"shown" : @"hidden");
-    
-    // Also add demo volume panel if none exists (for testing)
-    if (self.indicatorsPanelController.isVisible) {
-        [self addDemoVolumePanelIfNeeded];
-    }
-}
-
-- (void)addDemoVolumePanelIfNeeded {
-    // Check if volume panel already exists
-    for (ChartPanelModel *panel in self.panelModels) {
-        if ([panel hasIndicatorOfType:@"Volume"]) {
-            return; // Already exists
-        }
-    }
-    
-    // Create volume panel for demo
-    ChartPanelModel *volumePanel = [ChartPanelModel secondaryPanelWithTitle:@"Volume"];
-    VolumeRenderer *volumeRenderer = [[VolumeRenderer alloc] init];
-    [volumePanel addIndicator:volumeRenderer];
-    
-    [self addPanelWithModel:volumePanel];
-    NSLog(@"📊 ChartWidget: Added demo volume panel");
-}
-
-#pragma mark - Notifications
-
-- (void)registerForNotifications {
-    NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
-    
-    [nc addObserver:self
-           selector:@selector(historicalDataUpdated:)
-               name:@"DataHubHistoricalDataUpdatedNotification"
-             object:nil];
-    
-    [nc addObserver:self
-           selector:@selector(quoteUpdated:)
-               name:@"DataHubQuoteUpdatedNotification"
-             object:nil];
-}
-
-- (void)historicalDataUpdated:(NSNotification *)notification {
-    NSString *symbol = notification.userInfo[@"symbol"];
-    if ([symbol isEqualToString:self.currentSymbol]) {
-        NSArray<HistoricalBarModel *> *data = notification.userInfo[@"data"];
-        [self updateAllPanelsWithData:data];
-    }
-}
-
-- (void)quoteUpdated:(NSNotification *)notification {
-    NSString *symbol = notification.userInfo[@"symbol"];
-    if ([symbol isEqualToString:self.currentSymbol]) {
-        [self refreshAllPanels];
-    }
 }
 
 #pragma mark - Utility Methods
@@ -492,5 +440,42 @@
     }
 }
 
+- (NSDate *)startDateForTimeframe {
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDate *now = [NSDate date];
+    
+    switch (self.selectedTimeframe) {
+        case 0: // 1m
+        case 1: // 5m
+        case 2: // 15m
+            return [calendar dateByAddingUnit:NSCalendarUnitDay value:-1 toDate:now options:0];
+        case 3: // 1h
+            return [calendar dateByAddingUnit:NSCalendarUnitDay value:-5 toDate:now options:0];
+        case 4: // 1d
+            return [calendar dateByAddingUnit:NSCalendarUnitMonth value:-6 toDate:now options:0];
+        case 5: // 1w
+            return [calendar dateByAddingUnit:NSCalendarUnitYear value:-2 toDate:now options:0];
+        default:
+            return [calendar dateByAddingUnit:NSCalendarUnitMonth value:-6 toDate:now options:0];
+    }
+}
+
+#pragma mark - Notifications
+
+- (void)registerForNotifications {
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(handleMarketDataUpdate:)
+                                                 name:@"MarketDataUpdated"
+                                               object:nil];
+}
+
+- (void)handleMarketDataUpdate:(NSNotification *)notification {
+    NSDictionary *userInfo = notification.userInfo;
+    NSString *symbol = userInfo[@"symbol"];
+    
+    if ([symbol isEqualToString:self.currentSymbol]) {
+        [self refreshCurrentData];
+    }
+}
 
 @end

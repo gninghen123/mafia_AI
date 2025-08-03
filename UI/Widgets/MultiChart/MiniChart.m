@@ -185,7 +185,7 @@
     CGFloat padding = 8;
     
     return NSMakeRect(padding,
-                     self.bounds.size.height - volumeHeight - padding,
+                     padding,
                      self.bounds.size.width - 2*padding,
                      volumeHeight);
 }

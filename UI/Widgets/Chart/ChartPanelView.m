@@ -1,4 +1,3 @@
-
 //
 //  ChartPanelView.m
 //  TradingApp
@@ -51,7 +50,6 @@
     [self setupDeleteButton];
     [self setupYAxis];
     [self setupConstraints];
-    [self updateTrackingAreas];
 }
 
 - (void)setupTitleLabel {
@@ -71,12 +69,12 @@
     if (self.panelModel.canBeDeleted) {
         self.deleteButton = [[NSButton alloc] init];
         self.deleteButton.translatesAutoresizingMaskIntoConstraints = NO;
-        self.deleteButton.title = @"❌";
-        self.deleteButton.font = [NSFont systemFontOfSize:14];
-        self.deleteButton.bordered = NO;
+        self.deleteButton.title = @"✕";
+        self.deleteButton.font = [NSFont systemFontOfSize:12];
+        self.deleteButton.buttonType = NSButtonTypeMomentaryPushIn;
+        self.deleteButton.bezelStyle = NSBezelStyleInline;
         self.deleteButton.target = self;
         self.deleteButton.action = @selector(deleteButtonClicked:);
-        self.deleteButton.toolTip = @"Remove this panel";
         [self addSubview:self.deleteButton];
     }
 }
@@ -84,8 +82,8 @@
 - (void)setupYAxis {
     self.yAxisLabel = [[NSTextField alloc] init];
     self.yAxisLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.yAxisLabel.stringValue = @""; // Will be updated during drawing
-    self.yAxisLabel.font = [NSFont systemFontOfSize:10];
+    self.yAxisLabel.stringValue = @"";
+    self.yAxisLabel.font = [NSFont monospacedDigitSystemFontOfSize:10 weight:NSFontWeightRegular];
     self.yAxisLabel.textColor = [NSColor secondaryLabelColor];
     self.yAxisLabel.backgroundColor = [NSColor clearColor];
     self.yAxisLabel.bordered = NO;
@@ -98,25 +96,24 @@
 - (void)setupConstraints {
     NSMutableArray *constraints = [NSMutableArray array];
     
-    // Title label constraints
+    // Title constraints
     [constraints addObjectsFromArray:@[
         [self.titleLabel.topAnchor constraintEqualToAnchor:self.topAnchor constant:4],
         [self.titleLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
+        [self.titleLabel.heightAnchor constraintEqualToConstant:20]
     ]];
     
     // Delete button constraints (if exists)
     if (self.deleteButton) {
         [constraints addObjectsFromArray:@[
-            [self.deleteButton.topAnchor constraintEqualToAnchor:self.topAnchor constant:4],
+            [self.deleteButton.centerYAnchor constraintEqualToAnchor:self.titleLabel.centerYAnchor],
             [self.deleteButton.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
             [self.deleteButton.widthAnchor constraintEqualToConstant:20],
             [self.deleteButton.heightAnchor constraintEqualToConstant:20],
-        ]];
-        
-        // Title should not overlap with delete button
-        [constraints addObject:
+            
+            // Title should not overlap delete button
             [self.titleLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.deleteButton.leadingAnchor constant:-8]
-        ];
+        ]];
     } else {
         // No delete button, title can go to edge
         [constraints addObject:
@@ -134,28 +131,70 @@
     [NSLayoutConstraint activateConstraints:constraints];
 }
 
+#pragma mark - Tracking Area Management
+
+- (void)updateTrackingAreas {
+    // CORREZIONE: rimuovi correttamente le tracking areas precedenti
+    if (self.trackingArea) {
+        [self removeTrackingArea:self.trackingArea];
+        self.trackingArea = nil;
+    }
+    
+    // Remove any other tracking areas
+    for (NSTrackingArea *area in self.trackingAreas) {
+        [self removeTrackingArea:area];
+    }
+    
+    // Create new tracking area
+    NSTrackingAreaOptions options = NSTrackingMouseEnteredAndExited |
+                                   NSTrackingMouseMoved |
+                                   NSTrackingActiveInKeyWindow;
+    
+    self.trackingArea = [[NSTrackingArea alloc] initWithRect:self.bounds
+                                                      options:options
+                                                        owner:self
+                                                     userInfo:nil];
+    [self addTrackingArea:self.trackingArea];
+}
+
 #pragma mark - Drawing
 
 - (void)drawRect:(NSRect)dirtyRect {
     [super drawRect:dirtyRect];
     
-    if (!self.historicalData || self.historicalData.count == 0 || !self.panelModel) {
-        [self drawPlaceholder:dirtyRect];
+    // CORREZIONE: sempre disegna lo sfondo
+    [[NSColor controlBackgroundColor] setFill];
+    NSRectFill(dirtyRect);
+    
+    // CORREZIONE: controlla sia i dati che il panel model
+    if (!self.panelModel) {
+        NSLog(@"⚠️ ChartPanelView: No panel model");
+        [self drawPlaceholder:dirtyRect withText:@"No Panel Model"];
         return;
     }
     
-    // Draw background
-    [[NSColor controlBackgroundColor] setFill];
-    NSRectFill(dirtyRect);
+    if (!self.historicalData || self.historicalData.count == 0) {
+        [self drawPlaceholder:dirtyRect withText:[NSString stringWithFormat:@"%@ - Loading...", self.panelModel.title]];
+        return;
+    }
     
     // Calculate drawing area (exclude title and button areas)
     NSRect drawingRect = [self chartDrawingRect];
     
+    // CORREZIONE: validazione del coordinator
+    if (!self.coordinator) {
+        NSLog(@"⚠️ ChartPanelView: No coordinator");
+        [self drawPlaceholder:drawingRect withText:@"No Coordinator"];
+        return;
+    }
+    
     // Draw all indicators in this panel
     for (id<IndicatorRenderer> indicator in self.panelModel.indicators) {
-        [indicator drawInRect:drawingRect
-                     withData:self.historicalData
-                  coordinator:self.coordinator];
+        if (indicator) {
+            [indicator drawInRect:drawingRect
+                         withData:self.historicalData
+                      coordinator:self.coordinator];
+        }
     }
     
     // Draw crosshair if visible
@@ -167,11 +206,9 @@
     [self updateYAxisLabels:drawingRect];
 }
 
-- (void)drawPlaceholder:(NSRect)rect {
-    [[NSColor controlBackgroundColor] setFill];
-    NSRectFill(rect);
-    
-    NSString *placeholder = [NSString stringWithFormat:@"%@ - No Data", self.panelModel.title];
+- (void)drawPlaceholder:(NSRect)rect withText:(NSString *)text {
+    // CORREZIONE: placeholder più informativo
+    NSString *placeholder = text ?: [NSString stringWithFormat:@"%@ - No Data", self.panelModel.title];
     NSDictionary *attrs = @{
         NSFontAttributeName: [NSFont systemFontOfSize:14],
         NSForegroundColorAttributeName: [NSColor secondaryLabelColor]
@@ -234,56 +271,55 @@
     
     // Get the primary indicator's value range
     id<IndicatorRenderer> primaryIndicator = self.panelModel.indicators.firstObject;
-    NSRange valueRange = [self.coordinator calculateValueRangeForData:self.historicalData
-                                                                 type:[primaryIndicator indicatorType]];
+    if (!primaryIndicator) return;
     
-    // Show current crosshair value if visible
-    if (self.coordinator.crosshairVisible) {
-        double currentValue = [self.coordinator valueForYPosition:self.coordinator.crosshairPosition.y
-                                                          inRange:valueRange
-                                                             rect:drawingRect];
+    // CORREZIONE: gestione sicura del value range
+    if ([self.coordinator respondsToSelector:@selector(calculateValueRangeForData:type:)]) {
+        NSRange valueRange = [self.coordinator calculateValueRangeForData:self.historicalData
+                                                                     type:[primaryIndicator indicatorType]];
         
-        // Format value based on indicator type
-        NSString *formattedValue = [self formatValue:currentValue forIndicatorType:[primaryIndicator indicatorType]];
-        self.yAxisLabel.stringValue = formattedValue;
-    } else {
-        self.yAxisLabel.stringValue = @"";
-    }
-}
-
-- (NSString *)formatValue:(double)value forIndicatorType:(NSString *)indicatorType {
-    if ([indicatorType isEqualToString:@"Security"]) {
-        return [NSString stringWithFormat:@"$%.2f", value];
-    } else if ([indicatorType isEqualToString:@"Volume"]) {
-        if (value >= 1000000) {
-            return [NSString stringWithFormat:@"%.1fM", value / 1000000.0];
-        } else if (value >= 1000) {
-            return [NSString stringWithFormat:@"%.1fK", value / 1000.0];
-        } else {
-            return [NSString stringWithFormat:@"%.0f", value];
+        // Show current value at crosshair position
+        if (self.coordinator.crosshairVisible) {
+            NSPoint crosshairPos = self.coordinator.crosshairPosition;
+            if (NSPointInRect(crosshairPos, drawingRect)) {
+                // Calculate value at Y position
+                double normalizedY = (drawingRect.size.height - (crosshairPos.y - drawingRect.origin.y)) / drawingRect.size.height;
+                double value = valueRange.location + (normalizedY * valueRange.length);
+                
+                self.yAxisLabel.stringValue = [NSString stringWithFormat:@"%.2f", value];
+            }
         }
-    } else if ([indicatorType isEqualToString:@"RSI"]) {
-        return [NSString stringWithFormat:@"%.1f", value];
-    } else {
-        return [NSString stringWithFormat:@"%.2f", value];
     }
 }
 
-#pragma mark - Mouse Tracking
+#pragma mark - Mouse Event Handling
 
-- (void)updateTrackingAreas {
-    [super updateTrackingAreas];
+- (void)mouseDown:(NSEvent *)event {
+    NSPoint localPoint = [self convertPoint:event.locationInWindow fromView:nil];
+    NSRect drawingRect = [self chartDrawingRect];
     
-    if (self.trackingArea) {
-        [self removeTrackingArea:self.trackingArea];
+    if (NSPointInRect(localPoint, drawingRect)) {
+        // Start tracking mouse movement
+        [self.coordinator handleMouseMove:localPoint inRect:drawingRect];
+        [self setNeedsDisplay:YES];
     }
+}
+
+- (void)mouseDragged:(NSEvent *)event {
+    NSPoint localPoint = [self convertPoint:event.locationInWindow fromView:nil];
+    NSRect drawingRect = [self chartDrawingRect];
     
-    self.trackingArea = [[NSTrackingArea alloc]
-        initWithRect:self.bounds
-             options:(NSTrackingMouseMoved | NSTrackingMouseEnteredAndExited | NSTrackingActiveInKeyWindow)
-               owner:self
-            userInfo:nil];
-    [self addTrackingArea:self.trackingArea];
+    if (NSPointInRect(localPoint, drawingRect)) {
+        // Continue tracking mouse movement while dragging
+        [self.coordinator handleMouseMove:localPoint inRect:drawingRect];
+        [self setNeedsDisplay:YES];
+        [self.chartWidget refreshAllPanels];
+    }
+}
+
+- (void)mouseUp:(NSEvent *)event {
+    // Nothing special to do on mouse up for now
+    [self setNeedsDisplay:YES];
 }
 
 - (void)mouseMoved:(NSEvent *)event {
@@ -330,6 +366,7 @@
 
 - (void)updateWithHistoricalData:(NSArray<HistoricalBarModel *> *)data {
     self.historicalData = data;
+    // CORREZIONE: forza sempre il refresh
     [self setNeedsDisplay:YES];
 }
 
@@ -361,6 +398,23 @@
 
 - (void)viewDidMoveToWindow {
     [super viewDidMoveToWindow];
+    [self updateTrackingAreas];
+}
+
+- (void)viewDidMoveToSuperview {
+    [super viewDidMoveToSuperview];
+    if (self.superview) {
+        [self updateTrackingAreas];
+    }
+}
+
+- (void)setFrame:(NSRect)frame {
+    [super setFrame:frame];
+    [self updateTrackingAreas];
+}
+
+- (void)setBounds:(NSRect)bounds {
+    [super setBounds:bounds];
     [self updateTrackingAreas];
 }
 

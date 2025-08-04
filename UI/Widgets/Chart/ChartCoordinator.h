@@ -45,7 +45,7 @@ NS_ASSUME_NONNULL_BEGIN
 #pragma mark - Value Range Calculation
 - (NSRange)calculateValueRangeForData:(NSArray<HistoricalBarModel *> *)data
                                  type:(NSString *)indicatorType;
-
+- (void)zoomToBarRange:(NSRange)barRange;
 @end
 
 NS_ASSUME_NONNULL_END

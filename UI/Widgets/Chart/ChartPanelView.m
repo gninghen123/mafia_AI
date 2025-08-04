@@ -180,6 +180,20 @@
     
     // Calculate drawing area (exclude title and button areas)
     NSRect drawingRect = [self chartDrawingRect];
+    // NUOVO: Disegna selezione area se attiva
+    if (self.isSelecting) {
+        [self drawSelectionArea];
+    }
+    
+    // Draw crosshair if visible
+    if (self.coordinator.crosshairVisible) {
+        [self drawCrosshairInRect:drawingRect];
+    }
+    
+    // NUOVO: Disegna info box se stiamo selezionando
+    if (self.isSelecting && self.coordinator.crosshairVisible) {
+        [self drawSelectionInfoBox];
+    }
     
     // CORREZIONE: validazione del coordinator
     if (!self.coordinator) {
@@ -197,13 +211,147 @@
         }
     }
     
-    // Draw crosshair if visible
-    if (self.coordinator.crosshairVisible) {
-        [self drawCrosshairInRect:drawingRect];
-    }
+    
     
     // Update Y-axis labels
     [self updateYAxisLabels:drawingRect];
+}
+
+
+// ======= NUOVO METODO: Disegna area di selezione =======
+- (void)drawSelectionArea {
+    NSRect drawingRect = [self chartDrawingRect];
+    
+    // Calcola X delle linee verticali
+    CGFloat startX = self.selectionStartPoint.x;
+    CGFloat endX = self.selectionCurrentPoint.x;
+    
+    // Assicura che le linee siano dentro l'area del chart
+    startX = MAX(drawingRect.origin.x, MIN(startX, drawingRect.origin.x + drawingRect.size.width));
+    endX = MAX(drawingRect.origin.x, MIN(endX, drawingRect.origin.x + drawingRect.size.width));
+    
+    // Area di selezione evidenziata
+    NSRect selectionRect = NSMakeRect(MIN(startX, endX),
+                                     drawingRect.origin.y,
+                                     fabs(endX - startX),
+                                     drawingRect.size.height);
+    
+    // CORREZIONE 1: Solo bordo, NO riempimento per non coprire il chart
+    [[[NSColor systemBlueColor] colorWithAlphaComponent:0.1] setFill];
+    NSRectFill(selectionRect);
+    
+    // Linee verticali ai bordi
+    [[NSColor systemBlueColor] setStroke];
+    NSBezierPath *selectionPath = [NSBezierPath bezierPath];
+    selectionPath.lineWidth = 2.0;
+    
+    // Linea sinistra
+    [selectionPath moveToPoint:NSMakePoint(startX, drawingRect.origin.y)];
+    [selectionPath lineToPoint:NSMakePoint(startX, drawingRect.origin.y + drawingRect.size.height)];
+    
+    // Linea destra
+    [selectionPath moveToPoint:NSMakePoint(endX, drawingRect.origin.y)];
+    [selectionPath lineToPoint:NSMakePoint(endX, drawingRect.origin.y + drawingRect.size.height)];
+    
+    [selectionPath stroke];
+}
+
+
+- (void)drawSelectionInfoBox {
+    if (!self.historicalData || self.historicalData.count == 0) return;
+    
+    // Calcola statistiche della selezione
+    NSDictionary *selectionStats = [self calculateSelectionStatistics];
+    if (!selectionStats) return;
+    
+    // Prepara testo info box
+    NSString *infoText = [NSString stringWithFormat:@"Bars: %@\nChange: %@\nHigh: %@\nLow: %@\nAvg/Bar: %@",
+                         selectionStats[@"barCount"],
+                         selectionStats[@"totalChange"],
+                         selectionStats[@"highestHigh"],
+                         selectionStats[@"lowestLow"],
+                         selectionStats[@"avgChangePerBar"]];
+    
+    // Stile testo
+    NSDictionary *textAttributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:11],
+        NSForegroundColorAttributeName: [NSColor labelColor],
+        NSBackgroundColorAttributeName: [NSColor clearColor]
+    };
+    
+    NSSize textSize = [infoText sizeWithAttributes:textAttributes];
+    
+    // Posizione info box (vicino al cursore ma dentro i bordi)
+    NSPoint boxPosition = self.selectionCurrentPoint;
+    boxPosition.x += 10;
+    boxPosition.y -= textSize.height + 10;
+    
+    // Assicura che sia dentro i bordi
+    NSRect drawingRect = [self chartDrawingRect];
+    if (boxPosition.x + textSize.width + 16 > drawingRect.origin.x + drawingRect.size.width) {
+        boxPosition.x = self.selectionCurrentPoint.x - textSize.width - 26;
+    }
+    if (boxPosition.y < drawingRect.origin.y) {
+        boxPosition.y = self.selectionCurrentPoint.y + 10;
+    }
+    
+    NSRect boxRect = NSMakeRect(boxPosition.x, boxPosition.y, textSize.width + 16, textSize.height + 12);
+    
+    // Disegna sfondo info box
+    [[[NSColor controlBackgroundColor] colorWithAlphaComponent:0.95] setFill];
+    NSBezierPath *boxPath = [NSBezierPath bezierPathWithRoundedRect:boxRect xRadius:6 yRadius:6];
+    [boxPath fill];
+    
+    // Bordo info box
+    [[NSColor separatorColor] setStroke];
+    boxPath.lineWidth = 1.0;
+    [boxPath stroke];
+    
+    // Disegna testo
+    [infoText drawAtPoint:NSMakePoint(boxPosition.x + 8, boxPosition.y + 6) withAttributes:textAttributes];
+}
+
+
+- (NSDictionary *)calculateSelectionStatistics {
+    if (!self.historicalData || self.historicalData.count == 0) return nil;
+    
+    NSInteger startBar = MIN(self.selectionStartBarIndex, self.selectionEndBarIndex);
+    NSInteger endBar = MAX(self.selectionStartBarIndex, self.selectionEndBarIndex);
+    
+    // Valida indici
+    startBar = MAX(0, MIN(startBar, self.historicalData.count - 1));
+    endBar = MAX(0, MIN(endBar, self.historicalData.count - 1));
+    
+    if (startBar >= endBar) return nil;
+    
+    NSInteger barCount = endBar - startBar + 1;
+    
+    // Ottieni dati primo e ultimo bar
+    HistoricalBarModel *firstBar = self.historicalData[startBar];
+    HistoricalBarModel *lastBar = self.historicalData[endBar];
+    
+    // Trova highest/lowest nel range
+    double highestHigh = -INFINITY;
+    double lowestLow = INFINITY;
+    
+    for (NSInteger i = startBar; i <= endBar; i++) {
+        HistoricalBarModel *bar = self.historicalData[i];
+        highestHigh = MAX(highestHigh, bar.high);
+        lowestLow = MIN(lowestLow, bar.low);
+    }
+    
+    // Calcola variazioni percentuali
+    double totalChange = ((lastBar.close - firstBar.open) / firstBar.open) * 100.0;
+    double highLowChange = ((highestHigh - lowestLow) / lowestLow) * 100.0;
+    double avgChangePerBar = totalChange / barCount;
+    
+    return @{
+        @"barCount": @(barCount),
+        @"totalChange": [NSString stringWithFormat:@"%.2f%%", totalChange],
+        @"highestHigh": [NSString stringWithFormat:@"%.2f", highestHigh],
+        @"lowestLow": [NSString stringWithFormat:@"%.2f", lowestLow],
+        @"avgChangePerBar": [NSString stringWithFormat:@"%.3f%%", avgChangePerBar]
+    };
 }
 
 - (void)drawPlaceholder:(NSRect)rect withText:(NSString *)text {
@@ -296,32 +444,113 @@
 }
 #pragma mark - Mouse Event Handling
 
+
+- (void)scrollWheel:(NSEvent *)event {
+    NSPoint localPoint = [self convertPoint:event.locationInWindow fromView:nil];
+    NSRect drawingRect = [self chartDrawingRect];
+    
+    if (!NSPointInRect(localPoint, drawingRect)) return;
+    
+    // CORREZIONE 2: Limiti zoom - non andare sotto 10 barre visibili
+    NSRange currentRange = self.coordinator.visibleBarsRange;
+    if (event.deltaY > 0 && currentRange.length <= 10) {
+        NSLog(@"🚫 Zoom limit reached: minimum 10 bars visible");
+        return;
+    }
+    
+    // NUOVO: Scrolling del mouse = ZOOM con limiti
+    CGFloat zoomSensitivity = 0.05;
+    CGFloat zoomFactor = 1.0 + (event.deltaY * zoomSensitivity);
+    
+    // Zoom centrato sul punto del mouse
+    [self.coordinator handleZoom:zoomFactor atPoint:localPoint inRect:drawingRect];
+    [self.chartWidget refreshAllPanels];
+    
+    NSLog(@"🔍 Mouse wheel zoom: factor=%.3f at point (%.1f,%.1f)",
+          zoomFactor, localPoint.x, localPoint.y);
+}
+
 - (void)mouseDown:(NSEvent *)event {
     NSPoint localPoint = [self convertPoint:event.locationInWindow fromView:nil];
     NSRect drawingRect = [self chartDrawingRect];
     
-    if (NSPointInRect(localPoint, drawingRect)) {
-        // Start tracking mouse movement
-        [self.coordinator handleMouseMove:localPoint inRect:drawingRect];
-        [self setNeedsDisplay:YES];
-    }
+    if (!NSPointInRect(localPoint, drawingRect)) return;
+    
+    // Inizia selezione area
+    self.isSelecting = YES;
+    self.selectionStartPoint = localPoint;
+    self.selectionCurrentPoint = localPoint;
+    
+    // Calcola indice barra di partenza
+    self.selectionStartBarIndex = [self.coordinator barIndexForXPosition:localPoint.x inRect:drawingRect];
+    self.selectionEndBarIndex = self.selectionStartBarIndex;
+    
+    [self setNeedsDisplay:YES];
+    
+    NSLog(@"📊 Selection started at bar index %ld", (long)self.selectionStartBarIndex);
 }
 
 - (void)mouseDragged:(NSEvent *)event {
+    if (!self.isSelecting) return;
+    
     NSPoint localPoint = [self convertPoint:event.locationInWindow fromView:nil];
     NSRect drawingRect = [self chartDrawingRect];
     
-    if (NSPointInRect(localPoint, drawingRect)) {
-        // Continue tracking mouse movement while dragging
-        [self.coordinator handleMouseMove:localPoint inRect:drawingRect];
-        [self setNeedsDisplay:YES];
-        [self.chartWidget refreshAllPanels];
-    }
+    // Aggiorna punto corrente della selezione
+    self.selectionCurrentPoint = localPoint;
+    
+    // Calcola indice barra corrente
+    self.selectionEndBarIndex = [self.coordinator barIndexForXPosition:localPoint.x inRect:drawingRect];
+    
+    // Assicura che gli indici siano validi
+    NSInteger maxBarIndex = self.historicalData.count - 1;
+    self.selectionStartBarIndex = MAX(0, MIN(self.selectionStartBarIndex, maxBarIndex));
+    self.selectionEndBarIndex = MAX(0, MIN(self.selectionEndBarIndex, maxBarIndex));
+    
+    // Aggiorna crosshair per mostrare info box
+    [self.coordinator handleMouseMove:localPoint inRect:drawingRect];
+    
+    [self setNeedsDisplay:YES];
+    [self.chartWidget refreshAllPanels];
 }
 
 - (void)mouseUp:(NSEvent *)event {
-    // Nothing special to do on mouse up for now
+    if (!self.isSelecting) return;
+    
+    NSPoint localPoint = [self convertPoint:event.locationInWindow fromView:nil];
+    NSRect drawingRect = [self chartDrawingRect];
+    
+    // Finalizza selezione
+    self.selectionCurrentPoint = localPoint;
+    self.selectionEndBarIndex = [self.coordinator barIndexForXPosition:localPoint.x inRect:drawingRect];
+    
+    // Assicura che gli indici siano ordinati correttamente
+    NSInteger startBar = MIN(self.selectionStartBarIndex, self.selectionEndBarIndex);
+    NSInteger endBar = MAX(self.selectionStartBarIndex, self.selectionEndBarIndex);
+    
+    // Se abbiamo una selezione valida, zoom nell'area selezionata
+    if (abs((int)(endBar - startBar)) > 1) {
+        [self zoomToBarRange:NSMakeRange(startBar, endBar - startBar + 1)];
+        NSLog(@"🔍 Zooming to bars %ld-%ld", (long)startBar, (long)endBar);
+    }
+    
+    // Reset stato selezione
+    self.isSelecting = NO;
     [self setNeedsDisplay:YES];
+}
+// ======= NUOVO METODO: Zoom su range di barre =======
+- (void)zoomToBarRange:(NSRange)barRange {
+    // Valida il range
+    if (!self.historicalData || barRange.location >= self.historicalData.count) return;
+    
+    NSInteger maxLength = self.historicalData.count - barRange.location;
+    NSRange validRange = NSMakeRange(barRange.location, MIN(barRange.length, maxLength));
+    
+    // Aggiorna il coordinator con il nuovo range visibile
+    [self.coordinator zoomToBarRange:validRange];
+    
+    // Refresh tutti i pannelli
+    [self.chartWidget refreshAllPanels];
 }
 
 - (void)mouseMoved:(NSEvent *)event {
@@ -348,21 +577,7 @@
     [self.chartWidget refreshAllPanels];
 }
 
-- (void)scrollWheel:(NSEvent *)event {
-    NSPoint localPoint = [self convertPoint:event.locationInWindow fromView:nil];
-    NSRect drawingRect = [self chartDrawingRect];
-    
-    if (event.modifierFlags & NSEventModifierFlagCommand) {
-        // Zoom with Command key
-        CGFloat zoomFactor = 1.0 + (event.deltaY * 0.01);
-        [self.coordinator handleZoom:zoomFactor atPoint:localPoint inRect:drawingRect];
-    } else {
-        // Pan
-        [self.coordinator handleScroll:event.deltaX deltaY:event.deltaY inRect:drawingRect];
-    }
-    
-    [self.chartWidget refreshAllPanels];
-}
+
 
 #pragma mark - Data Updates
 

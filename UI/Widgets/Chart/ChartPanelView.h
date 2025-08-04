@@ -15,6 +15,12 @@ NS_ASSUME_NONNULL_BEGIN
 @class ChartWidget;
 
 @interface ChartPanelView : NSView
+#pragma mark - Selection State
+@property (nonatomic, assign) BOOL isSelecting;
+@property (nonatomic, assign) NSPoint selectionStartPoint;
+@property (nonatomic, assign) NSPoint selectionCurrentPoint;
+@property (nonatomic, assign) NSInteger selectionStartBarIndex;
+@property (nonatomic, assign) NSInteger selectionEndBarIndex;
 
 #pragma mark - Core Properties
 @property (nonatomic, strong) ChartPanelModel *panelModel;

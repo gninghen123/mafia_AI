@@ -44,7 +44,7 @@
     self.widgetType = @"Chart Widget";
     _currentSymbol = @"AAPL";
     _selectedTimeframe = 4; // Daily
-    _maxBarsToDisplay = 200;
+    _maxBarsToDisplay = 99999999999999;
     _isLoading = NO;
     
     // Initialize collections
@@ -83,6 +83,8 @@
     // Create UI components
     [self createToolbar];
     [self createChartArea];
+    [self createZoomControls];
+    
     [self setupConstraints];
     [self createMainPanel];
     
@@ -161,19 +163,163 @@
     self.chartScrollView.autohidesScrollers = YES;
     [self.contentView addSubview:self.chartScrollView];
     
-    // Stack view for panels - CORREZIONE: uso Fill invece di FillProportionally
-    self.panelsStackView = [[NSStackView alloc] init];
-    self.panelsStackView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.panelsStackView.orientation = NSUserInterfaceLayoutOrientationVertical;
-    self.panelsStackView.spacing = 2;
-    self.panelsStackView.distribution = NSStackViewDistributionFill; // CORREZIONE
-    self.panelsStackView.alignment = NSLayoutAttributeLeading;
+    // NUOVO: Split view per pannelli ridimensionabili
+    self.panelsSplitView = [[NSSplitView alloc] init];
+    self.panelsSplitView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.panelsSplitView.vertical = NO;  // Orientamento verticale (split orizzontali)
+    self.panelsSplitView.dividerStyle = NSSplitViewDividerStyleThin;
+    self.panelsSplitView.delegate = self;  // Aggiungi delegate per controllo resize
     
-    // Set stack view as document view
-    self.chartScrollView.documentView = self.panelsStackView;
+    // Set split view as document view
+    self.chartScrollView.documentView = self.panelsSplitView;
     
-    NSLog(@"✅ ChartWidget: Chart area created");
+    NSLog(@"✅ ChartWidget: Chart area created with resizable panels");
 }
+
+- (void)createZoomControls {
+    NSLog(@"🎛️ Creating zoom controls...");
+    
+    // Container view per controlli zoom
+    self.zoomControlsView = [[NSView alloc] init];
+    if (!self.zoomControlsView) {
+        NSLog(@"❌ Failed to create zoomControlsView");
+        return;
+    }
+    
+    self.zoomControlsView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.zoomControlsView.wantsLayer = YES;
+    self.zoomControlsView.layer.backgroundColor = [NSColor controlBackgroundColor].CGColor;
+    [self.contentView addSubview:self.zoomControlsView];
+    
+    // Zoom Out button (-)
+    self.zoomOutButton = [[NSButton alloc] init];
+    if (!self.zoomOutButton) {
+        NSLog(@"❌ Failed to create zoomOutButton");
+        return;
+    }
+    
+    self.zoomOutButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.zoomOutButton.title = @"−";
+    self.zoomOutButton.font = [NSFont systemFontOfSize:16 weight:NSFontWeightMedium];
+    self.zoomOutButton.bezelStyle = NSBezelStyleRounded;
+    self.zoomOutButton.target = self;
+    self.zoomOutButton.action = @selector(zoomOutButtonClicked:);
+    self.zoomOutButton.toolTip = @"Zoom Out";
+    [self.zoomControlsView addSubview:self.zoomOutButton];
+    
+    // Zoom slider
+    self.zoomSlider = [[NSSlider alloc] init];
+    if (!self.zoomSlider) {
+        NSLog(@"❌ Failed to create zoomSlider");
+        return;
+    }
+    
+    self.zoomSlider.translatesAutoresizingMaskIntoConstraints = NO;
+    self.zoomSlider.minValue = 0.1;
+    self.zoomSlider.maxValue = 10.0;
+    self.zoomSlider.doubleValue = 1.0;
+    self.zoomSlider.continuous = YES;
+    self.zoomSlider.target = self;
+    self.zoomSlider.action = @selector(zoomSliderChanged:);
+    self.zoomSlider.toolTip = @"Zoom Level";
+    [self.zoomControlsView addSubview:self.zoomSlider];
+    
+    // Zoom In button (+)
+    self.zoomInButton = [[NSButton alloc] init];
+    if (!self.zoomInButton) {
+        NSLog(@"❌ Failed to create zoomInButton");
+        return;
+    }
+    
+    self.zoomInButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.zoomInButton.title = @"+";
+    self.zoomInButton.font = [NSFont systemFontOfSize:16 weight:NSFontWeightMedium];
+    self.zoomInButton.bezelStyle = NSBezelStyleRounded;
+    self.zoomInButton.target = self;
+    self.zoomInButton.action = @selector(zoomInButtonClicked:);
+    self.zoomInButton.toolTip = @"Zoom In";
+    [self.zoomControlsView addSubview:self.zoomInButton];
+    
+    // Zoom All button
+    self.zoomAllButton = [[NSButton alloc] init];
+    if (!self.zoomAllButton) {
+        NSLog(@"❌ Failed to create zoomAllButton");
+        return;
+    }
+    
+    self.zoomAllButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.zoomAllButton.title = @"ALL";
+    self.zoomAllButton.font = [NSFont systemFontOfSize:12 weight:NSFontWeightMedium];
+    self.zoomAllButton.bezelStyle = NSBezelStyleRounded;
+    self.zoomAllButton.target = self;
+    self.zoomAllButton.action = @selector(zoomAllButtonClicked:);
+    self.zoomAllButton.toolTip = @"Fit All Data";
+    [self.zoomControlsView addSubview:self.zoomAllButton];
+    
+    NSLog(@"✅ ChartWidget: Zoom controls created successfully");
+}
+
+
+
+- (void)setupZoomControlsConstraints {
+    NSLog(@"🔧 Setting up zoom controls constraints...");
+    
+    if (!self.zoomControlsView || !self.zoomOutButton || !self.zoomSlider ||
+        !self.zoomInButton || !self.zoomAllButton || !self.contentView) {
+        NSLog(@"⚠️ Missing zoom controls elements, skipping constraints");
+        return;
+    }
+    
+    CGFloat controlsHeight = 40;
+    
+    @try {
+        // 1. Zoom controls view - attaccato in basso e piena larghezza
+        [NSLayoutConstraint activateConstraints:@[
+            [self.zoomControlsView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
+            [self.zoomControlsView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
+            [self.zoomControlsView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor],
+            [self.zoomControlsView.heightAnchor constraintEqualToConstant:controlsHeight]
+        ]];
+        
+        // 2. Zoom ALL button - destra
+        [NSLayoutConstraint activateConstraints:@[
+            [self.zoomAllButton.trailingAnchor constraintEqualToAnchor:self.zoomControlsView.trailingAnchor constant:-16],
+            [self.zoomAllButton.centerYAnchor constraintEqualToAnchor:self.zoomControlsView.centerYAnchor],
+            [self.zoomAllButton.widthAnchor constraintEqualToConstant:48],
+            [self.zoomAllButton.heightAnchor constraintEqualToConstant:28]
+        ]];
+        
+        // 3. Zoom IN button - a sinistra di ALL
+        [NSLayoutConstraint activateConstraints:@[
+            [self.zoomInButton.trailingAnchor constraintEqualToAnchor:self.zoomAllButton.leadingAnchor constant:-8],
+            [self.zoomInButton.centerYAnchor constraintEqualToAnchor:self.zoomControlsView.centerYAnchor],
+            [self.zoomInButton.widthAnchor constraintEqualToConstant:32],
+            [self.zoomInButton.heightAnchor constraintEqualToConstant:28]
+        ]];
+        
+        // 4. Zoom OUT button - a sinistra di IN
+        [NSLayoutConstraint activateConstraints:@[
+            [self.zoomOutButton.trailingAnchor constraintEqualToAnchor:self.zoomInButton.leadingAnchor constant:-4],
+            [self.zoomOutButton.centerYAnchor constraintEqualToAnchor:self.zoomControlsView.centerYAnchor],
+            [self.zoomOutButton.widthAnchor constraintEqualToConstant:32],
+            [self.zoomOutButton.heightAnchor constraintEqualToConstant:28]
+        ]];
+        
+        // 5. Zoom SLIDER - riempie lo spazio rimanente
+        [NSLayoutConstraint activateConstraints:@[
+            [self.zoomSlider.leadingAnchor constraintEqualToAnchor:self.zoomControlsView.leadingAnchor constant:16],
+            [self.zoomSlider.trailingAnchor constraintEqualToAnchor:self.zoomOutButton.leadingAnchor constant:-16],
+            [self.zoomSlider.centerYAnchor constraintEqualToAnchor:self.zoomControlsView.centerYAnchor],
+            [self.zoomSlider.heightAnchor constraintEqualToConstant:24]
+        ]];
+        
+        NSLog(@"✅ Zoom control constraints applied correctly.");
+        
+    } @catch (NSException *exception) {
+        NSLog(@"❌ Exception setting zoom controls constraints: %@", exception);
+    }
+}
+
 
 - (void)setupConstraints {
     [NSLayoutConstraint activateConstraints:@[
@@ -190,11 +336,11 @@
         [self.chartScrollView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor],
         
         // CORREZIONE: Stack view constraints - si espande completamente
-        [self.panelsStackView.topAnchor constraintEqualToAnchor:self.chartScrollView.topAnchor],
-        [self.panelsStackView.leadingAnchor constraintEqualToAnchor:self.chartScrollView.leadingAnchor],
-        [self.panelsStackView.trailingAnchor constraintEqualToAnchor:self.chartScrollView.trailingAnchor],
-        [self.panelsStackView.bottomAnchor constraintEqualToAnchor:self.chartScrollView.bottomAnchor],
-        [self.panelsStackView.widthAnchor constraintEqualToAnchor:self.chartScrollView.widthAnchor],
+        [self.panelsSplitView.topAnchor constraintEqualToAnchor:self.chartScrollView.topAnchor],
+        [self.panelsSplitView.leadingAnchor constraintEqualToAnchor:self.chartScrollView.leadingAnchor],
+        [self.panelsSplitView.trailingAnchor constraintEqualToAnchor:self.chartScrollView.trailingAnchor],
+        [self.panelsSplitView.bottomAnchor constraintEqualToAnchor:self.chartScrollView.bottomAnchor],
+        [self.panelsSplitView.widthAnchor constraintEqualToAnchor:self.chartScrollView.widthAnchor],
         
         // Toolbar components
         [self.symbolComboBox.leadingAnchor constraintEqualToAnchor:self.toolbarView.leadingAnchor constant:8],
@@ -215,18 +361,28 @@
         [self.indicatorsButton.centerYAnchor constraintEqualToAnchor:self.toolbarView.centerYAnchor]
     ]];
     
-    NSLog(@"✅ ChartWidget: Constraints setup complete with height fix");
+    [self setupZoomControlsConstraints];
 }
 
 
 #pragma mark - Panel Management
 
 - (void)createMainPanel {
-    // Create main security panel
-    ChartPanelModel *mainPanel = [self createMainSecurityPanel];
+    // Crea pannello principale per prezzi
+    ChartPanelModel *mainPanel = [ChartPanelModel mainPanelWithTitle:@"Security"];
+    
+    // Aggiungi indicatore prezzi principale se disponibile
+    id<IndicatorRenderer> priceRenderer = [self createIndicatorOfType:@"Security"];
+    if (priceRenderer) {
+        [mainPanel addIndicator:priceRenderer];
+    }
+    
     [self addPanelWithModel:mainPanel];
     
-    NSLog(@"✅ ChartWidget: Main panel created");
+    // NUOVO: Aggiorna pan slider dopo aver creato il pannello principale
+    [self updatePanSliderRange];
+    
+    NSLog(@"✅ ChartWidget: Main panel created with price indicator");
 }
 
 - (ChartPanelModel *)createMainSecurityPanel {
@@ -336,6 +492,9 @@
         [self.coordinator updateHistoricalData:data];
     }
     
+    // NUOVO: Aggiorna il pan slider dopo aver caricato nuovi dati
+    [self updatePanSliderRange];
+    
     // Update all panel views - CORREZIONE: forza il display update
     dispatch_async(dispatch_get_main_queue(), ^{
         for (ChartPanelView *panelView in self.panelViews) {
@@ -344,10 +503,9 @@
         }
     });
     
-    NSLog(@"📊 ChartWidget: Updated %lu panels with %lu data points",
+    NSLog(@"📊 ChartWidget: Updated %lu panels with %lu data points and refreshed pan slider",
           (unsigned long)self.panelViews.count, (unsigned long)(data ? data.count : 0));
 }
-
 #pragma mark - Actions
 
 - (IBAction)symbolChanged:(id)sender {
@@ -469,8 +627,8 @@
     
     // Create view for panel
     ChartPanelView *panelView = [[ChartPanelView alloc] initWithPanelModel:panelModel
-                                                                coordinator:self.coordinator
-                                                                chartWidget:self];
+                                                               coordinator:self.coordinator
+                                                               chartWidget:self];
     
     // Set historical data if available
     if (self.historicalData) {
@@ -479,53 +637,90 @@
     
     // Add to collections and UI
     [self.panelViews addObject:panelView];
-    [self.panelsStackView addArrangedSubview:panelView];
+    [self.panelsSplitView addSubview:panelView];
     
-    // CORREZIONE: Height constraints basati su heightRatio del panel model
-    CGFloat heightRatio = panelModel.heightRatio; // 0.6 per main, 0.2 per secondary
-    CGFloat minHeight = panelModel.minHeight; // 100px minimo
+    // CORREZIONE 1: Rimuovi tutti i constraint di altezza fissi
+    panelView.translatesAutoresizingMaskIntoConstraints = NO;
     
-    // Height constraint minimo
-    NSLayoutConstraint *minHeightConstraint = [panelView.heightAnchor constraintGreaterThanOrEqualToConstant:minHeight];
-    minHeightConstraint.priority = NSLayoutPriorityRequired;
-    minHeightConstraint.active = YES;
-    
-    // CORREZIONE: Invece di un constraint assoluto, usa weight/priority per la distribuzione
+    // CORREZIONE 2: Setup delle priorità di ridimensionamento SENZA constraint di altezza
     if (panelModel.panelType == ChartPanelTypeMain) {
-        // Main panel: priorità alta per crescere
-        [panelView setContentHuggingPriority:NSLayoutPriorityDefaultLow - 100 forOrientation:NSLayoutConstraintOrientationVertical];
-        [panelView setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh forOrientation:NSLayoutConstraintOrientationVertical];
-        
-        // Constraint preferenziale per essere più alto degli altri
-        NSLayoutConstraint *preferredHeightConstraint = [panelView.heightAnchor constraintEqualToConstant:400];
-        preferredHeightConstraint.priority = NSLayoutPriorityDefaultHigh - 50; // Priorità media-alta
-        preferredHeightConstraint.active = YES;
-        
+        // Main panel: bassa hugging priority = vuole espandersi di più
+        [panelView setContentHuggingPriority:NSLayoutPriorityDefaultLow
+                              forOrientation:NSLayoutConstraintOrientationVertical];
+        [panelView setContentCompressionResistancePriority:NSLayoutPriorityRequired
+                                            forOrientation:NSLayoutConstraintOrientationVertical];
     } else {
-        // Secondary panels: priorità più bassa
-        [panelView setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationVertical];
-        [panelView setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh - 100 forOrientation:NSLayoutConstraintOrientationVertical];
-        
-        // Constraint preferenziale per altezza più piccola
-        NSLayoutConstraint *preferredHeightConstraint = [panelView.heightAnchor constraintEqualToConstant:150];
-        preferredHeightConstraint.priority = NSLayoutPriorityDefaultHigh - 100; // Priorità più bassa del main
-        preferredHeightConstraint.active = YES;
+        // Secondary panels: media hugging priority
+        [panelView setContentHuggingPriority:NSLayoutPriorityDefaultHigh - 100
+                              forOrientation:NSLayoutConstraintOrientationVertical];
+        [panelView setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh
+                                            forOrientation:NSLayoutConstraintOrientationVertical];
     }
     
-    // Width constraint (invariato)
-    NSLayoutConstraint *widthConstraint = [panelView.widthAnchor constraintEqualToAnchor:self.panelsStackView.widthAnchor];
+    // CORREZIONE 3: Width constraint per riempire orizzontalmente
+    NSLayoutConstraint *widthConstraint = [panelView.widthAnchor constraintEqualToAnchor:self.panelsSplitView.widthAnchor];
     widthConstraint.active = YES;
     
-    // IMPORTANTE: Force layout update
-    [self.panelsStackView layoutSubtreeIfNeeded];
+    // CORREZIONE 4: Force layout e ridistribuzione IMMEDIATA
+    [self.panelsSplitView adjustSubviews];
+    
+    // CORREZIONE 5: Calcola e applica proporzioni corrette
+    [self redistributePanelProportions];
     
     // Notifica il popup se è visibile
     [self notifyIndicatorsPanelOfChanges];
     
-    NSLog(@"📊 ChartWidget: Added panel '%@' (type: %ld, ratio: %.2f) and notified indicators panel",
-          panelModel.title, (long)panelModel.panelType, heightRatio);
+    NSLog(@"📊 ChartWidget: Added panel '%@' with automatic sizing",
+          panelModel.title);
 }
-
+- (void)redistributePanelProportions {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        CGFloat totalHeight = self.panelsSplitView.frame.size.height;
+        if (totalHeight <= 0) {
+            // Retry dopo il layout
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.1 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                [self redistributePanelProportions];
+            });
+            return;
+        }
+        
+        NSInteger panelCount = self.panelViews.count;
+        if (panelCount <= 1) return;
+        
+        // Calcola altezze target basate sui heightRatio
+        CGFloat totalRatio = 0;
+        for (ChartPanelModel *model in self.panelModels) {
+            totalRatio += model.heightRatio;
+        }
+        
+        // Normalizza i ratio se necessario
+        if (totalRatio <= 0) totalRatio = 1.0;
+        
+        // Applica le proporzioni
+        CGFloat currentY = 0;
+        for (NSInteger i = 0; i < panelCount; i++) {
+            ChartPanelModel *model = self.panelModels[i];
+            CGFloat targetHeight = (model.heightRatio / totalRatio) * totalHeight;
+            
+            // Assicura altezza minima
+            CGFloat minHeight = model.minHeight > 0 ? model.minHeight : 80.0;
+            targetHeight = MAX(targetHeight, minHeight);
+            
+            if (i < panelCount - 1) {
+                // Per tutti i pannelli tranne l'ultimo, imposta la posizione del divider
+                currentY += targetHeight;
+                [self.panelsSplitView setPosition:currentY ofDividerAtIndex:i];
+            }
+            
+            NSLog(@"📏 Panel %ld: target height %.1f (ratio %.2f)",
+                  (long)i, targetHeight, model.heightRatio);
+        }
+        
+        // Force final layout
+        [self.panelsSplitView adjustSubviews];
+        [self.view layoutSubtreeIfNeeded];
+    });
+}
 
 // MODIFICA per removePanelWithModel - aggiungi notifica
 - (void)removePanelWithModel:(ChartPanelModel *)panelModel {
@@ -543,16 +738,73 @@
     [self.panelModels removeObjectAtIndex:index];
     [self.panelViews removeObjectAtIndex:index];
     
-    // Remove from UI
-    [self.panelsStackView removeArrangedSubview:panelView];
+    // Remove from UI - CAMBIATO per NSSplitView
     [panelView removeFromSuperview];
+    [self.panelsSplitView adjustSubviews];  // Ricalcola le proporzioni
     
     // Notifica il popup se è visibile
     [self notifyIndicatorsPanelOfChanges];
     
-    NSLog(@"🗑️ ChartWidget: Removed panel '%@' and notified indicators panel", panelModel.title);
+    NSLog(@"🗑️ ChartWidget: Removed resizable panel '%@'", panelModel.title);
 }
 
+#pragma mark - NSSplitViewDelegate
+
+- (BOOL)splitView:(NSSplitView *)splitView canCollapseSubview:(NSView *)subview {
+    // IMPORTANTE: Non permettere il collasso automatico
+    return NO;
+}
+
+- (CGFloat)splitView:(NSSplitView *)splitView constrainMinCoordinate:(CGFloat)proposedMinimumPosition ofSubviewAt:(NSInteger)dividerIndex {
+    // Ogni pannello deve avere almeno l'altezza minima
+    CGFloat minHeight = 80.0;
+    if (dividerIndex < self.panelModels.count) {
+        ChartPanelModel *model = self.panelModels[dividerIndex];
+        minHeight = model.minHeight > 0 ? model.minHeight : 80.0;
+    }
+    
+    CGFloat currentTop = 0;
+    for (NSInteger i = 0; i < dividerIndex; i++) {
+        currentTop += self.panelViews[i].frame.size.height;
+    }
+    
+    return currentTop + minHeight;
+}
+
+- (CGFloat)splitView:(NSSplitView *)splitView constrainMaxCoordinate:(CGFloat)proposedMaximumPosition ofSubviewAt:(NSInteger)dividerIndex {
+    // Il pannello successivo deve avere almeno la sua altezza minima
+    CGFloat totalHeight = splitView.frame.size.height;
+    CGFloat minHeightBelow = 0;
+    
+    for (NSInteger i = dividerIndex + 1; i < self.panelModels.count; i++) {
+        ChartPanelModel *model = self.panelModels[i];
+        minHeightBelow += model.minHeight > 0 ? model.minHeight : 80.0;
+    }
+    
+    return totalHeight - minHeightBelow;
+}
+
+- (void)splitViewDidResizeSubviews:(NSNotification *)notification {
+    // Aggiorna i heightRatio quando l'utente ridimensiona manualmente
+    [self updatePanelHeightRatiosFromCurrentSizes];
+}
+
+// ======= NUOVO METODO: Aggiorna ratio da dimensioni correnti =======
+- (void)updatePanelHeightRatiosFromCurrentSizes {
+    CGFloat totalHeight = self.panelsSplitView.frame.size.height;
+    if (totalHeight <= 0) return;
+    
+    for (NSInteger i = 0; i < self.panelViews.count; i++) {
+        ChartPanelView *panelView = self.panelViews[i];
+        ChartPanelModel *panelModel = self.panelModels[i];
+        
+        CGFloat panelHeight = panelView.frame.size.height;
+        panelModel.heightRatio = panelHeight / totalHeight;
+        
+        NSLog(@"📏 Updated panel %ld ratio to %.3f (height %.1f/%.1f)",
+              (long)i, panelModel.heightRatio, panelHeight, totalHeight);
+    }
+}
 // AGGIUNTA al dealloc per cleanup
 - (void)dealloc {
     // Nascondi il popup se è visibile per cleanup
@@ -560,5 +812,123 @@
         [self.indicatorsPanelController hidePanel];
     }
 }
+#pragma mark - Zoom Controls Actions
+
+- (IBAction)zoomOutButtonClicked:(id)sender {
+    NSLog(@"🔍 Zoom Out button clicked");
+    
+    // Zoom out = mostra più barre (diminuisce zoom factor)
+    NSRange currentRange = self.coordinator.visibleBarsRange;
+    NSInteger newVisibleBars = MIN(self.maxBarsToDisplay, currentRange.length * 1.5);
+    
+    // Calcola nuovo range mantenendo il centro
+    NSInteger centerBar = currentRange.location + currentRange.length / 2;
+    NSInteger newStart = centerBar - newVisibleBars / 2;
+    newStart = MAX(0, newStart);
+    
+    if (self.historicalData && newStart + newVisibleBars > self.historicalData.count) {
+        newStart = MAX(0, self.historicalData.count - newVisibleBars);
+    }
+    
+    self.coordinator.visibleBarsRange = NSMakeRange(newStart, newVisibleBars);
+    self.coordinator.zoomFactor = (CGFloat)self.maxBarsToDisplay / newVisibleBars;
+    
+    [self updatePanSliderRange];
+    [self refreshAllPanels];
+    
+    NSLog(@"🔍 Zoom Out: %@ (factor %.2f)", NSStringFromRange(self.coordinator.visibleBarsRange), self.coordinator.zoomFactor);
+}
+
+- (IBAction)zoomInButtonClicked:(id)sender {
+    NSLog(@"🔍 Zoom In button clicked");
+    
+    // Zoom in = mostra meno barre (aumenta zoom factor)
+    NSRange currentRange = self.coordinator.visibleBarsRange;
+    NSInteger newVisibleBars = MAX(10, currentRange.length / 1.5);
+    
+    if (newVisibleBars >= currentRange.length) {
+        NSLog(@"🚫 Already at maximum zoom");
+        return;
+    }
+    
+    // Calcola nuovo range mantenendo il centro
+    NSInteger centerBar = currentRange.location + currentRange.length / 2;
+    NSInteger newStart = centerBar - newVisibleBars / 2;
+    newStart = MAX(0, newStart);
+    
+    if (self.historicalData && newStart + newVisibleBars > self.historicalData.count) {
+        newStart = MAX(0, self.historicalData.count - newVisibleBars);
+    }
+    
+    self.coordinator.visibleBarsRange = NSMakeRange(newStart, newVisibleBars);
+    self.coordinator.zoomFactor = (CGFloat)self.maxBarsToDisplay / newVisibleBars;
+    
+    [self updatePanSliderRange];
+    [self refreshAllPanels];
+    
+    NSLog(@"🔍 Zoom In: %@ (factor %.2f)", NSStringFromRange(self.coordinator.visibleBarsRange), self.coordinator.zoomFactor);
+}
+
+- (IBAction)zoomSliderChanged:(id)sender {
+    NSLog(@"🔄 Pan slider changed to %.2f", self.zoomSlider.doubleValue);
+    
+    // LO SLIDER È PER IL PANNING, NON ZOOM!
+    if (!self.historicalData || self.historicalData.count == 0) return;
+    
+    NSRange currentRange = self.coordinator.visibleBarsRange;
+    NSInteger totalBars = self.historicalData.count;
+    NSInteger maxStart = MAX(0, totalBars - currentRange.length);
+    
+    // Slider value da 0.0 a 1.0 rappresenta la posizione nella timeline
+    double sliderValue = self.zoomSlider.doubleValue;
+    NSInteger newStart = (NSInteger)(sliderValue * maxStart);
+    
+    self.coordinator.visibleBarsRange = NSMakeRange(newStart, currentRange.length);
+    [self refreshAllPanels];
+    
+    NSLog(@"🔄 Pan to position: %@ (%.1f%% of timeline)",
+          NSStringFromRange(self.coordinator.visibleBarsRange),
+          sliderValue * 100);
+}
+
+- (IBAction)zoomAllButtonClicked:(id)sender {
+    NSLog(@"🔍 Zoom All button clicked");
+    
+    [self.coordinator resetZoomAndPan];
+    [self updatePanSliderRange];
+    [self refreshAllPanels];
+    
+    NSLog(@"🔍 Reset to show all data: %@", NSStringFromRange(self.coordinator.visibleBarsRange));
+}
+
+// ======= NUOVO METODO: Aggiorna range dello slider per panning =======
+- (void)updatePanSliderRange {
+    if (!self.historicalData || self.historicalData.count == 0 || !self.zoomSlider) {
+        return;
+    }
+    
+    NSRange currentRange = self.coordinator.visibleBarsRange;
+    NSInteger totalBars = self.historicalData.count;
+    NSInteger maxStart = MAX(0, totalBars - currentRange.length);
+    
+    if (maxStart <= 0) {
+        // Se mostriamo tutti i dati, disabilita lo slider
+        self.zoomSlider.enabled = NO;
+        self.zoomSlider.doubleValue = 0.0;
+    } else {
+        // Abilita lo slider e calcola posizione corrente
+        self.zoomSlider.enabled = YES;
+        self.zoomSlider.minValue = 0.0;
+        self.zoomSlider.maxValue = 1.0;
+        
+        double currentPosition = (double)currentRange.location / maxStart;
+        self.zoomSlider.doubleValue = currentPosition;
+    }
+    
+    // Aggiorna tooltip
+    self.zoomSlider.toolTip = [NSString stringWithFormat:@"Pan Timeline (showing %ld of %ld bars)",
+                               (long)currentRange.length, (long)totalBars];
+}
 
 @end
+

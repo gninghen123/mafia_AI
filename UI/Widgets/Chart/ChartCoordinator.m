@@ -260,5 +260,26 @@
     
     return NSMakeRange(minVal, rangeLen);
 }
-
+- (void)zoomToBarRange:(NSRange)barRange {
+    if (!self.historicalData || barRange.location >= self.historicalData.count) return;
+    
+    // Valida e aggiorna range visibile
+    NSInteger maxLength = self.historicalData.count - barRange.location;
+    NSRange validRange = NSMakeRange(barRange.location, MIN(barRange.length, maxLength));
+    
+    // CORREZIONE: Rispetta limite minimo di 10 barre
+    if (validRange.length < 10) {
+        NSLog(@"🚫 Cannot zoom to selection: minimum 10 bars required");
+        return;
+    }
+    
+    self.visibleBarsRange = validRange;
+    
+    // Calcola nuovo zoom factor basato sulla selezione
+    CGFloat newZoomFactor = (CGFloat)self.maxVisibleBars / validRange.length;
+    self.zoomFactor = MAX(0.1, MIN(10.0, newZoomFactor));
+    
+    NSLog(@"🔍 ChartCoordinator: Zoomed to range %@ (factor %.2f)",
+          NSStringFromRange(validRange), self.zoomFactor);
+}
 @end

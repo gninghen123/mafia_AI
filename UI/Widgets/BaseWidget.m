@@ -96,28 +96,56 @@ static NSString *const kChainSenderKey = @"sender";
 
 
 - (void)setupViews {
+    NSLog(@"🔧 BaseWidget: Setting up views with proper expansion configuration");
+    
     self.mainStackView = [[NSStackView alloc] init];
     self.mainStackView.orientation = NSUserInterfaceLayoutOrientationVertical;
     self.mainStackView.spacing = 0;
+    
+    // 🎯 CRITICAL: Use Fill distribution to expand content area
     self.mainStackView.distribution = NSStackViewDistributionFill;
+    
+    // 🚀 Set alignment to fill entire width
+    self.mainStackView.alignment = NSLayoutAttributeLeading; // This ensures full width usage
     
     [self setupHeaderView];
     
     [self.view addSubview:self.mainStackView];
     self.mainStackView.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    // 🎯 CRITICAL: Anchor stack view to all edges - NO MARGINS!
     [NSLayoutConstraint activateConstraints:@[
         [self.mainStackView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
         [self.mainStackView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
         [self.mainStackView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.mainStackView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
     ]];
+    
+    NSLog(@"✅ BaseWidget: Main stack view configured:");
+    NSLog(@"   - Orientation: Vertical");
+    NSLog(@"   - Distribution: Fill (content expands)");
+    NSLog(@"   - Spacing: 0 (no gaps)");
+    NSLog(@"   - Anchored to all view edges");
+    NSLog(@"   - Header will be fixed height, content will expand");
 }
 
 - (void)setupHeaderView {
     self.headerViewInternal = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 300, 30)];
     self.headerViewInternal.wantsLayer = YES;
     self.headerViewInternal.layer.backgroundColor = [NSColor controlBackgroundColor].CGColor;
-
+    self.headerViewInternal.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.mainStackView addArrangedSubview:self.headerViewInternal];
+    NSLayoutConstraint *headerHeightConstraint = [self.headerViewInternal.heightAnchor
+                                                    constraintEqualToConstant:30];
+       headerHeightConstraint.priority = NSLayoutPriorityRequired; // Must be exactly 30px
+       headerHeightConstraint.active = YES;
+       
+       // 🎯 Set content hugging to high so header doesn't try to expand
+       [self.headerViewInternal setContentHuggingPriority:NSLayoutPriorityRequired
+                                           forOrientation:NSLayoutConstraintOrientationVertical];
+       [self.headerViewInternal setContentCompressionResistancePriority:NSLayoutPriorityRequired
+                                                        forOrientation:NSLayoutConstraintOrientationVertical];
+       
     NSStackView *headerStack = [[NSStackView alloc] init];
     headerStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     headerStack.spacing = 8;
@@ -558,12 +586,49 @@ static NSString *const kChainSenderKey = @"sender";
 
 #pragma mark - Content View Setup
 
+
 - (void)setupContentView {
+    NSLog(@"🔧 BaseWidget: Setting up content view with proper expansion constraints");
+    
     self.contentViewInternal = [[NSView alloc] init];
     self.contentViewInternal.wantsLayer = YES;
     self.contentViewInternal.layer.backgroundColor = [NSColor controlBackgroundColor].CGColor;
     
+    // 🎯 CRITICAL: Configure content view for proper expansion
+    self.contentViewInternal.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    // 🚀 Set content hugging and compression priorities for expansion
+    [self.contentViewInternal setContentHuggingPriority:NSLayoutPriorityDefaultLow
+                                         forOrientation:NSLayoutConstraintOrientationVertical];
+    [self.contentViewInternal setContentHuggingPriority:NSLayoutPriorityDefaultLow
+                                         forOrientation:NSLayoutConstraintOrientationHorizontal];
+    
+    [self.contentViewInternal setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh
+                                                      forOrientation:NSLayoutConstraintOrientationVertical];
+    [self.contentViewInternal setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh
+                                                      forOrientation:NSLayoutConstraintOrientationHorizontal];
+    
+    // Add to stack view
     [self.mainStackView addArrangedSubview:self.contentViewInternal];
+    
+    // 🎯 CRITICAL: Set minimum height constraint to prevent collapse
+    NSLayoutConstraint *minHeightConstraint = [self.contentViewInternal.heightAnchor
+                                              constraintGreaterThanOrEqualToConstant:100];
+    minHeightConstraint.priority = NSLayoutPriorityDefaultHigh;
+    minHeightConstraint.active = YES;
+    
+    // 🚀 CRITICAL: Ensure content view expands to fill available space
+    // This prevents the widget from collapsing when content is small
+    NSLayoutConstraint *expansionConstraint = [self.contentViewInternal.heightAnchor
+                                              constraintGreaterThanOrEqualToConstant:200];
+    expansionConstraint.priority = NSLayoutPriorityDefaultLow; // Low priority = preference, not requirement
+    expansionConstraint.active = YES;
+    
+    NSLog(@"✅ BaseWidget: Content view configured with expansion constraints");
+    NSLog(@"   - Min height: 100px (high priority)");
+    NSLog(@"   - Preferred height: 200px (low priority)");
+    NSLog(@"   - Content hugging: Low (will expand to fill space)");
+    NSLog(@"   - Compression resistance: High (won't shrink below min)");
     
     // Default placeholder content
     NSTextField *placeholder = [NSTextField labelWithString:@"Widget Content"];
@@ -578,6 +643,8 @@ static NSString *const kChainSenderKey = @"sender";
         [placeholder.centerXAnchor constraintEqualToAnchor:self.contentViewInternal.centerXAnchor],
         [placeholder.centerYAnchor constraintEqualToAnchor:self.contentViewInternal.centerYAnchor]
     ]];
+    
+    NSLog(@"🎯 BaseWidget: setupContentView completed - widget will now expand to fill available space");
 }
 
 #pragma mark - State Management

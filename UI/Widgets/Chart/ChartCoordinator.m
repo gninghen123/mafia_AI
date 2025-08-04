@@ -78,7 +78,9 @@
 }
 
 - (void)handleScroll:(CGFloat)deltaX deltaY:(CGFloat)deltaY inRect:(NSRect)rect {
-    // Horizontal scroll = pan through time
+ /*
+    rimosso no pan con scroll
+  // Horizontal scroll = pan through time
     CGFloat panSensitivity = 0.1;
     NSInteger barsToMove = (NSInteger)(deltaX * panSensitivity);
     
@@ -92,7 +94,7 @@
     
     self.visibleBarsRange = newRange;
     self.panOffset += deltaX;
-    
+    */
 }
 
 - (void)handleZoom:(CGFloat)factor atPoint:(NSPoint)point inRect:(NSRect)rect {

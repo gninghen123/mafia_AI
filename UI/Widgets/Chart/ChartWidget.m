@@ -232,21 +232,21 @@
     [self.zoomControlsView addSubview:self.zoomOutButton];
     
     // Zoom slider
-    self.zoomSlider = [[NSSlider alloc] init];
-    if (!self.zoomSlider) {
-        NSLog(@"❌ Failed to create zoomSlider");
+    self.panSlider = [[NSSlider alloc] init];
+    if (!self.panSlider) {
+        NSLog(@"❌ Failed to create panSlider");
         return;
     }
     
-    self.zoomSlider.translatesAutoresizingMaskIntoConstraints = NO;
-    self.zoomSlider.minValue = 0.1;
-    self.zoomSlider.maxValue = 10.0;
-    self.zoomSlider.doubleValue = 1.0;
-    self.zoomSlider.continuous = YES;
-    self.zoomSlider.target = self;
-    self.zoomSlider.action = @selector(zoomSliderChanged:);
-    self.zoomSlider.toolTip = @"Zoom Level";
-    [self.zoomControlsView addSubview:self.zoomSlider];
+    self.panSlider.translatesAutoresizingMaskIntoConstraints = NO;
+    self.panSlider.minValue = 0.1;
+    self.panSlider.maxValue = 10.0;
+    self.panSlider.doubleValue = 1.0;
+    self.panSlider.continuous = YES;
+    self.panSlider.target = self;
+    self.panSlider.action = @selector(panSliderChanged:);
+    self.panSlider.toolTip = @"Zoom Level";
+    [self.zoomControlsView addSubview:self.panSlider];
     
     // Zoom In button (+)
     self.zoomInButton = [[NSButton alloc] init];
@@ -288,7 +288,7 @@
 - (void)setupZoomControlsConstraints {
     NSLog(@"🔧 Setting up zoom controls constraints...");
     
-    if (!self.zoomControlsView || !self.zoomOutButton || !self.zoomSlider ||
+    if (!self.zoomControlsView || !self.zoomOutButton || !self.panSlider ||
         !self.zoomInButton || !self.zoomAllButton || !self.contentView) {
         NSLog(@"⚠️ Missing zoom controls elements, skipping constraints");
         return;
@@ -331,10 +331,10 @@
         
         // 5. Zoom SLIDER - riempie lo spazio rimanente
         [NSLayoutConstraint activateConstraints:@[
-            [self.zoomSlider.leadingAnchor constraintEqualToAnchor:self.zoomControlsView.leadingAnchor constant:16],
-            [self.zoomSlider.trailingAnchor constraintEqualToAnchor:self.zoomOutButton.leadingAnchor constant:-16],
-            [self.zoomSlider.centerYAnchor constraintEqualToAnchor:self.zoomControlsView.centerYAnchor],
-            [self.zoomSlider.heightAnchor constraintEqualToConstant:24]
+            [self.panSlider.leadingAnchor constraintEqualToAnchor:self.zoomControlsView.leadingAnchor constant:16],
+            [self.panSlider.trailingAnchor constraintEqualToAnchor:self.zoomOutButton.leadingAnchor constant:-16],
+            [self.panSlider.centerYAnchor constraintEqualToAnchor:self.zoomControlsView.centerYAnchor],
+            [self.panSlider.heightAnchor constraintEqualToConstant:24]
         ]];
         
         NSLog(@"✅ Zoom control constraints applied correctly.");
@@ -1172,8 +1172,8 @@
    }
 
 
-- (IBAction)zoomSliderChanged:(id)sender {
-    NSLog(@"🔄 Pan slider changed to %.2f", self.zoomSlider.doubleValue);
+- (IBAction)panSliderChanged:(id)sender {
+    NSLog(@"🔄 Pan slider changed to %.2f", self.panSlider.doubleValue);
     
     // LO SLIDER È PER IL PANNING, NON ZOOM!
     if (!self.historicalData || self.historicalData.count == 0) return;
@@ -1183,7 +1183,7 @@
     NSInteger maxStart = MAX(0, totalBars - currentRange.length);
     
     // Slider value da 0.0 a 1.0 rappresenta la posizione nella timeline
-    double sliderValue = self.zoomSlider.doubleValue;
+    double sliderValue = self.panSlider.doubleValue;
     NSInteger newStart = (NSInteger)(sliderValue * maxStart);
     
     self.coordinator.visibleBarsRange = NSMakeRange(newStart, currentRange.length);
@@ -1259,12 +1259,12 @@
     
     // Update coordinator with new data
     if (self.coordinator) {
-        [self.coordinator setHistoricalData:paddedBars];
+        // FIXED: Use correct method name
+        [self.coordinator updateHistoricalData:paddedBars];
         [self.coordinator autoFitToData];
     }
     
     [self updateAllPanels];
-    [self updatePanSliderRange]; // NEW: Update slider range with padding
     
     NSLog(@"📊 ChartWidget: Processed %lu bars + %ld padding = %lu total bars for %@",
           (unsigned long)sortedBars.count, (long)self.rightPaddingBars, (unsigned long)paddedBars.count, self.currentSymbol);

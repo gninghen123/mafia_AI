@@ -85,7 +85,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 #pragma mark - Zoom Controls
 @property (nonatomic, strong) NSView *zoomControlsView;
-@property (nonatomic, strong) NSSlider *zoomSlider;
+@property (nonatomic, strong) NSSlider *panSlider;
 @property (nonatomic, strong) NSButton *zoomOutButton;
 @property (nonatomic, strong) NSButton *zoomInButton;
 @property (nonatomic, strong) NSButton *zoomAllButton;

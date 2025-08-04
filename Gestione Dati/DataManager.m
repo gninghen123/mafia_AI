@@ -232,20 +232,55 @@
 }
 
 // Historical data - with count
+
 - (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
                                    timeframe:(BarTimeframe)timeframe
                                        count:(NSInteger)count
                                   completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion {
     
-    // Calculate date range from count
-    NSDate *endDate = [NSDate date];
-    NSDate *startDate = [self calculateStartDateForTimeframe:timeframe count:count fromDate:endDate];
+    if (!symbol || symbol.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"DataManager"
+                                             code:100
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid symbol"}];
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, error);
+            });
+        }
+        return nil;
+    }
     
-    return [self requestHistoricalDataForSymbol:symbol
-                                      timeframe:timeframe
-                                      startDate:startDate
-                                        endDate:endDate
-                                     completion:completion];
+    NSString *requestID = [[NSUUID UUID] UUIDString];
+    NSDictionary *parameters = @{
+        @"symbol": symbol,
+        @"timeframe": @(timeframe),
+        @"count": @(count),
+        @"needExtendedHours": @(NO)
+    };
+    
+    NSMutableDictionary *requestInfo = [@{
+        @"type": @"historical",
+        @"symbol": symbol,
+        @"timeframe": @(timeframe)
+    } mutableCopy];
+    
+    if (completion) {
+        requestInfo[@"completion"] = [completion copy];
+    }
+    
+    self.activeRequests[requestID] = requestInfo;
+    
+    [[DownloadManager sharedManager] executeHistoricalRequestWithCount:parameters
+                                                             completion:^(id result, DataSourceType usedSource, NSError *error) {
+        [self handleHistoricalResponse:result
+                                 error:error
+                             forSymbol:symbol
+                            timeframe:timeframe
+                             requestID:requestID
+                            completion:completion];
+    }];
+    
+    return requestID;
 }
 
 #pragma mark - Response Handlers

@@ -44,7 +44,13 @@
     self.widgetType = @"Chart Widget";
     _currentSymbol = @"AAPL";
     _selectedTimeframe = 4; // Daily
-    _maxBarsToDisplay = 99999999999999;
+    self.maxBarsToDisplay = [[NSUserDefaults standardUserDefaults] integerForKey:@"ChartWidget.MaxBars"];
+          if (self.maxBarsToDisplay == 0) {
+              self.maxBarsToDisplay = 250; // Default value
+          }
+
+    self.useExtendedHours = [[NSUserDefaults standardUserDefaults] boolForKey:@"ChartWidget.ExtendedHours"];
+
     _isLoading = NO;
     
     // Initialize collections
@@ -142,6 +148,14 @@
     self.indicatorsButton.target = self;
     self.indicatorsButton.action = @selector(indicatorsButtonClicked:);
     [self.toolbarView addSubview:self.indicatorsButton];
+    
+    self.preferencesButton = [NSButton buttonWithImage:[NSImage imageNamed:NSImageNameActionTemplate]
+                                                    target:self
+                                                    action:@selector(showPreferences:)];
+       self.preferencesButton.bezelStyle = NSBezelStyleTexturedRounded;
+       self.preferencesButton.translatesAutoresizingMaskIntoConstraints = NO;
+       self.preferencesButton.toolTip = @"Chart Preferences";
+       [self.toolbarView addSubview:self.preferencesButton];
     
     // Loading indicator
     self.loadingIndicator = [[NSProgressIndicator alloc] init];
@@ -357,11 +371,222 @@
         [self.loadingIndicator.leadingAnchor constraintEqualToAnchor:self.refreshButton.trailingAnchor constant:8],
         [self.loadingIndicator.centerYAnchor constraintEqualToAnchor:self.toolbarView.centerYAnchor],
         
-        [self.indicatorsButton.trailingAnchor constraintEqualToAnchor:self.toolbarView.trailingAnchor constant:-8],
-        [self.indicatorsButton.centerYAnchor constraintEqualToAnchor:self.toolbarView.centerYAnchor]
-    ]];
+              [self.preferencesButton.trailingAnchor constraintEqualToAnchor:self.toolbarView.trailingAnchor constant:-8],
+              [self.preferencesButton.centerYAnchor constraintEqualToAnchor:self.toolbarView.centerYAnchor],
+              [self.preferencesButton.widthAnchor constraintEqualToConstant:30],
+              
+              // MODIFICA: indicatorsButton ora va prima di preferencesButton
+              [self.indicatorsButton.trailingAnchor constraintEqualToAnchor:self.preferencesButton.leadingAnchor constant:-8],
+              [self.indicatorsButton.centerYAnchor constraintEqualToAnchor:self.toolbarView.centerYAnchor]
+          ]];
     
     [self setupZoomControlsConstraints];
+}
+
+#pragma mark - preferences
+
+- (void)showPreferences:(id)sender {
+    [self showChartPreferencesPopover:sender];
+}
+
+// NEW: Chart preferences popover
+- (void)showChartPreferencesPopover:(id)sender {
+    NSViewController *prefsController = [[NSViewController alloc] init];
+    NSView *contentView = [[NSView alloc] init];
+    prefsController.view = contentView;
+    
+    // Set content view size
+    contentView.frame = NSMakeRect(0, 0, 300, 160);
+    
+    // Create preferences UI
+    [self createPreferencesUI:contentView];
+    
+    // Show popover
+    NSPopover *popover = [[NSPopover alloc] init];
+    popover.contentViewController = prefsController;
+    popover.behavior = NSPopoverBehaviorTransient;
+    
+    [popover showRelativeToRect:[sender bounds]
+                         ofView:sender
+                  preferredEdge:NSRectEdgeMinY];
+}
+
+
+// NEW: Create preferences UI
+- (void)createPreferencesUI:(NSView *)contentView {
+    // Title
+    NSTextField *titleLabel = [[NSTextField alloc] init];
+    titleLabel.stringValue = @"Chart Preferences";
+    titleLabel.editable = NO;
+    titleLabel.bezeled = NO;
+    titleLabel.backgroundColor = [NSColor clearColor];
+    titleLabel.font = [NSFont boldSystemFontOfSize:14];
+    titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [contentView addSubview:titleLabel];
+    
+    // Max bars label
+    NSTextField *barsLabel = [[NSTextField alloc] init];
+    barsLabel.stringValue = @"Maximum Bars:";
+    barsLabel.editable = NO;
+    barsLabel.bezeled = NO;
+    barsLabel.backgroundColor = [NSColor clearColor];
+    barsLabel.font = [NSFont systemFontOfSize:12];
+    barsLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [contentView addSubview:barsLabel];
+    
+    // Max bars slider
+    NSSlider *barsSlider = [[NSSlider alloc] init];
+    barsSlider.minValue = 50;
+    barsSlider.maxValue = 9999999;
+    barsSlider.integerValue = self.maxBarsToDisplay;
+    barsSlider.continuous = YES;
+    barsSlider.target = self;
+    barsSlider.action = @selector(maxBarsSliderChanged:);
+    barsSlider.translatesAutoresizingMaskIntoConstraints = NO;
+    [contentView addSubview:barsSlider];
+    
+    // Max bars value label
+    NSTextField *barsValueLabel = [[NSTextField alloc] init];
+    barsValueLabel.stringValue = [self formatBarsValue:self.maxBarsToDisplay];
+    barsValueLabel.editable = NO;
+    barsValueLabel.bezeled = NO;
+    barsValueLabel.backgroundColor = [NSColor clearColor];
+    barsValueLabel.font = [NSFont monospacedDigitSystemFontOfSize:11 weight:NSFontWeightRegular];
+    barsValueLabel.alignment = NSTextAlignmentRight;
+    barsValueLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    barsValueLabel.tag = 100; // Tag per trovarlo nell'action
+    [contentView addSubview:barsValueLabel];
+    
+    // Extended hours checkbox
+    NSButton *extendedHoursCheckbox = [NSButton checkboxWithTitle:@"Include Extended Hours Data"
+                                                           target:self
+                                                           action:@selector(extendedHoursChanged:)];
+    extendedHoursCheckbox.state = self.useExtendedHours ? NSControlStateValueOn : NSControlStateValueOff;
+    extendedHoursCheckbox.translatesAutoresizingMaskIntoConstraints = NO;
+    [contentView addSubview:extendedHoursCheckbox];
+    
+    // Apply button
+    NSButton *applyButton = [NSButton buttonWithTitle:@"Apply" target:self action:@selector(applyPreferences:)];
+    applyButton.bezelStyle = NSBezelStyleRounded;
+    applyButton.keyEquivalent = @"\r";
+    applyButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [contentView addSubview:applyButton];
+    
+    // Layout constraints
+    [NSLayoutConstraint activateConstraints:@[
+        // Title
+        [titleLabel.topAnchor constraintEqualToAnchor:contentView.topAnchor constant:16],
+        [titleLabel.centerXAnchor constraintEqualToAnchor:contentView.centerXAnchor],
+        
+        // Bars label
+        [barsLabel.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:20],
+        [barsLabel.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:16],
+        
+        // Bars value label
+        [barsValueLabel.centerYAnchor constraintEqualToAnchor:barsLabel.centerYAnchor],
+        [barsValueLabel.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-16],
+        [barsValueLabel.widthAnchor constraintEqualToConstant:80],
+        
+        // Bars slider
+        [barsSlider.topAnchor constraintEqualToAnchor:barsLabel.bottomAnchor constant:8],
+        [barsSlider.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:16],
+        [barsSlider.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-16],
+        
+        // Extended hours checkbox
+        [extendedHoursCheckbox.topAnchor constraintEqualToAnchor:barsSlider.bottomAnchor constant:16],
+        [extendedHoursCheckbox.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:16],
+        
+        // Apply button
+        [applyButton.topAnchor constraintEqualToAnchor:extendedHoursCheckbox.bottomAnchor constant:16],
+        [applyButton.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-16],
+        [applyButton.bottomAnchor constraintLessThanOrEqualToAnchor:contentView.bottomAnchor constant:-16]
+    ]];
+}
+
+// NEW: Format bars value for display
+- (NSString *)formatBarsValue:(NSInteger)value {
+    if (value >= 9999999) {
+        return @"Max Available";
+    } else if (value >= 1000) {
+        return [NSString stringWithFormat:@"%.1fK", value / 1000.0];
+    } else {
+        return [NSString stringWithFormat:@"%ld", (long)value];
+    }
+}
+
+// NEW: Max bars slider action
+- (void)maxBarsSliderChanged:(NSSlider *)sender {
+    self.maxBarsToDisplay = sender.integerValue;
+    
+    // Update value label
+    NSTextField *valueLabel = [sender.superview viewWithTag:100];
+    if (valueLabel) {
+        valueLabel.stringValue = [self formatBarsValue:self.maxBarsToDisplay];
+    }
+}
+
+// NEW: Extended hours checkbox action
+- (void)extendedHoursChanged:(NSButton *)sender {
+    self.useExtendedHours = (sender.state == NSControlStateValueOn);
+}
+
+// NEW: Apply preferences action
+- (void)applyPreferences:(id)sender {
+    // Save preferences to user defaults
+    [[NSUserDefaults standardUserDefaults] setInteger:self.maxBarsToDisplay forKey:@"ChartWidget.MaxBars"];
+    [[NSUserDefaults standardUserDefaults] setBool:self.useExtendedHours forKey:@"ChartWidget.ExtendedHours"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    
+    // NUOVO: Sincronizza coordinator con nuove preferences
+    if (self.coordinator) {
+        self.coordinator.maxVisibleBars = self.maxBarsToDisplay;
+        
+        // Se abbiamo dati, ri-applica l'auto-fit con i nuovi limiti
+        if (self.historicalData && self.historicalData.count > 0) {
+            [self.coordinator autoFitToData];
+        }
+    }
+    
+    // Close popover
+    NSView *contentView = [(NSButton *)sender superview];
+    NSViewController *controller = nil;
+    NSResponder *responder = contentView.nextResponder;
+    while (responder && ![responder isKindOfClass:[NSViewController class]]) {
+        responder = responder.nextResponder;
+    }
+    if ([responder isKindOfClass:[NSViewController class]]) {
+        controller = (NSViewController *)responder;
+        if (controller.presentingViewController) {
+            [controller dismissViewController:controller];
+        }
+    }
+    
+    // Refresh chart with new settings
+    [self refreshCurrentData];
+    
+    NSLog(@"Chart preferences applied: maxBars=%ld, extendedHours=%@, coordinator.maxVisibleBars=%ld",
+          (long)self.maxBarsToDisplay, self.useExtendedHours ? @"YES" : @"NO", (long)self.coordinator.maxVisibleBars);
+}
+
+
+- (void)syncCoordinatorWithPreferences {
+    if (self.coordinator) {
+        self.coordinator.maxVisibleBars = self.maxBarsToDisplay;
+        NSLog(@"📊 ChartWidget: Synced coordinator maxVisibleBars to %ld", (long)self.maxBarsToDisplay);
+    }
+}
+
+// NUOVO: Override del setter per maxBarsToDisplay per mantenere sync
+- (void)setMaxBarsToDisplay:(NSInteger)maxBarsToDisplay {
+    if (_maxBarsToDisplay != maxBarsToDisplay) {
+        _maxBarsToDisplay = maxBarsToDisplay;
+        
+        // Sincronizza automaticamente il coordinator
+        if (self.coordinator) {
+            self.coordinator.maxVisibleBars = maxBarsToDisplay;
+            NSLog(@"📊 ChartWidget: Auto-synced coordinator maxVisibleBars to %ld", (long)maxBarsToDisplay);
+        }
+    }
 }
 
 
@@ -445,14 +670,15 @@
     [self.loadingIndicator startAnimation:nil];
     self.refreshButton.enabled = NO;
     
-    // Convert selectedTimeframe to BarTimeframe enum
     BarTimeframe timeframe = [self timeframeEnumForIndex:self.selectedTimeframe];
     
-    NSLog(@"📈 ChartWidget: Loading data for %@ timeframe %ld", symbol, (long)timeframe);
+    NSLog(@"📈 ChartWidget: Loading data for %@ timeframe %ld (maxBars: %ld, extended: %@)",
+          symbol, (long)timeframe, (long)self.maxBarsToDisplay, self.useExtendedHours ? @"YES" : @"NO");
     
+    // CAMBIAMENTO: Passa extended hours setting al DataHub
     [[DataHub shared] getHistoricalBarsForSymbol:symbol
                                        timeframe:timeframe
-                                        barCount:self.maxBarsToDisplay
+                                        barCount:self.maxBarsToDisplay  // USA le preferences
                                       completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
         
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -462,7 +688,6 @@
             
             if (!bars || bars.count == 0) {
                 NSLog(@"⚠️ ChartWidget: No data received for %@", symbol);
-                // CORREZIONE: forza il refresh anche senza dati
                 [self updateAllPanelsWithData:nil];
                 return;
             }
@@ -475,6 +700,7 @@
     }];
 }
 
+
 - (void)refreshCurrentData {
     [self loadHistoricalDataForSymbol:self.currentSymbol];
 }
@@ -484,6 +710,8 @@
     
     // CORREZIONE: validazione del coordinator prima di aggiornare
     if (self.coordinator) {
+        // NUOVO: Sincronizza maxVisibleBars con preferences
+        self.coordinator.maxVisibleBars = self.maxBarsToDisplay;
         [self.coordinator updateHistoricalData:data];
     } else {
         NSLog(@"⚠️ ChartWidget: Coordinator not initialized!");
@@ -503,9 +731,11 @@
         }
     });
     
-    NSLog(@"📊 ChartWidget: Updated %lu panels with %lu data points and refreshed pan slider",
-          (unsigned long)self.panelViews.count, (unsigned long)(data ? data.count : 0));
+    NSLog(@"📊 ChartWidget: Updated coordinator maxVisibleBars=%ld, %lu panels with %lu data points",
+          (long)self.maxBarsToDisplay, (unsigned long)self.panelViews.count, (unsigned long)(data ? data.count : 0));
 }
+
+
 #pragma mark - Actions
 
 - (IBAction)symbolChanged:(id)sender {
@@ -815,59 +1045,77 @@
 #pragma mark - Zoom Controls Actions
 
 - (IBAction)zoomOutButtonClicked:(id)sender {
-    NSLog(@"🔍 Zoom Out button clicked");
-    
-    // Zoom out = mostra più barre (diminuisce zoom factor)
-    NSRange currentRange = self.coordinator.visibleBarsRange;
-    NSInteger newVisibleBars = MIN(self.maxBarsToDisplay, currentRange.length * 1.5);
-    
-    // Calcola nuovo range mantenendo il centro
-    NSInteger centerBar = currentRange.location + currentRange.length / 2;
-    NSInteger newStart = centerBar - newVisibleBars / 2;
-    newStart = MAX(0, newStart);
-    
-    if (self.historicalData && newStart + newVisibleBars > self.historicalData.count) {
-        newStart = MAX(0, self.historicalData.count - newVisibleBars);
-    }
-    
-    self.coordinator.visibleBarsRange = NSMakeRange(newStart, newVisibleBars);
-    self.coordinator.zoomFactor = (CGFloat)self.maxBarsToDisplay / newVisibleBars;
-    
-    [self updatePanSliderRange];
-    [self refreshAllPanels];
-    
-    NSLog(@"🔍 Zoom Out: %@ (factor %.2f)", NSStringFromRange(self.coordinator.visibleBarsRange), self.coordinator.zoomFactor);
-}
+    if (!self.coordinator || !self.historicalData) {
+         NSLog(@"⚠️ Cannot zoom: missing coordinator or data");
+         return;
+     }
+     
+     // Aumenta visible bars (diminuisce zoom factor)
+     NSRange currentRange = self.coordinator.visibleBarsRange;
+     NSInteger newVisibleBars = MIN(self.maxBarsToDisplay, currentRange.length * 1.5); // USA maxBarsToDisplay
+     
+     if (newVisibleBars <= currentRange.length) {
+         NSLog(@"🚫 Already at minimum zoom (max bars: %ld)", (long)self.maxBarsToDisplay);
+         return;
+     }
+     
+     // Calcola nuovo range mantenendo il centro
+     NSInteger centerBar = currentRange.location + currentRange.length / 2;
+     NSInteger newStart = centerBar - newVisibleBars / 2;
+     newStart = MAX(0, newStart);
+     
+     if (newStart + newVisibleBars > self.historicalData.count) {
+         newStart = MAX(0, self.historicalData.count - newVisibleBars);
+         newVisibleBars = MIN(newVisibleBars, self.historicalData.count - newStart);
+     }
+     
+     self.coordinator.visibleBarsRange = NSMakeRange(newStart, newVisibleBars);
+     // NUOVO: Calcola zoom factor rispetto a maxBarsToDisplay
+     self.coordinator.zoomFactor = (CGFloat)self.maxBarsToDisplay / newVisibleBars;
+     
+     [self updatePanSliderRange];
+     [self refreshAllPanels];
+     
+     NSLog(@"🔍 Zoom Out: %@ (factor %.2f, max bars: %ld)",
+           NSStringFromRange(self.coordinator.visibleBarsRange), self.coordinator.zoomFactor, (long)self.maxBarsToDisplay);
+ }
+
 
 - (IBAction)zoomInButtonClicked:(id)sender {
-    NSLog(@"🔍 Zoom In button clicked");
-    
-    // Zoom in = mostra meno barre (aumenta zoom factor)
-    NSRange currentRange = self.coordinator.visibleBarsRange;
-    NSInteger newVisibleBars = MAX(10, currentRange.length / 1.5);
-    
-    if (newVisibleBars >= currentRange.length) {
-        NSLog(@"🚫 Already at maximum zoom");
-        return;
-    }
-    
-    // Calcola nuovo range mantenendo il centro
-    NSInteger centerBar = currentRange.location + currentRange.length / 2;
-    NSInteger newStart = centerBar - newVisibleBars / 2;
-    newStart = MAX(0, newStart);
-    
-    if (self.historicalData && newStart + newVisibleBars > self.historicalData.count) {
-        newStart = MAX(0, self.historicalData.count - newVisibleBars);
-    }
-    
-    self.coordinator.visibleBarsRange = NSMakeRange(newStart, newVisibleBars);
-    self.coordinator.zoomFactor = (CGFloat)self.maxBarsToDisplay / newVisibleBars;
-    
-    [self updatePanSliderRange];
-    [self refreshAllPanels];
-    
-    NSLog(@"🔍 Zoom In: %@ (factor %.2f)", NSStringFromRange(self.coordinator.visibleBarsRange), self.coordinator.zoomFactor);
-}
+    if (!self.coordinator || !self.historicalData) {
+           NSLog(@"⚠️ Cannot zoom: missing coordinator or data");
+           return;
+       }
+       
+       // Diminuisce visible bars (aumenta zoom factor)
+       NSRange currentRange = self.coordinator.visibleBarsRange;
+       NSInteger newVisibleBars = MAX(10, currentRange.length / 1.5);
+       
+       if (newVisibleBars >= currentRange.length) {
+           NSLog(@"🚫 Already at maximum zoom");
+           return;
+       }
+       
+       // Calcola nuovo range mantenendo il centro
+       NSInteger centerBar = currentRange.location + currentRange.length / 2;
+       NSInteger newStart = centerBar - newVisibleBars / 2;
+       newStart = MAX(0, newStart);
+       
+       if (newStart + newVisibleBars > self.historicalData.count) {
+           newStart = MAX(0, self.historicalData.count - newVisibleBars);
+       }
+       
+       self.coordinator.visibleBarsRange = NSMakeRange(newStart, newVisibleBars);
+       // NUOVO: Calcola zoom factor rispetto a maxBarsToDisplay (non maxVisibleBars)
+       self.coordinator.zoomFactor = (CGFloat)self.maxBarsToDisplay / newVisibleBars;
+       
+       [self updatePanSliderRange];
+       [self refreshAllPanels];
+       
+       NSLog(@"🔍 Zoom In: %@ (factor %.2f, max bars: %ld)",
+             NSStringFromRange(self.coordinator.visibleBarsRange), self.coordinator.zoomFactor, (long)self.maxBarsToDisplay);
+   }
+
 
 - (IBAction)zoomSliderChanged:(id)sender {
     NSLog(@"🔄 Pan slider changed to %.2f", self.zoomSlider.doubleValue);

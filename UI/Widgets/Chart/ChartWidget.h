@@ -22,6 +22,11 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface ChartWidget : BaseWidget <NSSplitViewDelegate>
 
+
+@property (nonatomic, strong) NSButton *preferencesButton;
+@property (nonatomic, assign) NSInteger maxBarsToDisplay;  // NEW: User configurable
+@property (nonatomic, assign) BOOL useExtendedHours;      // NEW: Extended hours setting
+
 #pragma mark - Core Properties
 @property (nonatomic, strong) NSString *currentSymbol;
 @property (nonatomic, strong, nullable) NSArray<HistoricalBarModel *> *historicalData;
@@ -47,7 +52,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 #pragma mark - Settings
 @property (nonatomic, assign) NSInteger selectedTimeframe; // 0=1m, 1=5m, 2=15m, 3=1h, 4=1d, 5=1w
-@property (nonatomic, assign) NSInteger maxBarsToDisplay;
 
 #pragma mark - Data Management
 - (void)loadHistoricalDataForSymbol:(NSString *)symbol;

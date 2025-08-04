@@ -132,14 +132,21 @@
         return;
     }
     
+    // USA maxVisibleBars dalle preferences invece di un valore fisso
     NSInteger visibleBars = MIN(self.maxVisibleBars, self.historicalData.count);
     NSInteger startIndex = MAX(0, self.historicalData.count - visibleBars);
     
     self.visibleBarsRange = NSMakeRange(startIndex, visibleBars);
     
-    NSLog(@"📊 Auto-fit to %lu bars, visible range: %@",
-          (unsigned long)self.historicalData.count, NSStringFromRange(self.visibleBarsRange));
+    // Reset zoom factor to 1.0 quando facciamo auto-fit
+    self.zoomFactor = 1.0;
+    self.panOffset = 0.0;
+    
+    NSLog(@"📊 ChartCoordinator: Auto-fit to %lu bars, visible range: %@, maxVisibleBars: %ld",
+          (unsigned long)self.historicalData.count, NSStringFromRange(self.visibleBarsRange), (long)self.maxVisibleBars);
 }
+
+
 
 #pragma mark - Value Range Calculation
 

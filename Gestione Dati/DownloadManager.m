@@ -7,8 +7,8 @@
 #import "WebullDataSource.h"
 #import "ClaudeDataSource.h"
 #import "MarketData.h"
-#import "OtherDataSource.h"      // AGGIUNGI QUESTA RIGA
-
+#import "OtherDataSource.h"
+#import "SchwabDataSource.h"
 
 @interface DataSourceInfo : NSObject
 @property (nonatomic, strong) id<DataSource> dataSource;
@@ -19,7 +19,9 @@
 @end
 
 @implementation DataSourceInfo
+
 @end
+
 
 @interface DownloadManager ()
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, DataSourceInfo *> *dataSources;
@@ -1059,7 +1061,355 @@
         }
     }
 }
+#pragma mark - Count-Based Historical Requests
 
+- (NSString *)executeHistoricalRequestWithCount:(NSDictionary *)parameters
+                                      completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    if (!parameters || !completion) {
+        NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid parameters"}];
+        completion(nil, -1, error);  // Usa -1 invece di DataSourceTypeNone
+        return nil;
+    }
+    
+    NSString *requestID = [[NSUUID UUID] UUIDString];
+    self.activeRequests[requestID] = parameters;
+    
+    NSLog(@"DownloadManager: Starting count-based historical request %@ for symbol %@",
+          requestID, parameters[@"symbol"]);
+    
+    // Usa il metodo esistente per ottenere sources
+    NSArray<DataSourceInfo *> *sortedSources = [self sortedDataSourcesForRequestType:DataRequestTypeHistoricalBars
+                                                                      preferredSource:-1];
+    
+    if (sortedSources.count == 0) {
+        NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                             code:404
+                                         userInfo:@{NSLocalizedDescriptionKey: @"No data sources available for historical data"}];
+        NSLog(@"❌ DownloadManager: No sources available for historical data");
+        [self.activeRequests removeObjectForKey:requestID];
+        completion(nil, -1, error);  // Usa -1 invece di DataSourceTypeNone
+        return requestID;
+    }
+    
+    NSLog(@"📊 DownloadManager: Found %lu data sources for historical request", (unsigned long)sortedSources.count);
+    
+    // Usa il metodo helper esistente executeRequestWithSources ma con logica count-based
+    [self executeCountBasedHistoricalWithSources:sortedSources
+                                      parameters:parameters
+                                     sourceIndex:0
+                                       requestID:requestID
+                                      completion:completion];
+    
+    return requestID;
+}
+- (void)executeCountBasedHistoricalWithSources:(NSArray<DataSourceInfo *> *)sources
+                                    parameters:(NSDictionary *)parameters
+                                   sourceIndex:(NSInteger)index
+                                     requestID:(NSString *)requestID
+                                    completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    if (!self.activeRequests[requestID]) {
+        NSLog(@"⚠️ DownloadManager: Request %@ was cancelled", requestID);
+        return;
+    }
+    
+    if (index >= sources.count) {
+        NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                             code:404
+                                         userInfo:@{NSLocalizedDescriptionKey: @"No more data sources available"}];
+        [self.activeRequests removeObjectForKey:requestID];
+        completion(nil, -1, error);
+        return;
+    }
+    
+    DataSourceInfo *sourceInfo = sources[index];
+    id<DataSource> dataSource = sourceInfo.dataSource;
+    
+    NSString *symbol = parameters[@"symbol"];
+    BarTimeframe timeframe = [parameters[@"timeframe"] integerValue];
+    NSInteger count = [parameters[@"count"] integerValue];
+    BOOL needExtendedHours = [parameters[@"needExtendedHours"] boolValue];
+    
+    NSLog(@"📈 DownloadManager: Executing count-based historical request for %@ (%ld bars, timeframe:%ld, extended:%@) using %@ (attempt %ld/%lu)",
+          symbol, (long)count, (long)timeframe, needExtendedHours ? @"YES" : @"NO",
+          dataSource.sourceName, (long)(index + 1), (unsigned long)sources.count);
+    
+    // Check if this is a SchwabDataSource that supports the new method
+    if ([dataSource isKindOfClass:[SchwabDataSource class]]) {
+        SchwabDataSource *schwabSource = (SchwabDataSource *)dataSource;
+        
+        // Use the new count-based method
+        [schwabSource fetchHistoricalDataForSymbolWithCount:symbol
+                                                  timeframe:timeframe
+                                                      count:count
+                                      needExtendedHoursData:needExtendedHours
+                                           needPreviousClose:YES
+                                                  completion:^(NSArray *bars, NSError *error) {
+            [self handleCountBasedResponse:bars
+                                     error:error
+                                sourceInfo:sourceInfo
+                                   sources:sources
+                               sourceIndex:index
+                                 requestID:requestID
+                                completion:completion];
+        }];
+        
+    } else if ([dataSource respondsToSelector:@selector(fetchHistoricalDataForSymbol:timeframe:startDate:endDate:completion:)]) {
+        // Fallback to date-based method for other data sources
+        NSLog(@"📊 DownloadManager: Using fallback date-based method for %@", dataSource.sourceName);
+        
+        // Calculate date range from count (approximate)
+        NSDate *endDate = [NSDate date];
+        NSTimeInterval secondsPerBar = [self secondsPerBarForTimeframe:timeframe];
+        NSTimeInterval totalSeconds = count * secondsPerBar;
+        
+        // Add buffer for non-trading hours
+        if (timeframe < BarTimeframe1Day) {
+            totalSeconds *= 1.5;
+        }
+        
+        NSDate *startDate = [endDate dateByAddingTimeInterval:-totalSeconds];
+        
+        [dataSource fetchHistoricalDataForSymbol:symbol
+                                        timeframe:timeframe
+                                        startDate:startDate
+                                          endDate:endDate
+                                       completion:^(NSArray *bars, NSError *error) {
+            [self handleCountBasedResponse:bars
+                                     error:error
+                                sourceInfo:sourceInfo
+                                   sources:sources
+                               sourceIndex:index
+                                 requestID:requestID
+                                completion:completion];
+        }];
+        
+    } else {
+        // Data source doesn't support historical data - try next source
+        NSLog(@"❌ DownloadManager: Data source %@ doesn't support historical data", dataSource.sourceName);
+        
+        [self executeCountBasedHistoricalWithSources:sources
+                                          parameters:parameters
+                                         sourceIndex:index + 1
+                                           requestID:requestID
+                                          completion:completion];
+    }
+}
+- (void)handleCountBasedResponse:(NSArray *)bars
+                           error:(NSError *)error
+                      sourceInfo:(DataSourceInfo *)sourceInfo
+                         sources:(NSArray<DataSourceInfo *> *)sources
+                     sourceIndex:(NSInteger)index
+                       requestID:(NSString *)requestID
+                      completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    if (!self.activeRequests[requestID]) {
+        NSLog(@"⚠️ DownloadManager: Request %@ was cancelled during response handling", requestID);
+        return;
+    }
+    
+    if (error && self.fallbackEnabled && index < sources.count - 1) {
+        // Try next data source
+        NSLog(@"❌ DownloadManager: Count-based request failed with %@ (%@), trying next source",
+              sourceInfo.dataSource.sourceName, error.localizedDescription);
+        
+        // Usa le proprietà esistenti di DataSourceInfo
+        sourceInfo.failureCount++;
+        sourceInfo.lastFailureTime = [NSDate date];
+        
+        NSDictionary *parameters = self.activeRequests[requestID];
+        
+        [self executeCountBasedHistoricalWithSources:sources
+                                          parameters:parameters
+                                         sourceIndex:index + 1
+                                           requestID:requestID
+                                          completion:completion];
+        return;
+    }
+    
+    // Request completed (success or final failure)
+    [self.activeRequests removeObjectForKey:requestID];
+    
+    if (error) {
+        NSLog(@"❌ DownloadManager: Count-based historical request failed: %@", error.localizedDescription);
+    } else {
+        NSLog(@"✅ DownloadManager: Count-based request succeeded with %@, got %lu bars",
+              sourceInfo.dataSource.sourceName, (unsigned long)bars.count);
+    }
+    
+    if (completion) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(bars, sourceInfo.type, error);
+        });
+    }
+}
+- (void)executeHistoricalRequestWithCount:(NSDictionary *)parameters
+                          withDataSource:(id<DataSource>)dataSource
+                              sourceInfo:(DataSourceInfo *)sourceInfo
+                                 sources:(NSArray<DataSourceInfo *> *)sources
+                             sourceIndex:(NSInteger)index
+                               requestID:(NSString *)requestID
+                              completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    if (!self.activeRequests[requestID]) {
+        NSLog(@"⚠️ DownloadManager: Request %@ was cancelled", requestID);
+        return;
+    }
+    
+    NSString *symbol = parameters[@"symbol"];
+    BarTimeframe timeframe = [parameters[@"timeframe"] integerValue];
+    NSInteger count = [parameters[@"count"] integerValue];
+    BOOL needExtendedHours = [parameters[@"needExtendedHours"] boolValue];
+    
+    NSLog(@"📈 DownloadManager: Executing count-based historical request for %@ (%ld bars, timeframe:%ld, extended:%@) using %@ (attempt %ld/%lu)",
+          symbol, (long)count, (long)timeframe, needExtendedHours ? @"YES" : @"NO",
+          dataSource.sourceName, (long)(index + 1), (unsigned long)sources.count);
+    
+    // Check if this is a SchwabDataSource that supports the new method
+    if ([dataSource isKindOfClass:[SchwabDataSource class]]) {
+        SchwabDataSource *schwabSource = (SchwabDataSource *)dataSource;
+        
+        // Use the new count-based method
+        [schwabSource fetchHistoricalDataForSymbolWithCount:symbol
+                                                  timeframe:timeframe
+                                                      count:count
+                                      needExtendedHoursData:needExtendedHours
+                                           needPreviousClose:YES
+                                                  completion:^(NSArray *bars, NSError *error) {
+            [self handleCountBasedHistoricalResponse:bars
+                                                error:error
+                                           dataSource:dataSource
+                                           sourceInfo:sourceInfo
+                                              sources:sources
+                                          sourceIndex:index
+                                            requestID:requestID
+                                           completion:completion];
+        }];
+        
+    } else if ([dataSource respondsToSelector:@selector(fetchHistoricalDataForSymbol:timeframe:startDate:endDate:completion:)]) {
+        // Fallback to date-based method for other data sources
+        NSLog(@"📊 DownloadManager: Using fallback date-based method for %@", dataSource.sourceName);
+        
+        // Calculate date range from count (approximate)
+        NSDate *endDate = [NSDate date];
+        NSTimeInterval secondsPerBar = [self secondsPerBarForTimeframe:timeframe];
+        NSTimeInterval totalSeconds = count * secondsPerBar;
+        
+        // Add buffer for non-trading hours
+        if (timeframe < BarTimeframe1Day) {
+            totalSeconds *= 1.5;
+        }
+        
+        NSDate *startDate = [endDate dateByAddingTimeInterval:-totalSeconds];
+        
+        [dataSource fetchHistoricalDataForSymbol:symbol
+                                        timeframe:timeframe
+                                        startDate:startDate
+                                          endDate:endDate
+                                       completion:^(NSArray *bars, NSError *error) {
+            [self handleCountBasedHistoricalResponse:bars
+                                                error:error
+                                           dataSource:dataSource
+                                           sourceInfo:sourceInfo
+                                              sources:sources
+                                          sourceIndex:index
+                                            requestID:requestID
+                                           completion:completion];
+        }];
+        
+    } else {
+        // Data source doesn't support historical data
+        NSLog(@"❌ DownloadManager: Data source %@ doesn't support historical data", dataSource.sourceName);
+        
+        NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                             code:501
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Data source doesn't support historical data"}];
+        
+        [self handleCountBasedHistoricalResponse:nil
+                                            error:error
+                                       dataSource:dataSource
+                                       sourceInfo:sourceInfo
+                                          sources:sources
+                                      sourceIndex:index
+                                        requestID:requestID
+                                       completion:completion];
+    }
+}
+
+- (void)handleCountBasedHistoricalResponse:(NSArray *)bars
+                                     error:(NSError *)error
+                                dataSource:(id<DataSource>)dataSource
+                                sourceInfo:(DataSourceInfo *)sourceInfo
+                                   sources:(NSArray<DataSourceInfo *> *)sources
+                               sourceIndex:(NSInteger)index
+                                 requestID:(NSString *)requestID
+                                completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    if (!self.activeRequests[requestID]) {
+        NSLog(@"⚠️ DownloadManager: Request %@ was cancelled during response handling", requestID);
+        return;
+    }
+    
+    if (error && self.fallbackEnabled && index < sources.count - 1) {
+        // Try next data source
+        NSLog(@"❌ DownloadManager: Count-based request failed with %@ (%@), trying next source",
+              dataSource.sourceName, error.localizedDescription);
+        
+        sourceInfo.failureCount++;
+        sourceInfo.lastFailureTime = [NSDate date];
+        
+        NSDictionary *parameters = self.activeRequests[requestID][@"parameters"];
+        
+        [self executeHistoricalRequestWithCount:parameters
+                                 withDataSource:sources[index + 1].dataSource
+                                     sourceInfo:sources[index + 1]
+                                        sources:sources
+                                    sourceIndex:index + 1
+                                      requestID:requestID
+                                     completion:completion];
+        return;
+    }
+    
+    // Request completed (success or final failure)
+    [self.activeRequests removeObjectForKey:requestID];
+    
+    if (error) {
+        NSLog(@"❌ DownloadManager: Count-based historical request failed: %@", error.localizedDescription);
+    } else {
+        NSLog(@"✅ DownloadManager: Count-based request succeeded with %@, got %lu bars",
+              dataSource.sourceName, (unsigned long)bars.count);
+        
+        // Update source statistics
+    //    sourceInfo.successCount++;
+    //    sourceInfo.lastSuccessTime = [NSDate date];
+    }
+    
+    if (completion) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(bars, sourceInfo.type, error);
+        });
+    }
+}
+
+#pragma mark - Helper Methods
+
+- (NSTimeInterval)secondsPerBarForTimeframe:(BarTimeframe)timeframe {
+    switch (timeframe) {
+        case BarTimeframe1Min:   return 60;
+        case BarTimeframe5Min:   return 300;
+        case BarTimeframe15Min:  return 900;
+        case BarTimeframe30Min:  return 1800;
+        case BarTimeframe1Hour:  return 3600;
+        case BarTimeframe4Hour:  return 14400;
+        case BarTimeframe1Day:   return 86400;
+        case BarTimeframe1Week:  return 604800;
+        case BarTimeframe1Month: return 2592000;
+        default: return 86400;
+    }
+}
 
 
 - (void)executeZacksChartRequest:(NSDictionary *)parameters
@@ -1117,6 +1467,8 @@
                              completion:completion];
     }
 }
+
+
 
 
 @end

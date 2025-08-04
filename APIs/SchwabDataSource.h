@@ -7,8 +7,9 @@
 
 #import <Foundation/Foundation.h>
 #import "DownloadManager.h"
+#import "CommonTypes.h"  // AGGIUNTO: Per BarTimeframe enum
 
-@interface SchwabDataSource : NSObject 
+@interface SchwabDataSource : NSObject <DataSource>
 
 // OAuth2 Authentication
 - (void)authenticateWithCompletion:(void (^)(BOOL success, NSError *error))completion;
@@ -36,11 +37,38 @@
 - (void)fetchMarketHours:(NSString *)market
               completion:(void (^)(NSDictionary *hours, NSError *error))completion;
 
+// ESISTENTE: Metodo originale
 - (void)fetchPriceHistory:(NSString *)symbol
                periodType:(NSString *)periodType
                    period:(NSInteger)period
             frequencyType:(NSString *)frequencyType
                 frequency:(NSInteger)frequency
                completion:(void (^)(NSDictionary *priceHistory, NSError *error))completion;
+
+// NUOVO: Metodo con date range + extended hours
+- (void)fetchPriceHistoryWithDateRange:(NSString *)symbol
+                             startDate:(NSDate *)startDate
+                               endDate:(NSDate *)endDate
+                             timeframe:(BarTimeframe)timeframe
+                 needExtendedHoursData:(BOOL)needExtendedHours
+                     needPreviousClose:(BOOL)needPreviousClose
+                            completion:(void (^)(NSDictionary *priceHistory, NSError *error))completion;
+
+// NUOVO: Metodo principale che supporta count + extended hours
+- (void)fetchHistoricalDataForSymbolWithCount:(NSString *)symbol
+                                    timeframe:(BarTimeframe)timeframe
+                                        count:(NSInteger)count
+                        needExtendedHoursData:(BOOL)needExtendedHours
+                             needPreviousClose:(BOOL)needPreviousClose
+                                    completion:(void (^)(NSArray *bars, NSError *error))completion;
+
+// NUOVO: Helper methods
+- (NSDate *)calculateStartDateForTimeframe:(BarTimeframe)timeframe
+                                     count:(NSInteger)count
+                                  fromDate:(NSDate *)endDate;
+
+- (void)convertTimeframeToFrequency:(BarTimeframe)timeframe
+                      frequencyType:(NSString **)frequencyType
+                          frequency:(NSInteger *)frequency;
 
 @end

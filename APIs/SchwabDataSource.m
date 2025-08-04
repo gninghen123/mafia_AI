@@ -468,39 +468,140 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
                              endDate:(NSDate *)endDate
                           completion:(void (^)(NSArray *bars, NSError *error))completion {
     
+    // Usa il nuovo metodo con extended hours = NO di default
+    [self fetchPriceHistoryWithDateRange:symbol
+                               startDate:startDate
+                                 endDate:endDate
+                               timeframe:timeframe
+                   needExtendedHoursData:NO  // Default: NO extended hours
+                       needPreviousClose:YES // Default: YES previous close
+                              completion:^(NSDictionary *priceHistory, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+        } else {
+            // Restituisce dati grezzi per SchwabDataAdapter
+            if (completion) completion(priceHistory, nil);
+        }
+    }];
+}
+
+- (void)fetchHistoricalDataForSymbol:(NSString *)symbol
+                           timeframe:(BarTimeframe)timeframe
+                               count:(NSInteger)count
+               needExtendedHoursData:(BOOL)needExtendedHours
+                needPreviousClose:(BOOL)needPreviousClose
+                          completion:(void (^)(NSArray *bars, NSError *error))completion {
+    
     [self refreshTokenIfNeeded:^(BOOL success, NSError *error) {
         if (!success) {
             if (completion) completion(nil, error);
             return;
         }
         
-        // Convert timeframe to Schwab format
-        NSString *periodType;
-        NSInteger period;
-        NSString *frequencyType;
-        NSInteger frequency;
+        // Calcola date range dal count richiesto
+        NSDate *endDate = [NSDate date];
+        NSDate *startDate = [self calculateStartDateForTimeframe:timeframe
+                                                           count:count
+                                                        fromDate:endDate];
         
-        [self convertTimeframe:timeframe
-                    periodType:&periodType
-                        period:&period
-                 frequencyType:&frequencyType
-                     frequency:&frequency];
+        NSLog(@"📈 SchwabDataSource: Requesting %ld bars for %@ from %@ to %@ (extended: %@)",
+              (long)count, symbol, startDate, endDate, needExtendedHours ? @"YES" : @"NO");
         
-        [self fetchPriceHistory:symbol
-                     periodType:periodType
-                         period:period
-                  frequencyType:frequencyType
-                      frequency:frequency
-                     completion:^(NSDictionary *priceHistory, NSError *error) {
+        // Usa il nuovo metodo con date range
+        [self fetchPriceHistoryWithDateRange:symbol
+                                   startDate:startDate
+                                     endDate:endDate
+                                   timeframe:timeframe
+                       needExtendedHoursData:needExtendedHours
+                           needPreviousClose:needPreviousClose
+                                  completion:^(NSDictionary *priceHistory, NSError *error) {
             if (error) {
                 if (completion) completion(nil, error);
             } else {
-                // CAMBIAMENTO: Restituisce i dati grezzi invece di parseHistoricalData
+                // Restituisce dati grezzi per SchwabDataAdapter
                 if (completion) completion(priceHistory, nil);
             }
         }];
     }];
 }
+- (void)fetchPriceHistoryWithDateRange:(NSString *)symbol
+                             startDate:(NSDate *)startDate
+                               endDate:(NSDate *)endDate
+                             timeframe:(BarTimeframe)timeframe
+                 needExtendedHoursData:(BOOL)needExtendedHours
+                     needPreviousClose:(BOOL)needPreviousClose
+                            completion:(void (^)(NSDictionary *priceHistory, NSError *error))completion {
+    
+    NSString *frequencyType;
+    NSInteger frequency;
+    [self convertTimeframeToFrequency:timeframe frequencyType:&frequencyType frequency:&frequency];
+    
+    // Convert dates to milliseconds since epoch (Schwab API format)
+    long long startDateMs = (long long)([startDate timeIntervalSince1970] * 1000);
+    long long endDateMs = (long long)([endDate timeIntervalSince1970] * 1000);
+    
+    // Build URL with date range + extended hours parameters
+    NSString *urlString = [NSString stringWithFormat:@"%@/marketdata/v1/pricehistory?symbol=%@&startDate=%lld&endDate=%lld&frequencyType=%@&frequency=%ld&needExtendedHoursData=%@&needPreviousClose=%@",
+                          kSchwabAPIBaseURL,
+                          symbol,
+                          startDateMs,
+                          endDateMs,
+                          frequencyType,
+                          (long)frequency,
+                          needExtendedHours ? @"true" : @"false",
+                          needPreviousClose ? @"true" : @"false"];
+    
+    NSLog(@"🔗 SchwabDataSource: API URL: %@", urlString);
+    
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
+    [request setValue:[NSString stringWithFormat:@"Bearer %@", self.accessToken]
+   forHTTPHeaderField:@"Authorization"];
+    
+    NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
+                                                 completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (error) {
+            NSLog(@"❌ SchwabDataSource: Network error: %@", error.localizedDescription);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(nil, error);
+            });
+            return;
+        }
+        
+        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+        if (httpResponse.statusCode != 200) {
+            NSString *errorMsg = [NSString stringWithFormat:@"HTTP %ld", (long)httpResponse.statusCode];
+            NSError *httpError = [NSError errorWithDomain:@"SchwabDataSource"
+                                                     code:httpResponse.statusCode
+                                                 userInfo:@{NSLocalizedDescriptionKey: errorMsg}];
+            NSLog(@"❌ SchwabDataSource: HTTP Error %@", errorMsg);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(nil, httpError);
+            });
+            return;
+        }
+        
+        NSError *parseError;
+        NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
+        
+        if (parseError) {
+            NSLog(@"❌ SchwabDataSource: JSON Parse Error: %@", parseError.localizedDescription);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(nil, parseError);
+            });
+            return;
+        }
+        
+        NSArray *candles = json[@"candles"];
+        NSLog(@"✅ SchwabDataSource: Received %lu candles for %@", (unsigned long)candles.count, symbol);
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(json, nil);
+        });
+    }];
+    
+    [task resume];
+}
+
 
 - (void)fetchPriceHistory:(NSString *)symbol
                periodType:(NSString *)periodType
@@ -539,6 +640,46 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     }];
     
     [task resume];
+}
+
+#pragma mark - Count-Based Historical Data (NEW)
+
+- (void)fetchHistoricalDataForSymbolWithCount:(NSString *)symbol
+                                    timeframe:(BarTimeframe)timeframe
+                                        count:(NSInteger)count
+                        needExtendedHoursData:(BOOL)needExtendedHours
+                             needPreviousClose:(BOOL)needPreviousClose
+                                    completion:(void (^)(NSArray *bars, NSError *error))completion {
+    
+    [self refreshTokenIfNeeded:^(BOOL success, NSError *error) {
+        if (!success) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        
+        NSDate *endDate = [NSDate date];
+        NSDate *startDate = [self calculateStartDateForTimeframe:timeframe
+                                                           count:count
+                                                        fromDate:endDate];
+        
+        NSLog(@"📈 SchwabDataSource: Requesting %ld bars for %@ from %@ to %@ (extended: %@)",
+              (long)count, symbol, startDate, endDate, needExtendedHours ? @"YES" : @"NO");
+        
+        [self fetchPriceHistoryWithDateRange:symbol
+                                   startDate:startDate
+                                     endDate:endDate
+                                   timeframe:timeframe
+                       needExtendedHoursData:needExtendedHours
+                           needPreviousClose:needPreviousClose
+                                  completion:^(NSDictionary *priceHistory, NSError *error) {
+            if (error) {
+                if (completion) completion(nil, error);
+            } else {
+                // Restituisce i dati grezzi per l'adapter
+                if (completion) completion(priceHistory, nil);
+            }
+        }];
+    }];
 }
 
 #pragma mark - Account Data
@@ -757,66 +898,106 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     }];
 }
 
-#pragma mark - Helper Methods
+#pragma mark - Helper Methods (NEW)
 
-- (void)convertTimeframe:(BarTimeframe)timeframe
-              periodType:(NSString **)periodType
-                  period:(NSInteger *)period
-           frequencyType:(NSString **)frequencyType
-               frequency:(NSInteger *)frequency {
+- (NSDate *)calculateStartDateForTimeframe:(BarTimeframe)timeframe
+                                     count:(NSInteger)count
+                                  fromDate:(NSDate *)endDate {
+    
+    // NEW: Check for maxAvailable request
+    if (count >= 9999999) {
+        if (timeframe < BarTimeframe1Day) {
+            // Intraday: 1 year back
+            NSDateComponents *components = [[NSDateComponents alloc] init];
+            components.year = -1;
+            NSCalendar *calendar = [NSCalendar currentCalendar];
+            NSDate *oneYearAgo = [calendar dateByAddingComponents:components toDate:endDate options:0];
+            NSLog(@"📅 SchwabDataSource: MaxAvailable intraday - using 1 year back: %@", oneYearAgo);
+            return oneYearAgo;
+        } else {
+            // Daily or higher: January 1, 1800
+            NSDateComponents *components = [[NSDateComponents alloc] init];
+            components.year = 1800;
+            components.month = 3;
+            components.day = 3;
+            NSCalendar *calendar = [NSCalendar currentCalendar];
+            NSDate *historicalDate = [calendar dateFromComponents:components];
+            NSLog(@"📅 SchwabDataSource: MaxAvailable daily - using historical date: %@", historicalDate);
+            return historicalDate;
+        }
+    }
+    
+    // Original logic for specific count
+    NSTimeInterval secondsPerBar;
+    
+    switch (timeframe) {
+        case BarTimeframe1Min:   secondsPerBar = 60; break;
+        case BarTimeframe5Min:   secondsPerBar = 300; break;
+        case BarTimeframe15Min:  secondsPerBar = 900; break;
+        case BarTimeframe30Min:  secondsPerBar = 1800; break;
+        case BarTimeframe1Hour:  secondsPerBar = 3600; break;
+        case BarTimeframe4Hour:  secondsPerBar = 14400; break;
+        case BarTimeframe1Day:   secondsPerBar = 86400; break;
+        case BarTimeframe1Week:  secondsPerBar = 604800; break;
+        case BarTimeframe1Month: secondsPerBar = 2592000; break;
+        default: secondsPerBar = 86400; break;
+    }
+    
+    NSTimeInterval totalSeconds = count * secondsPerBar;
+    
+    if (timeframe < BarTimeframe1Day) {
+        totalSeconds *= 1.5; // 50% buffer for non-trading hours
+    }
+    
+    return [endDate dateByAddingTimeInterval:-totalSeconds];
+}
+- (void)convertTimeframeToFrequency:(BarTimeframe)timeframe
+                      frequencyType:(NSString **)frequencyType
+                          frequency:(NSInteger *)frequency {
     
     switch (timeframe) {
         case BarTimeframe1Min:
-            *periodType = @"day";
-            *period = 1;
             *frequencyType = @"minute";
             *frequency = 1;
             break;
         case BarTimeframe5Min:
-            *periodType = @"day";
-            *period = 5;
             *frequencyType = @"minute";
             *frequency = 5;
             break;
         case BarTimeframe15Min:
-            *periodType = @"day";
-            *period = 10;
             *frequencyType = @"minute";
             *frequency = 15;
             break;
         case BarTimeframe30Min:
-            *periodType = @"day";
-            *period = 10;
             *frequencyType = @"minute";
             *frequency = 30;
             break;
         case BarTimeframe1Hour:
-            *periodType = @"month";
-            *period = 1;
             *frequencyType = @"minute";
             *frequency = 60;
             break;
+        case BarTimeframe4Hour:
+            *frequencyType = @"minute";
+            *frequency = 240;
+            break;
         case BarTimeframe1Day:
-            *periodType = @"year";
-            *period = 1;
             *frequencyType = @"daily";
             *frequency = 1;
             break;
         case BarTimeframe1Week:
-            *periodType = @"year";
-            *period = 1;
             *frequencyType = @"weekly";
             *frequency = 1;
             break;
         case BarTimeframe1Month:
-            *periodType = @"year";
-            *period = 2;
             *frequencyType = @"monthly";
+            *frequency = 1;
+            break;
+        default:
+            *frequencyType = @"daily";
             *frequency = 1;
             break;
     }
 }
-
 
 #pragma mark - Keychain Management
 
@@ -990,5 +1171,8 @@ decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
     }
     [self close];
 }
+
+
+
 
 @end

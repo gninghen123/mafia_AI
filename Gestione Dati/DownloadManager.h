@@ -93,6 +93,9 @@ NS_ASSUME_NONNULL_BEGIN
                   parameters:(NSDictionary *)parameters
              preferredSource:(DataSourceType)preferredSource
                   completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion;
+- (NSString *)executeHistoricalRequestWithCount:(NSDictionary *)parameters
+                                      completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion;
+
 
 - (void)cancelRequest:(NSString *)requestID;
 - (void)cancelAllRequests;

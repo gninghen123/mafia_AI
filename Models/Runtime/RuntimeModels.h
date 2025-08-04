@@ -28,6 +28,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) double adjustedClose;
 @property (nonatomic, assign) long long volume;
 @property (nonatomic, assign) BarTimeframe timeframe;
+@property (nonatomic, assign) BOOL isPaddingBar;  // YES if this is a future padding bar with no real data
 
 // Convenience methods
 - (double)typicalPrice;    // (high + low + close) / 3
@@ -45,6 +46,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 // Conversion
 - (NSDictionary *)toDictionary;
+
+// Comparison
+- (NSComparisonResult)compareByDate:(HistoricalBarModel *)otherBar;
+// Conversion
 
 @end
 

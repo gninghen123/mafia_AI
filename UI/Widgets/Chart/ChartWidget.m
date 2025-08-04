@@ -11,7 +11,7 @@
 #import "ChartCoordinator.h"
 #import "DataHub+MarketData.h"
 #import "IndicatorsPanelController.h"
-
+#import "TradingDaysUtility.h"
 // Renderers imports
 #import "CandlestickRenderer.h"
 #import "VolumeRenderer.h"
@@ -44,28 +44,38 @@
     self.widgetType = @"Chart Widget";
     _currentSymbol = @"AAPL";
     _selectedTimeframe = 4; // Daily
+    
+    // Load preferences
     self.maxBarsToDisplay = [[NSUserDefaults standardUserDefaults] integerForKey:@"ChartWidget.MaxBars"];
-          if (self.maxBarsToDisplay == 0) {
-              self.maxBarsToDisplay = 250; // Default value
-          }
-
+    if (self.maxBarsToDisplay == 0) {
+        self.maxBarsToDisplay = 250; // Default value
+    }
+    
     self.useExtendedHours = [[NSUserDefaults standardUserDefaults] boolForKey:@"ChartWidget.ExtendedHours"];
-
+    
+    // NEW: Load right padding preference (default: 5 bars)
+    self.rightPaddingBars = [[NSUserDefaults standardUserDefaults] integerForKey:@"ChartWidget.RightPadding"];
+    if (self.rightPaddingBars == 0) {
+        self.rightPaddingBars = 5; // Default: 5 future trading days
+    }
+    
     _isLoading = NO;
     
     // Initialize collections
     _panelModels = [NSMutableArray array];
     _panelViews = [NSMutableArray array];
     
-    // Create coordinator - IMPORTANTE: inizializzarlo prima di creare i panels
+    // Create coordinator
     _coordinator = [[ChartCoordinator alloc] init];
     _coordinator.maxVisibleBars = _maxBarsToDisplay;
     
     // Initialize indicators panel controller
     _indicatorsPanelController = [[IndicatorsPanelController alloc] initWithChartWidget:self];
     
-    NSLog(@"📊 ChartWidget: Initialized with symbol %@", _currentSymbol);
+    NSLog(@"📊 ChartWidget: Initialized with symbol %@, rightPadding: %ld bars",
+          _currentSymbol, (long)self.rightPaddingBars);
 }
+
 
 
 #pragma mark - Properties
@@ -457,6 +467,35 @@
     barsValueLabel.tag = 100; // Tag per trovarlo nell'action
     [contentView addSubview:barsValueLabel];
     
+    NSTextField *paddingLabel = [[NSTextField alloc] init];
+       paddingLabel.stringValue = @"Right Padding:";
+       paddingLabel.editable = NO;
+       paddingLabel.selectable = NO;
+       paddingLabel.backgroundColor = [NSColor clearColor];
+       paddingLabel.bordered = NO;
+       paddingLabel.translatesAutoresizingMaskIntoConstraints = NO;
+       [contentView addSubview:paddingLabel];
+       
+       NSSlider *paddingSlider = [[NSSlider alloc] init];
+       paddingSlider.minValue = 0;
+       paddingSlider.maxValue = 20; // 0-20 future bars
+       paddingSlider.integerValue = self.rightPaddingBars;
+       paddingSlider.target = self;
+       paddingSlider.action = @selector(rightPaddingSliderChanged:);
+       paddingSlider.translatesAutoresizingMaskIntoConstraints = NO;
+       [contentView addSubview:paddingSlider];
+       
+       NSTextField *paddingValueLabel = [[NSTextField alloc] init];
+       paddingValueLabel.stringValue = [NSString stringWithFormat:@"%ld bars", (long)self.rightPaddingBars];
+       paddingValueLabel.editable = NO;
+       paddingValueLabel.selectable = NO;
+       paddingValueLabel.backgroundColor = [NSColor clearColor];
+       paddingValueLabel.bordered = NO;
+       paddingValueLabel.tag = 101; // For finding in slider action
+       paddingValueLabel.translatesAutoresizingMaskIntoConstraints = NO;
+       [contentView addSubview:paddingValueLabel];
+    
+    
     // Extended hours checkbox
     NSButton *extendedHoursCheckbox = [NSButton checkboxWithTitle:@"Include Extended Hours Data"
                                                            target:self
@@ -491,6 +530,19 @@
         [barsSlider.topAnchor constraintEqualToAnchor:barsLabel.bottomAnchor constant:8],
         [barsSlider.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:16],
         [barsSlider.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-16],
+        
+        
+        // NEW: Right padding controls
+              [paddingLabel.topAnchor constraintEqualToAnchor:barsSlider.bottomAnchor constant:16],
+              [paddingLabel.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:16],
+              
+              [paddingValueLabel.topAnchor constraintEqualToAnchor:barsSlider.bottomAnchor constant:16],
+              [paddingValueLabel.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-16],
+              
+              [paddingSlider.topAnchor constraintEqualToAnchor:paddingLabel.bottomAnchor constant:8],
+              [paddingSlider.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:16],
+              [paddingSlider.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-16],
+        
         
         // Extended hours checkbox
         [extendedHoursCheckbox.topAnchor constraintEqualToAnchor:barsSlider.bottomAnchor constant:16],
@@ -530,20 +582,22 @@
     self.useExtendedHours = (sender.state == NSControlStateValueOn);
 }
 
-// NEW: Apply preferences action
 - (void)applyPreferences:(id)sender {
     // Save preferences to user defaults
     [[NSUserDefaults standardUserDefaults] setInteger:self.maxBarsToDisplay forKey:@"ChartWidget.MaxBars"];
     [[NSUserDefaults standardUserDefaults] setBool:self.useExtendedHours forKey:@"ChartWidget.ExtendedHours"];
+    [[NSUserDefaults standardUserDefaults] setInteger:self.rightPaddingBars forKey:@"ChartWidget.RightPadding"]; // NEW
     [[NSUserDefaults standardUserDefaults] synchronize];
     
-    // NUOVO: Sincronizza coordinator con nuove preferences
+    // Sync coordinator with new preferences
     if (self.coordinator) {
         self.coordinator.maxVisibleBars = self.maxBarsToDisplay;
         
-        // Se abbiamo dati, ri-applica l'auto-fit con i nuovi limiti
+        // Re-process current data with new padding
         if (self.historicalData && self.historicalData.count > 0) {
-            [self.coordinator autoFitToData];
+            // Remove old padding and re-add with new settings
+            NSArray<HistoricalBarModel *> *originalBars = [self removeRightPaddingFromBars:self.historicalData];
+            [self processHistoricalData:originalBars];
         }
     }
     
@@ -564,8 +618,9 @@
     // Refresh chart with new settings
     [self refreshCurrentData];
     
-    NSLog(@"Chart preferences applied: maxBars=%ld, extendedHours=%@, coordinator.maxVisibleBars=%ld",
-          (long)self.maxBarsToDisplay, self.useExtendedHours ? @"YES" : @"NO", (long)self.coordinator.maxVisibleBars);
+    NSLog(@"Chart preferences applied: maxBars=%ld, extendedHours=%@, rightPadding=%ld, coordinator.maxVisibleBars=%ld",
+          (long)self.maxBarsToDisplay, self.useExtendedHours ? @"YES" : @"NO",
+          (long)self.rightPaddingBars, (long)self.coordinator.maxVisibleBars);
 }
 
 
@@ -1151,32 +1206,210 @@
 
 // ======= NUOVO METODO: Aggiorna range dello slider per panning =======
 - (void)updatePanSliderRange {
-    if (!self.historicalData || self.historicalData.count == 0 || !self.zoomSlider) {
+    if (!self.panSlider || !self.historicalData || self.historicalData.count == 0) {
         return;
     }
     
-    NSRange currentRange = self.coordinator.visibleBarsRange;
     NSInteger totalBars = self.historicalData.count;
-    NSInteger maxStart = MAX(0, totalBars - currentRange.length);
+    NSInteger visibleBars = self.coordinator.maxVisibleBars;
     
-    if (maxStart <= 0) {
-        // Se mostriamo tutti i dati, disabilita lo slider
-        self.zoomSlider.enabled = NO;
-        self.zoomSlider.doubleValue = 0.0;
-    } else {
-        // Abilita lo slider e calcola posizione corrente
-        self.zoomSlider.enabled = YES;
-        self.zoomSlider.minValue = 0.0;
-        self.zoomSlider.maxValue = 1.0;
-        
-        double currentPosition = (double)currentRange.location / maxStart;
-        self.zoomSlider.doubleValue = currentPosition;
+    // Calculate the scrollable range
+    // User can pan from showing first bars to showing last bars
+    NSInteger maxPanPosition = MAX(0, totalBars - visibleBars);
+    
+    // Update slider range
+    self.panSlider.minValue = 0;
+    self.panSlider.maxValue = maxPanPosition;
+    
+    // Set current position (usually at the end to show latest data)
+    NSInteger currentPosition = MAX(0, totalBars - visibleBars);
+    self.panSlider.integerValue = currentPosition;
+    
+    // Update coordinator
+    if (self.coordinator) {
+        self.coordinator.startIndex = currentPosition;
     }
     
-    // Aggiorna tooltip
-    self.zoomSlider.toolTip = [NSString stringWithFormat:@"Pan Timeline (showing %ld of %ld bars)",
-                               (long)currentRange.length, (long)totalBars];
+    NSLog(@"📊 ChartWidget: Updated pan slider range: 0-%ld (total: %ld, visible: %ld, padding: %ld)",
+          (long)maxPanPosition, (long)totalBars, (long)visibleBars, (long)self.rightPaddingBars);
 }
+        
+
+#pragma mark - Right Padding Setup
+
+
+#pragma mark - Data Processing with Padding
+
+- (void)processHistoricalData:(NSArray<HistoricalBarModel *> *)bars {
+    if (!bars || bars.count == 0) {
+        self.historicalData = @[];
+        [self updateAllPanels];
+        return;
+    }
+    
+    // Sort bars by date (should already be sorted, but ensure it)
+    NSArray<HistoricalBarModel *> *sortedBars = [bars sortedArrayUsingComparator:^NSComparisonResult(HistoricalBarModel *bar1, HistoricalBarModel *bar2) {
+        return [bar1.date compare:bar2.date];
+    }];
+    
+    // Create padded data with future trading days
+    NSArray<HistoricalBarModel *> *paddedBars = [self addRightPaddingToBars:sortedBars];
+    
+    self.historicalData = paddedBars;
+    
+    // Update coordinator with new data
+    if (self.coordinator) {
+        [self.coordinator setHistoricalData:paddedBars];
+        [self.coordinator autoFitToData];
+    }
+    
+    [self updateAllPanels];
+    [self updatePanSliderRange]; // NEW: Update slider range with padding
+    
+    NSLog(@"📊 ChartWidget: Processed %lu bars + %ld padding = %lu total bars for %@",
+          (unsigned long)sortedBars.count, (long)self.rightPaddingBars, (unsigned long)paddedBars.count, self.currentSymbol);
+}
+
+- (NSArray<HistoricalBarModel *> *)addRightPaddingToBars:(NSArray<HistoricalBarModel *> *)originalBars {
+    if (!originalBars || originalBars.count == 0 || self.rightPaddingBars <= 0) {
+        return originalBars;
+    }
+    
+    HistoricalBarModel *lastBar = originalBars.lastObject;
+    if (!lastBar || !lastBar.date) {
+        return originalBars;
+    }
+    
+    // Get future trading days based on the timeframe
+    NSArray<NSDate *> *futureDates = [self getFutureTradingDatesFromDate:lastBar.date
+                                                                   count:self.rightPaddingBars
+                                                               timeframe:lastBar.timeframe];
+    
+    NSMutableArray<HistoricalBarModel *> *paddedBars = [originalBars mutableCopy];
+    
+    // Create padding bars with future dates
+    for (NSDate *futureDate in futureDates) {
+        HistoricalBarModel *paddingBar = [self createPaddingBarWithDate:futureDate
+                                                               lastPrice:lastBar.close
+                                                               timeframe:lastBar.timeframe
+                                                                  symbol:lastBar.symbol];
+        [paddedBars addObject:paddingBar];
+    }
+    
+    NSLog(@"📅 ChartWidget: Added %lu padding bars from %@ to %@",
+          (unsigned long)futureDates.count, lastBar.date, futureDates.lastObject);
+    
+    return [paddedBars copy];
+}
+
+- (NSArray<NSDate *> *)getFutureTradingDatesFromDate:(NSDate *)startDate
+                                                count:(NSInteger)count
+                                            timeframe:(BarTimeframe)timeframe {
+    if (!startDate || count <= 0) return @[];
+    
+    NSMutableArray<NSDate *> *futureDates = [NSMutableArray array];
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDate *currentDate = startDate;
+    
+    // Calculate the time interval for the timeframe
+    NSTimeInterval timeframeDuration = [self getTimeframeDuration:timeframe];
+    
+    NSInteger collected = 0;
+    while (collected < count) {
+        // Move to next period
+        currentDate = [currentDate dateByAddingTimeInterval:timeframeDuration];
+        
+        // For daily and higher timeframes, ensure we only get trading days
+        if (timeframe >= BarTimeframe1Day) {
+            if ([TradingDaysUtility isTradingDay:currentDate]) {
+                [futureDates addObject:currentDate];
+                collected++;
+            }
+        } else {
+            // For intraday, add all periods (market hours logic could be added later)
+            [futureDates addObject:currentDate];
+            collected++;
+        }
+    }
+    
+    return [futureDates copy];
+}
+
+- (NSTimeInterval)getTimeframeDuration:(BarTimeframe)timeframe {
+    switch (timeframe) {
+        case BarTimeframe1Min:   return 60;           // 1 minute
+        case BarTimeframe5Min:   return 300;          // 5 minutes
+        case BarTimeframe15Min:  return 900;          // 15 minutes
+        case BarTimeframe30Min:  return 1800;         // 30 minutes
+        case BarTimeframe1Hour:  return 3600;         // 1 hour
+        case BarTimeframe4Hour:  return 14400;        // 4 hours
+        case BarTimeframe1Day:   return 86400;        // 1 day
+        case BarTimeframe1Week:  return 604800;       // 1 week
+        case BarTimeframe1Month: return 2592000;      // 30 days (approximate)
+        default:                 return 86400;        // Default to 1 day
+    }
+}
+
+- (HistoricalBarModel *)createPaddingBarWithDate:(NSDate *)date
+                                       lastPrice:(double)lastPrice
+                                       timeframe:(BarTimeframe)timeframe
+                                          symbol:(NSString *)symbol {
+    HistoricalBarModel *paddingBar = [[HistoricalBarModel alloc] init];
+    
+    paddingBar.symbol = symbol;
+    paddingBar.date = date;
+    paddingBar.timeframe = timeframe;
+    
+    // Padding bars have no OHLCV data - they're just placeholders for future dates
+    paddingBar.open = 0.0;
+    paddingBar.high = 0.0;
+    paddingBar.low = 0.0;
+    paddingBar.close = 0.0;
+    paddingBar.adjustedClose = 0.0;
+    paddingBar.volume = 0;
+    
+    // Mark as padding bar (can be used by renderers to handle differently)
+    paddingBar.isPaddingBar = YES; // Assuming we add this property to HistoricalBarModel
+    
+    return paddingBar;
+}
+
+- (void)rightPaddingSliderChanged:(NSSlider *)sender {
+    self.rightPaddingBars = sender.integerValue;
+    
+    // Update value label
+    NSTextField *valueLabel = [sender.superview viewWithTag:101];
+    if (valueLabel) {
+        if (self.rightPaddingBars == 0) {
+            valueLabel.stringValue = @"No padding";
+        } else {
+            valueLabel.stringValue = [NSString stringWithFormat:@"%ld bar%@",
+                                     (long)self.rightPaddingBars,
+                                     self.rightPaddingBars == 1 ? @"" : @"s"];
+        }
+    }
+}
+
+
+#pragma mark - Utility Methods
+
+- (NSArray<HistoricalBarModel *> *)removeRightPaddingFromBars:(NSArray<HistoricalBarModel *> *)paddedBars {
+    if (!paddedBars || paddedBars.count == 0) return paddedBars;
+    
+    NSMutableArray<HistoricalBarModel *> *originalBars = [NSMutableArray array];
+    
+    for (HistoricalBarModel *bar in paddedBars) {
+        // Assuming we add isPaddingBar property to HistoricalBarModel
+        if (!bar.isPaddingBar) {
+            [originalBars addObject:bar];
+        }
+    }
+    
+    return [originalBars copy];
+}
+
+
+
 
 @end
 

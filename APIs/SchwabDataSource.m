@@ -506,7 +506,6 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
         
         NSLog(@"📈 SchwabDataSource: Requesting %ld bars for %@ from %@ to %@ (extended: %@)",
               (long)count, symbol, startDate, endDate, needExtendedHours ? @"YES" : @"NO");
-        
         // Usa il nuovo metodo con date range
         [self fetchPriceHistoryWithDateRange:symbol
                                    startDate:startDate
@@ -537,13 +536,41 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     [self convertTimeframeToFrequency:timeframe frequencyType:&frequencyType frequency:&frequency];
     
     // Convert dates to milliseconds since epoch (Schwab API format)
-    long long startDateMs = (long long)([startDate timeIntervalSince1970] * 1000);
-    long long endDateMs = (long long)([endDate timeIntervalSince1970] * 1000);
+    // Use NSTimeInterval for precision, then convert to integer milliseconds
+    NSTimeInterval startDateSeconds = [startDate timeIntervalSince1970];
+    NSTimeInterval endDateSeconds = [endDate timeIntervalSince1970];
     
-    // Build URL with date range + extended hours parameters
-    NSString *urlString = [NSString stringWithFormat:@"%@/marketdata/v1/pricehistory?symbol=%@&startDate=%lld&endDate=%lld&frequencyType=%@&frequency=%ld&needExtendedHoursData=%@&needPreviousClose=%@",
+    // Convert to milliseconds and ensure we have integer values
+    long long startDateMs = (long long)round(startDateSeconds * 1000.0);
+    long long endDateMs = (long long)round(endDateSeconds * 1000.0);
+    
+    // Se startDate è prima del 1970 (timestamp negativo), usa una data minima sicura
+    if (startDateMs <= 0) {
+        startDateMs = 10; // 10 millisecondi dal 1970 = data minima sicura
+        NSLog(@"📅 SchwabDataSource: Corrected negative timestamp to minimum safe value: %lld", startDateMs);
+    }
+    
+  
+    // NEW: Add periodType and period based on timeframe
+    NSString *periodType;
+    NSInteger period;
+    
+    if (timeframe < BarTimeframe1Day) {
+        // Intraday: use "day" period
+        periodType = @"day";
+        period = 10;
+    } else {
+        // Daily and higher: use "year" period
+        periodType = @"year";
+        period = 1;
+    }
+    
+    // FIXED: Build URL with periodType and period parameters included
+    NSString *urlString = [NSString stringWithFormat:@"%@/marketdata/v1/pricehistory?symbol=%@&periodType=%@&period=%ld&startDate=%lld&endDate=%lld&frequencyType=%@&frequency=%ld&needExtendedHoursData=%@&needPreviousClose=%@",
                           kSchwabAPIBaseURL,
                           symbol,
+                          periodType,
+                          (long)period,
                           startDateMs,
                           endDateMs,
                           frequencyType,
@@ -551,7 +578,7 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
                           needExtendedHours ? @"true" : @"false",
                           needPreviousClose ? @"true" : @"false"];
     
-    NSLog(@"🔗 SchwabDataSource: API URL: %@", urlString);
+    NSLog(@"📈 SchwabDataSource: Request URL: %@", urlString);
     
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
     [request setValue:[NSString stringWithFormat:@"Bearer %@", self.accessToken]
@@ -560,7 +587,7 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
                                                  completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         if (error) {
-            NSLog(@"❌ SchwabDataSource: Network error: %@", error.localizedDescription);
+            NSLog(@"❌ SchwabDataSource: Network Error: %@", error.localizedDescription);
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (completion) completion(nil, error);
             });
@@ -568,12 +595,15 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
         }
         
         NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+        NSLog(@"📊 SchwabDataSource: HTTP Status: %ld", (long)httpResponse.statusCode);
+        
         if (httpResponse.statusCode != 200) {
-            NSString *errorMsg = [NSString stringWithFormat:@"HTTP %ld", (long)httpResponse.statusCode];
+            NSString *responseString = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+            NSLog(@"❌ SchwabDataSource: HTTP Error %ld: %@", (long)httpResponse.statusCode, responseString);
+            
             NSError *httpError = [NSError errorWithDomain:@"SchwabDataSource"
                                                      code:httpResponse.statusCode
-                                                 userInfo:@{NSLocalizedDescriptionKey: errorMsg}];
-            NSLog(@"❌ SchwabDataSource: HTTP Error %@", errorMsg);
+                                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"HTTP %ld", (long)httpResponse.statusCode]}];
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (completion) completion(nil, httpError);
             });
@@ -601,8 +631,6 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     
     [task resume];
 }
-
-
 - (void)fetchPriceHistory:(NSString *)symbol
                periodType:(NSString *)periodType
                    period:(NSInteger)period
@@ -917,9 +945,9 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
         } else {
             // Daily or higher: January 1, 1800
             NSDateComponents *components = [[NSDateComponents alloc] init];
-            components.year = 1800;
-            components.month = 3;
-            components.day = 3;
+            components.year = 1970;
+            components.month = 1;
+            components.day = 5;
             NSCalendar *calendar = [NSCalendar currentCalendar];
             NSDate *historicalDate = [calendar dateFromComponents:components];
             NSLog(@"📅 SchwabDataSource: MaxAvailable daily - using historical date: %@", historicalDate);
@@ -951,6 +979,8 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     
     return [endDate dateByAddingTimeInterval:-totalSeconds];
 }
+// In SchwabDataSource.m - convertTimeframeToFrequency method
+
 - (void)convertTimeframeToFrequency:(BarTimeframe)timeframe
                       frequencyType:(NSString **)frequencyType
                           frequency:(NSInteger *)frequency {
@@ -985,12 +1015,14 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
             *frequency = 1;
             break;
         case BarTimeframe1Week:
-            *frequencyType = @"weekly";
-            *frequency = 1;
+            // FIX: Use daily instead of weekly for Schwab API compatibility
+            *frequencyType = @"daily";
+            *frequency = 1;  // Will aggregate to weekly in adapter
             break;
         case BarTimeframe1Month:
-            *frequencyType = @"monthly";
-            *frequency = 1;
+            // FIX: Use daily instead of monthly for Schwab API compatibility
+            *frequencyType = @"daily";
+            *frequency = 1;  // Will aggregate to monthly in adapter
             break;
         default:
             *frequencyType = @"daily";
@@ -998,7 +1030,6 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
             break;
     }
 }
-
 #pragma mark - Keychain Management
 
 - (void)saveTokensToKeychain {

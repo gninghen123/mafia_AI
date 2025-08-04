@@ -87,6 +87,23 @@
                    priceRange:(NSRange)priceRange
                   coordinator:(ChartCoordinator *)coordinator {
     
+    // NEW: Skip drawing padding bars but maintain their space
+    if (bar.isPaddingBar) {
+        // Draw subtle indicator for future date
+        CGFloat x = index * (barWidth + barSpacing * 2) + barSpacing + barWidth / 2;
+        
+        // Draw a light vertical line to show future date position
+        NSBezierPath *futureLine = [NSBezierPath bezierPath];
+        futureLine.lineWidth = 0.5;
+        [futureLine moveToPoint:NSMakePoint(x, 0)];
+        [futureLine lineToPoint:NSMakePoint(x, rect.size.height)];
+        [[NSColor colorWithWhite:0.8 alpha:0.3] setStroke];
+        [futureLine stroke];
+        
+        return; // Don't draw candle for padding bars
+    }
+    
+    // EXISTING CODE: Rest of the method remains unchanged
     CGFloat x = index * (barWidth + barSpacing * 2) + barSpacing + barWidth / 2;
     
     // Calculate Y positions

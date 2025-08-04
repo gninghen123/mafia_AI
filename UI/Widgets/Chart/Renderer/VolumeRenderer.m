@@ -89,6 +89,8 @@
     }
 }
 
+// In VolumeRenderer.m - Add padding support to drawVolumeBarForBar method
+
 - (void)drawVolumeBarForBar:(HistoricalBarModel *)bar
                     atIndex:(NSInteger)index
                    barWidth:(CGFloat)barWidth
@@ -97,34 +99,46 @@
                 volumeRange:(NSRange)volumeRange
                 coordinator:(ChartCoordinator *)coordinator {
     
-    CGFloat x = index * (barWidth + barSpacing * 2) + barSpacing;
-    
-    // Calculate volume bar height (from bottom up)
-    NSInteger minVolume = volumeRange.location;
-    NSInteger maxVolume = volumeRange.location + volumeRange.length;
-    
-    double normalizedVolume = 0.0;
-    if (maxVolume > minVolume) {
-        normalizedVolume = (double)(bar.volume - minVolume) / (double)(maxVolume - minVolume);
+    // NEW: Skip drawing padding bars but maintain their space
+    if (bar.isPaddingBar) {
+        return; // Volume padding bars are just empty space
     }
     
-    CGFloat barHeight = rect.size.height * normalizedVolume * 0.95; // Use 95% of available height
-    CGFloat barY = rect.size.height - barHeight; // Start from bottom
+    // EXISTING CODE: Rest of the method remains unchanged
+    CGFloat x = index * (barWidth + barSpacing * 2) + barSpacing + barWidth / 2;
     
-    // Color based on price movement
-    BOOL isUp = bar.close >= bar.open;
-    NSColor *barColor = isUp ? self.upVolumeColor : self.downVolumeColor;
+    // Calculate volume height
+    double minVolume = volumeRange.location / 10000.0;
+    double maxVolume = (volumeRange.location + volumeRange.length) / 10000.0;
+    
+    if (maxVolume <= minVolume || bar.volume <= 0) return;
+    
+    double normalizedVolume = (bar.volume - minVolume) / (maxVolume - minVolume);
+    normalizedVolume = MAX(0.0, MIN(1.0, normalizedVolume));
+    
+    CGFloat barHeight = rect.size.height * normalizedVolume;
+    CGFloat y = rect.size.height - barHeight;
+    
+    // Determine volume bar color based on price direction
+    NSColor *volumeColor;
+    if (bar.close >= bar.open) {
+        volumeColor = self.upVolumeColor;
+    } else {
+        volumeColor = self.downVolumeColor;
+    }
     
     // Draw volume bar
-    NSRect volumeRect = NSMakeRect(x, barY, barWidth, barHeight);
-    [barColor setFill];
+    NSRect volumeRect = NSMakeRect(x - barWidth / 2, y, barWidth, barHeight);
+    [volumeColor setFill];
     NSRectFill(volumeRect);
     
-    // Draw subtle border
-    [[NSColor labelColor] colorWithAlphaComponent:0.3].setStroke;
-    NSBezierPath *border = [NSBezierPath bezierPathWithRect:volumeRect];
-    border.lineWidth = 0.5;
-    [border stroke];
+    // Draw border if needed
+    if (self.settings.lineWidth > 0) {
+        [volumeColor setStroke];
+        NSBezierPath *borderPath = [NSBezierPath bezierPathWithRect:volumeRect];
+        borderPath.lineWidth = self.settings.lineWidth;
+        [borderPath stroke];
+    }
 }
 
 - (void)drawMovingAverageInRect:(NSRect)rect

@@ -26,6 +26,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSButton *preferencesButton;
 @property (nonatomic, assign) NSInteger maxBarsToDisplay;  // NEW: User configurable
 @property (nonatomic, assign) BOOL useExtendedHours;      // NEW: Extended hours setting
+@property (nonatomic, assign) NSInteger rightPaddingBars; // Number of future trading days to show
 
 #pragma mark - Core Properties
 @property (nonatomic, strong) NSString *currentSymbol;

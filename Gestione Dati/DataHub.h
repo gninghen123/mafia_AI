@@ -224,4 +224,15 @@ typedef NS_ENUM(NSInteger, ModelStatus) {
 // MARK: - Symbol Tracking
 - (void)trackExplicitSymbolInteraction:(NSString *)symbolName context:(NSString *)context;
 - (void)trackExplicitSymbolInteractions:(NSArray<NSString *> *)symbols context:(NSString *)context;
+
+
+
+// MARK: - Database Reset Methods
+- (void)resetSymbolDatabase:(void (^)(BOOL success))completion;
+- (void)resetWatchlistDatabase:(void (^)(BOOL success))completion;
+- (void)resetAlertDatabase:(void (^)(BOOL success))completion;
+- (void)resetConnectionDatabase:(void (^)(BOOL success))completion;
+- (void)resetAllDatabases:(void (^)(BOOL success))completion;
+
+
 @end

@@ -1,14 +1,13 @@
 //
-//  AppDelegate.h
-//  mafia_AI
+//  AppDelegate.h - Header corretto
+//  TradingApp
 //
-//  Created by fabio gattone on 16/07/25.
-// <>//
 
 #import <Cocoa/Cocoa.h>
 
-@interface AppDelegate : NSObject <NSApplicationDelegate>
+@interface AppDelegate : NSObject <NSApplicationDelegate, NSWindowRestoration>
 
+// Outlet per la finestra principale
+@property (weak) IBOutlet NSWindow *window;
 
 @end
-

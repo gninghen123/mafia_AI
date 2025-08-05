@@ -9,6 +9,9 @@
 #import "DataHub+MarketData.h"
 #import "RuntimeModels.h"
 #import "ChartPanelView.h"
+#import "ChartWidget+ObjectsUI.h"
+#import "ChartObjectModels.h"
+
 
 // Define constants locally instead of importing
 static NSString *const kWidgetChainUpdateNotification = @"WidgetChainUpdateNotification";
@@ -18,7 +21,7 @@ static NSString *const kChainSenderKey = @"sender";
 // Import DataHub constants
 extern NSString *const DataHubDataLoadedNotification;
 
-@interface ChartWidget () <NSTextFieldDelegate>
+@interface ChartWidget () <NSTextFieldDelegate,ObjectsPanelDelegate>
 
 // Internal data
 @property (nonatomic, strong) NSArray<HistoricalBarModel *> *chartData;
@@ -60,15 +63,17 @@ extern NSString *const DataHubDataLoadedNotification;
     [self setupInitialUI]; // Mantieni questa chiamata esistente
 }
 
-// ======== AGGIUNGI setupUI ========
 - (void)setupUI {
-    // Toolbar superiore (simbolo, timeframe, etc.)
+    // Setup toolbar superiore (MODIFICATO per objects UI)
     [self setupTopToolbar];
     
-    // SplitView principale per i pannelli chart
+    // Setup objects UI (NUOVO)
+    [self setupObjectsUI];
+    
+    // SplitView principale per i pannelli chart (ESISTENTE)
     [self setupMainSplitView];
     
-    // Controlli zoom inferiori
+    // Controlli zoom inferiori (ESISTENTE)
     [self setupBottomControls];
 }
 
@@ -153,75 +158,90 @@ extern NSString *const DataHubDataLoadedNotification;
     [self.contentView addSubview:self.zoomAllButton];
 }
 
-// ======== AGGIUNGI setupConstraints ========
 - (void)setupConstraints {
     [NSLayoutConstraint activateConstraints:@[
-        // Top toolbar - Symbol field (top-left)
-        [self.symbolTextField.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:8],
-        [self.symbolTextField.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
+        // Objects panel toggle - NUOVO (all'estrema sinistra)
+        [self.objectsPanelToggle.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:8],
+        [self.objectsPanelToggle.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
+        [self.objectsPanelToggle.widthAnchor constraintEqualToConstant:30],
+        [self.objectsPanelToggle.heightAnchor constraintEqualToConstant:21],
+        
+        // Symbol field - MODIFICATO (ora dopo il toggle button)
+        [self.symbolTextField.centerYAnchor constraintEqualToAnchor:self.objectsPanelToggle.centerYAnchor],
+        [self.symbolTextField.leadingAnchor constraintEqualToAnchor:self.objectsPanelToggle.trailingAnchor constant:8],
         [self.symbolTextField.widthAnchor constraintEqualToConstant:100],
         [self.symbolTextField.heightAnchor constraintEqualToConstant:21],
         
-        // Timeframe segmented control (dopo symbol field)
+        // Timeframe segmented control - INVARIATO (relativo al symbol field)
         [self.timeframeSegmented.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
         [self.timeframeSegmented.leadingAnchor constraintEqualToAnchor:self.symbolTextField.trailingAnchor constant:24],
         
-        // Bars count field (dopo timeframe)
+        // Bars count field - INVARIATO (relativo al timeframe)
         [self.barsCountTextField.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
         [self.barsCountTextField.leadingAnchor constraintEqualToAnchor:self.timeframeSegmented.trailingAnchor constant:8],
         [self.barsCountTextField.widthAnchor constraintEqualToConstant:60],
         
-        // Template popup (dopo bars count)
+        // Template popup - INVARIATO (relativo al bars count)
         [self.templatePopup.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
         [self.templatePopup.leadingAnchor constraintEqualToAnchor:self.barsCountTextField.trailingAnchor constant:8],
         [self.templatePopup.widthAnchor constraintEqualToConstant:80],
         
-        // Preferences button (ALL'ESTREMO DESTRO)
+        // Preferences button - INVARIATO (all'estrema destra)
         [self.preferencesButton.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
         [self.preferencesButton.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
         [self.preferencesButton.widthAnchor constraintEqualToConstant:30],
         [self.preferencesButton.heightAnchor constraintEqualToConstant:21],
         
-        // Main split view (centro - area principale)
+        // Objects panel - NUOVO (a sinistra del main split view quando visibile)
+        [self.objectsPanel.topAnchor constraintEqualToAnchor:self.panelsSplitView.topAnchor],
+        [self.objectsPanel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
+        [self.objectsPanel.bottomAnchor constraintEqualToAnchor:self.panelsSplitView.bottomAnchor],
+        
+        // Main split view - INVARIATO in alto e destra, MA leading sarà animato
         [self.panelsSplitView.topAnchor constraintEqualToAnchor:self.symbolTextField.bottomAnchor constant:8],
-        [self.panelsSplitView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:14],
+        [self.panelsSplitView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:14], // Questo sarà modificato dinamicamente
         [self.panelsSplitView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-20],
         [self.panelsSplitView.bottomAnchor constraintEqualToAnchor:self.panSlider.topAnchor constant:-8],
         
-        // Bottom controls - Pan slider (DA BORDO SINISTRO A ZOOM OUT)
+        // Bottom controls - TUTTI INVARIATI
         [self.panSlider.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-6],
         [self.panSlider.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
         [self.panSlider.trailingAnchor constraintEqualToAnchor:self.zoomOutButton.leadingAnchor constant:-8],
-        [self.panSlider.heightAnchor constraintEqualToConstant:20],
         
-        // Zoom out button (A DESTRA DEL SLIDER)
         [self.zoomOutButton.centerYAnchor constraintEqualToAnchor:self.panSlider.centerYAnchor],
-        [self.zoomOutButton.trailingAnchor constraintEqualToAnchor:self.zoomInButton.leadingAnchor constant:-6],
+        [self.zoomOutButton.trailingAnchor constraintEqualToAnchor:self.zoomInButton.leadingAnchor constant:-4],
         [self.zoomOutButton.widthAnchor constraintEqualToConstant:30],
         
-        // Zoom in button (A DESTRA DI ZOOM OUT)
         [self.zoomInButton.centerYAnchor constraintEqualToAnchor:self.panSlider.centerYAnchor],
-        [self.zoomInButton.trailingAnchor constraintEqualToAnchor:self.zoomAllButton.leadingAnchor constant:-6],
+        [self.zoomInButton.trailingAnchor constraintEqualToAnchor:self.zoomAllButton.leadingAnchor constant:-4],
         [self.zoomInButton.widthAnchor constraintEqualToConstant:30],
         
-        // Zoom all button (ALL'ESTREMO DESTRO)
         [self.zoomAllButton.centerYAnchor constraintEqualToAnchor:self.panSlider.centerYAnchor],
         [self.zoomAllButton.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
-        [self.zoomAllButton.widthAnchor constraintEqualToConstant:40]
+        [self.zoomAllButton.widthAnchor constraintEqualToConstant:50]
     ]];
 }
 
 
-- (void)setupChartDefaults {
-    _currentTimeframe = ChartTimeframeDaily;
-    _barsToDownload = 1000;
-    _initialBarsToShow = 250;
-    _chartPanels = [NSMutableArray array];
-    _visibleStartIndex = 0;
-    _visibleEndIndex = 250;
-    _isYRangeOverridden = NO;
-}
 
+- (void)setupChartDefaults {
+    // Codice esistente...
+    self.currentSymbol = @"CRCL";
+    self.currentTimeframe = ChartTimeframeDaily;
+    self.barsToDownload = 1000;
+    self.initialBarsToShow = 100;
+    self.chartPanels = [NSMutableArray array];
+    
+    // NUOVO: Inizializza objects manager
+    self.objectsManager = [ChartObjectsManager managerForSymbol:self.currentSymbol];
+    
+    // Reset viewport state
+    self.visibleStartIndex = 0;
+    self.visibleEndIndex = 0;
+    self.yRangeMin = 0;
+    self.yRangeMax = 0;
+    self.isYRangeOverridden = NO;
+}
 - (void)setupInitialUI {
     // Setup text field delegates e actions
     self.symbolTextField.delegate = self;
@@ -522,6 +542,7 @@ extern NSString *const DataHubDataLoadedNotification;
 
 - (void)loadSymbol:(NSString *)symbol {
     if (!symbol || symbol.length == 0) return;
+   
     
     self.currentSymbol = symbol;
     self.symbolTextField.stringValue = symbol;
@@ -550,6 +571,11 @@ extern NSString *const DataHubDataLoadedNotification;
             [self synchronizePanels];
         });
     }];
+    
+    if (self.objectsManager) {
+        self.objectsManager.currentSymbol = symbol;
+        [self.objectsManager loadFromDataHub]; // Carica oggetti salvati per questo simbolo
+    }
 }
 
 - (void)setTimeframe:(ChartTimeframe)timeframe {

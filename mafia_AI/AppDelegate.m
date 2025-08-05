@@ -36,6 +36,14 @@
           [self autoConnectToSchwab];
       });
       [self setupClaudeDataSource];
+    if (self.window) {
+            self.window.restorationClass = [self class];
+            self.window.identifier = @"MainWindow";
+            
+            NSLog(@"✅ AppDelegate: Main window configured with restoration ID");
+        } else {
+            NSLog(@"❌ AppDelegate: Main window outlet not connected!");
+        }
 }
 
 - (void)registerDataSources {
@@ -295,5 +303,36 @@
         }
     }];
 }
+
+#pragma mark - Window Restoration
+
++ (void)restoreWindowWithIdentifier:(NSString *)identifier
+                              state:(NSCoder *)state
+                  completionHandler:(void (^)(NSWindow *, NSError *))completionHandler {
+    
+    NSLog(@"🔄 AppDelegate: Restoring window with identifier: %@", identifier);
+    
+    if ([identifier isEqualToString:@"MainWindow"]) {
+        // Ripristina la finestra principale
+        AppDelegate *appDelegate = (AppDelegate *)[NSApp delegate];
+        if (appDelegate.window) {
+            completionHandler(appDelegate.window, nil);
+        } else {
+            NSError *error = [NSError errorWithDomain:@"WindowRestoration"
+                                                 code:404
+                                             userInfo:@{NSLocalizedDescriptionKey: @"Main window not found"}];
+            completionHandler(nil, error);
+        }
+    } else {
+        // Identificatore sconosciuto
+        NSError *error = [NSError errorWithDomain:@"WindowRestoration"
+                                             code:404
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Unknown window identifier"}];
+        completionHandler(nil, error);
+    }
+}
+
+
+
 
 @end

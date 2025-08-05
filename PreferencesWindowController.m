@@ -655,7 +655,6 @@
     }
 }
 
-// ====== RESET ACTION METHODS ======
 
 - (void)resetSymbolDatabase:(id)sender {
     NSAlert *alert = [[NSAlert alloc] init];
@@ -666,16 +665,17 @@
     [alert addButtonWithTitle:@"Cancel"];
     
     if ([alert runModal] == NSAlertFirstButtonReturn) {
-        DataHub *dataHub = [DataHub shared];
+        // Show loading state
+        [self setResetButtonsEnabled:NO];
+        self.databaseStatusLabel.stringValue = @"Resetting symbol database...";
         
-        // Delete all symbols
-        NSArray *allSymbols = [dataHub getAllSymbols];
-        for (Symbol *symbol in allSymbols) {
-            [dataHub deleteSymbol:symbol];
-        }
-        
-        [self updateDatabaseStatus];
-        [self showResetCompletedAlert:@"Symbol database reset completed"];
+        [[DataHub shared] resetSymbolDatabase:^(BOOL success) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self setResetButtonsEnabled:YES];
+                [self updateDatabaseStatus];
+                [self showResetCompletedAlert:success ? @"Symbol database reset completed successfully" : @"Symbol database reset failed"];
+            });
+        }];
     }
 }
 
@@ -688,16 +688,17 @@
     [alert addButtonWithTitle:@"Cancel"];
     
     if ([alert runModal] == NSAlertFirstButtonReturn) {
-        DataHub *dataHub = [DataHub shared];
+        // Show loading state
+        [self setResetButtonsEnabled:NO];
+        self.databaseStatusLabel.stringValue = @"Resetting watchlists...";
         
-        // Delete all watchlists
-        NSArray *allWatchlists = [dataHub getAllWatchlists];
-        for (Watchlist *watchlist in [allWatchlists copy]) {
-            [dataHub deleteWatchlist:watchlist];
-        }
-        
-        [self updateDatabaseStatus];
-        [self showResetCompletedAlert:@"All watchlists reset completed"];
+        [[DataHub shared] resetWatchlistDatabase:^(BOOL success) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self setResetButtonsEnabled:YES];
+                [self updateDatabaseStatus];
+                [self showResetCompletedAlert:success ? @"All watchlists reset completed successfully" : @"Watchlist reset failed"];
+            });
+        }];
     }
 }
 
@@ -710,16 +711,17 @@
     [alert addButtonWithTitle:@"Cancel"];
     
     if ([alert runModal] == NSAlertFirstButtonReturn) {
-        DataHub *dataHub = [DataHub shared];
+        // Show loading state
+        [self setResetButtonsEnabled:NO];
+        self.databaseStatusLabel.stringValue = @"Resetting alerts...";
         
-        // Delete all alerts
-        NSArray *allAlerts = [dataHub getAllAlerts];
-        for (Alert *alert in [allAlerts copy]) {
-            [dataHub deleteAlert:alert];
-        }
-        
-        [self updateDatabaseStatus];
-        [self showResetCompletedAlert:@"All alerts reset completed"];
+        [[DataHub shared] resetAlertDatabase:^(BOOL success) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self setResetButtonsEnabled:YES];
+                [self updateDatabaseStatus];
+                [self showResetCompletedAlert:success ? @"All alerts reset completed successfully" : @"Alert reset failed"];
+            });
+        }];
     }
 }
 
@@ -732,16 +734,17 @@
     [alert addButtonWithTitle:@"Cancel"];
     
     if ([alert runModal] == NSAlertFirstButtonReturn) {
-        DataHub *dataHub = [DataHub shared];
+        // Show loading state
+        [self setResetButtonsEnabled:NO];
+        self.databaseStatusLabel.stringValue = @"Resetting connections...";
         
-        // Delete all connections
-        NSArray *allConnections = [dataHub getAllConnections];
-        for (ConnectionModel *connection in allConnections) {
-            [dataHub deleteConnection:connection];
-        }
-        
-        [self updateDatabaseStatus];
-        [self showResetCompletedAlert:@"All connections reset completed"];
+        [[DataHub shared] resetConnectionDatabase:^(BOOL success) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self setResetButtonsEnabled:YES];
+                [self updateDatabaseStatus];
+                [self showResetCompletedAlert:success ? @"All connections reset completed successfully" : @"Connection reset failed"];
+            });
+        }];
     }
 }
 
@@ -767,17 +770,20 @@
     
     if ([alert runModal] == NSAlertFirstButtonReturn) {
         if ([confirmField.stringValue isEqualToString:@"DELETE"]) {
-            // Reset everything
-            [self resetSymbolDatabase:nil];
-            [self resetWatchlists:nil];
-            [self resetAlerts:nil];
-            [self resetConnections:nil];
+            // Show loading state
+            [self setResetButtonsEnabled:NO];
+            self.databaseStatusLabel.stringValue = @"🚨 NUCLEAR RESET IN PROGRESS... 🚨";
             
-            // Reset app settings
-            [[AppSettings sharedSettings] resetToDefaults];
-            
-            [self updateDatabaseStatus];
-            [self showResetCompletedAlert:@"🚨 NUCLEAR RESET COMPLETED - All data deleted"];
+            [[DataHub shared] resetAllDatabases:^(BOOL success) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    // Also reset app settings
+                    [[AppSettings sharedSettings] resetToDefaults];
+                    
+                    [self setResetButtonsEnabled:YES];
+                    [self updateDatabaseStatus];
+                    [self showResetCompletedAlert:success ? @"🚨 NUCLEAR RESET COMPLETED - All data deleted successfully" : @"Nuclear reset completed with some errors - check console"];
+                });
+            }];
         } else {
             NSAlert *errorAlert = [[NSAlert alloc] init];
             errorAlert.messageText = @"Reset Cancelled";
@@ -785,6 +791,16 @@
             [errorAlert runModal];
         }
     }
+}
+
+// ====== HELPER METHODS ======
+
+- (void)setResetButtonsEnabled:(BOOL)enabled {
+    self.resetSymbolsButton.enabled = enabled;
+    self.resetWatchlistsButton.enabled = enabled;
+    self.resetAlertsButton.enabled = enabled;
+    self.resetConnectionsButton.enabled = enabled;
+    self.resetAllDatabasesButton.enabled = enabled;
 }
 
 - (void)showResetCompletedAlert:(NSString *)message {
@@ -795,6 +811,7 @@
     [alert addButtonWithTitle:@"OK"];
     [alert runModal];
 }
+
 
 
 @end

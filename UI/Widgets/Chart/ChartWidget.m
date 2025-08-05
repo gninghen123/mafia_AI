@@ -185,7 +185,7 @@ extern NSString *const DataHubDataLoadedNotification;
     [self.panelsSplitView addSubview:securityPanel];
     
     // 🎯 CRITICAL: Give security panel a minimum height to prevent collapse
-    [securityPanel.heightAnchor constraintGreaterThanOrEqualToConstant:100].active = YES;
+    //[securityPanel.heightAnchor constraintGreaterThanOrEqualToConstant:100].active = YES;
     
     NSLog(@"✅ Added security panel: %@", securityPanel);
     NSLog(@"🔍 Security panel frame: %@", NSStringFromRect(securityPanel.frame));
@@ -198,7 +198,7 @@ extern NSString *const DataHubDataLoadedNotification;
     [self.panelsSplitView addSubview:volumePanel];
     
     // 🎯 CRITICAL: Give volume panel a minimum height to prevent collapse
-    [volumePanel.heightAnchor constraintGreaterThanOrEqualToConstant:50].active = YES;
+  //  [volumePanel.heightAnchor constraintGreaterThanOrEqualToConstant:50].active = YES;
     
     NSLog(@"✅ Added volume panel: %@", volumePanel);
     NSLog(@"🔍 Volume panel frame: %@", NSStringFromRect(volumePanel.frame));
@@ -208,7 +208,7 @@ extern NSString *const DataHubDataLoadedNotification;
     // 🚀 CRITICAL: Force split view to have minimum height
     [self.panelsSplitView.heightAnchor constraintGreaterThanOrEqualToConstant:200].active = YES;
     
-    // Force layout
+ /*   // Force layout
     [self.panelsSplitView setNeedsLayout:YES];
     [self.view setNeedsLayout:YES];
     [self configureSplitViewPriorities];
@@ -240,7 +240,7 @@ extern NSString *const DataHubDataLoadedNotification;
             });
         }
     });
-    
+    */
     NSLog(@"🎯 Default panels setup completed");
 }
 - (void)configureSplitViewPriorities {

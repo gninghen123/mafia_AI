@@ -49,56 +49,166 @@ extern NSString *const DataHubDataLoadedNotification;
 - (void)setupContentView {
     [super setupContentView];
     
-    NSLog(@"🔧 ChartWidget: Starting XIB setup...");
-    NSLog(@"🔍 contentView frame before XIB: %@", NSStringFromRect(self.contentView.frame));
-    NSLog(@"🔍 contentView constraints: %@", self.contentView.constraints);
-    
-    // Remove BaseWidget's placeholder
+    // Rimuovi il placeholder del BaseWidget
     for (NSView *subview in self.contentView.subviews) {
         [subview removeFromSuperview];
     }
     
-    // Load XIB content
-    NSBundle *bundle = [NSBundle mainBundle];
-    NSArray *topLevelObjects = nil;
+    // Setup UI programmatico seguendo il pattern degli altri widget
+    [self setupUI];
+    [self setupConstraints];
+    [self setupInitialUI]; // Mantieni questa chiamata esistente
+}
+
+// ======== AGGIUNGI setupUI ========
+- (void)setupUI {
+    // Toolbar superiore (simbolo, timeframe, etc.)
+    [self setupTopToolbar];
     
-    if ([bundle loadNibNamed:@"ChartWidget" owner:self topLevelObjects:&topLevelObjects]) {
-        NSLog(@"✅ ChartWidget: XIB loaded successfully");
-        NSLog(@"🔍 XIB view: %@", self.view);
-        NSLog(@"🔍 XIB view frame: %@", NSStringFromRect(self.view.frame));
-        
-        // Add the XIB content to our content view
-        if (self.view) {
-            [self.contentView addSubview:self.view];
-            self.view.translatesAutoresizingMaskIntoConstraints = NO;
-            
-            // 🎯 CRITICAL: Make sure XIB content fills the entire contentView
-            [NSLayoutConstraint activateConstraints:@[
-                [self.view.topAnchor constraintEqualToAnchor:self.contentView.topAnchor],
-                [self.view.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
-                [self.view.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
-                [self.view.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor]
-            ]];
-            
-            NSLog(@"✅ ChartWidget: XIB content anchored to fill contentView");
-        }
-        
-        [self setupInitialUI];
-        
-        // 🚀 TIMING FIX: Setup panels AFTER layout is complete
-        NSLog(@"⏰ ChartWidget: Deferring panel setup until after layout...");
-        dispatch_async(dispatch_get_main_queue(), ^{
-            NSLog(@"🎯 ChartWidget: Layout should be complete now, setting up panels...");
-            NSLog(@"🔍 contentView frame after layout: %@", NSStringFromRect(self.contentView.frame));
-            NSLog(@"🔍 XIB view frame after layout: %@", NSStringFromRect(self.view.frame));
-            [self setupDefaultPanels];
-        });
-        
-    } else {
-        NSLog(@"❌ Failed to load ChartWidget.xib");
-    }
+    // SplitView principale per i pannelli chart
+    [self setupMainSplitView];
     
-    NSLog(@"🎯 ChartWidget: setupContentView completed - panels will be setup after layout");
+    // Controlli zoom inferiori
+    [self setupBottomControls];
+}
+
+// ======== AGGIUNGI setupTopToolbar ========
+- (void)setupTopToolbar {
+    // Symbol text field (come nello XIB)
+    self.symbolTextField = [[NSTextField alloc] init];
+    self.symbolTextField.translatesAutoresizingMaskIntoConstraints = NO;
+    self.symbolTextField.placeholderString = @"Enter symbol";
+    self.symbolTextField.delegate = self;
+    [self.contentView addSubview:self.symbolTextField];
+    
+    // Timeframe segmented control (come nello XIB)
+    self.timeframeSegmented = [[NSSegmentedControl alloc] init];
+    self.timeframeSegmented.translatesAutoresizingMaskIntoConstraints = NO;
+    self.timeframeSegmented.segmentCount = 8;
+    self.timeframeSegmented.segmentStyle = NSSegmentStyleRounded;
+    [self.contentView addSubview:self.timeframeSegmented];
+    
+    // Bars count text field (come nello XIB)
+    self.barsCountTextField = [[NSTextField alloc] init];
+    self.barsCountTextField.translatesAutoresizingMaskIntoConstraints = NO;
+    self.barsCountTextField.stringValue = @"1000";
+    [self.contentView addSubview:self.barsCountTextField];
+    
+    // Template popup (come nello XIB)
+      self.templatePopup = [[NSPopUpButton alloc] init];
+      self.templatePopup.translatesAutoresizingMaskIntoConstraints = NO;
+      [self.contentView addSubview:self.templatePopup];
+    
+    // Preferences button (come nello XIB)
+    self.preferencesButton = [NSButton buttonWithTitle:@"⚙"
+                                                target:self
+                                                action:@selector(showPreferences:)];
+    self.preferencesButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.preferencesButton.bezelStyle = NSBezelStyleRounded;
+    [self.contentView addSubview:self.preferencesButton];
+}
+
+// ======== AGGIUNGI setupMainSplitView ========
+- (void)setupMainSplitView {
+    // Split view principale per i pannelli (come nello XIB)
+    self.panelsSplitView = [[NSSplitView alloc] init];
+    self.panelsSplitView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.panelsSplitView.vertical = NO; // Divisione orizzontale
+    self.panelsSplitView.dividerStyle = NSSplitViewDividerStyleThin;
+    [self.contentView addSubview:self.panelsSplitView];
+}
+
+// ======== AGGIUNGI setupBottomControls ========
+- (void)setupBottomControls {
+    // Pan slider (come nello XIB)
+    self.panSlider = [[NSSlider alloc] init];
+    self.panSlider.translatesAutoresizingMaskIntoConstraints = NO;
+    self.panSlider.minValue = 0;
+    self.panSlider.maxValue = 100;
+    self.panSlider.integerValue = 50;
+    [self.contentView addSubview:self.panSlider];
+    
+    // Zoom out button (come nello XIB)
+    self.zoomOutButton = [NSButton buttonWithTitle:@"-"
+                                           target:self
+                                           action:@selector(zoomOut:)];
+    self.zoomOutButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.zoomOutButton.bezelStyle = NSBezelStyleRounded;
+    [self.contentView addSubview:self.zoomOutButton];
+    
+    // Zoom in button (come nello XIB)
+    self.zoomInButton = [NSButton buttonWithTitle:@"+"
+                                          target:self
+                                          action:@selector(zoomIn:)];
+    self.zoomInButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.zoomInButton.bezelStyle = NSBezelStyleRounded;
+    [self.contentView addSubview:self.zoomInButton];
+    
+    // Zoom all button (come nello XIB)
+    self.zoomAllButton = [NSButton buttonWithTitle:@"All"
+                                           target:self
+                                           action:@selector(zoomAll:)];
+    self.zoomAllButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.zoomAllButton.bezelStyle = NSBezelStyleRounded;
+    [self.contentView addSubview:self.zoomAllButton];
+}
+
+// ======== AGGIUNGI setupConstraints ========
+- (void)setupConstraints {
+    [NSLayoutConstraint activateConstraints:@[
+        // Top toolbar - Symbol field (top-left)
+        [self.symbolTextField.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:8],
+        [self.symbolTextField.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
+        [self.symbolTextField.widthAnchor constraintEqualToConstant:100],
+        [self.symbolTextField.heightAnchor constraintEqualToConstant:21],
+        
+        // Timeframe segmented control (dopo symbol field)
+        [self.timeframeSegmented.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
+        [self.timeframeSegmented.leadingAnchor constraintEqualToAnchor:self.symbolTextField.trailingAnchor constant:24],
+        
+        // Bars count field (dopo timeframe)
+        [self.barsCountTextField.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
+        [self.barsCountTextField.leadingAnchor constraintEqualToAnchor:self.timeframeSegmented.trailingAnchor constant:8],
+        [self.barsCountTextField.widthAnchor constraintEqualToConstant:60],
+        
+        // Template popup (dopo bars count)
+        [self.templatePopup.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
+        [self.templatePopup.leadingAnchor constraintEqualToAnchor:self.barsCountTextField.trailingAnchor constant:8],
+        [self.templatePopup.widthAnchor constraintEqualToConstant:80],
+        
+        // Preferences button (ALL'ESTREMO DESTRO)
+        [self.preferencesButton.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
+        [self.preferencesButton.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
+        [self.preferencesButton.widthAnchor constraintEqualToConstant:30],
+        [self.preferencesButton.heightAnchor constraintEqualToConstant:21],
+        
+        // Main split view (centro - area principale)
+        [self.panelsSplitView.topAnchor constraintEqualToAnchor:self.symbolTextField.bottomAnchor constant:8],
+        [self.panelsSplitView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:14],
+        [self.panelsSplitView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-20],
+        [self.panelsSplitView.bottomAnchor constraintEqualToAnchor:self.panSlider.topAnchor constant:-8],
+        
+        // Bottom controls - Pan slider (DA BORDO SINISTRO A ZOOM OUT)
+        [self.panSlider.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-6],
+        [self.panSlider.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
+        [self.panSlider.trailingAnchor constraintEqualToAnchor:self.zoomOutButton.leadingAnchor constant:-8],
+        [self.panSlider.heightAnchor constraintEqualToConstant:20],
+        
+        // Zoom out button (A DESTRA DEL SLIDER)
+        [self.zoomOutButton.centerYAnchor constraintEqualToAnchor:self.panSlider.centerYAnchor],
+        [self.zoomOutButton.trailingAnchor constraintEqualToAnchor:self.zoomInButton.leadingAnchor constant:-6],
+        [self.zoomOutButton.widthAnchor constraintEqualToConstant:30],
+        
+        // Zoom in button (A DESTRA DI ZOOM OUT)
+        [self.zoomInButton.centerYAnchor constraintEqualToAnchor:self.panSlider.centerYAnchor],
+        [self.zoomInButton.trailingAnchor constraintEqualToAnchor:self.zoomAllButton.leadingAnchor constant:-6],
+        [self.zoomInButton.widthAnchor constraintEqualToConstant:30],
+        
+        // Zoom all button (ALL'ESTREMO DESTRO)
+        [self.zoomAllButton.centerYAnchor constraintEqualToAnchor:self.panSlider.centerYAnchor],
+        [self.zoomAllButton.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
+        [self.zoomAllButton.widthAnchor constraintEqualToConstant:40]
+    ]];
 }
 
 
@@ -113,11 +223,13 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 - (void)setupInitialUI {
-    // Setup text field delegates
+    // Setup text field delegates e actions
     self.symbolTextField.delegate = self;
+    self.symbolTextField.target = self;
+    self.symbolTextField.action = @selector(symbolChanged:);
     self.barsCountTextField.stringValue = @"1000";
     
-    // Setup timeframe segmented control
+    // Setup timeframe segmented control (mantieni codice esistente)
     if (self.timeframeSegmented.segmentCount >= 8) {
         [self.timeframeSegmented setLabel:@"1m" forSegment:0];
         [self.timeframeSegmented setLabel:@"5m" forSegment:1];
@@ -130,7 +242,7 @@ extern NSString *const DataHubDataLoadedNotification;
         [self.timeframeSegmented setSelectedSegment:6]; // Daily default
     }
     
-    // Setup template popup
+    // Setup template popup (mantieni codice esistente)
     [self.templatePopup removeAllItems];
     [self.templatePopup addItemsWithTitles:@[@"Default", @"Technical", @"Volume Analysis", @"Custom"]];
     
@@ -139,26 +251,21 @@ extern NSString *const DataHubDataLoadedNotification;
     self.panSlider.maxValue = 100;
     self.panSlider.integerValue = 50;
     
-    // Connect actions - CRITICAL: These must be set!
-    [self.symbolTextField setTarget:self];
-    [self.symbolTextField setAction:@selector(symbolChanged:)];
+    // Connect actions se non già collegati
+    self.timeframeSegmented.target = self;
+    self.timeframeSegmented.action = @selector(timeframeChanged:);
     
-    [self.timeframeSegmented setTarget:self];
-    [self.timeframeSegmented setAction:@selector(timeframeChanged:)];
+    self.panSlider.target = self;
+    self.panSlider.action = @selector(panSliderChanged:);
     
-    [self.zoomOutButton setTarget:self];
-    [self.zoomOutButton setAction:@selector(zoomOut:)];
+    // Actions già collegati nei setup dei bottoni:
+    // - zoomOutButton -> zoomOut:
+    // - zoomInButton -> zoomIn:
+    // - zoomAllButton -> zoomAll:
+    // - preferencesButton -> showPreferences:
     
-    [self.zoomInButton setTarget:self];
-    [self.zoomInButton setAction:@selector(zoomIn:)];
-    
-    [self.zoomAllButton setTarget:self];
-    [self.zoomAllButton setAction:@selector(zoomAll:)];
-    
-    [self.panSlider setTarget:self];
-    [self.panSlider setAction:@selector(panSliderChanged:)];
-    
-    NSLog(@"✅ ChartWidget: UI setup completed with actions connected");
+    // Ora setup panels DOPO che la UI è stata creata
+    [self setupDefaultPanels];
 }
 
 - (void)setupDefaultPanels {
@@ -378,19 +485,18 @@ extern NSString *const DataHubDataLoadedNotification;
     ChartTimeframe newTimeframe = (ChartTimeframe)sender.selectedSegment;
     [self setTimeframe:newTimeframe];
 }
-
-- (void)zoomOut:(NSButton *)sender {
+- (void)zoomIn:(NSButton *)sender {
     NSInteger currentRange = self.visibleEndIndex - self.visibleStartIndex;
-    NSInteger newRange = MIN(currentRange * 1.5, self.chartData.count);
+    NSInteger newRange = MAX(10, currentRange / 1.5);
     NSInteger center = (self.visibleStartIndex + self.visibleEndIndex) / 2;
     
     [self zoomToRange:MAX(0, center - newRange/2)
              endIndex:MIN(self.chartData.count - 1, center + newRange/2)];
 }
 
-- (void)zoomIn:(NSButton *)sender {
+- (void)zoomOut:(NSButton *)sender {
     NSInteger currentRange = self.visibleEndIndex - self.visibleStartIndex;
-    NSInteger newRange = MAX(10, currentRange / 1.5);
+    NSInteger newRange = MIN(self.chartData.count, currentRange * 1.5);
     NSInteger center = (self.visibleStartIndex + self.visibleEndIndex) / 2;
     
     [self zoomToRange:MAX(0, center - newRange/2)
@@ -459,20 +565,34 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 - (void)zoomToRange:(NSInteger)startIndex endIndex:(NSInteger)endIndex {
-    if (!self.chartData || self.chartData.count == 0) return;
+    // Clamp indices
+    startIndex = MAX(0, startIndex);
+    endIndex = MIN(self.chartData.count - 1, endIndex);
     
-    // Clamp to valid range
-    startIndex = MAX(0, MIN(startIndex, self.chartData.count - 1));
-    endIndex = MAX(startIndex + 1, MIN(endIndex, self.chartData.count - 1));
+    if (startIndex >= endIndex) return;
     
     self.visibleStartIndex = startIndex;
     self.visibleEndIndex = endIndex;
     
-    [self updatePanSlider];
-    [self calculateYRange];
+    // ✅ AGGIUNGI: Aggiorna slider senza triggerare action
+    if (self.chartData.count > 0) {
+        NSInteger visibleRange = endIndex - startIndex;
+        double percentage = (double)startIndex / (self.chartData.count - visibleRange);
+        percentage = MAX(0.0, MIN(1.0, percentage));
+        
+        // Temporaneamente rimuovi target per evitare loop
+        id originalTarget = self.panSlider.target;
+        self.panSlider.target = nil;
+        [self.panSlider setDoubleValue:percentage * 100.0];
+        self.panSlider.target = originalTarget;
+    }
+    
+    [self updateViewport];
     [self synchronizePanels];
+    
+    NSLog(@"📊 Zoom applied: [%ld-%ld], slider at %.1f%%",
+          (long)startIndex, (long)endIndex, self.panSlider.doubleValue);
 }
-
 - (void)resetZoom {
     if (!self.chartData || self.chartData.count == 0) return;
     
@@ -650,6 +770,27 @@ extern NSString *const DataHubDataLoadedNotification;
     NSNumber *initialBarsToShow = state[@"initialBarsToShow"];
     if (initialBarsToShow) {
         self.initialBarsToShow = initialBarsToShow.integerValue;
+    }
+}
+// ======== AGGIUNGI metodi delegate per symbolTextField ========
+#pragma mark - NSTextFieldDelegate
+
+- (void)controlTextDidEndEditing:(NSNotification *)notification {
+    NSTextField *textField = [notification object];
+    
+    // Verifica se è il titleComboBox di BaseWidget
+    if (textField == self.titleComboBox) {
+        [super controlTextDidEndEditing:notification];
+        return;
+    }
+    
+    // Gestisci symbol text field
+    if (textField == self.symbolTextField) {
+        NSString *symbol = textField.stringValue.uppercaseString;
+        if (symbol.length > 0) {
+            [self loadSymbol:symbol];
+            [self broadcastSymbolToChain:symbol];
+        }
     }
 }
 

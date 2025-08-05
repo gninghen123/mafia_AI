@@ -588,8 +588,6 @@ static NSString *const kChainSenderKey = @"sender";
 
 
 - (void)setupContentView {
-    NSLog(@"🔧 BaseWidget: Setting up content view with proper expansion constraints");
-    
     self.contentViewInternal = [[NSView alloc] init];
     self.contentViewInternal.wantsLayer = YES;
     self.contentViewInternal.layer.backgroundColor = [NSColor controlBackgroundColor].CGColor;
@@ -612,10 +610,9 @@ static NSString *const kChainSenderKey = @"sender";
     [self.mainStackView addArrangedSubview:self.contentViewInternal];
     
     // 🎯 CRITICAL: Set minimum height constraint to prevent collapse
-    NSLayoutConstraint *minHeightConstraint = [self.contentViewInternal.heightAnchor
-                                              constraintGreaterThanOrEqualToConstant:100];
-    minHeightConstraint.priority = NSLayoutPriorityDefaultHigh;
-    minHeightConstraint.active = YES;
+   // NSLayoutConstraint *minHeightConstraint = [self.contentViewInternal.heightAnchor constraintGreaterThanOrEqualToConstant:100];
+  //  minHeightConstraint.priority = NSLayoutPriorityDefaultHigh;
+//    minHeightConstraint.active = YES;
     
     // 🚀 CRITICAL: Ensure content view expands to fill available space
     // This prevents the widget from collapsing when content is small

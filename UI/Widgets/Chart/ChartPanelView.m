@@ -168,39 +168,41 @@
     NSLog(@"🎨 ChartPanelView: Chart content drawn (%@ panel)", self.panelType);
 }
 
+
 - (void)drawCrosshairContent {
     if (!self.crosshairVisible) return;
     
-    [[NSColor systemGrayColor] setStroke];
+    NSPoint point = self.crosshairPoint;
+    
+    // Draw crosshair lines
+    [[NSColor labelColor] setStroke];
+    
+    NSBezierPath *crosshair = [NSBezierPath bezierPath];
+    crosshair.lineWidth = 1.0;
     
     // Vertical line
-    NSBezierPath *vLine = [NSBezierPath bezierPath];
-    [vLine moveToPoint:NSMakePoint(self.crosshairPoint.x, 0)];
-    [vLine lineToPoint:NSMakePoint(self.crosshairPoint.x, self.bounds.size.height)];
-    vLine.lineWidth = 1.0;
-    [vLine stroke];
+    [crosshair moveToPoint:NSMakePoint(point.x, 0)];
+    [crosshair lineToPoint:NSMakePoint(point.x, self.bounds.size.height)];
     
-    // Horizontal line (only for security panel)
-    if ([self.panelType isEqualToString:@"security"]) {
-        NSBezierPath *hLine = [NSBezierPath bezierPath];
-        [hLine moveToPoint:NSMakePoint(0, self.crosshairPoint.y)];
-        [hLine lineToPoint:NSMakePoint(self.bounds.size.width, self.crosshairPoint.y)];
-        hLine.lineWidth = 1.0;
-        [hLine stroke];
-        
-        // Draw price label
-        double price = [self priceForYCoordinate:self.crosshairPoint.y];
-        NSString *priceString = [NSString stringWithFormat:@"%.2f", price];
-        [self drawPriceLabel:priceString atPoint:NSMakePoint(self.bounds.size.width - 60, self.crosshairPoint.y)];
+    // Horizontal line
+    [crosshair moveToPoint:NSMakePoint(0, point.y)];
+    [crosshair lineToPoint:NSMakePoint(self.bounds.size.width, point.y)];
+    
+    [crosshair stroke];
+    
+    // ✅ USA IL METODO ESISTENTE se presente
+    if ([self respondsToSelector:@selector(drawPriceLabelAtPoint:)]) {
+     //todo   [self drawPriceLabelAtPoint:point];
     }
 }
+
 
 - (void)drawSelectionContent {
     if (!self.isInSelectionMode) return;
     
+    // ✅ USA IL METODO ESISTENTE invece di riscriverlo
     [self drawSelection];
 }
-
 - (void)drawRect:(NSRect)dirtyRect {
     // drawRect is now unused - all drawing happens in layer delegates
     // This improves performance by using CALayer rendering pipeline
@@ -550,6 +552,7 @@
     self.lastMousePoint = self.dragStartPoint;
 }
 
+
 - (void)mouseDragged:(NSEvent *)event {
     if (!self.isMouseDown) return;
     
@@ -560,9 +563,13 @@
     self.selectionStartIndex = [self barIndexForXCoordinate:self.dragStartPoint.x];
     self.selectionEndIndex = [self barIndexForXCoordinate:currentPoint.x];
     
-    [self setNeedsDisplay:YES];
+    // ✅ CORREZIONE: Aggiorna solo selection layer, non tutto
+    [self.selectionLayer setNeedsDisplay];
+    
+    // ✅ AGGIUNGI: Aggiorna crosshair per info box
+    self.crosshairPoint = currentPoint;
+    [self.crosshairLayer setNeedsDisplay];
 }
-
 - (void)rightMouseDragged:(NSEvent *)event {
     if (!self.isRightMouseDown) return;
     
@@ -575,7 +582,6 @@
     
     self.lastMousePoint = currentPoint;
 }
-
 - (void)mouseUp:(NSEvent *)event {
     if (self.isInSelectionMode) {
         // Zoom to selection
@@ -587,7 +593,8 @@
         }
         
         self.isInSelectionMode = NO;
-        [self setNeedsDisplay:YES];
+        // ✅ CORREZIONE: Pulisci selection layer
+        [self.selectionLayer setNeedsDisplay];
     }
     
     self.isMouseDown = NO;
@@ -597,18 +604,54 @@
     self.isRightMouseDown = NO;
 }
 
-- (void)scrollWheel:(NSEvent *)event {
-    // Zoom with scroll wheel
-    if (event.deltaY > 0) {
-        // Zoom in
-        [self.chartWidget zoomIn:nil];
-    } else if (event.deltaY < 0) {
-        // Zoom out
-        [self.chartWidget zoomOut:nil];
-    }
-}
 
+- (void)scrollWheel:(NSEvent *)event {
+    if (!self.chartData || self.chartData.count == 0) return;
+    
+    NSPoint mouseLocation = [self convertPoint:event.locationInWindow fromView:nil];
+    
+    // Calcola quale barra è sotto il mouse
+    NSInteger mouseBarIndex = [self barIndexForXCoordinate:mouseLocation.x];
+    if (mouseBarIndex < 0) return;
+    
+    // Calcola range attuale
+    NSInteger currentRange = self.chartWidget.visibleEndIndex - self.chartWidget.visibleStartIndex;
+    NSInteger newRange;
+    
+    if (event.deltaY > 0) {
+        // Zoom in - dimezza il range
+        newRange = MAX(10, currentRange / 2);
+    } else {
+        // Zoom out - raddoppia il range
+        newRange = MIN(self.chartData.count, currentRange * 2);
+    }
+    
+    // ✅ ZOOM INTELLIGENTE: Mantieni la barra sotto il mouse come punto fisso
+    
+    // Calcola la posizione relativa del mouse nel range attuale (0.0 - 1.0)
+    double mouseRatio = (double)(mouseBarIndex - self.chartWidget.visibleStartIndex) / currentRange;
+    
+    // Calcola nuovo start/end mantenendo la stessa proporzione
+    NSInteger newStartIndex = mouseBarIndex - (NSInteger)(newRange * mouseRatio);
+    NSInteger newEndIndex = newStartIndex + newRange;
+    
+    // Clamp ai limiti validi
+    if (newStartIndex < 0) {
+        newStartIndex = 0;
+        newEndIndex = newRange;
+    } else if (newEndIndex >= self.chartData.count) {
+        newEndIndex = self.chartData.count - 1;
+        newStartIndex = newEndIndex - newRange;
+    }
+    
+    // Applica zoom
+    [self.chartWidget zoomToRange:newStartIndex endIndex:newEndIndex];
+    
+    NSLog(@"🔍 Smart zoom: mouse at bar %ld (ratio %.2f), new range [%ld-%ld]",
+          (long)mouseBarIndex, mouseRatio, (long)newStartIndex, (long)newEndIndex);
+}
 #pragma mark - Pan Handling
+
 
 - (void)handlePanWithDeltaX:(CGFloat)deltaX deltaY:(CGFloat)deltaY {
     // Horizontal pan

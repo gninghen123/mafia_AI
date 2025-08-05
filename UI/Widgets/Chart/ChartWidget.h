@@ -23,17 +23,17 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 
 @interface ChartWidget : BaseWidget
 
-#pragma mark - UI Components (da XIB)
-@property (nonatomic, weak) IBOutlet NSTextField *symbolTextField;
-@property (nonatomic, weak) IBOutlet NSSegmentedControl *timeframeSegmented;
-@property (nonatomic, weak) IBOutlet NSTextField *barsCountTextField;
-@property (nonatomic, weak) IBOutlet NSPopUpButton *templatePopup;
-@property (nonatomic, weak) IBOutlet NSButton *preferencesButton;
-@property (nonatomic, weak) IBOutlet NSSplitView *panelsSplitView;
-@property (nonatomic, weak) IBOutlet NSSlider *panSlider;
-@property (nonatomic, weak) IBOutlet NSButton *zoomOutButton;
-@property (nonatomic, weak) IBOutlet NSButton *zoomInButton;
-@property (nonatomic, weak) IBOutlet NSButton *zoomAllButton;
+#pragma mark - UI Components (Programmatic - STRONG references)
+@property (nonatomic, strong) NSTextField *symbolTextField;
+@property (nonatomic, strong) NSSegmentedControl *timeframeSegmented;
+@property (nonatomic, strong) NSTextField *barsCountTextField;
+@property (nonatomic, strong) NSPopUpButton *templatePopup;
+@property (nonatomic, strong) NSButton *preferencesButton;
+@property (nonatomic, strong) NSSplitView *panelsSplitView;
+@property (nonatomic, strong) NSSlider *panSlider;
+@property (nonatomic, strong) NSButton *zoomOutButton;
+@property (nonatomic, strong) NSButton *zoomInButton;
+@property (nonatomic, strong) NSButton *zoomAllButton;
 
 #pragma mark - Data Properties
 @property (nonatomic, strong, readwrite) NSString *currentSymbol;

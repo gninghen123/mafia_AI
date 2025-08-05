@@ -44,7 +44,7 @@
                                                       backing:NSBackingStoreBuffered
                                                         defer:NO];
     
-    [window setTitle:@"Trading App"];
+    [window setTitle:@"Mafia AI"];
     [window center];
     [window setMinSize:NSMakeSize(800, 600)];
     

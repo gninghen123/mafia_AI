@@ -17,6 +17,9 @@
 @property (nonatomic, strong) ChartObjectsManager *objectsManager;
 @property (nonatomic, assign) BOOL isObjectsPanelVisible;
 
+#pragma mark - Sidebar Pattern Properties
+@property (nonatomic, strong) NSLayoutConstraint *splitViewLeadingConstraint;
+
 #pragma mark - Objects UI Methods
 - (void)setupObjectsUI;
 - (void)toggleObjectsPanel:(id)sender;

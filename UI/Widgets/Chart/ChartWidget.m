@@ -159,6 +159,11 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 - (void)setupConstraints {
+    
+    self.splitViewLeadingConstraint = [self.panelsSplitView.leadingAnchor
+                                         constraintEqualToAnchor:self.contentView.leadingAnchor
+                                         constant:14];
+    
     [NSLayoutConstraint activateConstraints:@[
         // Objects panel toggle - NUOVO (all'estrema sinistra)
         [self.objectsPanelToggle.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:8],
@@ -199,7 +204,7 @@ extern NSString *const DataHubDataLoadedNotification;
         
         // Main split view - INVARIATO in alto e destra, MA leading sarà animato
         [self.panelsSplitView.topAnchor constraintEqualToAnchor:self.symbolTextField.bottomAnchor constant:8],
-        [self.panelsSplitView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:14], // Questo sarà modificato dinamicamente
+        self.splitViewLeadingConstraint, // ← Usa il constraint memorizzato
         [self.panelsSplitView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-20],
         [self.panelsSplitView.bottomAnchor constraintEqualToAnchor:self.panSlider.topAnchor constant:-8],
         
@@ -284,16 +289,19 @@ extern NSString *const DataHubDataLoadedNotification;
     // - zoomAllButton -> zoomAll:
     // - preferencesButton -> showPreferences:
     
+   
+}
+
+- (void)viewDidAppear{
+    [super viewDidAppear];
     // Ora setup panels DOPO che la UI è stata creata
     [self setupDefaultPanels];
 }
 
 - (void)setupDefaultPanels {
-    NSLog(@"🔧 Setting up default panels...");
-    NSLog(@"🔍 Split view: %@", self.panelsSplitView);
-    NSLog(@"🔍 Split view frame before setup: %@", NSStringFromRect(self.panelsSplitView.frame));
-    NSLog(@"🔍 Split view subviews before: %@", self.panelsSplitView.subviews);
     
+    
+   
     // Remove any existing panels
     [self.chartPanels removeAllObjects];
     
@@ -302,38 +310,33 @@ extern NSString *const DataHubDataLoadedNotification;
         [subview removeFromSuperview];  // ✅ Correct method for removing from split view
     }
     
-    NSLog(@"🔍 Split view subviews after clear: %@", self.panelsSplitView.subviews);
+    NSRect splitFrame = self.panelsSplitView.frame;
+    double secheight = splitFrame.size.height * 0.7;
+    double volh = splitFrame.size.height - secheight;
+    splitFrame.size.height = secheight;
     
     // Add Security panel (candlestick)
     ChartPanelView *securityPanel = [[ChartPanelView alloc] initWithType:@"security"];
     securityPanel.chartWidget = self;
     securityPanel.translatesAutoresizingMaskIntoConstraints = NO;
+    [securityPanel setFrame:splitFrame];
     [self.chartPanels addObject:securityPanel];
     [self.panelsSplitView addSubview:securityPanel];
     
-    // 🎯 CRITICAL: Give security panel a minimum height to prevent collapse
-    //[securityPanel.heightAnchor constraintGreaterThanOrEqualToConstant:100].active = YES;
     
-    NSLog(@"✅ Added security panel: %@", securityPanel);
-    NSLog(@"🔍 Security panel frame: %@", NSStringFromRect(securityPanel.frame));
     
     // Add Volume panel (histogram)
     ChartPanelView *volumePanel = [[ChartPanelView alloc] initWithType:@"volume"];
     volumePanel.chartWidget = self;
     volumePanel.translatesAutoresizingMaskIntoConstraints = NO;
+    splitFrame.size.height = volh;
+    [volumePanel setFrame:splitFrame];
     [self.chartPanels addObject:volumePanel];
     [self.panelsSplitView addSubview:volumePanel];
     
-    // 🎯 CRITICAL: Give volume panel a minimum height to prevent collapse
-  //  [volumePanel.heightAnchor constraintGreaterThanOrEqualToConstant:50].active = YES;
+    [_panelsSplitView arrangesAllSubviews];
     
-    NSLog(@"✅ Added volume panel: %@", volumePanel);
-    NSLog(@"🔍 Volume panel frame: %@", NSStringFromRect(volumePanel.frame));
-    NSLog(@"🔍 Split view subviews final: %@", self.panelsSplitView.subviews);
-    NSLog(@"🔍 Split view frame after setup: %@", NSStringFromRect(self.panelsSplitView.frame));
-    
-    // 🚀 CRITICAL: Force split view to have minimum height
-    [self.panelsSplitView.heightAnchor constraintGreaterThanOrEqualToConstant:200].active = YES;
+ 
     
  /*   // Force layout
     [self.panelsSplitView setNeedsLayout:YES];

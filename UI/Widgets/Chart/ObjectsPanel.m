@@ -1,4 +1,3 @@
-
 //
 //  ObjectsPanel.m
 //  TradingApp
@@ -91,7 +90,7 @@
     self.buttonsStackView.translatesAutoresizingMaskIntoConstraints = NO;
     self.buttonsStackView.orientation = NSUserInterfaceLayoutOrientationVertical;
     self.buttonsStackView.spacing = 6;
-    self.buttonsStackView.alignment = NSLayoutAttributeLeading; // FISSO: Leading invece di CenterX
+    self.buttonsStackView.alignment = NSLayoutAttributeLeading;
     self.buttonsStackView.distribution = NSStackViewDistributionFillEqually;
     
     [self addSubview:self.buttonsStackView];
@@ -116,9 +115,8 @@
     
     [self addSubview:self.objectManagerButton];
     
-    // Width constraint (animated)
-    self.widthConstraint = [self.widthAnchor constraintEqualToConstant:0];
-    self.widthConstraint.active = YES;
+    // SIDEBAR PATTERN: Width constraint sempre fissa
+    [self.widthAnchor constraintEqualToConstant:self.panelWidth].active = YES;
     
     // Layout constraints
     [NSLayoutConstraint activateConstraints:@[
@@ -127,115 +125,65 @@
         [titleLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
         [titleLabel.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
         
-        // Stack view for buttons - FISSO: constrainte migliori
+        // Buttons stack in middle
         [self.buttonsStackView.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:12],
         [self.buttonsStackView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
         [self.buttonsStackView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
-        [self.buttonsStackView.widthAnchor constraintGreaterThanOrEqualToConstant:164], // NUOVO: larghezza minima
         
         // Separator line
         [self.separatorView.topAnchor constraintEqualToAnchor:self.buttonsStackView.bottomAnchor constant:12],
         [self.separatorView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:16],
         [self.separatorView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-16],
-        [self.separatorView.heightAnchor constraintEqualToConstant:1],
+        [self.separatorView.heightAnchor constraintEqualToConstant:0.5],
         
-        // Object manager button at bottom
-        [self.objectManagerButton.topAnchor constraintEqualToAnchor:self.separatorView.bottomAnchor constant:8],
+        // Object Manager button at bottom
+        [self.objectManagerButton.topAnchor constraintEqualToAnchor:self.separatorView.bottomAnchor constant:12],
         [self.objectManagerButton.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
         [self.objectManagerButton.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
-        [self.objectManagerButton.bottomAnchor constraintEqualToAnchor:self.bottomAnchor constant:-12],
-        [self.objectManagerButton.heightAnchor constraintEqualToConstant:28]
+        [self.objectManagerButton.bottomAnchor constraintLessThanOrEqualToAnchor:self.bottomAnchor constant:-12]
     ]];
 }
 
 - (void)createObjectButtons {
-    NSMutableArray<NSButton *> *buttons = [NSMutableArray array];
-    
-    // Define object types with icons and tooltips
     NSArray<NSDictionary *> *objectTypes = @[
-        @{
-            @"type": @(ChartObjectTypeTrendline),
-            @"title": @"📈 Trendline",
-            @"tooltip": @"Draw trend line connecting two points"
-        },
-        @{
-            @"type": @(ChartObjectTypeHorizontalLine),
-            @"title": @"📏 Support/Resistance",
-            @"tooltip": @"Draw horizontal support or resistance line"
-        },
-        @{
-            @"type": @(ChartObjectTypeFibonacci),
-            @"title": @"🌀 Fibonacci",
-            @"tooltip": @"Fibonacci retracement levels"
-        },
-        @{
-            @"type": @(ChartObjectTypeText),
-            @"title": @"📝 Text Note",
-            @"tooltip": @"Add text annotation to chart"
-        },
-        @{
-            @"type": @(ChartObjectTypeTarget),
-            @"title": @"🎯 Price Target",
-            @"tooltip": @"Set price target with alerts"
-        },
-        @{
-            @"type": @(ChartObjectTypeFreeDrawing),
-            @"title": @"✏️ Free Draw",
-            @"tooltip": @"Free-form drawing tool"
-        },
-        @{
-            @"type": @(ChartObjectTypeVerticalLine),
-            @"title": @"📐 Vertical Line",
-            @"tooltip": @"Draw vertical line at specific time"
-        },
-        @{
-            @"type": @(ChartObjectTypeRectangle),
-            @"title": @"⬜ Rectangle",
-            @"tooltip": @"Draw rectangular area"
-        }
+        @{@"title": @"Horizontal Line", @"type": @(ChartObjectTypeHorizontalLine)},
+        @{@"title": @"Vertical Line", @"type": @(ChartObjectTypeVerticalLine)},
+        @{@"title": @"Trend Line", @"type": @(ChartObjectTypeTrendline)},
+        @{@"title": @"Rectangle", @"type": @(ChartObjectTypeRectangle)},
+        @{@"title": @"Text Label", @"type": @(ChartObjectTypeText)},
+        @{@"title": @"Fibonacci", @"type": @(ChartObjectTypeFibonacci)}
     ];
     
-    for (NSDictionary *typeInfo in objectTypes) {
-        ChartObjectType type = [typeInfo[@"type"] integerValue];
-        NSString *title = typeInfo[@"title"];
-        NSString *tooltip = typeInfo[@"tooltip"];
-        
-        NSButton *button = [NSButton buttonWithTitle:title
+    NSMutableArray<NSButton *> *buttons = [[NSMutableArray alloc] init];
+    
+    for (NSDictionary *objType in objectTypes) {
+        NSButton *button = [NSButton buttonWithTitle:objType[@"title"]
                                               target:self
                                               action:@selector(objectButtonClicked:)];
-        button.tag = type;
-        button.bezelStyle = NSBezelStyleRounded;
-        button.controlSize = NSControlSizeRegular;
-        button.font = [NSFont systemFontOfSize:12];
-        button.toolTip = tooltip;
-        button.alignment = NSTextAlignmentLeft;
-        
-        // CRITICO: Assicurati che il bottone abbia auto layout
         button.translatesAutoresizingMaskIntoConstraints = NO;
-        
-        // Visual styling
-        button.wantsLayer = YES;
-        button.layer.cornerRadius = 6.0;
+        button.bezelStyle = NSBezelStyleRounded;
+        button.controlSize = NSControlSizeSmall;
+        button.font = [NSFont systemFontOfSize:11];
+        button.tag = [objType[@"type"] integerValue];
+        button.alignment = NSTextAlignmentLeft;
         
         [self.buttonsStackView addArrangedSubview:button];
         [buttons addObject:button];
         
-        // FISSO: Constraint espliciti per dimensioni bottone
-        [NSLayoutConstraint activateConstraints:@[
-            [button.heightAnchor constraintEqualToConstant:34],
-            // FISSO: Invece di ancorare al stackview, usa width constraint
-            [button.widthAnchor constraintGreaterThanOrEqualToConstant:160] // Minimo 160px
-        ]];
+        // Pulsanti si adattano alla larghezza del pannello automaticamente
+        [button.widthAnchor constraintEqualToConstant:164].active = YES;
     }
     
     self.objectButtons = [buttons copy];
-    NSLog(@"🎨 ObjectsPanel: Created %lu object buttons with fixed width", (unsigned long)buttons.count);
+    NSLog(@"🎨 ObjectsPanel: Created %lu object buttons", (unsigned long)buttons.count);
 }
 
 - (void)setupInitialState {
-    // Start hidden
+    // SIDEBAR PATTERN: Start nascosto senza conflitti di constraint
     self.hidden = YES;
-    self.widthConstraint.constant = 0;
+    self.isVisible = NO;
+    
+    NSLog(@"🎨 ObjectsPanel: Initial state - hidden");
 }
 
 #pragma mark - Actions
@@ -276,15 +224,30 @@
     if (self.isVisible) return;
     
     self.isVisible = YES;
-    self.hidden = NO;
     
-    [self animateToWidth:self.panelWidth animated:animated completion:^{
-        NSLog(@"🎨 ObjectsPanel: Show animation completed");
+    // SIDEBAR PATTERN: Solo show/hide, nessuna animazione width
+    if (animated) {
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = 0.25;
+            context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+            context.allowsImplicitAnimation = YES;
+            
+            self.hidden = NO;
+            
+        } completionHandler:^{
+            NSLog(@"🎨 ObjectsPanel: Show animation completed");
+            
+            if ([self.delegate respondsToSelector:@selector(objectsPanel:didChangeVisibility:)]) {
+                [self.delegate objectsPanel:self didChangeVisibility:YES];
+            }
+        }];
+    } else {
+        self.hidden = NO;
         
         if ([self.delegate respondsToSelector:@selector(objectsPanel:didChangeVisibility:)]) {
             [self.delegate objectsPanel:self didChangeVisibility:YES];
         }
-    }];
+    }
 }
 
 - (void)hideAnimated:(BOOL)animated {
@@ -292,50 +255,45 @@
     
     self.isVisible = NO;
     
-    [self animateToWidth:0 animated:animated completion:^{
-        self.hidden = YES;
-        NSLog(@"🎨 ObjectsPanel: Hide animation completed");
-        
-        if ([self.delegate respondsToSelector:@selector(objectsPanel:didChangeVisibility:)]) {
-            [self.delegate objectsPanel:self didChangeVisibility:NO];
-        }
-    }];
-}
-
-- (void)updateButtonStatesWithActiveType:(ChartObjectType)activeType {
-    for (NSButton *button in self.objectButtons) {
-        if (button.tag == activeType) {
-            button.state = NSControlStateValueOn;
-            button.layer.backgroundColor = [NSColor selectedControlColor].CGColor;
-        } else {
-            button.state = NSControlStateValueOff;
-            button.layer.backgroundColor = [NSColor clearColor].CGColor;
-        }
-    }
-}
-
-#pragma mark - Private Methods
-
-- (void)animateToWidth:(CGFloat)targetWidth animated:(BOOL)animated completion:(void(^)(void))completion {
+    // SIDEBAR PATTERN: Solo show/hide, nessuna animazione width
     if (animated) {
         [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
             context.duration = 0.25;
             context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
             context.allowsImplicitAnimation = YES;
             
-            self.widthConstraint.animator.constant = targetWidth;
+            self.hidden = YES;
             
         } completionHandler:^{
-            if (completion) completion();
+            NSLog(@"🎨 ObjectsPanel: Hide animation completed");
+            
+            if ([self.delegate respondsToSelector:@selector(objectsPanel:didChangeVisibility:)]) {
+                [self.delegate objectsPanel:self didChangeVisibility:NO];
+            }
         }];
     } else {
-        self.widthConstraint.constant = targetWidth;
-        if (completion) completion();
+        self.hidden = YES;
+        
+        if ([self.delegate respondsToSelector:@selector(objectsPanel:didChangeVisibility:)]) {
+            [self.delegate objectsPanel:self didChangeVisibility:NO];
+        }
     }
 }
 
+- (void)updateButtonStatesWithActiveType:(ChartObjectType)activeType {
+    for (NSButton *button in self.objectButtons) {
+        if (button.tag == activeType) {
+            button.state = NSControlStateValueOn;
+        } else {
+            button.state = NSControlStateValueOff;
+        }
+    }
+}
+
+#pragma mark - Private Methods
+
 - (void)highlightButton:(NSButton *)button {
-    // Brief visual feedback
+    // Temporary visual feedback
     CABasicAnimation *scaleAnimation = [CABasicAnimation animationWithKeyPath:@"transform.scale"];
     scaleAnimation.fromValue = @1.0;
     scaleAnimation.toValue = @0.95;
@@ -343,24 +301,6 @@
     scaleAnimation.autoreverses = YES;
     
     [button.layer addAnimation:scaleAnimation forKey:@"buttonPress"];
-    
-    // Color flash
-    CGColorRef originalColor = button.layer.backgroundColor;
-    button.layer.backgroundColor = [NSColor selectedControlColor].CGColor;
-    
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        button.layer.backgroundColor = originalColor;
-    });
-}
-
-#pragma mark - Accessibility
-
-- (NSString *)accessibilityLabel {
-    return @"Chart Drawing Tools Panel";
-}
-
-- (NSString *)accessibilityHelp {
-    return @"Panel containing tools for drawing objects on charts, such as trendlines, support levels, and annotations";
 }
 
 @end

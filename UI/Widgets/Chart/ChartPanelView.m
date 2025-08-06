@@ -263,13 +263,9 @@
         NSRect bodyRect = NSMakeRect(x, bodyBottom, barWidth, bodyHeight);
         
         if (bar.close >= bar.open) {
-            // Green candle - hollow
-            [bodyColor setStroke];
-            [[NSColor controlBackgroundColor] setFill];
+            [bodyColor setFill];
             NSBezierPath *bodyPath = [NSBezierPath bezierPathWithRect:bodyRect];
-            bodyPath.lineWidth = 1.0;
             [bodyPath fill];
-            [bodyPath stroke];
         } else {
             // Red candle - filled
             [bodyColor setFill];

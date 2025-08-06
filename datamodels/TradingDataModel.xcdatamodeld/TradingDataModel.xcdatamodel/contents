@@ -20,10 +20,10 @@
         <attribute name="orderIndex" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
         <relationship name="objects" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="ChartObject" inverseName="layer" inverseEntity="ChartObject"/>
         <relationship name="symbol" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Symbol" inverseName="chartLayers" inverseEntity="Symbol"/>
-       <fetchIndex name="bySymbolLayer">
-        <fetchIndexElement property="symbol" type="Binary" order="ascending"/>
-        <fetchIndexElement property="orderIndex" type="Binary" order="ascending"/>
-    </fetchIndex>
+        <fetchIndex name="bySymbolLayer">
+            <fetchIndexElement property="symbol" type="Binary" order="ascending"/>
+            <fetchIndexElement property="orderIndex" type="Binary" order="ascending"/>
+        </fetchIndex>
     </entity>
     <entity name="ChartObject" representedClassName="ChartObject" syncable="YES" codeGenerationType="class">
         <attribute name="controlPointsData" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
@@ -38,12 +38,12 @@
         <attribute name="type" attributeType="Integer 16" usesScalarValueType="YES"/>
         <relationship name="layer" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="ChartLayer" inverseName="objects" inverseEntity="ChartLayer"/>
         <fetchIndex name="byLayerType">
-        <fetchIndexElement property="layer" type="Binary" order="ascending"/>
-        <fetchIndexElement property="type" type="Binary" order="ascending"/>
-    </fetchIndex>
-    <fetchIndex name="byObjectID">
-        <fetchIndexElement property="objectID" type="Binary" order="ascending"/>
-    </fetchIndex>
+            <fetchIndexElement property="layer" type="Binary" order="ascending"/>
+            <fetchIndexElement property="type" type="Binary" order="ascending"/>
+        </fetchIndex>
+        <fetchIndex name="byObjectID">
+            <fetchIndexElement property="objectID" type="Binary" order="ascending"/>
+        </fetchIndex>
     </entity>
     <entity name="CompanyInfo" representedClassName="CompanyInfo" syncable="YES">
         <attribute name="ceo" optional="YES" attributeType="String"/>

@@ -13,15 +13,16 @@ NS_ASSUME_NONNULL_BEGIN
 #pragma mark - Enums
 
 typedef NS_ENUM(NSInteger, ChartObjectType) {
-    ChartObjectTypeTrendline = 0,
-    ChartObjectTypeHorizontalLine = 1,
-    ChartObjectTypeFibonacci = 2,
-    ChartObjectTypeText = 3,
-    ChartObjectTypeFreeDrawing = 4,
-    ChartObjectTypeTarget = 5,
-    ChartObjectTypeVerticalLine = 6,
-    ChartObjectTypeRectangle = 7,
-    ChartObjectTypeCircle = 8
+    ChartObjectTypeTrendline = 0,              // 2 CP
+    ChartObjectTypeHorizontalLine = 1,         // 1 CP
+    ChartObjectTypeFibonacci = 2,              // 2 CP
+    ChartObjectTypeTrailingFibo = 3,           // 1 CP + dinamico
+    ChartObjectTypeTrailingFiboBetween = 4,    // 2 CP + dinamico
+    ChartObjectTypeTarget = 5,                 // 3 CP (buy, stop, target)
+    ChartObjectTypeCircle = 6,                 // 2 CP
+    ChartObjectTypeRectangle = 7,              // 2 CP
+    ChartObjectTypeChannel = 8,                // 3 CP (2 per trend + 1 distanza)
+    ChartObjectTypeFreeDrawing = 9             // N CP
 };
 
 typedef NS_ENUM(NSInteger, ChartLineType) {

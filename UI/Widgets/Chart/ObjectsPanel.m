@@ -147,10 +147,8 @@
 - (void)createObjectButtons {
     NSArray<NSDictionary *> *objectTypes = @[
         @{@"title": @"Horizontal Line", @"type": @(ChartObjectTypeHorizontalLine)},
-        @{@"title": @"Vertical Line", @"type": @(ChartObjectTypeVerticalLine)},
         @{@"title": @"Trend Line", @"type": @(ChartObjectTypeTrendline)},
         @{@"title": @"Rectangle", @"type": @(ChartObjectTypeRectangle)},
-        @{@"title": @"Text Label", @"type": @(ChartObjectTypeText)},
         @{@"title": @"Fibonacci", @"type": @(ChartObjectTypeFibonacci)}
     ];
     

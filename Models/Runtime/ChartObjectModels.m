@@ -153,9 +153,6 @@
         case ChartObjectTypeFibonacci:
             return [self fibonacciStyle];
             
-        case ChartObjectTypeText:
-            return [self textStyle];
-            
         case ChartObjectTypeTarget:
             style.color = [NSColor systemGreenColor];
             style.thickness = 2.0;
@@ -346,14 +343,12 @@
             return @"Horizontal Line";
         case ChartObjectTypeFibonacci:
             return @"Fibonacci";
-        case ChartObjectTypeText:
-            return @"Text";
+      
         case ChartObjectTypeFreeDrawing:
             return @"Drawing";
         case ChartObjectTypeTarget:
             return @"Price Target";
-        case ChartObjectTypeVerticalLine:
-            return @"Vertical Line";
+      
         case ChartObjectTypeRectangle:
             return @"Rectangle";
         case ChartObjectTypeCircle:
@@ -403,13 +398,11 @@
     switch (self.type) {
         case ChartObjectTypeTrendline:
         case ChartObjectTypeHorizontalLine:
-        case ChartObjectTypeVerticalLine:
-            return self.controlPoints.count >= 2;
+        
             
         case ChartObjectTypeFibonacci:
             return self.controlPoints.count >= 2;
             
-        case ChartObjectTypeText:
         case ChartObjectTypeTarget:
             return self.controlPoints.count >= 1;
             
@@ -756,14 +749,12 @@
             return @"Horizontal Line";
         case ChartObjectTypeFibonacci:
             return @"Fibonacci";
-        case ChartObjectTypeText:
-            return @"Text";
+      
         case ChartObjectTypeFreeDrawing:
             return @"Drawing";
         case ChartObjectTypeTarget:
             return @"Price Target";
-        case ChartObjectTypeVerticalLine:
-            return @"Vertical Line";
+      
         case ChartObjectTypeRectangle:
             return @"Rectangle";
         case ChartObjectTypeCircle:

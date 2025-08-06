@@ -8,6 +8,9 @@
 #import "DataHub+ChartObjects.h"
 #import <objc/runtime.h>
 #import "QuartzCore/QuartzCore.h"
+#import "ChartPanelView.h"
+
+
 // Associated object keys
 static const void *kObjectsPanelToggleKey = &kObjectsPanelToggleKey;
 static const void *kObjectsPanelKey = &kObjectsPanelKey;
@@ -220,19 +223,28 @@ static const void *kSplitViewLeadingConstraintKey = &kSplitViewLeadingConstraint
 - (void)objectsPanel:(id)panel didRequestCreateObjectOfType:(ChartObjectType)type {
     NSLog(@"🎨 ChartWidget: Create object of type %ld requested", (long)type);
     
-    // Create object in active layer
-    ChartLayerModel *activeLayer = self.objectsManager.activeLayer;
-    if (!activeLayer) {
-        // Create default layer if none exists
-        activeLayer = [self.objectsManager createLayerWithName:@"Analysis"];
+    // Trova il panel principale per il placement
+    ChartPanelView *mainPanel = nil;
+    for (ChartPanelView *panel in self.chartPanels) {
+        if ([panel.panelType isEqualToString:@"security"]) {
+            mainPanel = panel;
+            break;
+        }
     }
     
-    ChartObjectModel *newObject = [self.objectsManager createObjectOfType:type inLayer:activeLayer];
+    if (!mainPanel) {
+        NSLog(@"⚠️ No security panel found for object creation");
+        return;
+    }
     
-    NSLog(@"✅ Created chart object: %@ (%@)", newObject.name, newObject.objectID);
+    if (!mainPanel.objectRenderer) {
+        [mainPanel setupObjectsRendererWithManager:self.objectsManager];
+    }
     
-    // Start interactive placement mode
-    [self startObjectPlacementMode:newObject];
+    // Avvia direttamente la creazione nel panel
+    [mainPanel startCreatingObjectOfType:type];
+    
+    NSLog(@"✅ Started creating object type %ld in panel %@", (long)type, mainPanel.panelType);
 }
 
 - (void)objectsPanelDidRequestShowManager:(id)panel {
@@ -248,12 +260,32 @@ static const void *kSplitViewLeadingConstraintKey = &kSplitViewLeadingConstraint
 
 - (void)startObjectPlacementMode:(ChartObjectModel *)object {
     NSLog(@"🎯 Starting placement mode for object: %@", object.name);
-    // TODO: Implement interactive object placement
-    // This will involve:
-    // 1. Setting cursor to crosshair
-    // 2. Capturing mouse events on chart panels
-    // 3. Creating visual feedback during placement
-    // 4. Finalizing object position on click/drag
+    
+    // Trova il panel principale (security) per il placement
+    ChartPanelView *mainPanel = nil;
+    for (ChartPanelView *panel in self.chartPanels) {
+        if ([panel.panelType isEqualToString:@"security"]) {
+            mainPanel = panel;
+            break;
+        }
+    }
+    
+    if (!mainPanel) {
+        NSLog(@"⚠️ No security panel found for object placement");
+        return;
+    }
+    
+    if (!mainPanel.objectRenderer) {
+        NSLog(@"⚠️ Panel has no object renderer configured");
+        return;
+    }
+    
+    // Avvia la modalità di creazione nel renderer
+    [mainPanel startCreatingObjectOfType:object.type];
+    
+    NSLog(@"✅ Started creating %@ in panel %@", object.name, mainPanel.panelType);
+    NSLog(@"💡 Click on the chart to place control points");
 }
+
 
 @end

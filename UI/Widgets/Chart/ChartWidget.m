@@ -289,7 +289,16 @@ extern NSString *const DataHubDataLoadedNotification;
     // - zoomAllButton -> zoomAll:
     // - preferencesButton -> showPreferences:
     
-   
+    [self ensureObjectsRenderersAreSetup];
+}
+
+- (void)ensureObjectsRenderersAreSetup {
+    for (ChartPanelView *panel in self.chartPanels) {
+        if (!panel.objectRenderer) {
+            [panel setupObjectsRendererWithManager:self.objectsManager];
+            NSLog(@"🔧 Setup missing renderer for panel %@", panel.panelType);
+        }
+    }
 }
 
 - (void)viewDidAppear{

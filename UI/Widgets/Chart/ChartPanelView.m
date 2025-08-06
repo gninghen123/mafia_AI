@@ -7,8 +7,12 @@
 
 #import "ChartPanelView.h"
 #import "ChartWidget.h"
+#import "ChartObjectRenderer.h"
+#import "ChartObjectModels.h"
 
 @interface ChartPanelView ()
+
+
 
 // Mouse tracking
 @property (nonatomic, strong) NSTrackingArea *trackingArea;
@@ -23,6 +27,10 @@
 @property (nonatomic, assign) BOOL isInSelectionMode;
 @property (nonatomic, assign) NSInteger selectionStartIndex;
 @property (nonatomic, assign) NSInteger selectionEndIndex;
+@property (nonatomic, assign) BOOL isInObjectCreationMode;
+@property (nonatomic, assign) BOOL isInObjectEditingMode;
+@property (nonatomic, assign) ChartObjectType currentCreationObjectType;
+
 
 @end
 
@@ -69,6 +77,7 @@
     NSLog(@"🎯 ChartPanelView: Performance layers setup completed");
 }
 
+
 - (void)layout {
     [super layout];
     
@@ -77,6 +86,11 @@
     self.chartContentLayer.frame = bounds;
     self.selectionLayer.frame = bounds;
     self.crosshairLayer.frame = bounds;
+    
+    // NUOVO: Update objects renderer layer frames
+    if (self.objectRenderer) {
+        [self.objectRenderer updateLayerFrames];
+    }
 }
 
 #pragma mark - CALayerDelegate
@@ -110,6 +124,7 @@
 
 #pragma mark - Data Update
 
+
 - (void)updateWithData:(NSArray<HistoricalBarModel *> *)data
             startIndex:(NSInteger)startIndex
               endIndex:(NSInteger)endIndex
@@ -130,7 +145,18 @@
     
     if (dataChanged) {
         [self invalidateChartContent];
-        NSLog(@"📊 ChartPanelView: Chart content invalidated due to data change");
+        
+        // NUOVO: Update objects renderer coordinate context
+        if (self.objectRenderer) {
+            [self.objectRenderer updateCoordinateContext:data
+                                               startIndex:startIndex
+                                                 endIndex:endIndex
+                                                yRangeMin:yMin
+                                                yRangeMax:yMax
+                                                   bounds:self.bounds];
+        }
+        
+        NSLog(@"📊 ChartPanelView: Chart content and objects invalidated due to data change");
     }
 }
 
@@ -525,6 +551,13 @@
     NSPoint locationInView = [self convertPoint:event.locationInWindow fromView:nil];
     self.crosshairPoint = locationInView;
     
+    // Handle object creation preview
+    if (self.objectRenderer && self.objectRenderer.isInCreationMode) {
+        [self.objectRenderer updateCreationPreviewAtPoint:locationInView];
+        // Don't update other panels' crosshairs during object creation
+        return;
+    }
+    
     // Notify other panels to update crosshair (OPTIMIZED)
     for (ChartPanelView *panel in self.chartWidget.chartPanels) {
         if (panel != self) {
@@ -537,18 +570,140 @@
 }
 
 - (void)mouseDown:(NSEvent *)event {
+    NSPoint locationInView = [self convertPoint:event.locationInWindow fromView:nil];
+    
+    // PRIORITY 1: Handle object creation mode (BLOCK other interactions)
+    if (self.objectRenderer && self.objectRenderer.isInCreationMode) {
+        BOOL objectCompleted = [self.objectRenderer addControlPointAtScreenPoint:locationInView];
+        if (objectCompleted) {
+            self.isInObjectCreationMode = NO;
+            NSLog(@"✅ ChartPanelView: Object creation completed");
+        }
+        // IMPORTANT: Return here to prevent zoom/pan interactions during creation
+        return;
+    }
+    
+    // PRIORITY 2: Handle object editing mode
+    if (self.objectRenderer) {
+        // Check if clicking on a control point
+        ControlPointModel *cpAtPoint = [self.objectRenderer controlPointAtScreenPoint:locationInView
+                                                                             tolerance:12.0]; // Increased tolerance
+        if (cpAtPoint) {
+            // Start dragging control point
+            NSLog(@"🎯 ChartPanelView: Started dragging control point");
+            return;
+        }
+        
+        // Check if clicking on an object to start editing
+        if (!self.isInObjectEditingMode) {
+            ChartObjectModel *objectAtPoint = [self.objectRenderer objectAtScreenPoint:locationInView
+                                                                               tolerance:15.0]; // Increased tolerance
+            if (objectAtPoint) {
+                [self startEditingObjectAtPoint:locationInView];
+                return; // Object editing started - don't handle chart interactions
+            }
+        }
+    }
+    
+    // PRIORITY 3: Original chart interaction behavior (zoom, pan, selection)
     self.isMouseDown = YES;
-    self.dragStartPoint = [self convertPoint:event.locationInWindow fromView:nil];
+    self.dragStartPoint = locationInView;
     self.lastMousePoint = self.dragStartPoint;
 }
 
 - (void)rightMouseDown:(NSEvent *)event {
+    NSPoint locationInView = [self convertPoint:event.locationInWindow fromView:nil];
+    
+    // Check if right-clicking on an object
+    if (self.objectRenderer) {
+        ChartObjectModel *objectAtPoint = [self.objectRenderer objectAtScreenPoint:locationInView
+                                                                           tolerance:10.0];
+        if (objectAtPoint) {
+            [self showContextMenuForObject:objectAtPoint atPoint:locationInView];
+            return;
+        }
+    }
+    
+    // Original right-click behavior
     self.isRightMouseDown = YES;
-    self.dragStartPoint = [self convertPoint:event.locationInWindow fromView:nil];
+    self.dragStartPoint = locationInView;
     self.lastMousePoint = self.dragStartPoint;
 }
 
+- (void)showContextMenuForObject:(ChartObjectModel *)object atPoint:(NSPoint)point {
+    NSMenu *contextMenu = [[NSMenu alloc] initWithTitle:@"Object Actions"];
+    
+    NSMenuItem *editItem = [[NSMenuItem alloc] initWithTitle:@"Edit Object"
+                                                      action:@selector(editSelectedObject:)
+                                               keyEquivalent:@""];
+    editItem.target = self;
+    editItem.representedObject = object;
+    [contextMenu addItem:editItem];
+    
+    NSMenuItem *deleteItem = [[NSMenuItem alloc] initWithTitle:@"Delete Object"
+                                                        action:@selector(deleteSelectedObject:)
+                                                 keyEquivalent:@""];
+    deleteItem.target = self;
+    deleteItem.representedObject = object;
+    [contextMenu addItem:deleteItem];
+    
+    [NSMenu popUpContextMenu:contextMenu withEvent:[NSApp currentEvent] forView:self];
+}
 
+- (void)editSelectedObject:(NSMenuItem *)menuItem {
+    ChartObjectModel *object = menuItem.representedObject;
+    if (object && self.objectRenderer) {
+        [self.objectRenderer startEditingObject:object];
+        self.isInObjectEditingMode = YES;
+    }
+}
+
+- (void)deleteSelectedObject:(NSMenuItem *)menuItem {
+    ChartObjectModel *object = menuItem.representedObject;
+    if (object && self.objectRenderer) {
+        [self.objectRenderer.objectsManager deleteObject:object];
+        [self.objectRenderer renderAllObjects];
+    }
+}
+#pragma mark - Key Events (NEW)
+/*
+// ADD keyboard shortcuts for object creation:
+- (void)keyDown:(NSEvent *)event {
+    NSString *characters = event.charactersIgnoringModifiers.lowercaseString;
+    
+    if ([characters isEqualToString:@"h"]) {
+        // H key - Horizontal Line
+        [self startCreatingObjectOfType:ChartObjectTypeHorizontalLine];
+    } else if ([characters isEqualToString:@"t"]) {
+        // T key - Trendline
+        [self startCreatingObjectOfType:ChartObjectTypeTrendline];
+    } else if ([characters isEqualToString:@"f"]) {
+        // F key - Fibonacci
+        [self startCreatingObjectOfType:ChartObjectTypeFibonacci];
+    } else if ([characters isEqualToString:@"r"]) {
+        // R key - Rectangle
+        [self startCreatingObjectOfType:ChartObjectTypeRectangle];
+    } else if (event.keyCode == 53) { // ESC key
+        // Cancel current operation
+        if (self.isInObjectCreationMode && self.objectRenderer) {
+            [self.objectRenderer cancelCreatingObject];
+            self.isInObjectCreationMode = NO;
+        } else if (self.isInObjectEditingMode) {
+            [self stopEditingObject];
+        }
+    } else {
+        [super keyDown:event];
+    }
+}
+*/
+// ENSURE view can receive key events:
+- (BOOL)acceptsFirstResponder {
+    return YES;
+}
+
+- (BOOL)canBecomeKeyView {
+    return YES;
+}
 - (void)mouseDragged:(NSEvent *)event {
     if (!self.isMouseDown) return;
     
@@ -691,6 +846,93 @@
     if (self.trackingArea) {
         [self removeTrackingArea:self.trackingArea];
     }
+}
+
+
+#pragma mark - Objects Renderer Setup
+
+- (void)setupObjectsRendererWithManager:(ChartObjectsManager *)objectsManager {
+    if (!objectsManager) {
+        NSLog(@"⚠️ ChartPanelView: Cannot setup objects renderer without manager");
+        return;
+    }
+    
+    self.objectRenderer = [[ChartObjectRenderer alloc] initWithPanelView:self
+                                                          objectsManager:objectsManager];
+    
+    NSLog(@"🎨 ChartPanelView (%@): Objects renderer setup completed", self.panelType);
+}
+
+#pragma mark - Objects Interaction (NEW)
+
+
+- (void)startCreatingObjectOfType:(ChartObjectType)objectType {
+    self.isInObjectCreationMode = YES;
+    self.currentCreationObjectType = objectType;
+    
+    if (self.objectRenderer) {
+        [self.objectRenderer startCreatingObjectOfType:objectType];
+    }
+    
+    // Make sure this panel becomes key view to receive mouse events
+    [[self window] makeFirstResponder:self];
+    
+    NSLog(@"🎯 ChartPanelView (%@): Started creating object type %ld - ZOOM/PAN DISABLED",
+          self.panelType, (long)objectType);
+}
+
+- (void)startEditingObjectAtPoint:(NSPoint)point {
+    if (!self.objectRenderer) return;
+    
+    ChartObjectModel *objectAtPoint = [self.objectRenderer objectAtScreenPoint:point tolerance:10.0];
+    if (objectAtPoint) {
+        self.isInObjectEditingMode = YES;
+        [self.objectRenderer startEditingObject:objectAtPoint];
+        
+        NSLog(@"✏️ ChartPanelView (%@): Started editing object %@",
+              self.panelType, objectAtPoint.name);
+    }
+}
+
+- (void)stopEditingObject {
+    if (!self.isInObjectEditingMode) return;
+    
+    self.isInObjectEditingMode = NO;
+    
+    if (self.objectRenderer) {
+        [self.objectRenderer stopEditing];
+    }
+    
+    NSLog(@"✅ ChartPanelView (%@): Stopped editing object", self.panelType);
+}
+
+#pragma mark - Public Interface Updates
+
+// ADD method to check if panel has objects capability:
+- (BOOL)supportsObjects {
+    return self.objectRenderer != nil;
+}
+
+// ADD method to get objects at point (for external queries):
+- (NSArray<ChartObjectModel *> *)objectsAtPoint:(NSPoint)point tolerance:(CGFloat)tolerance {
+    if (!self.objectRenderer) return @[];
+    
+    NSMutableArray *objectsAtPoint = [NSMutableArray array];
+    
+    for (ChartLayerModel *layer in self.objectRenderer.objectsManager.layers) {
+        if (!layer.isVisible) continue;
+        
+        for (ChartObjectModel *object in layer.objects) {
+            if (!object.isVisible) continue;
+            
+            // This is a simplified check - the renderer has more sophisticated hit testing
+            if ([self.objectRenderer isPoint:point withinObject:object tolerance:tolerance]) {
+                [objectsAtPoint addObject:object];
+            }
+        }
+    }
+    
+    return [objectsAtPoint copy];
 }
 
 @end

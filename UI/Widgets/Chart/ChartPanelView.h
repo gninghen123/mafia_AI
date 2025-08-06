@@ -3,12 +3,16 @@
 //  TradingApp
 //
 //  Individual chart panel for rendering specific indicators
+//  UPDATED: Includes ChartObjectRenderer integration
 //
 
 #import <Cocoa/Cocoa.h>
 #import "RuntimeModels.h"
+#import "ChartObjectModels.h"
 
 @class ChartWidget;
+@class ChartObjectRenderer;
+@class ChartObjectsManager;
 
 @interface ChartPanelView : NSView
 
@@ -32,8 +36,14 @@
 @property (nonatomic, strong) CALayer *crosshairLayer;
 @property (nonatomic, strong) CALayer *selectionLayer;
 
+// NUOVO: Objects rendering
+@property (nonatomic, strong) ChartObjectRenderer *objectRenderer;
+
 // Initialization
 - (instancetype)initWithType:(NSString *)type;
+
+// NUOVO: Setup with objects manager
+- (void)setupObjectsRendererWithManager:(ChartObjectsManager *)objectsManager;
 
 // Data update
 - (void)updateWithData:(NSArray<HistoricalBarModel *> *)data
@@ -46,5 +56,10 @@
 - (void)setCrosshairPoint:(NSPoint)point visible:(BOOL)visible;
 - (void)invalidateChartContent; // Force redraw of chart data
 - (void)updateCrosshairOnly;    // Update only crosshair layer
+
+// NUOVO: Objects interaction
+- (void)startCreatingObjectOfType:(ChartObjectType)objectType;
+- (void)startEditingObjectAtPoint:(NSPoint)point;
+- (void)stopEditingObject;
 
 @end

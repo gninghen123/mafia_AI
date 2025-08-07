@@ -37,7 +37,7 @@
 // Performance layers
 @property (nonatomic, strong) CALayer *chartContentLayer;
 @property (nonatomic, strong) CALayer *crosshairLayer;
-@property (nonatomic, strong) CALayer *selectionLayer;
+@property (nonatomic, strong) CALayer *chartPortionSelectionLayer;
 
 // NUOVO: Objects rendering
 @property (nonatomic, strong) ChartObjectRenderer *objectRenderer;

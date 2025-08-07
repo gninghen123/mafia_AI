@@ -28,7 +28,7 @@ extern NSString *const DataHubDataLoadedNotification;
 
 // Interaction state
 @property (nonatomic, assign) BOOL isInPanMode;
-@property (nonatomic, assign) BOOL isInSelectionMode;
+@property (nonatomic, assign) BOOL isInChartPortionSelectionMode;
 @property (nonatomic, assign) NSPoint dragStartPoint;
 @property (nonatomic, assign) NSPoint currentCrosshairPoint;
 @property (nonatomic, assign) BOOL crosshairVisible;

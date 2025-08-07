@@ -24,7 +24,7 @@
 @property (nonatomic, assign) NSPoint lastMousePoint;
 
 // Selection state
-@property (nonatomic, assign) BOOL isInSelectionMode;
+@property (nonatomic, assign) BOOL isInChartPortionSelectionMode;
 @property (nonatomic, assign) NSInteger selectionStartIndex;
 @property (nonatomic, assign) NSInteger selectionEndIndex;
 @property (nonatomic, assign) BOOL isInObjectCreationMode;
@@ -66,9 +66,9 @@
     [self.layer addSublayer:self.chartContentLayer];
     
     // Selection layer (redraws only during selection)
-    self.selectionLayer = [CALayer layer];
-    self.selectionLayer.delegate = self;
-    [self.layer addSublayer:self.selectionLayer];
+    self.chartPortionSelectionLayer = [CALayer layer];
+    self.chartPortionSelectionLayer.delegate = self;
+    [self.layer addSublayer:self.chartPortionSelectionLayer];
     
     // Crosshair layer (redraws frequently but lightweight)
     self.crosshairLayer = [CALayer layer];
@@ -85,12 +85,22 @@
     // Update all layer frames
     NSRect bounds = self.bounds;
     self.chartContentLayer.frame = bounds;
-    self.selectionLayer.frame = bounds;
+    self.chartPortionSelectionLayer.frame = bounds;
     self.crosshairLayer.frame = bounds;
     
-    // NUOVO: Update objects renderer layer frames
+    // Update objects renderer layer frames AND coordinate context bounds
     if (self.objectRenderer) {
         [self.objectRenderer updateLayerFrames];
+        
+        // Update bounds in coordinate context
+        if (self.chartData) {
+            [self.objectRenderer updateCoordinateContext:self.chartData
+                                              startIndex:self.visibleStartIndex
+                                                endIndex:self.visibleEndIndex
+                                               yRangeMin:self.yRangeMin
+                                               yRangeMax:self.yRangeMax
+                                                  bounds:bounds];
+        }
     }
 }
 
@@ -105,8 +115,8 @@
         [self drawChartContent];
     } else if (layer == self.crosshairLayer) {
         [self drawCrosshairContent];
-    } else if (layer == self.selectionLayer) {
-        [self drawSelectionContent];
+    } else if (layer == self.chartPortionSelectionLayer) {
+        [self drawChartPortionSelectionContent];
     }
     
     [NSGraphicsContext restoreGraphicsState];
@@ -132,33 +142,25 @@
              yRangeMin:(double)yMin
              yRangeMax:(double)yMax {
     
-    BOOL dataChanged = ![self.chartData isEqualToArray:data] ||
-                      self.visibleStartIndex != startIndex ||
-                      self.visibleEndIndex != endIndex ||
-                      self.yRangeMin != yMin ||
-                      self.yRangeMax != yMax;
-    
+    // Update panel data
     self.chartData = data;
     self.visibleStartIndex = startIndex;
     self.visibleEndIndex = endIndex;
     self.yRangeMin = yMin;
     self.yRangeMax = yMax;
     
-    if (dataChanged) {
-        [self invalidateChartContent];
-        
-        // NUOVO: Update objects renderer coordinate context
-        if (self.objectRenderer) {
-            [self.objectRenderer updateCoordinateContext:data
-                                               startIndex:startIndex
-                                                 endIndex:endIndex
-                                                yRangeMin:yMin
-                                                yRangeMax:yMax
-                                                   bounds:self.bounds];
-        }
-        
-        NSLog(@"📊 ChartPanelView: Chart content and objects invalidated due to data change");
+    // CRITICO: Update objects renderer coordinate context
+    if (self.objectRenderer) {
+        [self.objectRenderer updateCoordinateContext:data
+                                          startIndex:startIndex
+                                            endIndex:endIndex
+                                           yRangeMin:yMin
+                                           yRangeMax:yMax
+                                              bounds:self.bounds];
+        NSLog(@"🔄 Updated ChartObjectRenderer coordinate context with %lu bars", (unsigned long)data.count);
     }
+    
+    [self invalidateChartContent];
 }
 
 - (void)setCrosshairPoint:(NSPoint)point visible:(BOOL)visible {
@@ -224,11 +226,11 @@
 }
 
 
-- (void)drawSelectionContent {
-    if (!self.isInSelectionMode) return;
+- (void)drawChartPortionSelectionContent {
+    if (!self.isInChartPortionSelectionMode) return;
     
     // ✅ USA IL METODO ESISTENTE invece di riscriverlo
-    [self drawSelection];
+    [self drawChartPortionSelection];
 }
 - (void)drawRect:(NSRect)dirtyRect {
     // drawRect is now unused - all drawing happens in layer delegates
@@ -340,7 +342,7 @@
     }
 }
 
-- (void)drawSelection {
+- (void)drawChartPortionSelection {
     if (labs(self.selectionStartIndex-self.selectionEndIndex)==0) return;
     
     NSInteger startIdx = MIN(self.selectionStartIndex, self.selectionEndIndex);
@@ -374,11 +376,11 @@
     
     // Draw info box (only for security panel)
     if ([self.panelType isEqualToString:@"security"]) {
-        [self drawSelectionInfoBox:startIdx endIdx:endIdx];
+        [self drawChartPortionSelectionInfoBox:startIdx endIdx:endIdx];
     }
 }
 
-- (void)drawSelectionInfoBox:(NSInteger)startIdx endIdx:(NSInteger)endIdx {
+- (void)drawChartPortionSelectionInfoBox:(NSInteger)startIdx endIdx:(NSInteger)endIdx {
     if (!self.chartData || startIdx >= self.chartData.count || endIdx >= self.chartData.count) return;
     
     // Calculate statistics
@@ -594,6 +596,9 @@
 
 
 - (void)mouseDown:(NSEvent *)event {
+    if (self.objectRenderer.currentCPSelected) {
+        return;
+    }
     NSPoint locationInView = [self convertPoint:event.locationInWindow fromView:nil];
     self.dragStartPoint = locationInView;
     self.isDragging = NO;
@@ -621,11 +626,7 @@
         return; // Don't handle other interactions during creation
     }
     
-    // Check if we have currentCPSelected (editing mode)
-    if (self.objectRenderer && self.objectRenderer.currentCPSelected) {
-        NSLog(@"🎯 Continue editing current CP");
-        return; // Will handle in mouseDragged if needed
-    }
+  
     
     // Original chart interaction behavior (zoom, pan, selection)
     self.isMouseDown = YES;
@@ -774,11 +775,11 @@
         
         if (self.isDragging) {
             // Chart selection mode
-            self.isInSelectionMode = YES;
+            self.isInChartPortionSelectionMode = YES;
             self.selectionStartIndex = [self barIndexForXCoordinate:self.dragStartPoint.x];
             self.selectionEndIndex = [self barIndexForXCoordinate:currentPoint.x];
             
-            [self.selectionLayer setNeedsDisplay];
+            [self.chartPortionSelectionLayer setNeedsDisplay];
         }
         
         // Update crosshair
@@ -804,11 +805,9 @@
 - (void)mouseUp:(NSEvent *)event {
     NSPoint locationInView = [self convertPoint:event.locationInWindow fromView:nil];
     
-    NSLog(@"🖱️ ChartPanelView: MouseUp at (%.1f, %.1f), isDragging: %@",
-          locationInView.x, locationInView.y, self.isDragging ? @"YES" : @"NO");
-    
+        
     // If we were dragging a currentCP, finalize the drag
-    if (self.objectRenderer && self.objectRenderer.currentCPSelected && self.isDragging) {
+    if (self.objectRenderer && self.objectRenderer.currentCPSelected) {
         NSLog(@"🎯 Finalized CP drag");
         
         // Check if object creation is complete
@@ -849,7 +848,7 @@
     }
     
     // Original mouseUp behavior for chart
-    if (self.isInSelectionMode && self.isDragging) {
+    if (self.isInChartPortionSelectionMode && self.isDragging) {
         // Zoom to selection
         NSInteger startIdx = MIN(self.selectionStartIndex, self.selectionEndIndex);
         NSInteger endIdx = MAX(self.selectionStartIndex, self.selectionEndIndex);
@@ -862,8 +861,8 @@
     // Reset states
     self.isMouseDown = NO;
     self.isDragging = NO;
-    self.isInSelectionMode = NO;
-    [self.selectionLayer setNeedsDisplay];
+    self.isInChartPortionSelectionMode = NO;
+    [self.chartPortionSelectionLayer setNeedsDisplay];
 }
 - (void)rightMouseUp:(NSEvent *)event {
     self.isRightMouseDown = NO;
@@ -973,6 +972,17 @@
     
     self.objectRenderer = [[ChartObjectRenderer alloc] initWithPanelView:self
                                                           objectsManager:objectsManager];
+    
+    // CRITICO: Initialize coordinate context with current data if available
+    if (self.chartData) {
+        [self.objectRenderer updateCoordinateContext:self.chartData
+                                          startIndex:self.visibleStartIndex
+                                            endIndex:self.visibleEndIndex
+                                           yRangeMin:self.yRangeMin
+                                           yRangeMax:self.yRangeMax
+                                              bounds:self.bounds];
+        NSLog(@"🎨 ChartObjectRenderer initialized with existing data (%lu bars)", (unsigned long)self.chartData.count);
+    }
     
     NSLog(@"🎨 ChartPanelView (%@): Objects renderer setup completed", self.panelType);
 }

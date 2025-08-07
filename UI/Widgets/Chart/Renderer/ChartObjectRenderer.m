@@ -8,6 +8,7 @@
 #import "ChartObjectRenderer.h"
 #import "ChartPanelView.h"
 #import "RuntimeModels.h"
+#import "ChartWidget.h"
 
 #pragma mark - Coordinate Context Implementation
 
@@ -867,6 +868,10 @@
     
     [self.tempControlPoints addObject:newCP];
     
+    // NUOVO: Set currentCPSelected to the newly created CP
+    self.currentCPSelected = newCP;
+    NSLog(@"🎯 Set currentCPSelected to newly created CP %lu", (unsigned long)self.tempControlPoints.count);
+    
     // Check if we need to enter preview mode for multi-CP objects
     BOOL needsMorePoints = [self needsMoreControlPointsForPreview];
     if (needsMorePoints) {
@@ -886,6 +891,50 @@
     
     return isComplete;
 }
+
+- (void)consolidateCurrentCPAndPrepareNext {
+    if (!self.isInCreationMode || !self.currentCPSelected) return;
+    
+    NSLog(@"🎯 Consolidating current CP...");
+    
+    // Clear currentCPSelected (consolida)
+    self.currentCPSelected = nil;
+    
+    // Check if object needs more control points
+    BOOL needsMorePoints = [self needsMoreControlPointsForPreview];
+    
+    if (needsMorePoints) {
+        // Create next CP for preview mode
+        ControlPointModel *nextCP = [self controlPointFromScreenPoint:self.currentMousePosition
+                                                          indicatorRef:@"close"];
+        if (nextCP) {
+            [self.tempControlPoints addObject:nextCP];
+            self.currentCPSelected = nextCP;
+            self.isInPreviewMode = YES;
+            NSLog(@"🎯 Created next CP %lu for preview", (unsigned long)self.tempControlPoints.count);
+        }
+    } else {
+        // Object is complete - call finishCreatingObject
+        [self finishCreatingObject];
+        
+        // NUOVO: Notify panel that object creation is completed
+        [self notifyObjectCreationCompleted];
+        
+        NSLog(@"✅ Object creation completed!");
+    }
+    
+    [self invalidateEditingLayer];
+}
+
+- (void)notifyObjectCreationCompleted {
+    // Find ChartWidget through panelView
+    if (self.panelView.chartWidget && self.panelView.chartWidget.objectsPanel) {
+        [self.panelView.chartWidget.objectsPanel objectCreationCompleted];
+        NSLog(@"🔔 Notified ObjectsPanel that object creation completed");
+    }
+}
+
+
 
 - (void)updateCreationPreviewAtPoint:(NSPoint)screenPoint {
     if (!self.isInCreationMode || !self.isInPreviewMode) return;
@@ -1005,22 +1054,31 @@
         [newObject addControlPoint:cp];
     }
     
+    // NUOVO: Clear currentCPSelected when finishing
+    self.currentCPSelected = nil;
+    
     [self cancelCreatingObject];
     [self invalidateObjectsLayer];
     
     NSLog(@"✅ ChartObjectRenderer: Finished creating object %@", newObject.name);
 }
 
+// 4. Modificare cancelCreatingObject per clear currentCPSelected
 - (void)cancelCreatingObject {
     self.isInCreationMode = NO;
     self.isInPreviewMode = NO;
     self.creationObjectType = 0;
     self.currentMousePosition = NSZeroPoint;
+    
+    // NUOVO: Clear currentCPSelected
+    self.currentCPSelected = nil;
+    
     [self.tempControlPoints removeAllObjects];
     [self invalidateEditingLayer];
     
     NSLog(@"❌ ChartObjectRenderer: Cancelled object creation");
 }
+
 
 - (void)startEditingObject:(ChartObjectModel *)object {
     [self stopEditing]; // Stop any current editing

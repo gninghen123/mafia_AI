@@ -550,29 +550,23 @@
     [self setNeedsDisplay:YES];
 }
 
-
 - (void)mouseMoved:(NSEvent *)event {
     NSPoint locationInView = [self convertPoint:event.locationInWindow fromView:nil];
     self.crosshairPoint = locationInView;
+    [self.crosshairLayer setNeedsDisplay];
     
-    // SEMPRE aggiorna crosshair
-    self.crosshairVisible = YES;
-    [self updateCrosshairOnly];
-    
-    // Handle object creation preview
-    if (self.objectRenderer && self.objectRenderer.isInCreationMode) {
-        [self.objectRenderer updateCreationPreviewAtPoint:locationInView];
+    // PRIORITA' 1: Se abbiamo currentCPSelected, aggiorna sempre le coordinate
+    if (self.objectRenderer && self.objectRenderer.currentCPSelected) {
+        [self.objectRenderer updateCurrentCPCoordinates:locationInView];
         
-        // Sync crosshair con altri panels anche durante creation
-        for (ChartPanelView *panel in self.chartWidget.chartPanels) {
-            if (panel != self) {
-                [panel setCrosshairPoint:NSMakePoint(locationInView.x, panel.crosshairPoint.y) visible:YES];
-            }
+        // Se in preview mode, aggiorna anche preview
+        if (self.objectRenderer.isInPreviewMode) {
+            [self.objectRenderer updateCreationPreviewAtPoint:locationInView];
         }
         return;
     }
     
-    // Handle object editing hover (NO coordinate update, only visual feedback)
+    // Update crosshair during object editing
     if (self.objectRenderer && self.objectRenderer.editingObject) {
         [self.objectRenderer updateEditingHoverAtPoint:locationInView];
         
@@ -592,7 +586,6 @@
         }
     }
 }
-
 
 
 - (void)mouseDown:(NSEvent *)event {
@@ -748,6 +741,9 @@
 - (BOOL)canBecomeKeyView {
     return YES;
 }
+
+
+
 - (void)mouseDragged:(NSEvent *)event {
     NSPoint locationInView = [self convertPoint:event.locationInWindow fromView:nil];
     
@@ -759,33 +755,36 @@
         self.isDragging = YES;
     }
     
-    NSLog(@"🖱️ MouseDragged: distance %.1f, isDragging: %@", dragDistance, self.isDragging ? @"YES" : @"NO");
     
-    // NEW LOGIC: If we have currentCPSelected, update its coordinates
-    if (self.objectRenderer && self.objectRenderer.currentCPSelected && self.isDragging) {
+    // PRIORITA' 1: Se abbiamo currentCPSelected, aggiorna coordinate
+    if (self.objectRenderer && self.objectRenderer.currentCPSelected) {
         [self.objectRenderer updateCurrentCPCoordinates:locationInView];
-        NSLog(@"🎯 Updated currentCP coordinates via drag");
+        
+        // Se in preview mode E stiamo draggando, aggiorna anche preview
+        if (self.objectRenderer.isInPreviewMode && self.isDragging) {
+            [self.objectRenderer updateCreationPreviewAtPoint:locationInView];
+        }
+        
+        NSLog(@"🎯 MouseDragged: Updated currentCPSelected coordinates");
         return;
     }
     
+    // RESTO DEL CODICE ESISTENTE...
     // Original drag behavior for chart (pan, selection, etc.)
     if (self.isMouseDown) {
         // Handle chart pan/selection as before
-        NSPoint currentPoint = locationInView;
         
         if (self.isDragging) {
             // Chart selection mode
             self.isInChartPortionSelectionMode = YES;
             self.selectionStartIndex = [self barIndexForXCoordinate:self.dragStartPoint.x];
-            self.selectionEndIndex = [self barIndexForXCoordinate:currentPoint.x];
+            self.selectionEndIndex = [self barIndexForXCoordinate:locationInView.x];
             
             [self.chartPortionSelectionLayer setNeedsDisplay];
         }
-        
-        // Update crosshair
-        self.crosshairPoint = currentPoint;
-        [self.crosshairLayer setNeedsDisplay];
     }
+    self.crosshairPoint = locationInView;
+    [self.crosshairLayer setNeedsDisplay];
 }
 
 - (void)rightMouseDragged:(NSEvent *)event {
@@ -802,24 +801,28 @@
 }
 
 
+
 - (void)mouseUp:(NSEvent *)event {
     NSPoint locationInView = [self convertPoint:event.locationInWindow fromView:nil];
     
-        
-    // If we were dragging a currentCP, finalize the drag
+    // PRIORITA' 1: Se abbiamo currentCPSelected, consolidalo
     if (self.objectRenderer && self.objectRenderer.currentCPSelected) {
-        NSLog(@"🎯 Finalized CP drag");
+        NSLog(@"🎯 MouseUp: Consolidating currentCPSelected");
         
-        // Check if object creation is complete
         if (self.objectRenderer.isInCreationMode) {
-            // Creation mode - check if object needs more CPs
-            // (this logic is already handled in the renderer)
+            // Modalità creazione - consolida CP e prepara il prossimo
+            [self.objectRenderer consolidateCurrentCPAndPrepareNext];
+        } else {
+            // Modalità editing - termina editing
+            self.objectRenderer.currentCPSelected = nil;
+            NSLog(@"🎯 MouseUp: Cleared currentCPSelected after editing");
         }
         
         self.isDragging = NO;
         return;
     }
     
+    // RESTO DEL CODICE ESISTENTE...
     // If it was a click (not drag), handle object selection
     if (!self.isDragging && self.objectRenderer) {
         // Hit test for existing objects
@@ -864,6 +867,8 @@
     self.isInChartPortionSelectionMode = NO;
     [self.chartPortionSelectionLayer setNeedsDisplay];
 }
+
+
 - (void)rightMouseUp:(NSEvent *)event {
     self.isRightMouseDown = NO;
 }

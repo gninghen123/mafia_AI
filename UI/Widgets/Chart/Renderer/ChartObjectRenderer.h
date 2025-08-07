@@ -168,6 +168,11 @@ NS_ASSUME_NONNULL_BEGIN
 /// Update layer frames when panel bounds change
 - (void)updateLayerFrames;
 
+
+- (void)consolidateCurrentCPAndPrepareNext;
+- (void)notifyObjectCreationCompleted;
+
+
 @end
 
 NS_ASSUME_NONNULL_END

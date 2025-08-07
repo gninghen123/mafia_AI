@@ -8,6 +8,7 @@
 
 #import "CompanyInfo+CoreDataClass.h"
 
+@class Symbol;
 
 NS_ASSUME_NONNULL_BEGIN
 

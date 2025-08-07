@@ -17,3 +17,4 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 NS_ASSUME_NONNULL_END
+#import "Alert+CoreDataProperties.h"  // ✅ Deve esserci questa riga

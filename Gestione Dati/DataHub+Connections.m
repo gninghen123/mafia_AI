@@ -787,22 +787,6 @@
     [self.connections addObjectsFromArray:fetchedConnections];
 }
 
-- (NSArray<NSString *> *)getSymbolsInvolvedInConnection:(StockConnection *)connection {
-    NSMutableArray<NSString *> *symbols = [NSMutableArray array];
-    
-    // Add source symbol
-    if (connection.sourceSymbol) {
-        [symbols addObject:connection.sourceSymbol.symbol];
-    }
-    
-    // Add target symbols
-    for (Symbol *symbol in connection.targetSymbols) {
-        if (![symbols containsObject:symbol.symbol]) {
-            [symbols addObject:symbol.symbol];
-        }
-    }
-    
-    return [symbols copy];
-}
+
 
 @end

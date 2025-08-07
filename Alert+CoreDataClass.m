@@ -1,7 +1,8 @@
+//
+//  Alert+CoreDataClass.m
+//  mafia_AI
+//
 
-#import "Alert+CoreDataProperties.h"
-
-// Alert+CoreDataClass.m
 #import "Alert+CoreDataClass.h"
 #import "Symbol+CoreDataClass.h"
 

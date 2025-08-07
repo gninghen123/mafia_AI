@@ -8,6 +8,7 @@
 
 #import "Alert+CoreDataClass.h"
 
+@class Symbol;
 
 NS_ASSUME_NONNULL_BEGIN
 

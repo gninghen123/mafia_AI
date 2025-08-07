@@ -509,7 +509,7 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     NSMutableArray *relevantConnections = [NSMutableArray array];
     
     for (StockConnection *connection in self.connections) {
-        if ([connection.symbols containsObject:symbol]) {
+        if ([[self getSymbolsInvolvedInConnection:connection] containsObject:symbol]) {
             [relevantConnections addObject:connection];
         }
     }
@@ -523,14 +523,39 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
                                            source:(NSString *)source
                                               url:(NSString *)url {
     
+    if (!symbols || symbols.count == 0) return nil;
+    
     StockConnection *connection = [NSEntityDescription insertNewObjectForEntityForName:@"StockConnection"
                                                                 inManagedObjectContext:self.mainContext];
-    connection.symbols = symbols;
+    
+    // Set basic properties
     connection.connectionType = type;
     connection.connectionDescription = description;
     connection.source = source;
     connection.url = url;
     connection.creationDate = [NSDate date];
+    connection.connectionID = [[NSUUID UUID] UUIDString];
+    connection.isActive = YES;
+    connection.bidirectional = YES;  // Default for this creation method
+    
+    // Set Symbol relationships
+    if (symbols.count == 1) {
+        // Single symbol - set as source only
+        Symbol *symbol = [self findOrCreateSymbolWithName:symbols[0] inContext:self.mainContext];
+        connection.sourceSymbol = symbol;
+    } else {
+        // Multiple symbols - first as source, rest as targets
+        Symbol *sourceSymbol = [self findOrCreateSymbolWithName:symbols[0] inContext:self.mainContext];
+        connection.sourceSymbol = sourceSymbol;
+        
+        // Add remaining symbols as targets
+        NSMutableSet *targetSymbols = [NSMutableSet set];
+        for (NSInteger i = 1; i < symbols.count; i++) {
+            Symbol *targetSymbol = [self findOrCreateSymbolWithName:symbols[i] inContext:self.mainContext];
+            [targetSymbols addObject:targetSymbol];
+        }
+        connection.targetSymbols = targetSymbols;
+    }
     
     [self.connections addObject:connection];
     [self saveContext];
@@ -541,6 +566,7 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     
     return connection;
 }
+
 
 - (void)deleteConnection:(StockConnection *)connection {
     [self.connections removeObject:connection];
@@ -735,26 +761,6 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     return alerts ?: @[];
 }
 
-- (Alert *)createAlertWithSymbol:(NSString *)symbol
-                    triggerValue:(double)triggerValue
-                 conditionString:(NSString *)conditionString
-            notificationEnabled:(BOOL)notificationEnabled
-                           notes:(NSString *)notes {
-    
-    Alert *alert = [NSEntityDescription insertNewObjectForEntityForName:@"Alert"
-                                                 inManagedObjectContext:self.mainContext];
-    alert.symbol = symbol.uppercaseString;
-    alert.triggerValue = triggerValue;
-    alert.conditionString = conditionString;
-    alert.isActive = YES;
-    alert.isTriggered = NO;
-    alert.notificationEnabled = notificationEnabled;
-    alert.notes = notes;
-    alert.creationDate = [NSDate date];
-    
-    [self saveContext];
-    return alert;
-}
 
 - (void)deleteAlert:(Alert *)alert {
     [self.mainContext deleteObject:alert];
@@ -1273,4 +1279,24 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     
     return symbol;
 }
+
+- (NSArray<NSString *> *)getSymbolsInvolvedInConnection:(StockConnection *)connection {
+    NSMutableArray<NSString *> *symbols = [NSMutableArray array];
+    
+    // Add source symbol
+    if (connection.sourceSymbol) {
+        [symbols addObject:connection.sourceSymbol.symbol];
+    }
+    
+    // Add target symbols
+    for (Symbol *symbol in connection.targetSymbols) {
+        if (![symbols containsObject:symbol.symbol]) {
+            [symbols addObject:symbol.symbol];
+        }
+    }
+    
+    return [symbols copy];
+}
+
+
 @end

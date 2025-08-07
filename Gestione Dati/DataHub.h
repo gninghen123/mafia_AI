@@ -232,7 +232,7 @@ typedef NS_ENUM(NSInteger, ModelStatus) {
 - (void)resetWatchlistDatabase:(void (^)(BOOL success))completion;
 - (void)resetAlertDatabase:(void (^)(BOOL success))completion;
 - (void)resetConnectionDatabase:(void (^)(BOOL success))completion;
-- (void)resetAllDatabases:(void (^)(BOOL success))completion;convertCoreDataQuoteToRuntimeModel
+- (void)resetAllDatabases:(void (^)(BOOL success))completion;
 
 
 @end

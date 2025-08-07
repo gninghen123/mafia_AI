@@ -2,7 +2,7 @@
 //  Alert+CoreDataProperties.h
 //  mafia_AI
 //
-//  Created by fabio gattone on 21/07/25.
+//  Created by fabio gattone on 07/08/25.
 //
 //
 
@@ -21,9 +21,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) BOOL isTriggered;
 @property (nullable, nonatomic, copy) NSString *notes;
 @property (nonatomic) BOOL notificationEnabled;
-@property (nullable, nonatomic, copy) NSString *symbol;
 @property (nullable, nonatomic, copy) NSDate *triggerDate;
 @property (nonatomic) double triggerValue;
+@property (nullable, nonatomic, retain) Symbol *symbol;
 
 @end
 

@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23605" systemVersion="24F74" minimumToolsVersion="Automatic" sourceLanguage="Objective-C" userDefinedModelVersionIdentifier="">
-    <entity name="Alert" representedClassName="Alert" syncable="YES">
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23605" systemVersion="24G84" minimumToolsVersion="Automatic" sourceLanguage="Objective-C" userDefinedModelVersionIdentifier="">
+    <entity name="Alert" representedClassName="Alert" syncable="YES" codeGenerationType="category">
         <attribute name="conditionString" optional="YES" attributeType="String"/>
         <attribute name="creationDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="isActive" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
         <attribute name="isTriggered" optional="YES" attributeType="Boolean" usesScalarValueType="YES"/>
         <attribute name="notes" optional="YES" attributeType="String"/>
         <attribute name="notificationEnabled" optional="YES" attributeType="Boolean" defaultValueString="YES" usesScalarValueType="YES"/>
-        <attribute name="symbol" optional="YES" attributeType="String"/>
         <attribute name="triggerDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="triggerValue" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <relationship name="symbol" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Symbol" inverseName="alerts" inverseEntity="Symbol"/>
     </entity>
-    <entity name="ChartLayer" representedClassName="ChartLayer" syncable="YES" codeGenerationType="class">
+    <entity name="ChartLayer" representedClassName="ChartLayer" syncable="YES" codeGenerationType="category">
         <attribute name="creationDate" attributeType="Date"/>
         <attribute name="isVisible" attributeType="Boolean" defaultValueString="YES" usesScalarValueType="YES"/>
         <attribute name="lastModified" optional="YES" attributeType="Date"/>
@@ -25,7 +25,7 @@
             <fetchIndexElement property="orderIndex" type="Binary" order="ascending"/>
         </fetchIndex>
     </entity>
-    <entity name="ChartObject" representedClassName="ChartObject" syncable="YES" codeGenerationType="class">
+    <entity name="ChartObject" representedClassName="ChartObject" syncable="YES" codeGenerationType="category">
         <attribute name="controlPointsData" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
         <attribute name="creationDate" attributeType="Date"/>
         <attribute name="customProperties" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSDictionary"/>
@@ -45,7 +45,7 @@
             <fetchIndexElement property="objectID" type="Binary" order="ascending"/>
         </fetchIndex>
     </entity>
-    <entity name="CompanyInfo" representedClassName="CompanyInfo" syncable="YES">
+    <entity name="CompanyInfo" representedClassName="CompanyInfo" syncable="YES" codeGenerationType="category">
         <attribute name="ceo" optional="YES" attributeType="String"/>
         <attribute name="companyDescription" optional="YES" attributeType="String"/>
         <attribute name="employees" optional="YES" attributeType="Integer 32" defaultValueString="0" usesScalarValueType="YES"/>
@@ -55,43 +55,43 @@
         <attribute name="lastUpdate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="name" optional="YES" attributeType="String"/>
         <attribute name="sector" optional="YES" attributeType="String"/>
-        <attribute name="symbol" attributeType="String"/>
         <attribute name="website" optional="YES" attributeType="String"/>
+        <relationship name="symbol" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Symbol" inverseName="companyInfo" inverseEntity="Symbol"/>
         <fetchIndex name="bySymbol">
             <fetchIndexElement property="symbol" type="Binary" order="ascending"/>
         </fetchIndex>
     </entity>
-    <entity name="HistoricalBar" representedClassName="HistoricalBar" syncable="YES">
+    <entity name="HistoricalBar" representedClassName="HistoricalBar" syncable="YES" codeGenerationType="category">
         <attribute name="adjustedClose" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
         <attribute name="close" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
         <attribute name="date" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="high" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
         <attribute name="low" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
         <attribute name="open" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
-        <attribute name="symbol" attributeType="String"/>
         <attribute name="timeframe" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="volume" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <relationship name="symbol" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Symbol" inverseName="historicalBars" inverseEntity="Symbol"/>
         <fetchIndex name="bySymbolDateTimeframe">
             <fetchIndexElement property="symbol" type="Binary" order="ascending"/>
             <fetchIndexElement property="date" type="Binary" order="ascending"/>
             <fetchIndexElement property="timeframe" type="Binary" order="ascending"/>
         </fetchIndex>
     </entity>
-    <entity name="MarketPerformer" representedClassName="MarketPerformer" syncable="YES">
+    <entity name="MarketPerformer" representedClassName="MarketPerformer" syncable="YES" codeGenerationType="category">
         <attribute name="changePercent" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
         <attribute name="listType" optional="YES" attributeType="String"/>
         <attribute name="name" optional="YES" attributeType="String"/>
         <attribute name="price" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
-        <attribute name="symbol" attributeType="String"/>
         <attribute name="timeframe" optional="YES" attributeType="String"/>
         <attribute name="timestamp" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="volume" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <relationship name="symbol" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Symbol" inverseName="marketPerformers" inverseEntity="Symbol"/>
         <fetchIndex name="byListTypeTimeframe">
             <fetchIndexElement property="listType" type="Binary" order="ascending"/>
             <fetchIndexElement property="timeframe" type="Binary" order="ascending"/>
         </fetchIndex>
     </entity>
-    <entity name="MarketQuote" representedClassName="MarketQuote" syncable="YES">
+    <entity name="MarketQuote" representedClassName="MarketQuote" syncable="YES" codeGenerationType="category">
         <attribute name="avgVolume" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="beta" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
         <attribute name="change" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
@@ -108,13 +108,13 @@
         <attribute name="open" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
         <attribute name="pe" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
         <attribute name="previousClose" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
-        <attribute name="symbol" attributeType="String"/>
         <attribute name="volume" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
+        <relationship name="symbol" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Symbol" inverseName="marketQuotes" inverseEntity="Symbol"/>
         <fetchIndex name="bySymbol">
             <fetchIndexElement property="symbol" type="Binary" order="ascending"/>
         </fetchIndex>
     </entity>
-    <entity name="StockConnection" representedClassName="StockConnection" syncable="YES">
+    <entity name="StockConnection" representedClassName="StockConnection" syncable="YES" codeGenerationType="category">
         <attribute name="autoDelete" optional="YES" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
         <attribute name="bidirectional" optional="YES" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
         <attribute name="connectionDescription" optional="YES" attributeType="String"/>
@@ -132,14 +132,13 @@
         <attribute name="notes" optional="YES" attributeType="String"/>
         <attribute name="originalSummary" optional="YES" attributeType="String"/>
         <attribute name="source" optional="YES" attributeType="String"/>
-        <attribute name="sourceSymbol" optional="YES" attributeType="String"/>
         <attribute name="strengthHorizon" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="summarySource" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
-        <attribute name="symbols" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
         <attribute name="tags" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
-        <attribute name="targetSymbols" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
         <attribute name="title" optional="YES" attributeType="String"/>
         <attribute name="url" optional="YES" attributeType="String"/>
+        <relationship name="sourceSymbol" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Symbol" inverseName="sourceConnections" inverseEntity="Symbol"/>
+        <relationship name="targetSymbols" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="Symbol" inverseName="targetConnections" inverseEntity="Symbol"/>
         <fetchIndex name="byConnectionID">
             <fetchIndexElement property="connectionID" type="Binary" order="ascending"/>
         </fetchIndex>
@@ -154,7 +153,7 @@
             <fetchIndexElement property="creationDate" type="Binary" order="descending"/>
         </fetchIndex>
     </entity>
-    <entity name="Symbol" representedClassName="Symbol" syncable="YES" codeGenerationType="class">
+    <entity name="Symbol" representedClassName="Symbol" syncable="YES" codeGenerationType="category">
         <attribute name="creationDate" attributeType="Date"/>
         <attribute name="firstInteraction" optional="YES" attributeType="Date"/>
         <attribute name="interactionCount" attributeType="Integer 32" defaultValueString="0"/>
@@ -163,7 +162,16 @@
         <attribute name="notes" optional="YES" attributeType="String"/>
         <attribute name="symbol" attributeType="String"/>
         <attribute name="tags" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
+        <relationship name="alerts" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="Alert" inverseName="symbol" inverseEntity="Alert"/>
         <relationship name="chartLayers" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="ChartLayer" inverseName="symbol" inverseEntity="ChartLayer"/>
+        <relationship name="companyInfo" optional="YES" maxCount="1" deletionRule="Cascade" destinationEntity="CompanyInfo" inverseName="symbol" inverseEntity="CompanyInfo"/>
+        <relationship name="historicalBars" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="HistoricalBar" inverseName="symbol" inverseEntity="HistoricalBar"/>
+        <relationship name="marketPerformers" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="MarketPerformer" inverseName="symbol" inverseEntity="MarketPerformer"/>
+        <relationship name="marketQuotes" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="MarketQuote" inverseName="symbol" inverseEntity="MarketQuote"/>
+        <relationship name="sourceConnections" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="StockConnection" inverseName="sourceSymbol" inverseEntity="StockConnection"/>
+        <relationship name="targetConnections" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="StockConnection" inverseName="targetSymbols" inverseEntity="StockConnection"/>
+        <relationship name="tradingModels" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="TradingModel" inverseName="symbol" inverseEntity="TradingModel"/>
+        <relationship name="watchlists" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="Watchlist" inverseName="symbols" inverseEntity="Watchlist"/>
         <fetchIndex name="bySymbolIndex">
             <fetchIndexElement property="symbol" type="Binary" order="ascending"/>
         </fetchIndex>
@@ -173,7 +181,7 @@
             </uniquenessConstraint>
         </uniquenessConstraints>
     </entity>
-    <entity name="TradingModel" representedClassName="TradingModel" syncable="YES">
+    <entity name="TradingModel" representedClassName="TradingModel" syncable="YES" codeGenerationType="category">
         <attribute name="currentOutcome" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
         <attribute name="entryDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="entryPrice" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
@@ -183,15 +191,15 @@
         <attribute name="setupDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="status" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="stopPrice" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
-        <attribute name="symbol" optional="YES" attributeType="String"/>
         <attribute name="targetPrice" optional="YES" attributeType="Double" defaultValueString="0.0" usesScalarValueType="YES"/>
+        <relationship name="symbol" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="Symbol" inverseName="tradingModels" inverseEntity="Symbol"/>
     </entity>
-    <entity name="Watchlist" representedClassName="Watchlist" syncable="YES">
+    <entity name="Watchlist" representedClassName="Watchlist" syncable="YES" codeGenerationType="category">
         <attribute name="colorHex" optional="YES" attributeType="String"/>
         <attribute name="creationDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="lastModified" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="name" optional="YES" attributeType="String"/>
         <attribute name="sortOrder" optional="YES" attributeType="Integer 64" defaultValueString="0" usesScalarValueType="YES"/>
-        <attribute name="symbols" optional="YES" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSArray"/>
+        <relationship name="symbols" optional="YES" toMany="YES" deletionRule="Nullify" destinationEntity="Symbol" inverseName="watchlists" inverseEntity="Symbol"/>
     </entity>
 </model>

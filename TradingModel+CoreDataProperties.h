@@ -2,7 +2,7 @@
 //  TradingModel+CoreDataProperties.h
 //  mafia_AI
 //
-//  Created by fabio gattone on 21/07/25.
+//  Created by fabio gattone on 07/08/25.
 //
 //
 
@@ -24,8 +24,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nullable, nonatomic, copy) NSDate *setupDate;
 @property (nonatomic) int64_t status;
 @property (nonatomic) double stopPrice;
-@property (nullable, nonatomic, copy) NSString *symbol;
 @property (nonatomic) double targetPrice;
+@property (nullable, nonatomic, retain) Symbol *symbol;
 
 @end
 

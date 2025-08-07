@@ -2,7 +2,7 @@
 //  CompanyInfo+CoreDataProperties.m
 //  mafia_AI
 //
-//  Created by fabio gattone on 25/07/25.
+//  Created by fabio gattone on 07/08/25.
 //
 //
 
@@ -14,16 +14,16 @@
 	return [NSFetchRequest fetchRequestWithEntityName:@"CompanyInfo"];
 }
 
-@dynamic symbol;
-@dynamic name;
-@dynamic sector;
-@dynamic industry;
-@dynamic companyDescription;
-@dynamic website;
 @dynamic ceo;
+@dynamic companyDescription;
 @dynamic employees;
 @dynamic headquarters;
+@dynamic industry;
 @dynamic ipoDate;
 @dynamic lastUpdate;
+@dynamic name;
+@dynamic sector;
+@dynamic website;
+@dynamic symbol;
 
 @end

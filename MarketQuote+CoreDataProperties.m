@@ -2,7 +2,7 @@
 //  MarketQuote+CoreDataProperties.m
 //  mafia_AI
 //
-//  Created by fabio gattone on 25/07/25.
+//  Created by fabio gattone on 07/08/25.
 //
 //
 
@@ -14,23 +14,23 @@
 	return [NSFetchRequest fetchRequestWithEntityName:@"MarketQuote"];
 }
 
-@dynamic symbol;
-@dynamic name;
-@dynamic exchange;
-@dynamic currentPrice;
-@dynamic previousClose;
-@dynamic open;
-@dynamic high;
-@dynamic low;
+@dynamic avgVolume;
+@dynamic beta;
 @dynamic change;
 @dynamic changePercent;
-@dynamic volume;
-@dynamic avgVolume;
-@dynamic marketCap;
-@dynamic pe;
+@dynamic currentPrice;
 @dynamic eps;
-@dynamic beta;
+@dynamic exchange;
+@dynamic high;
 @dynamic lastUpdate;
+@dynamic low;
+@dynamic marketCap;
 @dynamic marketTime;
+@dynamic name;
+@dynamic open;
+@dynamic pe;
+@dynamic previousClose;
+@dynamic volume;
+@dynamic symbol;
 
 @end

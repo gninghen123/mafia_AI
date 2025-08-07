@@ -2,7 +2,7 @@
 //  HistoricalBar+CoreDataProperties.m
 //  mafia_AI
 //
-//  Created by fabio gattone on 25/07/25.
+//  Created by fabio gattone on 07/08/25.
 //
 //
 
@@ -14,14 +14,14 @@
 	return [NSFetchRequest fetchRequestWithEntityName:@"HistoricalBar"];
 }
 
-@dynamic symbol;
+@dynamic adjustedClose;
+@dynamic close;
 @dynamic date;
-@dynamic open;
 @dynamic high;
 @dynamic low;
-@dynamic close;
-@dynamic adjustedClose;
-@dynamic volume;
+@dynamic open;
 @dynamic timeframe;
+@dynamic volume;
+@dynamic symbol;
 
 @end

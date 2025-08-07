@@ -2,7 +2,7 @@
 //  TradingModel+CoreDataProperties.m
 //  mafia_AI
 //
-//  Created by fabio gattone on 21/07/25.
+//  Created by fabio gattone on 07/08/25.
 //
 //
 
@@ -23,7 +23,7 @@
 @dynamic setupDate;
 @dynamic status;
 @dynamic stopPrice;
-@dynamic symbol;
 @dynamic targetPrice;
+@dynamic symbol;
 
 @end

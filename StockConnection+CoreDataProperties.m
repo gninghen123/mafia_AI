@@ -2,7 +2,7 @@
 //  StockConnection+CoreDataProperties.m
 //  mafia_AI
 //
-//  Created by fabio gattone on 31/07/25.
+//  Created by fabio gattone on 07/08/25.
 //
 //
 
@@ -14,30 +14,29 @@
 	return [NSFetchRequest fetchRequestWithEntityName:@"StockConnection"];
 }
 
+@dynamic autoDelete;
+@dynamic bidirectional;
 @dynamic connectionDescription;
+@dynamic connectionID;
 @dynamic connectionType;
 @dynamic creationDate;
-@dynamic source;
-@dynamic symbols;
-@dynamic url;
-@dynamic connectionID;
-@dynamic title;
-@dynamic lastModified;
-@dynamic isActive;
-@dynamic sourceSymbol;
-@dynamic targetSymbols;
-@dynamic bidirectional;
-@dynamic originalSummary;
-@dynamic manualSummary;
-@dynamic summarySource;
-@dynamic initialStrength;
 @dynamic currentStrength;
 @dynamic decayRate;
-@dynamic minimumStrength;
-@dynamic strengthHorizon;
-@dynamic autoDelete;
+@dynamic initialStrength;
+@dynamic isActive;
+@dynamic lastModified;
 @dynamic lastStrengthUpdate;
+@dynamic manualSummary;
+@dynamic minimumStrength;
 @dynamic notes;
+@dynamic originalSummary;
+@dynamic source;
+@dynamic strengthHorizon;
+@dynamic summarySource;
 @dynamic tags;
+@dynamic title;
+@dynamic url;
+@dynamic sourceSymbol;
+@dynamic targetSymbols;
 
 @end

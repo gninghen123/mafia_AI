@@ -2,7 +2,7 @@
 //  Alert+CoreDataProperties.m
 //  mafia_AI
 //
-//  Created by fabio gattone on 21/07/25.
+//  Created by fabio gattone on 07/08/25.
 //
 //
 
@@ -20,8 +20,8 @@
 @dynamic isTriggered;
 @dynamic notes;
 @dynamic notificationEnabled;
-@dynamic symbol;
 @dynamic triggerDate;
 @dynamic triggerValue;
+@dynamic symbol;
 
 @end

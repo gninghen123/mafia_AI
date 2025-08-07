@@ -2,7 +2,7 @@
 //  Watchlist+CoreDataProperties.h
 //  mafia_AI
 //
-//  Created by fabio gattone on 30/07/25.
+//  Created by fabio gattone on 07/08/25.
 //
 //
 
@@ -20,7 +20,16 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nullable, nonatomic, copy) NSDate *lastModified;
 @property (nullable, nonatomic, copy) NSString *name;
 @property (nonatomic) int64_t sortOrder;
-@property (nullable, nonatomic, retain) NSArray *symbols;
+@property (nullable, nonatomic, retain) NSSet<Symbol *> *symbols;
+
+@end
+
+@interface Watchlist (CoreDataGeneratedAccessors)
+
+- (void)addSymbolsObject:(Symbol *)value;
+- (void)removeSymbolsObject:(Symbol *)value;
+- (void)addSymbols:(NSSet<Symbol *> *)values;
+- (void)removeSymbols:(NSSet<Symbol *> *)values;
 
 @end
 

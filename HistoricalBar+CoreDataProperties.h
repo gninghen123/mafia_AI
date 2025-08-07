@@ -2,7 +2,7 @@
 //  HistoricalBar+CoreDataProperties.h
 //  mafia_AI
 //
-//  Created by fabio gattone on 25/07/25.
+//  Created by fabio gattone on 07/08/25.
 //
 //
 
@@ -15,15 +15,15 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (NSFetchRequest<HistoricalBar *> *)fetchRequest NS_SWIFT_NAME(fetchRequest());
 
-@property (nullable, nonatomic, copy) NSString *symbol;
+@property (nonatomic) double adjustedClose;
+@property (nonatomic) double close;
 @property (nullable, nonatomic, copy) NSDate *date;
-@property (nonatomic) double open;
 @property (nonatomic) double high;
 @property (nonatomic) double low;
-@property (nonatomic) double close;
-@property (nonatomic) double adjustedClose;
-@property (nonatomic) int64_t volume;
+@property (nonatomic) double open;
 @property (nonatomic) int16_t timeframe;
+@property (nonatomic) int64_t volume;
+@property (nullable, nonatomic, retain) Symbol *symbol;
 
 @end
 

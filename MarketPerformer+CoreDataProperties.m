@@ -2,7 +2,7 @@
 //  MarketPerformer+CoreDataProperties.m
 //  mafia_AI
 //
-//  Created by fabio gattone on 25/07/25.
+//  Created by fabio gattone on 07/08/25.
 //
 //
 
@@ -14,13 +14,13 @@
 	return [NSFetchRequest fetchRequestWithEntityName:@"MarketPerformer"];
 }
 
-@dynamic symbol;
+@dynamic changePercent;
+@dynamic listType;
 @dynamic name;
 @dynamic price;
-@dynamic changePercent;
-@dynamic volume;
-@dynamic listType;
 @dynamic timeframe;
 @dynamic timestamp;
+@dynamic volume;
+@dynamic symbol;
 
 @end

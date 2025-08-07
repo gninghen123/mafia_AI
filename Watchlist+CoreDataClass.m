@@ -4,47 +4,108 @@
 //
 
 #import "Watchlist+CoreDataClass.h"
+#import "Symbol+CoreDataClass.h"
 
 @implementation Watchlist
 
-#pragma mark - Convenience Methods
+#pragma mark - Symbol Relationship Management
 
-- (void)addSymbol:(NSString *)symbol {
-    if (!symbol || symbol.length == 0) return;
+- (void)addSymbolObject:(Symbol *)symbol {
+    if (!symbol) return;
     
-    NSMutableArray *currentSymbols = [self.symbols mutableCopy] ?: [NSMutableArray array];
-    NSString *upperSymbol = symbol.uppercaseString;
+    [self addSymbolsObject:symbol];  // Usa il metodo generato da Core Data
+    self.lastModified = [NSDate date];
+}
+
+- (void)removeSymbolObject:(Symbol *)symbol {
+    if (!symbol) return;
     
-    if (![currentSymbols containsObject:upperSymbol]) {
-        [currentSymbols addObject:upperSymbol];
-        self.symbols = currentSymbols;
-        self.lastModified = [NSDate date];
+    [self removeSymbolsObject:symbol];  // Usa il metodo generato da Core Data
+    self.lastModified = [NSDate date];
+}
+
+- (void)addSymbolsFromSet:(NSSet<Symbol *> *)symbols {
+    if (!symbols || symbols.count == 0) return;
+    
+    [self addSymbols:symbols];  // Usa il metodo generato da Core Data
+    self.lastModified = [NSDate date];
+}
+
+- (void)removeSymbolsFromSet:(NSSet<Symbol *> *)symbols {
+    if (!symbols || symbols.count == 0) return;
+    
+    [self removeSymbols:symbols];  // Usa il metodo generato da Core Data
+    self.lastModified = [NSDate date];
+}
+
+#pragma mark - String-based Convenience Methods
+
+- (void)addSymbolWithName:(NSString *)symbolName context:(NSManagedObjectContext *)context {
+    if (!symbolName || symbolName.length == 0 || !context) return;
+    
+    NSString *normalizedSymbol = symbolName.uppercaseString;
+    
+    // Find or create Symbol entity
+    NSFetchRequest *request = [NSFetchRequest fetchRequestWithEntityName:@"Symbol"];
+    request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", normalizedSymbol];
+    
+    NSError *error;
+    NSArray *results = [context executeFetchRequest:request error:&error];
+    
+    Symbol *symbol;
+    if (results.count > 0) {
+        symbol = results.firstObject;
+    } else {
+        // Create new Symbol
+        symbol = [NSEntityDescription insertNewObjectForEntityForName:@"Symbol" inManagedObjectContext:context];
+        symbol.symbol = normalizedSymbol;
+        symbol.creationDate = [NSDate date];
+        symbol.interactionCount = 0;
+        symbol.isFavorite = NO;
+    }
+    
+    [self addSymbolObject:symbol];
+}
+
+- (void)removeSymbolWithName:(NSString *)symbolName {
+    if (!symbolName || symbolName.length == 0) return;
+    
+    NSString *normalizedSymbol = symbolName.uppercaseString;
+    
+    for (Symbol *symbol in self.symbols) {
+        if ([symbol.symbol isEqualToString:normalizedSymbol]) {
+            [self removeSymbolObject:symbol];
+            break;
+        }
     }
 }
 
-- (void)removeSymbol:(NSString *)symbol {
-    if (!symbol || symbol.length == 0) return;
+- (BOOL)containsSymbolWithName:(NSString *)symbolName {
+    if (!symbolName || symbolName.length == 0) return NO;
     
-    NSMutableArray *currentSymbols = [self.symbols mutableCopy];
-    NSString *upperSymbol = symbol.uppercaseString;
+    NSString *normalizedSymbol = symbolName.uppercaseString;
     
-    if ([currentSymbols containsObject:upperSymbol]) {
-        [currentSymbols removeObject:upperSymbol];
-        self.symbols = currentSymbols;
-        self.lastModified = [NSDate date];
+    for (Symbol *symbol in self.symbols) {
+        if ([symbol.symbol isEqualToString:normalizedSymbol]) {
+            return YES;
+        }
     }
+    return NO;
 }
 
-- (BOOL)containsSymbol:(NSString *)symbol {
-    if (!symbol || symbol.length == 0) return NO;
-    
-    NSString *upperSymbol = symbol.uppercaseString;
-    return [self.symbols containsObject:upperSymbol];
+- (NSArray<NSString *> *)symbolNames {
+    NSMutableArray *names = [NSMutableArray array];
+    for (Symbol *symbol in self.symbols) {
+        [names addObject:symbol.symbol];
+    }
+    return [names copy];
 }
 
-- (NSArray<NSString *> *)sortedSymbols {
-    return [self.symbols sortedArrayUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
+- (NSArray<NSString *> *)sortedSymbolNames {
+    return [[self symbolNames] sortedArrayUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
 }
+
+
 
 #pragma mark - Description
 

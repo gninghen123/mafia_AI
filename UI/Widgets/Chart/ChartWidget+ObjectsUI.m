@@ -9,7 +9,8 @@
 #import <objc/runtime.h>
 #import "QuartzCore/QuartzCore.h"
 #import "ChartPanelView.h"
-
+#import "ChartObjectRenderer.h"  // Per accedere alle proprietà del renderer
+#import "ChartObjectModels.h"    // Se non già presente
 
 // Associated object keys
 static const void *kObjectsPanelToggleKey = &kObjectsPanelToggleKey;
@@ -220,34 +221,38 @@ static const void *kSplitViewLeadingConstraintKey = &kSplitViewLeadingConstraint
 
 #pragma mark - ObjectsPanelDelegate
 
-- (void)objectsPanel:(id)panel didRequestCreateObjectOfType:(ChartObjectType)type {
-    NSLog(@"🎨 ChartWidget: Create object of type %ld requested", (long)type);
+- (void)objectsPanel:(id)panel didActivateObjectType:(ChartObjectType)type withLockMode:(BOOL)lockEnabled {
+    NSLog(@"🎨 ChartWidget: Activated object type %ld with lock: %@",
+          (long)type, lockEnabled ? @"YES" : @"NO");
     
-    // Trova il panel principale per il placement
-    ChartPanelView *mainPanel = nil;
-    for (ChartPanelView *panelView in self.chartPanels) {
-        if ([panelView.panelType isEqualToString:@"security"]) {
-            mainPanel = panelView;
-            break;
-        }
-    }
+    // Non creiamo più l'oggetto subito - solo settiamo lo stato
+    // Il ChartPanelView chiederà il tipo attivo tramite getActiveObjectType nel mouseDown
     
+    // Trova il panel principale
+    ChartPanelView *mainPanel = [self findMainChartPanel];
     if (!mainPanel) {
-        NSLog(@"⚠️ No security panel found for object creation");
+        NSLog(@"⚠️ No security panel found");
         return;
     }
     
+    // Assicuriamoci che abbia il renderer
     if (!mainPanel.objectRenderer) {
         [mainPanel setupObjectsRendererWithManager:self.objectsManager];
     }
     
-    // IMPORTANTE: NON chiamare metodi che possono resettare lo zoom
-    // NON chiamare zoomAll, synchronizePanels, o altri metodi di viewport
+    NSLog(@"✅ ChartWidget: Ready for object creation type %ld", (long)type);
+}
+
+- (void)objectsPanel:(id)panel didDeactivateObjectType:(ChartObjectType)type {
+    NSLog(@"🛑 ChartWidget: Deactivated object type %ld", (long)type);
     
-    // Avvia direttamente la creazione nel panel SENZA toccare zoom/viewport
-    [mainPanel startCreatingObjectOfType:type];
-    
-    NSLog(@"✅ Started creating object type %ld in panel %@ - ZOOM PRESERVED", (long)type, mainPanel.panelType);
+    // Cancel any ongoing creation
+    ChartPanelView *mainPanel = [self findMainChartPanel];
+    if (mainPanel && mainPanel.objectRenderer) {
+        if (mainPanel.objectRenderer.isInCreationMode) {
+            [mainPanel.objectRenderer cancelCreatingObject];
+        }
+    }
 }
 
 - (void)objectsPanelDidRequestShowManager:(id)panel {
@@ -288,6 +293,23 @@ static const void *kSplitViewLeadingConstraintKey = &kSplitViewLeadingConstraint
     
     NSLog(@"✅ Started creating %@ in panel %@", object.name, mainPanel.panelType);
     NSLog(@"💡 Click on the chart to place control points");
+}
+
+
+#pragma mark - Helper Methods (NEW)
+
+- (ChartPanelView *)findMainChartPanel {
+    for (ChartPanelView *panel in self.chartPanels) {
+        if ([panel.panelType isEqualToString:@"security"]) {
+            return panel;
+        }
+    }
+    return nil;
+}
+
+- (void)notifyObjectCreationCompleted {
+    // Called by ChartPanelView when object creation is finished
+    [self.objectsPanel objectCreationCompleted];
 }
 
 

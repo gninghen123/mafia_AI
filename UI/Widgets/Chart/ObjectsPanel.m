@@ -12,6 +12,9 @@
 @property (nonatomic, strong, readwrite) NSArray<NSButton *> *objectButtons;
 @property (nonatomic, strong, readwrite) NSVisualEffectView *backgroundView;
 @property (nonatomic, strong) NSView *separatorView;
+
+
+
 @end
 
 @implementation ObjectsPanel
@@ -84,6 +87,17 @@
     titleLabel.backgroundColor = [NSColor clearColor];
     
     [self addSubview:titleLabel];
+    // NEW: Lock Creation Toggle
+     self.lockCreationToggle = [NSButton buttonWithTitle:@"🔒 Lock"
+                                                   target:self
+                                                   action:@selector(toggleLockMode:)];
+     self.lockCreationToggle.translatesAutoresizingMaskIntoConstraints = NO;
+     self.lockCreationToggle.bezelStyle = NSBezelStyleRounded;
+     self.lockCreationToggle.buttonType = NSButtonTypePushOnPushOff; // Toggle behavior
+     self.lockCreationToggle.controlSize = NSControlSizeSmall;
+     self.lockCreationToggle.font = [NSFont systemFontOfSize:10];
+     [self.backgroundView addSubview:self.lockCreationToggle];
+    
     
     // Main stack view for object buttons
     self.buttonsStackView = [[NSStackView alloc] init];
@@ -120,23 +134,29 @@
     
     // Layout constraints
     [NSLayoutConstraint activateConstraints:@[
-        // Title at top
-        [titleLabel.topAnchor constraintEqualToAnchor:self.topAnchor constant:12],
+        // Title
+        [titleLabel.topAnchor constraintEqualToAnchor:self.topAnchor constant:8],
         [titleLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
         [titleLabel.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
         
-        // Buttons stack in middle
-        [self.buttonsStackView.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:12],
+        // NEW: Lock toggle
+        [self.lockCreationToggle.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:8],
+        [self.lockCreationToggle.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
+        [self.lockCreationToggle.widthAnchor constraintEqualToConstant:80],
+        [self.lockCreationToggle.heightAnchor constraintEqualToConstant:20],
+        
+        // Buttons stack (updated topAnchor)
+        [self.buttonsStackView.topAnchor constraintEqualToAnchor:self.lockCreationToggle.bottomAnchor constant:12],
         [self.buttonsStackView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
         [self.buttonsStackView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
         
-        // Separator line
+        // Separator line (unchanged)
         [self.separatorView.topAnchor constraintEqualToAnchor:self.buttonsStackView.bottomAnchor constant:12],
         [self.separatorView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:16],
         [self.separatorView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-16],
         [self.separatorView.heightAnchor constraintEqualToConstant:0.5],
         
-        // Object Manager button at bottom
+        // Object Manager button (unchanged)
         [self.objectManagerButton.topAnchor constraintEqualToAnchor:self.separatorView.bottomAnchor constant:12],
         [self.objectManagerButton.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
         [self.objectManagerButton.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
@@ -146,13 +166,13 @@
 
 - (void)createObjectButtons {
     NSArray<NSDictionary *> *objectTypes = @[
-         @{@"title": @"Horizontal Line", @"type": @(ChartObjectTypeHorizontalLine)},
-         @{@"title": @"Trend Line", @"type": @(ChartObjectTypeTrendline)},
-         @{@"title": @"Rectangle", @"type": @(ChartObjectTypeRectangle)},
-         @{@"title": @"Fibonacci", @"type": @(ChartObjectTypeFibonacci)},
-         @{@"title": @"Trailing Fibo", @"type": @(ChartObjectTypeTrailingFibo)},        // NUOVO
-         @{@"title": @"Trailing Between", @"type": @(ChartObjectTypeTrailingFiboBetween)} // NUOVO
-     ];
+        @{@"title": @"Horizontal Line", @"type": @(ChartObjectTypeHorizontalLine)},
+        @{@"title": @"Trend Line", @"type": @(ChartObjectTypeTrendline)},
+        @{@"title": @"Rectangle", @"type": @(ChartObjectTypeRectangle)},
+        @{@"title": @"Fibonacci", @"type": @(ChartObjectTypeFibonacci)},
+        @{@"title": @"Trailing Fibo", @"type": @(ChartObjectTypeTrailingFibo)},
+        @{@"title": @"Trailing Between", @"type": @(ChartObjectTypeTrailingFiboBetween)}
+    ];
     
     NSMutableArray<NSButton *> *buttons = [[NSMutableArray alloc] init];
     
@@ -167,15 +187,17 @@
         button.tag = [objType[@"type"] integerValue];
         button.alignment = NSTextAlignmentLeft;
         
+        // IMPORTANT: Push-On-Push-Off behavior for toggle
+        button.buttonType = NSButtonTypePushOnPushOff;
+        
         [self.buttonsStackView addArrangedSubview:button];
         [buttons addObject:button];
         
-        // Pulsanti si adattano alla larghezza del pannello automaticamente
         [button.widthAnchor constraintEqualToConstant:164].active = YES;
     }
     
     self.objectButtons = [buttons copy];
-    NSLog(@"🎨 ObjectsPanel: Created %lu object buttons", (unsigned long)buttons.count);
+    NSLog(@"🎨 ObjectsPanel: Created %lu object buttons with toggle behavior", (unsigned long)buttons.count);
 }
 
 - (void)setupInitialState {
@@ -188,17 +210,35 @@
 
 #pragma mark - Actions
 
+// SOSTITUIRE il metodo objectButtonClicked esistente:
 - (void)objectButtonClicked:(NSButton *)sender {
-    ChartObjectType type = (ChartObjectType)sender.tag;
+    ChartObjectType objectType = (ChartObjectType)sender.tag;
     
-    NSLog(@"🎨 ObjectsPanel: Button clicked for type %ld (%@)", (long)type, sender.title);
+    NSLog(@"🎨 ObjectsPanel: Button clicked for type %ld, state: %ld",
+          (long)objectType, (long)sender.state);
     
-    // Visual feedback - brief highlight
-    [self highlightButton:sender];
-    
-    // Notify delegate
-    if ([self.delegate respondsToSelector:@selector(objectsPanel:didRequestCreateObjectOfType:)]) {
-        [self.delegate objectsPanel:self didRequestCreateObjectOfType:type];
+    if (sender.state == NSControlStateValueOn) {
+        // Button pressed IN - activate
+        [self setActiveButton:sender forType:objectType];
+        
+        if ([self.delegate respondsToSelector:@selector(objectsPanel:didActivateObjectType:withLockMode:)]) {
+            [self.delegate objectsPanel:self
+                   didActivateObjectType:objectType
+                            withLockMode:self.isLockModeEnabled];
+        }
+        
+        NSLog(@"🔘 ObjectsPanel: Activated %@ (Lock: %@)",
+              sender.title, self.isLockModeEnabled ? @"ON" : @"OFF");
+        
+    } else {
+        // Button pressed OUT - deactivate
+        [self clearActiveButton];
+        
+        if ([self.delegate respondsToSelector:@selector(objectsPanel:didDeactivateObjectType:)]) {
+            [self.delegate objectsPanel:self didDeactivateObjectType:objectType];
+        }
+        
+        NSLog(@"⚪ ObjectsPanel: Deactivated %@", sender.title);
     }
 }
 
@@ -301,6 +341,50 @@
     scaleAnimation.autoreverses = YES;
     
     [button.layer addAnimation:scaleAnimation forKey:@"buttonPress"];
+}
+
+
+- (void)toggleLockMode:(NSButton *)sender {
+    self.isLockModeEnabled = (sender.state == NSControlStateValueOn);
+    
+    NSLog(@"🔒 ObjectsPanel: Lock mode %@", self.isLockModeEnabled ? @"ENABLED" : @"DISABLED");
+    
+    // Update button title
+    sender.title = self.isLockModeEnabled ? @"🔓 Lock" : @"🔒 Lock";
+}
+
+- (ChartObjectType)getActiveObjectType {
+    return self.currentActiveButton ? self.currentActiveObjectType : -1;
+}
+
+- (void)clearActiveButton {
+    if (self.currentActiveButton) {
+        self.currentActiveButton.state = NSControlStateValueOff;
+        self.currentActiveButton = nil;
+        self.currentActiveObjectType = -1;
+        
+        NSLog(@"🔄 ObjectsPanel: Cleared active button");
+    }
+}
+
+- (void)setActiveButton:(NSButton *)button forType:(ChartObjectType)type {
+    // Clear any existing active button first (only one can be active)
+    [self clearActiveButton];
+    
+    // Set new active button
+    self.currentActiveButton = button;
+    self.currentActiveObjectType = type;
+    button.state = NSControlStateValueOn;
+}
+
+- (void)objectCreationCompleted {
+    // Called when object creation is finished
+    if (!self.isLockModeEnabled) {
+        [self clearActiveButton];
+        NSLog(@"✅ ObjectsPanel: Object completed - button cleared (no lock)");
+    } else {
+        NSLog(@"🔒 ObjectsPanel: Object completed - button stays active (lock mode)");
+    }
 }
 
 @end

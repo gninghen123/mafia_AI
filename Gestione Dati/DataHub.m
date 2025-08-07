@@ -1012,8 +1012,32 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 
 - (void)incrementInteractionForSymbol:(Symbol *)symbol {
     if (!symbol) return;
-    
-    symbol.interactionCount++;
+    // STACK TRACE DEBUG
+      NSLog(@"🔍 incrementInteractionForSymbol called from:");
+      NSArray *stackTrace = [NSThread callStackSymbols];
+      for (NSString *trace in stackTrace) {
+          NSLog(@"   %@", trace);
+      }
+     NSLog(@"Symbol pointer: %p", symbol);
+     NSLog(@"Symbol.symbol: %@", symbol.symbol);
+     
+     // Verifica stato Core Data
+     NSLog(@"Symbol.isDeleted: %@", symbol.isDeleted ? @"YES" : @"NO");
+     NSLog(@"Symbol.isFault: %@", symbol.isFault ? @"YES" : @"NO");
+     NSLog(@"Symbol.managedObjectContext: %p", symbol.managedObjectContext);
+     
+     // Force fault se necessario
+     if (symbol.isFault) {
+         [symbol willAccessValueForKey:@"interactionCount"];
+     }
+     
+     // Test lettura prima della scrittura
+     int32_t currentCount = symbol.interactionCount;
+     NSLog(@"Current interactionCount: %d", currentCount);
+     
+     // Incrementa
+     symbol.interactionCount = currentCount + 1;
+ /*
     symbol.lastInteraction = [NSDate date];
     
     // Se è la prima volta, imposta firstInteraction
@@ -1023,7 +1047,7 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     
     [self saveContext];
     
-    NSLog(@"DataHub: Symbol %@ interaction count: %d", symbol.symbol, symbol.interactionCount);
+    NSLog(@"DataHub: Symbol %@ interaction count: %d", symbol.symbol, symbol.interactionCount);*/
 }
 
 - (void)incrementInteractionForSymbolName:(NSString *)symbolName {

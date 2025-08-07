@@ -39,6 +39,8 @@
 // NUOVO: Objects rendering
 @property (nonatomic, strong) ChartObjectRenderer *objectRenderer;
 
+
+
 // Initialization
 - (instancetype)initWithType:(NSString *)type;
 
@@ -61,5 +63,6 @@
 - (void)startCreatingObjectOfType:(ChartObjectType)objectType;
 - (void)startEditingObjectAtPoint:(NSPoint)point;
 - (void)stopEditingObject;
+
 
 @end

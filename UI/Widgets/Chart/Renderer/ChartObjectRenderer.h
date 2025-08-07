@@ -40,10 +40,13 @@ NS_ASSUME_NONNULL_BEGIN
 
 // Editing state
 @property (nonatomic, strong, nullable) ChartObjectModel *editingObject;
-@property (nonatomic, assign) BOOL isInCreationMode;
+@property (nonatomic, assign, readonly) BOOL isInCreationMode; // Made public readonly
 @property (nonatomic, assign) BOOL isInPreviewMode;
 @property (nonatomic, assign) NSPoint currentMousePosition;
 @property (nonatomic, strong, nullable) ControlPointModel *hoveredControlPoint;
+
+// NEW: Unified CP state management
+@property (nonatomic, strong, nullable) ControlPointModel *currentCPSelected;
 
 // Initialization
 - (instancetype)initWithPanelView:(ChartPanelView *)panelView
@@ -112,6 +115,14 @@ NS_ASSUME_NONNULL_BEGIN
 /// Update hover state during mouse movement in editing mode
 /// @param screenPoint Current mouse position
 - (void)updateEditingHoverAtPoint:(NSPoint)screenPoint;
+
+/// NEW: Update current CP coordinates (unified for creation/editing)
+/// @param screenPoint New coordinates for current selected CP
+- (void)updateCurrentCPCoordinates:(NSPoint)screenPoint;
+
+/// NEW: Select a control point for editing
+/// @param controlPoint CP to select
+- (void)selectControlPointForEditing:(ControlPointModel *)controlPoint;
 
 /// Finish creating current object
 - (void)finishCreatingObject;

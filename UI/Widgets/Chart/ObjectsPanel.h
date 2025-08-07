@@ -22,6 +22,14 @@ NS_ASSUME_NONNULL_BEGIN
 /// @param panel The objects panel instance
 - (void)objectsPanelDidRequestShowManager:(id)panel;
 
+- (void)objectsPanel:(id)panel didRequestCreateObjectOfType:(ChartObjectType)type;
+- (void)objectsPanelDidRequestShowManager:(id)panel;
+
+// NEW: State-based methods
+- (void)objectsPanel:(id)panel didActivateObjectType:(ChartObjectType)type withLockMode:(BOOL)lockEnabled;
+- (void)objectsPanel:(id)panel didDeactivateObjectType:(ChartObjectType)type;
+
+
 @optional
 /// Called when panel visibility changes
 /// @param panel The objects panel instance
@@ -31,6 +39,14 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 @interface ObjectsPanel : NSView
+
+
+@property (nonatomic, assign) BOOL isLockModeEnabled;
+@property (nonatomic, strong) NSButton *currentActiveButton;
+@property (nonatomic, assign) ChartObjectType currentActiveObjectType;
+
+// NEW: Lock toggle
+@property (nonatomic, strong) NSButton *lockCreationToggle;
 
 #pragma mark - Configuration
 @property (nonatomic, weak, nullable) id<ObjectsPanelDelegate> delegate;
@@ -47,7 +63,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSLayoutConstraint *widthConstraint;
 
 #pragma mark - Public Methods
-
+- (ChartObjectType)getActiveObjectType;
+- (void)clearActiveButton;
+- (void)objectCreationCompleted;
 /// Toggle panel visibility with animation
 /// @param animated Whether to animate the transition
 - (void)toggleVisibilityAnimated:(BOOL)animated;
@@ -63,7 +81,16 @@ NS_ASSUME_NONNULL_BEGIN
 /// Update button states (e.g., highlight active tool)
 /// @param activeType The currently active object type, or -1 for none
 - (void)updateButtonStatesWithActiveType:(ChartObjectType)activeType;
+- (ChartObjectType)getActiveObjectType;
+- (void)clearActiveButton;
+- (void)setActiveButton:(NSButton *)button forType:(ChartObjectType)type;
+
+
+
 
 @end
+
+
+
 
 NS_ASSUME_NONNULL_END

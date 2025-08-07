@@ -22,6 +22,9 @@
 @property (nonatomic, assign) ChartObjectType creationObjectType;
 @property (nonatomic, strong) NSMutableArray<ControlPointModel *> *tempControlPoints;
 
+// Private readwrite override for isInCreationMode
+@property (nonatomic, assign, readwrite) BOOL isInCreationMode;
+
 @end
 
 @implementation ChartObjectRenderer
@@ -910,6 +913,45 @@
         self.hoveredControlPoint = hoveredCP;
         [self invalidateEditingLayer];
     }
+}
+
+- (void)updateCurrentCPCoordinates:(NSPoint)screenPoint {
+    if (!self.currentCPSelected) return;
+    
+    // Convert screen point back to control point coordinates
+    ControlPointModel *newCP = [self controlPointFromScreenPoint:screenPoint
+                                                     indicatorRef:self.currentCPSelected.indicatorRef];
+    if (!newCP) return;
+    
+    // Update the current selected CP coordinates
+    self.currentCPSelected.dateAnchor = newCP.dateAnchor;
+    self.currentCPSelected.valuePercent = newCP.valuePercent;
+    
+    // Force redraw
+    if (self.isInCreationMode) {
+        [self invalidateEditingLayer];
+    } else if (self.editingObject) {
+        [self invalidateEditingLayer];
+    }
+    
+    NSLog(@"🎯 Updated currentCP coordinates: %.2f%% at %@",
+          self.currentCPSelected.valuePercent, self.currentCPSelected.dateAnchor);
+}
+
+- (void)selectControlPointForEditing:(ControlPointModel *)controlPoint {
+    // Clear previous selection
+    if (self.currentCPSelected) {
+        self.currentCPSelected.isSelected = NO;
+    }
+    
+    // Set new selection
+    self.currentCPSelected = controlPoint;
+    if (controlPoint) {
+        controlPoint.isSelected = YES;
+        NSLog(@"🎯 Selected control point for editing");
+    }
+    
+    [self invalidateEditingLayer];
 }
 
 - (BOOL)needsMoreControlPointsForPreview {

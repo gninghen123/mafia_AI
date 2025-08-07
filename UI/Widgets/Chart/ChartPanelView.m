@@ -340,7 +340,7 @@
 }
 
 - (void)drawSelection {
-    if (self.selectionStartIndex == self.selectionEndIndex) return;
+    if (labs(self.selectionStartIndex-self.selectionEndIndex)==0) return;
     
     NSInteger startIdx = MIN(self.selectionStartIndex, self.selectionEndIndex);
     NSInteger endIdx = MAX(self.selectionStartIndex, self.selectionEndIndex);
@@ -547,31 +547,56 @@
     [self setNeedsDisplay:YES];
 }
 
+
 - (void)mouseMoved:(NSEvent *)event {
     NSPoint locationInView = [self convertPoint:event.locationInWindow fromView:nil];
     self.crosshairPoint = locationInView;
     
+    // SEMPRE aggiorna crosshair (anche durante object creation/editing)
+    self.crosshairVisible = YES;
+    [self updateCrosshairOnly];
+    
     // Handle object creation preview
     if (self.objectRenderer && self.objectRenderer.isInCreationMode) {
         [self.objectRenderer updateCreationPreviewAtPoint:locationInView];
-        // Don't update other panels' crosshairs during object creation
+        
+        // MANTIENI crosshair sync con altri panel anche durante creation
+        for (ChartPanelView *panel in self.chartWidget.chartPanels) {
+            if (panel != self) {
+                [panel setCrosshairPoint:NSMakePoint(locationInView.x, panel.crosshairPoint.y) visible:YES];
+            }
+        }
+        
         return;
     }
     
-    // Notify other panels to update crosshair (OPTIMIZED)
+    // Handle object editing hover
+    if (self.objectRenderer && self.objectRenderer.editingObject) {
+        [self.objectRenderer updateEditingHoverAtPoint:locationInView];
+        
+        // MANTIENI crosshair sync anche durante editing
+        for (ChartPanelView *panel in self.chartWidget.chartPanels) {
+            if (panel != self) {
+                [panel setCrosshairPoint:NSMakePoint(locationInView.x, panel.crosshairPoint.y) visible:YES];
+            }
+        }
+        
+        return;
+    }
+    
+    // Normal crosshair sync con altri panels
     for (ChartPanelView *panel in self.chartWidget.chartPanels) {
         if (panel != self) {
             [panel setCrosshairPoint:NSMakePoint(locationInView.x, panel.crosshairPoint.y) visible:YES];
         }
     }
-    
-    // Only update crosshair layer - no full redraw!
-    [self updateCrosshairOnly];
 }
+
 
 - (void)mouseDown:(NSEvent *)event {
     NSPoint locationInView = [self convertPoint:event.locationInWindow fromView:nil];
-    
+    self.isMouseDown = YES;
+
     // PRIORITY 1: Handle object creation mode (BLOCK other interactions)
     if (self.objectRenderer && self.objectRenderer.isInCreationMode) {
         BOOL objectCompleted = [self.objectRenderer addControlPointAtScreenPoint:locationInView];
@@ -590,41 +615,68 @@
                                                                              tolerance:12.0]; // Increased tolerance
         if (cpAtPoint) {
             // Start dragging control point
+            [self.objectRenderer.objectsManager selectControlPoint:cpAtPoint
+                                                          ofObject:self.objectRenderer.editingObject];
             NSLog(@"🎯 ChartPanelView: Started dragging control point");
             return;
         }
         
         // Check if clicking on an object to start editing
-        if (!self.isInObjectEditingMode) {
-            ChartObjectModel *objectAtPoint = [self.objectRenderer objectAtScreenPoint:locationInView
-                                                                               tolerance:15.0]; // Increased tolerance
-            if (objectAtPoint) {
-                [self startEditingObjectAtPoint:locationInView];
-                return; // Object editing started - don't handle chart interactions
-            }
+        ChartObjectModel *objectAtPoint = [self.objectRenderer objectAtScreenPoint:locationInView
+                                                                           tolerance:15.0]; // Increased tolerance
+        if (objectAtPoint) {
+            [self startEditingObjectAtPoint:locationInView];
+            return; // Object editing started - don't handle chart interactions
+        }
+        
+        // Click on empty space - clear current editing
+        if (self.isInObjectEditingMode) {
+            [self stopEditingObject];
+            NSLog(@"✋ ChartPanelView: Stopped editing - clicked on empty space");
         }
     }
     
     // PRIORITY 3: Original chart interaction behavior (zoom, pan, selection)
-    self.isMouseDown = YES;
     self.dragStartPoint = locationInView;
     self.lastMousePoint = self.dragStartPoint;
 }
 
+
 - (void)rightMouseDown:(NSEvent *)event {
     NSPoint locationInView = [self convertPoint:event.locationInWindow fromView:nil];
     
-    // Check if right-clicking on an object
+    // PRIORITY 1: Cancel object creation if active
+    if (self.objectRenderer && self.objectRenderer.isInCreationMode) {
+        [self.objectRenderer cancelCreatingObject];
+        self.isInObjectCreationMode = NO;
+        NSLog(@"❌ ChartPanelView: Cancelled object creation via right-click");
+        return;
+    }
+    
+    // PRIORITY 2: Delete editing object if active
+    if (self.objectRenderer && self.objectRenderer.editingObject) {
+        ChartObjectModel *objectToDelete = self.objectRenderer.editingObject;
+        [self.objectRenderer stopEditing];
+        [self.objectRenderer.objectsManager deleteObject:objectToDelete];
+        [self.objectRenderer renderAllObjects];
+        self.isInObjectEditingMode = NO;
+        NSLog(@"🗑️ ChartPanelView: Deleted object via right-click");
+        return;
+    }
+    
+    // PRIORITY 3: Check if right-clicking on an object to delete
     if (self.objectRenderer) {
         ChartObjectModel *objectAtPoint = [self.objectRenderer objectAtScreenPoint:locationInView
-                                                                           tolerance:10.0];
+                                                                           tolerance:15.0];
         if (objectAtPoint) {
-            [self showContextMenuForObject:objectAtPoint atPoint:locationInView];
+            [self.objectRenderer.objectsManager deleteObject:objectAtPoint];
+            [self.objectRenderer renderAllObjects];
+            NSLog(@"🗑️ ChartPanelView: Deleted object %@ via right-click", objectAtPoint.name);
             return;
         }
     }
     
-    // Original right-click behavior
+    // PRIORITY 4: Original right-click behavior (pan mode)
     self.isRightMouseDown = YES;
     self.dragStartPoint = locationInView;
     self.lastMousePoint = self.dragStartPoint;
@@ -707,20 +759,24 @@
 - (void)mouseDragged:(NSEvent *)event {
     if (!self.isMouseDown) return;
     
-    NSPoint currentPoint = [self convertPoint:event.locationInWindow fromView:nil];
+    if (self.isInObjectEditingMode) {
+        return;
+    }
     
-    // Left drag = selection mode
+    NSPoint currentPoint = [self convertPoint:event.locationInWindow fromView:nil];
     self.isInSelectionMode = YES;
+
+    // Left drag = selection mode
     self.selectionStartIndex = [self barIndexForXCoordinate:self.dragStartPoint.x];
     self.selectionEndIndex = [self barIndexForXCoordinate:currentPoint.x];
-    
-    // ✅ CORREZIONE: Aggiorna solo selection layer, non tutto
-    [self.selectionLayer setNeedsDisplay];
-    
-    // ✅ AGGIUNGI: Aggiorna crosshair per info box
+   
+   [self.selectionLayer setNeedsDisplay];
+     
     self.crosshairPoint = currentPoint;
     [self.crosshairLayer setNeedsDisplay];
 }
+
+
 - (void)rightMouseDragged:(NSEvent *)event {
     if (!self.isRightMouseDown) return;
     
@@ -739,12 +795,16 @@
         NSInteger startIdx = MIN(self.selectionStartIndex, self.selectionEndIndex);
         NSInteger endIdx = MAX(self.selectionStartIndex, self.selectionEndIndex);
         
-        if (endIdx > startIdx) {
+        NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
+        NSInteger minimumAllowedBarsForZoom = visibleBars / 95;
+        if (minimumAllowedBarsForZoom <3) {
+            minimumAllowedBarsForZoom = 3;
+        }
+        if (endIdx > startIdx && endIdx - startIdx > minimumAllowedBarsForZoom) {
             [self.chartWidget zoomToRange:startIdx endIndex:endIdx];
         }
         
         self.isInSelectionMode = NO;
-        // ✅ CORREZIONE: Pulisci selection layer
         [self.selectionLayer setNeedsDisplay];
     }
     

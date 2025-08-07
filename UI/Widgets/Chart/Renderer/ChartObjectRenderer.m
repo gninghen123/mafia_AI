@@ -176,23 +176,21 @@
     NSDate *firstVisibleDate = firstVisibleBar.date;
     NSDate *lastVisibleDate = lastVisibleBar.date;
     
-    // Calculate time span and pixels per second
+    // Calculate time span and pixels per bar (not per second)
     NSTimeInterval totalVisibleTimeSpan = [lastVisibleDate timeIntervalSinceDate:firstVisibleDate];
     if (totalVisibleTimeSpan <= 0) {
         return 10; // Fallback
     }
     
     CGFloat availableWidth = self.coordinateContext.panelBounds.size.width - 20; // Minus margins
-    CGFloat pixelsPerSecond = availableWidth / totalVisibleTimeSpan;
-    
-    // Calculate time delta from first visible date
-    NSTimeInterval deltaTime = [targetDate timeIntervalSinceDate:firstVisibleDate];
-    
-    // Calculate bar width for centering
     CGFloat barWidth = availableWidth / visibleBars;
     
-    // Calculate X position + center offset (can be negative for dates before visible range)
-    CGFloat xPosition = 10 + (deltaTime * pixelsPerSecond) + (barWidth / 2); // 10 = left margin, +barWidth/2 = center
+    // Calculate which "bar index" this date would be at
+    NSTimeInterval deltaTime = [targetDate timeIntervalSinceDate:firstVisibleDate];
+    CGFloat proportionalIndex = (deltaTime / totalVisibleTimeSpan) * (visibleBars - 1);
+    
+    // Calculate X position at CENTER of bar
+    CGFloat xPosition = 10 + (proportionalIndex * barWidth) + (barWidth / 2); // 10 = left margin
     
     return xPosition;
 }
@@ -287,13 +285,34 @@
 
 - (void)drawEditingObjectInContext:(CGContextRef)ctx {
     if (self.editingObject) {
-        [self drawObject:self.editingObject];
+        // Draw the editing object with highlighting
+        [self drawObjectWithHighlight:self.editingObject];
         [self drawControlPointsForObject:self.editingObject];
     }
     
     if (self.isInCreationMode && self.tempControlPoints.count > 0) {
         [self drawTemporaryObject];
     }
+}
+
+- (void)drawObjectWithHighlight:(ChartObjectModel *)object {
+    // Save original style
+    ObjectStyleModel *originalStyle = object.style;
+    
+    // Create highlighted style
+    ObjectStyleModel *highlightStyle = [originalStyle copy];
+    highlightStyle.color = [NSColor systemOrangeColor]; // Orange for editing
+    highlightStyle.thickness = originalStyle.thickness + 1.0; // Slightly thicker
+    highlightStyle.opacity = 1.0; // Full opacity
+    
+    // Temporarily replace style
+    object.style = highlightStyle;
+    
+    // Draw with highlight
+    [self drawObject:object];
+    
+    // Restore original style
+    object.style = originalStyle;
 }
 
 - (void)drawObject:(ChartObjectModel *)object {
@@ -308,6 +327,11 @@
             
         case ChartObjectTypeFibonacci:
             [self drawFibonacci:object];
+            break;
+            
+        case ChartObjectTypeTrailingFibo:
+        case ChartObjectTypeTrailingFiboBetween:
+            [self drawTrailingFibonacci:object];
             break;
             
         case ChartObjectTypeRectangle:
@@ -326,6 +350,104 @@
             NSLog(@"⚠️ ChartObjectRenderer: Unknown object type %ld", (long)object.type);
             break;
     }
+}
+
+- (void)drawTrailingFibonacci:(ChartObjectModel *)object {
+    // Calculate fibonacci levels using the algorithm
+    NSArray<NSDictionary *> *fibLevels = [self calculateTrailingFibonacciForObject:object];
+    
+    if (fibLevels.count == 0) {
+        NSLog(@"⚠️ TrailingFibo: No levels calculated for object %@", object.name);
+        return;
+    }
+    
+    [self applyStyleForObject:object];
+    
+    // Get viewport bounds for line extension
+    CGFloat leftX = 0;
+    CGFloat rightX = self.coordinateContext.panelBounds.size.width;
+    
+    // For TrailingFiboBetween, limit right extension to CP2
+    if (object.type == ChartObjectTypeTrailingFiboBetween && object.controlPoints.count >= 2) {
+        NSPoint cp2Screen = [self screenPointFromControlPoint:object.controlPoints[1]];
+        rightX = cp2Screen.x;
+    }
+    
+    // Draw each fibonacci level
+    for (NSDictionary *level in fibLevels) {
+        double levelPrice = [level[@"price"] doubleValue];
+        double ratio = [level[@"ratio"] doubleValue];
+        NSString *label = level[@"label"];
+        
+        // Convert price to screen Y coordinate
+        CGFloat y = [self yCoordinateForPrice:levelPrice];
+        
+        // Skip levels outside viewport
+        if (y < -10 || y > self.coordinateContext.panelBounds.size.height + 10) {
+            continue;
+        }
+        
+        // Different line styles for different levels
+        NSBezierPath *path = [NSBezierPath bezierPath];
+        
+        if (ratio == 0.0 || ratio == 1.0) {
+            // 0% and 100% levels - solid and thicker
+            path.lineWidth = 2.0;
+        } else {
+            // Intermediate levels - thinner
+            path.lineWidth = 1.0;
+        }
+        
+        // Draw the line
+        [path moveToPoint:NSMakePoint(leftX, y)];
+        [path lineToPoint:NSMakePoint(rightX, y)];
+        [path stroke];
+        
+        // Draw level label
+        [self drawTrailingFiboLabel:label atPoint:NSMakePoint(leftX + 5, y + 2)];
+    }
+    
+    // Draw start point marker
+    if (object.controlPoints.count > 0) {
+        NSPoint startPoint = [self screenPointFromControlPoint:object.controlPoints.firstObject];
+        [self drawTrailingFiboStartMarker:startPoint];
+    }
+}
+
+- (void)drawTrailingFiboLabel:(NSString *)label atPoint:(NSPoint)point {
+    NSColor *textColor = [NSColor systemTealColor];
+    NSColor *bgColor = [[NSColor controlBackgroundColor] colorWithAlphaComponent:0.8];
+    
+    NSDictionary *attributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:9],
+        NSForegroundColorAttributeName: textColor,
+        NSBackgroundColorAttributeName: bgColor
+    };
+    
+    [label drawAtPoint:point withAttributes:attributes];
+}
+
+- (void)drawTrailingFiboStartMarker:(NSPoint)point {
+    [[NSColor systemTealColor] setFill];
+    
+    NSRect markerRect = NSMakeRect(point.x - 4, point.y - 4, 8, 8);
+    NSBezierPath *markerPath = [NSBezierPath bezierPathWithOvalInRect:markerRect];
+    [markerPath fill];
+    
+    // White border
+    [[NSColor whiteColor] setStroke];
+    markerPath.lineWidth = 1.0;
+    [markerPath stroke];
+}
+
+- (CGFloat)yCoordinateForPrice:(double)price {
+    if (self.coordinateContext.yRangeMax == self.coordinateContext.yRangeMin) {
+        return self.coordinateContext.panelBounds.size.height / 2;
+    }
+    
+    double normalizedPrice = (price - self.coordinateContext.yRangeMin) /
+                            (self.coordinateContext.yRangeMax - self.coordinateContext.yRangeMin);
+    return 10 + normalizedPrice * (self.coordinateContext.panelBounds.size.height - 20);
 }
 
 - (void)drawHorizontalLine:(ChartObjectModel *)object {
@@ -467,8 +589,8 @@
     [self applyStyleForObject:object];
     
     // Draw fibonacci levels (23.6%, 38.2%, 50%, 61.8%, 100%)
-    NSArray *levels = @[@0, @0.236, @0.382, @0.5, @0.618, @1.0, @1.272, @1.618, @2.618];
-
+    NSArray *levels = @[@0.236, @0.382, @0.5, @0.618, @1.0];
+    
     for (NSNumber *level in levels) {
         CGFloat ratio = level.floatValue;
         CGFloat y = point1.y + (point2.y - point1.y) * ratio;
@@ -528,21 +650,39 @@
 }
 
 - (void)drawControlPointsForObject:(ChartObjectModel *)object {
-    [[NSColor systemBlueColor] setFill];
+    // Use red color for better visibility (same as creation mode)
+    [[NSColor systemRedColor] setFill];
     
     for (ControlPointModel *cp in object.controlPoints) {
         NSPoint screenPoint = [self screenPointFromControlPoint:cp];
-        CGFloat size = cp.isSelected ? 8.0 : 6.0;
+        
+        // Size based on state: hovered > selected > normal
+        CGFloat size = 8.0; // Base size
+        if (cp == self.hoveredControlPoint) {
+            size = 12.0; // Largest when hovered
+        } else if (cp.isSelected) {
+            size = 10.0; // Medium when selected
+        }
         
         NSRect cpRect = NSMakeRect(screenPoint.x - size/2, screenPoint.y - size/2, size, size);
         NSBezierPath *cpPath = [NSBezierPath bezierPathWithOvalInRect:cpRect];
         [cpPath fill];
         
-        if (cp.isSelected) {
+        // Different border styles for different states
+        if (cp == self.hoveredControlPoint) {
+            // Yellow border for hovered
+            [[NSColor systemYellowColor] setStroke];
+            cpPath.lineWidth = 3.0;
+            [cpPath stroke];
+        } else if (cp.isSelected) {
+            // White border for selected
             [[NSColor whiteColor] setStroke];
             cpPath.lineWidth = 2.0;
             [cpPath stroke];
         }
+        
+        // Reset fill color for next iteration
+        [[NSColor systemRedColor] setFill];
     }
 }
 
@@ -749,8 +889,27 @@
     
     self.currentMousePosition = screenPoint;
     [self invalidateEditingLayer];
+}
+
+- (void)updateEditingHoverAtPoint:(NSPoint)screenPoint {
+    if (!self.editingObject) return;
     
-    // NSLog(@"🖱️ ChartObjectRenderer: Updated preview at (%.1f, %.1f)", screenPoint.x, screenPoint.y);
+    // Check if hovering over a control point
+    ControlPointModel *hoveredCP = nil;
+    for (ControlPointModel *cp in self.editingObject.controlPoints) {
+        NSPoint cpPoint = [self screenPointFromControlPoint:cp];
+        CGFloat distance = sqrt(pow(screenPoint.x - cpPoint.x, 2) + pow(screenPoint.y - cpPoint.y, 2));
+        if (distance <= 12.0) { // Hover tolerance
+            hoveredCP = cp;
+            break;
+        }
+    }
+    
+    // Update hover state
+    if (hoveredCP != self.hoveredControlPoint) {
+        self.hoveredControlPoint = hoveredCP;
+        [self invalidateEditingLayer];
+    }
 }
 
 - (BOOL)needsMoreControlPointsForPreview {
@@ -1021,7 +1180,192 @@
     return sqrt(dx * dx + dy * dy);
 }
 
-#pragma mark - Helper Methods
+#pragma mark - TrailingFibo Core Algorithm
+
+- (NSArray<NSDictionary *> *)calculateTrailingFibonacciForObject:(ChartObjectModel *)object {
+    if (object.controlPoints.count < 1) return @[];
+    
+    ControlPointModel *startCP = object.controlPoints.firstObject;
+    NSDate *startDate = startCP.dateAnchor;
+    NSDate *endDate = nil;
+    
+    // Determine end date for TrailingFiboBetween
+    if (object.type == ChartObjectTypeTrailingFiboBetween && object.controlPoints.count >= 2) {
+        endDate = object.controlPoints[1].dateAnchor;
+    }
+    
+    // Auto-detect direction based on CP1 position
+    BOOL searchForHighs = [self shouldSearchForHighsFromControlPoint:startCP];
+    
+    // Calculate trailing peaks
+    NSArray<NSDictionary *> *peaks = [self calculateTrailingPeaksFromDate:startDate
+                                                                   toDate:endDate
+                                                            searchForHighs:searchForHighs];
+    
+    // Convert peaks to fibonacci levels
+    return [self calculateFibonacciLevelsFromPeaks:peaks startControlPoint:startCP];
+}
+
+- (BOOL)shouldSearchForHighsFromControlPoint:(ControlPointModel *)controlPoint {
+    // Find the bar for this control point
+    HistoricalBarModel *bar = [self findBarForDate:controlPoint.dateAnchor];
+    if (!bar) return YES; // Default fallback
+    
+    // Calculate actual price at control point
+    double indicatorValue = [self getIndicatorValue:controlPoint.indicatorRef fromBar:bar];
+    double actualPrice = indicatorValue * (1.0 + controlPoint.valuePercent / 100.0);
+    
+    // Compare distance to high vs low
+    double distanceToHigh = fabs(bar.high - actualPrice);
+    double distanceToLow = fabs(bar.low - actualPrice);
+    
+    // If CP1 is closer to low, search for highs (trend up)
+    BOOL searchForHighs = (distanceToLow < distanceToHigh);
+    
+    NSLog(@"🎯 TrailingFibo Direction: %@ (CP1 price: %.2f, High: %.2f, Low: %.2f)",
+          searchForHighs ? @"SEARCH HIGHS" : @"SEARCH LOWS", actualPrice, bar.high, bar.low);
+    
+    return searchForHighs;
+}
+
+- (NSArray<NSDictionary *> *)calculateTrailingPeaksFromDate:(NSDate *)startDate
+                                                     toDate:(NSDate *)endDate
+                                              searchForHighs:(BOOL)searchForHighs {
+    
+    NSMutableArray<NSDictionary *> *peaks = [NSMutableArray array];
+    
+    // Find start index in chart data
+    NSInteger startIndex = [self findBarIndexForDate:startDate];
+    if (startIndex == NSNotFound) return peaks;
+    
+    // Find end index (or use last available data)
+    NSInteger endIndex = self.coordinateContext.chartData.count - 1;
+    if (endDate) {
+        NSInteger boundedEndIndex = [self findBarIndexForDate:endDate];
+        if (boundedEndIndex != NSNotFound && boundedEndIndex < endIndex) {
+            endIndex = boundedEndIndex;
+        }
+    }
+    
+    // Initialize tracking variables
+    double currentExtreme = 0.0;
+    double confirmedExtreme = 0.0;
+    NSDate *extremeDate = startDate;
+    BOOL waitingForConfirmation = NO;
+    
+    // Get starting value
+    HistoricalBarModel *startBar = self.coordinateContext.chartData[startIndex];
+    if (searchForHighs) {
+        currentExtreme = confirmedExtreme = startBar.high;
+    } else {
+        currentExtreme = confirmedExtreme = startBar.low;
+    }
+    
+    // Scan through bars looking for confirmed peaks
+    for (NSInteger i = startIndex + 1; i <= endIndex && i < self.coordinateContext.chartData.count; i++) {
+        HistoricalBarModel *bar = self.coordinateContext.chartData[i];
+        
+        if (searchForHighs) {
+            // Looking for highs
+            if (bar.high > currentExtreme) {
+                currentExtreme = bar.high;
+                extremeDate = bar.date;
+                waitingForConfirmation = YES;
+            } else if (waitingForConfirmation && bar.high < currentExtreme) {
+                // Peak confirmed! Price started declining
+                if (currentExtreme > confirmedExtreme) {
+                    confirmedExtreme = currentExtreme;
+                    
+                    [peaks addObject:@{
+                        @"date": extremeDate,
+                        @"price": @(confirmedExtreme),
+                        @"type": @"high",
+                        @"barIndex": @(i-1)
+                    }];
+                    
+                    NSLog(@"📈 TrailingFibo: New HIGH peak confirmed at %.2f on %@",
+                          confirmedExtreme, extremeDate);
+                }
+                waitingForConfirmation = NO;
+            }
+        } else {
+            // Looking for lows
+            if (bar.low < currentExtreme) {
+                currentExtreme = bar.low;
+                extremeDate = bar.date;
+                waitingForConfirmation = YES;
+            } else if (waitingForConfirmation && bar.low > currentExtreme) {
+                // Trough confirmed! Price started rising
+                if (currentExtreme < confirmedExtreme) {
+                    confirmedExtreme = currentExtreme;
+                    
+                    [peaks addObject:@{
+                        @"date": extremeDate,
+                        @"price": @(confirmedExtreme),
+                        @"type": @"low",
+                        @"barIndex": @(i-1)
+                    }];
+                    
+                    NSLog(@"📉 TrailingFibo: New LOW peak confirmed at %.2f on %@",
+                          confirmedExtreme, extremeDate);
+                }
+                waitingForConfirmation = NO;
+            }
+        }
+    }
+    
+    NSLog(@"🎯 TrailingFibo: Found %lu confirmed peaks", (unsigned long)peaks.count);
+    return [peaks copy];
+}
+
+- (NSArray<NSDictionary *> *)calculateFibonacciLevelsFromPeaks:(NSArray<NSDictionary *> *)peaks
+                                               startControlPoint:(ControlPointModel *)startCP {
+    
+    NSMutableArray<NSDictionary *> *fibLevels = [NSMutableArray array];
+    
+    if (peaks.count == 0) return fibLevels;
+    
+    // Get starting price
+    HistoricalBarModel *startBar = [self findBarForDate:startCP.dateAnchor];
+    if (!startBar) return fibLevels;
+    
+    double startIndicatorValue = [self getIndicatorValue:startCP.indicatorRef fromBar:startBar];
+    double startPrice = startIndicatorValue * (1.0 + startCP.valuePercent / 100.0);
+    
+    // Get latest extreme price
+    NSDictionary *lastPeak = peaks.lastObject;
+    double extremePrice = [lastPeak[@"price"] doubleValue];
+    NSDate *extremeDate = lastPeak[@"date"];
+    
+    // Fibonacci levels (from start to extreme)
+    NSArray *fibRatios = @[@0.0, @0.236, @0.382, @0.5, @0.618, @1.0];
+    NSArray *fibLabels = @[@"0%", @"23.6%", @"38.2%", @"50%", @"61.8%", @"100%"];
+    
+    for (NSUInteger i = 0; i < fibRatios.count; i++) {
+        double ratio = [fibRatios[i] doubleValue];
+        double levelPrice = startPrice + ratio * (extremePrice - startPrice);
+        
+        [fibLevels addObject:@{
+            @"ratio": fibRatios[i],
+            @"label": fibLabels[i],
+            @"price": @(levelPrice),
+            @"startDate": startCP.dateAnchor,
+            @"endDate": extremeDate ?: startCP.dateAnchor
+        }];
+    }
+    
+    return [fibLevels copy];
+}
+
+- (NSInteger)findBarIndexForDate:(NSDate *)date {
+    for (NSInteger i = 0; i < self.coordinateContext.chartData.count; i++) {
+        HistoricalBarModel *bar = self.coordinateContext.chartData[i];
+        if ([bar.date isEqualToDate:date] || [bar.date compare:date] == NSOrderedDescending) {
+            return i;
+        }
+    }
+    return NSNotFound;
+}
 
 - (HistoricalBarModel *)findBarForDate:(NSDate *)date {
     for (HistoricalBarModel *bar in self.coordinateContext.chartData) {

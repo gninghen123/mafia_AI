@@ -396,28 +396,31 @@
 
 - (BOOL)isValidForType {
     switch (self.type) {
-        case ChartObjectTypeTrendline:
         case ChartObjectTypeHorizontalLine:
-        
+        case ChartObjectTypeTrailingFibo:  // 1 CP sufficiente
+            return self.controlPoints.count >= 1;
             
+        case ChartObjectTypeTrendline:
         case ChartObjectTypeFibonacci:
+        case ChartObjectTypeTrailingFiboBetween:  // 2 CP necessari
+        case ChartObjectTypeRectangle:
+        case ChartObjectTypeCircle:
+        case ChartObjectTypeOval:
             return self.controlPoints.count >= 2;
             
         case ChartObjectTypeTarget:
-            return self.controlPoints.count >= 1;
+        case ChartObjectTypeChannel:  // 3 CP necessari
+            return self.controlPoints.count >= 3;
+            
+       
             
         case ChartObjectTypeFreeDrawing:
-            return self.controlPoints.count >= 2;
-            
-        case ChartObjectTypeRectangle:
-        case ChartObjectTypeCircle:
-            return self.controlPoints.count >= 2;
+            return self.controlPoints.count >= 2;  // Minimo 2 punti per una linea
             
         default:
             return self.controlPoints.count > 0;
     }
 }
-
 - (NSRect)boundingRect {
     if (self.controlPoints.count == 0) {
         return NSZeroRect;

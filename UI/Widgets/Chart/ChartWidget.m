@@ -320,7 +320,7 @@ extern NSString *const DataHubDataLoadedNotification;
     }
     
     NSRect splitFrame = self.panelsSplitView.frame;
-    double secheight = splitFrame.size.height * 0.7;
+    double secheight = splitFrame.size.height * 0.8;
     double volh = splitFrame.size.height - secheight;
     splitFrame.size.height = secheight;
     
@@ -507,7 +507,7 @@ extern NSString *const DataHubDataLoadedNotification;
 
 - (void)symbolChanged:(NSTextField *)sender {
     NSString *symbol = sender.stringValue.uppercaseString;
-    if (symbol.length > 0) {
+    if (symbol.length > 0 && ![symbol isEqualToString:self.currentSymbol]) {
         [self loadSymbol:symbol];
         [self broadcastSymbolToChain:symbol];
     }
@@ -554,8 +554,10 @@ extern NSString *const DataHubDataLoadedNotification;
 
 - (void)loadSymbol:(NSString *)symbol {
     if (!symbol || symbol.length == 0) return;
-   
-    
+    BOOL sameSymbol = NO;
+    if ([self.currentSymbol isEqualToString:symbol]) {
+        sameSymbol = YES;
+    }
     self.currentSymbol = symbol;
     self.symbolTextField.stringValue = symbol;
     
@@ -579,7 +581,9 @@ extern NSString *const DataHubDataLoadedNotification;
                   (unsigned long)data.count, symbol, isFresh ? @"fresh" : @"cached");
             
             self.chartData = data;
-            [self resetToInitialView];
+            if (!sameSymbol) {
+                [self resetToInitialView];
+            }
             [self synchronizePanels];
         });
     }];

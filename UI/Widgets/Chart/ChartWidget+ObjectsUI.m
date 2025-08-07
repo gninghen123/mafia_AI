@@ -225,9 +225,9 @@ static const void *kSplitViewLeadingConstraintKey = &kSplitViewLeadingConstraint
     
     // Trova il panel principale per il placement
     ChartPanelView *mainPanel = nil;
-    for (ChartPanelView *panel in self.chartPanels) {
-        if ([panel.panelType isEqualToString:@"security"]) {
-            mainPanel = panel;
+    for (ChartPanelView *panelView in self.chartPanels) {
+        if ([panelView.panelType isEqualToString:@"security"]) {
+            mainPanel = panelView;
             break;
         }
     }
@@ -241,10 +241,13 @@ static const void *kSplitViewLeadingConstraintKey = &kSplitViewLeadingConstraint
         [mainPanel setupObjectsRendererWithManager:self.objectsManager];
     }
     
-    // Avvia direttamente la creazione nel panel
+    // IMPORTANTE: NON chiamare metodi che possono resettare lo zoom
+    // NON chiamare zoomAll, synchronizePanels, o altri metodi di viewport
+    
+    // Avvia direttamente la creazione nel panel SENZA toccare zoom/viewport
     [mainPanel startCreatingObjectOfType:type];
     
-    NSLog(@"✅ Started creating object type %ld in panel %@", (long)type, mainPanel.panelType);
+    NSLog(@"✅ Started creating object type %ld in panel %@ - ZOOM PRESERVED", (long)type, mainPanel.panelType);
 }
 
 - (void)objectsPanelDidRequestShowManager:(id)panel {

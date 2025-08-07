@@ -43,6 +43,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) BOOL isInCreationMode;
 @property (nonatomic, assign) BOOL isInPreviewMode;
 @property (nonatomic, assign) NSPoint currentMousePosition;
+@property (nonatomic, strong, nullable) ControlPointModel *hoveredControlPoint;
 
 // Initialization
 - (instancetype)initWithPanelView:(ChartPanelView *)panelView
@@ -107,6 +108,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// Update preview during mouse movement in creation mode
 /// @param screenPoint Current mouse position
 - (void)updateCreationPreviewAtPoint:(NSPoint)screenPoint;
+
+/// Update hover state during mouse movement in editing mode
+/// @param screenPoint Current mouse position
+- (void)updateEditingHoverAtPoint:(NSPoint)screenPoint;
 
 /// Finish creating current object
 - (void)finishCreatingObject;

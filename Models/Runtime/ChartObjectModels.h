@@ -22,7 +22,8 @@ typedef NS_ENUM(NSInteger, ChartObjectType) {
     ChartObjectTypeCircle = 6,                 // 2 CP
     ChartObjectTypeRectangle = 7,              // 2 CP
     ChartObjectTypeChannel = 8,                // 3 CP (2 per trend + 1 distanza)
-    ChartObjectTypeFreeDrawing = 9             // N CP
+    ChartObjectTypeFreeDrawing = 9,            // N CP
+    ChartObjectTypeOval = 10                   // 2 CP (come rectangle ma ovale)
 };
 
 typedef NS_ENUM(NSInteger, ChartLineType) {

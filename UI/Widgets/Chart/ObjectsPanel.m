@@ -146,11 +146,13 @@
 
 - (void)createObjectButtons {
     NSArray<NSDictionary *> *objectTypes = @[
-        @{@"title": @"Horizontal Line", @"type": @(ChartObjectTypeHorizontalLine)},
-        @{@"title": @"Trend Line", @"type": @(ChartObjectTypeTrendline)},
-        @{@"title": @"Rectangle", @"type": @(ChartObjectTypeRectangle)},
-        @{@"title": @"Fibonacci", @"type": @(ChartObjectTypeFibonacci)}
-    ];
+         @{@"title": @"Horizontal Line", @"type": @(ChartObjectTypeHorizontalLine)},
+         @{@"title": @"Trend Line", @"type": @(ChartObjectTypeTrendline)},
+         @{@"title": @"Rectangle", @"type": @(ChartObjectTypeRectangle)},
+         @{@"title": @"Fibonacci", @"type": @(ChartObjectTypeFibonacci)},
+         @{@"title": @"Trailing Fibo", @"type": @(ChartObjectTypeTrailingFibo)},        // NUOVO
+         @{@"title": @"Trailing Between", @"type": @(ChartObjectTypeTrailingFiboBetween)} // NUOVO
+     ];
     
     NSMutableArray<NSButton *> *buttons = [[NSMutableArray alloc] init];
     

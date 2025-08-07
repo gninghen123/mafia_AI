@@ -164,16 +164,41 @@
 }
 
 - (NSArray<ConnectionModel *> *)getConnectionsForSymbol:(NSString *)symbol {
-    NSMutableArray<ConnectionModel *> *symbolConnections = [NSMutableArray array];
+    if (!symbol) return @[];
     
-    for (ConnectionModel *connection in [self getAllConnections]) {
-        if ([connection involvesSymbol:symbol]) {
-            [symbolConnections addObject:connection];
+    // Find Symbol entity first
+    NSFetchRequest *symbolRequest = [Symbol fetchRequest];
+    symbolRequest.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbol.uppercaseString];
+    
+    NSError *error;
+    NSArray *symbolResults = [self.mainContext executeFetchRequest:symbolRequest error:&error];
+    
+    if (error || symbolResults.count == 0) {
+        return @[];
+    }
+    
+    Symbol *symbolEntity = symbolResults.firstObject;
+    NSMutableArray<ConnectionModel *> *connections = [NSMutableArray array];
+    
+    // Get connections where this symbol is the source
+    for (StockConnection *connection in symbolEntity.sourceConnections) {
+        ConnectionModel *model = [self convertCoreDataConnectionToRuntimeModel:connection];
+        if (model) {
+            [connections addObject:model];
         }
     }
     
-    return [symbolConnections copy];
+    // Get connections where this symbol is a target
+    for (StockConnection *connection in symbolEntity.targetConnections) {
+        ConnectionModel *model = [self convertCoreDataConnectionToRuntimeModel:connection];
+        if (model && ![connections containsObject:model]) { // Avoid duplicates
+            [connections addObject:model];
+        }
+    }
+    
+    return [connections copy];
 }
+
 
 - (NSArray<ConnectionModel *> *)getConnectionsOfType:(StockConnectionType)type {
     NSMutableArray<ConnectionModel *> *typeConnections = [NSMutableArray array];
@@ -488,7 +513,7 @@
     return nil;
 }
 
-- (ConnectionModel *)convertConnectionCoreDataToRuntimeModel:(StockConnection *)coreDataConnection {
+- (ConnectionModel *)convertCoreDataConnectionToRuntimeModel:(StockConnection *)coreDataConnection {
     if (!coreDataConnection) return nil;
     
     ConnectionModel *model = [[ConnectionModel alloc] init];
@@ -504,11 +529,26 @@
     model.lastModified = coreDataConnection.lastModified ?: [NSDate date];
     model.isActive = coreDataConnection.isActive;
     
-    // Symbols and directionality
-    model.symbols = coreDataConnection.symbols ?: @[];
-    model.sourceSymbol = coreDataConnection.sourceSymbol;
-    model.targetSymbols = coreDataConnection.targetSymbols ?: @[];
+    // Symbols and directionality - USE RELATIONSHIPS
     model.bidirectional = coreDataConnection.bidirectional;
+    
+    // Source symbol from relationship
+    model.sourceSymbol = coreDataConnection.sourceSymbol.symbol;
+    
+    // Target symbols from relationship
+    NSMutableArray *targetSymbols = [NSMutableArray array];
+    for (Symbol *symbol in coreDataConnection.targetSymbols) {
+        [targetSymbols addObject:symbol.symbol];
+    }
+    model.targetSymbols = [targetSymbols copy];
+    
+    // Legacy symbols array (for backward compatibility)
+    NSMutableArray *allSymbols = [NSMutableArray array];
+    if (model.sourceSymbol) {
+        [allSymbols addObject:model.sourceSymbol];
+    }
+    [allSymbols addObjectsFromArray:model.targetSymbols];
+    model.symbols = [allSymbols copy];
     
     // AI Summary
     model.originalSummary = coreDataConnection.originalSummary;
@@ -530,7 +570,6 @@
     
     return model;
 }
-
 - (void)updateConnectionCoreDataFromRuntimeModel:(ConnectionModel *)runtimeModel
                                 coreDataConnection:(StockConnection *)coreDataConnection {
     
@@ -544,12 +583,24 @@
     coreDataConnection.creationDate = runtimeModel.creationDate;
     coreDataConnection.lastModified = runtimeModel.lastModified;
     coreDataConnection.isActive = runtimeModel.isActive;
-    
-    // Symbols and directionality
-    coreDataConnection.symbols = runtimeModel.symbols;
-    coreDataConnection.sourceSymbol = runtimeModel.sourceSymbol;
-    coreDataConnection.targetSymbols = runtimeModel.targetSymbols;
     coreDataConnection.bidirectional = runtimeModel.bidirectional;
+    
+    // Handle Symbol relationships
+    NSManagedObjectContext *context = coreDataConnection.managedObjectContext;
+    
+    // Set source symbol relationship
+    if (runtimeModel.sourceSymbol) {
+        Symbol *sourceSymbol = [self findOrCreateSymbolWithName:runtimeModel.sourceSymbol inContext:context];
+        coreDataConnection.sourceSymbol = sourceSymbol;
+    }
+    
+    // Set target symbols relationships
+    NSMutableSet *targetSymbolsSet = [NSMutableSet set];
+    for (NSString *symbolName in runtimeModel.targetSymbols) {
+        Symbol *symbol = [self findOrCreateSymbolWithName:symbolName inContext:context];
+        [targetSymbolsSet addObject:symbol];
+    }
+    coreDataConnection.targetSymbols = targetSymbolsSet;
     
     // AI Summary
     coreDataConnection.originalSummary = runtimeModel.originalSummary;
@@ -734,6 +785,24 @@
     }
     
     [self.connections addObjectsFromArray:fetchedConnections];
+}
+
+- (NSArray<NSString *> *)getSymbolsInvolvedInConnection:(StockConnection *)connection {
+    NSMutableArray<NSString *> *symbols = [NSMutableArray array];
+    
+    // Add source symbol
+    if (connection.sourceSymbol) {
+        [symbols addObject:connection.sourceSymbol.symbol];
+    }
+    
+    // Add target symbols
+    for (Symbol *symbol in connection.targetSymbols) {
+        if (![symbols containsObject:symbol.symbol]) {
+            [symbols addObject:symbol.symbol];
+        }
+    }
+    
+    return [symbols copy];
 }
 
 @end

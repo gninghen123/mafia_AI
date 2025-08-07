@@ -188,7 +188,7 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 }
 
 - (void)addSymbol:(NSString *)symbol toWatchlistModel:(WatchlistModel *)watchlistModel {
-    if (!watchlistModel || !watchlistModel.name || !symbol) return;
+    if (!symbol || !watchlistModel || !watchlistModel.name) return;
     
     // Find the corresponding Core Data object
     Watchlist *coreDataWatchlist = [self findWatchlistByName:watchlistModel.name];
@@ -200,14 +200,15 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
         NSString *upperSymbol = symbol.uppercaseString;
         if (![symbols containsObject:upperSymbol]) {
             [symbols addObject:upperSymbol];
-            watchlistModel.symbols = symbols;
+            watchlistModel.symbols = [symbols copy];
             watchlistModel.lastModified = [NSDate date];
         }
     }
 }
 
+
 - (void)removeSymbol:(NSString *)symbol fromWatchlistModel:(WatchlistModel *)watchlistModel {
-    if (!watchlistModel || !watchlistModel.name || !symbol) return;
+    if (!symbol || !watchlistModel || !watchlistModel.name) return;
     
     // Find the corresponding Core Data object
     Watchlist *coreDataWatchlist = [self findWatchlistByName:watchlistModel.name];
@@ -217,14 +218,36 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
         // Update the RuntimeModel
         NSMutableArray *symbols = [watchlistModel.symbols mutableCopy];
         NSString *upperSymbol = symbol.uppercaseString;
-        [symbols removeObject:upperSymbol];
-        watchlistModel.symbols = symbols;
-        watchlistModel.lastModified = [NSDate date];
+        if ([symbols containsObject:upperSymbol]) {
+            [symbols removeObject:upperSymbol];
+            watchlistModel.symbols = [symbols copy];
+            watchlistModel.lastModified = [NSDate date];
+        }
     }
 }
 
 - (NSArray<NSString *> *)getSymbolsForWatchlistModel:(WatchlistModel *)watchlistModel {
     return watchlistModel.symbols ?: @[];
+}
+
+- (void)updateWatchlistCoreDataFromRuntimeModel:(WatchlistModel *)runtimeModel
+                                coreDataWatchlist:(Watchlist *)coreDataWatchlist {
+    
+    coreDataWatchlist.name = runtimeModel.name;
+    coreDataWatchlist.lastModified = runtimeModel.lastModified ?: [NSDate date];
+    coreDataWatchlist.colorHex = runtimeModel.colorHex;
+    coreDataWatchlist.sortOrder = runtimeModel.sortOrder;
+    
+    // Update Symbol relationships
+    NSManagedObjectContext *context = coreDataWatchlist.managedObjectContext;
+    NSMutableSet<Symbol *> *symbolsSet = [NSMutableSet set];
+    
+    for (NSString *symbolName in runtimeModel.symbols) {
+        Symbol *symbol = [self findOrCreateSymbolWithName:symbolName inContext:context];
+        [symbolsSet addObject:symbol];
+    }
+    
+    coreDataWatchlist.symbols = symbolsSet;
 }
 
 - (void)updateWatchlistModel:(WatchlistModel *)watchlistModel newName:(NSString *)newName {
@@ -298,34 +321,42 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
                                                       userInfo:@{@"action": @"deleted"}];
 }
 
-- (void)addSymbol:(NSString *)symbol toWatchlist:(Watchlist *)watchlist {
-    NSMutableArray *symbols = [watchlist.symbols mutableCopy] ?: [NSMutableArray array];
-    if (![symbols containsObject:symbol]) {
-        [symbols addObject:symbol];
-        watchlist.symbols = symbols;
-        watchlist.lastModified = [NSDate date];
-        [self saveContext];
-        
-        [[NSNotificationCenter defaultCenter] postNotificationName:DataHubWatchlistUpdatedNotification
-                                                            object:self
-                                                          userInfo:@{@"action": @"symbolAdded", @"watchlist": watchlist, @"symbol": symbol}];
-    }
-}
 
-- (void)removeSymbol:(NSString *)symbol fromWatchlist:(Watchlist *)watchlist {
-    NSMutableArray *symbols = [watchlist.symbols mutableCopy];
-    [symbols removeObject:symbol];
-    watchlist.symbols = symbols;
-    watchlist.lastModified = [NSDate date];
+- (void)addSymbol:(NSString *)symbol toWatchlist:(Watchlist *)watchlist {
+    if (!symbol || !watchlist) return;
+    
+    [watchlist addSymbolWithName:symbol context:self.mainContext];
     [self saveContext];
     
     [[NSNotificationCenter defaultCenter] postNotificationName:DataHubWatchlistUpdatedNotification
                                                         object:self
-                                                      userInfo:@{@"action": @"symbolRemoved", @"watchlist": watchlist, @"symbol": symbol}];
+                                                      userInfo:@{
+                                                          @"watchlist": watchlist,
+                                                          @"action": @"symbolAdded",
+                                                          @"symbol": symbol
+                                                      }];
+}
+
+
+- (void)removeSymbol:(NSString *)symbol fromWatchlist:(Watchlist *)watchlist {
+    if (!symbol || !watchlist) return;
+    
+    [watchlist removeSymbolWithName:symbol];
+    [self saveContext];
+    
+    [[NSNotificationCenter defaultCenter] postNotificationName:DataHubWatchlistUpdatedNotification
+                                                        object:self
+                                                      userInfo:@{
+                                                          @"watchlist": watchlist,
+                                                          @"action": @"symbolRemoved",
+                                                          @"symbol": symbol
+                                                      }];
 }
 
 - (NSArray<NSString *> *)getSymbolsForWatchlist:(Watchlist *)watchlist {
-    return watchlist.symbols ?: @[];
+    if (!watchlist) return @[];
+    
+    return [watchlist symbolNames];
 }
 
 - (void)updateWatchlistName:(Watchlist *)watchlist newName:(NSString *)newName {
@@ -632,21 +663,31 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     return [runtimeModels copy];
 }
 
-- (AlertModel *)createAlertModelWithSymbol:(NSString *)symbol
-                              triggerValue:(double)triggerValue
-                           conditionString:(NSString *)conditionString
-                      notificationEnabled:(BOOL)notificationEnabled
-                                     notes:(NSString *)notes {
-    // Create in Core Data first
-    Alert *coreDataAlert = [self createAlertWithSymbol:symbol
-                                           triggerValue:triggerValue
-                                        conditionString:conditionString
-                                   notificationEnabled:notificationEnabled
-                                                  notes:notes];
+- (Alert *)createAlertWithSymbol:(NSString *)symbol
+                    triggerValue:(double)triggerValue
+                 conditionString:(NSString *)conditionString
+            notificationEnabled:(BOOL)notificationEnabled
+                           notes:(NSString *)notes {
     
-    // Convert to RuntimeModel for UI
-    return [self convertCoreDataToRuntimeModel:coreDataAlert];
+    Alert *alert = [NSEntityDescription insertNewObjectForEntityForName:@"Alert"
+                                                 inManagedObjectContext:self.mainContext];
+    
+    // Use Symbol relationship instead of string attribute
+    Symbol *symbolEntity = [self findOrCreateSymbolWithName:symbol inContext:self.mainContext];
+    alert.symbol = symbolEntity;
+    
+    alert.triggerValue = triggerValue;
+    alert.conditionString = conditionString;
+    alert.isActive = YES;
+    alert.isTriggered = NO;
+    alert.notificationEnabled = notificationEnabled;
+    alert.notes = notes;
+    alert.creationDate = [NSDate date];
+    
+    [self saveContext];
+    return alert;
 }
+
 
 - (void)deleteAlertModel:(AlertModel *)alertModel {
     if (!alertModel || !alertModel.symbol) return;
@@ -723,9 +764,14 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 - (Alert *)findAlertBySymbolAndValue:(NSString *)symbol
                         triggerValue:(double)triggerValue
                      conditionString:(NSString *)conditionString {
+    
+    // Find Symbol entity first
+    Symbol *symbolEntity = [self getSymbolWithName:symbol];
+    if (!symbolEntity) return nil;
+    
     NSFetchRequest *request = [Alert fetchRequest];
     request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@ AND triggerValue == %f AND conditionString == %@",
-                        symbol.uppercaseString, triggerValue, conditionString];
+                        symbolEntity, triggerValue, conditionString];
     request.fetchLimit = 1;
     
     NSError *error;
@@ -748,8 +794,15 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     model.name = coreDataWatchlist.name;
     model.creationDate = coreDataWatchlist.creationDate ?: [NSDate date];
     model.lastModified = coreDataWatchlist.lastModified ?: [NSDate date];
-    model.symbols = coreDataWatchlist.symbols ?: @[];
+    model.colorHex = coreDataWatchlist.colorHex;
     model.sortOrder = coreDataWatchlist.sortOrder;
+    
+    // Convert Symbol relationships to string array
+    NSMutableArray<NSString *> *symbolNames = [NSMutableArray array];
+    for (Symbol *symbol in coreDataWatchlist.symbols) {
+        [symbolNames addObject:symbol.symbol];
+    }
+    model.symbols = [symbolNames copy];
     
     return model;
 }
@@ -758,7 +811,9 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     if (!coreDataAlert) return nil;
     
     AlertModel *model = [[AlertModel alloc] init];
-    model.symbol = coreDataAlert.symbol;
+    
+    // Use Symbol relationship
+    model.symbol = coreDataAlert.symbol.symbol;
     model.triggerValue = coreDataAlert.triggerValue;
     model.conditionString = coreDataAlert.conditionString;
     model.isActive = coreDataAlert.isActive;
@@ -783,6 +838,26 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     coreDataAlert.notes = runtimeModel.notes;
     coreDataAlert.triggerDate = runtimeModel.triggerDate;
 }
+
+- (void)updateCoreDataAlertFromRuntimeModel:(AlertModel *)runtimeModel
+                             coreDataAlert:(Alert *)coreDataAlert {
+    
+    // Ensure Symbol relationship is set
+    if (!coreDataAlert.symbol || ![coreDataAlert.symbol.symbol isEqualToString:runtimeModel.symbol]) {
+        Symbol *symbolEntity = [self findOrCreateSymbolWithName:runtimeModel.symbol inContext:coreDataAlert.managedObjectContext];
+        coreDataAlert.symbol = symbolEntity;
+    }
+    
+    coreDataAlert.triggerValue = runtimeModel.triggerValue;
+    coreDataAlert.conditionString = runtimeModel.conditionString;
+    coreDataAlert.isActive = runtimeModel.isActive;
+    coreDataAlert.isTriggered = runtimeModel.isTriggered;
+    coreDataAlert.notificationEnabled = runtimeModel.notificationEnabled;
+    coreDataAlert.notes = runtimeModel.notes;
+    coreDataAlert.creationDate = runtimeModel.creationDate;
+    coreDataAlert.triggerDate = runtimeModel.triggerDate;
+}
+
 
 #pragma mark - Alert Monitoring
 
@@ -1169,5 +1244,33 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 - (void)dealloc {
 
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+
+- (Symbol *)findOrCreateSymbolWithName:(NSString *)symbolName inContext:(NSManagedObjectContext *)context {
+    if (!symbolName || symbolName.length == 0 || !context) return nil;
+    
+    NSString *normalizedSymbol = symbolName.uppercaseString;
+    
+    // Try to find existing Symbol
+    NSFetchRequest *request = [Symbol fetchRequest];
+    request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", normalizedSymbol];
+    
+    NSError *error;
+    NSArray *results = [context executeFetchRequest:request error:&error];
+    
+    Symbol *symbol;
+    if (results.count > 0) {
+        symbol = results.firstObject;
+    } else {
+        // Create new Symbol
+        symbol = [NSEntityDescription insertNewObjectForEntityForName:@"Symbol" inManagedObjectContext:context];
+        symbol.symbol = normalizedSymbol;
+        symbol.creationDate = [NSDate date];
+        symbol.interactionCount = 0;
+        symbol.isFavorite = NO;
+    }
+    
+    return symbol;
 }
 @end

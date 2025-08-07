@@ -467,17 +467,25 @@
 - (void)loadQuoteFromCoreData:(NSString *)symbol completion:(void(^)(MarketQuoteModel *quote))completion {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         
-        NSFetchRequest *request = [MarketQuote fetchRequest];
-        request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbol];
+        // Find Symbol first, then get its MarketQuote
+        NSFetchRequest *symbolRequest = [Symbol fetchRequest];
+        symbolRequest.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbol];
         
         NSError *error = nil;
-        NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
+        NSArray *symbolResults = [self.mainContext executeFetchRequest:symbolRequest error:&error];
         
         MarketQuoteModel *runtimeQuote = nil;
-        if (results.firstObject) {
-            // Convert Core Data entity to runtime model
-            MarketQuote *coreDataQuote = results.firstObject;
-            runtimeQuote = [self convertCoreDataQuoteToRuntimeModel:coreDataQuote];
+        if (symbolResults.firstObject) {
+            Symbol *symbolEntity = symbolResults.firstObject;
+            // Get the most recent MarketQuote for this Symbol
+            NSArray *quotes = [symbolEntity.marketQuotes allObjects];
+            if (quotes.count > 0) {
+                // Sort by lastUpdate and get most recent
+                NSSortDescriptor *sortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"lastUpdate" ascending:NO];
+                NSArray *sortedQuotes = [quotes sortedArrayUsingDescriptors:@[sortDescriptor]];
+                MarketQuote *coreDataQuote = sortedQuotes.firstObject;
+                runtimeQuote = [self convertCoreDataQuoteToRuntimeModel:coreDataQuote];
+            }
         }
         
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -493,41 +501,44 @@
                               barCount:(NSInteger)barCount
                             completion:(void(^)(NSArray<HistoricalBarModel *> *bars))completion {
     
-    // FIXED: Usa performBlock per garantire thread safety
     [self.mainContext performBlock:^{
-        NSFetchRequest *request = [HistoricalBar fetchRequest];
-        request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@ AND timeframe == %d", symbol, (int)timeframe];
-        request.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"date" ascending:YES]];
         
-        if (barCount > 0) {
-            request.fetchLimit = barCount;
-        }
+        // Find Symbol first, then get its HistoricalBars
+        NSFetchRequest *symbolRequest = [Symbol fetchRequest];
+        symbolRequest.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbol];
         
         NSError *error = nil;
-        NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
+        NSArray *symbolResults = [self.mainContext executeFetchRequest:symbolRequest error:&error];
         
-        if (error) {
-            NSLog(@"❌ DataHub: Core Data fetch error for %@ %d: %@", symbol, (int)timeframe, error.localizedDescription);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(@[]);
-            });
-            return;
-        }
-        
-        NSMutableArray<HistoricalBarModel *> *runtimeBars = [NSMutableArray array];
-        for (HistoricalBar *coreDataBar in results) {
-            HistoricalBarModel *runtimeBar = [self convertCoreDataBarToRuntimeModel:coreDataBar];
-            if (runtimeBar) {
-                [runtimeBars addObject:runtimeBar];
+        NSArray<HistoricalBarModel *> *runtimeBars = @[];
+        if (symbolResults.firstObject) {
+            Symbol *symbolEntity = symbolResults.firstObject;
+            
+            // Filter and sort HistoricalBars for this Symbol
+            NSPredicate *barsPredicate = [NSPredicate predicateWithFormat:@"timeframe == %d", (int)timeframe];
+            NSSet *filteredBars = [symbolEntity.historicalBars filteredSetUsingPredicate:barsPredicate];
+            
+            // Sort by date descending and limit
+            NSSortDescriptor *sortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"date" ascending:NO];
+            NSArray *sortedBars = [filteredBars sortedArrayUsingDescriptors:@[sortDescriptor]];
+            
+            // Take only the requested count
+            NSRange range = NSMakeRange(0, MIN(sortedBars.count, barCount));
+            NSArray *limitedBars = [sortedBars subarrayWithRange:range];
+            
+            // Convert to runtime models
+            NSMutableArray<HistoricalBarModel *> *mutableRuntimeBars = [NSMutableArray array];
+            for (HistoricalBar *coreDataBar in limitedBars) {
+                HistoricalBarModel *runtimeBar = [self convertCoreDataBarToRuntimeModel:coreDataBar];
+                if (runtimeBar) {
+                    [mutableRuntimeBars addObject:runtimeBar];
+                }
             }
+            runtimeBars = [mutableRuntimeBars copy];
         }
         
-        NSLog(@"✅ DataHub: Loaded %lu historical bars for %@ %d from Core Data",
-              (unsigned long)runtimeBars.count, symbol, (int)timeframe);
-        
-        // IMPORTANTE: Il completion deve essere chiamato sul main thread
         dispatch_async(dispatch_get_main_queue(), ^{
-            completion([runtimeBars copy]);
+            completion(runtimeBars);
         });
     }];
 }
@@ -535,16 +546,19 @@
 - (void)loadCompanyInfoFromCoreData:(NSString *)symbol completion:(void(^)(CompanyInfoModel *info))completion {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         
-        NSFetchRequest *request = [CompanyInfo fetchRequest];
-        request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbol];
+        // Find Symbol first, then get its CompanyInfo
+        NSFetchRequest *symbolRequest = [Symbol fetchRequest];
+        symbolRequest.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbol];
         
         NSError *error = nil;
-        NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
+        NSArray *symbolResults = [self.mainContext executeFetchRequest:symbolRequest error:&error];
         
         CompanyInfoModel *runtimeInfo = nil;
-        if (results.firstObject) {
-            CompanyInfo *coreDataInfo = results.firstObject;
-            runtimeInfo = [self convertCoreDataCompanyInfoToRuntimeModel:coreDataInfo];
+        if (symbolResults.firstObject) {
+            Symbol *symbolEntity = symbolResults.firstObject;
+            if (symbolEntity.companyInfo) {
+                runtimeInfo = [self convertCoreDataCompanyInfoToRuntimeModel:symbolEntity.companyInfo];
+            }
         }
         
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -555,51 +569,56 @@
 
 #pragma mark - Core Data Saving (Background)
 
+// Aggiornamento per DataHub+MarketData.m - saveQuoteModelToCoreData
+
 - (void)saveQuoteModelToCoreData:(MarketQuoteModel *)quote {
     if (!quote) return;
     
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
         
         NSManagedObjectContext *backgroundContext = [self.persistentContainer newBackgroundContext];
-        
-        // AGGIUNGI: Configura il merge policy per gestire i conflict
         backgroundContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy;
         
         [backgroundContext performBlock:^{
             
-            // AGGIUNGI: Refresh degli oggetti per evitare stale data
             [backgroundContext refreshAllObjects];
             
-            // Find existing or create new
-            NSFetchRequest *request = [MarketQuote fetchRequest];
-            request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", quote.symbol];
+            // Find or create Symbol first
+            Symbol *symbol = [self findOrCreateSymbolWithName:quote.symbol inContext:backgroundContext];
             
-            NSError *error = nil;
-            NSArray *results = [backgroundContext executeFetchRequest:request error:&error];
+            // Find existing MarketQuote for this Symbol or create new
+            MarketQuote *coreDataQuote = nil;
             
-            MarketQuote *coreDataQuote = results.firstObject;
+            // Check if this Symbol already has a MarketQuote
+            NSSet *existingQuotes = symbol.marketQuotes;
+            if (existingQuotes.count > 0) {
+                // Use the most recent one (there should typically be only one)
+                NSSortDescriptor *sortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"lastUpdate" ascending:NO];
+                NSArray *sortedQuotes = [existingQuotes sortedArrayUsingDescriptors:@[sortDescriptor]];
+                coreDataQuote = sortedQuotes.firstObject;
+            }
+            
             if (!coreDataQuote) {
                 coreDataQuote = [NSEntityDescription insertNewObjectForEntityForName:@"MarketQuote"
                                                               inManagedObjectContext:backgroundContext];
-                coreDataQuote.symbol = quote.symbol;
+                coreDataQuote.symbol = symbol;
             }
             
-            // AGGIUNGI: Refresh dell'oggetto specifico per avere l'ultima versione
             [backgroundContext refreshObject:coreDataQuote mergeChanges:YES];
             
-            // Update properties using corrected method
+            // Update properties using the updated method
             [self updateCoreDataQuote:coreDataQuote withRuntimeModel:quote];
             coreDataQuote.lastUpdate = [NSDate date];
             
             // Save with retry logic
+            NSError *error = nil;
             if (![backgroundContext save:&error]) {
                 NSLog(@"Error saving quote to Core Data: %@", error);
                 
-                // AGGIUNGI: Retry logic per merge conflicts
+                // Retry logic per merge conflicts
                 if (error.code == NSManagedObjectMergeError || error.code == 133020) {
                     NSLog(@"🔄 Retrying save after merge conflict for %@", quote.symbol);
                     
-                    // Refresh and try again
                     [backgroundContext refreshAllObjects];
                     [backgroundContext refreshObject:coreDataQuote mergeChanges:YES];
                     [self updateCoreDataQuote:coreDataQuote withRuntimeModel:quote];
@@ -612,10 +631,14 @@
                         NSLog(@"✅ Retry successful for %@", quote.symbol);
                     }
                 }
+            } else {
+                NSLog(@"✅ Saved quote for %@ to Core Data", quote.symbol);
             }
         }];
     });
 }
+
+
 - (void)saveHistoricalBarsModelToCoreData:(NSArray<HistoricalBarModel *> *)bars
                                    symbol:(NSString *)symbol
                                 timeframe:(BarTimeframe)timeframe {
@@ -645,11 +668,12 @@
 - (MarketQuoteModel *)convertCoreDataQuoteToRuntimeModel:(MarketQuote *)coreDataQuote {
     MarketQuoteModel *runtimeQuote = [[MarketQuoteModel alloc] init];
     
-    runtimeQuote.symbol = coreDataQuote.symbol;
+    // Use relationship instead of attribute
+    runtimeQuote.symbol = coreDataQuote.symbol.symbol;
     runtimeQuote.name = coreDataQuote.name;
     runtimeQuote.exchange = coreDataQuote.exchange;
     
-    // FIXED: Core Data uses currentPrice, convert to NSNumber
+    // Core Data uses currentPrice, convert to NSNumber
     runtimeQuote.last = @(coreDataQuote.currentPrice);
     
     // Core Data doesn't have bid/ask, use currentPrice as fallback
@@ -684,8 +708,14 @@
     return runtimeQuote;
 }
 
+
 - (void)updateCoreDataQuote:(MarketQuote *)coreDataQuote withRuntimeModel:(MarketQuoteModel *)runtimeQuote {
-    // FIXED: Map runtime model properties to Core Data properties correctly
+    // Ensure Symbol relationship is set
+    if (!coreDataQuote.symbol) {
+        Symbol *symbol = [self findOrCreateSymbolWithName:runtimeQuote.symbol inContext:coreDataQuote.managedObjectContext];
+        coreDataQuote.symbol = symbol;
+    }
+    
     coreDataQuote.name = runtimeQuote.name;
     coreDataQuote.exchange = runtimeQuote.exchange;
     
@@ -716,10 +746,12 @@
     coreDataQuote.marketTime = runtimeQuote.timestamp;
 }
 
+
 - (HistoricalBarModel *)convertCoreDataBarToRuntimeModel:(HistoricalBar *)coreDataBar {
     HistoricalBarModel *runtimeBar = [[HistoricalBarModel alloc] init];
     
-    runtimeBar.symbol = coreDataBar.symbol;
+    // Use relationship instead of attribute
+    runtimeBar.symbol = coreDataBar.symbol.symbol;
     runtimeBar.date = coreDataBar.date;
     runtimeBar.open = coreDataBar.open;
     runtimeBar.high = coreDataBar.high;
@@ -735,7 +767,8 @@
 - (CompanyInfoModel *)convertCoreDataCompanyInfoToRuntimeModel:(CompanyInfo *)coreDataInfo {
     CompanyInfoModel *runtimeInfo = [[CompanyInfoModel alloc] init];
     
-    runtimeInfo.symbol = coreDataInfo.symbol;
+    // Use relationship instead of attribute
+    runtimeInfo.symbol = coreDataInfo.symbol.symbol;
     runtimeInfo.name = coreDataInfo.name;
     runtimeInfo.sector = coreDataInfo.sector;
     runtimeInfo.industry = coreDataInfo.industry;
@@ -755,11 +788,14 @@
     NSDate *date = barModel.date;
     if (!date) return;
     
-    // Check if bar already exists
+    // Find or create Symbol first
+    Symbol *symbol = [self findOrCreateSymbolWithName:barModel.symbol inContext:context];
+    
+    // Check if bar already exists using Symbol relationship
     NSFetchRequest *request = [HistoricalBar fetchRequest];
     request.predicate = [NSPredicate predicateWithFormat:
                         @"symbol == %@ AND timeframe == %d AND date == %@",
-                        barModel.symbol, (int)barModel.timeframe, date];
+                        symbol, (int)barModel.timeframe, date];
     
     NSError *error = nil;
     NSArray *results = [context executeFetchRequest:request error:&error];
@@ -768,7 +804,7 @@
     if (!coreDataBar) {
         coreDataBar = [NSEntityDescription insertNewObjectForEntityForName:@"HistoricalBar"
                                                     inManagedObjectContext:context];
-        coreDataBar.symbol = barModel.symbol;
+        coreDataBar.symbol = symbol;
         coreDataBar.timeframe = barModel.timeframe;
         coreDataBar.date = date;
     }
@@ -1128,7 +1164,32 @@
     
 }
 
-
+- (Symbol *)findOrCreateSymbolWithName:(NSString *)symbolName inContext:(NSManagedObjectContext *)context {
+    if (!symbolName || symbolName.length == 0 || !context) return nil;
+    
+    NSString *normalizedSymbol = symbolName.uppercaseString;
+    
+    // Try to find existing Symbol
+    NSFetchRequest *request = [Symbol fetchRequest];
+    request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", normalizedSymbol];
+    
+    NSError *error;
+    NSArray *results = [context executeFetchRequest:request error:&error];
+    
+    Symbol *symbol;
+    if (results.count > 0) {
+        symbol = results.firstObject;
+    } else {
+        // Create new Symbol
+        symbol = [NSEntityDescription insertNewObjectForEntityForName:@"Symbol" inManagedObjectContext:context];
+        symbol.symbol = normalizedSymbol;
+        symbol.creationDate = [NSDate date];
+        symbol.interactionCount = 0;
+        symbol.isFavorite = NO;
+    }
+    
+    return symbol;
+}
 
 
 @end

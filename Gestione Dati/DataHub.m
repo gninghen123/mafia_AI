@@ -1037,7 +1037,7 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
      
      // Incrementa
      symbol.interactionCount = currentCount + 1;
- /*
+ 
     symbol.lastInteraction = [NSDate date];
     
     // Se è la prima volta, imposta firstInteraction
@@ -1047,7 +1047,7 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     
     [self saveContext];
     
-    NSLog(@"DataHub: Symbol %@ interaction count: %d", symbol.symbol, symbol.interactionCount);*/
+    NSLog(@"DataHub: Symbol %@ interaction count: %d", symbol.symbol, symbol.interactionCount);
 }
 
 - (void)incrementInteractionForSymbolName:(NSString *)symbolName {

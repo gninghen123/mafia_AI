@@ -26,6 +26,9 @@
 @property (nonatomic, assign) NSInteger visibleEndIndex;
 @property (nonatomic, assign) double yRangeMin;
 @property (nonatomic, assign) double yRangeMax;
+@property (nonatomic, assign) double dragThreshold;
+
+@property (nonatomic, assign) BOOL isDragging;
 
 // Interaction
 @property (nonatomic, assign) NSPoint crosshairPoint;

@@ -1,13 +1,11 @@
 //
 //  ChartObjectModels.m
-//  TradingApp
+//  mafia_AI
 //
 //  Implementation of runtime models for chart objects
 //
 
 #import "ChartObjectModels.h"
-#import "DataHub.h"
-#import "DataHub+ChartObjects.h"
 
 #pragma mark - ControlPointModel Implementation
 
@@ -267,6 +265,8 @@
     return style;
 }
 
+#pragma mark - Color Helpers
+
 - (NSString *)colorToHexString:(NSColor *)color {
     NSColor *rgbColor = [color colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
     return [NSString stringWithFormat:@"#%02X%02X%02X%02X",
@@ -277,19 +277,23 @@
 }
 
 + (NSColor *)colorFromHexString:(NSString *)hexString {
-    if (![hexString hasPrefix:@"#"] || hexString.length != 9) {
-        return [NSColor systemBlueColor]; // Default fallback
+    if (!hexString || hexString.length < 7) {
+        return [NSColor systemBlueColor]; // fallback
     }
     
-    NSString *hex = [hexString substringFromIndex:1];
-    unsigned int r, g, b, a;
+    NSString *cleanString = [hexString stringByReplacingOccurrencesOfString:@"#" withString:@""];
     
-    [[NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(0, 2)]] scanHexInt:&r];
-    [[NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(2, 2)]] scanHexInt:&g];
-    [[NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(4, 2)]] scanHexInt:&b];
-    [[NSScanner scannerWithString:[hex substringWithRange:NSMakeRange(6, 2)]] scanHexInt:&a];
+    unsigned int red, green, blue, alpha = 255;
     
-    return [NSColor colorWithRed:r/255.0 green:g/255.0 blue:b/255.0 alpha:a/255.0];
+    [[NSScanner scannerWithString:[cleanString substringWithRange:NSMakeRange(0, 2)]] scanHexInt:&red];
+    [[NSScanner scannerWithString:[cleanString substringWithRange:NSMakeRange(2, 2)]] scanHexInt:&green];
+    [[NSScanner scannerWithString:[cleanString substringWithRange:NSMakeRange(4, 2)]] scanHexInt:&blue];
+    
+    if (cleanString.length >= 8) {
+        [[NSScanner scannerWithString:[cleanString substringWithRange:NSMakeRange(6, 2)]] scanHexInt:&alpha];
+    }
+    
+    return [NSColor colorWithRed:red/255.0 green:green/255.0 blue:blue/255.0 alpha:alpha/255.0];
 }
 
 @end
@@ -343,16 +347,22 @@
             return @"Horizontal Line";
         case ChartObjectTypeFibonacci:
             return @"Fibonacci";
-      
-        case ChartObjectTypeFreeDrawing:
-            return @"Drawing";
+        case ChartObjectTypeTrailingFibo:
+            return @"Trailing Fibonacci";
+        case ChartObjectTypeTrailingFiboBetween:
+            return @"Trailing Fibonacci Between";
         case ChartObjectTypeTarget:
             return @"Price Target";
-      
-        case ChartObjectTypeRectangle:
-            return @"Rectangle";
         case ChartObjectTypeCircle:
             return @"Circle";
+        case ChartObjectTypeRectangle:
+            return @"Rectangle";
+        case ChartObjectTypeChannel:
+            return @"Channel";
+        case ChartObjectTypeFreeDrawing:
+            return @"Free Drawing";
+        case ChartObjectTypeOval:
+            return @"Oval";
         default:
             return @"Object";
     }
@@ -391,36 +401,50 @@
 }
 
 - (NSString *)displayName {
-    return self.name ?: [self defaultNameForType:self.type];
+    return self.name ?: @"Untitled Object";
 }
 
 - (BOOL)isValidForType {
+    NSUInteger requiredPoints = 0;
+    
     switch (self.type) {
-        case ChartObjectTypeHorizontalLine:
-        case ChartObjectTypeTrailingFibo:  // 1 CP sufficiente
-            return self.controlPoints.count >= 1;
-            
         case ChartObjectTypeTrendline:
+            requiredPoints = 2;
+            break;
+        case ChartObjectTypeHorizontalLine:
+            requiredPoints = 1;
+            break;
         case ChartObjectTypeFibonacci:
-        case ChartObjectTypeTrailingFiboBetween:  // 2 CP necessari
-        case ChartObjectTypeRectangle:
-        case ChartObjectTypeCircle:
-        case ChartObjectTypeOval:
-            return self.controlPoints.count >= 2;
-            
+            requiredPoints = 2;
+            break;
+        case ChartObjectTypeTrailingFibo:
+            requiredPoints = 1;
+            break;
+        case ChartObjectTypeTrailingFiboBetween:
+            requiredPoints = 2;
+            break;
         case ChartObjectTypeTarget:
-        case ChartObjectTypeChannel:  // 3 CP necessari
-            return self.controlPoints.count >= 3;
-            
-       
-            
+            requiredPoints = 3;
+            break;
+        case ChartObjectTypeCircle:
+        case ChartObjectTypeRectangle:
+        case ChartObjectTypeOval:
+            requiredPoints = 2;
+            break;
+        case ChartObjectTypeChannel:
+            requiredPoints = 3;
+            break;
         case ChartObjectTypeFreeDrawing:
-            return self.controlPoints.count >= 2;  // Minimo 2 punti per una linea
-            
+            requiredPoints = 1; // At least one point
+            break;
         default:
-            return self.controlPoints.count > 0;
+            requiredPoints = 1;
+            break;
     }
+    
+    return self.controlPoints.count >= requiredPoints;
 }
+
 - (NSRect)boundingRect {
     if (self.controlPoints.count == 0) {
         return NSZeroRect;
@@ -432,18 +456,13 @@
     CGFloat maxY = -CGFLOAT_MAX;
     
     for (ControlPointModel *point in self.controlPoints) {
-        NSPoint screenPoint = point.screenPoint;
-        minX = MIN(minX, screenPoint.x);
-        maxX = MAX(maxX, screenPoint.x);
-        minY = MIN(minY, screenPoint.y);
-        maxY = MAX(maxY, screenPoint.y);
+        minX = MIN(minX, point.screenPoint.x);
+        maxX = MAX(maxX, point.screenPoint.x);
+        minY = MIN(minY, point.screenPoint.y);
+        maxY = MAX(maxY, point.screenPoint.y);
     }
     
-    // Add some padding for line thickness
-    CGFloat padding = self.style.thickness + 5;
-    return NSMakeRect(minX - padding, minY - padding,
-                     (maxX - minX) + (2 * padding),
-                     (maxY - minY) + (2 * padding));
+    return NSMakeRect(minX, minY, maxX - minX, maxY - minY);
 }
 
 @end
@@ -530,262 +549,6 @@
         }
     }
     return [visibleObjects copy];
-}
-
-@end
-
-#pragma mark - ChartObjectsManager Implementation
-
-@implementation ChartObjectsManager
-
-+ (instancetype)managerForSymbol:(NSString *)symbol {
-    return [[self alloc] initWithSymbol:symbol];
-}
-
-- (instancetype)initWithSymbol:(NSString *)symbol {
-    self = [super init];
-    if (self) {
-        _currentSymbol = symbol ?: @"";
-        _layers = [NSMutableArray array];
-        _activeLayer = nil;
-        _selectedObject = nil;
-        _selectedControlPoint = nil;
-    }
-    return self;
-}
-
-- (ChartLayerModel *)createLayerWithName:(NSString *)name {
-    ChartLayerModel *layer = [ChartLayerModel layerWithName:name];
-    layer.orderIndex = self.layers.count;
-    
-    [self.layers addObject:layer];
-    
-    // Set as active if it's the first layer
-    if (!self.activeLayer) {
-        self.activeLayer = layer;
-    }
-    
-    NSLog(@"✅ ChartObjectsManager: Created layer '%@' for symbol %@", name, self.currentSymbol);
-    return layer;
-}
-
-- (void)deleteLayer:(ChartLayerModel *)layer {
-    if (!layer) return;
-    
-    [self.layers removeObject:layer];
-    
-    // Update active layer if needed
-    if (self.activeLayer == layer) {
-        self.activeLayer = self.layers.firstObject;
-    }
-    
-    // Clear selection if selected object was in deleted layer
-    if (self.selectedObject && [layer.objects containsObject:self.selectedObject]) {
-        [self clearSelection];
-    }
-    
-    NSLog(@"🗑️ ChartObjectsManager: Deleted layer '%@'", layer.name);
-}
-
-- (void)moveLayer:(ChartLayerModel *)layer toIndex:(NSUInteger)index {
-    if (!layer || ![self.layers containsObject:layer]) return;
-    
-    [self.layers removeObject:layer];
-    [self.layers insertObject:layer atIndex:MIN(index, self.layers.count)];
-    
-    // Update order indices
-    [self.layers enumerateObjectsUsingBlock:^(ChartLayerModel *l, NSUInteger idx, BOOL *stop) {
-        l.orderIndex = idx;
-    }];
-    
-    NSLog(@"🔄 ChartObjectsManager: Moved layer '%@' to index %lu", layer.name, (unsigned long)index);
-}
-
-- (ChartObjectModel *)createObjectOfType:(ChartObjectType)type inLayer:(ChartLayerModel *)layer {
-    if (!layer) {
-        NSLog(@"❌ ChartObjectsManager: Cannot create object - no layer specified");
-        return nil;
-    }
-    
-    // Generate unique name using static method
-    NSString *baseName = [self defaultNameForObjectType:type];
-    NSString *uniqueName = [self generateUniqueNameWithBase:baseName inLayer:layer];
-    
-    ChartObjectModel *object = [ChartObjectModel objectWithType:type name:uniqueName];
-    [layer addObject:object];
-    
-    NSLog(@"✅ ChartObjectsManager: Created object '%@' in layer '%@'", uniqueName, layer.name);
-    return object;
-}
-
-- (void)deleteObject:(ChartObjectModel *)object {
-    if (!object) return;
-    
-    // Find and remove from layer
-    for (ChartLayerModel *layer in self.layers) {
-        if ([layer.objects containsObject:object]) {
-            [layer removeObject:object];
-            break;
-        }
-    }
-    
-    // Clear selection if this object was selected
-    if (self.selectedObject == object) {
-        [self clearSelection];
-    }
-    
-    NSLog(@"🗑️ ChartObjectsManager: Deleted object '%@'", object.name);
-}
-
-- (void)moveObject:(ChartObjectModel *)object toLayer:(ChartLayerModel *)targetLayer {
-    if (!object || !targetLayer) return;
-    
-    // Remove from current layer
-    for (ChartLayerModel *layer in self.layers) {
-        if ([layer.objects containsObject:object]) {
-            [layer removeObject:object];
-            break;
-        }
-    }
-    
-    // Add to target layer
-    [targetLayer addObject:object];
-    
-    NSLog(@"🔄 ChartObjectsManager: Moved object '%@' to layer '%@'", object.name, targetLayer.name);
-}
-
-- (void)selectObject:(ChartObjectModel *)object {
-    // Clear previous selection
-    [self clearSelection];
-    
-    if (object) {
-        self.selectedObject = object;
-        object.isSelected = YES;
-        
-        NSLog(@"🎯 ChartObjectsManager: Selected object '%@'", object.name);
-    }
-}
-
-- (void)selectControlPoint:(ControlPointModel *)controlPoint ofObject:(ChartObjectModel *)object {
-    // Select the object first
-    [self selectObject:object];
-    
-    if (controlPoint) {
-        self.selectedControlPoint = controlPoint;
-        controlPoint.isSelected = YES;
-        
-        NSLog(@"🎯 ChartObjectsManager: Selected control point of object '%@'", object.name);
-    }
-}
-
-- (void)clearSelection {
-    if (self.selectedObject) {
-        self.selectedObject.isSelected = NO;
-        self.selectedObject = nil;
-    }
-    
-    if (self.selectedControlPoint) {
-        self.selectedControlPoint.isSelected = NO;
-        self.selectedControlPoint = nil;
-    }
-}
-
-- (nullable ChartObjectModel *)objectAtPoint:(NSPoint)point tolerance:(CGFloat)tolerance {
-    // Test in reverse layer order (top layers first)
-    for (ChartLayerModel *layer in [self.layers reverseObjectEnumerator]) {
-        if (!layer.isVisible) continue;
-        
-        // Test objects in reverse order (newest first)
-        for (ChartObjectModel *object in [layer.objects reverseObjectEnumerator]) {
-            if (!object.isVisible) continue;
-            
-            NSRect boundingRect = [object boundingRect];
-            NSRect testRect = NSInsetRect(NSMakeRect(point.x, point.y, 0, 0), -tolerance, -tolerance);
-            
-            if (NSIntersectsRect(boundingRect, testRect)) {
-                return object;
-            }
-        }
-    }
-    
-    return nil;
-}
-
-- (nullable ControlPointModel *)controlPointAtPoint:(NSPoint)point tolerance:(CGFloat)tolerance {
-    // Only test selected object's control points
-    if (!self.selectedObject) return nil;
-    
-    return [self.selectedObject controlPointNearPoint:point tolerance:tolerance];
-}
-
-- (void)loadFromDataHub {
-    if (self.currentSymbol.length == 0) return;
-    
-    [[DataHub shared] loadChartObjectsForSymbol:self.currentSymbol completion:^(NSArray<ChartLayerModel *> *layers) {
-        [self.layers removeAllObjects];
-        [self.layers addObjectsFromArray:layers];
-        
-        // Set first layer as active
-        self.activeLayer = self.layers.firstObject;
-        
-        NSLog(@"📊 ChartObjectsManager: Loaded %lu layers for symbol %@",
-              (unsigned long)layers.count, self.currentSymbol);
-    }];
-}
-
-- (void)saveToDataHub {
-    if (self.currentSymbol.length == 0) return;
-    
-    [[DataHub shared] saveChartObjects:self.layers forSymbol:self.currentSymbol];
-    
-    NSLog(@"💾 ChartObjectsManager: Saved %lu layers for symbol %@",
-          (unsigned long)self.layers.count, self.currentSymbol);
-}
-
-#pragma mark - Private Helpers
-
-- (NSString *)defaultNameForObjectType:(ChartObjectType)type {
-    switch (type) {
-        case ChartObjectTypeTrendline:
-            return @"Trendline";
-        case ChartObjectTypeHorizontalLine:
-            return @"Horizontal Line";
-        case ChartObjectTypeFibonacci:
-            return @"Fibonacci";
-      
-        case ChartObjectTypeFreeDrawing:
-            return @"Drawing";
-        case ChartObjectTypeTarget:
-            return @"Price Target";
-      
-        case ChartObjectTypeRectangle:
-            return @"Rectangle";
-        case ChartObjectTypeCircle:
-            return @"Circle";
-        default:
-            return @"Object";
-    }
-}
-
-- (NSString *)generateUniqueNameWithBase:(NSString *)baseName inLayer:(ChartLayerModel *)layer {
-    NSString *uniqueName = baseName;
-    NSUInteger counter = 1;
-    
-    while ([self isNameTaken:uniqueName inLayer:layer]) {
-        uniqueName = [NSString stringWithFormat:@"%@ #%lu", baseName, (unsigned long)counter];
-        counter++;
-    }
-    
-    return uniqueName;
-}
-
-- (BOOL)isNameTaken:(NSString *)name inLayer:(ChartLayerModel *)layer {
-    for (ChartObjectModel *object in layer.objects) {
-        if ([object.name isEqualToString:name]) {
-            return YES;
-        }
-    }
-    return NO;
 }
 
 @end

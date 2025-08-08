@@ -7,6 +7,7 @@
 
 #import "BaseWidget.h"
 #import "ObjectsPanel.h"
+#import "ChartObjectsManager.h"
 
 @class ChartPanelView;
 

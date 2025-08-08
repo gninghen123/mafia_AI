@@ -6,6 +6,7 @@
 #import "ObjectsPanel.h"
 #import <QuartzCore/QuartzCore.h>
 
+
 @interface ObjectsPanel ()
 @property (nonatomic, strong, readwrite) NSStackView *buttonsStackView;
 @property (nonatomic, strong, readwrite) NSButton *objectManagerButton;

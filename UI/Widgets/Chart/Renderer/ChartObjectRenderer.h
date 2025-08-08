@@ -8,6 +8,8 @@
 #import <Foundation/Foundation.h>
 #import <Cocoa/Cocoa.h>
 #import "ChartObjectModels.h"
+#import "ChartObjectsManager.h"
+
 
 @class ChartPanelView;
 @class HistoricalBarModel;

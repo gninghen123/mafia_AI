@@ -9,6 +9,7 @@
 #import "ChartWidget.h"
 #import "ChartObjectRenderer.h"
 #import "ChartObjectModels.h"
+#import "ChartObjectsManager.h"
 
 @interface ChartPanelView ()
 

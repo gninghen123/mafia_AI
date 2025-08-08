@@ -438,16 +438,42 @@
 }
 
 - (IBAction)applyButtonClicked:(id)sender {
+    NSLog(@"✅ ChartObjectSettingsWindow: Applying settings for object '%@'", self.targetObject.name);
+    
     // Apply the working style permanently
     self.targetObject.style = [self.workingStyle copy];
+    self.targetObject.lastModified = [NSDate date];
+    
+    // Find and update layer timestamp
+    for (ChartLayerModel *layer in self.objectsManager.layers) {
+        if ([layer.objects containsObject:self.targetObject]) {
+            layer.lastModified = [NSDate date];
+            break;
+        }
+    }
     
     // Save to DataHub
     [self.objectsManager saveToDataHub];
+    NSLog(@"💾 ChartObjectSettingsWindow: Saved to DataHub");
+    
+    // ✅ NUOVO: Trigger chart redraw via callback
+    if (self.onApplyCallback) {
+        self.onApplyCallback(self.targetObject);
+        NSLog(@"🔄 ChartObjectSettingsWindow: Triggered chart redraw via callback");
+    } else {
+        // ✅ FALLBACK: Trigger redraw via notification
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"ChartObjectSettingsApplied"
+                                                            object:self
+                                                          userInfo:@{
+                                                              @"object": self.targetObject,
+                                                              @"symbol": self.objectsManager.currentSymbol
+                                                          }];
+        NSLog(@"🔄 ChartObjectSettingsWindow: Triggered chart redraw via notification");
+    }
     
     [self close];
-    NSLog(@"✅ ChartObjectSettingsWindow: Applied settings and saved");
+    NSLog(@"✅ ChartObjectSettingsWindow: Settings applied successfully");
 }
-
 - (IBAction)cancelButtonClicked:(id)sender {
     // Restore original style
     self.targetObject.style = [self.originalStyle copy];

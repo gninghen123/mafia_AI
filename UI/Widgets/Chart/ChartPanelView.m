@@ -10,8 +10,14 @@
 #import "ChartObjectRenderer.h"
 #import "ChartObjectModels.h"
 #import "ChartObjectsManager.h"
+#import "ChartObjectSettingsWindow.h"
+#import <objc/runtime.h>
+
+
 
 @interface ChartPanelView ()
+
+
 
 
 
@@ -625,10 +631,40 @@
 }
 
 
+
 - (void)rightMouseDown:(NSEvent *)event {
     NSPoint locationInView = [self convertPoint:event.locationInWindow fromView:nil];
+    // 🎯 PRIORITÀ 1: CONTEXT MENU PER OGGETTI (NUOVA FUNZIONALITÀ)
+    if (self.objectRenderer && self.objectRenderer.objectsManager) {
+        // Hit test per trovare oggetto sotto il cursore
+        ChartObjectModel *hitObject = [self.objectRenderer objectAtScreenPoint:locationInView tolerance:15.0];
+        
+        // Se non trova oggetto normale, controlla se c'è un oggetto in editing
+        if (!hitObject && self.objectRenderer.editingObject) {
+            // Verifica se il right-click è sull'oggetto in editing
+            if ([self isPoint:locationInView nearEditingObject:self.objectRenderer.editingObject tolerance:15.0]) {
+                hitObject = self.objectRenderer.editingObject;
+            }
+        }
+        
+        // Se non trova ancora oggetto, controlla control point
+        if (!hitObject) {
+            ControlPointModel *hitCP = [self.objectRenderer.objectsManager controlPointAtPoint:locationInView tolerance:8.0];
+            if (hitCP) {
+                hitObject = [self findObjectOwningControlPoint:hitCP];
+            }
+        }
+        
+        if (hitObject) {
+            NSLog(@"🖱️ ChartPanelView: Right-click on object '%@' - showing context menu", hitObject.name);
+            [self showContextMenuForObject:hitObject atPoint:locationInView withEvent:event];
+            return; // Stop all other processing for object context menu
+        }
+    }
     
-    // PRIORITY 1: Cancel object creation if active
+    // RESTO DEL CODICE ORIGINALE (PRIORITÀ 2, 3, 4...)
+    
+    // PRIORITY 2: Cancel object creation if active
     if (self.objectRenderer && self.objectRenderer.isInCreationMode) {
         [self.objectRenderer cancelCreatingObject];
         self.isInObjectCreationMode = NO;
@@ -636,7 +672,7 @@
         return;
     }
     
-    // PRIORITY 2: Delete editing object if active
+    // PRIORITY 3: Delete editing object if active
     if (self.objectRenderer && self.objectRenderer.editingObject) {
         ChartObjectModel *objectToDelete = self.objectRenderer.editingObject;
         [self.objectRenderer stopEditing];
@@ -647,23 +683,13 @@
         return;
     }
     
-    // PRIORITY 3: Check if right-clicking on an object to delete
-    if (self.objectRenderer) {
-        ChartObjectModel *objectAtPoint = [self.objectRenderer objectAtScreenPoint:locationInView
-                                                                           tolerance:15.0];
-        if (objectAtPoint) {
-            [self.objectRenderer.objectsManager deleteObject:objectAtPoint];
-            [self.objectRenderer renderAllObjects];
-            NSLog(@"🗑️ ChartPanelView: Deleted object %@ via right-click", objectAtPoint.name);
-            return;
-        }
-    }
     
-    // PRIORITY 4: Original right-click behavior (pan mode)
+    // PRIORITY 5: Original right-click behavior (pan mode)
     self.isRightMouseDown = YES;
     self.dragStartPoint = locationInView;
     self.lastMousePoint = self.dragStartPoint;
 }
+
 
 - (void)showContextMenuForObject:(ChartObjectModel *)object atPoint:(NSPoint)point {
     NSMenu *contextMenu = [[NSMenu alloc] initWithTitle:@"Object Actions"];
@@ -1062,4 +1088,200 @@
     return [objectsAtPoint copy];
 }
 
+#pragma mark - Right-Click Context Menu Integration
+
+
+
+// Context menu display
+- (void)showContextMenuForObject:(ChartObjectModel *)object atPoint:(NSPoint)point withEvent:(NSEvent *)event {
+    NSMenu *contextMenu = [[NSMenu alloc] initWithTitle:@"Object Actions"];
+    
+    // Edit Object menu item
+    NSMenuItem *editItem = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Edit '%@'...", object.name]
+                                                      action:@selector(editObjectFromContextMenu:)
+                                               keyEquivalent:@""];
+    editItem.target = self;
+    editItem.representedObject = object;
+    [contextMenu addItem:editItem];
+    
+    [contextMenu addItem:[NSMenuItem separatorItem]];
+    
+    // Duplicate Object menu item
+    NSMenuItem *duplicateItem = [[NSMenuItem alloc] initWithTitle:@"Duplicate Object"
+                                                           action:@selector(duplicateObjectFromContextMenu:)
+                                                    keyEquivalent:@""];
+    duplicateItem.target = self;
+    duplicateItem.representedObject = object;
+    [contextMenu addItem:duplicateItem];
+    
+    // Delete Object menu item
+    NSMenuItem *deleteItem = [[NSMenuItem alloc] initWithTitle:@"Delete Object"
+                                                        action:@selector(deleteObjectFromContextMenu:)
+                                                 keyEquivalent:@""];
+    deleteItem.target = self;
+    deleteItem.representedObject = object;
+    [contextMenu addItem:deleteItem];
+    
+    [contextMenu addItem:[NSMenuItem separatorItem]];
+    
+    // Layer options
+    NSMenuItem *layerItem = [[NSMenuItem alloc] initWithTitle:@"Move to Layer"
+                                                       action:nil
+                                                keyEquivalent:@""];
+    NSMenu *layerSubmenu = [[NSMenu alloc] initWithTitle:@"Layer"];
+    
+    // Add layer options dynamically
+    for (ChartLayerModel *layer in self.objectRenderer.objectsManager.layers) {
+        NSMenuItem *layerOption = [[NSMenuItem alloc] initWithTitle:layer.name
+                                                             action:@selector(moveObjectToLayerFromContextMenu:)
+                                                      keyEquivalent:@""];
+        layerOption.target = self;
+        layerOption.representedObject = @{@"object": object, @"layer": layer};
+        [layerSubmenu addItem:layerOption];
+    }
+    
+    layerItem.submenu = layerSubmenu;
+    [contextMenu addItem:layerItem];
+    
+    // Show the context menu
+    [NSMenu popUpContextMenu:contextMenu withEvent:event forView:self];
+    
+    NSLog(@"🎯 ChartPanelView: Context menu displayed for object '%@'", object.name);
+}
+
+// Context menu actions
+- (void)editObjectFromContextMenu:(NSMenuItem *)menuItem {
+    ChartObjectModel *object = menuItem.representedObject;
+    NSLog(@"⚙️ ChartPanelView: Opening settings for object '%@' from context menu", object.name);
+    [self openObjectSettingsForObject:object];
+}
+
+- (void)duplicateObjectFromContextMenu:(NSMenuItem *)menuItem {
+    ChartObjectModel *object = menuItem.representedObject;
+    NSLog(@"📋 ChartPanelView: Duplicating object '%@'", object.name);
+    
+    // Find current layer
+    ChartLayerModel *currentLayer = nil;
+    for (ChartLayerModel *layer in self.objectRenderer.objectsManager.layers) {
+        if ([layer.objects containsObject:object]) {
+            currentLayer = layer;
+            break;
+        }
+    }
+    
+    if (currentLayer) {
+        // Create duplicate
+        ChartObjectModel *duplicate = [object copy];
+        duplicate.name = [NSString stringWithFormat:@"%@ Copy", object.name];
+        
+        // Offset position slightly
+        for (ControlPointModel *cp in duplicate.controlPoints) {
+            cp.dateAnchor = [cp.dateAnchor dateByAddingTimeInterval:86400]; // +1 day
+            cp.valuePercent += 0.02; // +2%
+        }
+        
+        [currentLayer addObject:duplicate];
+        [self.objectRenderer.objectsManager saveToDataHub];
+        [self.objectRenderer renderAllObjects];
+        
+        NSLog(@"✅ ChartPanelView: Object duplicated successfully");
+    }
+}
+
+- (void)deleteObjectFromContextMenu:(NSMenuItem *)menuItem {
+    ChartObjectModel *object = menuItem.representedObject;
+    NSLog(@"🗑️ ChartPanelView: Deleting object '%@' from context menu", object.name);
+    
+    [self.objectRenderer.objectsManager deleteObject:object];
+    [self.objectRenderer renderAllObjects];
+}
+
+- (void)moveObjectToLayerFromContextMenu:(NSMenuItem *)menuItem {
+    NSDictionary *info = menuItem.representedObject;
+    ChartObjectModel *object = info[@"object"];
+    ChartLayerModel *targetLayer = info[@"layer"];
+    
+    NSLog(@"📁 ChartPanelView: Moving object '%@' to layer '%@'", object.name, targetLayer.name);
+    
+    [self.objectRenderer.objectsManager moveObject:object toLayer:targetLayer];
+    [self.objectRenderer renderAllObjects];
+}
+
+// Object settings window
+
+- (void)openObjectSettingsForObject:(ChartObjectModel *)object {
+    NSLog(@"⚙️ ChartPanelView: Opening settings for object '%@'", object.name);
+    
+    ChartObjectSettingsWindow *settingsWindow = [[ChartObjectSettingsWindow alloc]
+           initWithObject:object objectsManager:self.objectRenderer.objectsManager];
+       
+       // Position and show
+       [settingsWindow makeKeyAndOrderFront:nil];
+    
+    // ✅ NUOVO: Setup callback per redraw
+    __weak typeof(self) weakSelf = self;
+    settingsWindow.onApplyCallback = ^(ChartObjectModel *updatedObject) {
+        [weakSelf handleObjectSettingsApplied:updatedObject];
+    };
+    
+    // Position the window near the mouse cursor but avoid screen edges
+    NSPoint mouseLocation = [NSEvent mouseLocation];
+    NSSize windowSize = settingsWindow.frame.size;
+    NSScreen *screen = [NSScreen mainScreen];
+    NSRect screenFrame = screen.visibleFrame;
+    
+    // Calculate position (offset slightly to avoid cursor)
+    CGFloat offsetX = 20;
+    CGFloat offsetY = -20;
+    NSPoint windowOrigin = NSMakePoint(mouseLocation.x + offsetX, mouseLocation.y + offsetY);
+    
+    // Ensure window stays on screen
+    if (windowOrigin.x + windowSize.width > NSMaxX(screenFrame)) {
+        windowOrigin.x = mouseLocation.x - windowSize.width - offsetX;
+    }
+    if (windowOrigin.y - windowSize.height < NSMinY(screenFrame)) {
+        windowOrigin.y = mouseLocation.y + windowSize.height + offsetY;
+    }
+    
+    [settingsWindow setFrameOrigin:windowOrigin];
+    
+    // Show the window
+    [settingsWindow makeKeyAndOrderFront:nil];
+    
+    NSLog(@"🪟 ChartPanelView: Settings window opened at (%.1f, %.1f)", windowOrigin.x, windowOrigin.y);
+}
+
+// AGGIUNGERE questo metodo di callback:
+- (void)handleObjectSettingsApplied:(ChartObjectModel *)object {
+    NSLog(@"🔄 ChartPanelView: Settings applied for object '%@' - triggering redraw", object.name);
+    
+    // Re-render all objects with new settings
+    if (self.objectRenderer) {
+        [self.objectRenderer renderAllObjects];
+        NSLog(@"✅ ChartPanelView: Objects re-rendered successfully");
+    }
+    
+    // Notify chart widget if needed
+    if (self.chartWidget && [self.chartWidget respondsToSelector:@selector(objectSettingsDidChange:)]) {
+        [(id)self.chartWidget performSelector:@selector(objectSettingsDidChange:) withObject:object];
+    }
+}
+// Helper methods
+- (BOOL)isPoint:(NSPoint)point nearEditingObject:(ChartObjectModel *)object tolerance:(CGFloat)tolerance {
+    // Simple bounding box check for editing object
+    // TODO: Implement proper hit testing for editing objects
+    return YES; // For now, assume always true if we have an editing object
+}
+
+- (ChartObjectModel *)findObjectOwningControlPoint:(ControlPointModel *)controlPoint {
+    // Search through all layers and objects to find the one containing this control point
+    for (ChartLayerModel *layer in self.objectRenderer.objectsManager.layers) {
+        for (ChartObjectModel *object in layer.objects) {
+            if ([object.controlPoints containsObject:controlPoint]) {
+                return object;
+            }
+        }
+    }
+    return nil;
+}
 @end

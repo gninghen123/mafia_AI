@@ -17,6 +17,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface ChartObjectSettingsWindow : NSWindow
 
+
+@property (nonatomic, copy, nullable) void (^onApplyCallback)(ChartObjectModel *object);
+
 // Properties
 @property (nonatomic, strong) ChartObjectModel *targetObject;
 @property (nonatomic, weak) ChartObjectsManager *objectsManager;

@@ -8,6 +8,7 @@
 #import "ChartObjectsManager.h"
 #import "DataHub.h"
 #import "DataHub+ChartObjects.h"
+#import "ChartObjectRenderer.h"  // ✅ AGGIUNGERE QUESTA RIGA
 
 @implementation ChartObjectsManager
 
@@ -178,6 +179,17 @@
 #pragma mark - Hit Testing
 
 - (nullable ChartObjectModel *)objectAtPoint:(NSPoint)point tolerance:(CGFloat)tolerance {
+    NSLog(@"🔍 ChartObjectsManager: objectAtPoint called with point (%.1f, %.1f)", point.x, point.y);
+    
+    // ✅ SOLUZIONE: Delega al renderer se disponibile
+    if (self.coordinateRenderer) {
+        NSLog(@"🎯 ChartObjectsManager: Delegating to renderer for proper coordinate conversion");
+        return [self.coordinateRenderer objectAtScreenPoint:point tolerance:tolerance];
+    }
+    
+    // ❌ FALLBACK: Metodo vecchio (broken) per compatibilità
+    NSLog(@"⚠️ ChartObjectsManager: No renderer available - using fallback method");
+    
     // Search from top layer to bottom (reverse order)
     for (ChartLayerModel *layer in [self.layers reverseObjectEnumerator]) {
         if (!layer.isVisible) continue;
@@ -187,18 +199,21 @@
             if (!object.isVisible) continue;
             
             // Check if point hits this object
-            // TODO: Implement proper hit testing based on object type
+            // TODO: PROBLEMA NOTO - boundingRect usa coordinate chart, non view
             NSRect boundingRect = [object boundingRect];
             NSRect expandedRect = NSInsetRect(boundingRect, -tolerance, -tolerance);
             
             if (NSPointInRect(point, expandedRect)) {
+                NSLog(@"⚠️ ChartObjectsManager: Found object '%@' using fallback method (may be inaccurate)", object.name);
                 return object;
             }
         }
     }
     
+    NSLog(@"🔍 ChartObjectsManager: No object found at point");
     return nil;
 }
+
 
 - (nullable ControlPointModel *)controlPointAtPoint:(NSPoint)point tolerance:(CGFloat)tolerance {
     // Check selected object first

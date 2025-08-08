@@ -40,7 +40,8 @@
         _objectsManager = objectsManager;
         _coordinateContext = [[ChartCoordinateContext alloc] init];
         _tempControlPoints = [NSMutableArray array];
-        
+        objectsManager.coordinateRenderer = self;
+
         [self setupLayersInPanelView];
         
         NSLog(@"🎨 ChartObjectRenderer: Initialized for panel %@", panelView.panelType);

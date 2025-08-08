@@ -10,6 +10,7 @@
 #import "ChartObjectModels.h"
 
 NS_ASSUME_NONNULL_BEGIN
+@class ChartObjectRenderer;
 
 @interface ChartObjectsManager : NSObject
 
@@ -18,6 +19,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSMutableArray<ChartLayerModel *> *layers;
 @property (nonatomic, weak, nullable) ChartLayerModel *activeLayer;
 
+
+@property (nonatomic, weak, nullable) ChartObjectRenderer *coordinateRenderer;
 // Selection state
 @property (nonatomic, strong, nullable) ChartObjectModel *selectedObject;
 @property (nonatomic, strong, nullable) ControlPointModel *selectedControlPoint;

@@ -12,14 +12,16 @@
 #import "ChartObjectsManager.h"
 #import "ChartObjectSettingsWindow.h"
 #import <objc/runtime.h>
-
-
+#import "ChartAlertRenderer.h"
+#import "AlertEditController.h"
+#import "dataHub.h"
 
 @interface ChartPanelView ()
 
 
 
 
+@property (nonatomic, assign) BOOL isInAlertDragMode;
 
 // Mouse tracking
 @property (nonatomic, strong) NSTrackingArea *trackingArea;
@@ -50,6 +52,7 @@
     if (self) {
         _panelType = type;
         [self setupPanel];
+        
     }
     return self;
 }
@@ -143,20 +146,21 @@
 #pragma mark - Data Update
 
 
+
 - (void)updateWithData:(NSArray<HistoricalBarModel *> *)data
             startIndex:(NSInteger)startIndex
               endIndex:(NSInteger)endIndex
              yRangeMin:(double)yMin
              yRangeMax:(double)yMax {
     
-    // Update panel data
+    // Update panel data (CODICE ESISTENTE)
     self.chartData = data;
     self.visibleStartIndex = startIndex;
     self.visibleEndIndex = endIndex;
     self.yRangeMin = yMin;
     self.yRangeMax = yMax;
     
-    // CRITICO: Update objects renderer coordinate context
+    // CRITICO: Update objects renderer coordinate context (CODICE ESISTENTE)
     if (self.objectRenderer) {
         [self.objectRenderer updateCoordinateContext:data
                                           startIndex:startIndex
@@ -167,7 +171,20 @@
         NSLog(@"🔄 Updated ChartObjectRenderer coordinate context with %lu bars", (unsigned long)data.count);
     }
     
-    [self invalidateChartContent];
+    // 🆕 NUOVO: Update alert renderer coordinate context
+    if (self.alertRenderer && self.chartWidget.currentSymbol) {
+        [self.alertRenderer updateCoordinateContext:data
+                                         startIndex:startIndex
+                                           endIndex:endIndex
+                                          yRangeMin:yMin
+                                          yRangeMax:yMax
+                                             bounds:self.bounds
+                                      currentSymbol:self.chartWidget.currentSymbol];
+        NSLog(@"🚨 Updated ChartAlertRenderer coordinate context with %lu bars for %@",
+              (unsigned long)data.count, self.chartWidget.currentSymbol);
+    }
+    
+    [self invalidateChartContent]; // CODICE ESISTENTE
 }
 
 - (void)setCrosshairPoint:(NSPoint)point visible:(BOOL)visible {
@@ -599,8 +616,16 @@
     NSPoint locationInView = [self convertPoint:event.locationInWindow fromView:nil];
     self.dragStartPoint = locationInView;
     self.isDragging = NO;
-    
-    NSLog(@"🖱️ ChartPanelView: MouseDown at (%.1f, %.1f)", locationInView.x, locationInView.y);
+  
+    if (self.alertRenderer) {
+           AlertModel *hitAlert = [self.alertRenderer alertAtScreenPoint:locationInView tolerance:12.0];
+           if (hitAlert) {
+               [self.alertRenderer startDraggingAlert:hitAlert atPoint:locationInView];
+               self.isInAlertDragMode = YES;
+               NSLog(@"🚨 Started dragging alert %@ %.2f", hitAlert.symbol, hitAlert.triggerValue);
+               return; // Don't handle other interactions during alert drag
+           }
+       }
     
     // NEW LOGIC: Check if ObjectsPanel has active object type
     ChartObjectType activeType = -1;
@@ -682,6 +707,20 @@
         NSLog(@"🗑️ ChartPanelView: Deleted object via right-click");
         return;
     }
+    
+    // 🆕 PRIORITÀ 2: CONTEXT MENU PER ALERT (NUOVO)
+     if (self.alertRenderer) {
+         AlertModel *hitAlert = [self.alertRenderer alertAtScreenPoint:locationInView tolerance:15.0];
+         if (hitAlert) {
+             NSLog(@"🚨 ChartPanelView: Right-click on alert %@ %.2f - showing context menu",
+                   hitAlert.symbol, hitAlert.triggerValue);
+             [self showContextMenuForAlert:hitAlert atPoint:locationInView withEvent:event];
+             return; // Stop processing for alert context menu
+         }
+     }
+     
+     // 🆕 PRIORITÀ 3: MENU GENERICO PER CREARE NUOVO ALERT (NUOVO)
+     [self showGeneralContextMenuAtPoint:locationInView withEvent:event];
     
     
     // PRIORITY 5: Original right-click behavior (pan mode)
@@ -793,7 +832,11 @@
         return;
     }
     
-    // RESTO DEL CODICE ESISTENTE...
+    if (self.isInAlertDragMode && self.alertRenderer.isInAlertDragMode) {
+           [self.alertRenderer updateDragToPoint:locationInView];
+           return;
+       }
+
     // Original drag behavior for chart (pan, selection, etc.)
     if (self.isMouseDown) {
         // Handle chart pan/selection as before
@@ -846,7 +889,14 @@
         return;
     }
     
-    // RESTO DEL CODICE ESISTENTE...
+    if (self.isInAlertDragMode && self.alertRenderer.isInAlertDragMode) {
+         [self.alertRenderer finishDragWithConfirmation];
+         self.isInAlertDragMode = NO;
+         self.isDragging = NO;
+         NSLog(@"🚨 Completed alert drag");
+         return;
+     }
+    
     // If it was a click (not drag), handle object selection
     if (!self.isDragging && self.objectRenderer) {
         // Hit test for existing objects
@@ -1283,5 +1333,190 @@
         }
     }
     return nil;
+}
+
+#pragma mark - Alert Renderer Setup
+
+- (void)setupAlertRenderer {
+    self.alertRenderer = [[ChartAlertRenderer alloc] initWithPanelView:self];
+    
+    // CRITICO: Initialize coordinate context with current data if available
+    if (self.chartData && self.chartWidget.currentSymbol) {
+        [self.alertRenderer updateCoordinateContext:self.chartData
+                                         startIndex:self.visibleStartIndex
+                                           endIndex:self.visibleEndIndex
+                                          yRangeMin:self.yRangeMin
+                                          yRangeMax:self.yRangeMax
+                                             bounds:self.bounds
+                                      currentSymbol:self.chartWidget.currentSymbol];
+        NSLog(@"🚨 ChartAlertRenderer initialized with existing data (%lu bars) for %@",
+              (unsigned long)self.chartData.count, self.chartWidget.currentSymbol);
+    }
+    
+    NSLog(@"🚨 ChartPanelView (%@): Alert renderer setup completed", self.panelType);
+}
+
+
+#pragma mark - Alert Context Menu
+
+- (void)showContextMenuForAlert:(AlertModel *)alert atPoint:(NSPoint)point withEvent:(NSEvent *)event {
+    NSMenu *contextMenu = [[NSMenu alloc] initWithTitle:@"Alert Actions"];
+    
+    // Edit Alert
+    NSMenuItem *editItem = [[NSMenuItem alloc] initWithTitle:@"Edit Alert..."
+                                                      action:@selector(editAlertFromContextMenu:)
+                                               keyEquivalent:@""];
+    editItem.target = self;
+    editItem.representedObject = alert;
+    [contextMenu addItem:editItem];
+    
+    // Delete Alert
+    NSMenuItem *deleteItem = [[NSMenuItem alloc] initWithTitle:@"Delete Alert"
+                                                        action:@selector(deleteAlertFromContextMenu:)
+                                                 keyEquivalent:@""];
+    deleteItem.target = self;
+    deleteItem.representedObject = alert;
+    [contextMenu addItem:deleteItem];
+    
+    [contextMenu addItem:[NSMenuItem separatorItem]];
+    
+    // Toggle Active/Inactive
+    NSString *toggleTitle = alert.isActive ? @"Disable Alert" : @"Enable Alert";
+    NSMenuItem *toggleItem = [[NSMenuItem alloc] initWithTitle:toggleTitle
+                                                        action:@selector(toggleAlertFromContextMenu:)
+                                                 keyEquivalent:@""];
+    toggleItem.target = self;
+    toggleItem.representedObject = alert;
+    [contextMenu addItem:toggleItem];
+    
+    [NSMenu popUpContextMenu:contextMenu withEvent:event forView:self];
+}
+
+- (void)showGeneralContextMenuAtPoint:(NSPoint)point withEvent:(NSEvent *)event {
+    NSMenu *contextMenu = [[NSMenu alloc] initWithTitle:@"Chart Context Menu"];
+    
+    // Only show alert creation if we have alert renderer and current symbol
+    if (self.alertRenderer && self.chartWidget.currentSymbol) {
+        // Convert point to price
+        double priceAtPoint = [self.alertRenderer triggerValueForScreenY:point.y];
+        NSString *formattedPrice = [NSString stringWithFormat:@"%.2f", priceAtPoint];
+        
+        // Menu item for creating alert
+        NSMenuItem *createAlertItem = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Create Alert at %@", formattedPrice]
+                                                                 action:@selector(createAlertAtMouseLocation:)
+                                                          keyEquivalent:@""];
+        createAlertItem.target = self;
+        createAlertItem.representedObject = @{@"price": @(priceAtPoint), @"point": [NSValue valueWithPoint:point]};
+        [contextMenu addItem:createAlertItem];
+        
+        [contextMenu addItem:[NSMenuItem separatorItem]];
+    }
+    
+    // Other menu items could go here (chart settings, etc.)
+    
+    if (contextMenu.itemArray.count > 0) {
+        [NSMenu popUpContextMenu:contextMenu withEvent:event forView:self];
+    }
+}
+
+#pragma mark - Alert Context Menu Actions
+
+- (void)createAlertAtMouseLocation:(NSMenuItem *)menuItem {
+    NSDictionary *info = menuItem.representedObject;
+    double price = [info[@"price"] doubleValue];
+    
+    NSLog(@"🚨 Creating alert at price: %.2f for symbol: %@", price, self.chartWidget.currentSymbol);
+    
+    // Create pre-populated AlertModel
+    AlertModel *newAlert = [self.alertRenderer createAlertTemplateAtScreenPoint:[info[@"point"] pointValue]];
+    if (!newAlert) {
+        NSLog(@"⚠️ Could not create alert template");
+        return;
+    }
+    
+    // Show AlertEditController (riuso totale!)
+    AlertEditController *editor = [[AlertEditController alloc] initWithAlert:newAlert];
+    editor.completionHandler = ^(AlertModel *editedAlert, BOOL saved) {
+        if (saved && editedAlert) {
+            // AlertEditController già salva via DataHub
+            // Solo refresh della UI del chart
+            [self.alertRenderer refreshAlerts];
+            NSLog(@"✅ Alert created from chart: %@ at %.2f", editedAlert.symbol, editedAlert.triggerValue);
+        }
+    };
+    
+    // Show as sheet
+    [self.window beginSheet:editor.window completionHandler:nil];
+}
+
+- (void)editAlertFromContextMenu:(NSMenuItem *)menuItem {
+    AlertModel *alert = menuItem.representedObject;
+    NSLog(@"✏️ ChartPanelView: Editing alert %@ %.2f", alert.symbol, alert.triggerValue);
+    
+    AlertEditController *editor = [[AlertEditController alloc] initWithAlert:alert];
+    editor.completionHandler = ^(AlertModel *editedAlert, BOOL saved) {
+        if (saved) {
+            [self.alertRenderer refreshAlerts];
+        }
+    };
+    
+    [self.window beginSheet:editor.window completionHandler:nil];
+}
+
+- (void)deleteAlertFromContextMenu:(NSMenuItem *)menuItem {
+    AlertModel *alert = menuItem.representedObject;
+    
+    NSAlert *confirmAlert = [[NSAlert alloc] init];
+    confirmAlert.messageText = @"Delete Alert";
+    confirmAlert.informativeText = [NSString stringWithFormat:@"Are you sure you want to delete the alert for %@ at %.2f?",
+                                   alert.symbol, alert.triggerValue];
+    [confirmAlert addButtonWithTitle:@"Delete"];
+    [confirmAlert addButtonWithTitle:@"Cancel"];
+    confirmAlert.alertStyle = NSAlertStyleWarning;
+    
+    NSModalResponse response = [confirmAlert runModal];
+    if (response == NSAlertFirstButtonReturn) {
+        [[DataHub shared] deleteAlertModel:alert];
+        [self.alertRenderer refreshAlerts];
+        NSLog(@"🗑️ Deleted alert %@ %.2f", alert.symbol, alert.triggerValue);
+    }
+}
+
+- (void)toggleAlertFromContextMenu:(NSMenuItem *)menuItem {
+    AlertModel *alert = menuItem.representedObject;
+    
+    alert.isActive = !alert.isActive;
+    [[DataHub shared] updateAlertModel:alert];
+    [self.alertRenderer refreshAlerts];
+    
+    NSLog(@"🔄 Toggled alert %@ %.2f to %@", alert.symbol, alert.triggerValue,
+          alert.isActive ? @"ACTIVE" : @"INACTIVE");
+}
+
+#pragma mark - Alert Interaction Methods
+
+- (void)startEditingAlertAtPoint:(NSPoint)point {
+    if (!self.alertRenderer) return;
+    
+    AlertModel *alertAtPoint = [self.alertRenderer alertAtScreenPoint:point tolerance:10.0];
+    if (alertAtPoint) {
+        [self.alertRenderer startDraggingAlert:alertAtPoint atPoint:point];
+        self.isInAlertDragMode = YES;
+        
+        NSLog(@"🚨 ChartPanelView (%@): Started editing alert %@ %.2f",
+              self.panelType, alertAtPoint.symbol, alertAtPoint.triggerValue);
+    }
+}
+
+- (void)stopEditingAlert {
+    if (!self.isInAlertDragMode) return;
+    
+    self.isInAlertDragMode = NO;
+    
+    if (self.alertRenderer.isInAlertDragMode) {
+        [self.alertRenderer cancelDrag];
+    }
+    
+    NSLog(@"✅ ChartPanelView (%@): Stopped editing alert", self.panelType);
 }
 @end

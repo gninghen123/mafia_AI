@@ -300,15 +300,21 @@ extern NSString *const DataHubDataLoadedNotification;
     // - zoomInButton -> zoomIn:
     // - zoomAllButton -> zoomAll:
     // - preferencesButton -> showPreferences:
-    
-    [self ensureObjectsRenderersAreSetup];
+
 }
 
-- (void)ensureObjectsRenderersAreSetup {
+- (void)ensureRenderersAreSetup {
     for (ChartPanelView *panel in self.chartPanels) {
+        // Setup objects renderer (ESISTENTE)
         if (!panel.objectRenderer) {
             [panel setupObjectsRendererWithManager:self.objectsManager];
-            NSLog(@"🔧 Setup missing renderer for panel %@", panel.panelType);
+            NSLog(@"🔧 Setup missing objects renderer for panel %@", panel.panelType);
+        }
+        
+        // 🆕 NUOVO: Setup alert renderer
+        if (!panel.alertRenderer) {
+            [panel setupAlertRenderer];
+            NSLog(@"🚨 Setup alert renderer for panel %@", panel.panelType);
         }
     }
 }
@@ -317,6 +323,8 @@ extern NSString *const DataHubDataLoadedNotification;
     [super viewDidAppear];
     // Ora setup panels DOPO che la UI è stata creata
     [self setupDefaultPanels];
+    [self ensureRenderersAreSetup];
+
 }
 
 - (void)setupDefaultPanels {
@@ -601,6 +609,8 @@ extern NSString *const DataHubDataLoadedNotification;
         });
     }];
     
+                  [self refreshAlertsForCurrentSymbol];
+                  
     // ✅ OGGETTI: Aggiorna manager per nuovo symbol e forza load
     if (self.objectsManager) {
         self.objectsManager.currentSymbol = symbol;
@@ -828,7 +838,8 @@ extern NSString *const DataHubDataLoadedNotification;
     state[@"initialBarsToShow"] = @(self.initialBarsToShow);
     state[@"visibleStartIndex"] = @(self.visibleStartIndex);
     state[@"visibleEndIndex"] = @(self.visibleEndIndex);
-    
+    state[@"isYRangeOverridden"] = @(self.isYRangeOverridden);
+
     return state;
 }
 
@@ -853,6 +864,8 @@ extern NSString *const DataHubDataLoadedNotification;
     NSNumber *initialBarsToShow = state[@"initialBarsToShow"];
     if (initialBarsToShow) {
         self.initialBarsToShow = initialBarsToShow.integerValue;
+
+        self.isYRangeOverridden = [state[@"isYRangeOverridden"] boolValue];
     }
 }
 // ======== AGGIUNGI metodi delegate per symbolTextField ========
@@ -944,6 +957,161 @@ extern NSString *const DataHubDataLoadedNotification;
 - (void)setObjectsVisible:(BOOL)visible {
     self.objectsVisibilityToggle.state = visible ? NSControlStateValueOn : NSControlStateValueOff;
     [self toggleAllObjectsVisibility:self.objectsVisibilityToggle];
+}
+
+#pragma mark - Alert Management
+
+- (void)refreshAlertsForCurrentSymbol {
+    if (!self.currentSymbol) return;
+    
+    NSLog(@"🚨 ChartWidget: Refreshing alerts for symbol %@", self.currentSymbol);
+    
+    for (ChartPanelView *panel in self.chartPanels) {
+        if (panel.alertRenderer) {
+            [panel.alertRenderer loadAlertsForSymbol:self.currentSymbol];
+        }
+    }
+}
+
+#pragma mark - Chain Notifications
+
+// Override del metodo BaseWidget per ricevere simboli dalle chain
+- (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
+    NSString *action = update[@"action"];
+    
+    if ([action isEqualToString:@"setSymbols"]) {
+        NSArray *symbols = update[@"symbols"];
+        if (symbols.count > 0) {
+            [self handleSymbolsFromChain:symbols fromWidget:sender];
+        }
+    }
+}
+
+- (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
+    NSLog(@"ChartWidget: Received %lu symbols from chain", (unsigned long)symbols.count);
+    
+    // ChartWidget mostra un simbolo alla volta - prendi il primo
+    NSString *newSymbol = symbols.firstObject;
+    if (!newSymbol || newSymbol.length == 0) return;
+    
+    // Evita loop se è lo stesso simbolo che abbiamo mandato noi
+    if ([newSymbol.uppercaseString isEqualToString:self.currentSymbol]) {
+        NSLog(@"ChartWidget: Ignoring same symbol from chain: %@", newSymbol);
+        return;
+    }
+    
+    // Load new symbol
+    [self loadSymbol:newSymbol.uppercaseString];
+    
+    // Mostra feedback temporaneo
+    NSString *senderType = NSStringFromClass([sender class]);
+    NSString *feedbackMessage = [NSString stringWithFormat:@"📈 Loaded %@ from %@", newSymbol.uppercaseString, senderType];
+    [self showChainFeedback:feedbackMessage];
+    
+    NSLog(@"ChartWidget: Loaded symbol '%@' from %@ chain", newSymbol.uppercaseString, senderType);
+}
+
+- (void)showChainFeedback:(NSString *)message {
+    // Trova il primo panel per mostrare il feedback
+    ChartPanelView *mainPanel = [self findMainChartPanel];
+    if (!mainPanel) {
+        mainPanel = self.chartPanels.firstObject;
+    }
+    
+    if (!mainPanel) {
+        NSLog(@"⚠️ No chart panel available for feedback display");
+        return;
+    }
+    
+    // Crea un label temporaneo per feedback
+    NSTextField *feedbackLabel = [NSTextField labelWithString:message];
+    feedbackLabel.backgroundColor = [[NSColor systemBlueColor] colorWithAlphaComponent:0.9];
+    feedbackLabel.textColor = [NSColor controlBackgroundColor];
+    feedbackLabel.font = [NSFont boldSystemFontOfSize:12];
+    feedbackLabel.alignment = NSTextAlignmentCenter;
+    feedbackLabel.drawsBackground = YES;
+    feedbackLabel.bordered = NO;
+    feedbackLabel.editable = NO;
+    
+    // Posiziona il feedback nell'angolo in basso a sinistra del panel
+    feedbackLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [mainPanel addSubview:feedbackLabel];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [feedbackLabel.bottomAnchor constraintEqualToAnchor:mainPanel.bottomAnchor constant:-15],
+        [feedbackLabel.leadingAnchor constraintEqualToAnchor:mainPanel.leadingAnchor constant:15],
+        [feedbackLabel.heightAnchor constraintEqualToConstant:25]
+    ]];
+    
+    // Anima la scomparsa dopo 2.5 secondi
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = 0.3;
+            [[feedbackLabel animator] setAlphaValue:0.0];
+        } completionHandler:^{
+            [feedbackLabel removeFromSuperview];
+        }];
+    });
+}
+
+// ============================================================
+// HELPER: Find Main Chart Panel
+// ============================================================
+
+- (ChartPanelView *)findMainChartPanel {
+    for (ChartPanelView *panel in self.chartPanels) {
+        if ([panel.panelType isEqualToString:@"security"]) {
+            return panel;
+        }
+    }
+    return nil;
+}
+
+- (void)updatePanelsWithData:(NSArray<HistoricalBarModel *> *)data {
+    if (data.count == 0) return;
+    
+    // Calculate visible range (CODICE ESISTENTE)
+    NSInteger dataCount = data.count;
+    NSInteger barsToShow = MIN(100, dataCount); // Default visible bars
+    
+    self.visibleStartIndex = MAX(0, dataCount - barsToShow);
+    self.visibleEndIndex = dataCount;
+    
+    // Calculate Y range if not overridden (CODICE ESISTENTE)
+    
+    
+    // Update all panels (CODICE ESISTENTE + NUOVO)
+    for (ChartPanelView *panel in self.chartPanels) {
+        // Update chart data (ESISTENTE)
+        [panel updateWithData:data
+                   startIndex:self.visibleStartIndex
+                     endIndex:self.visibleEndIndex
+                    yRangeMin:self.yRangeMin
+                    yRangeMax:self.yRangeMax];
+        
+        // 🆕 NUOVO: Alert coordinate context è già aggiornato in updateWithData
+        // ma assicuriamoci che il simbolo sia aggiornato
+        if (panel.alertRenderer && self.currentSymbol) {
+            [panel.alertRenderer updateCoordinateContext:data
+                                               startIndex:self.visibleStartIndex
+                                                 endIndex:self.visibleEndIndex
+                                                yRangeMin:self.yRangeMin
+                                                yRangeMax:self.yRangeMax
+                                                   bounds:panel.bounds
+                                            currentSymbol:self.currentSymbol];
+        }
+    }
+    
+    NSLog(@"📊 Updated %lu panels with %lu data points for %@",
+          (unsigned long)self.chartPanels.count, (unsigned long)data.count, self.currentSymbol);
+}
+
+// ============================================================
+// NUOVO: Public Symbol Access Method
+// ============================================================
+
+- (NSString *)getCurrentSymbol {
+    return self.currentSymbol;
 }
 
 @end

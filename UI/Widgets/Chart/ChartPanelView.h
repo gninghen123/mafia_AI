@@ -9,12 +9,18 @@
 #import <Cocoa/Cocoa.h>
 #import "RuntimeModels.h"
 #import "ChartObjectModels.h"
+@class ChartAlertRenderer;
+#import "ChartAlertRenderer.h"
+#import "AlertEditController.h"
 
 @class ChartWidget;
 @class ChartObjectRenderer;
 @class ChartObjectsManager;
 
 @interface ChartPanelView : NSView
+
+
+@property (nonatomic, strong) ChartAlertRenderer *alertRenderer;
 
 // Panel configuration
 @property (nonatomic, strong) NSString *panelType; // "security", "volume", etc.
@@ -43,6 +49,11 @@
 @property (nonatomic, strong) ChartObjectRenderer *objectRenderer;
 
 
+- (void)setupAlertRenderer;
+
+// NUOVO: Alert interaction
+- (void)startEditingAlertAtPoint:(NSPoint)point;
+- (void)stopEditingAlert;
 
 // Initialization
 - (instancetype)initWithType:(NSString *)type;

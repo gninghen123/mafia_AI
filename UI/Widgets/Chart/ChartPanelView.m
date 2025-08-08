@@ -559,10 +559,7 @@
     if (self.objectRenderer && self.objectRenderer.currentCPSelected) {
         [self.objectRenderer updateCurrentCPCoordinates:locationInView];
         
-        // Se in preview mode, aggiorna anche preview
-        if (self.objectRenderer.isInPreviewMode) {
-            [self.objectRenderer updateCreationPreviewAtPoint:locationInView];
-        }
+     
         return;
     }
     
@@ -761,7 +758,7 @@
         [self.objectRenderer updateCurrentCPCoordinates:locationInView];
         
         // Se in preview mode E stiamo draggando, aggiorna anche preview
-        if (self.objectRenderer.isInPreviewMode && self.isDragging) {
+        if (self.isDragging) {
             [self.objectRenderer updateCreationPreviewAtPoint:locationInView];
         }
         

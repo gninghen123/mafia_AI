@@ -312,5 +312,23 @@ static const void *kSplitViewLeadingConstraintKey = &kSplitViewLeadingConstraint
     [self.objectsPanel objectCreationCompleted];
 }
 
+- (void)objectsPanelDidRequestClearAll:(id)panel {
+    NSLog(@"🗑️ ChartWidget: Clear all objects requested");
+    
+    if (self.objectsManager) {
+        // FIX: Chiama clearAllObjects su objectsManager (non clearSelection su ChartWidget)
+        [self.objectsManager clearAllObjects];
+        
+        // Update all panels
+        for (ChartPanelView *panelView in self.chartPanels) {
+            if (panelView.objectRenderer) {
+                [panelView.objectRenderer invalidateObjectsLayer];
+                [panelView.objectRenderer invalidateEditingLayer];
+            }
+        }
+        
+        NSLog(@"✅ ChartWidget: All objects cleared");
+    }
+}
 
 @end

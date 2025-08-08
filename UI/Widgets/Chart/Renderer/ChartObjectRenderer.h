@@ -41,7 +41,6 @@ NS_ASSUME_NONNULL_BEGIN
 // Editing state
 @property (nonatomic, strong, nullable) ChartObjectModel *editingObject;
 @property (nonatomic, assign, readonly) BOOL isInCreationMode; // Made public readonly
-@property (nonatomic, assign) BOOL isInPreviewMode;
 @property (nonatomic, assign) NSPoint currentMousePosition;
 @property (nonatomic, strong, nullable) ControlPointModel *hoveredControlPoint;
 

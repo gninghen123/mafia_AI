@@ -287,16 +287,51 @@
     NSLog(@"🎨 ChartObjectRenderer: Drew all static objects");
 }
 
+
 - (void)drawEditingObjectInContext:(CGContextRef)ctx {
-    if (self.editingObject) {
-        // Draw the editing object with highlighting
-        [self drawObjectWithHighlight:self.editingObject];
+    if (!self.editingObject) return;
+    
+    // NUOVO: Disegna oggetto normale con eventuale highlight
+    if (self.isInCreationMode) {
+        // Preview style durante creazione
+        [self drawObjectWithPreviewStyle:self.editingObject];
+    } else {
+        // Editing style con control points visibili
+        [self drawObjectWithEditingStyle:self.editingObject];
         [self drawControlPointsForObject:self.editingObject];
     }
     
-    if (self.isInCreationMode && self.tempControlPoints.count > 0) {
-        [self drawTemporaryObject];
-    }
+    NSLog(@"🎨 Drew editing object on editing layer");
+}
+
+- (void)drawObjectWithPreviewStyle:(ChartObjectModel *)object {
+    // Set preview style (dashed, translucent)
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    CGContextSaveGState(ctx);
+    CGContextSetStrokeColorWithColor(ctx, [NSColor systemPinkColor].CGColor);
+
+    CGContextSetAlpha(ctx, 0.7);
+    CGFloat dashLengths[] = {5.0, 3.0};
+    CGContextSetLineDash(ctx, 0, dashLengths, 2);
+    
+    // Draw object normally (will handle missing CPs)
+    [self drawObject:object];
+    
+    CGContextRestoreGState(ctx);
+}
+
+- (void)drawObjectWithEditingStyle:(ChartObjectModel *)object {
+    // Set editing highlight style
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    CGContextSaveGState(ctx);
+    
+    CGContextSetStrokeColorWithColor(ctx, [NSColor systemOrangeColor].CGColor);
+    CGContextSetLineWidth(ctx, 2.0);
+    
+    // Draw object normally
+    [self drawObject:object];
+    
+    CGContextRestoreGState(ctx);
 }
 
 - (void)drawObjectWithHighlight:(ChartObjectModel *)object {
@@ -319,6 +354,7 @@
     object.style = originalStyle;
 }
 
+
 - (void)drawObject:(ChartObjectModel *)object {
     switch (object.type) {
         case ChartObjectTypeHorizontalLine:
@@ -333,17 +369,21 @@
             [self drawFibonacci:object];
             break;
             
-        case ChartObjectTypeTrailingFibo:
-        case ChartObjectTypeTrailingFiboBetween:
-            [self drawTrailingFibonacci:object];
-            break;
-            
         case ChartObjectTypeRectangle:
             [self drawRectangle:object];
             break;
             
         case ChartObjectTypeCircle:
             [self drawCircle:object];
+            break;
+            
+        // NUOVO: Channel e Target
+        case ChartObjectTypeChannel:
+            [self drawChannel:object];
+            break;
+            
+        case ChartObjectTypeTarget:
+            [self drawTargetPrice:object];
             break;
             
         case ChartObjectTypeFreeDrawing:
@@ -471,46 +511,21 @@
 }
 
 - (void)drawTrendline:(ChartObjectModel *)object {
-    if (object.controlPoints.count < 2) return;
+    if (object.controlPoints.count < 1) return;
     
-    ControlPointModel *cpA = object.controlPoints[0];
-    ControlPointModel *cpB = object.controlPoints[1];
+    ControlPointModel *cp1 = object.controlPoints[0];
+    ControlPointModel *cp2 = object.controlPoints.count > 1 ? object.controlPoints[1] : cp1; // FALLBACK
     
-    // Get logical points (can be outside viewport)
-    NSPoint logicalA = [self screenPointFromControlPoint:cpA];
-    NSPoint logicalB = [self screenPointFromControlPoint:cpB];
+    NSPoint startPoint = [self screenPointFromControlPoint:cp1];
+    NSPoint endPoint = [self screenPointFromControlPoint:cp2];
     
-    [self applyStyleForObject:object];
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    CGContextMoveToPoint(ctx, startPoint.x, startPoint.y);
+    CGContextAddLineToPoint(ctx, endPoint.x, endPoint.y);
+    CGContextStrokePath(ctx);
     
-    // For now, always extend in both directions
-    // TODO: Add extendLeft and extendRight properties to ChartObjectModel
-    BOOL extendLeft = YES;
-    BOOL extendRight = YES;
-    
-    if (extendLeft || extendRight) {
-        // Calculate extended line that spans the viewport
-        NSPoint extendedStart, extendedEnd;
-        [self calculateExtendedLineFromPoint:logicalA
-                                     toPoint:logicalB
-                                  startPoint:&extendedStart
-                                    endPoint:&extendedEnd
-                                  extendLeft:extendLeft
-                                 extendRight:extendRight];
-        
-        NSBezierPath *path = [NSBezierPath bezierPath];
-        [path moveToPoint:extendedStart];
-        [path lineToPoint:extendedEnd];
-        [path stroke];
-        
-        // Draw original control points as small circles
-        [self drawTrendlineControlPoints:logicalA pointB:logicalB];
-    } else {
-        // Draw only between the two points (no extension)
-        NSBezierPath *path = [NSBezierPath bezierPath];
-        [path moveToPoint:logicalA];
-        [path lineToPoint:logicalB];
-        [path stroke];
-    }
+    NSLog(@"🎨 Drew trendline from (%.1f,%.1f) to (%.1f,%.1f)",
+          startPoint.x, startPoint.y, endPoint.x, endPoint.y);
 }
 
 - (void)drawTrendlineControlPoints:(NSPoint)pointA pointB:(NSPoint)pointB {
@@ -585,41 +600,72 @@
 }
 
 - (void)drawFibonacci:(ChartObjectModel *)object {
-    if (object.controlPoints.count < 2) return;
+    if (object.controlPoints.count < 1) return;
     
-    NSPoint point1 = [self screenPointFromControlPoint:object.controlPoints[0]];
-    NSPoint point2 = [self screenPointFromControlPoint:object.controlPoints[1]];
+    ControlPointModel *cp1 = object.controlPoints[0];
+    ControlPointModel *cp2 = object.controlPoints.count > 1 ? object.controlPoints[1] : cp1; // FALLBACK
     
-    [self applyStyleForObject:object];
+    NSPoint startPoint = [self screenPointFromControlPoint:cp1];
+    NSPoint endPoint = [self screenPointFromControlPoint:cp2];
     
-    // Draw fibonacci levels (23.6%, 38.2%, 50%, 61.8%, 100%)
-    NSArray *levels = @[@0.236, @0.382, @0.5, @0.618, @1.0];
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
     
-    for (NSNumber *level in levels) {
-        CGFloat ratio = level.floatValue;
-        CGFloat y = point1.y + (point2.y - point1.y) * ratio;
-        
-        NSBezierPath *path = [NSBezierPath bezierPath];
-        [path moveToPoint:NSMakePoint(0, y)];
-        [path lineToPoint:NSMakePoint(self.coordinateContext.panelBounds.size.width, y)];
-        [path stroke];
+    if (cp2 == cp1) {
+        // Single point - draw horizontal line
+        CGContextMoveToPoint(ctx, 0, startPoint.y);
+        CGContextAddLineToPoint(ctx, self.coordinateContext.panelBounds.size.width, startPoint.y);
+        CGContextStrokePath(ctx);
+    } else {
+        // Full fibonacci with levels
+        [self drawFibonacciLevels:startPoint endPoint:endPoint];
+    }
+}
+
+- (void)drawFibonacciLevels:(NSPoint)startPoint endPoint:(NSPoint)endPoint {
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    
+    // Draw main line
+    CGContextMoveToPoint(ctx, startPoint.x, startPoint.y);
+    CGContextAddLineToPoint(ctx, endPoint.x, endPoint.y);
+    CGContextStrokePath(ctx);
+    
+    // Draw fibonacci levels
+    CGFloat fibLevels[] = {0.0, 0.236, 0.382, 0.5, 0.618, 1.0};
+    CGFloat deltaY = endPoint.y - startPoint.y;
+    
+    for (int i = 0; i < 7; i++) {
+        CGFloat levelY = startPoint.y + (deltaY * fibLevels[i]);
+        CGContextMoveToPoint(ctx, 0, levelY);
+        CGContextAddLineToPoint(ctx, self.coordinateContext.panelBounds.size.width, levelY);
+        CGContextStrokePath(ctx);
     }
 }
 
 - (void)drawRectangle:(ChartObjectModel *)object {
-    if (object.controlPoints.count < 2) return;
+    if (object.controlPoints.count < 1) return;
     
-    NSPoint point1 = [self screenPointFromControlPoint:object.controlPoints[0]];
-    NSPoint point2 = [self screenPointFromControlPoint:object.controlPoints[1]];
+    ControlPointModel *cp1 = object.controlPoints[0];
+    ControlPointModel *cp2 = object.controlPoints.count > 1 ? object.controlPoints[1] : cp1; // FALLBACK
     
-    [self applyStyleForObject:object];
+    NSPoint startPoint = [self screenPointFromControlPoint:cp1];
+    NSPoint endPoint = [self screenPointFromControlPoint:cp2];
     
-    NSRect rect = NSMakeRect(MIN(point1.x, point2.x), MIN(point1.y, point2.y),
-                            fabs(point2.x - point1.x), fabs(point2.y - point1.y));
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
     
-    NSBezierPath *path = [NSBezierPath bezierPathWithRect:rect];
-    [path stroke];
+    if (cp2 == cp1) {
+        // Single point - draw small square
+        CGRect rect = CGRectMake(startPoint.x - 2, startPoint.y - 2, 4, 4);
+        CGContextStrokeRect(ctx, rect);
+    } else {
+        // Full rectangle
+        CGRect rect = CGRectMake(MIN(startPoint.x, endPoint.x),
+                                MIN(startPoint.y, endPoint.y),
+                                fabs(endPoint.x - startPoint.x),
+                                fabs(endPoint.y - startPoint.y));
+        CGContextStrokeRect(ctx, rect);
+    }
 }
+
 
 - (void)drawCircle:(ChartObjectModel *)object {
     if (object.controlPoints.count < 2) return;
@@ -652,169 +698,182 @@
     
     [path stroke];
 }
+- (void)drawChannel:(ChartObjectModel *)object {
+    if (object.controlPoints.count < 1) return;
+    
+    ControlPointModel *cp1 = object.controlPoints[0];
+    ControlPointModel *cp2 = object.controlPoints.count > 1 ? object.controlPoints[1] : cp1;
+    ControlPointModel *cp3 = object.controlPoints.count > 2 ? object.controlPoints[2] : cp1;
+    
+    NSPoint point1 = [self screenPointFromControlPoint:cp1];
+    NSPoint point2 = [self screenPointFromControlPoint:cp2];
+    NSPoint point3 = [self screenPointFromControlPoint:cp3];
+    
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    
+    if (object.controlPoints.count == 1) {
+        // Solo CP1 - disegna punto
+        CGContextFillEllipseInRect(ctx, CGRectMake(point1.x - 2, point1.y - 2, 4, 4));
+        
+    } else if (object.controlPoints.count == 2) {
+        // CP1 + CP2 - disegna prima trendline
+        CGContextMoveToPoint(ctx, point1.x, point1.y);
+        CGContextAddLineToPoint(ctx, point2.x, point2.y);
+        CGContextStrokePath(ctx);
+        
+    } else {
+        // Tutti e 3 CP - disegna channel completo
+        
+        // Prima trendline (CP1 - CP2)
+        CGContextMoveToPoint(ctx, point1.x, point1.y);
+        CGContextAddLineToPoint(ctx, point2.x, point2.y);
+        CGContextStrokePath(ctx);
+        
+        // Calcola parallela attraverso CP3
+        // Vettore direzione della prima linea
+        CGFloat dx = point2.x - point1.x;
+        CGFloat dy = point2.y - point1.y;
+        
+        // Lunghezza estesa per coprire tutto il panel
+        CGFloat panelWidth = self.coordinateContext.panelBounds.size.width;
+        CGFloat lineLength = sqrt(dx*dx + dy*dy);
+        CGFloat extensionFactor = panelWidth / lineLength * 2; // Estendi oltre i bordi
+        
+        // Normalizza vettore direzione
+        CGFloat dirX = dx / lineLength;
+        CGFloat dirY = dy / lineLength;
+        
+        // Calcola punti estesi della parallela
+        CGFloat extendedDx = dirX * extensionFactor * lineLength;
+        CGFloat extendedDy = dirY * extensionFactor * lineLength;
+        
+        NSPoint parallelStart = NSMakePoint(point3.x - extendedDx/2, point3.y - extendedDy/2);
+        NSPoint parallelEnd = NSMakePoint(point3.x + extendedDx/2, point3.y + extendedDy/2);
+        
+        // Seconda trendline (parallela attraverso CP3)
+        CGContextMoveToPoint(ctx, parallelStart.x, parallelStart.y);
+        CGContextAddLineToPoint(ctx, parallelEnd.x, parallelEnd.y);
+        CGContextStrokePath(ctx);
+        
+        // Linee di connessione (opzionali - tratteggiate)
+        CGContextSaveGState(ctx);
+        CGFloat dashLengths[] = {3.0, 3.0};
+        CGContextSetLineDash(ctx, 0, dashLengths, 2);
+        CGContextSetAlpha(ctx, 0.5);
+        
+        // Connessione perpendicolare
+        CGContextMoveToPoint(ctx, point1.x, point1.y);
+        CGContextAddLineToPoint(ctx, point3.x, point3.y);
+        CGContextStrokePath(ctx);
+        
+        CGContextRestoreGState(ctx);
+    }
+    
+    NSLog(@"🎨 Drew channel with %lu CPs", (unsigned long)object.controlPoints.count);
+}
+
+// 4. ChartObjectRenderer.m - Implementazione drawTargetPrice
+
+- (void)drawTargetPrice:(ChartObjectModel *)object {
+    if (object.controlPoints.count < 1) return;
+    
+    ControlPointModel *buyCP = object.controlPoints[0];
+    ControlPointModel *stopCP = object.controlPoints.count > 1 ? object.controlPoints[1] : buyCP;
+    ControlPointModel *targetCP = object.controlPoints.count > 2 ? object.controlPoints[2] : buyCP;
+    
+    NSPoint buyPoint = [self screenPointFromControlPoint:buyCP];
+    NSPoint stopPoint = [self screenPointFromControlPoint:stopCP];
+    NSPoint targetPoint = [self screenPointFromControlPoint:targetCP];
+    
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    
+    if (object.controlPoints.count == 1) {
+        // Solo Buy point - disegna punto verde
+        CGContextSetFillColorWithColor(ctx, [NSColor systemGreenColor].CGColor);
+        CGContextFillEllipseInRect(ctx, CGRectMake(buyPoint.x - 3, buyPoint.y - 3, 6, 6));
+        
+    } else if (object.controlPoints.count == 2) {
+        // Buy + Stop - disegna linee orizzontali
+        CGFloat panelWidth = self.coordinateContext.panelBounds.size.width;
+        
+        // Buy line (green)
+        CGContextSetStrokeColorWithColor(ctx, [NSColor systemGreenColor].CGColor);
+        CGContextMoveToPoint(ctx, 0, buyPoint.y);
+        CGContextAddLineToPoint(ctx, panelWidth, buyPoint.y);
+        CGContextStrokePath(ctx);
+        
+        // Stop line (red)
+        CGContextSetStrokeColorWithColor(ctx, [NSColor systemRedColor].CGColor);
+        CGContextMoveToPoint(ctx, 0, stopPoint.y);
+        CGContextAddLineToPoint(ctx, panelWidth, stopPoint.y);
+        CGContextStrokePath(ctx);
+        
+    } else {
+        // Tutti e 3 punti - disegna target completo con calcoli
+        CGFloat panelWidth = self.coordinateContext.panelBounds.size.width;
+        
+        // Calcola prezzi dai control points
+        double buyPrice = [self priceFromControlPoint:buyCP];
+        double stopPrice = [self priceFromControlPoint:stopCP];
+        double targetPrice = [self priceFromControlPoint:targetCP];
+        
+        // Calcola metriche
+        double stopLossPercent = ((buyPrice - stopPrice) / buyPrice) * 100.0;
+        double targetPercent = ((targetPrice - buyPrice) / buyPrice) * 100.0;
+        double riskRewardRatio = fabs(targetPrice - buyPrice) / fabs(buyPrice - stopPrice);
+        
+        // Buy line (green)
+        CGContextSetStrokeColorWithColor(ctx, [NSColor systemGreenColor].CGColor);
+        CGContextSetLineWidth(ctx, 2.0);
+        CGContextMoveToPoint(ctx, 0, buyPoint.y);
+        CGContextAddLineToPoint(ctx, panelWidth, buyPoint.y);
+        CGContextStrokePath(ctx);
+        
+        // Stop line (red)
+        CGContextSetStrokeColorWithColor(ctx, [NSColor systemRedColor].CGColor);
+        CGContextMoveToPoint(ctx, 0, stopPoint.y);
+        CGContextAddLineToPoint(ctx, panelWidth, stopPoint.y);
+        CGContextStrokePath(ctx);
+        
+        // Target line (blue)
+        CGContextSetStrokeColorWithColor(ctx, [NSColor systemBlueColor].CGColor);
+        CGContextMoveToPoint(ctx, 0, targetPoint.y);
+        CGContextAddLineToPoint(ctx, panelWidth, targetPoint.y);
+        CGContextStrokePath(ctx);
+        
+        // Disegna etichette con info
+        [self drawTargetLabels:buyPoint stopPoint:stopPoint targetPoint:targetPoint
+                    buyPrice:buyPrice stopPrice:stopPrice targetPrice:targetPrice
+                stopLossPercent:stopLossPercent targetPercent:targetPercent rrr:riskRewardRatio];
+    }
+    
+    NSLog(@"🎨 Drew target price with %lu CPs", (unsigned long)object.controlPoints.count);
+}
 
 - (void)drawControlPointsForObject:(ChartObjectModel *)object {
-    // Use red color for better visibility (same as creation mode)
-    [[NSColor systemRedColor] setFill];
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    CGContextSaveGState(ctx);
     
     for (ControlPointModel *cp in object.controlPoints) {
-        NSPoint screenPoint = [self screenPointFromControlPoint:cp];
+        NSPoint point = [self screenPointFromControlPoint:cp];
         
-        // Size based on state: hovered > selected > normal
-        CGFloat size = 8.0; // Base size
-        if (cp == self.hoveredControlPoint) {
-            size = 12.0; // Largest when hovered
-        } else if (cp.isSelected) {
-            size = 10.0; // Medium when selected
+        if (cp == self.currentCPSelected) {
+            // Selected CP - filled orange circle
+            CGContextSetFillColorWithColor(ctx, [NSColor systemOrangeColor].CGColor);
+            CGRect rect = CGRectMake(point.x - 4, point.y - 4, 8, 8);
+            CGContextFillEllipseInRect(ctx, rect);
+        } else {
+            // Normal CP - small blue circle
+            CGContextSetStrokeColorWithColor(ctx, [NSColor systemBlueColor].CGColor);
+            CGContextSetLineWidth(ctx, 1.0);
+            CGRect rect = CGRectMake(point.x - 3, point.y - 3, 6, 6);
+            CGContextStrokeEllipseInRect(ctx, rect);
         }
-        
-        NSRect cpRect = NSMakeRect(screenPoint.x - size/2, screenPoint.y - size/2, size, size);
-        NSBezierPath *cpPath = [NSBezierPath bezierPathWithOvalInRect:cpRect];
-        [cpPath fill];
-        
-        // Different border styles for different states
-        if (cp == self.hoveredControlPoint) {
-            // Yellow border for hovered
-            [[NSColor systemYellowColor] setStroke];
-            cpPath.lineWidth = 3.0;
-            [cpPath stroke];
-        } else if (cp.isSelected) {
-            // White border for selected
-            [[NSColor whiteColor] setStroke];
-            cpPath.lineWidth = 2.0;
-            [cpPath stroke];
-        }
-        
-        // Reset fill color for next iteration
-        [[NSColor systemRedColor] setFill];
-    }
-}
-
-- (void)drawTemporaryObject {
-    // Draw preview of object being created
-    if (self.tempControlPoints.count == 0) return;
-    
-    [[NSColor systemBlueColor] setStroke];
-    
-    // Draw temp control points
-    for (ControlPointModel *cp in self.tempControlPoints) {
-        NSPoint screenPoint = [self screenPointFromControlPoint:cp];
-        NSRect cpRect = NSMakeRect(screenPoint.x - 4, screenPoint.y - 4, 8, 8);
-        NSBezierPath *cpPath = [NSBezierPath bezierPathWithOvalInRect:cpRect];
-        [[NSColor systemRedColor] setFill];
-        [cpPath fill];
     }
     
-    // Draw preview based on object type and current mouse position
-    if (self.isInPreviewMode && self.tempControlPoints.count > 0) {
-        [self drawCreationPreview];
-    }
+    CGContextRestoreGState(ctx);
 }
 
-- (void)drawCreationPreview {
-    [[NSColor colorWithRed:0.0 green:0.5 blue:1.0 alpha:0.6] setStroke]; // Semi-transparent blue
-    
-    switch (self.creationObjectType) {
-        case ChartObjectTypeTrendline:
-            [self drawTrendlinePreview];
-            break;
-            
-        case ChartObjectTypeFibonacci:
-            [self drawFibonacciPreview];
-            break;
-            
-        case ChartObjectTypeRectangle:
-            [self drawRectanglePreview];
-            break;
-            
-        case ChartObjectTypeCircle:
-            [self drawCirclePreview];
-            break;
-            
-        case ChartObjectTypeChannel:
-            [self drawChannelPreview];
-            break;
-            
-        case ChartObjectTypeTarget:
-            [self drawTargetPreview];
-            break;
-            
-        default:
-            break;
-    }
-}
-
-- (void)drawTrendlinePreview {
-    if (self.tempControlPoints.count != 1) return;
-    
-    NSPoint point1 = [self screenPointFromControlPoint:self.tempControlPoints.firstObject];
-    NSPoint point2 = self.currentMousePosition;
-    
-    NSBezierPath *path = [NSBezierPath bezierPath];
-    path.lineWidth = 2.0;
-    [path moveToPoint:point1];
-    [path lineToPoint:point2];
-    [path stroke];
-}
-
-- (void)drawFibonacciPreview {
-    if (self.tempControlPoints.count != 1) return;
-    
-    NSPoint point1 = [self screenPointFromControlPoint:self.tempControlPoints.firstObject];
-    NSPoint point2 = self.currentMousePosition;
-    
-    // Draw fibonacci levels preview
-    NSArray *levels = @[@0.236, @0.382, @0.5, @0.618, @1.0];
-    
-    for (NSNumber *level in levels) {
-        CGFloat ratio = level.floatValue;
-        CGFloat y = point1.y + (point2.y - point1.y) * ratio;
-        
-        NSBezierPath *path = [NSBezierPath bezierPath];
-        path.lineWidth = 1.0;
-        [path moveToPoint:NSMakePoint(0, y)];
-        [path lineToPoint:NSMakePoint(self.coordinateContext.panelBounds.size.width, y)];
-        [path stroke];
-    }
-}
-
-- (void)drawRectanglePreview {
-    if (self.tempControlPoints.count != 1) return;
-    
-    NSPoint point1 = [self screenPointFromControlPoint:self.tempControlPoints.firstObject];
-    NSPoint point2 = self.currentMousePosition;
-    
-    NSRect rect = NSMakeRect(MIN(point1.x, point2.x), MIN(point1.y, point2.y),
-                            fabs(point2.x - point1.x), fabs(point2.y - point1.y));
-    
-    NSBezierPath *path = [NSBezierPath bezierPathWithRect:rect];
-    path.lineWidth = 2.0;
-    [path stroke];
-}
-
-- (void)drawCirclePreview {
-    if (self.tempControlPoints.count != 1) return;
-    
-    NSPoint center = [self screenPointFromControlPoint:self.tempControlPoints.firstObject];
-    NSPoint edge = self.currentMousePosition;
-    
-    CGFloat radius = sqrt(pow(edge.x - center.x, 2) + pow(edge.y - center.y, 2));
-    NSRect circleRect = NSMakeRect(center.x - radius, center.y - radius, radius * 2, radius * 2);
-    
-    NSBezierPath *path = [NSBezierPath bezierPathWithOvalInRect:circleRect];
-    path.lineWidth = 2.0;
-    [path stroke];
-}
-
-- (void)drawChannelPreview {
-    // TODO: Implement channel preview (more complex - parallel lines)
-    NSLog(@"🚧 Channel preview not yet implemented");
-}
-
-- (void)drawTargetPreview {
-    // TODO: Implement target preview (buy/stop/target levels)
-    NSLog(@"🚧 Target preview not yet implemented");
-}
 
 - (void)applyStyleForObject:(ChartObjectModel *)object {
     ObjectStyleModel *style = object.style;
@@ -859,29 +918,43 @@
     self.creationObjectType = objectType;
     [self.tempControlPoints removeAllObjects];
     
+    // Clear any previous editing object
+    self.editingObject = nil;
+    
     NSLog(@"🎯 ChartObjectRenderer: Started creating object type %ld", (long)objectType);
 }
+
+- (void)createEditingObjectFromTempCPs {
+    // Create normal ChartObjectModel from temp CPs
+    ChartLayerModel *tempLayer = [self.objectsManager createLayerWithName:@"__temp__"];
+    ChartObjectModel *tempObject = [self.objectsManager createObjectOfType:self.creationObjectType
+                                                                    inLayer:tempLayer];
+    
+    // Add all temp control points
+    for (ControlPointModel *cp in self.tempControlPoints) {
+        [tempObject addControlPoint:cp];
+    }
+    
+    // Set as editing object (will be drawn on editing layer)
+    self.editingObject = tempObject;
+    [self invalidateEditingLayer];
+    
+    NSLog(@"🎯 Created editing object with %lu CPs", (unsigned long)tempObject.controlPoints.count);
+}
+
+
 
 - (BOOL)addControlPointAtScreenPoint:(NSPoint)screenPoint {
     ControlPointModel *newCP = [self controlPointFromScreenPoint:screenPoint indicatorRef:@"close"];
     if (!newCP) return NO;
     
     [self.tempControlPoints addObject:newCP];
-    
-    // NUOVO: Set currentCPSelected to the newly created CP
     self.currentCPSelected = newCP;
-    NSLog(@"🎯 Set currentCPSelected to newly created CP %lu", (unsigned long)self.tempControlPoints.count);
     
-    // Check if we need to enter preview mode for multi-CP objects
-    BOOL needsMorePoints = [self needsMoreControlPointsForPreview];
-    if (needsMorePoints) {
-        self.isInPreviewMode = YES;
-        self.currentMousePosition = screenPoint;
-        NSLog(@"🎯 ChartObjectRenderer: Entered preview mode after CP %lu",
-              (unsigned long)self.tempControlPoints.count);
-    }
+    // NUOVO: Crea oggetto normale e lo mette in editing layer
+    [self createEditingObjectFromTempCPs];
     
-    [self invalidateEditingLayer];
+    NSLog(@"🎯 Added CP %lu, created editing object", (unsigned long)self.tempControlPoints.count);
     
     // Check if object is complete
     BOOL isComplete = [self isObjectCreationComplete];
@@ -892,6 +965,7 @@
     return isComplete;
 }
 
+
 - (void)consolidateCurrentCPAndPrepareNext {
     if (!self.isInCreationMode || !self.currentCPSelected) return;
     
@@ -901,30 +975,49 @@
     self.currentCPSelected = nil;
     
     // Check if object needs more control points
-    BOOL needsMorePoints = [self needsMoreControlPointsForPreview];
+    BOOL needsMorePoints = [self needsMoreControlPointsForCreation];
     
     if (needsMorePoints) {
-        // Create next CP for preview mode
+        // Create next CP at current mouse position
         ControlPointModel *nextCP = [self controlPointFromScreenPoint:self.currentMousePosition
                                                           indicatorRef:@"close"];
         if (nextCP) {
             [self.tempControlPoints addObject:nextCP];
             self.currentCPSelected = nextCP;
-            self.isInPreviewMode = YES;
-            NSLog(@"🎯 Created next CP %lu for preview", (unsigned long)self.tempControlPoints.count);
+            
+            // Update editing object with new CP
+            [self createEditingObjectFromTempCPs];
+            
+            NSLog(@"🎯 Created next CP %lu", (unsigned long)self.tempControlPoints.count);
         }
     } else {
-        // Object is complete - call finishCreatingObject
+        // Object is complete
         [self finishCreatingObject];
-        
-        // NUOVO: Notify panel that object creation is completed
         [self notifyObjectCreationCompleted];
-        
         NSLog(@"✅ Object creation completed!");
     }
-    
-    [self invalidateEditingLayer];
 }
+
+- (BOOL)needsMoreControlPointsForCreation {
+    switch (self.creationObjectType) {
+        case ChartObjectTypeHorizontalLine:
+            return self.tempControlPoints.count < 1;
+            
+        case ChartObjectTypeTrendline:
+        case ChartObjectTypeFibonacci:
+        case ChartObjectTypeRectangle:
+        case ChartObjectTypeCircle:
+            return self.tempControlPoints.count < 2;
+            
+        case ChartObjectTypeChannel:
+        case ChartObjectTypeTarget:
+            return self.tempControlPoints.count < 3; // NUOVO: 3 CP per channel e target
+            
+        default:
+            return NO;
+    }
+}
+
 
 - (void)notifyObjectCreationCompleted {
     // Find ChartWidget through panelView
@@ -936,12 +1029,7 @@
 
 
 
-- (void)updateCreationPreviewAtPoint:(NSPoint)screenPoint {
-    if (!self.isInCreationMode || !self.isInPreviewMode) return;
-    
-    self.currentMousePosition = screenPoint;
-    [self invalidateEditingLayer];
-}
+
 
 - (void)updateEditingHoverAtPoint:(NSPoint)screenPoint {
     if (!self.editingObject) return;
@@ -976,15 +1064,15 @@
     self.currentCPSelected.dateAnchor = newCP.dateAnchor;
     self.currentCPSelected.valuePercent = newCP.valuePercent;
     
-    // Force redraw
+    // NUOVO: Se in creation mode, update editing object
     if (self.isInCreationMode) {
-        [self invalidateEditingLayer];
-    } else if (self.editingObject) {
-        [self invalidateEditingLayer];
+        [self createEditingObjectFromTempCPs];
     }
     
-    NSLog(@"🎯 Updated currentCP coordinates: %.2f%% at %@",
-          self.currentCPSelected.valuePercent, self.currentCPSelected.dateAnchor);
+    // Force redraw editing layer
+    [self invalidateEditingLayer];
+    
+    NSLog(@"🎯 Updated currentCP coordinates: %.2f%%", self.currentCPSelected.valuePercent);
 }
 
 - (void)selectControlPointForEditing:(ControlPointModel *)controlPoint {
@@ -1003,70 +1091,39 @@
     [self invalidateEditingLayer];
 }
 
-- (BOOL)needsMoreControlPointsForPreview {
-    switch (self.creationObjectType) {
-        case ChartObjectTypeTrendline:
-        case ChartObjectTypeFibonacci:
-        case ChartObjectTypeRectangle:
-        case ChartObjectTypeCircle:
-            return self.tempControlPoints.count == 1; // Need preview after first point
-            
-        case ChartObjectTypeChannel:
-            return self.tempControlPoints.count < 3; // Need preview for 2nd and 3rd point
-            
-        case ChartObjectTypeTarget:
-            return self.tempControlPoints.count < 3; // Need preview for 2nd and 3rd point
-            
-        case ChartObjectTypeHorizontalLine:
-        default:
-            return NO; // Single point objects don't need preview
-    }
-}
+
 
 - (BOOL)isObjectCreationComplete {
-    switch (self.creationObjectType) {
-        case ChartObjectTypeHorizontalLine:
-            return self.tempControlPoints.count >= 1;
-        case ChartObjectTypeTrendline:
-        case ChartObjectTypeFibonacci:
-        case ChartObjectTypeRectangle:
-        case ChartObjectTypeCircle:
-            return self.tempControlPoints.count >= 2;
-        default:
-            return NO;
-    }
+    return ![self needsMoreControlPointsForCreation];
 }
 
 - (void)finishCreatingObject {
     if (!self.isInCreationMode || self.tempControlPoints.count == 0) return;
     
-    // Create object in active layer
+    // Create final object in active layer
     ChartLayerModel *activeLayer = self.objectsManager.activeLayer;
     if (!activeLayer) {
         activeLayer = [self.objectsManager createLayerWithName:@"Drawing"];
     }
     
-    ChartObjectModel *newObject = [self.objectsManager createObjectOfType:self.creationObjectType
-                                                                  inLayer:activeLayer];
+    ChartObjectModel *finalObject = [self.objectsManager createObjectOfType:self.creationObjectType
+                                                                     inLayer:activeLayer];
     
-    // Add control points
+    // Add all control points
     for (ControlPointModel *cp in self.tempControlPoints) {
-        [newObject addControlPoint:cp];
+        [finalObject addControlPoint:cp];
     }
     
-    // NUOVO: Clear currentCPSelected when finishing
-    self.currentCPSelected = nil;
-    
+    // Clean up
     [self cancelCreatingObject];
-    [self invalidateObjectsLayer];
+    [self invalidateObjectsLayer]; // Redraw with new object
     
-    NSLog(@"✅ ChartObjectRenderer: Finished creating object %@", newObject.name);
+    NSLog(@"✅ ChartObjectRenderer: Finished creating object %@", finalObject.name);
 }
 
 // 4. Modificare cancelCreatingObject per clear currentCPSelected
 - (void)cancelCreatingObject {
     self.isInCreationMode = NO;
-    self.isInPreviewMode = NO;
     self.creationObjectType = 0;
     self.currentMousePosition = NSZeroPoint;
     
@@ -1505,5 +1562,48 @@
     // Default to close if unknown indicator
     return bar.close;
 }
+
+
+- (double)priceFromControlPoint:(ControlPointModel *)cp {
+    // Trova la barra corrispondente alla data del CP
+    for (HistoricalBarModel *bar in self.coordinateContext.chartData) {
+        if ([bar.date isEqualToDate:cp.dateAnchor]) {
+            double basePrice = [self getIndicatorValue:cp.indicatorRef fromBar:bar];
+            return basePrice * (1.0 + cp.valuePercent / 100.0);
+        }
+    }
+    
+    // Fallback: calcola prezzo dal range Y
+    NSPoint screenPoint = [self screenPointFromControlPoint:cp];
+    double normalizedY = (screenPoint.y - 10) / (self.coordinateContext.panelBounds.size.height - 20);
+    return self.coordinateContext.yRangeMin + normalizedY * (self.coordinateContext.yRangeMax - self.coordinateContext.yRangeMin);
+}
+
+- (void)drawTargetLabels:(NSPoint)buyPoint stopPoint:(NSPoint)stopPoint targetPoint:(NSPoint)targetPoint
+                buyPrice:(double)buyPrice stopPrice:(double)stopPrice targetPrice:(double)targetPrice
+            stopLossPercent:(double)stopLoss targetPercent:(double)target rrr:(double)rrr {
+    
+    // Setup text attributes
+    NSDictionary *textAttributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:10],
+        NSForegroundColorAttributeName: [NSColor labelColor],
+        NSBackgroundColorAttributeName: [NSColor controlBackgroundColor]
+    };
+    
+    // Buy label
+    NSString *buyText = [NSString stringWithFormat:@"BUY: $%.2f", buyPrice];
+    [buyText drawAtPoint:NSMakePoint(buyPoint.x + 10, buyPoint.y - 5) withAttributes:textAttributes];
+    
+    // Stop label
+    NSString *stopText = [NSString stringWithFormat:@"STOP: $%.2f (-%.1f%%)", stopPrice, fabs(stopLoss)];
+    [stopText drawAtPoint:NSMakePoint(stopPoint.x + 10, stopPoint.y - 5) withAttributes:textAttributes];
+    
+    // Target label
+    NSString *targetText = [NSString stringWithFormat:@"TARGET: $%.2f (+%.1f%%) RRR: %.1f", targetPrice, target, rrr];
+    [targetText drawAtPoint:NSMakePoint(targetPoint.x + 10, targetPoint.y - 5) withAttributes:textAttributes];
+}
+
+
+
 
 @end

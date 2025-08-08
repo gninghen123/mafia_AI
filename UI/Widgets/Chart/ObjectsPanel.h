@@ -29,6 +29,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)objectsPanel:(id)panel didActivateObjectType:(ChartObjectType)type withLockMode:(BOOL)lockEnabled;
 - (void)objectsPanel:(id)panel didDeactivateObjectType:(ChartObjectType)type;
 
+- (void)objectsPanelDidRequestClearAll:(id)panel;
 
 @optional
 /// Called when panel visibility changes
@@ -85,6 +86,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)clearActiveButton;
 - (void)setActiveButton:(NSButton *)button forType:(ChartObjectType)type;
 
+- (void)clearAllObjects;
 
 
 

@@ -87,8 +87,17 @@
     titleLabel.backgroundColor = [NSColor clearColor];
     
     [self addSubview:titleLabel];
-    // NEW: Lock Creation Toggle
-     self.lockCreationToggle = [NSButton buttonWithTitle:@"🔒 Lock"
+    NSButton *clearAllButton = [NSButton buttonWithTitle:@"🗑️ Clear All"
+                                                      target:self
+                                                      action:@selector(clearAllObjects:)];
+       clearAllButton.translatesAutoresizingMaskIntoConstraints = NO;
+       clearAllButton.bezelStyle = NSBezelStyleRounded;
+       clearAllButton.controlSize = NSControlSizeSmall;
+       clearAllButton.font = [NSFont systemFontOfSize:10];
+       clearAllButton.contentTintColor = [NSColor systemRedColor];
+       [self.backgroundView addSubview:clearAllButton];
+            
+    self.lockCreationToggle = [NSButton buttonWithTitle:@"🔒 Lock"
                                                    target:self
                                                    action:@selector(toggleLockMode:)];
      self.lockCreationToggle.translatesAutoresizingMaskIntoConstraints = NO;
@@ -138,7 +147,10 @@
         [titleLabel.topAnchor constraintEqualToAnchor:self.topAnchor constant:8],
         [titleLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
         [titleLabel.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
-        
+        [clearAllButton.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:8],
+                [clearAllButton.leadingAnchor constraintEqualToAnchor:self.backgroundView.leadingAnchor constant:8],
+                [clearAllButton.trailingAnchor constraintEqualToAnchor:self.backgroundView.trailingAnchor constant:-8],
+        [clearAllButton.heightAnchor constraintEqualToConstant:24],
         // NEW: Lock toggle
         [self.lockCreationToggle.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:8],
         [self.lockCreationToggle.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
@@ -366,6 +378,28 @@
         NSLog(@"🔄 ObjectsPanel: Cleared active button");
     }
 }
+
+
+- (void)clearAllObjects:(NSButton *)sender {
+    NSLog(@"🗑️ ObjectsPanel: Clear All objects requested");
+    
+    // Conferma dialog
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Clear All Objects";
+    alert.informativeText = @"Are you sure you want to delete all chart objects? This action cannot be undone.";
+    alert.alertStyle = NSAlertStyleWarning;
+    [alert addButtonWithTitle:@"Delete All"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSModalResponse response = [alert runModal];
+    if (response == NSAlertFirstButtonReturn) {
+        // User confirmed - notify delegate
+        if ([self.delegate respondsToSelector:@selector(objectsPanelDidRequestClearAll:)]) {
+            [self.delegate objectsPanelDidRequestClearAll:self];
+        }
+    }
+}
+
 
 - (void)setActiveButton:(NSButton *)button forType:(ChartObjectType)type {
     // Clear any existing active button first (only one can be active)

@@ -8,7 +8,7 @@
 #import "BaseWidget.h"
 #import "ObjectsPanel.h"
 #import "ChartObjectsManager.h"
-
+#import "ChartObjectRenderer.h"
 @class ChartPanelView;
 
 typedef NS_ENUM(NSInteger, ChartTimeframe) {
@@ -41,6 +41,8 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 @property (nonatomic, strong) ObjectsPanel *objectsPanel;
 @property (nonatomic, strong) ChartObjectsManager *objectsManager;
 @property (nonatomic, assign) BOOL isObjectsPanelVisible;
+@property (nonatomic, strong) NSButton *objectsVisibilityToggle;
+
 
 #pragma mark - Data Properties
 @property (nonatomic, strong, readwrite) NSString *currentSymbol;

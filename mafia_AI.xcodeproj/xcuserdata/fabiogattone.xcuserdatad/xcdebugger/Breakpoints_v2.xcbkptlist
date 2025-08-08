@@ -62,8 +62,8 @@
             filePath = "UI/Widgets/Chart/ChartWidget.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "511"
-            endingLineNumber = "511"
+            startingLineNumber = "522"
+            endingLineNumber = "522"
             landmarkName = "-symbolChanged:"
             landmarkType = "7">
          </BreakpointContent>

@@ -239,7 +239,8 @@ static const void *kSplitViewLeadingConstraintKey = &kSplitViewLeadingConstraint
     if (!mainPanel.objectRenderer) {
         [mainPanel setupObjectsRendererWithManager:self.objectsManager];
     }
-    
+    [panel refreshObjectManager];
+
     NSLog(@"✅ ChartWidget: Ready for object creation type %ld", (long)type);
 }
 

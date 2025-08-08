@@ -396,7 +396,7 @@
     }
 }
 
-- (void)drawTrailingFibonacci:(ChartObjectModel *)object {
+- (void)drawTrailingFibo:(ChartObjectModel *)object {
     // Calculate fibonacci levels using the algorithm
     NSArray<NSDictionary *> *fibLevels = [self calculateTrailingFibonacciForObject:object];
     
@@ -421,7 +421,7 @@
     for (NSDictionary *level in fibLevels) {
         double levelPrice = [level[@"price"] doubleValue];
         double ratio = [level[@"ratio"] doubleValue];
-        NSString *label = level[@"label"];
+        NSString *label = level[@"label"];  // Ora include % e valore
         
         // Convert price to screen Y coordinate
         CGFloat y = [self yCoordinateForPrice:levelPrice];
@@ -437,9 +437,11 @@
         if (ratio == 0.0 || ratio == 1.0) {
             // 0% and 100% levels - solid and thicker
             path.lineWidth = 2.0;
+            [[NSColor systemBlueColor] setStroke];
         } else {
             // Intermediate levels - thinner
             path.lineWidth = 1.0;
+            [[NSColor systemOrangeColor] setStroke];
         }
         
         // Draw the line
@@ -447,8 +449,10 @@
         [path lineToPoint:NSMakePoint(rightX, y)];
         [path stroke];
         
-        // Draw level label
-        [self drawTrailingFiboLabel:label atPoint:NSMakePoint(leftX + 5, y + 2)];
+        // ✅ MIGLIORE RENDERING LABEL: sulla sinistra con % e valore
+        [self drawTrailingFiboEnhancedLabel:label
+                                    atPoint:NSMakePoint(leftX + 5, y + 2)
+                                    isKeyLevel:(ratio == 0.0 || ratio == 1.0)];
     }
     
     // Draw start point marker
@@ -456,6 +460,46 @@
         NSPoint startPoint = [self screenPointFromControlPoint:object.controlPoints.firstObject];
         [self drawTrailingFiboStartMarker:startPoint];
     }
+}
+
+- (void)drawTrailingFiboEnhancedLabel:(NSString *)label
+                               atPoint:(NSPoint)point
+                           isKeyLevel:(BOOL)isKeyLevel {
+    
+    // Scegli font in base all'importanza del livello
+    NSFont *font = isKeyLevel ?
+        [NSFont boldSystemFontOfSize:11] :
+        [NSFont systemFontOfSize:10];
+    
+    // Colore in base al tipo di livello
+    NSColor *textColor = isKeyLevel ?
+        [NSColor systemBlueColor] :
+        [NSColor secondaryLabelColor];
+    
+    // Background per migliore leggibilità
+    NSDictionary *attributes = @{
+        NSFontAttributeName: font,
+        NSForegroundColorAttributeName: textColor,
+        NSBackgroundColorAttributeName: [[NSColor controlBackgroundColor] colorWithAlphaComponent:0.8]
+    };
+    
+    NSAttributedString *attributedLabel = [[NSAttributedString alloc]
+                                          initWithString:label
+                                          attributes:attributes];
+    
+    // Calcola dimensioni per posizionamento
+    NSSize labelSize = [attributedLabel size];
+    NSRect labelRect = NSMakeRect(point.x,
+                                 point.y - labelSize.height/2,
+                                 labelSize.width + 4,
+                                 labelSize.height);
+    
+    // Disegna background
+    [[NSColor controlBackgroundColor] setFill];
+    NSRectFillUsingOperation(labelRect, NSCompositingOperationSourceOver);
+    
+    // Disegna testo
+    [attributedLabel drawAtPoint:NSMakePoint(point.x + 2, point.y - labelSize.height/2)];
 }
 
 - (void)drawTrailingFiboLabel:(NSString *)label atPoint:(NSPoint)point {
@@ -622,23 +666,129 @@
 }
 
 - (void)drawFibonacciLevels:(NSPoint)startPoint endPoint:(NSPoint)endPoint {
-    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    // ✅ STESSO CALCOLO per Fibonacci standard
     
-    // Draw main line
+    // Calcola prezzi dai punti schermo
+    CGFloat cp1Price = [self priceFromScreenY:startPoint.y];
+    CGFloat cp2Price = [self priceFromScreenY:endPoint.y];
+    CGFloat priceRange = cp2Price - cp1Price;
+    
+    // Fibonacci levels con extensions
+    NSArray *fibRatios = @[@0.0, @0.236, @0.382, @0.5, @0.618, @0.786, @1.0, @1.272, @1.414, @1.618, @2.618, @4.236];
+    NSArray *fibLabels = @[@"0%", @"23.6%", @"38.2%", @"50%", @"61.8%", @"78.6%", @"100%", @"127.2%", @"141.4%", @"161.8%", @"261.8%", @"423.6%"];
+    
+    // Draw main line (CP1 -> CP2)
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    CGContextSetLineWidth(ctx, 1.5);
+    CGContextSetRGBStrokeColor(ctx, 0.5, 0.5, 0.5, 1.0); // Grigio per linea principale
     CGContextMoveToPoint(ctx, startPoint.x, startPoint.y);
     CGContextAddLineToPoint(ctx, endPoint.x, endPoint.y);
     CGContextStrokePath(ctx);
     
-    // Draw fibonacci levels
-    CGFloat fibLevels[] = {0.0, 0.236, 0.382, 0.5, 0.618, 1.0};
-    CGFloat deltaY = endPoint.y - startPoint.y;
-    
-    for (int i = 0; i < 7; i++) {
-        CGFloat levelY = startPoint.y + (deltaY * fibLevels[i]);
+    for (NSUInteger i = 0; i < fibRatios.count; i++) {
+        CGFloat ratio = [fibRatios[i] floatValue];
+        NSString *label = fibLabels[i];
+        
+        // ✅ CALCOLO CORRETTO
+        CGFloat levelPrice;
+        if (ratio <= 1.0) {
+            // Retracements: da CP2 verso CP1
+            levelPrice = cp2Price - (ratio * priceRange);
+        } else {
+            // Extensions: oltre CP2
+            levelPrice = cp2Price + ((ratio - 1.0) * priceRange);
+        }
+        
+        CGFloat levelY = [self yCoordinateForPrice:levelPrice];
+        
+        // Skip se fuori viewport
+        if (levelY < -20 || levelY > self.coordinateContext.panelBounds.size.height + 20) {
+            continue;
+        }
+        
+        // Stile in base al tipo di livello
+        if (ratio == 0.0 || ratio == 1.0) {
+            // Livelli chiave (CP1, CP2)
+            CGContextSetLineWidth(ctx, 2.0);
+            CGContextSetRGBStrokeColor(ctx, 0.0, 0.5, 1.0, 1.0); // Blu
+        } else if (ratio > 1.0) {
+            // Extensions - viola
+            CGContextSetLineWidth(ctx, 1.5);
+            CGContextSetRGBStrokeColor(ctx, 0.7, 0.0, 1.0, 0.8); // Viola
+        } else {
+            // Retracements standard - arancione
+            CGContextSetLineWidth(ctx, 1.0);
+            CGContextSetRGBStrokeColor(ctx, 1.0, 0.6, 0.0, 1.0); // Arancione
+        }
+        
+        // Disegna linea livello
         CGContextMoveToPoint(ctx, 0, levelY);
         CGContextAddLineToPoint(ctx, self.coordinateContext.panelBounds.size.width, levelY);
         CGContextStrokePath(ctx);
+        
+        // Label con % e valore
+        NSString *fullLabel = [NSString stringWithFormat:@"%@ (%.2f)", label, levelPrice];
+        [self drawFibonacciLabel:fullLabel
+                         atPoint:NSMakePoint(5, levelY + 2)
+                      isKeyLevel:(ratio == 0.0 || ratio == 1.0)
+                     isExtension:(ratio > 1.0)];
     }
+}
+
+
+- (void)drawFibonacciLabel:(NSString *)label
+                   atPoint:(NSPoint)point
+                isKeyLevel:(BOOL)isKeyLevel
+               isExtension:(BOOL)isExtension {
+    
+    NSFont *font = isKeyLevel ?
+        [NSFont boldSystemFontOfSize:11] :
+        [NSFont systemFontOfSize:10];
+    
+    NSColor *textColor;
+    if (isKeyLevel) {
+        textColor = [NSColor systemBlueColor];
+    } else if (isExtension) {
+        textColor = [NSColor systemPurpleColor];
+    } else {
+        textColor = [NSColor systemOrangeColor];
+    }
+    
+    NSDictionary *attributes = @{
+        NSFontAttributeName: font,
+        NSForegroundColorAttributeName: textColor,
+        NSBackgroundColorAttributeName: [[NSColor controlBackgroundColor] colorWithAlphaComponent:0.9]
+    };
+    
+    NSAttributedString *attributedLabel = [[NSAttributedString alloc]
+                                          initWithString:label
+                                          attributes:attributes];
+    
+    NSSize labelSize = [attributedLabel size];
+    NSRect labelRect = NSMakeRect(point.x,
+                                 point.y - labelSize.height/2,
+                                 labelSize.width + 6,
+                                 labelSize.height + 2);
+    
+    // Background per leggibilità
+    [[NSColor controlBackgroundColor] setFill];
+    NSRectFillUsingOperation(labelRect, NSCompositingOperationSourceOver);
+    
+    // Bordo sottile
+    [[NSColor tertiaryLabelColor] setStroke];
+    NSFrameRect(labelRect);
+    
+    // Testo
+    [attributedLabel drawAtPoint:NSMakePoint(point.x + 3, point.y - labelSize.height/2 + 1)];
+}
+
+- (CGFloat)priceFromScreenY:(CGFloat)screenY {
+    // Inverte la conversione di yCoordinateForPrice
+    CGFloat panelHeight = self.coordinateContext.panelBounds.size.height;
+    CGFloat normalizedY = (panelHeight - screenY - 10) / (panelHeight - 20);
+    
+    return self.coordinateContext.yRangeMin +
+           normalizedY * (self.coordinateContext.yRangeMax - self.coordinateContext.yRangeMin);
 }
 
 - (void)drawRectangle:(ChartObjectModel *)object {
@@ -785,34 +935,39 @@
     NSPoint stopPoint = [self screenPointFromControlPoint:stopCP];
     NSPoint targetPoint = [self screenPointFromControlPoint:targetCP];
     
-    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    // ✅ CALCOLA X LIMITE: non estendere le linee dietro CP1 (buyPoint)
+    CGFloat panelWidth = self.coordinateContext.panelBounds.size.width;
+    CGFloat lineStartX = buyPoint.x;  // Parte da CP1
+    CGFloat lineEndX = panelWidth;    // Fino al bordo destro
     
     if (object.controlPoints.count == 1) {
-        // Solo Buy point - disegna punto verde
-        CGContextSetFillColorWithColor(ctx, [NSColor systemGreenColor].CGColor);
-        CGContextFillEllipseInRect(ctx, CGRectMake(buyPoint.x - 3, buyPoint.y - 3, 6, 6));
+        // Solo Buy point - punto verde
+        [self drawTargetPoint:buyPoint color:[NSColor systemGreenColor] label:@"BUY"];
         
     } else if (object.controlPoints.count == 2) {
-        // Buy + Stop - disegna linee orizzontali
-        CGFloat panelWidth = self.coordinateContext.panelBounds.size.width;
+        // Buy + Stop - linee con highlight
         
-        // Buy line (green)
-        CGContextSetStrokeColorWithColor(ctx, [NSColor systemGreenColor].CGColor);
-        CGContextMoveToPoint(ctx, 0, buyPoint.y);
-        CGContextAddLineToPoint(ctx, panelWidth, buyPoint.y);
-        CGContextStrokePath(ctx);
+        // ✅ HIGHLIGHT ZONE STOP con alpha SEMPRE 0.1
+        [self drawTargetHighlight:NSMakeRect(lineStartX, MIN(buyPoint.y, stopPoint.y),
+                                           lineEndX - lineStartX, fabs(buyPoint.y - stopPoint.y))
+                            color:[NSColor systemRedColor]];
         
-        // Stop line (red)
-        CGContextSetStrokeColorWithColor(ctx, [NSColor systemRedColor].CGColor);
-        CGContextMoveToPoint(ctx, 0, stopPoint.y);
-        CGContextAddLineToPoint(ctx, panelWidth, stopPoint.y);
-        CGContextStrokePath(ctx);
+        // Linee limitate da CP1 in poi
+        [self drawTargetLine:buyPoint.y startX:lineStartX endX:lineEndX
+                       color:[NSColor systemGreenColor] width:2.0];
+        [self drawTargetLine:stopPoint.y startX:lineStartX endX:lineEndX
+                       color:[NSColor systemRedColor] width:2.0];
+        
+        // Label
+        [self drawTargetLabel:@"BUY" atPoint:NSMakePoint(lineStartX + 10, buyPoint.y)
+                       color:[NSColor systemGreenColor] size:14];
+        [self drawTargetLabel:@"STOP" atPoint:NSMakePoint(lineStartX + 10, stopPoint.y)
+                       color:[NSColor systemRedColor] size:14];
         
     } else {
-        // Tutti e 3 punti - disegna target completo con calcoli
-        CGFloat panelWidth = self.coordinateContext.panelBounds.size.width;
+        // Target completo con calcoli e highlight zones
         
-        // Calcola prezzi dai control points
+        // Calcola prezzi
         double buyPrice = [self priceFromControlPoint:buyCP];
         double stopPrice = [self priceFromControlPoint:stopCP];
         double targetPrice = [self priceFromControlPoint:targetCP];
@@ -822,32 +977,168 @@
         double targetPercent = ((targetPrice - buyPrice) / buyPrice) * 100.0;
         double riskRewardRatio = fabs(targetPrice - buyPrice) / fabs(buyPrice - stopPrice);
         
-        // Buy line (green)
-        CGContextSetStrokeColorWithColor(ctx, [NSColor systemGreenColor].CGColor);
-        CGContextSetLineWidth(ctx, 2.0);
-        CGContextMoveToPoint(ctx, 0, buyPoint.y);
-        CGContextAddLineToPoint(ctx, panelWidth, buyPoint.y);
-        CGContextStrokePath(ctx);
+        // ✅ HIGHLIGHT ZONES CORRETTE - sempre alpha 0.1
         
-        // Stop line (red)
-        CGContextSetStrokeColorWithColor(ctx, [NSColor systemRedColor].CGColor);
-        CGContextMoveToPoint(ctx, 0, stopPoint.y);
-        CGContextAddLineToPoint(ctx, panelWidth, stopPoint.y);
-        CGContextStrokePath(ctx);
+        // Zone STOP (da buy a stop) - rosso
+        CGFloat stopZoneTop = MAX(buyPoint.y, stopPoint.y);
+        CGFloat stopZoneBottom = MIN(buyPoint.y, stopPoint.y);
+        [self drawTargetHighlight:NSMakeRect(lineStartX, stopZoneBottom,
+                                           lineEndX - lineStartX, stopZoneTop - stopZoneBottom)
+                            color:[NSColor systemRedColor]];
         
-        // Target line (blue)
-        CGContextSetStrokeColorWithColor(ctx, [NSColor systemBlueColor].CGColor);
-        CGContextMoveToPoint(ctx, 0, targetPoint.y);
-        CGContextAddLineToPoint(ctx, panelWidth, targetPoint.y);
-        CGContextStrokePath(ctx);
+        // Zone TARGET (da buy a target) - verde
+        CGFloat targetZoneTop = MAX(buyPoint.y, targetPoint.y);
+        CGFloat targetZoneBottom = MIN(buyPoint.y, targetPoint.y);
+        [self drawTargetHighlight:NSMakeRect(lineStartX, targetZoneBottom,
+                                           lineEndX - lineStartX, targetZoneTop - targetZoneBottom)
+                            color:[NSColor systemGreenColor]];
         
-        // Disegna etichette con info
-        [self drawTargetLabels:buyPoint stopPoint:stopPoint targetPoint:targetPoint
-                    buyPrice:buyPrice stopPrice:stopPrice targetPrice:targetPrice
-                stopLossPercent:stopLossPercent targetPercent:targetPercent rrr:riskRewardRatio];
+        // ✅ LINEE LIMITATE da CP1 in poi
+        [self drawTargetLine:buyPoint.y startX:lineStartX endX:lineEndX
+                       color:[NSColor systemBlueColor] width:3.0];    // BUY - blu
+        [self drawTargetLine:stopPoint.y startX:lineStartX endX:lineEndX
+                       color:[NSColor systemRedColor] width:2.5];     // STOP - rosso
+        [self drawTargetLine:targetPoint.y startX:lineStartX endX:lineEndX
+                       color:[NSColor systemGreenColor] width:2.5];   // TARGET - verde
+        
+        // Label più grandi con info dettagliate
+        NSString *buyText = [NSString stringWithFormat:@"BUY: $%.2f", buyPrice];
+        [self drawTargetEnhancedLabel:buyText atPoint:NSMakePoint(lineStartX + 10, buyPoint.y)
+                               color:[NSColor systemBlueColor] size:15 isBold:YES];
+        
+        NSString *stopText = [NSString stringWithFormat:@"STOP: $%.2f (-%.1f%%)", stopPrice, fabs(stopLossPercent)];
+        [self drawTargetEnhancedLabel:stopText atPoint:NSMakePoint(lineStartX + 10, stopPoint.y)
+                               color:[NSColor systemRedColor] size:14 isBold:NO];
+        
+        NSString *targetText = [NSString stringWithFormat:@"TARGET: $%.2f (+%.1f%%) RRR: %.1f",
+                               targetPrice, targetPercent, riskRewardRatio];
+        [self drawTargetEnhancedLabel:targetText atPoint:NSMakePoint(lineStartX + 10, targetPoint.y)
+                               color:[NSColor systemGreenColor] size:14 isBold:NO];
     }
+}
+
+
+// Helper per label semplici (backward compatibility)
+- (void)drawTargetLabel:(NSString *)text
+                atPoint:(NSPoint)point
+                  color:(NSColor *)color
+                   size:(CGFloat)size {
+    [self drawTargetEnhancedLabel:text atPoint:point color:color size:size isBold:NO];
+}
+
+// Helper per punti target
+- (void)drawTargetPoint:(NSPoint)point color:(NSColor *)color label:(NSString *)label {
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    CGContextSaveGState(ctx);
     
-    NSLog(@"🎨 Drew target price with %lu CPs", (unsigned long)object.controlPoints.count);
+    // Punto più grande
+    CGContextSetFillColorWithColor(ctx, color.CGColor);
+    CGContextFillEllipseInRect(ctx, CGRectMake(point.x - 5, point.y - 5, 10, 10));
+    
+    // Bordo bianco
+    CGContextSetStrokeColorWithColor(ctx, [NSColor whiteColor].CGColor);
+    CGContextSetLineWidth(ctx, 2.0);
+    CGContextStrokeEllipseInRect(ctx, CGRectMake(point.x - 5, point.y - 5, 10, 10));
+    
+    CGContextRestoreGState(ctx);
+    
+    // Label
+    if (label) {
+        [self drawTargetEnhancedLabel:label
+                              atPoint:NSMakePoint(point.x + 15, point.y)
+                                color:color
+                                 size:13
+                               isBold:YES];
+    }
+}
+- (void)drawTargetHighlight:(NSRect)rect color:(NSColor *)color {
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    CGContextSaveGState(ctx);
+    
+    // ✅ FORZA alpha 0.1 sempre, anche quando finalizzato
+    NSColor *highlightColor = [color colorWithAlphaComponent:0.1];
+    CGContextSetFillColorWithColor(ctx, highlightColor.CGColor);
+    
+    // ✅ DISABILITA blending mode per evitare accumulo alpha
+    CGContextSetBlendMode(ctx, kCGBlendModeNormal);
+    CGContextFillRect(ctx, rect);
+    
+    CGContextRestoreGState(ctx);
+    
+    NSLog(@"🎨 Target highlight: alpha=%.1f, rect=%@",
+          highlightColor.alphaComponent, NSStringFromRect(rect));
+}
+
+- (void)drawTargetLine:(CGFloat)y startX:(CGFloat)startX endX:(CGFloat)endX
+                 color:(NSColor *)color width:(CGFloat)width {
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    CGContextSaveGState(ctx);
+    
+    CGContextSetStrokeColorWithColor(ctx, color.CGColor);
+    CGContextSetLineWidth(ctx, width);
+    CGContextMoveToPoint(ctx, startX, y);
+    CGContextAddLineToPoint(ctx, endX, y);
+    CGContextStrokePath(ctx);
+    
+    CGContextRestoreGState(ctx);
+}
+
+// ✅ NUOVO: Line con spessore variabile
+- (void)drawTargetLine:(CGFloat)y color:(NSColor *)color width:(CGFloat)width {
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    CGFloat panelWidth = self.coordinateContext.panelBounds.size.width;
+    
+    CGContextSetStrokeColorWithColor(ctx, color.CGColor);
+    CGContextSetLineWidth(ctx, width);
+    CGContextMoveToPoint(ctx, 0, y);
+    CGContextAddLineToPoint(ctx, panelWidth, y);
+    CGContextStrokePath(ctx);
+}
+
+// ✅ NUOVO: Label grandi e migliorate
+- (void)drawTargetEnhancedLabel:(NSString *)text
+                        atPoint:(NSPoint)point
+                          color:(NSColor *)textColor
+                           size:(CGFloat)fontSize
+                         isBold:(BOOL)isBold {
+    
+    NSFont *font = isBold ?
+        [NSFont boldSystemFontOfSize:fontSize] :
+        [NSFont systemFontOfSize:fontSize];
+    
+    // ✅ Background con alpha controllato
+    NSColor *bgColor = [[NSColor controlBackgroundColor] colorWithAlphaComponent:0.95];
+    
+    NSDictionary *attributes = @{
+        NSFontAttributeName: font,
+        NSForegroundColorAttributeName: textColor,
+        NSBackgroundColorAttributeName: bgColor
+    };
+    
+    NSAttributedString *attributedText = [[NSAttributedString alloc]
+                                         initWithString:text
+                                         attributes:attributes];
+    
+    NSSize textSize = [attributedText size];
+    NSRect labelRect = NSMakeRect(point.x - 2,
+                                 point.y - textSize.height/2 - 2,
+                                 textSize.width + 8,
+                                 textSize.height + 4);
+    
+    // ✅ Background con alpha fisso
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    CGContextSaveGState(ctx);
+    CGContextSetFillColorWithColor(ctx, bgColor.CGColor);
+    CGContextFillRect(ctx, labelRect);
+    
+    // Bordo sottile del colore del testo
+    CGContextSetStrokeColorWithColor(ctx, textColor.CGColor);
+    CGContextSetLineWidth(ctx, 1.0);
+    CGContextStrokeRect(ctx, labelRect);
+    CGContextRestoreGState(ctx);
+    
+    // Testo centrato
+    [attributedText drawAtPoint:NSMakePoint(point.x + 2, point.y - textSize.height/2)];
 }
 
 - (void)drawControlPointsForObject:(ChartObjectModel *)object {
@@ -1482,38 +1773,61 @@
     
     if (peaks.count == 0) return fibLevels;
     
-    // Get starting price
+    // Get starting price (CP1)
     HistoricalBarModel *startBar = [self findBarForDate:startCP.dateAnchor];
     if (!startBar) return fibLevels;
     
     double startIndicatorValue = [self getIndicatorValue:startCP.indicatorRef fromBar:startBar];
-    double startPrice = startIndicatorValue * (1.0 + startCP.valuePercent / 100.0);
+    double cp1Price = startIndicatorValue * (1.0 + startCP.valuePercent / 100.0);
     
-    // Get latest extreme price
+    // Get latest extreme price (CP2)
     NSDictionary *lastPeak = peaks.lastObject;
-    double extremePrice = [lastPeak[@"price"] doubleValue];
+    double cp2Price = [lastPeak[@"price"] doubleValue];
     NSDate *extremeDate = lastPeak[@"date"];
     
-    // Fibonacci levels (from start to extreme)
-    NSArray *fibRatios = @[@0.0, @0.236, @0.382, @0.5, @0.618, @1.0];
-    NSArray *fibLabels = @[@"0%", @"23.6%", @"38.2%", @"50%", @"61.8%", @"100%"];
+    // ✅ FIBONACCI RETRACEMENT CORRETTO
+    // Esempio: CP1=1, CP2=100, Range=99
+    // 23.6% retracement = CP2 - (23.6% * range) = 100 - (0.236 * 99) = 100 - 23.364 = 76.636
+    // Quindi 23.6% STA VICINO AL CP2 come deve essere!
+    
+    double priceRange = cp2Price - cp1Price;  // Range totale
+    
+    // Fibonacci retracements (standard + extensions)
+    NSArray *fibRatios = @[@0.0, @0.236, @0.382, @0.5, @0.618, @0.786, @1.0, @1.272, @1.414, @1.618, @2.618, @4.236];
+    NSArray *fibLabels = @[@"0%", @"23.6%", @"38.2%", @"50%", @"61.8%", @"78.6%", @"100%", @"127.2%", @"141.4%", @"161.8%", @"261.8%", @"423.6%"];
     
     for (NSUInteger i = 0; i < fibRatios.count; i++) {
         double ratio = [fibRatios[i] doubleValue];
-        double levelPrice = startPrice + ratio * (extremePrice - startPrice);
+        
+        // ✅ FORMULA CORRETTA per retracements e extensions
+        double levelPrice;
+        if (ratio <= 1.0) {
+            // RETRACEMENTS (0% - 100%): da CP2 verso CP1
+            levelPrice = cp2Price - (ratio * priceRange);
+        } else {
+            // EXTENSIONS (>100%): oltre CP2
+            levelPrice = cp2Price + ((ratio - 1.0) * priceRange);
+        }
+        
+        // Label con % e valore
+        NSString *percentageLabel = fibLabels[i];
+        NSString *fullLabel = [NSString stringWithFormat:@"%@ (%.2f)", percentageLabel, levelPrice];
         
         [fibLevels addObject:@{
             @"ratio": fibRatios[i],
-            @"label": fibLabels[i],
+            @"label": fullLabel,
             @"price": @(levelPrice),
+            @"isExtension": @(ratio > 1.0),
             @"startDate": startCP.dateAnchor,
             @"endDate": extremeDate ?: startCP.dateAnchor
         }];
+        
+        NSLog(@"📊 Fibo %@: %.2f (CP1=%.2f, CP2=%.2f, Range=%.2f)",
+              percentageLabel, levelPrice, cp1Price, cp2Price, priceRange);
     }
     
     return [fibLevels copy];
 }
-
 - (NSInteger)findBarIndexForDate:(NSDate *)date {
     for (NSInteger i = 0; i < self.coordinateContext.chartData.count; i++) {
         HistoricalBarModel *bar = self.coordinateContext.chartData[i];
@@ -1604,6 +1918,13 @@
 }
 
 
+- (void)setObjectsVisible:(BOOL)visible {
+    self.objectsLayer.hidden = !visible;
+    self.objectsEditingLayer.hidden = !visible;
+}
 
+- (BOOL)areObjectsVisible {
+    return !self.objectsLayer.hidden;
+}
 
 @end

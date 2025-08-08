@@ -5,6 +5,8 @@
 
 #import "ObjectsPanel.h"
 #import <QuartzCore/QuartzCore.h>
+#import "ChartObjectManagerWindow.h"
+#import "DataHub.h"
 
 
 @interface ObjectsPanel ()
@@ -88,88 +90,96 @@
     titleLabel.backgroundColor = [NSColor clearColor];
     
     [self addSubview:titleLabel];
-    NSButton *clearAllButton = [NSButton buttonWithTitle:@"🗑️ Clear All"
-                                                      target:self
-                                                      action:@selector(clearAllObjects:)];
-       clearAllButton.translatesAutoresizingMaskIntoConstraints = NO;
-       clearAllButton.bezelStyle = NSBezelStyleRounded;
-       clearAllButton.controlSize = NSControlSizeSmall;
-       clearAllButton.font = [NSFont systemFontOfSize:10];
-       clearAllButton.contentTintColor = [NSColor systemRedColor];
-       [self.backgroundView addSubview:clearAllButton];
-            
+    
+    // RIGA DI CONTROLLI: Lock e Clear All affiancati
+    NSView *controlsRow = [[NSView alloc] init];
+    controlsRow.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.backgroundView addSubview:controlsRow];
+    
+    // Lock button
     self.lockCreationToggle = [NSButton buttonWithTitle:@"🔒 Lock"
                                                    target:self
                                                    action:@selector(toggleLockMode:)];
-     self.lockCreationToggle.translatesAutoresizingMaskIntoConstraints = NO;
-     self.lockCreationToggle.bezelStyle = NSBezelStyleRounded;
-     self.lockCreationToggle.buttonType = NSButtonTypePushOnPushOff; // Toggle behavior
-     self.lockCreationToggle.controlSize = NSControlSizeSmall;
-     self.lockCreationToggle.font = [NSFont systemFontOfSize:10];
-     [self.backgroundView addSubview:self.lockCreationToggle];
+    self.lockCreationToggle.translatesAutoresizingMaskIntoConstraints = NO;
+    self.lockCreationToggle.bezelStyle = NSBezelStyleRounded;
+    self.lockCreationToggle.buttonType = NSButtonTypePushOnPushOff;
+    self.lockCreationToggle.controlSize = NSControlSizeSmall;
+    self.lockCreationToggle.font = [NSFont systemFontOfSize:10];
+    [controlsRow addSubview:self.lockCreationToggle];
     
+    // Clear All button
+    NSButton *clearAllButton = [NSButton buttonWithTitle:@"🗑️ Clear"
+                                                   target:self
+                                                   action:@selector(clearAllObjects:)];
+    clearAllButton.translatesAutoresizingMaskIntoConstraints = NO;
+    clearAllButton.bezelStyle = NSBezelStyleRounded;
+    clearAllButton.controlSize = NSControlSizeSmall;
+    clearAllButton.font = [NSFont systemFontOfSize:10];
+    clearAllButton.contentTintColor = [NSColor systemRedColor];
+    [controlsRow addSubview:clearAllButton];
     
     // Main stack view for object buttons
     self.buttonsStackView = [[NSStackView alloc] init];
     self.buttonsStackView.translatesAutoresizingMaskIntoConstraints = NO;
     self.buttonsStackView.orientation = NSUserInterfaceLayoutOrientationVertical;
     self.buttonsStackView.spacing = 6;
-    self.buttonsStackView.alignment = NSLayoutAttributeLeading;
-    self.buttonsStackView.distribution = NSStackViewDistributionFillEqually;
-    
-    [self addSubview:self.buttonsStackView];
-    
+    self.buttonsStackView.alignment = NSLayoutAttributeCenterX;
+    [self.backgroundView addSubview:self.buttonsStackView];
+        
     // Separator line
     self.separatorView = [[NSView alloc] init];
     self.separatorView.translatesAutoresizingMaskIntoConstraints = NO;
     self.separatorView.wantsLayer = YES;
     self.separatorView.layer.backgroundColor = [NSColor separatorColor].CGColor;
+    [self.backgroundView addSubview:self.separatorView];
     
-    [self addSubview:self.separatorView];
-    
-    // Object Manager button at bottom
-    self.objectManagerButton = [NSButton buttonWithTitle:@"Manage Objects..."
-                                                  target:self
-                                                  action:@selector(showObjectManager:)];
+    // Object Manager button
+    self.objectManagerButton = [NSButton buttonWithTitle:@"⚙️ Manage Objects"
+                                                   target:self
+                                                   action:@selector(showObjectManager:)];
     self.objectManagerButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.objectManagerButton.bezelStyle = NSBezelStyleRounded;
     self.objectManagerButton.controlSize = NSControlSizeSmall;
     self.objectManagerButton.font = [NSFont systemFontOfSize:11];
-    self.objectManagerButton.toolTip = @"Open Object Manager window";
+    [self.backgroundView addSubview:self.objectManagerButton];
     
-    [self addSubview:self.objectManagerButton];
-    
-    // SIDEBAR PATTERN: Width constraint sempre fissa
-    [self.widthAnchor constraintEqualToConstant:self.panelWidth].active = YES;
-    
-    // Layout constraints
+    // CONSTRAINTS AGGIORNATE - NON PIÙ SOVRAPPOSTE
     [NSLayoutConstraint activateConstraints:@[
         // Title
-        [titleLabel.topAnchor constraintEqualToAnchor:self.topAnchor constant:8],
+        [titleLabel.topAnchor constraintEqualToAnchor:self.topAnchor constant:12],
         [titleLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
         [titleLabel.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
-        [clearAllButton.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:8],
-                [clearAllButton.leadingAnchor constraintEqualToAnchor:self.backgroundView.leadingAnchor constant:8],
-                [clearAllButton.trailingAnchor constraintEqualToAnchor:self.backgroundView.trailingAnchor constant:-8],
-        [clearAllButton.heightAnchor constraintEqualToConstant:24],
-        // NEW: Lock toggle
-        [self.lockCreationToggle.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:8],
-        [self.lockCreationToggle.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
-        [self.lockCreationToggle.widthAnchor constraintEqualToConstant:80],
+        
+        // Controls row (Lock + Clear All)
+        [controlsRow.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:8],
+        [controlsRow.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
+        [controlsRow.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
+        [controlsRow.heightAnchor constraintEqualToConstant:24],
+        
+        // Lock button (metà sinistra)
+        [self.lockCreationToggle.leadingAnchor constraintEqualToAnchor:controlsRow.leadingAnchor],
+        [self.lockCreationToggle.centerYAnchor constraintEqualToAnchor:controlsRow.centerYAnchor],
+        [self.lockCreationToggle.widthAnchor constraintEqualToConstant:75],
         [self.lockCreationToggle.heightAnchor constraintEqualToConstant:20],
         
-        // Buttons stack (updated topAnchor)
-        [self.buttonsStackView.topAnchor constraintEqualToAnchor:self.lockCreationToggle.bottomAnchor constant:12],
+        // Clear All button (metà destra)
+        [clearAllButton.trailingAnchor constraintEqualToAnchor:controlsRow.trailingAnchor],
+        [clearAllButton.centerYAnchor constraintEqualToAnchor:controlsRow.centerYAnchor],
+        [clearAllButton.widthAnchor constraintEqualToConstant:75],
+        [clearAllButton.heightAnchor constraintEqualToConstant:20],
+        
+        // Buttons stack
+        [self.buttonsStackView.topAnchor constraintEqualToAnchor:controlsRow.bottomAnchor constant:12],
         [self.buttonsStackView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
         [self.buttonsStackView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
         
-        // Separator line (unchanged)
+        // Separator line
         [self.separatorView.topAnchor constraintEqualToAnchor:self.buttonsStackView.bottomAnchor constant:12],
         [self.separatorView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:16],
         [self.separatorView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-16],
         [self.separatorView.heightAnchor constraintEqualToConstant:0.5],
         
-        // Object Manager button (unchanged)
+        // Object Manager button
         [self.objectManagerButton.topAnchor constraintEqualToAnchor:self.separatorView.bottomAnchor constant:12],
         [self.objectManagerButton.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
         [self.objectManagerButton.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
@@ -177,14 +187,19 @@
     ]];
 }
 
+
 - (void)createObjectButtons {
+    // AGGIORNATO: Includi TUTTI gli oggetti implementati
     NSArray<NSDictionary *> *objectTypes = @[
         @{@"title": @"Horizontal Line", @"type": @(ChartObjectTypeHorizontalLine)},
         @{@"title": @"Trend Line", @"type": @(ChartObjectTypeTrendline)},
         @{@"title": @"Rectangle", @"type": @(ChartObjectTypeRectangle)},
         @{@"title": @"Fibonacci", @"type": @(ChartObjectTypeFibonacci)},
         @{@"title": @"Trailing Fibo", @"type": @(ChartObjectTypeTrailingFibo)},
-        @{@"title": @"Trailing Between", @"type": @(ChartObjectTypeTrailingFiboBetween)}
+        @{@"title": @"Trailing Between", @"type": @(ChartObjectTypeTrailingFiboBetween)},
+        @{@"title": @"Channel", @"type": @(ChartObjectTypeChannel)},        // AGGIUNTO
+        @{@"title": @"Target", @"type": @(ChartObjectTypeTarget)},          // AGGIUNTO
+        @{@"title": @"Circle", @"type": @(ChartObjectTypeCircle)}
     ];
     
     NSMutableArray<NSButton *> *buttons = [[NSMutableArray alloc] init];
@@ -210,7 +225,7 @@
     }
     
     self.objectButtons = [buttons copy];
-    NSLog(@"🎨 ObjectsPanel: Created %lu object buttons with toggle behavior", (unsigned long)buttons.count);
+    NSLog(@"🎨 ObjectsPanel: Created %lu object buttons including Channel and Target", (unsigned long)buttons.count);
 }
 
 - (void)setupInitialState {
@@ -242,26 +257,125 @@
         
         NSLog(@"🔘 ObjectsPanel: Activated %@ (Lock: %@)",
               sender.title, self.isLockModeEnabled ? @"ON" : @"OFF");
-        
     } else {
         // Button pressed OUT - deactivate
         [self clearActiveButton];
         
-        if ([self.delegate respondsToSelector:@selector(objectsPanel:didDeactivateObjectType:)]) {
-            [self.delegate objectsPanel:self didDeactivateObjectType:objectType];
-        }
+      
+        NSLog(@"⭕ ObjectsPanel: Deactivated drawing mode");
+    }
+    
+    // ✅ NUOVO: Refresh manager se è aperto (dopo creazione oggetti)
+    [self refreshObjectManager];
+}
+#pragma mark - ChartObjectManager Integration
+
+- (void)showObjectManager:(NSButton *)sender {
+    NSLog(@"⚙️ ObjectsPanel: Opening Object Manager");
+    
+    // Ottieni riferimenti necessari dal delegate
+    DataHub *dataHub = [DataHub shared];
+    ChartObjectsManager *objectsManager = nil;
+    NSString *currentSymbol = @"UNKNOWN";
+    
+    // Ottieni objectsManager e currentSymbol dal delegate
+    if ([self.delegate respondsToSelector:@selector(objectsManager)]) {
+        objectsManager = [self.delegate performSelector:@selector(objectsManager)];
+    }
+    
+    if ([self.delegate respondsToSelector:@selector(currentSymbol)]) {
+        currentSymbol = [self.delegate performSelector:@selector(currentSymbol)] ?: @"UNKNOWN";
+    }
+    
+    if (!objectsManager) {
+        NSLog(@"❌ ObjectsPanel: No objects manager available");
+        return;
+    }
+    
+    if (!self.objectManagerWindow) {
+        // Crea la finestra manager
+        self.objectManagerWindow = [[ChartObjectManagerWindow alloc]
+                                   initWithObjectsManager:objectsManager
+                                                  dataHub:dataHub
+                                                   symbol:currentSymbol];
         
-        NSLog(@"⚪ ObjectsPanel: Deactivated %@", sender.title);
+        // Configura posizionamento finestra intelligente
+        [self positionManagerWindow];
+        
+        NSLog(@"✅ Created ChartObjectManagerWindow for symbol: %@", currentSymbol);
+    } else {
+        // Aggiorna per il symbol corrente
+        [self.objectManagerWindow updateForSymbol:currentSymbol];
+    }
+    
+    // Mostra la finestra
+    [self.objectManagerWindow makeKeyAndOrderFront:nil];
+    
+    NSLog(@"🪟 ChartObjectManagerWindow opened and brought to front");
+}
+
+- (void)updateManagerForSymbol:(NSString *)symbol {
+    if (self.objectManagerWindow && symbol) {
+        [self.objectManagerWindow updateForSymbol:symbol];
+        NSLog(@"🔄 ObjectsPanel: Updated manager for symbol %@", symbol);
+    } else if (self.objectManagerWindow) {
+        NSLog(@"⚠️ ObjectsPanel: Manager window exists but symbol is nil");
+    } else {
+        NSLog(@"💡 ObjectsPanel: No manager window to update (will create when needed)");
     }
 }
 
-- (void)showObjectManager:(NSButton *)sender {
-    NSLog(@"🎨 ObjectsPanel: Object Manager button clicked");
-    
-    if ([self.delegate respondsToSelector:@selector(objectsPanelDidRequestShowManager:)]) {
-        [self.delegate objectsPanelDidRequestShowManager:self];
+- (void)refreshObjectManager {
+    if (self.objectManagerWindow) {
+        [self.objectManagerWindow refreshContent];
+        NSLog(@"🔄 ObjectsPanel: Refreshed manager content");
+    } else {
+        NSLog(@"💡 ObjectsPanel: No manager window to refresh");
     }
 }
+#pragma mark - Private Helper Methods
+
+- (void)positionManagerWindow {
+    if (!self.objectManagerWindow || !self.window) return;
+    
+    // Ottieni frame del panel corrente in screen coordinates
+    NSRect panelScreenFrame = [self.window convertRectToScreen:self.frame];
+    NSRect managerFrame = self.objectManagerWindow.frame;
+    
+    // Posiziona la finestra manager
+    if (self.isVisible) {
+        // Se il panel è visibile, posiziona a destra
+        managerFrame.origin.x = panelScreenFrame.origin.x + panelScreenFrame.size.width + 10;
+        managerFrame.origin.y = panelScreenFrame.origin.y;
+    } else {
+        // Se il panel è nascosto, posiziona dove sarebbe stato il panel
+        NSRect windowFrame = self.window.frame;
+        managerFrame.origin.x = windowFrame.origin.x + 20; // Margine dal bordo
+        managerFrame.origin.y = windowFrame.origin.y + windowFrame.size.height - managerFrame.size.height - 60; // Sotto la toolbar
+    }
+    
+    // Assicurati che sia visibile sullo schermo
+    NSRect screenFrame = [[NSScreen mainScreen] visibleFrame];
+    
+    // Aggiusta X se esce dal bordo destro
+    if (managerFrame.origin.x + managerFrame.size.width > screenFrame.origin.x + screenFrame.size.width) {
+        managerFrame.origin.x = screenFrame.origin.x + screenFrame.size.width - managerFrame.size.width - 20;
+    }
+    
+    // Aggiusta Y se esce dai bordi
+    if (managerFrame.origin.y + managerFrame.size.height > screenFrame.origin.y + screenFrame.size.height) {
+        managerFrame.origin.y = screenFrame.origin.y + screenFrame.size.height - managerFrame.size.height - 20;
+    }
+    
+    if (managerFrame.origin.y < screenFrame.origin.y) {
+        managerFrame.origin.y = screenFrame.origin.y + 20;
+    }
+    
+    [self.objectManagerWindow setFrame:managerFrame display:NO];
+    
+    NSLog(@"📍 Positioned manager window at: x=%.0f, y=%.0f", managerFrame.origin.x, managerFrame.origin.y);
+}
+
 
 #pragma mark - Public Methods
 
@@ -384,7 +498,7 @@
 - (void)clearAllObjects:(NSButton *)sender {
     NSLog(@"🗑️ ObjectsPanel: Clear All objects requested");
     
-    // Conferma dialog
+    // Conferma dialog (codice esistente)
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"Clear All Objects";
     alert.informativeText = @"Are you sure you want to delete all chart objects? This action cannot be undone.";
@@ -397,6 +511,9 @@
         // User confirmed - notify delegate
         if ([self.delegate respondsToSelector:@selector(objectsPanelDidRequestClearAll:)]) {
             [self.delegate objectsPanelDidRequestClearAll:self];
+            
+            // ✅ NUOVO: Refresh manager dopo clear all
+            [self refreshObjectManager];
         }
     }
 }
@@ -419,6 +536,16 @@
         NSLog(@"✅ ObjectsPanel: Object completed - button cleared (no lock)");
     } else {
         NSLog(@"🔒 ObjectsPanel: Object completed - button stays active (lock mode)");
+    }
+}
+
+#pragma mark - Cleanup
+
+- (void)dealloc {
+    // Chiudi la finestra manager quando il panel viene deallocato
+    if (self.objectManagerWindow) {
+        [self.objectManagerWindow close];
+        self.objectManagerWindow = nil;
     }
 }
 

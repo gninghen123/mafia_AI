@@ -86,6 +86,12 @@ extern NSString *const DataHubDataLoadedNotification;
     self.symbolTextField.delegate = self;
     [self.contentView addSubview:self.symbolTextField];
     
+    self.objectsVisibilityToggle = [NSButton buttonWithTitle:@"👁️"
+                                                     target:self
+                                                     action:@selector(toggleAllObjectsVisibility:)];
+    self.objectsVisibilityToggle.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.contentView addSubview:self.objectsVisibilityToggle];
+
     // Timeframe segmented control (come nello XIB)
     self.timeframeSegmented = [[NSSegmentedControl alloc] init];
     self.timeframeSegmented.translatesAutoresizingMaskIntoConstraints = NO;
@@ -177,9 +183,14 @@ extern NSString *const DataHubDataLoadedNotification;
         [self.symbolTextField.widthAnchor constraintEqualToConstant:100],
         [self.symbolTextField.heightAnchor constraintEqualToConstant:21],
         
-        // Timeframe segmented control - INVARIATO (relativo al symbol field)
+        [self.objectsVisibilityToggle.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
+        [self.objectsVisibilityToggle.leadingAnchor constraintEqualToAnchor:self.symbolTextField.trailingAnchor constant:8],
+        [self.objectsVisibilityToggle.widthAnchor constraintEqualToConstant:32],
+        [self.objectsVisibilityToggle.heightAnchor constraintEqualToConstant:21],
+        
+        // Timeframe segments (spostati per fare spazio)
+        [self.timeframeSegmented.leadingAnchor constraintEqualToAnchor:self.objectsVisibilityToggle.trailingAnchor constant:8],
         [self.timeframeSegmented.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
-        [self.timeframeSegmented.leadingAnchor constraintEqualToAnchor:self.symbolTextField.trailingAnchor constant:24],
         
         // Bars count field - INVARIATO (relativo al timeframe)
         [self.barsCountTextField.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
@@ -589,9 +600,13 @@ extern NSString *const DataHubDataLoadedNotification;
     }];
     
     if (self.objectsManager) {
+
         self.objectsManager.currentSymbol = symbol;
         [self.objectsManager loadFromDataHub]; // Carica oggetti salvati per questo simbolo
     }
+    
+    [self.objectsPanel updateManagerForSymbol:symbol];
+
 }
 
 - (void)setTimeframe:(ChartTimeframe)timeframe {
@@ -840,6 +855,69 @@ extern NSString *const DataHubDataLoadedNotification;
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+- (void)toggleAllObjectsVisibility:(NSButton *)sender {
+    BOOL showObjects = (sender.state == NSControlStateValueOn);
+    
+    NSLog(@"🎨 Toggling objects visibility: %@", showObjects ? @"SHOW" : @"HIDE");
+    
+    // ✅ USA METODO PUBBLICO del renderer (più pulito)
+    for (ChartPanelView *panel in self.chartPanels) {
+        if (panel.objectRenderer) {
+            [panel.objectRenderer setObjectsVisible:showObjects];
+            
+            NSLog(@"🎯 Panel %@: objects visible = %@",
+                  panel.panelType, showObjects ? @"YES" : @"NO");
+        }
+    }
+    
+    // ✅ Feedback visivo sul button
+    sender.title = showObjects ? @"👁️" : @"🚫";
+    
+    // ✅ Optional: Feedback temporaneo all'utente
+    if (!showObjects) {
+        // Mostra briefly che gli oggetti sono nascosti
+        [self showTemporaryMessage:@"Objects hidden - focus on price action"];
+    }
+    
+    NSLog(@"✅ Objects visibility toggle completed: %@", showObjects ? @"VISIBLE" : @"HIDDEN");
+}
+
+- (void)showTemporaryMessage:(NSString *)message {
+    // Crea label temporanea che scompare dopo 2 secondi
+    NSTextField *tempLabel = [[NSTextField alloc] init];
+    tempLabel.stringValue = message;
+    tempLabel.editable = NO;
+    tempLabel.bordered = NO;
+    tempLabel.backgroundColor = [[NSColor controlBackgroundColor] colorWithAlphaComponent:0.9];
+    tempLabel.textColor = [NSColor secondaryLabelColor];
+    tempLabel.font = [NSFont systemFontOfSize:11];
+    tempLabel.alignment = NSTextAlignmentCenter;
+    tempLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    [self.view addSubview:tempLabel];
+    
+    // Posiziona al centro del chart
+    [NSLayoutConstraint activateConstraints:@[
+        [tempLabel.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [tempLabel.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:60],
+        [tempLabel.heightAnchor constraintEqualToConstant:20]
+    ]];
+    
+    // Scompare dopo 2 secondi
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [tempLabel removeFromSuperview];
+    });
+}
+
+- (BOOL)areObjectsVisible {
+    return (self.objectsVisibilityToggle.state == NSControlStateValueOn);
+}
+
+- (void)setObjectsVisible:(BOOL)visible {
+    self.objectsVisibilityToggle.state = visible ? NSControlStateValueOn : NSControlStateValueOff;
+    [self toggleAllObjectsVisibility:self.objectsVisibilityToggle];
 }
 
 @end

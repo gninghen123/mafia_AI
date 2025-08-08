@@ -173,7 +173,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)consolidateCurrentCPAndPrepareNext;
 - (void)notifyObjectCreationCompleted;
 
-
+- (void)setObjectsVisible:(BOOL)visible;
+- (BOOL)areObjectsVisible;
 @end
 
 NS_ASSUME_NONNULL_END

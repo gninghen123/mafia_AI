@@ -39,8 +39,12 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
+
+@class ChartObjectManagerWindow;
+
 @interface ObjectsPanel : NSView
 
+@property (nonatomic, strong) ChartObjectManagerWindow *objectManagerWindow;
 
 @property (nonatomic, assign) BOOL isLockModeEnabled;
 @property (nonatomic, strong) NSButton *currentActiveButton;
@@ -88,7 +92,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)clearAllObjects;
 
-
+- (void)updateManagerForSymbol:(NSString *)symbol;
+- (void)refreshObjectManager;
 
 @end
 

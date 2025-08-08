@@ -91,7 +91,10 @@
     ChartObjectModel *object = [ChartObjectModel objectWithType:type name:uniqueName];
     [layer addObject:object];
     
-    NSLog(@"✅ ChartObjectsManager: Created object '%@' in layer '%@'", uniqueName, layer.name);
+    // ✅ AUTO-SAVE dopo creazione
+    [self saveToDataHub];
+    
+    NSLog(@"✅ ChartObjectsManager: Created object '%@' in layer '%@' and saved", uniqueName, layer.name);
     return object;
 }
 
@@ -111,7 +114,10 @@
         [self clearSelection];
     }
     
-    NSLog(@"🗑️ ChartObjectsManager: Deleted object '%@'", object.name);
+    // ✅ AUTO-SAVE dopo delete
+    [self saveToDataHub];
+    
+    NSLog(@"🗑️ ChartObjectsManager: Deleted object '%@' and saved", object.name);
 }
 
 - (void)moveObject:(ChartObjectModel *)object toLayer:(ChartLayerModel *)targetLayer {
@@ -222,10 +228,15 @@
 
 #pragma mark - Persistence
 
+
 - (void)loadFromDataHub {
+    NSLog(@"📥 ChartObjectsManager: Starting load for symbol %@", self.currentSymbol);
+    
     DataHub *dataHub = [DataHub shared];
     [dataHub loadChartObjectsForSymbol:self.currentSymbol completion:^(NSArray<ChartLayerModel *> *layers) {
         dispatch_async(dispatch_get_main_queue(), ^{
+            NSLog(@"📥 ChartObjectsManager: Received %lu layers from DataHub", (unsigned long)layers.count);
+            
             [self.layers removeAllObjects];
             [self.layers addObjectsFromArray:layers];
             
@@ -234,16 +245,29 @@
                 self.activeLayer = layers.firstObject;
             }
             
-            NSLog(@"📥 ChartObjectsManager: Loaded %lu layers for symbol %@", (unsigned long)layers.count, self.currentSymbol);
+            // ✅ DEBUG: Log dei layer caricati
+            for (ChartLayerModel *layer in layers) {
+                NSLog(@"📋 Loaded layer '%@' with %lu objects", layer.name, (unsigned long)layer.objects.count);
+            }
+            
+            NSLog(@"✅ ChartObjectsManager: Load completed for symbol %@", self.currentSymbol);
         });
     }];
 }
 
 - (void)saveToDataHub {
+    NSLog(@"💾 ChartObjectsManager: Starting save for symbol %@ with %lu layers",
+          self.currentSymbol, (unsigned long)self.layers.count);
+    
     DataHub *dataHub = [DataHub shared];
     [dataHub saveChartObjects:self.layers forSymbol:self.currentSymbol];
     
-    NSLog(@"💾 ChartObjectsManager: Saved %lu layers for symbol %@", (unsigned long)self.layers.count, self.currentSymbol);
+    // ✅ DEBUG: Log dei layer salvati
+    for (ChartLayerModel *layer in self.layers) {
+        NSLog(@"💾 Saved layer '%@' with %lu objects", layer.name, (unsigned long)layer.objects.count);
+    }
+    
+    NSLog(@"✅ ChartObjectsManager: Save completed for symbol %@", self.currentSymbol);
 }
 
 #pragma mark - Private Helpers
@@ -310,8 +334,16 @@
     // Clear selection
     [self clearSelection];
     
-    NSLog(@"🗑️ ChartObjectsManager: Cleared all objects from all layers");
+    // ✅ AUTO-SAVE dopo clear all
+    [self saveToDataHub];
+    
+    NSLog(@"🗑️ ChartObjectsManager: Cleared all objects from all layers and saved");
 }
 
-
+- (void)invalidateAllRenderers {
+    // Invia notifica per far ridisegnare tutti i chart che usano questo manager
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"ChartObjectsManagerDidChangeVisibility"
+                                                        object:self
+                                                      userInfo:@{@"symbol": self.currentSymbol}];
+}
 @end

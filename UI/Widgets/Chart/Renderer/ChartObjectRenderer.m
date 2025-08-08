@@ -1216,22 +1216,23 @@
 }
 
 - (void)createEditingObjectFromTempCPs {
-    // Create normal ChartObjectModel from temp CPs
-    ChartLayerModel *tempLayer = [self.objectsManager createLayerWithName:@"__temp__"];
-    ChartObjectModel *tempObject = [self.objectsManager createObjectOfType:self.creationObjectType
-                                                                    inLayer:tempLayer];
+    // ✅ PULITO: Crea solo oggetto in memoria, nessun layer temp!
+    ChartObjectModel *tempObject = [ChartObjectModel objectWithType:self.creationObjectType
+                                                                name:@"Preview"];
     
     // Add all temp control points
     for (ControlPointModel *cp in self.tempControlPoints) {
         [tempObject addControlPoint:cp];
     }
     
-    // Set as editing object (will be drawn on editing layer)
+    // Set as editing object - verrà disegnato nel CALayer editing
     self.editingObject = tempObject;
     [self invalidateEditingLayer];
     
-    NSLog(@"🎯 Created editing object with %lu CPs", (unsigned long)tempObject.controlPoints.count);
+    NSLog(@"🎯 Created preview object with %lu CPs (no model layer needed)",
+          (unsigned long)tempObject.controlPoints.count);
 }
+
 
 
 
@@ -1391,25 +1392,26 @@
 - (void)finishCreatingObject {
     if (!self.isInCreationMode || self.tempControlPoints.count == 0) return;
     
-    // Create final object in active layer
+    // Create final object in active layer del MODEL
     ChartLayerModel *activeLayer = self.objectsManager.activeLayer;
     if (!activeLayer) {
         activeLayer = [self.objectsManager createLayerWithName:@"Drawing"];
     }
     
+    // ✅ QUESTO è l'oggetto REALE che va nel model
     ChartObjectModel *finalObject = [self.objectsManager createObjectOfType:self.creationObjectType
                                                                      inLayer:activeLayer];
     
-    // Add all control points
+    // Copy control points from temp to final
     for (ControlPointModel *cp in self.tempControlPoints) {
         [finalObject addControlPoint:cp];
     }
     
-    // Clean up
-    [self cancelCreatingObject];
-    [self invalidateObjectsLayer]; // Redraw with new object
+    // ✅ PULITO: Nessun cleanup layer temp - non esistono!
+    [self cancelCreatingObject];  // Pulisce solo editing state
+    [self invalidateObjectsLayer]; // Ridisegna con oggetto reale
     
-    NSLog(@"✅ ChartObjectRenderer: Finished creating object %@", finalObject.name);
+    NSLog(@"✅ Created final object '%@' in layer '%@'", finalObject.name, activeLayer.name);
 }
 
 // 4. Modificare cancelCreatingObject per clear currentCPSelected
@@ -1417,43 +1419,47 @@
     self.isInCreationMode = NO;
     self.creationObjectType = 0;
     self.currentMousePosition = NSZeroPoint;
-    
-    // NUOVO: Clear currentCPSelected
     self.currentCPSelected = nil;
     
-    [self.tempControlPoints removeAllObjects];
-    [self invalidateEditingLayer];
+    // ✅ PULITO: Elimina solo l'oggetto preview dalla memoria
+    self.editingObject = nil;
     
-    NSLog(@"❌ ChartObjectRenderer: Cancelled object creation");
+    [self.tempControlPoints removeAllObjects];
+    [self invalidateEditingLayer];  // Cancella preview dal CALayer
+    
+    NSLog(@"❌ Cancelled object creation - cleaned preview from memory");
 }
 
 
+// ✅ STESSO PRINCIPIO per editing oggetti esistenti
 - (void)startEditingObject:(ChartObjectModel *)object {
     [self stopEditing]; // Stop any current editing
     
+    // ✅ SEMPLICE: L'oggetto reale diventa l'editingObject
     self.editingObject = object;
     [self.objectsManager selectObject:object];
     
-    // Move object from static layer to editing layer
+    // Move object visualization from static layer to editing layer
     [self invalidateObjectsLayer];  // Redraw without this object
     [self invalidateEditingLayer];  // Draw object in editing layer
     
-    NSLog(@"✏️ ChartObjectRenderer: Started editing object %@", object.name);
+    NSLog(@"✏️ Started editing object '%@' - moved to editing layer", object.name);
 }
 
 - (void)stopEditing {
     if (!self.editingObject) return;
     
     ChartObjectModel *object = self.editingObject;
-    self.editingObject = nil;
     
+    // ✅ SEMPLICE: Rimetti l'oggetto nel rendering normale
+    self.editingObject = nil;
     [self.objectsManager clearSelection];
     
-    // Move object back to static layer
+    // Move object visualization back to static layer
     [self invalidateObjectsLayer];  // Redraw with this object
     [self invalidateEditingLayer];  // Clear editing layer
     
-    NSLog(@"✅ ChartObjectRenderer: Stopped editing object %@", object.name);
+    NSLog(@"✅ Stopped editing object '%@' - moved back to static layer", object.name);
 }
 
 #pragma mark - Hit Testing

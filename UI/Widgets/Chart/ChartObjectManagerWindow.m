@@ -7,6 +7,7 @@
 
 #import "ChartObjectManagerWindow.h"
 #import "DataHub+ChartObjects.h"
+#import "QuartzCore/QuartzCore.h"
 
 @interface ChartObjectManagerWindow ()
 @property (nonatomic, strong) NSView *contentContainer;
@@ -271,34 +272,82 @@
         cellView = [[NSTableCellView alloc] init];
         cellView.identifier = tableColumn.identifier;
         
-        NSTextField *textField = [[NSTextField alloc] init];
-        textField.translatesAutoresizingMaskIntoConstraints = NO;
-        textField.editable = NO;
-        textField.bordered = NO;
-        textField.backgroundColor = [NSColor clearColor];
-        [cellView addSubview:textField];
-        cellView.textField = textField;
-        
-        [NSLayoutConstraint activateConstraints:@[
-            [textField.leadingAnchor constraintEqualToAnchor:cellView.leadingAnchor constant:4],
-            [textField.trailingAnchor constraintEqualToAnchor:cellView.trailingAnchor constant:-4],
-            [textField.centerYAnchor constraintEqualToAnchor:cellView.centerYAnchor]
-        ]];
+        // ✅ CLICKABLE BUTTON per visibility toggle (solo per layer)
+        if ([item isKindOfClass:[ChartLayerModel class]]) {
+            // Crea button per toggle visibilità layer
+            NSButton *visibilityButton = [NSButton buttonWithTitle:@"👁️"
+                                                            target:self
+                                                            action:@selector(toggleLayerVisibilityAction:)];
+            visibilityButton.translatesAutoresizingMaskIntoConstraints = NO;
+            visibilityButton.bezelStyle = NSBezelStyleRounded;
+            visibilityButton.buttonType = NSButtonTypeMomentaryPushIn;
+            visibilityButton.controlSize = NSControlSizeSmall;
+            visibilityButton.font = [NSFont systemFontOfSize:11];
+            [cellView addSubview:visibilityButton];
+            
+            // TextField per nome layer
+            NSTextField *textField = [[NSTextField alloc] init];
+            textField.translatesAutoresizingMaskIntoConstraints = NO;
+            textField.editable = NO;
+            textField.bordered = NO;
+            textField.backgroundColor = [NSColor clearColor];
+            textField.font = [NSFont boldSystemFontOfSize:12];
+            [cellView addSubview:textField];
+            cellView.textField = textField;
+            
+            // Constraints
+            [NSLayoutConstraint activateConstraints:@[
+                [visibilityButton.leadingAnchor constraintEqualToAnchor:cellView.leadingAnchor constant:4],
+                [visibilityButton.centerYAnchor constraintEqualToAnchor:cellView.centerYAnchor],
+                [visibilityButton.widthAnchor constraintEqualToConstant:24],
+                
+                [textField.leadingAnchor constraintEqualToAnchor:visibilityButton.trailingAnchor constant:8],
+                [textField.trailingAnchor constraintEqualToAnchor:cellView.trailingAnchor constant:-4],
+                [textField.centerYAnchor constraintEqualToAnchor:cellView.centerYAnchor]
+            ]];
+        } else {
+            // ✅ OGGETTI: Solo text field (no button toggle)
+            NSTextField *textField = [[NSTextField alloc] init];
+            textField.translatesAutoresizingMaskIntoConstraints = NO;
+            textField.editable = NO;
+            textField.bordered = NO;
+            textField.backgroundColor = [NSColor clearColor];
+            textField.font = [NSFont systemFontOfSize:11];
+            [cellView addSubview:textField];
+            cellView.textField = textField;
+            
+            [NSLayoutConstraint activateConstraints:@[
+                [textField.leadingAnchor constraintEqualToAnchor:cellView.leadingAnchor constant:24], // Indent for hierarchy
+                [textField.trailingAnchor constraintEqualToAnchor:cellView.trailingAnchor constant:-4],
+                [textField.centerYAnchor constraintEqualToAnchor:cellView.centerYAnchor]
+            ]];
+        }
     }
     
+    // Update content based on item type
     if ([item isKindOfClass:[ChartLayerModel class]]) {
         ChartLayerModel *layer = (ChartLayerModel *)item;
-        NSString *visibilityIcon = layer.isVisible ? @"👁️" : @"🚫";
-        cellView.textField.stringValue = [NSString stringWithFormat:@"%@ %@ (%lu)",
-                                         visibilityIcon, layer.name, (unsigned long)layer.objects.count];
-        cellView.textField.font = [NSFont boldSystemFontOfSize:12];
+        
+        // Update visibility button
+        NSButton *visibilityButton = cellView.subviews.firstObject;
+        if ([visibilityButton isKindOfClass:[NSButton class]]) {
+            visibilityButton.title = layer.isVisible ? @"👁️" : @"🚫";
+            // ✅ NO representedObject needed - usiamo row lookup
+        }
+        
+        // Update text
+        cellView.textField.stringValue = [NSString stringWithFormat:@"%@ (%lu objects)",
+                                         layer.name, (unsigned long)layer.objects.count];
+        
     } else if ([item isKindOfClass:[ChartObjectModel class]]) {
         ChartObjectModel *object = (ChartObjectModel *)item;
         NSString *visibilityIcon = object.isVisible ? @"👁️" : @"🚫";
         NSString *typeIcon = [self iconForObjectType:object.type];
+        
+        // ✅ OGGETTI: Solo info display (no toggle)
         cellView.textField.stringValue = [NSString stringWithFormat:@"  %@ %@ %@",
                                          visibilityIcon, typeIcon, object.name];
-        cellView.textField.font = [NSFont systemFontOfSize:11];
+        cellView.textField.textColor = object.isVisible ? [NSColor labelColor] : [NSColor secondaryLabelColor];
     }
     
     return cellView;
@@ -357,17 +406,28 @@
         ]];
     }
     
+    // ✅ OGGETTI: Solo display info (eredita visibilità dal layer)
     if ([tableColumn.identifier isEqualToString:@"NameColumn"]) {
         cellView.textField.stringValue = object.name;
+        cellView.textField.textColor = self.selectedLayer.isVisible && object.isVisible ?
+                                      [NSColor labelColor] : [NSColor secondaryLabelColor];
+        
     } else if ([tableColumn.identifier isEqualToString:@"TypeColumn"]) {
         NSString *typeIcon = [self iconForObjectType:object.type];
         cellView.textField.stringValue = [NSString stringWithFormat:@"%@ %@", typeIcon, [self nameForObjectType:object.type]];
+        cellView.textField.textColor = self.selectedLayer.isVisible && object.isVisible ?
+                                      [NSColor labelColor] : [NSColor secondaryLabelColor];
+        
     } else if ([tableColumn.identifier isEqualToString:@"VisibleColumn"]) {
-        cellView.textField.stringValue = object.isVisible ? @"👁️" : @"🚫";
+        // ✅ INFO: Mostra stato ma no toggle
+        BOOL effectivelyVisible = self.selectedLayer.isVisible && object.isVisible;
+        cellView.textField.stringValue = effectivelyVisible ? @"👁️" : @"🚫";
+        cellView.textField.textColor = effectivelyVisible ? [NSColor labelColor] : [NSColor secondaryLabelColor];
     }
     
     return cellView;
 }
+
 
 - (void)tableViewSelectionDidChange:(NSNotification *)notification {
     NSInteger selectedRow = self.objectsTableView.selectedRow;
@@ -410,5 +470,117 @@
         default: return @"Unknown";
     }
 }
+
+
+#pragma mark - Layer Visibility Toggle Actions
+
+- (void)toggleLayerVisibilityAction:(NSButton *)sender {
+    // ✅ TROVA il layer dal row index della cell
+    NSInteger row = [self.layersOutlineView rowForView:sender];
+    if (row >= 0) {
+        id item = [self.layersOutlineView itemAtRow:row];
+        if ([item isKindOfClass:[ChartLayerModel class]]) {
+            ChartLayerModel *layer = (ChartLayerModel *)item;
+            NSLog(@"🎯 Toggle layer visibility: %@", layer.name);
+            [self toggleLayerVisibility:layer];
+        }
+    }
+}
+
+- (void)toggleLayerVisibility:(ChartLayerModel *)layer {
+    if (!layer) return;
+    
+    // Toggle visibility
+    layer.isVisible = !layer.isVisible;
+    layer.lastModified = [NSDate date];
+    
+    NSLog(@"🎯 Layer '%@' visibility: %@", layer.name, layer.isVisible ? @"VISIBLE" : @"HIDDEN");
+    
+    // Save changes to DataHub
+    [self saveChangesToDataHub];
+    
+    // Update UI
+    [self refreshContent];
+    
+    // Notify chart to redraw
+    [self notifyChartToRedraw];
+    
+    // ✅ VISUAL FEEDBACK
+    [self showLayerToggleFeedback:layer];
+}
+
+- (void)showLayerToggleFeedback:(ChartLayerModel *)layer {
+    // Brief flash animation on the button
+    NSInteger layerIndex = [self.objectsManager.layers indexOfObject:layer];
+    if (layerIndex != NSNotFound) {
+        NSTableCellView *cellView = [self.layersOutlineView viewAtColumn:0 row:layerIndex makeIfNecessary:NO];
+        if (cellView) {
+            NSButton *button = cellView.subviews.firstObject;
+            if ([button isKindOfClass:[NSButton class]]) {
+                
+                // Quick scale animation
+                CABasicAnimation *scaleAnimation = [CABasicAnimation animationWithKeyPath:@"transform.scale"];
+                scaleAnimation.fromValue = @1.0;
+                scaleAnimation.toValue = @1.3;
+                scaleAnimation.duration = 0.1;
+                scaleAnimation.autoreverses = YES;
+                [button.layer addAnimation:scaleAnimation forKey:@"toggleFeedback"];
+            }
+        }
+    }
+}
+
+#pragma mark - Helper Methods
+
+
+- (void)saveChangesToDataHub {
+    // ✅ FORZA SAVE del manager
+    if (self.objectsManager) {
+        [self.objectsManager saveToDataHub];
+        NSLog(@"💾 ChartObjectManagerWindow: Forced save to DataHub via objectsManager");
+    } else {
+        NSLog(@"❌ ChartObjectManagerWindow: No objectsManager to save with");
+    }
+}
+
+
+- (void)notifyChartToRedraw {
+    // ✅ METODO DIRETTO: Trova il ChartWidget e forza redraw
+    NSWindow *window = self.parentWindow;
+    if (!window) {
+        // Cerca nelle finestre aperte
+        for (NSWindow *win in [NSApp windows]) {
+            if ([win.windowController.contentViewController isKindOfClass:NSClassFromString(@"ChartWidget")]) {
+                window = win;
+                break;
+            }
+        }
+    }
+    
+    // Alternativa: usa NotificationCenter con nome specifico
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"ChartObjectsVisibilityChanged"
+                                                        object:self
+                                                      userInfo:@{
+                                                          @"symbol": self.currentSymbol ?: @"",
+                                                          @"action": @"layerVisibilityToggled"
+                                                      }];
+    
+    // ✅ METODO DIRETTO via objectsManager: Più affidabile
+    if (self.objectsManager) {
+        // Trova il ChartWidget attraverso le associazioni
+        // (assumendo che objectsManager sia collegato al ChartWidget)
+        NSLog(@"📡 Forcing direct chart redraw through objectsManager");
+        
+        // Trigger invalidation per tutti i renderer
+        // NOTA: Aggiungi questo metodo al ChartObjectsManager
+        if ([self.objectsManager respondsToSelector:@selector(invalidateAllRenderers)]) {
+            [self.objectsManager performSelector:@selector(invalidateAllRenderers)];
+        }
+    }
+    
+    NSLog(@"📡 Sent chart redraw notification and direct invalidation");
+}
+
+
 
 @end

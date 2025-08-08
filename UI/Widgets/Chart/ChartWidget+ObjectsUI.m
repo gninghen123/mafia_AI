@@ -102,6 +102,61 @@ static const void *kSplitViewLeadingConstraintKey = &kSplitViewLeadingConstraint
     self.objectsPanel.delegate = self;
     
     [self.contentView addSubview:self.objectsPanel];
+    
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                                selector:@selector(chartObjectsVisibilityChanged:)
+                                                    name:@"ChartObjectsVisibilityChanged"
+                                                  object:nil];
+       
+       [[NSNotificationCenter defaultCenter] addObserver:self
+                                                selector:@selector(chartObjectsManagerVisibilityChanged:)
+                                                    name:@"ChartObjectsManagerDidChangeVisibility"
+                                                  object:nil];
+}
+
+
+- (void)chartObjectsVisibilityChanged:(NSNotification *)notification {
+    NSString *symbol = notification.userInfo[@"symbol"];
+    
+    // Verifica che sia per il symbol corrente
+    if (symbol && [symbol isEqualToString:self.currentSymbol]) {
+        NSLog(@"🔄 ChartWidget: Redrawing chart for visibility change on %@", symbol);
+        
+        // ✅ FORZA REDRAW di tutti i panel
+        for (ChartPanelView *panel in self.chartPanels) {
+            if (panel.objectRenderer) {
+                [panel.objectRenderer invalidateObjectsLayer];
+                [panel.objectRenderer invalidateEditingLayer];
+            }
+        }
+    }
+}
+
+- (void)chartObjectsManagerVisibilityChanged:(NSNotification *)notification {
+    ChartObjectsManager *manager = notification.object;
+    
+    // Verifica che sia il nostro manager
+    if (manager == self.objectsManager) {
+        NSLog(@"🔄 ChartWidget: Manager visibility changed - forcing redraw");
+        
+        // ✅ FORZA REDRAW IMMEDIATO
+        [self forceChartRedraw];
+    }
+}
+
+- (void)forceChartRedraw {
+    // Metodo helper per forzare redraw completo
+    for (ChartPanelView *panel in self.chartPanels) {
+        if (panel.objectRenderer) {
+            [panel.objectRenderer invalidateObjectsLayer];
+            [panel.objectRenderer invalidateEditingLayer];
+            
+            // ✅ FORZA anche redraw del panel view stesso
+            [panel setNeedsDisplay:YES];
+        }
+    }
+    
+    NSLog(@"🎨 Forced complete chart redraw");
 }
 
 - (void)setupObjectsUIConstraints {
@@ -330,6 +385,10 @@ static const void *kSplitViewLeadingConstraintKey = &kSplitViewLeadingConstraint
         
         NSLog(@"✅ ChartWidget: All objects cleared");
     }
+}
+
+- (void)dealloc {
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 @end

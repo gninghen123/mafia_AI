@@ -11,7 +11,8 @@
 #import "ChartPanelView.h"
 #import "ChartWidget+ObjectsUI.h"
 #import "ChartObjectModels.h"
-
+#import "ChartObjectManagerWindow.h"
+#import "ChartWidget+ObjectsUI.h"
 
 // Define constants locally instead of importing
 static NSString *const kWidgetChainUpdateNotification = @"WidgetChainUpdateNotification";
@@ -563,6 +564,7 @@ extern NSString *const DataHubDataLoadedNotification;
 
 #pragma mark - Public Methods
 
+
 - (void)loadSymbol:(NSString *)symbol {
     if (!symbol || symbol.length == 0) return;
     BOOL sameSymbol = NO;
@@ -599,14 +601,38 @@ extern NSString *const DataHubDataLoadedNotification;
         });
     }];
     
+    // ✅ OGGETTI: Aggiorna manager per nuovo symbol e forza load
     if (self.objectsManager) {
-
         self.objectsManager.currentSymbol = symbol;
-        [self.objectsManager loadFromDataHub]; // Carica oggetti salvati per questo simbolo
+        [self.objectsManager loadFromDataHub]; // ✅ Carica oggetti salvati
+        
+        NSLog(@"🔄 ChartWidget: Loading objects for symbol %@", symbol);
+        
+        // ✅ DOPO LOAD: Aggiorna manager window se aperto
+        if (self.objectsPanel && self.objectsPanel.objectManagerWindow) {
+            [self.objectsPanel.objectManagerWindow updateForSymbol:symbol];
+        }
+        
+        // ✅ FORZA REDRAW dopo load
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self forceChartRedraw];
+        });
+    }
+}
+
+- (void)forceChartRedraw {
+    // Metodo helper per forzare redraw completo
+    for (ChartPanelView *panel in self.chartPanels) {
+        if (panel.objectRenderer) {
+            [panel.objectRenderer invalidateObjectsLayer];
+            [panel.objectRenderer invalidateEditingLayer];
+            
+            // ✅ FORZA anche redraw del panel view stesso
+            [panel setNeedsDisplay:YES];
+        }
     }
     
-    [self.objectsPanel updateManagerForSymbol:symbol];
-
+    NSLog(@"🎨 Forced complete chart redraw");
 }
 
 - (void)setTimeframe:(ChartTimeframe)timeframe {

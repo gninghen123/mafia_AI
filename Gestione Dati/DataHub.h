@@ -221,10 +221,6 @@ typedef NS_ENUM(NSInteger, ModelStatus) {
 - (void)removeTag:(NSString *)tag fromSymbol:(Symbol *)symbol;
 - (NSArray<NSString *> *)getAllTags;
 - (NSArray<Symbol *> *)getSymbolsWithTag:(NSString *)tag;
-// MARK: - Symbol Tracking
-- (void)trackExplicitSymbolInteraction:(NSString *)symbolName context:(NSString *)context;
-- (void)trackExplicitSymbolInteractions:(NSArray<NSString *> *)symbols context:(NSString *)context;
-
 
 
 // MARK: - Database Reset Methods
@@ -233,6 +229,8 @@ typedef NS_ENUM(NSInteger, ModelStatus) {
 - (void)resetAlertDatabase:(void (^)(BOOL success))completion;
 - (void)resetConnectionDatabase:(void (^)(BOOL success))completion;
 - (void)resetAllDatabases:(void (^)(BOOL success))completion;
+
+- (void)addSymbols:(NSArray<NSString *> *)symbols toWatchlistModel:(WatchlistModel *)watchlistModel;
 
 
 @end

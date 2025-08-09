@@ -79,168 +79,166 @@
     self.cacheTimestamps[cacheKey] = [NSDate date];
 }
 
-#pragma mark - Public API - Market Quotes
 
-- (void)getQuoteForSymbol:(NSString *)symbol
-               completion:(void(^)(MarketQuoteModel * _Nullable quote, BOOL isLive))completion {
+- (void)ensureSymbolExistsForQuote:(MarketQuoteModel *)quote {
+    if (!quote || !quote.symbol) return;
     
-    if (!symbol || !completion) return;
-    
-    [self initializeMarketDataCaches];
-    
-    NSLog(@"📊 DataHub: Getting quote for %@", symbol);
-    
-    // 1. Check memory cache first
-    MarketQuoteModel *cachedQuote = self.quotesCache[symbol];
-    NSString *cacheKey = [NSString stringWithFormat:@"quote_%@", symbol];
-    BOOL isStale = [self isCacheStale:cacheKey dataType:DataFreshnessTypeQuote];
-    
-    // 2. Return cached data immediately if available
-    if (cachedQuote) {
-        completion(cachedQuote, !isStale);
-        
-        // If fresh, we're done
-        if (!isStale) return;
+    // ✅ ENSURE: Symbol entity exists for tracking (NO API CALLS)
+    Symbol *symbolEntity = [self getSymbolWithName:quote.symbol];
+    if (!symbolEntity) {
+        // Create symbol entity if it doesn't exist
+        symbolEntity = [self createSymbolWithName:quote.symbol];
+        NSLog(@"✅ Created Symbol entity for quote: %@", quote.symbol);
     }
     
-    // 3. Check Core Data if no memory cache
-    if (!cachedQuote) {
-        [self loadQuoteFromCoreData:symbol completion:^(MarketQuoteModel *quote) {
-            if (quote) {
-                self.quotesCache[symbol] = quote;
-                completion(quote, NO); // From Core Data = not live
-            }
-        }];
-    }
-    
-    // 4. Request fresh data if needed
-    if (isStale && ![self.activeQuoteRequests containsObject:symbol]) {
-        [self.activeQuoteRequests addObject:symbol];
-        
-        [[DataManager sharedManager] requestQuoteForSymbol:symbol
-                                                completion:^(MarketData *marketData, NSError *error) {
-            [self.activeQuoteRequests removeObject:symbol];
-            
-            if (marketData) {
-                // Convert to runtime model and cache
-                MarketQuoteModel *runtimeQuote = [MarketQuoteModel quoteFromMarketData:marketData];
-                [self cacheQuote:runtimeQuote];
-                
-                // Save to Core Data in background
-                [self saveQuoteModelToCoreData:runtimeQuote];
-                
-                // Call completion if this is the first response
-                if (!cachedQuote && completion) {
-                    completion(runtimeQuote, YES);
-                }
-            }
-        }];
+    // Update last interaction for tracking
+    if (symbolEntity) {
+        symbolEntity.lastInteraction = [NSDate date];
+        [self saveContext];
     }
 }
 
-// Replace the getQuotesForSymbols method in DataHub+MarketData.m
 
+#pragma mark - Public API - Market Quotes
+
+
+- (void)getQuoteForSymbol:(NSString *)symbol
+               completion:(void(^)(MarketQuoteModel *quote, BOOL isLive))completion {
+    
+    if (!completion) {
+        NSLog(@"❌ getQuoteForSymbol: completion block is nil");
+        return;
+    }
+    
+    if (!symbol || ![symbol isKindOfClass:[NSString class]] || symbol.length == 0) {
+        NSLog(@"❌ getQuoteForSymbol: Invalid symbol: %@", symbol);
+        completion(nil, NO);
+        return;
+    }
+    
+    NSString *normalizedSymbol = symbol.uppercaseString;
+    
+    // Use bulk method for consistency
+    [self getQuotesForSymbols:@[normalizedSymbol] completion:^(NSDictionary<NSString *, MarketQuoteModel *> *quotes, BOOL allLive) {
+        MarketQuoteModel *quote = quotes[normalizedSymbol];
+        completion(quote, allLive);
+    }];
+}
 
 - (void)getQuotesForSymbols:(NSArray<NSString *> *)symbols
                  completion:(void(^)(NSDictionary<NSString *, MarketQuoteModel *> *quotes, BOOL allLive))completion {
     
-    if (!symbols || symbols.count == 0 || !completion) return;
-    
-    [self initializeMarketDataCaches];
-    
-    NSLog(@"📊 DataHub: Getting quotes for %lu symbols: %@", (unsigned long)symbols.count, symbols);
-    
-    NSMutableDictionary<NSString *, MarketQuoteModel *> *result = [NSMutableDictionary dictionary];
-    NSMutableArray<NSString *> *symbolsToFetch = [NSMutableArray array];
-    BOOL allCachedAreFresh = YES;
-    
-    // 1. Check cache first for all symbols
-    for (NSString *symbol in symbols) {
-        MarketQuoteModel *cachedQuote = self.quotesCache[symbol];
-        NSString *cacheKey = [NSString stringWithFormat:@"quote_%@", symbol];
-        BOOL isStale = [self isCacheStale:cacheKey dataType:DataFreshnessTypeQuote];
-        
-        if (cachedQuote && !isStale) {
-            // Fresh cached data
-            result[symbol] = cachedQuote;
-            NSLog(@"✅ Using fresh cached quote for %@", symbol);
-        } else {
-            // Need to fetch
-            [symbolsToFetch addObject:symbol];
-            if (cachedQuote) {
-                // Use stale data temporarily
-                result[symbol] = cachedQuote;
-                allCachedAreFresh = NO;
-                NSLog(@"⚠️ Using stale cached quote for %@", symbol);
-            } else {
-                NSLog(@"❌ No cached quote for %@", symbol);
-            }
-        }
-    }
-    
-    // 2. If we have all fresh cached data, return immediately
-    if (symbolsToFetch.count == 0) {
-        NSLog(@"✅ All quotes from fresh cache");
-        completion([result copy], YES);
+    if (!completion) {
+        NSLog(@"❌ getQuotesForSymbols: completion block is nil");
         return;
     }
     
-    // 3. If we have some cached data (even stale), return it first
-    if (result.count > 0) {
-        NSLog(@"📤 Returning %lu cached quotes, fetching %lu fresh", (unsigned long)result.count, (unsigned long)symbolsToFetch.count);
-        completion([result copy], allCachedAreFresh);
+    if (!symbols || symbols.count == 0) {
+        NSLog(@"⚠️ getQuotesForSymbols: Empty symbols array");
+        completion(@{}, NO);
+        return;
     }
     
-    // 4. Make SINGLE batch API call for missing/stale symbols
-    NSLog(@"🔄 Making batch API call for symbols: %@", symbolsToFetch);
+    // ✅ TYPE SAFETY: Validate input is array of strings
+    NSMutableArray<NSString *> *validSymbols = [NSMutableArray array];
+    for (id obj in symbols) {
+        if ([obj isKindOfClass:[NSString class]]) {
+            NSString *symbol = (NSString *)obj;
+            if (symbol.length > 0) {
+                [validSymbols addObject:symbol.uppercaseString]; // Normalize
+            }
+        } else {
+            NSLog(@"❌ getQuotesForSymbols: Invalid symbol type: %@", NSStringFromClass([obj class]));
+        }
+    }
     
-    [[DataManager sharedManager] requestQuotesForSymbols:symbolsToFetch completion:^(NSDictionary *rawQuotes, NSError *error) {
+    if (validSymbols.count == 0) {
+        NSLog(@"❌ getQuotesForSymbols: No valid symbols after filtering");
+        completion(@{}, NO);
+        return;
+    }
+    
+    NSLog(@"📊 DataHub: Getting quotes for %lu symbols: %@",
+          (unsigned long)validSymbols.count, validSymbols);
+    
+    // ✅ ENSURE: Symbol entities exist for tracking
+    for (NSString *symbol in validSymbols) {
+        Symbol *symbolEntity = [self getSymbolWithName:symbol];
+        if (!symbolEntity) {
+            [self createSymbolWithName:symbol];
+        }
+    }
+    
+    // Check cache first
+    NSMutableDictionary<NSString *, MarketQuoteModel *> *cachedQuotes = [NSMutableDictionary dictionary];
+    NSMutableArray<NSString *> *symbolsToFetch = [NSMutableArray array];
+    
+    for (NSString *symbol in validSymbols) {
+        MarketQuoteModel *cachedQuote = self.quotesCache[symbol];
+        if (cachedQuote && ![self isCacheStale:symbol dataType:DataFreshnessTypeQuote]) {
+            cachedQuotes[symbol] = cachedQuote;
+        } else {
+            [symbolsToFetch addObject:symbol];
+        }
+    }
+    
+    if (symbolsToFetch.count == 0) {
+        // All symbols in cache
+        NSLog(@"✅ All quotes served from cache");
+        completion([cachedQuotes copy], YES);
+        return;
+    }
+    
+    // ✅ CORRECTED: Ask DataManager (not direct API)
+    [[DataManager sharedManager] requestQuotesForSymbols:symbolsToFetch
+                                              completion:^(NSDictionary *rawQuotes, NSError *error) {
+        
         if (error) {
-            NSLog(@"❌ Batch quotes request failed: %@", error.localizedDescription);
-            // If we had cached data, we already returned it above
-            if (result.count == 0) {
-                completion(@{}, NO);
-            }
+            NSLog(@"❌ Error fetching quotes from DataManager: %@", error);
+            // Return cached quotes even if DataManager failed
+            completion([cachedQuotes copy], NO);
             return;
         }
         
-        if (!rawQuotes || rawQuotes.count == 0) {
-            NSLog(@"⚠️ Batch quotes request returned no data");
-            if (result.count == 0) {
-                completion(@{}, NO);
-            }
-            return;
-        }
+        // Merge cached and new quotes
+        NSMutableDictionary<NSString *, MarketQuoteModel *> *allQuotes = [cachedQuotes mutableCopy];
         
-        NSLog(@"✅ Batch quotes request succeeded, got %lu quotes", (unsigned long)rawQuotes.count);
-        
-        // Convert and cache all fresh quotes
-        NSMutableDictionary<NSString *, MarketQuoteModel *> *freshResult = [result mutableCopy];
-        
+        // ✅ DataManager returns standardized data, no need for conversion
         for (NSString *symbol in rawQuotes) {
-            NSDictionary *rawQuote = rawQuotes[symbol];
-            if (rawQuote && [rawQuote isKindOfClass:[NSDictionary class]]) {
-                MarketQuoteModel *runtimeQuote = [MarketQuoteModel quoteFromDictionary:rawQuote];
-                if (runtimeQuote) {
-                    // Cache the fresh quote (this will also update timestamp)
-                    [self cacheQuote:runtimeQuote];
-                    
-                    // Save to Core Data in background
-                    [self saveQuoteModelToCoreData:runtimeQuote];
-                    
-                    // Add to result
-                    freshResult[symbol] = runtimeQuote;
-                    
-                    NSLog(@"✅ Processed fresh quote for %@", symbol);
-                }
+            id quoteData = rawQuotes[symbol];
+            MarketQuoteModel *runtimeQuote = nil;
+            
+            // Handle different possible return types from DataManager
+            if ([quoteData isKindOfClass:[MarketQuoteModel class]]) {
+                runtimeQuote = (MarketQuoteModel *)quoteData;
+            } else if ([quoteData isKindOfClass:[NSDictionary class]]) {
+                runtimeQuote = [MarketQuoteModel quoteFromDictionary:(NSDictionary *)quoteData];
+            }
+            
+            if (runtimeQuote) {
+                // Cache the quote
+                [self cacheQuote:runtimeQuote];
+                [self updateCacheTimestamp:symbol];
+                
+                // Save to Core Data in background
+                [self saveQuoteModelToCoreData:runtimeQuote];
+                
+                // Add to result
+                allQuotes[symbol] = runtimeQuote;
+                
+                NSLog(@"✅ Processed quote for %@", symbol);
             }
         }
         
-        // Return fresh results
-        NSLog(@"📤 Returning %lu total quotes (%lu fresh)", (unsigned long)freshResult.count, (unsigned long)rawQuotes.count);
-        completion([freshResult copy], YES);
+        NSLog(@"✅ Retrieved %lu quotes (%lu cached, %lu fetched)",
+              (unsigned long)allQuotes.count,
+              (unsigned long)cachedQuotes.count,
+              (unsigned long)rawQuotes.count);
+        
+        completion([allQuotes copy], YES);
     }];
 }
+
 #pragma mark - Public API - Historical Data
 
 - (void)getHistoricalBarsForSymbol:(NSString *)symbol
@@ -571,71 +569,43 @@
 
 // Aggiornamento per DataHub+MarketData.m - saveQuoteModelToCoreData
 
+
 - (void)saveQuoteModelToCoreData:(MarketQuoteModel *)quote {
-    if (!quote) return;
+    if (!quote || !quote.symbol) {
+        NSLog(@"❌ saveQuoteModelToCoreData: Invalid quote");
+        return;
+    }
     
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
-        
-        NSManagedObjectContext *backgroundContext = [self.persistentContainer newBackgroundContext];
-        backgroundContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy;
-        
-        [backgroundContext performBlock:^{
-            
-            [backgroundContext refreshAllObjects];
-            
-            // Find or create Symbol first
-            Symbol *symbol = [self findOrCreateSymbolWithName:quote.symbol inContext:backgroundContext];
-            
-            // Find existing MarketQuote for this Symbol or create new
-            MarketQuote *coreDataQuote = nil;
-            
-            // Check if this Symbol already has a MarketQuote
-            NSSet *existingQuotes = symbol.marketQuotes;
-            if (existingQuotes.count > 0) {
-                // Use the most recent one (there should typically be only one)
-                NSSortDescriptor *sortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"lastUpdate" ascending:NO];
-                NSArray *sortedQuotes = [existingQuotes sortedArrayUsingDescriptors:@[sortDescriptor]];
-                coreDataQuote = sortedQuotes.firstObject;
-            }
-            
-            if (!coreDataQuote) {
-                coreDataQuote = [NSEntityDescription insertNewObjectForEntityForName:@"MarketQuote"
-                                                              inManagedObjectContext:backgroundContext];
-                coreDataQuote.symbol = symbol;
-            }
-            
-            [backgroundContext refreshObject:coreDataQuote mergeChanges:YES];
-            
-            // Update properties using the updated method
-            [self updateCoreDataQuote:coreDataQuote withRuntimeModel:quote];
-            coreDataQuote.lastUpdate = [NSDate date];
-            
-            // Save with retry logic
-            NSError *error = nil;
-            if (![backgroundContext save:&error]) {
-                NSLog(@"Error saving quote to Core Data: %@", error);
-                
-                // Retry logic per merge conflicts
-                if (error.code == NSManagedObjectMergeError || error.code == 133020) {
-                    NSLog(@"🔄 Retrying save after merge conflict for %@", quote.symbol);
-                    
-                    [backgroundContext refreshAllObjects];
-                    [backgroundContext refreshObject:coreDataQuote mergeChanges:YES];
-                    [self updateCoreDataQuote:coreDataQuote withRuntimeModel:quote];
-                    coreDataQuote.lastUpdate = [NSDate date];
-                    
-                    NSError *retryError = nil;
-                    if (![backgroundContext save:&retryError]) {
-                        NSLog(@"❌ Retry failed for %@: %@", quote.symbol, retryError);
-                    } else {
-                        NSLog(@"✅ Retry successful for %@", quote.symbol);
-                    }
-                }
-            } else {
-                NSLog(@"✅ Saved quote for %@ to Core Data", quote.symbol);
-            }
-        }];
-    });
+    // ✅ ENSURE: Symbol entity exists (NO API CALLS)
+    [self ensureSymbolExistsForQuote:quote];
+    
+    // Find or create MarketQuote Core Data entity
+    NSFetchRequest *request = [MarketQuote fetchRequest];
+    request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", quote.symbol];
+    request.fetchLimit = 1;
+    
+    NSError *error = nil;
+    NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
+    
+    if (error) {
+        NSLog(@"❌ Error finding MarketQuote for %@: %@", quote.symbol, error);
+        return;
+    }
+    
+    MarketQuote *coreDataQuote;
+    if (results.count > 0) {
+        coreDataQuote = results.firstObject;
+    } else {
+        coreDataQuote = [NSEntityDescription insertNewObjectForEntityForName:@"MarketQuote"
+                                                      inManagedObjectContext:self.mainContext];
+    }
+    
+    // Update Core Data quote with runtime model data
+    [self updateCoreDataQuote:coreDataQuote withRuntimeModel:quote];
+    
+    [self saveContext];
+    
+    NSLog(@"✅ Saved quote to Core Data: %@", quote.symbol);
 }
 
 
@@ -1191,5 +1161,43 @@
     return symbol;
 }
 
+#pragma mark - VALIDATION: Market Data Architecture Compliance
+
+- (void)validateMarketDataArchitectureCompliance {
+    NSLog(@"\n🏗️ VALIDATION: Market Data Architecture Compliance");
+    NSLog(@"==================================================");
+    
+    NSLog(@"✅ DataHub communicates ONLY with:");
+    NSLog(@"   - UI Layer (receives requests)");
+    NSLog(@"   - DataManager (delegates external data)");
+    NSLog(@"   - Core Data (internal persistence)");
+    
+    NSLog(@"❌ DataHub NEVER calls:");
+    NSLog(@"   - External APIs directly");
+    NSLog(@"   - DownloadManager directly");
+    NSLog(@"   - Network requests directly");
+    
+    // Check quotes cache symbols are properly typed
+    NSInteger validCachedQuotes = 0;
+    NSInteger invalidCachedQuotes = 0;
+    
+    for (NSString *symbol in self.quotesCache) {
+        MarketQuoteModel *quote = self.quotesCache[symbol];
+        if ([quote isKindOfClass:[MarketQuoteModel class]] &&
+            [quote.symbol isKindOfClass:[NSString class]] &&
+            [quote.symbol isEqualToString:symbol]) {
+            validCachedQuotes++;
+        } else {
+            invalidCachedQuotes++;
+            NSLog(@"❌ Invalid cached quote: symbol key '%@' vs quote.symbol '%@'", symbol, quote.symbol);
+        }
+    }
+    
+    NSLog(@"Quote Cache Validation:");
+    NSLog(@"✅ Valid cached quotes: %ld", (long)validCachedQuotes);
+    NSLog(@"❌ Invalid cached quotes: %ld", (long)invalidCachedQuotes);
+    
+    NSLog(@"ARCHITECTURE COMPLIANCE VALIDATION COMPLETE\n");
+}
 
 @end

@@ -13,10 +13,84 @@
 
 #pragma mark - Connection Creation
 
-- (ConnectionModel *)createConnectionWithSymbols:(NSArray<NSString *> *)symbols
+- (StockConnection *)createConnectionWithSymbols:(NSArray<NSString *> *)symbols
                                             type:(StockConnectionType)type
-                                           title:(NSString *)title {
-    return [self createBidirectionalConnectionWithSymbols:symbols type:type title:title];
+                                     description:(NSString *)description
+                                          source:(NSString *)source
+                                             url:(NSString *)url {
+    
+    if (!symbols || symbols.count == 0) {
+        NSLog(@"❌ createConnectionWithSymbols: No symbols provided");
+        return nil;
+    }
+    
+    // Validate symbols are strings
+    for (id obj in symbols) {
+        if (![obj isKindOfClass:[NSString class]] || ((NSString *)obj).length == 0) {
+            NSLog(@"❌ createConnectionWithSymbols: Invalid symbol: %@", obj);
+            return nil;
+        }
+    }
+    
+    StockConnection *connection = [NSEntityDescription insertNewObjectForEntityForName:@"StockConnection"
+                                                                inManagedObjectContext:self.mainContext];
+    
+    // Set basic properties
+    connection.connectionType = type;
+    connection.connectionDescription = description ?: @"";
+    connection.source = source ?: @"";
+    connection.url = url ?: @"";
+    connection.creationDate = [NSDate date];
+    connection.connectionID = [[NSUUID UUID] UUIDString];
+    connection.isActive = YES;
+    connection.bidirectional = YES;  // Default for this creation method
+    
+    // ✅ FIXED: Symbol relationships with better error handling
+    if (symbols.count == 1) {
+        // Single symbol - set as source only
+        Symbol *symbol = [self findOrCreateSymbolWithName:symbols[0] inContext:self.mainContext];
+        if (symbol) {
+            connection.sourceSymbol = symbol;
+        } else {
+            NSLog(@"❌ Failed to create source symbol: %@", symbols[0]);
+            [self.mainContext deleteObject:connection];
+            return nil;
+        }
+    } else {
+        // Multiple symbols - first as source, rest as targets
+        Symbol *sourceSymbol = [self findOrCreateSymbolWithName:symbols[0] inContext:self.mainContext];
+        if (!sourceSymbol) {
+            NSLog(@"❌ Failed to create source symbol: %@", symbols[0]);
+            [self.mainContext deleteObject:connection];
+            return nil;
+        }
+        connection.sourceSymbol = sourceSymbol;
+        
+        // Add remaining symbols as targets
+        NSMutableSet *targetSymbols = [NSMutableSet set];
+        for (NSInteger i = 1; i < symbols.count; i++) {
+            Symbol *targetSymbol = [self findOrCreateSymbolWithName:symbols[i] inContext:self.mainContext];
+            if (targetSymbol) {
+                [targetSymbols addObject:targetSymbol];
+            } else {
+                NSLog(@"❌ Failed to create target symbol: %@", symbols[i]);
+            }
+        }
+        connection.targetSymbols = targetSymbols;
+    }
+    
+    [self.connections addObject:connection];
+    [self saveContext];
+    
+    [[NSNotificationCenter defaultCenter] postNotificationName:DataHubConnectionsUpdatedNotification
+                                                        object:self
+                                                      userInfo:@{
+                                                          @"action": @"created",
+                                                          @"connection": connection
+                                                      }];
+    
+    NSLog(@"✅ Created connection with %lu symbols", (unsigned long)symbols.count);
+    return connection;
 }
 
 - (ConnectionModel *)createDirectionalConnectionFromSymbol:(NSString *)sourceSymbol
@@ -164,7 +238,10 @@
 }
 
 - (NSArray<ConnectionModel *> *)getConnectionsForSymbol:(NSString *)symbol {
-    if (!symbol) return @[];
+    if (!symbol || symbol.length == 0) {
+        NSLog(@"❌ getConnectionsForSymbol: Invalid symbol");
+        return @[];
+    }
     
     // Find Symbol entity first
     NSFetchRequest *symbolRequest = [Symbol fetchRequest];
@@ -173,14 +250,20 @@
     NSError *error;
     NSArray *symbolResults = [self.mainContext executeFetchRequest:symbolRequest error:&error];
     
-    if (error || symbolResults.count == 0) {
+    if (error) {
+        NSLog(@"❌ Error fetching symbol %@: %@", symbol, error);
+        return @[];
+    }
+    
+    if (symbolResults.count == 0) {
+        NSLog(@"⚠️ Symbol %@ not found in database", symbol);
         return @[];
     }
     
     Symbol *symbolEntity = symbolResults.firstObject;
     NSMutableArray<ConnectionModel *> *connections = [NSMutableArray array];
     
-    // Get connections where this symbol is the source
+    // ✅ Get connections where this symbol is the source
     for (StockConnection *connection in symbolEntity.sourceConnections) {
         ConnectionModel *model = [self convertCoreDataConnectionToRuntimeModel:connection];
         if (model) {
@@ -188,16 +271,18 @@
         }
     }
     
-    // Get connections where this symbol is a target
+    // ✅ Get connections where this symbol is a target
     for (StockConnection *connection in symbolEntity.targetConnections) {
         ConnectionModel *model = [self convertCoreDataConnectionToRuntimeModel:connection];
-        if (model && ![connections containsObject:model]) { // Avoid duplicates
+        if (model && ![connections containsObject:model]) {
             [connections addObject:model];
         }
     }
     
+    NSLog(@"✅ Found %lu connections for symbol %@", (unsigned long)connections.count, symbol);
     return [connections copy];
 }
+
 
 
 - (NSArray<ConnectionModel *> *)getConnectionsOfType:(StockConnectionType)type {
@@ -518,32 +603,32 @@
     
     ConnectionModel *model = [[ConnectionModel alloc] init];
     
-    // Basic fields
+    // Basic properties
     model.connectionID = coreDataConnection.connectionID ?: [[NSUUID UUID] UUIDString];
-    model.title = coreDataConnection.title ?: @"Untitled";
-    model.connectionDescription = coreDataConnection.connectionDescription;
-    model.connectionType = (StockConnectionType)coreDataConnection.connectionType;
-    model.source = coreDataConnection.source;
-    model.url = coreDataConnection.url;
-    model.creationDate = coreDataConnection.creationDate ?: [NSDate date];
-    model.lastModified = coreDataConnection.lastModified ?: [NSDate date];
+    model.title = coreDataConnection.title ?: @"";
+    model.connectionDescription = coreDataConnection.connectionDescription ?: @"";
+    model.connectionType = coreDataConnection.connectionType;
+    model.source = coreDataConnection.source ?: @"";
+    model.url = coreDataConnection.url ?: @"";
+    model.bidirectional = coreDataConnection.bidirectional;
     model.isActive = coreDataConnection.isActive;
     
-    // Symbols and directionality - USE RELATIONSHIPS
-    model.bidirectional = coreDataConnection.bidirectional;
-    
-    // Source symbol from relationship
-    model.sourceSymbol = coreDataConnection.sourceSymbol.symbol;
-    
-    // Target symbols from relationship
-    NSMutableArray *targetSymbols = [NSMutableArray array];
-    for (Symbol *symbol in coreDataConnection.targetSymbols) {
-        [targetSymbols addObject:symbol.symbol];
+    // ✅ FIXED: Symbol relationships - Convert entities to strings
+    if (coreDataConnection.sourceSymbol && coreDataConnection.sourceSymbol.symbol) {
+        model.sourceSymbol = coreDataConnection.sourceSymbol.symbol;
     }
-    model.targetSymbols = [targetSymbols copy];
     
-    // Legacy symbols array (for backward compatibility)
-    NSMutableArray *allSymbols = [NSMutableArray array];
+    // ✅ FIXED: Target symbols conversion NSSet<Symbol *> → NSArray<NSString *>
+    NSMutableArray<NSString *> *targetSymbolStrings = [NSMutableArray array];
+    for (Symbol *symbolEntity in coreDataConnection.targetSymbols) {
+        if ([symbolEntity isKindOfClass:[Symbol class]] && symbolEntity.symbol) {
+            [targetSymbolStrings addObject:symbolEntity.symbol];
+        }
+    }
+    model.targetSymbols = [targetSymbolStrings copy];
+    
+    // ✅ FIXED: All symbols array - Combine source + targets
+    NSMutableArray<NSString *> *allSymbols = [NSMutableArray array];
     if (model.sourceSymbol) {
         [allSymbols addObject:model.sourceSymbol];
     }
@@ -551,9 +636,9 @@
     model.symbols = [allSymbols copy];
     
     // AI Summary
-    model.originalSummary = coreDataConnection.originalSummary;
-    model.manualSummary = coreDataConnection.manualSummary;
-    model.summarySource = (ConnectionSummarySource)coreDataConnection.summarySource;
+    model.originalSummary = coreDataConnection.originalSummary ?: @"";
+    model.manualSummary = coreDataConnection.manualSummary ?: @"";
+    model.summarySource = coreDataConnection.summarySource;
     
     // Strength and decay
     model.initialStrength = coreDataConnection.initialStrength;
@@ -565,46 +650,70 @@
     model.lastStrengthUpdate = coreDataConnection.lastStrengthUpdate ?: [NSDate date];
     
     // Metadata
-    model.notes = coreDataConnection.notes;
+    model.notes = coreDataConnection.notes ?: @"";
     model.tags = coreDataConnection.tags ?: @[];
+    model.creationDate = coreDataConnection.creationDate ?: [NSDate date];
+    model.lastModified = coreDataConnection.lastModified ?: [NSDate date];
     
     return model;
 }
+
+
 - (void)updateConnectionCoreDataFromRuntimeModel:(ConnectionModel *)runtimeModel
                                 coreDataConnection:(StockConnection *)coreDataConnection {
     
+    if (!runtimeModel || !coreDataConnection) {
+        NSLog(@"❌ updateConnectionCoreDataFromRuntimeModel: Invalid parameters");
+        return;
+    }
+    
+    NSManagedObjectContext *context = coreDataConnection.managedObjectContext;
+    if (!context) {
+        NSLog(@"❌ updateConnectionCoreDataFromRuntimeModel: No managedObjectContext");
+        return;
+    }
+    
     // Basic fields
-    coreDataConnection.connectionID = runtimeModel.connectionID;
-    coreDataConnection.title = runtimeModel.title;
-    coreDataConnection.connectionDescription = runtimeModel.connectionDescription;
+    coreDataConnection.connectionID = runtimeModel.connectionID ?: [[NSUUID UUID] UUIDString];
+    coreDataConnection.title = runtimeModel.title ?: @"";
+    coreDataConnection.connectionDescription = runtimeModel.connectionDescription ?: @"";
     coreDataConnection.connectionType = runtimeModel.connectionType;
-    coreDataConnection.source = runtimeModel.source;
-    coreDataConnection.url = runtimeModel.url;
-    coreDataConnection.creationDate = runtimeModel.creationDate;
-    coreDataConnection.lastModified = runtimeModel.lastModified;
+    coreDataConnection.source = runtimeModel.source ?: @"";
+    coreDataConnection.url = runtimeModel.url ?: @"";
+    coreDataConnection.creationDate = runtimeModel.creationDate ?: [NSDate date];
+    coreDataConnection.lastModified = runtimeModel.lastModified ?: [NSDate date];
     coreDataConnection.isActive = runtimeModel.isActive;
     coreDataConnection.bidirectional = runtimeModel.bidirectional;
     
-    // Handle Symbol relationships
-    NSManagedObjectContext *context = coreDataConnection.managedObjectContext;
-    
-    // Set source symbol relationship
-    if (runtimeModel.sourceSymbol) {
+    // ✅ FIXED: Source symbol relationship with validation
+    if (runtimeModel.sourceSymbol && runtimeModel.sourceSymbol.length > 0) {
         Symbol *sourceSymbol = [self findOrCreateSymbolWithName:runtimeModel.sourceSymbol inContext:context];
-        coreDataConnection.sourceSymbol = sourceSymbol;
+        if (sourceSymbol) {
+            coreDataConnection.sourceSymbol = sourceSymbol;
+        } else {
+            NSLog(@"❌ Failed to create/find source symbol: %@", runtimeModel.sourceSymbol);
+        }
+    } else {
+        coreDataConnection.sourceSymbol = nil;
     }
     
-    // Set target symbols relationships
+    // ✅ FIXED: Target symbols relationships with validation
     NSMutableSet *targetSymbolsSet = [NSMutableSet set];
     for (NSString *symbolName in runtimeModel.targetSymbols) {
-        Symbol *symbol = [self findOrCreateSymbolWithName:symbolName inContext:context];
-        [targetSymbolsSet addObject:symbol];
+        if (symbolName && [symbolName isKindOfClass:[NSString class]] && symbolName.length > 0) {
+            Symbol *symbol = [self findOrCreateSymbolWithName:symbolName inContext:context];
+            if (symbol) {
+                [targetSymbolsSet addObject:symbol];
+            } else {
+                NSLog(@"❌ Failed to create/find target symbol: %@", symbolName);
+            }
+        }
     }
     coreDataConnection.targetSymbols = targetSymbolsSet;
     
     // AI Summary
-    coreDataConnection.originalSummary = runtimeModel.originalSummary;
-    coreDataConnection.manualSummary = runtimeModel.manualSummary;
+    coreDataConnection.originalSummary = runtimeModel.originalSummary ?: @"";
+    coreDataConnection.manualSummary = runtimeModel.manualSummary ?: @"";
     coreDataConnection.summarySource = runtimeModel.summarySource;
     
     // Strength and decay
@@ -614,11 +723,13 @@
     coreDataConnection.minimumStrength = runtimeModel.minimumStrength;
     coreDataConnection.strengthHorizon = runtimeModel.strengthHorizon;
     coreDataConnection.autoDelete = runtimeModel.autoDelete;
-    coreDataConnection.lastStrengthUpdate = runtimeModel.lastStrengthUpdate;
+    coreDataConnection.lastStrengthUpdate = runtimeModel.lastStrengthUpdate ?: [NSDate date];
     
     // Metadata
-    coreDataConnection.notes = runtimeModel.notes;
-    coreDataConnection.tags = runtimeModel.tags;
+    coreDataConnection.notes = runtimeModel.notes ?: @"";
+    coreDataConnection.tags = runtimeModel.tags ?: @[];
+    
+    NSLog(@"✅ Updated Core Data connection: %@", coreDataConnection.connectionID);
 }
 
 #pragma mark - Bulk Operations
@@ -788,5 +899,47 @@
 }
 
 
+#pragma mark - VALIDATION: Connection-Symbol Consistency Check
 
+- (void)validateConnectionSymbolConsistency {
+    NSLog(@"\n🔍 VALIDATION: Connection-Symbol Consistency Check");
+    NSLog(@"==================================================");
+    
+    NSArray<StockConnection *> *connections = [self getAllConnections];
+    NSInteger validConnections = 0;
+    NSInteger invalidConnections = 0;
+    
+    for (StockConnection *connection in connections) {
+        BOOL isValid = YES;
+        NSMutableArray *issues = [NSMutableArray array];
+        
+        // Check source symbol
+        if (connection.sourceSymbol) {
+            if (![connection.sourceSymbol isKindOfClass:[Symbol class]] || !connection.sourceSymbol.symbol) {
+                [issues addObject:@"Invalid source symbol"];
+                isValid = NO;
+            }
+        }
+        
+        // Check target symbols
+        for (Symbol *target in connection.targetSymbols) {
+            if (![target isKindOfClass:[Symbol class]] || !target.symbol) {
+                [issues addObject:@"Invalid target symbol"];
+                isValid = NO;
+                break;
+            }
+        }
+        
+        if (isValid) {
+            validConnections++;
+        } else {
+            invalidConnections++;
+            NSLog(@"❌ Connection %@: %@", connection.connectionID, [issues componentsJoinedByString:@", "]);
+        }
+    }
+    
+    NSLog(@"✅ Valid connections: %ld", (long)validConnections);
+    NSLog(@"❌ Invalid connections: %ld", (long)invalidConnections);
+    NSLog(@"CONNECTION VALIDATION COMPLETE\n");
+}
 @end

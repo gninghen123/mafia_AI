@@ -1020,10 +1020,6 @@
 - (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
     NSLog(@"MultiChartWidget: Received %lu symbols from chain", (unsigned long)symbols.count);
     
-    // ✅ ENHANCED: Track symbol interaction
-    if (symbols.count > 0) {
-        [[DataHub shared] trackExplicitSymbolInteractions:symbols context:@"MultiChartChainReceive"];
-    }
     
     // Combina i simboli ricevuti con quelli esistenti
     NSMutableSet *combinedSymbols = [NSMutableSet setWithArray:self.symbols];

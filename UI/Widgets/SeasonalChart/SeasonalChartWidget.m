@@ -1262,10 +1262,6 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
 - (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
     NSLog(@"SeasonalChartWidget: Received %lu symbols from chain", (unsigned long)symbols.count);
     
-    // ✅ ENHANCED: Track symbol interaction
-    if (symbols.count > 0) {
-        [[DataHub shared] trackExplicitSymbolInteractions:symbols context:@"SeasonalChartChainReceive"];
-    }
     
     // Prendi il primo simbolo (SeasonalChart mostra un simbolo alla volta)
     NSString *newSymbol = symbols.firstObject;

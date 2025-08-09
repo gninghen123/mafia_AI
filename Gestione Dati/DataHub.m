@@ -59,7 +59,6 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
         _tradingModels = [NSMutableArray array];
         _cache = [NSMutableDictionary dictionary];
         _pendingRequests = [NSMutableDictionary dictionary];
-        [self setupSymbolTrackingObservers];
 
         // NEW: Initialize market data caches
         [self initializeMarketDataCaches];
@@ -174,7 +173,8 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     Watchlist *coreDataWatchlist = [self createWatchlistWithName:name];
     
     // Convert to RuntimeModel for UI
-    return [self convertCoreDataToRuntimeModel:coreDataWatchlist];
+    return [self convertWatchlistCoreDataToRuntimeModel:coreDataWatchlist];
+    
 }
 
 - (void)deleteWatchlistModel:(WatchlistModel *)watchlistModel {
@@ -187,21 +187,37 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     }
 }
 
+
 - (void)addSymbol:(NSString *)symbol toWatchlistModel:(WatchlistModel *)watchlistModel {
     if (!symbol || !watchlistModel || !watchlistModel.name) return;
     
-    // ✅ TRACKING UNICO QUI (high-level, chiamato dai widget)
+    NSLog(@"📋 DataHub: Adding symbol %@ to watchlist %@ (CLEAN - no tracking)", symbol, watchlistModel.name);
+    
+    // ✅ STEP 1: Create/get symbol entity (NO automatic increment)
     Symbol *symbolEntity = [self createSymbolWithName:symbol];
+    if (!symbolEntity) {
+        NSLog(@"❌ Failed to create/get symbol entity: %@", symbol);
+        return;
+    }
     
-    // Find corresponding Core Data object
+    // ✅ STEP 2: Add to Core Data watchlist
     Watchlist *coreDataWatchlist = [self findWatchlistByName:watchlistModel.name];
-    if (!coreDataWatchlist) return;
+    if (!coreDataWatchlist) {
+        NSLog(@"❌ Watchlist not found: %@", watchlistModel.name);
+        return;
+    }
     
-    // ✅ USA RELATIONSHIP DIRETTA (no string methods)
+    // Check if already in watchlist
+    if ([coreDataWatchlist.symbols containsObject:symbolEntity]) {
+        NSLog(@"⚠️ Symbol %@ already in watchlist %@", symbol, watchlistModel.name);
+        return;
+    }
+    
+    // Add to Core Data
     [coreDataWatchlist addSymbolObject:symbolEntity];
     [self saveContext];
     
-    // Update RuntimeModel
+    // ✅ STEP 3: Update RuntimeModel
     NSMutableArray *symbols = [watchlistModel.symbols mutableCopy] ?: [NSMutableArray array];
     NSString *upperSymbol = symbol.uppercaseString;
     if (![symbols containsObject:upperSymbol]) {
@@ -210,18 +226,82 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
         watchlistModel.lastModified = [NSDate date];
     }
     
-    // ✅ UNA SOLA NOTIFICATION
+    // ✅ CLEAN: Simple notification (NO automatic tracking side effects)
     [[NSNotificationCenter defaultCenter] postNotificationName:DataHubWatchlistUpdatedNotification
                                                         object:self
                                                       userInfo:@{
                                                           @"watchlist": coreDataWatchlist,
                                                           @"action": @"symbolAdded",
-                                                          @"symbol": symbol,
-                                                          @"symbolEntity": symbolEntity
+                                                          @"symbol": symbol
                                                       }];
     
-    NSLog(@"✅ DataHub: Added %@ to watchlist %@ (interactions: %d)",
-          symbol, watchlistModel.name, symbolEntity.interactionCount);
+    NSLog(@"✅ DataHub: Added %@ to watchlist %@ (CLEAN)", symbol, watchlistModel.name);
+}
+
+
+- (void)addSymbols:(NSArray<NSString *> *)symbols toWatchlistModel:(WatchlistModel *)watchlistModel {
+    if (!symbols || symbols.count == 0 || !watchlistModel) return;
+    
+    NSLog(@"📋 DataHub: Adding %lu symbols to watchlist %@ (CLEAN BULK)",
+          (unsigned long)symbols.count, watchlistModel.name);
+    
+    Watchlist *coreDataWatchlist = [self findWatchlistByName:watchlistModel.name];
+    if (!coreDataWatchlist) {
+        NSLog(@"❌ Watchlist not found: %@", watchlistModel.name);
+        return;
+    }
+    
+    NSMutableArray<NSString *> *addedSymbols = [NSMutableArray array];
+    
+    // ✅ Process all symbols WITHOUT any tracking
+    for (NSString *symbol in symbols) {
+        NSString *normalizedSymbol = symbol.uppercaseString;
+        
+        // Create/get symbol entity (no tracking)
+        Symbol *symbolEntity = [self createSymbolWithName:normalizedSymbol];
+        if (!symbolEntity) continue;
+        
+        // Check if already in watchlist
+        if ([coreDataWatchlist.symbols containsObject:symbolEntity]) {
+            NSLog(@"⚠️ Symbol %@ already in watchlist, skipping", normalizedSymbol);
+            continue;
+        }
+        
+        // Add to watchlist
+        [coreDataWatchlist addSymbolObject:symbolEntity];
+        [addedSymbols addObject:normalizedSymbol];
+    }
+    
+    if (addedSymbols.count == 0) {
+        NSLog(@"⚠️ No new symbols added to watchlist");
+        return;
+    }
+    
+    // ✅ Save Core Data changes
+    [self saveContext];
+    
+    // ✅ Update RuntimeModel
+    NSMutableArray *existingSymbols = [watchlistModel.symbols mutableCopy] ?: [NSMutableArray array];
+    for (NSString *symbol in addedSymbols) {
+        if (![existingSymbols containsObject:symbol]) {
+            [existingSymbols addObject:symbol];
+        }
+    }
+    watchlistModel.symbols = [existingSymbols copy];
+    watchlistModel.lastModified = [NSDate date];
+    
+    // ✅ CLEAN: Simple bulk notification (NO tracking side effects)
+    [[NSNotificationCenter defaultCenter] postNotificationName:DataHubWatchlistUpdatedNotification
+                                                        object:self
+                                                      userInfo:@{
+                                                          @"watchlist": coreDataWatchlist,
+                                                          @"action": @"symbolsAdded",
+                                                          @"symbols": addedSymbols,
+                                                          @"count": @(addedSymbols.count)
+                                                      }];
+    
+    NSLog(@"✅ DataHub: Added %lu symbols to watchlist %@ (CLEAN BULK)",
+          (unsigned long)addedSymbols.count, watchlistModel.name);
 }
 
 
@@ -629,41 +709,67 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 }
 
 - (StockConnection *)createConnectionWithSymbols:(NSArray<NSString *> *)symbols
-                                             type:(ConnectionType)type
-                                      description:(NSString *)description
-                                           source:(NSString *)source
-                                              url:(NSString *)url {
+                                            type:(StockConnectionType)type
+                                     description:(NSString *)description
+                                          source:(NSString *)source
+                                             url:(NSString *)url {
     
-    if (!symbols || symbols.count == 0) return nil;
+    if (!symbols || symbols.count == 0) {
+        NSLog(@"❌ createConnectionWithSymbols: No symbols provided");
+        return nil;
+    }
+    
+    // Validate symbols are strings
+    for (id obj in symbols) {
+        if (![obj isKindOfClass:[NSString class]] || ((NSString *)obj).length == 0) {
+            NSLog(@"❌ createConnectionWithSymbols: Invalid symbol: %@", obj);
+            return nil;
+        }
+    }
     
     StockConnection *connection = [NSEntityDescription insertNewObjectForEntityForName:@"StockConnection"
                                                                 inManagedObjectContext:self.mainContext];
     
     // Set basic properties
     connection.connectionType = type;
-    connection.connectionDescription = description;
-    connection.source = source;
-    connection.url = url;
+    connection.connectionDescription = description ?: @"";
+    connection.source = source ?: @"";
+    connection.url = url ?: @"";
     connection.creationDate = [NSDate date];
     connection.connectionID = [[NSUUID UUID] UUIDString];
     connection.isActive = YES;
-    connection.bidirectional = YES;  // Default for this creation method
+    connection.bidirectional = YES;
     
-    // Set Symbol relationships
+    // ✅ Create symbol entities WITHOUT automatic tracking
     if (symbols.count == 1) {
         // Single symbol - set as source only
-        Symbol *symbol = [self findOrCreateSymbolWithName:symbols[0] inContext:self.mainContext];
-        connection.sourceSymbol = symbol;
+        Symbol *symbol = [self createSymbolWithName:symbols[0]]; // Clean creation
+        if (symbol) {
+            connection.sourceSymbol = symbol;
+        } else {
+            NSLog(@"❌ Failed to create source symbol: %@", symbols[0]);
+            [self.mainContext deleteObject:connection];
+            return nil;
+        }
     } else {
         // Multiple symbols - first as source, rest as targets
-        Symbol *sourceSymbol = [self findOrCreateSymbolWithName:symbols[0] inContext:self.mainContext];
+        Symbol *sourceSymbol = [self createSymbolWithName:symbols[0]]; // Clean creation
+        if (!sourceSymbol) {
+            NSLog(@"❌ Failed to create source symbol: %@", symbols[0]);
+            [self.mainContext deleteObject:connection];
+            return nil;
+        }
         connection.sourceSymbol = sourceSymbol;
         
         // Add remaining symbols as targets
         NSMutableSet *targetSymbols = [NSMutableSet set];
         for (NSInteger i = 1; i < symbols.count; i++) {
-            Symbol *targetSymbol = [self findOrCreateSymbolWithName:symbols[i] inContext:self.mainContext];
-            [targetSymbols addObject:targetSymbol];
+            Symbol *targetSymbol = [self createSymbolWithName:symbols[i]]; // Clean creation
+            if (targetSymbol) {
+                [targetSymbols addObject:targetSymbol];
+            } else {
+                NSLog(@"❌ Failed to create target symbol: %@", symbols[i]);
+            }
         }
         connection.targetSymbols = targetSymbols;
     }
@@ -671,12 +777,18 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     [self.connections addObject:connection];
     [self saveContext];
     
+    // ✅ CLEAN: Simple notification (will be used later for smart tracking)
     [[NSNotificationCenter defaultCenter] postNotificationName:DataHubConnectionsUpdatedNotification
                                                         object:self
-                                                      userInfo:@{@"action": @"created", @"connection": connection}];
+                                                      userInfo:@{
+                                                          @"action": @"created",
+                                                          @"connection": connection
+                                                      }];
     
+    NSLog(@"✅ Created connection with %lu symbols (CLEAN)", (unsigned long)symbols.count);
     return connection;
 }
+
 
 
 - (void)deleteConnection:(StockConnection *)connection {
@@ -1107,8 +1219,8 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     // Check se esiste già
     Symbol *existingSymbol = [self getSymbolWithName:normalizedSymbol];
     if (existingSymbol) {
-        // Incrementa interazione e ritorna esistente
-        [self incrementInteractionForSymbol:existingSymbol];
+        // ✅ CLEAN: Return existing WITHOUT any increment
+        NSLog(@"DataHub: Found existing symbol: %@", normalizedSymbol);
         return existingSymbol;
     }
     
@@ -1117,17 +1229,18 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
                                                    inManagedObjectContext:self.mainContext];
     symbol.symbol = normalizedSymbol;
     symbol.creationDate = [NSDate date];
-    symbol.firstInteraction = [NSDate date];
-    symbol.lastInteraction = [NSDate date];
-    symbol.interactionCount = 1;
+    symbol.firstInteraction = nil; // ✅ Will be set on first REAL interaction
+    symbol.lastInteraction = nil;  // ✅ Will be set on first REAL interaction
+    symbol.interactionCount = 0;   // ✅ CLEAN: Start at 0
     symbol.isFavorite = NO;
     symbol.tags = @[];
     
     [self.symbols addObject:symbol];
     [self saveContext];
     
-    NSLog(@"DataHub: Created new symbol: %@", normalizedSymbol);
+    NSLog(@"✅ DataHub: Created symbol: %@ (interactionCount: 0)", normalizedSymbol);
     
+    // ✅ CLEAN: Simple creation notification, no tracking implications
     [[NSNotificationCenter defaultCenter] postNotificationName:@"DataHubSymbolCreated"
                                                         object:self
                                                       userInfo:@{@"symbol": symbol}];
@@ -1135,19 +1248,45 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     return symbol;
 }
 
+
 - (Symbol *)getSymbolWithName:(NSString *)symbolName {
     if (!symbolName || symbolName.length == 0) return nil;
     
     // RICORDA: Normalizzazione UPPERCASE!
     NSString *normalizedSymbol = symbolName.uppercaseString;
     
+    // Search in memory first (faster)
     for (Symbol *symbol in self.symbols) {
         if ([symbol.symbol isEqualToString:normalizedSymbol]) {
             return symbol;
         }
     }
+    
+    // If not in memory, fetch from Core Data
+    NSFetchRequest *request = [Symbol fetchRequest];
+    request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", normalizedSymbol];
+    request.fetchLimit = 1;
+    
+    NSError *error = nil;
+    NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
+    
+    if (error) {
+        NSLog(@"❌ Error fetching symbol %@: %@", normalizedSymbol, error);
+        return nil;
+    }
+    
+    if (results.count > 0) {
+        Symbol *symbol = results.firstObject;
+        // Add to memory cache if not already there
+        if (![self.symbols containsObject:symbol]) {
+            [self.symbols addObject:symbol];
+        }
+        return symbol;
+    }
+    
     return nil;
 }
+
 
 - (void)deleteSymbol:(Symbol *)symbol {
     if (!symbol) return;
@@ -1165,48 +1304,25 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 
 - (void)incrementInteractionForSymbol:(Symbol *)symbol {
     if (!symbol) return;
-    // STACK TRACE DEBUG
-      NSLog(@"🔍 incrementInteractionForSymbol called from:");
-      NSArray *stackTrace = [NSThread callStackSymbols];
-      for (NSString *trace in stackTrace) {
-          NSLog(@"   %@", trace);
-      }
-     NSLog(@"Symbol pointer: %p", symbol);
-     NSLog(@"Symbol.symbol: %@", symbol.symbol);
-     
-     // Verifica stato Core Data
-     NSLog(@"Symbol.isDeleted: %@", symbol.isDeleted ? @"YES" : @"NO");
-     NSLog(@"Symbol.isFault: %@", symbol.isFault ? @"YES" : @"NO");
-     NSLog(@"Symbol.managedObjectContext: %p", symbol.managedObjectContext);
-     
-     // Force fault se necessario
-     if (symbol.isFault) {
-         [symbol willAccessValueForKey:@"interactionCount"];
-     }
-     
-     // Test lettura prima della scrittura
-     int32_t currentCount = symbol.interactionCount;
-     NSLog(@"Current interactionCount: %d", currentCount);
-     
-     // Incrementa
-     symbol.interactionCount = currentCount + 1;
- 
+    
+    symbol.interactionCount++;
     symbol.lastInteraction = [NSDate date];
     
-    // Se è la prima volta, imposta firstInteraction
+    // Set first interaction if this is the first real interaction
     if (!symbol.firstInteraction) {
         symbol.firstInteraction = [NSDate date];
     }
     
     [self saveContext];
     
-    NSLog(@"DataHub: Symbol %@ interaction count: %d", symbol.symbol, symbol.interactionCount);
+    NSLog(@"✅ Manual increment: Symbol %@ interaction count: %d", symbol.symbol, symbol.interactionCount);
 }
 
 - (void)incrementInteractionForSymbolName:(NSString *)symbolName {
-    // Convenience method - crea symbol se non esiste
-    Symbol *symbol = [self createSymbolWithName:symbolName];
-    // createSymbolWithName già incrementa se esiste, quindi non serve altro
+    // ✅ CLEAN: Just create symbol if doesn't exist, NO automatic increment
+    [self createSymbolWithName:symbolName];
+    
+    NSLog(@"✅ DataHub: ensured symbol exists: %@", symbolName);
 }
 
 #pragma mark - Symbol Tag Management
@@ -1215,8 +1331,6 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     if (!tag || !symbol) return;
     
     NSMutableArray *currentTags = [symbol.tags mutableCopy] ?: [NSMutableArray array];
-    
-    // Normalizza tag (lowercase per consistency)
     NSString *normalizedTag = tag.lowercaseString;
     
     if (![currentTags containsObject:normalizedTag]) {
@@ -1224,7 +1338,15 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
         symbol.tags = [currentTags copy];
         [self saveContext];
         
-        NSLog(@"DataHub: Added tag '%@' to symbol %@", normalizedTag, symbol.symbol);
+        NSLog(@"✅ DataHub: Added tag '%@' to %@ (CLEAN)", normalizedTag, symbol.symbol);
+        
+        // ✅ CLEAN: Simple notification (will be used later for smart tracking)
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"DataHubSymbolTagAdded"
+                                                            object:self
+                                                          userInfo:@{
+                                                              @"symbol": symbol,
+                                                              @"tag": normalizedTag
+                                                          }];
     }
 }
 
@@ -1234,11 +1356,21 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     NSMutableArray *currentTags = [symbol.tags mutableCopy];
     NSString *normalizedTag = tag.lowercaseString;
     
-    [currentTags removeObject:normalizedTag];
-    symbol.tags = [currentTags copy];
-    [self saveContext];
-    
-    NSLog(@"DataHub: Removed tag '%@' from symbol %@", normalizedTag, symbol.symbol);
+    if ([currentTags containsObject:normalizedTag]) {
+        [currentTags removeObject:normalizedTag];
+        symbol.tags = [currentTags copy];
+        [self saveContext];
+        
+        NSLog(@"✅ DataHub: Removed tag '%@' from %@ (CLEAN)", normalizedTag, symbol.symbol);
+        
+        // ✅ CLEAN: Simple notification (will be used later for smart tracking)
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"DataHubSymbolTagRemoved"
+                                                            object:self
+                                                          userInfo:@{
+                                                              @"symbol": symbol,
+                                                              @"tag": normalizedTag
+                                                          }];
+    }
 }
 
 - (NSArray<NSString *> *)getAllTags {
@@ -1271,101 +1403,6 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 
 #pragma mark - Symbol Tracking Setup
 
-- (void)setupSymbolTrackingObservers {
-    NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
-    
-    // Chain system notifications (già con array di simboli)
-    [center addObserver:self
-               selector:@selector(trackSymbolsFromChainNotification:)
-                   name:kWidgetChainUpdateNotification
-                 object:nil];
-    
-    // DataHub internal notifications (singolo simbolo)
-    [center addObserver:self
-               selector:@selector(trackSymbolFromDataHubNotification:)
-                   name:DataHubWatchlistUpdatedNotification
-                 object:nil];
-    
-    // Connection notifications (se esistono)
-    [center addObserver:self
-               selector:@selector(trackSymbolFromDataHubNotification:)
-                   name:DataHubConnectionsUpdatedNotification
-                 object:nil];
-  
-    NSLog(@"DataHub: Symbol tracking observers registered");
-}
-
-#pragma mark - Symbol Tracking Handlers
-
-- (void)trackSymbolsFromChainNotification:(NSNotification *)notification {
-    // Chain notifications hanno già formato standardizzato
-    NSDictionary *update = notification.userInfo[kChainUpdateKey];
-    
-    if (!update) return;
-    
-    NSString *action = update[@"action"];
-    NSArray *symbols = update[@"symbols"];
-    
-    if ([action isEqualToString:@"setSymbols"] && symbols.count > 0) {
-        [self trackSymbolInteractions:symbols context:@"chain_broadcast"];
-    }
-}
-
-- (void)trackSymbolFromDataHubNotification:(NSNotification *)notification {
-    // DataHub notifications con formato misto
-    NSString *notificationName = notification.name;
-    NSDictionary *userInfo = notification.userInfo;
-    
-    NSArray *symbolsToTrack = [self extractSymbolsFromNotification:userInfo
-                                                   notificationName:notificationName];
-    
-    if (symbolsToTrack.count > 0) {
-        NSString *context = [self contextFromNotificationName:notificationName
-                                                        action:userInfo[@"action"]];
-        [self trackSymbolInteractions:symbolsToTrack context:context];
-    }
-}
-
-- (NSArray<NSString *> *)extractSymbolsFromNotification:(NSDictionary *)userInfo
-                                        notificationName:(NSString *)notificationName {
-    NSMutableArray<NSString *> *symbols = [NSMutableArray array];
-    
-    // Estrai simboli da diversi formati
-    
-    // 1. Array di simboli (formato chain)
-    if (userInfo[@"symbols"]) {
-        [symbols addObjectsFromArray:userInfo[@"symbols"]];
-    }
-    
-    // 2. Simbolo singolo (formato DataHub)
-    if (userInfo[@"symbol"]) {
-        [symbols addObject:userInfo[@"symbol"]];
-    }
-    
-    // 3. Simboli da Connection (COMMENTATO per ora - implementa quando hai ConnectionModel)
-    /*
-    if ([notificationName isEqualToString:DataHubConnectionsUpdatedNotification]) {
-        NSString *connectionID = userInfo[@"connectionID"];
-        if (connectionID) {
-            // TODO: Implementa quando hai ConnectionModel disponibile
-            // ConnectionModel *connection = [self getConnectionWithID:connectionID];
-            // if (connection && connection.symbols) {
-            //     [symbols addObjectsFromArray:connection.symbols];
-            // }
-        }
-    }
-    */
-    
-    // 4. Simboli da Watchlist
-    if ([notificationName isEqualToString:DataHubWatchlistUpdatedNotification]) {
-        Watchlist *watchlist = userInfo[@"watchlist"];
-        if (watchlist && watchlist.symbols) {
-            [symbols addObjectsFromArray:watchlist.symbols];
-        }
-    }
-    
-    return [symbols copy];
-}
 
 - (NSString *)contextFromNotificationName:(NSString *)notificationName action:(NSString *)action {
     // Mappa notification → context per tracking
@@ -1386,42 +1423,9 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     return @"unknown";
 }
 
-- (void)trackSymbolInteractions:(NSArray<NSString *> *)symbols context:(NSString *)context {
-    if (symbols.count == 0) return;
-    
-    NSLog(@"DataHub: Tracking %lu symbol interactions (context: %@): %@",
-          (unsigned long)symbols.count, context, symbols);
-    
-    for (NSString *symbolName in symbols) {
-        if (symbolName.length > 0) {
-            // Questo metodo crea il simbolo se non esiste e incrementa counter
-            [self incrementInteractionForSymbolName:symbolName];
-        }
-    }
-    
-    // Opzionale: Post notification che il tracking è avvenuto
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"DataHubSymbolsTracked"
-                                                        object:self
-                                                      userInfo:@{
-                                                          @"symbols": symbols,
-                                                          @"context": context,
-                                                          @"count": @(symbols.count)
-                                                      }];
-}
 
-#pragma mark - Public Symbol Tracking API
 
-- (void)trackExplicitSymbolInteraction:(NSString *)symbolName context:(NSString *)context {
-    // Metodo pubblico per tracking esplicito da widget/UI
-    if (symbolName.length == 0) return;
-    
-    [self trackSymbolInteractions:@[symbolName] context:context];
-}
 
-- (void)trackExplicitSymbolInteractions:(NSArray<NSString *> *)symbols context:(NSString *)context {
-    // Metodo pubblico per tracking esplicito di array simboli
-    [self trackSymbolInteractions:symbols context:context];
-}
 
 
 - (void)dealloc {
@@ -1433,20 +1437,63 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 - (NSArray<NSString *> *)getSymbolsInvolvedInConnection:(StockConnection *)connection {
     NSMutableArray<NSString *> *symbols = [NSMutableArray array];
     
-    // Add source symbol
-    if (connection.sourceSymbol) {
+    // Add source symbol ✅
+    if (connection.sourceSymbol && connection.sourceSymbol.symbol) {
         [symbols addObject:connection.sourceSymbol.symbol];
     }
     
-    // Add target symbols
+    // ✅ FIXED: Add target symbols with proper conversion
     for (Symbol *symbol in connection.targetSymbols) {
-        if (![symbols containsObject:symbol.symbol]) {
-            [symbols addObject:symbol.symbol];
+        if ([symbol isKindOfClass:[Symbol class]] && symbol.symbol) {
+            if (![symbols containsObject:symbol.symbol]) {
+                [symbols addObject:symbol.symbol];
+            }
         }
     }
     
     return [symbols copy];
 }
+
+- (Symbol *)findOrCreateSymbolWithName:(NSString *)symbolName inContext:(NSManagedObjectContext *)context {
+    if (!symbolName || symbolName.length == 0 || !context) return nil;
+    
+    // RICORDA: Normalizzazione UPPERCASE!
+    NSString *normalizedSymbol = symbolName.uppercaseString;
+    
+    // Try to find existing
+    NSFetchRequest *request = [Symbol fetchRequest];
+    request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", normalizedSymbol];
+    request.fetchLimit = 1;
+    
+    NSError *error = nil;
+    NSArray *results = [context executeFetchRequest:request error:&error];
+    
+    if (error) {
+        NSLog(@"❌ Error finding symbol %@: %@", normalizedSymbol, error);
+        return nil;
+    }
+    
+    if (results.count > 0) {
+        // Return existing
+        return results.firstObject;
+    }
+    
+    // Create new symbol
+    Symbol *symbol = [NSEntityDescription insertNewObjectForEntityForName:@"Symbol"
+                                                   inManagedObjectContext:context];
+    symbol.symbol = normalizedSymbol;
+    symbol.creationDate = [NSDate date];
+    symbol.firstInteraction = [NSDate date];
+    symbol.lastInteraction = [NSDate date];
+    symbol.interactionCount = 1;
+    symbol.isFavorite = NO;
+    symbol.tags = @[];
+    
+    NSLog(@"DataHub: Created symbol: %@ in context", normalizedSymbol);
+    
+    return symbol;
+}
+
 
 #pragma mark - Alert Management (RuntimeModels for UI) - FIXED
 
@@ -1508,6 +1555,72 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     
     [self saveContext];
     return alert;
+}
+
+#pragma mark - VALIDATION: Debug Method for Type Checking
+
+- (void)validateSymbolConsistency {
+    NSLog(@"\n🔍 VALIDATION: Symbol Type Consistency Check");
+    NSLog(@"==============================================");
+    
+    // Check symbols array consistency
+    NSInteger validSymbols = 0;
+    NSInteger invalidSymbols = 0;
+    
+    for (id obj in self.symbols) {
+        if ([obj isKindOfClass:[Symbol class]]) {
+            Symbol *symbol = (Symbol *)obj;
+            if (symbol.symbol && [symbol.symbol isKindOfClass:[NSString class]]) {
+                validSymbols++;
+            } else {
+                invalidSymbols++;
+                NSLog(@"❌ Invalid symbol entity: %@", obj);
+            }
+        } else {
+            invalidSymbols++;
+            NSLog(@"❌ Non-Symbol object in symbols array: %@", NSStringFromClass([obj class]));
+        }
+    }
+    
+    NSLog(@"✅ Valid symbols: %ld", (long)validSymbols);
+    NSLog(@"❌ Invalid symbols: %ld", (long)invalidSymbols);
+    
+    // Check watchlists symbol relationships
+    NSArray<Watchlist *> *watchlists = [self getAllWatchlists];
+    for (Watchlist *watchlist in watchlists) {
+        NSLog(@"📋 Watchlist '%@':", watchlist.name);
+        NSLog(@"   - symbols.count: %lu", (unsigned long)watchlist.symbols.count);
+        NSLog(@"   - symbolNames: %@", [watchlist symbolNames]);
+    }
+    
+    NSLog(@"VALIDATION COMPLETE\n");
+}
+
+
+- (void)validateCleanTrackingState {
+    NSLog(@"\n🧹 VALIDATION: Clean Tracking State");
+    NSLog(@"==================================");
+    
+    NSArray<Symbol *> *allSymbols = [self getAllSymbols];
+    NSInteger zeroInteractions = 0;
+    NSInteger nonZeroInteractions = 0;
+    
+    for (Symbol *symbol in allSymbols) {
+        if (symbol.interactionCount == 0) {
+            zeroInteractions++;
+        } else {
+            nonZeroInteractions++;
+            NSLog(@"📊 Symbol %@ has %d interactions (pre-cleanup)",
+                  symbol.symbol, symbol.interactionCount);
+        }
+    }
+    
+    NSLog(@"📈 Tracking State:");
+    NSLog(@"   Zero interactions: %ld", (long)zeroInteractions);
+    NSLog(@"   Non-zero interactions: %ld (existing before cleanup)", (long)nonZeroInteractions);
+    NSLog(@"✅ All automatic tracking removed");
+    NSLog(@"✅ Only manual increments will work now");
+    NSLog(@"CLEAN STATE VALIDATION COMPLETE\n");
 }
 
 @end

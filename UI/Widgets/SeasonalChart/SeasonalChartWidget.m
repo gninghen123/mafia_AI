@@ -1258,35 +1258,36 @@ static NSArray<NSString *> *kAvailableDataTypes = nil;
 
 #pragma mark - Chain Integration
 
-// Override del metodo BaseWidget per ricevere simboli dalle chain
-- (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
-    NSString *action = update[@"action"];
-    
-    if ([action isEqualToString:@"setSymbols"]) {
-        NSArray *symbols = update[@"symbols"];
-        if (symbols.count > 0) {
-            [self handleSymbolsFromChain:symbols fromWidget:sender];
-        }
-    }
-}
 
 - (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
     NSLog(@"SeasonalChartWidget: Received %lu symbols from chain", (unsigned long)symbols.count);
+    
+    // ✅ ENHANCED: Track symbol interaction
+    if (symbols.count > 0) {
+        [[DataHub shared] trackExplicitSymbolInteractions:symbols context:@"SeasonalChartChainReceive"];
+    }
     
     // Prendi il primo simbolo (SeasonalChart mostra un simbolo alla volta)
     NSString *newSymbol = symbols.firstObject;
     if (!newSymbol || newSymbol.length == 0) return;
     
+    // ✅ ENHANCED: Check for same symbol
+    if ([newSymbol.uppercaseString isEqualToString:self.currentSymbol.uppercaseString]) {
+        NSLog(@"SeasonalChartWidget: Ignoring same symbol from chain: %@", newSymbol);
+        return;
+    }
+    
     // Aggiorna il campo di input
-    self.symbolTextField.stringValue = [newSymbol uppercaseString];
+    if (self.symbolTextField) {
+        self.symbolTextField.stringValue = [newSymbol uppercaseString];
+    }
     
     // Carica i dati per il nuovo simbolo
     [self loadDataForSymbol:newSymbol dataType:self.currentDataType];
     
-    // Mostra feedback temporaneo
+    // ✅ NUOVO: Usa metodo BaseWidget standard per feedback
     NSString *senderType = NSStringFromClass([sender class]);
-    NSString *message = [NSString stringWithFormat:@"📊 Loaded %@ from %@", newSymbol, senderType];
-    [self showChainFeedback:message];
+    [self showChainFeedback:[NSString stringWithFormat:@"📊 Loaded %@ from %@", newSymbol, senderType]];
     
     NSLog(@"SeasonalChartWidget: Loaded symbol '%@' from %@ chain", newSymbol, senderType);
 }

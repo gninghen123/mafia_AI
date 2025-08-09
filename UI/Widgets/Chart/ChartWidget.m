@@ -975,41 +975,36 @@ extern NSString *const DataHubDataLoadedNotification;
 
 #pragma mark - Chain Notifications
 
-// Override del metodo BaseWidget per ricevere simboli dalle chain
-- (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
-    NSString *action = update[@"action"];
-    
-    if ([action isEqualToString:@"setSymbols"]) {
-        NSArray *symbols = update[@"symbols"];
-        if (symbols.count > 0) {
-            [self handleSymbolsFromChain:symbols fromWidget:sender];
-        }
-    }
-}
+
 
 - (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
     NSLog(@"ChartWidget: Received %lu symbols from chain", (unsigned long)symbols.count);
+    
+    // ✅ ENHANCED: Track symbol interaction
+    if (symbols.count > 0) {
+        [[DataHub shared] trackExplicitSymbolInteractions:symbols context:@"ChartChainReceive"];
+    }
     
     // ChartWidget mostra un simbolo alla volta - prendi il primo
     NSString *newSymbol = symbols.firstObject;
     if (!newSymbol || newSymbol.length == 0) return;
     
-    // Evita loop se è lo stesso simbolo che abbiamo mandato noi
+    // ✅ ENHANCED: Evita loop se è lo stesso simbolo + logging migliorato
     if ([newSymbol.uppercaseString isEqualToString:self.currentSymbol]) {
-        NSLog(@"ChartWidget: Ignoring same symbol from chain: %@", newSymbol);
+        NSLog(@"ChartWidget: Ignoring same symbol from chain: %@ (current: %@)", newSymbol, self.currentSymbol);
         return;
     }
     
-    // Load new symbol
-    [self loadSymbol:newSymbol.uppercaseString];
+    // Carica il nuovo simbolo
+    [self loadSymbol:newSymbol];
     
-    // Mostra feedback temporaneo
+    // ✅ NUOVO: Usa metodo BaseWidget standard per feedback
     NSString *senderType = NSStringFromClass([sender class]);
-    NSString *feedbackMessage = [NSString stringWithFormat:@"📈 Loaded %@ from %@", newSymbol.uppercaseString, senderType];
-    [self showChainFeedback:feedbackMessage];
+    [self showChainFeedback:[NSString stringWithFormat:@"📈 Loaded %@ from %@", newSymbol, senderType]];
     
-    NSLog(@"ChartWidget: Loaded symbol '%@' from %@ chain", newSymbol.uppercaseString, senderType);
+    NSLog(@"ChartWidget: Loaded symbol '%@' from %@ chain", newSymbol, senderType);
 }
+
 
 - (void)showChainFeedback:(NSString *)message {
     // Trova il primo panel per mostrare il feedback

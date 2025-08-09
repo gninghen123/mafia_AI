@@ -1016,20 +1016,14 @@
 
 #pragma mark - Chain Integration
 
-// Override del metodo BaseWidget per ricevere simboli dalle chain
-- (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
-    NSString *action = update[@"action"];
-    
-    if ([action isEqualToString:@"setSymbols"]) {
-        NSArray *symbols = update[@"symbols"];
-        if (symbols.count > 0) {
-            [self handleSymbolsFromChain:symbols fromWidget:sender];
-        }
-    }
-}
 
 - (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
     NSLog(@"MultiChartWidget: Received %lu symbols from chain", (unsigned long)symbols.count);
+    
+    // ✅ ENHANCED: Track symbol interaction
+    if (symbols.count > 0) {
+        [[DataHub shared] trackExplicitSymbolInteractions:symbols context:@"MultiChartChainReceive"];
+    }
     
     // Combina i simboli ricevuti con quelli esistenti
     NSMutableSet *combinedSymbols = [NSMutableSet setWithArray:self.symbols];
@@ -1037,23 +1031,32 @@
     
     // Aggiorna la lista simboli
     NSArray *newSymbolsArray = [combinedSymbols.allObjects sortedArrayUsingSelector:@selector(compare:)];
+    
+    // ✅ ENHANCED: Check for actual changes
+    if ([newSymbolsArray isEqualToArray:self.symbols]) {
+        NSLog(@"MultiChartWidget: No new symbols to add, current list unchanged");
+        return;
+    }
+    
     self.symbols = newSymbolsArray;
     
     // Aggiorna il campo di testo
     self.symbolsString = [newSymbolsArray componentsJoinedByString:@", "];
-    self.symbolsTextField.stringValue = self.symbolsString;
+    if (self.symbolsTextField) {
+        self.symbolsTextField.stringValue = self.symbolsString;
+    }
     
     // Ricostruisci i mini chart
     [self rebuildMiniCharts];
     [self loadDataFromDataHub];
     
-    // Mostra feedback temporaneo
+    // ✅ NUOVO: Usa metodo BaseWidget standard per feedback
     NSString *senderType = NSStringFromClass([sender class]);
     NSString *message = symbols.count == 1 ?
-        [NSString stringWithFormat:@"Added %@ from %@", symbols[0], senderType] :
-        [NSString stringWithFormat:@"Added %lu symbols from %@", (unsigned long)symbols.count, senderType];
+        [NSString stringWithFormat:@"📊 Added %@ from %@", symbols[0], senderType] :
+        [NSString stringWithFormat:@"📊 Added %lu symbols from %@", (unsigned long)symbols.count, senderType];
     
-    [self showTemporaryMessage:message];
+    [self showChainFeedback:message];
 }
 
 #pragma mark - Enhanced BaseWidget State Management

@@ -38,48 +38,6 @@
     self.lastModified = [NSDate date];
 }
 
-#pragma mark - String-based Convenience Methods
-
-- (void)addSymbolWithName:(NSString *)symbolName context:(NSManagedObjectContext *)context {
-    if (!symbolName || symbolName.length == 0 || !context) return;
-    
-    NSString *normalizedSymbol = symbolName.uppercaseString;
-    
-    // Find or create Symbol entity
-    NSFetchRequest *request = [NSFetchRequest fetchRequestWithEntityName:@"Symbol"];
-    request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", normalizedSymbol];
-    
-    NSError *error;
-    NSArray *results = [context executeFetchRequest:request error:&error];
-    
-    Symbol *symbol;
-    if (results.count > 0) {
-        symbol = results.firstObject;
-    } else {
-        // Create new Symbol
-        symbol = [NSEntityDescription insertNewObjectForEntityForName:@"Symbol" inManagedObjectContext:context];
-        symbol.symbol = normalizedSymbol;
-        symbol.creationDate = [NSDate date];
-        symbol.interactionCount = 0;
-        symbol.isFavorite = NO;
-    }
-    
-    [self addSymbolObject:symbol];
-}
-
-- (void)removeSymbolWithName:(NSString *)symbolName {
-    if (!symbolName || symbolName.length == 0) return;
-    
-    NSString *normalizedSymbol = symbolName.uppercaseString;
-    
-    for (Symbol *symbol in self.symbols) {
-        if ([symbol.symbol isEqualToString:normalizedSymbol]) {
-            [self removeSymbolObject:symbol];
-            break;
-        }
-    }
-}
-
 - (BOOL)containsSymbolWithName:(NSString *)symbolName {
     if (!symbolName || symbolName.length == 0) return NO;
     

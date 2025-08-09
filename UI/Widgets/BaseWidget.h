@@ -10,6 +10,9 @@
 
 @interface BaseWidget : NSViewController <TagManagementDelegate>
 
+
+
+
 @property (nonatomic, strong) NSString *widgetType;
 @property (nonatomic, strong) NSString *widgetID;
 @property (nonatomic, assign) PanelType panelType;
@@ -31,7 +34,21 @@
 @property (nonatomic, assign) BOOL chainActive;
 @property (nonatomic, strong) NSColor *chainColor;  // Colore della chain quando attiva
 
+@property (nonatomic, assign) BOOL isReceivingChainUpdate;
+
+
+
+
+
 - (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType;
+
+
+
+- (void)showChainFeedback:(NSString *)message;
+
+- (void)sendChainAction:(NSString *)action withData:(id)data;
+- (NSMenu *)createChainSubmenuForSymbols:(NSArray<NSString *> *)symbols;
+
 
 // Widget lifecycle
 - (void)setupHeaderView;
@@ -45,7 +62,13 @@
 // Chain management - CORE METHODS
 - (void)setChainActive:(BOOL)active withColor:(NSColor *)color;
 - (void)broadcastUpdate:(NSDictionary *)update;
+
+// ✅ NUOVO: Standard implementation (non override in subclasses)
 - (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender;
+// ✅ NUOVO: Delegation methods (override in subclasses se necessario)
+- (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender;
+- (void)handleChainAction:(NSString *)action withData:(id)data fromWidget:(BaseWidget *)sender;
+
 
 // Chain management - HELPER METHODS (NEW)
 - (void)sendSymbolToChain:(NSString *)symbol;

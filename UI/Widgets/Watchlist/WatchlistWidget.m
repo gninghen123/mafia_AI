@@ -1410,61 +1410,26 @@ static NSString *const kWidgetSymbolsPasteboardType = @"com.tradingapp.widget.sy
 }
 
 #pragma mark - Chain Update Reception
-
-// Override del metodo receiveUpdate per gestire aggiornamenti da altre chain
-- (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
-    NSString *action = update[@"action"];
+- (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
+    NSLog(@"WatchlistWidget: Received %lu symbols from chain for highlighting", (unsigned long)symbols.count);
     
-    if ([action isEqualToString:@"setSymbols"]) {
-        NSArray *symbols = update[@"symbols"];
-        if (symbols.count > 0) {
-            // NUOVO: Solo highlight/sync, NON aggiungere alla watchlist
-            [self highlightSymbolsFromChain:symbols fromWidget:sender];
-        }
+    // ✅ ENHANCED: Track symbol interaction per highlight
+    if (symbols.count > 0) {
+        [[DataHub shared] trackExplicitSymbolInteractions:symbols context:@"WatchlistChainHighlight"];
     }
+    
+    // ✅ DELEGATION to existing logic
+    [self highlightSymbolsFromChain:symbols fromWidget:sender];
 }
 
-/*
-- (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
+// ✅ MANTIENI E AGGIORNA: Logic highlight esistente (già buona!)
+- (void)highlightSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
     if (!self.currentWatchlist) {
-        NSLog(@"WatchlistWidget: No active watchlist to receive symbols");
+        NSLog(@"WatchlistWidget: No active watchlist for highlighting");
         return;
     }
     
-    // Verifica se i simboli sono già nella watchlist
-    NSMutableArray *newSymbols = [NSMutableArray array];
-    NSArray *existingSymbols = [[DataHub shared] getSymbolsForWatchlistModel:self.currentWatchlist];
-    
-    for (NSString *symbol in symbols) {
-        if (![existingSymbols containsObject:symbol]) {
-            [newSymbols addObject:symbol];
-        }
-    }
-    
-    if (newSymbols.count > 0) {
-        // Aggiungi i nuovi simboli alla watchlist
-        for (NSString *symbol in newSymbols) {
-            [[DataHub shared] addSymbol:symbol toWatchlistModel:self.currentWatchlist];
-        }
-        
-        // Ricarica i dati
-        [self loadSymbolsForCurrentWatchlist];
-        
-        // Mostra feedback
-        NSString *message = newSymbols.count == 1 ?
-            [NSString stringWithFormat:@"Added %@", newSymbols[0]] :
-            [NSString stringWithFormat:@"Added %lu symbols", (unsigned long)newSymbols.count];
-        
-        [self showTemporaryMessage:message];
-        
-        NSLog(@"WatchlistWidget: Added %lu symbols from chain", (unsigned long)newSymbols.count);
-    } else {
-        NSLog(@"WatchlistWidget: All symbols already exist in watchlist");
-    }
-}
- */
-- (void)highlightSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
-    NSLog(@"WatchlistWidget: Received %lu symbols from chain for highlighting", (unsigned long)symbols.count);
+    NSLog(@"WatchlistWidget: Processing %lu symbols for highlighting", (unsigned long)symbols.count);
     
     // Trova i simboli che sono già nella watchlist corrente per evidenziarli
     NSArray *existingSymbols = [[DataHub shared] getSymbolsForWatchlistModel:self.currentWatchlist];
@@ -1480,22 +1445,78 @@ static NSString *const kWidgetSymbolsPasteboardType = @"com.tradingapp.widget.sy
         // Evidenzia i simboli nella table view
         [self highlightSymbolsInTable:symbolsToHighlight];
         
-        // Mostra feedback che indica la sincronizzazione (NON aggiunta)
+        // ✅ ENHANCED: Usa BaseWidget standard feedback + custom message
         NSString *senderType = NSStringFromClass([sender class]);
         NSString *message = symbolsToHighlight.count == 1 ?
-            [NSString stringWithFormat:@"📍 %@ (from %@)", symbolsToHighlight[0], senderType] :
-            [NSString stringWithFormat:@"📍 %lu symbols highlighted", (unsigned long)symbolsToHighlight.count];
-        [self showTemporaryMessage:message];
+            [NSString stringWithFormat:@"📋 Highlighted %@ from %@", symbolsToHighlight[0], senderType] :
+            [NSString stringWithFormat:@"📋 Highlighted %lu/%lu symbols from %@",
+             (unsigned long)symbolsToHighlight.count, (unsigned long)symbols.count, senderType];
+        
+        [self showChainFeedback:message];
+        
+        NSLog(@"WatchlistWidget: Highlighted %lu symbols from %@ chain",
+              (unsigned long)symbolsToHighlight.count, senderType);
     } else {
-        // Nessun simbolo trovato nella watchlist corrente
+        // ✅ ENHANCED: Feedback anche quando nessun simbolo da highlight
         NSString *senderType = NSStringFromClass([sender class]);
-        NSString *message = [NSString stringWithFormat:@"👁️ Viewing %@ (not in this watchlist)", symbols[0]];
-        [self showTemporaryMessage:message];
+        [self showChainFeedback:[NSString stringWithFormat:@"📋 No symbols to highlight from %@", senderType]];
+        
+        NSLog(@"WatchlistWidget: No symbols to highlight from chain (received %lu, none in current watchlist)",
+              (unsigned long)symbols.count);
+    }
+}
+
+// ✅ ENHANCED: Context menu con opzioni highlight vs add
+- (NSMenu *)createWatchlistChainSubmenuForSymbols:(NSArray<NSString *> *)symbols {
+    NSMenu *submenu = [[NSMenu alloc] init];
+    
+    if (!symbols || symbols.count == 0) return submenu;
+    
+    // Highlight option (default behavior)
+    NSMenuItem *highlightItem = [[NSMenuItem alloc] initWithTitle:@"📋 Highlight in Watchlists"
+                                                           action:@selector(sendSymbolsForHighlight:)
+                                                    keyEquivalent:@""];
+    highlightItem.target = self;
+    highlightItem.representedObject = symbols;
+    [submenu addItem:highlightItem];
+    
+    // Add option (alternative behavior)
+    NSMenuItem *addItem = [[NSMenuItem alloc] initWithTitle:@"📋 Add to Current Watchlist"
+                                                     action:@selector(sendSymbolsForAddition:)
+                                              keyEquivalent:@""];
+    addItem.target = self;
+    addItem.representedObject = symbols;
+    [submenu addItem:addItem];
+    
+    [submenu addItem:[NSMenuItem separatorItem]];
+    
+    // Standard chain colors submenu
+    NSMenu *chainSubmenu = [self createChainSubmenuForSymbols:symbols];
+    if (chainSubmenu.itemArray.count > 0) {
+        NSMenuItem *chainMenuItem = [[NSMenuItem alloc] initWithTitle:@"🔗 Send to Chain"
+                                                               action:nil
+                                                        keyEquivalent:@""];
+        chainMenuItem.submenu = chainSubmenu;
+        [submenu addItem:chainMenuItem];
     }
     
-    NSLog(@"WatchlistWidget: Highlighted %lu symbols from %@ chain",
-          (unsigned long)symbolsToHighlight.count, NSStringFromClass([sender class]));
+    return submenu;
 }
+
+- (void)sendSymbolsForHighlight:(id)sender {
+    NSArray<NSString *> *symbols = [sender representedObject];
+    if (symbols.count > 0) {
+        [self sendSymbolsToChain:symbols];  // Default behavior: highlight
+    }
+}
+
+- (void)sendSymbolsForAddition:(id)sender {
+    NSArray<NSString *> *symbols = [sender representedObject];
+    if (symbols.count > 0) {
+        [self sendChainAction:@"addSymbols" withData:symbols];  // Custom action: add
+    }
+}
+
 
 // NUOVO: Metodo per evidenziare simboli specifici nella table view
 - (void)highlightSymbolsInTable:(NSArray<NSString *> *)symbols {

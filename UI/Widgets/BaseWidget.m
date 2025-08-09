@@ -260,21 +260,34 @@ static NSString *const kChainSenderKey = @"sender";
 - (void)broadcastUpdate:(NSDictionary *)update {
     if (!self.chainActive) return;
     
-    // Converti simbolo singolo in array se necessario
+    // ✅ ANTI-LOOP: Non mandare se stiamo ricevendo un update
+    if (self.isReceivingChainUpdate) {
+        NSLog(@"⚠️ LOOP PREVENTED: %@ blocked broadcast while receiving", NSStringFromClass([self class]));
+        return;
+    }
+    
+    // Normalize update format
     NSMutableDictionary *normalizedUpdate = [update mutableCopy];
     
-    // Se c'è un "symbol" singolo, convertilo in "symbols" array
+    // Convert single symbol to symbols array
     if (normalizedUpdate[@"symbol"] && !normalizedUpdate[@"symbols"]) {
         normalizedUpdate[@"symbols"] = @[normalizedUpdate[@"symbol"]];
         [normalizedUpdate removeObjectForKey:@"symbol"];
     }
     
-    // Assicurati che l'action sia sempre "setSymbols"
+    // Ensure action is set
     if (!normalizedUpdate[@"action"]) {
         normalizedUpdate[@"action"] = @"setSymbols";
     }
     
-    // Includi il colore della chain nel messaggio
+    // ✅ LOGGING: Track all broadcasts
+    NSArray *symbols = normalizedUpdate[@"symbols"];
+    NSLog(@"🔗 %@ broadcasting: %@ (%lu symbols)",
+          NSStringFromClass([self class]),
+          [symbols componentsJoinedByString:@", "],
+          (unsigned long)symbols.count);
+    
+    // Send notification
     NSMutableDictionary *notification = [NSMutableDictionary dictionary];
     notification[kChainColorKey] = self.chainColor;
     notification[kChainUpdateKey] = normalizedUpdate;
@@ -284,49 +297,206 @@ static NSString *const kChainSenderKey = @"sender";
                                                         object:nil
                                                       userInfo:notification];
 }
-
 - (void)handleChainNotification:(NSNotification *)notification {
-    // Ignora se la chain non è attiva
+    // Skip if chain not active
     if (!self.chainActive) return;
     
-    // Ignora le notifiche da se stesso
+    // Skip self-notifications
     BaseWidget *sender = notification.userInfo[kChainSenderKey];
     if (sender == self) return;
     
-    // Controlla se il colore matcha
+    // Check color match
     NSColor *broadcastColor = notification.userInfo[kChainColorKey];
     if (broadcastColor && [self colorsMatch:self.chainColor with:broadcastColor]) {
         NSDictionary *update = notification.userInfo[kChainUpdateKey];
+        
+        // ✅ LOGGING: Track all receives
+        NSArray *symbols = update[@"symbols"];
+        NSLog(@"🔗 %@ receiving: %@ (%lu symbols) from %@",
+              NSStringFromClass([self class]),
+              [symbols componentsJoinedByString:@", "],
+              (unsigned long)symbols.count,
+              NSStringFromClass([sender class]));
+        
         [self receiveUpdate:update fromWidget:sender];
     }
 }
 
 
 
+
 - (void)receiveUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
-    // Override in subclasses to handle updates
+    // ✅ ANTI-LOOP PROTECTION
+    self.isReceivingChainUpdate = YES;
+    
+    @try {
+        // ✅ STANDARD ACTION PROCESSING
+        NSString *action = update[@"action"];
+        
+        if ([action isEqualToString:@"setSymbols"]) {
+            NSArray *symbols = update[@"symbols"];
+            if (symbols && symbols.count > 0) {
+                // ✅ DELEGATION to subclass
+                [self handleSymbolsFromChain:symbols fromWidget:sender];
+            }
+        } else {
+            // ✅ DELEGATION for custom actions
+            id actionData = update[@"data"] ?: update[@"symbols"];
+            [self handleChainAction:action withData:actionData fromWidget:sender];
+        }
+    }
+    @catch (NSException *exception) {
+        NSLog(@"❌ ERROR in receiveUpdate for %@: %@", NSStringFromClass([self class]), exception);
+    }
+    @finally {
+        // ✅ SEMPRE reset flag
+        self.isReceivingChainUpdate = NO;
+    }
+}
+
+- (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
+    // Default: Log but take no action
+    NSLog(@"📝 %@ received %lu symbols but has no chain handler",
+          NSStringFromClass([self class]), (unsigned long)symbols.count);
+    
+    // Optional: Store symbols for potential future use
+    // Subclasses should override for specific behavior
+}
+
+// ✅ DEFAULT CUSTOM ACTION HANDLER - Override in subclasses if needed
+- (void)handleChainAction:(NSString *)action withData:(id)data fromWidget:(BaseWidget *)sender {
+    // Default: Log unsupported action
+    NSLog(@"📝 %@ received unsupported chain action '%@' from %@",
+          NSStringFromClass([self class]), action, NSStringFromClass([sender class]));
+}
+
+
+// ✅ NUOVO: Template method per subclass override
+- (void)processChainUpdate:(NSDictionary *)update fromWidget:(BaseWidget *)sender {
+    // Default implementation: do nothing
+    // Subclasses should override this method instead of receiveUpdate:fromWidget:
+    
+    NSLog(@"📝 %@ received chain update but has no custom processing", NSStringFromClass([self class]));
 }
 
 #pragma mark - Chain Helper Methods
+// ✅ NUOVO: Send custom action to chain
+- (void)sendChainAction:(NSString *)action withData:(id)data {
+    if (!self.chainActive) return;
+    
+    [self broadcastUpdate:@{
+        @"action": action,
+        @"data": data
+    }];
+}
 
-- (void)sendSymbolToChain:(NSString *)symbol {
-    if (self.chainActive && symbol.length > 0) {
-        [self broadcastUpdate:@{
-            @"action": @"setSymbols",
-            @"symbols": @[symbol]
-        }];
-        NSLog(@"%@: Sent symbol '%@' to chain", NSStringFromClass([self class]), symbol);
+// ✅ NUOVO: Context menu integration helpers
+- (NSMenu *)createChainSubmenuForSymbols:(NSArray<NSString *> *)symbols {
+    NSMenu *submenu = [[NSMenu alloc] init];
+    
+    if (!symbols || symbols.count == 0) return submenu;
+    
+    // Send to active chain (if any)
+    if (self.chainActive) {
+        NSString *activeColorName = [self nameForChainColor:self.chainColor];
+        NSMenuItem *activeItem = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Send to %@ Chain", activeColorName]
+                                                            action:@selector(sendSymbolsToActiveChain:)
+                                                     keyEquivalent:@""];
+        activeItem.target = self;
+        activeItem.representedObject = symbols;
+        [submenu addItem:activeItem];
+        
+        [submenu addItem:[NSMenuItem separatorItem]];
+    }
+    
+    // Send to specific chains
+    NSArray *colors = @[
+        @{@"name": @"Red", @"color": [NSColor systemRedColor]},
+        @{@"name": @"Green", @"color": [NSColor systemGreenColor]},
+        @{@"name": @"Blue", @"color": [NSColor systemBlueColor]},
+        @{@"name": @"Yellow", @"color": [NSColor systemYellowColor]},
+        @{@"name": @"Orange", @"color": [NSColor systemOrangeColor]},
+        @{@"name": @"Purple", @"color": [NSColor systemPurpleColor]}
+    ];
+    
+    for (NSDictionary *colorInfo in colors) {
+        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Send to %@", colorInfo[@"name"]]
+                                                      action:@selector(sendSymbolsToSpecificChain:)
+                                               keyEquivalent:@""];
+        item.target = self;
+        item.representedObject = @{
+            @"symbols": symbols,
+            @"color": colorInfo[@"color"],
+            @"colorName": colorInfo[@"name"]
+        };
+        [submenu addItem:item];
+    }
+    
+    return submenu;
+}
+
+- (void)sendSymbolsToActiveChain:(id)sender {
+    NSArray<NSString *> *symbols = [sender representedObject];
+    if (symbols.count > 0 && self.chainActive) {
+        [self sendSymbolsToChain:symbols];
+        
+        NSString *message = symbols.count == 1 ?
+            [NSString stringWithFormat:@"Sent %@ to chain", symbols[0]] :
+            [NSString stringWithFormat:@"Sent %lu symbols to chain", (unsigned long)symbols.count];
+        [self showChainFeedback:message];
     }
 }
 
-- (void)sendSymbolsToChain:(NSArray<NSString *> *)symbols {
-    if (self.chainActive && symbols.count > 0) {
-        [self broadcastUpdate:@{
-            @"action": @"setSymbols",
-            @"symbols": symbols
-        }];
-        NSLog(@"%@: Sent %lu symbols to chain", NSStringFromClass([self class]), (unsigned long)symbols.count);
+- (void)sendSymbolsToSpecificChain:(id)sender {
+    NSDictionary *actionData = [sender representedObject];
+    NSArray<NSString *> *symbols = actionData[@"symbols"];
+    NSColor *color = actionData[@"color"];
+    NSString *colorName = actionData[@"colorName"];
+    
+    if (symbols.count > 0 && color) {
+        // Temporarily activate chain with specific color
+        BOOL wasActive = self.chainActive;
+        NSColor *previousColor = self.chainColor;
+        
+        [self setChainActive:YES withColor:color];
+        [self sendSymbolsToChain:symbols];
+        
+        // Restore previous state or auto-deactivate
+        if (!wasActive) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [self setChainActive:NO withColor:nil];
+            });
+        } else {
+            [self setChainActive:YES withColor:previousColor];
+        }
+        
+        NSString *message = symbols.count == 1 ?
+            [NSString stringWithFormat:@"Sent %@ to %@ chain", symbols[0], colorName] :
+            [NSString stringWithFormat:@"Sent %lu symbols to %@ chain", (unsigned long)symbols.count, colorName];
+        [self showChainFeedback:message];
     }
+}
+
+- (void)sendSymbolToChain:(NSString *)symbol {
+    if (!self.chainActive || !symbol || symbol.length == 0) return;
+    
+    [self broadcastUpdate:@{
+        @"action": @"setSymbols",
+        @"symbols": @[symbol]
+    }];
+    
+    NSLog(@"🔗 %@: Sent symbol '%@' to chain", NSStringFromClass([self class]), symbol);
+}
+
+- (void)sendSymbolsToChain:(NSArray<NSString *> *)symbols {
+    if (!self.chainActive || !symbols || symbols.count == 0) return;
+    
+    [self broadcastUpdate:@{
+        @"action": @"setSymbols",
+        @"symbols": symbols
+    }];
+    
+    NSLog(@"🔗 %@: Sent %lu symbols to chain", NSStringFromClass([self class]), (unsigned long)symbols.count);
 }
 
 - (NSMenu *)createChainColorSubmenuForSymbols:(NSArray<NSString *> *)symbols {
@@ -361,6 +531,11 @@ static NSString *const kChainSenderKey = @"sender";
     }
     
     return menu;
+}
+
+- (void)showChainFeedback:(NSString *)message {
+    // Default: Console log (subclasses can override for UI feedback)
+    NSLog(@"📢 %@: %@", NSStringFromClass([self class]), message);
 }
 
 #pragma mark - Chain Context Menu Actions
@@ -1467,5 +1642,77 @@ static NSString *const kChainSenderKey = @"sender";
         NSLog(@"BaseWidget: %@", message);
     }
 }
+// ============================================================================
+// DEBUGGING: Chain state monitoring
+// ============================================================================
+
+#pragma mark - Chain Debug Methods (NEW)
+
+- (void)logChainState {
+    NSLog(@"\n🔍 CHAIN STATE: %@", NSStringFromClass([self class]));
+    NSLog(@"  Active: %@", self.chainActive ? @"YES" : @"NO");
+    NSLog(@"  Color: %@", self.chainColor ? [self nameForChainColor:self.chainColor] : @"None");
+    NSLog(@"  Receiving: %@", self.isReceivingChainUpdate ? @"YES" : @"NO");
+    NSLog(@"  Widget ID: %@", self.widgetID ?: @"None");
+}
+
++ (void)logAllChainStates {
+    NSLog(@"\n🔍 ALL WIDGET CHAIN STATES:");
+    NSLog(@"============================");
+    
+    // In una implementazione reale, avresti un registry di tutti i widget
+    // Per ora, questo è un placeholder per il debug
+    NSLog(@"(This would iterate through all active widgets)");
+    NSLog(@"============================\n");
+}
+
+- (void)validateChainIntegrity {
+    NSLog(@"\n🔍 CHAIN INTEGRITY CHECK: %@", NSStringFromClass([self class]));
+    
+    if (self.chainActive && !self.chainColor) {
+        NSLog(@"❌ ERROR: Chain active but no color set");
+    }
+    
+    if (!self.chainActive && self.chainColor) {
+        NSLog(@"⚠️  WARNING: Chain inactive but color still set");
+    }
+    
+    if (self.isReceivingChainUpdate) {
+        NSLog(@"⚠️  WARNING: Widget stuck in receiving state");
+    }
+    
+    NSLog(@"✅ Chain integrity check completed");
+}
+// ============================================================================
+// EMERGENCY: Chain loop reset methods
+// ============================================================================
+
+- (void)emergencyResetChainState {
+    NSLog(@"🚨 EMERGENCY: Resetting chain state for %@", NSStringFromClass([self class]));
+    
+    self.isReceivingChainUpdate = NO;
+    
+    if (self.chainActive) {
+        NSLog(@"   Chain was active, keeping active state");
+    }
+    
+    NSLog(@"✅ Chain state reset completed");
+}
+
++ (void)emergencyResetAllChainStates {
+    NSLog(@"🚨 EMERGENCY: Resetting all widget chain states");
+    
+    // In una implementazione reale, questo itererebbe su tutti i widget attivi
+    // e chiamerebbe emergencyResetChainState su ognuno
+    
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"BaseWidgetEmergencyChainReset"
+                                                        object:nil
+                                                      userInfo:nil];
+    
+    NSLog(@"✅ All chain states reset");
+}
+
+
+
 
 @end

@@ -190,41 +190,75 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 - (void)addSymbol:(NSString *)symbol toWatchlistModel:(WatchlistModel *)watchlistModel {
     if (!symbol || !watchlistModel || !watchlistModel.name) return;
     
-    // Find the corresponding Core Data object
+    // ✅ TRACKING UNICO QUI (high-level, chiamato dai widget)
+    Symbol *symbolEntity = [self createSymbolWithName:symbol];
+    
+    // Find corresponding Core Data object
     Watchlist *coreDataWatchlist = [self findWatchlistByName:watchlistModel.name];
-    if (coreDataWatchlist) {
-        [self addSymbol:symbol toWatchlist:coreDataWatchlist];
-        
-        // Update the RuntimeModel
-        NSMutableArray *symbols = [watchlistModel.symbols mutableCopy] ?: [NSMutableArray array];
-        NSString *upperSymbol = symbol.uppercaseString;
-        if (![symbols containsObject:upperSymbol]) {
-            [symbols addObject:upperSymbol];
-            watchlistModel.symbols = [symbols copy];
-            watchlistModel.lastModified = [NSDate date];
-        }
+    if (!coreDataWatchlist) return;
+    
+    // ✅ USA RELATIONSHIP DIRETTA (no string methods)
+    [coreDataWatchlist addSymbolObject:symbolEntity];
+    [self saveContext];
+    
+    // Update RuntimeModel
+    NSMutableArray *symbols = [watchlistModel.symbols mutableCopy] ?: [NSMutableArray array];
+    NSString *upperSymbol = symbol.uppercaseString;
+    if (![symbols containsObject:upperSymbol]) {
+        [symbols addObject:upperSymbol];
+        watchlistModel.symbols = [symbols copy];
+        watchlistModel.lastModified = [NSDate date];
     }
+    
+    // ✅ UNA SOLA NOTIFICATION
+    [[NSNotificationCenter defaultCenter] postNotificationName:DataHubWatchlistUpdatedNotification
+                                                        object:self
+                                                      userInfo:@{
+                                                          @"watchlist": coreDataWatchlist,
+                                                          @"action": @"symbolAdded",
+                                                          @"symbol": symbol,
+                                                          @"symbolEntity": symbolEntity
+                                                      }];
+    
+    NSLog(@"✅ DataHub: Added %@ to watchlist %@ (interactions: %d)",
+          symbol, watchlistModel.name, symbolEntity.interactionCount);
 }
 
 
 - (void)removeSymbol:(NSString *)symbol fromWatchlistModel:(WatchlistModel *)watchlistModel {
     if (!symbol || !watchlistModel || !watchlistModel.name) return;
     
-    // Find the corresponding Core Data object
+    // Find corresponding Core Data objects
     Watchlist *coreDataWatchlist = [self findWatchlistByName:watchlistModel.name];
-    if (coreDataWatchlist) {
-        [self removeSymbol:symbol fromWatchlist:coreDataWatchlist];
-        
-        // Update the RuntimeModel
-        NSMutableArray *symbols = [watchlistModel.symbols mutableCopy];
-        NSString *upperSymbol = symbol.uppercaseString;
-        if ([symbols containsObject:upperSymbol]) {
-            [symbols removeObject:upperSymbol];
-            watchlistModel.symbols = [symbols copy];
-            watchlistModel.lastModified = [NSDate date];
-        }
+    Symbol *symbolEntity = [self getSymbolWithName:symbol];
+    
+    if (!coreDataWatchlist || !symbolEntity) return;
+    
+    // ✅ USA RELATIONSHIP DIRETTA
+    [coreDataWatchlist removeSymbolObject:symbolEntity];
+    [self saveContext];
+    
+    // Update RuntimeModel
+    NSMutableArray *symbols = [watchlistModel.symbols mutableCopy];
+    NSString *upperSymbol = symbol.uppercaseString;
+    if ([symbols containsObject:upperSymbol]) {
+        [symbols removeObject:upperSymbol];
+        watchlistModel.symbols = [symbols copy];
+        watchlistModel.lastModified = [NSDate date];
     }
+    
+    // ✅ NOTIFICATION
+    [[NSNotificationCenter defaultCenter] postNotificationName:DataHubWatchlistUpdatedNotification
+                                                        object:self
+                                                      userInfo:@{
+                                                          @"watchlist": coreDataWatchlist,
+                                                          @"action": @"symbolRemoved",
+                                                          @"symbol": symbol
+                                                      }];
+    
+    NSLog(@"✅ DataHub: Removed %@ from watchlist %@", symbol, watchlistModel.name);
 }
+
 
 - (NSArray<NSString *> *)getSymbolsForWatchlistModel:(WatchlistModel *)watchlistModel {
     return watchlistModel.symbols ?: @[];
@@ -325,9 +359,18 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 - (void)addSymbol:(NSString *)symbol toWatchlist:(Watchlist *)watchlist {
     if (!symbol || !watchlist) return;
     
-    [watchlist addSymbolWithName:symbol context:self.mainContext];
+    // ✅ USA ENTITY ESISTENTE (no tracking qui)
+    Symbol *symbolEntity = [self getSymbolWithName:symbol];
+    if (!symbolEntity) {
+        NSLog(@"⚠️ DataHub: Symbol %@ not found for watchlist operation. Create it first.", symbol);
+        return;
+    }
+    
+    // ✅ RELATIONSHIP DIRETTA (no string methods)
+    [watchlist addSymbolObject:symbolEntity];
     [self saveContext];
     
+    // ✅ NOTIFICATION (per legacy compatibility)
     [[NSNotificationCenter defaultCenter] postNotificationName:DataHubWatchlistUpdatedNotification
                                                         object:self
                                                       userInfo:@{
@@ -337,22 +380,24 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
                                                       }];
 }
 
-
 - (void)removeSymbol:(NSString *)symbol fromWatchlist:(Watchlist *)watchlist {
     if (!symbol || !watchlist) return;
     
-    [watchlist removeSymbolWithName:symbol];
-    [self saveContext];
-    
-    [[NSNotificationCenter defaultCenter] postNotificationName:DataHubWatchlistUpdatedNotification
-                                                        object:self
-                                                      userInfo:@{
-                                                          @"watchlist": watchlist,
-                                                          @"action": @"symbolRemoved",
-                                                          @"symbol": symbol
-                                                      }];
+    // ✅ USA ENTITY ESISTENTE
+    Symbol *symbolEntity = [self getSymbolWithName:symbol];
+    if (symbolEntity) {
+        [watchlist removeSymbolObject:symbolEntity];
+        [self saveContext];
+        
+        [[NSNotificationCenter defaultCenter] postNotificationName:DataHubWatchlistUpdatedNotification
+                                                            object:self
+                                                          userInfo:@{
+                                                              @"watchlist": watchlist,
+                                                              @"action": @"symbolRemoved",
+                                                              @"symbol": symbol
+                                                          }];
+    }
 }
-
 - (NSArray<NSString *> *)getSymbolsForWatchlist:(Watchlist *)watchlist {
     if (!watchlist) return @[];
     
@@ -369,6 +414,72 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
                                                       userInfo:@{@"action": @"updated", @"watchlist": watchlist}];
 }
 
+
+#pragma mark - DataHub Validation Methods (NEW)
+
+- (void)validateWatchlistSymbolTracking {
+    NSLog(@"\n🔍 VALIDATION: Watchlist Symbol Tracking");
+    NSLog(@"==========================================");
+    
+    NSArray<WatchlistModel *> *watchlists = [self getAllWatchlistModels];
+    NSInteger totalSymbolsInWatchlists = 0;
+    NSInteger symbolsWithZeroInteractions = 0;
+    
+    for (WatchlistModel *watchlist in watchlists) {
+        NSLog(@"📋 Watchlist: %@ (%lu symbols)", watchlist.name, (unsigned long)watchlist.symbols.count);
+        
+        for (NSString *symbolName in watchlist.symbols) {
+            totalSymbolsInWatchlists++;
+            
+            Symbol *symbol = [self getSymbolWithName:symbolName];
+            if (!symbol) {
+                NSLog(@"   ❌ BROKEN: Symbol '%@' in watchlist but missing from database", symbolName);
+            } else if (symbol.interactionCount == 0) {
+                symbolsWithZeroInteractions++;
+                NSLog(@"   ⚠️  WARNING: Symbol '%@' has no interactions tracked", symbolName);
+            } else {
+                NSLog(@"   ✅ OK: Symbol '%@' - %d interactions", symbolName, symbol.interactionCount);
+            }
+        }
+    }
+    
+    NSLog(@"SUMMARY:");
+    NSLog(@"- Total symbols in watchlists: %ld", (long)totalSymbolsInWatchlists);
+    NSLog(@"- Symbols with zero interactions: %ld", (long)symbolsWithZeroInteractions);
+    NSLog(@"- Tracking success rate: %.1f%%",
+          totalSymbolsInWatchlists > 0 ?
+          (100.0 * (totalSymbolsInWatchlists - symbolsWithZeroInteractions) / totalSymbolsInWatchlists) : 0.0);
+    NSLog(@"==========================================\n");
+}
+
+- (void)fixWatchlistSymbolTracking {
+    NSLog(@"\n🔧 FIXING: Watchlist Symbol Tracking Issues");
+    NSLog(@"==========================================");
+    
+    NSArray<WatchlistModel *> *watchlists = [self getAllWatchlistModels];
+    NSInteger fixedSymbols = 0;
+    
+    for (WatchlistModel *watchlist in watchlists) {
+        for (NSString *symbolName in watchlist.symbols) {
+            Symbol *symbol = [self getSymbolWithName:symbolName];
+            
+            if (!symbol) {
+                // Create missing symbol
+                symbol = [self createSymbolWithName:symbolName];
+                fixedSymbols++;
+                NSLog(@"   ✅ CREATED: Symbol '%@' with interaction tracking", symbolName);
+            } else if (symbol.interactionCount == 0) {
+                // Fix zero interaction count
+                [self incrementInteractionForSymbol:symbol];
+                fixedSymbols++;
+                NSLog(@"   ✅ FIXED: Symbol '%@' interaction count updated", symbolName);
+            }
+        }
+    }
+    
+    NSLog(@"FIXED: %ld symbols now have proper tracking", (long)fixedSymbols);
+    NSLog(@"==========================================\n");
+}
 #pragma mark - Alert Management
 
 - (void)loadAlerts {
@@ -689,62 +800,103 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     return [runtimeModels copy];
 }
 
-- (Alert *)createAlertWithSymbol:(NSString *)symbol
-                    triggerValue:(double)triggerValue
-                 conditionString:(NSString *)conditionString
-            notificationEnabled:(BOOL)notificationEnabled
-                           notes:(NSString *)notes {
-    
-    Alert *alert = [NSEntityDescription insertNewObjectForEntityForName:@"Alert"
-                                                 inManagedObjectContext:self.mainContext];
-    
-    // Use Symbol relationship instead of string attribute
-    Symbol *symbolEntity = [self findOrCreateSymbolWithName:symbol inContext:self.mainContext];
-    alert.symbol = symbolEntity;
-    
-    alert.triggerValue = triggerValue;
-    alert.conditionString = conditionString;
-    alert.isActive = YES;
-    alert.isTriggered = NO;
-    alert.notificationEnabled = notificationEnabled;
-    alert.notes = notes;
-    alert.creationDate = [NSDate date];
-    
-    [self saveContext];
-    return alert;
-}
 
+- (void)updateAlertModel:(AlertModel *)alertModel {
+    if (!alertModel || !alertModel.symbol) return;
+    
+    // Find corresponding Core Data object
+    Alert *coreDataAlert = [self findAlertBySymbolAndValue:alertModel.symbol
+                                               triggerValue:alertModel.triggerValue
+                                            conditionString:alertModel.conditionString];
+    if (coreDataAlert) {
+        [self updateCoreDataAlertFromRuntimeModel:alertModel coreDataAlert:coreDataAlert];
+        [self saveContext];
+        
+        // Notification
+        [[NSNotificationCenter defaultCenter] postNotificationName:DataHubAlertTriggeredNotification
+                                                            object:self
+                                                          userInfo:@{@"alert": alertModel, @"action": @"updated"}];
+    }
+}
 
 - (void)deleteAlertModel:(AlertModel *)alertModel {
     if (!alertModel || !alertModel.symbol) return;
     
-    // Find the corresponding Core Data object
+    // Find corresponding Core Data object
     Alert *coreDataAlert = [self findAlertBySymbolAndValue:alertModel.symbol
                                                triggerValue:alertModel.triggerValue
                                             conditionString:alertModel.conditionString];
     if (coreDataAlert) {
         [self deleteAlert:coreDataAlert];
-    }
-}
-
-- (void)updateAlertModel:(AlertModel *)alertModel {
-    if (!alertModel || !alertModel.symbol) return;
-    
-    // Find the corresponding Core Data object
-    Alert *coreDataAlert = [self findAlertBySymbolAndValue:alertModel.symbol
-                                               triggerValue:alertModel.triggerValue
-                                            conditionString:alertModel.conditionString];
-    if (coreDataAlert) {
-        [self updateCoreDataFromRuntimeModel:coreDataAlert withModel:alertModel];
-        [self saveContext];
         
-        // Notify UI
+        // Notification
         [[NSNotificationCenter defaultCenter] postNotificationName:DataHubAlertTriggeredNotification
                                                             object:self
-                                                          userInfo:@{@"alert": alertModel}];
+                                                          userInfo:@{@"alert": alertModel, @"action": @"deleted"}];
     }
 }
 
+#pragma mark - Alert Validation Methods (NEW)
+
+- (void)validateAlertSymbolTracking {
+    NSLog(@"\n🔍 VALIDATION: Alert Symbol Tracking");
+    NSLog(@"=====================================");
+    
+    NSArray<AlertModel *> *alerts = [self getAllAlertModels];
+    NSInteger totalAlerts = alerts.count;
+    NSInteger alertsWithZeroInteractions = 0;
+    NSInteger alertsWithMissingSymbols = 0;
+    
+    for (AlertModel *alert in alerts) {
+        Symbol *symbol = [self getSymbolWithName:alert.symbol];
+        
+        if (!symbol) {
+            alertsWithMissingSymbols++;
+            NSLog(@"   ❌ BROKEN: Alert for '%@' but symbol missing from database", alert.symbol);
+        } else if (symbol.interactionCount == 0) {
+            alertsWithZeroInteractions++;
+            NSLog(@"   ⚠️  WARNING: Alert for '%@' but symbol has no interactions", alert.symbol);
+        } else {
+            NSLog(@"   ✅ OK: Alert for '%@' - %d interactions", alert.symbol, symbol.interactionCount);
+        }
+    }
+    
+    NSLog(@"SUMMARY:");
+    NSLog(@"- Total alerts: %ld", (long)totalAlerts);
+    NSLog(@"- Alerts with missing symbols: %ld", (long)alertsWithMissingSymbols);
+    NSLog(@"- Alerts with zero interactions: %ld", (long)alertsWithZeroInteractions);
+    NSLog(@"- Tracking success rate: %.1f%%",
+          totalAlerts > 0 ?
+          (100.0 * (totalAlerts - alertsWithZeroInteractions - alertsWithMissingSymbols) / totalAlerts) : 0.0);
+    NSLog(@"=====================================\n");
+}
+
+- (void)fixAlertSymbolTracking {
+    NSLog(@"\n🔧 FIXING: Alert Symbol Tracking Issues");
+    NSLog(@"=====================================");
+    
+    NSArray<AlertModel *> *alerts = [self getAllAlertModels];
+    NSInteger fixedSymbols = 0;
+    
+    for (AlertModel *alert in alerts) {
+        Symbol *symbol = [self getSymbolWithName:alert.symbol];
+        
+        if (!symbol) {
+            // Create missing symbol with proper tracking
+            symbol = [self createSymbolWithName:alert.symbol];
+            fixedSymbols++;
+            NSLog(@"   ✅ CREATED: Symbol '%@' for alert with tracking", alert.symbol);
+        } else if (symbol.interactionCount == 0) {
+            // Fix zero interaction count
+            [self incrementInteractionForSymbol:symbol];
+            fixedSymbols++;
+            NSLog(@"   ✅ FIXED: Symbol '%@' interaction count updated", alert.symbol);
+        }
+    }
+    
+    NSLog(@"FIXED: %ld symbols now have proper tracking", (long)fixedSymbols);
+    NSLog(@"=====================================\n");
+}
 #pragma mark - Alert Core Data Operations (Private)
 
 - (NSArray<Alert *> *)getAllAlerts {
@@ -845,12 +997,13 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     coreDataAlert.triggerDate = runtimeModel.triggerDate;
 }
 
+
 - (void)updateCoreDataAlertFromRuntimeModel:(AlertModel *)runtimeModel
                              coreDataAlert:(Alert *)coreDataAlert {
     
-    // Ensure Symbol relationship is set
+    // ✅ CORREZIONE: Usa createSymbolWithName per tracking se simbolo cambia
     if (!coreDataAlert.symbol || ![coreDataAlert.symbol.symbol isEqualToString:runtimeModel.symbol]) {
-        Symbol *symbolEntity = [self findOrCreateSymbolWithName:runtimeModel.symbol inContext:coreDataAlert.managedObjectContext];
+        Symbol *symbolEntity = [self createSymbolWithName:runtimeModel.symbol];
         coreDataAlert.symbol = symbolEntity;
     }
     
@@ -1277,33 +1430,6 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 }
 
 
-- (Symbol *)findOrCreateSymbolWithName:(NSString *)symbolName inContext:(NSManagedObjectContext *)context {
-    if (!symbolName || symbolName.length == 0 || !context) return nil;
-    
-    NSString *normalizedSymbol = symbolName.uppercaseString;
-    
-    // Try to find existing Symbol
-    NSFetchRequest *request = [Symbol fetchRequest];
-    request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", normalizedSymbol];
-    
-    NSError *error;
-    NSArray *results = [context executeFetchRequest:request error:&error];
-    
-    Symbol *symbol;
-    if (results.count > 0) {
-        symbol = results.firstObject;
-    } else {
-        // Create new Symbol
-        symbol = [NSEntityDescription insertNewObjectForEntityForName:@"Symbol" inManagedObjectContext:context];
-        symbol.symbol = normalizedSymbol;
-        symbol.creationDate = [NSDate date];
-        symbol.interactionCount = 0;
-        symbol.isFavorite = NO;
-    }
-    
-    return symbol;
-}
-
 - (NSArray<NSString *> *)getSymbolsInvolvedInConnection:(StockConnection *)connection {
     NSMutableArray<NSString *> *symbols = [NSMutableArray array];
     
@@ -1322,5 +1448,66 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     return [symbols copy];
 }
 
+#pragma mark - Alert Management (RuntimeModels for UI) - FIXED
+
+- (AlertModel *)createAlertModelWithSymbol:(NSString *)symbol
+                              triggerValue:(double)triggerValue
+                           conditionString:(NSString *)conditionString
+                      notificationEnabled:(BOOL)notificationEnabled
+                                     notes:(NSString *)notes {
+    
+    // ✅ TRACKING UNICO QUI (high-level, chiamato dai widget)
+    Symbol *symbolEntity = [self createSymbolWithName:symbol];
+    
+    // ✅ CREA ALERT con Symbol entity (NO tracking aggiuntivo)
+    Alert *coreDataAlert = [self createAlertWithSymbolEntity:symbolEntity
+                                                 triggerValue:triggerValue
+                                              conditionString:conditionString
+                                         notificationEnabled:notificationEnabled
+                                                        notes:notes];
+    
+    // Convert to RuntimeModel
+    AlertModel *alertModel = [self convertCoreDataToRuntimeModel:coreDataAlert];
+    
+    // ✅ UNA SOLA NOTIFICATION
+    [[NSNotificationCenter defaultCenter] postNotificationName:DataHubAlertTriggeredNotification
+                                                        object:self
+                                                      userInfo:@{
+                                                          @"alert": alertModel,
+                                                          @"action": @"created"
+                                                      }];
+    
+    NSLog(@"✅ DataHub: Created alert for %@ at %.2f (interactions: %d)",
+          symbol, triggerValue, symbolEntity.interactionCount);
+    
+    return alertModel;
+}
+
+// ============================================================================
+// NUOVO: Low-level method che usa Symbol entity (NO tracking)
+// ============================================================================
+
+- (Alert *)createAlertWithSymbolEntity:(Symbol *)symbolEntity
+                          triggerValue:(double)triggerValue
+                       conditionString:(NSString *)conditionString
+                  notificationEnabled:(BOOL)notificationEnabled
+                                 notes:(NSString *)notes {
+    
+    Alert *alert = [NSEntityDescription insertNewObjectForEntityForName:@"Alert"
+                                                 inManagedObjectContext:self.mainContext];
+    
+    // ✅ USA ENTITY PASSATA (no tracking qui)
+    alert.symbol = symbolEntity;
+    alert.triggerValue = triggerValue;
+    alert.conditionString = conditionString;
+    alert.isActive = YES;
+    alert.isTriggered = NO;
+    alert.notificationEnabled = notificationEnabled;
+    alert.notes = notes;
+    alert.creationDate = [NSDate date];
+    
+    [self saveContext];
+    return alert;
+}
 
 @end

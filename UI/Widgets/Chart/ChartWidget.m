@@ -980,10 +980,7 @@ extern NSString *const DataHubDataLoadedNotification;
 - (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
     NSLog(@"ChartWidget: Received %lu symbols from chain", (unsigned long)symbols.count);
     
-    // ✅ ENHANCED: Track symbol interaction
-    if (symbols.count > 0) {
-        [[DataHub shared] trackExplicitSymbolInteractions:symbols context:@"ChartChainReceive"];
-    }
+    
     
     // ChartWidget mostra un simbolo alla volta - prendi il primo
     NSString *newSymbol = symbols.firstObject;

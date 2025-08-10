@@ -11,6 +11,7 @@
 #import "StockConnection+CoreDataClass.h"
 #import "connectionmodel.h"
 #import "DataHub+Connections.h"
+#import "DataHub+SmartTracking.h"
 
 // Notification constants (copiati da BaseWidget.m)
 static NSString *const kWidgetChainUpdateNotification = @"WidgetChainUpdateNotification";
@@ -44,6 +45,11 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
         [sharedInstance setupCoreDataStack];
         [sharedInstance loadInitialData];
         [sharedInstance startAlertMonitoring];
+        
+        // ✅ FIX: Initialize smart tracking after all core systems are ready
+        [sharedInstance initializeSmartTracking];
+        
+        NSLog(@"✅ DataHub singleton fully initialized with smart tracking");
     });
     return sharedInstance;
 }
@@ -1622,5 +1628,7 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     NSLog(@"✅ Only manual increments will work now");
     NSLog(@"CLEAN STATE VALIDATION COMPLETE\n");
 }
+
+
 
 @end

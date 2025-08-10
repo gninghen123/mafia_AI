@@ -13,6 +13,8 @@
 #import "StockConnection+CoreDataClass.h"  // ✅ ADD: For StockConnection access
 #import "Symbol+CoreDataClass.h"           // ✅ ADD: For Symbol access
 #import <objc/runtime.h>                   // ✅ ADD: For associated objects
+#import <Cocoa/Cocoa.h>
+
 
 // Associated object keys for category properties
 static const void *kLastChainSymbolKey = &kLastChainSymbolKey;
@@ -162,33 +164,30 @@ static const void *kChainDeduplicationTimeoutKey = &kChainDeduplicationTimeoutKe
     
     if (!connection || ![connection isKindOfClass:[StockConnection class]]) return;
     
-    NSMutableSet<NSString *> *symbolsToTrack = [NSMutableSet set];
+    // ✅ TRACK: All symbols involved in the connection work
+    NSSet *allSymbols = [NSSet setWithArray:@[]]; // Initialize empty set
     
-    // Collect all involved symbols
-    if (connection.sourceSymbol && connection.sourceSymbol.symbol) {
-        [symbolsToTrack addObject:connection.sourceSymbol.symbol];
+    // Add source symbol if exists
+    if (connection.sourceSymbol) {
+        allSymbols = [allSymbols setByAddingObject:connection.sourceSymbol];
     }
     
-    for (Symbol *symbolEntity in connection.targetSymbols) {
-        if ([symbolEntity isKindOfClass:[Symbol class]] && symbolEntity.symbol) {
-            [symbolsToTrack addObject:symbolEntity.symbol];
-        }
+    // Add target symbols if they exist
+    if (connection.targetSymbols && connection.targetSymbols.count > 0) {
+        allSymbols = [allSymbols setByAddingObjectsFromSet:connection.targetSymbols];
     }
     
-    // ✅ Track each symbol (user is actively working on correlations)
-    for (NSString *symbolName in symbolsToTrack) {
-        Symbol *symbolEntity = [self getSymbolWithName:symbolName];
-        if (symbolEntity) {
-            [self incrementInteractionForSymbol:symbolEntity];
+    // Track each symbol involved in connection work
+    for (Symbol *symbol in allSymbols) {
+        if ([symbol isKindOfClass:[Symbol class]]) {
+            [self incrementInteractionForSymbol:symbol];
             NSLog(@"🔗 Connection work: %@ (interaction: %d)",
-                  symbolName, symbolEntity.interactionCount);
+                  symbol.symbol, symbol.interactionCount);
         }
     }
     
-    if (symbolsToTrack.count > 0) {
-        NSLog(@"🔗 Connection %@: tracked %lu symbols for active work",
-              action, (unsigned long)symbolsToTrack.count);
-    }
+    NSLog(@"🔗 Connection %@ tracked: %lu symbols involved",
+          action, (unsigned long)allSymbols.count);
 }
 
 #pragma mark - SMART: Tag Work Tracking
@@ -205,15 +204,10 @@ static const void *kChainDeduplicationTimeoutKey = &kChainDeduplicationTimeoutKe
     
     NSString *action = [notification.name hasSuffix:@"Added"] ? @"added" : @"removed";
     NSLog(@"🏷️ Tag %@: '%@' %@ %@ (interaction: %d)",
-          action, tag, (action ? @"to" : @"from"), symbol.symbol, symbol.interactionCount);
+          action, tag, action, symbol.symbol, symbol.interactionCount);
 }
 
 #pragma mark - Configuration
-
-- (void)setChainDeduplicationTimeout:(NSTimeInterval)timeout {
-    kChainDeduplicationTimeoutKey = timeout;
-    NSLog(@"⚙️ Chain deduplication timeout set to %.0f seconds", timeout);
-}
 
 - (NSTimeInterval)getChainDeduplicationTimeout {
     return self.chainDeduplicationTimeout;
@@ -253,7 +247,7 @@ static const void *kChainDeduplicationTimeoutKey = &kChainDeduplicationTimeoutKe
         @"lowInteractions": @(lowInteractions),
         @"mediumInteractions": @(mediumInteractions),
         @"highInteractions": @(highInteractions),
-        @"lastChainSymbol": self.lastChainSymbol ?: @"None",
+        @"lastChainSymbol": self.lastChainSymbol ? self.lastChainSymbol : @"None",
         @"chainTimeout": @(self.chainDeduplicationTimeout)
     };
 }

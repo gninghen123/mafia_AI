@@ -1,40 +1,14 @@
 //
-//  HierarchicalWatchlistSelector.m
-//  TradingApp
 //
-//  Custom NSPopUpButton with hierarchical categories and submenus
+//  HierarchicalWatchlistSelector.m - IMPLEMENTAZIONE SOLO SUBMENU
 //
 
 #import "HierarchicalWatchlistSelector.h"
 #import "WatchlistProviderManager.h"
 #import "TradingAppTypes.h"
 
-@implementation ProviderCategoryConfig
-
-+ (instancetype)configWithName:(NSString *)name
-                    displayName:(NSString *)displayName
-                           icon:(NSString *)icon
-                 alwaysExpanded:(BOOL)alwaysExpanded
-               autoExpandLimit:(NSInteger)autoExpandLimit
-                  rememberState:(BOOL)rememberState {
-    ProviderCategoryConfig *config = [[ProviderCategoryConfig alloc] init];
-    config.categoryName = name;
-    config.displayName = displayName;
-    config.icon = icon;
-    config.alwaysExpanded = alwaysExpanded;
-    config.autoExpandLimit = autoExpandLimit;
-    config.rememberState = rememberState;
-    return config;
-}
-
-@end
-
 @interface HierarchicalWatchlistSelector ()
-
-// Menu state
-@property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *categoryItemCounts;
-@property (nonatomic, assign) BOOL isPopulatingMenu;
-
+// Simplified - no expansion state needed
 @end
 
 @implementation HierarchicalWatchlistSelector
@@ -56,57 +30,9 @@
 }
 
 - (void)commonInit {
-    self.categoryExpansionState = [NSMutableDictionary dictionary];
-    self.categoryItemCounts = [NSMutableDictionary dictionary];
     self.currentDisplayText = @"Select Watchlist...";
-    
-    [self setupDefaultCategoryConfigs];
+    self.filterText = @"";
     [self setupPopUpButtonBehavior];
-}
-
-- (void)setupDefaultCategoryConfigs {
-    NSLog(@"🔧 Setting up default category configs");
-    
-    self.categoryConfigs = @[
-        [ProviderCategoryConfig configWithName:@"Manual Watchlists"
-                                    displayName:@"📝 MY LISTS"
-                                           icon:@"📝"
-                                 alwaysExpanded:NO
-                               autoExpandLimit:5
-                                  rememberState:YES],
-        
-        [ProviderCategoryConfig configWithName:@"Market Lists"
-                                    displayName:@"📊 MARKET LISTS"
-                                           icon:@"📊"
-                                 alwaysExpanded:NO
-                               autoExpandLimit:0
-                                  rememberState:YES],
-        
-        [ProviderCategoryConfig configWithName:@"Baskets"
-                                    displayName:@"📅 BASKETS"
-                                           icon:@"📅"
-                                 alwaysExpanded:YES
-                               autoExpandLimit:10
-                                  rememberState:NO],
-        
-        [ProviderCategoryConfig configWithName:@"Tag Lists"
-                                    displayName:@"🏷️ TAG LISTS"
-                                           icon:@"🏷️"
-                                 alwaysExpanded:NO
-                               autoExpandLimit:5
-                                  rememberState:YES],
-        
-        [ProviderCategoryConfig configWithName:@"Archives"
-                                    displayName:@"📦 ARCHIVES"
-                                           icon:@"📦"
-                                 alwaysExpanded:NO
-                               autoExpandLimit:0
-                                  rememberState:YES]
-    ];
-    
-    for (ProviderCategoryConfig *config in self.categoryConfigs) {
-        NSLog(@"   Category: '%@' -> Display: '%@'", config.categoryName, config.displayName);
-    }
 }
 
 - (void)setupPopUpButtonBehavior {
@@ -114,8 +40,7 @@
     self.action = @selector(popUpSelectionChanged:);
     
     // Set initial state
-    [self removeAllItems];
-    [self addItemWithTitle:self.currentDisplayText];
+    [self setTitle:self.currentDisplayText];
     self.enabled = NO; // Will be enabled after provider manager is set
 }
 
@@ -132,51 +57,65 @@
         self.enabled = YES;
     } else {
         NSLog(@"❌ Provider manager is nil!");
+        [self setTitle:@"No Provider Manager"];
         self.enabled = NO;
     }
 }
 
-#pragma mark - Menu Construction
+#pragma mark - Menu Construction (SIMPLIFIED - SOLO SUBMENU)
 
 - (void)rebuildMenuStructure {
     if (!self.providerManager || self.isUpdatingMenu) return;
     
     self.isUpdatingMenu = YES;
     
-    NSLog(@"🔧 HierarchicalSelector: Rebuilding menu structure");
+    NSLog(@"🔧 HierarchicalSelector: Rebuilding menu structure (submenu-only)");
     NSLog(@"   Available providers: %lu", (unsigned long)self.providerManager.allProviders.count);
+    NSLog(@"   Filter text: '%@'", self.filterText ?: @"");
     
     // Clear existing menu
-    [self removeAllItems];
+    [[self menu] removeAllItems];
     
-    // Build hierarchical menu
-    [self buildMainMenu];
+    // Build simple submenu structure
+    [self buildSubmenuOnlyStructure];
     
     // Update display text
-    [self updateDisplayText];
+    [self updateDisplayTextWithoutClearingMenu];
     
     self.isUpdatingMenu = NO;
     
-    NSLog(@"✅ HierarchicalSelector: Menu rebuilt with %ld items", (long)self.numberOfItems);
-    
-    // Debug: List all menu items
-    for (NSInteger i = 0; i < self.numberOfItems; i++) {
-        NSMenuItem *item = [self itemAtIndex:i];
-        NSLog(@"   Menu item %ld: %@", (long)i, item.title);
-    }
+    NSLog(@"✅ HierarchicalSelector: Menu rebuilt with %ld categories", (long)[[self menu] numberOfItems]);
 }
 
-- (void)buildMainMenu {
-    NSLog(@"🏗️ Building main menu with categories:");
+- (void)buildSubmenuOnlyStructure {
+    NSLog(@"🏗️ Building submenu-only structure");
+    
+    // Define categories in order
+    NSArray<NSDictionary *> *categories = @[
+        @{@"name": @"Manual Watchlists", @"display": @"📝 MY LISTS", @"icon": @"📝"},
+        @{@"name": @"Market Lists", @"display": @"📊 MARKET LISTS", @"icon": @"📊"},
+        @{@"name": @"Baskets", @"display": @"📅 BASKETS", @"icon": @"📅"},
+        @{@"name": @"Tag Lists", @"display": @"🏷️ TAG LISTS", @"icon": @"🏷️"},
+        @{@"name": @"Archives", @"display": @"📦 ARCHIVES", @"icon": @"📦"}
+    ];
     
     BOOL firstCategory = YES;
     
-    for (ProviderCategoryConfig *config in self.categoryConfigs) {
-        NSArray<id<WatchlistProvider>> *providers = [self.providerManager providersForCategory:config.categoryName];
-        NSLog(@"   %@ -> %lu providers", config.categoryName, (unsigned long)providers.count);
+    for (NSDictionary *categoryInfo in categories) {
+        NSString *categoryName = categoryInfo[@"name"];
+        NSString *displayName = categoryInfo[@"display"];
+        
+        NSArray<id<WatchlistProvider>> *providers = [self.providerManager providersForCategory:categoryName];
+        
+        // Apply filter if active
+        if (self.filterText && self.filterText.length > 0) {
+            NSPredicate *filterPredicate = [NSPredicate predicateWithFormat:@"displayName CONTAINS[cd] %@", self.filterText];
+            providers = [providers filteredArrayUsingPredicate:filterPredicate];
+            NSLog(@"🔍 Category '%@': %lu providers after filter", categoryName, (unsigned long)providers.count);
+        }
         
         if (providers.count == 0) {
-            NSLog(@"   Skipping empty category: %@", config.categoryName);
+            NSLog(@"   Skipping empty category: %@", categoryName);
             continue;
         }
         
@@ -186,89 +125,27 @@
         }
         firstCategory = NO;
         
-        [self buildCategorySection:config];
+        // Create category item with submenu
+        [self addCategorySubmenu:displayName providers:providers categoryName:categoryName];
     }
     
-    NSLog(@"🏗️ Main menu build complete");
+    NSLog(@"🏗️ Submenu structure build complete");
 }
 
-- (void)buildCategorySection:(ProviderCategoryConfig *)config {
-    NSArray<id<WatchlistProvider>> *providers = [self.providerManager providersForCategory:config.categoryName];
+- (void)addCategorySubmenu:(NSString *)displayName
+                 providers:(NSArray<id<WatchlistProvider>> *)providers
+              categoryName:(NSString *)categoryName {
     
-    NSLog(@"🏗️ Building category section: %@ (%lu providers)", config.categoryName, (unsigned long)providers.count);
+    NSLog(@"📁 Creating submenu for '%@' with %lu providers", displayName, (unsigned long)providers.count);
     
-    if (providers.count == 0) {
-        NSLog(@"⚠️ Category %@ has no providers, skipping", config.categoryName);
-        return;
-    }
-    
-    // Store item count for this category
-    self.categoryItemCounts[config.categoryName] = @(providers.count);
-    
-    // Determine if this category should be expanded
-    BOOL isExpanded = [self shouldExpandCategory:config];
-    
-    NSLog(@"   Category %@ will be %@", config.categoryName, isExpanded ? @"expanded" : @"collapsed");
-    
-    if (isExpanded) {
-        // Show providers directly under category header
-        [self addCategoryHeaderItem:config expanded:YES];
-        [self addProvidersDirectly:providers withIndent:YES];
-    } else {
-        // Show category with submenu
-        [self addCategoryWithSubmenu:config providers:providers];
-    }
-}
-
-- (BOOL)shouldExpandCategory:(ProviderCategoryConfig *)config {
-    NSArray<id<WatchlistProvider>> *providers = [self.providerManager providersForCategory:config.categoryName];
-    NSInteger providerCount = providers.count;
-    
-    // Always expanded categories
-    if (config.alwaysExpanded) return YES;
-    
-    // Auto-expand if under limit
-    if (config.autoExpandLimit > 0 && providerCount <= config.autoExpandLimit) return YES;
-    
-    // Check remembered state
-    if (config.rememberState) {
-        NSNumber *savedState = self.categoryExpansionState[config.categoryName];
-        if (savedState) return [savedState boolValue];
-    }
-    
-    // Default to collapsed for large categories
-    return NO;
-}
-
-- (void)addCategoryHeaderItem:(ProviderCategoryConfig *)config expanded:(BOOL)expanded {
-    NSString *expandIcon = expanded ? @"▼" : @"▶";
-    NSString *title = [NSString stringWithFormat:@"%@ %@", expandIcon, config.displayName];
-    
-    NSMenuItem *headerItem = [[NSMenuItem alloc] initWithTitle:title action:@selector(toggleCategoryExpansion:) keyEquivalent:@""];
-    headerItem.target = self;
-    headerItem.representedObject = config.categoryName;
-    headerItem.enabled = !config.alwaysExpanded; // Can't toggle always-expanded categories
-    
-    // Style as header (non-selectable for provider selection)
-    NSDictionary *attributes = @{
-        NSFontAttributeName: [NSFont boldSystemFontOfSize:11],
-        NSForegroundColorAttributeName: [NSColor secondaryLabelColor]
-    };
-    headerItem.attributedTitle = [[NSAttributedString alloc] initWithString:title attributes:attributes];
-    
-    [[self menu] addItem:headerItem];
-}
-
-- (void)addCategoryWithSubmenu:(ProviderCategoryConfig *)config providers:(NSArray<id<WatchlistProvider>> *)providers {
-    NSString *title = [NSString stringWithFormat:@"▶ %@", config.displayName];
-    
-    NSMenuItem *categoryItem = [[NSMenuItem alloc] initWithTitle:title action:nil keyEquivalent:@""];
+    // Create main category item (always with submenu arrow >)
+    NSMenuItem *categoryItem = [[NSMenuItem alloc] initWithTitle:displayName action:nil keyEquivalent:@""];
     
     // Create submenu
     NSMenu *submenu = [[NSMenu alloc] init];
     
-    // Special handling for market lists (needs sub-submenus)
-    if ([config.categoryName isEqualToString:@"Market Lists"]) {
+    // Special handling for Market Lists (needs sub-submenus for timeframes)
+    if ([categoryName isEqualToString:@"Market Lists"]) {
         [self buildMarketListsSubmenu:submenu withProviders:providers];
     } else {
         // Regular submenu with direct provider items
@@ -280,35 +157,8 @@
     
     categoryItem.submenu = submenu;
     [[self menu] addItem:categoryItem];
-}
-
-- (void)addProvidersDirectly:(NSArray<id<WatchlistProvider>> *)providers withIndent:(BOOL)indent {
-    for (id<WatchlistProvider> provider in providers) {
-        NSMenuItem *providerItem = [self createProviderMenuItem:provider];
-        
-        if (indent) {
-            // Add visual indentation
-            NSString *indentedTitle = [NSString stringWithFormat:@"    %@", providerItem.title];
-            providerItem.title = indentedTitle;
-        }
-        
-        [[self menu] addItem:providerItem];
-    }
-}
-
-- (NSMenuItem *)createProviderMenuItem:(id<WatchlistProvider>)provider {
-    NSString *title = provider.displayName;
     
-    // Add count if provider shows count and has symbols
-    if (provider.showCount && provider.isLoaded && provider.symbols.count > 0) {
-        title = [NSString stringWithFormat:@"%@ (%lu)", title, (unsigned long)provider.symbols.count];
-    }
-    
-    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title action:@selector(providerSelected:) keyEquivalent:@""];
-    item.target = self;
-    item.representedObject = provider.providerId;
-    
-    return item;
+    NSLog(@"✅ Added submenu for '%@' with %lu items", displayName, (unsigned long)submenu.numberOfItems);
 }
 
 - (void)buildMarketListsSubmenu:(NSMenu *)submenu withProviders:(NSArray<id<WatchlistProvider>> *)providers {
@@ -335,88 +185,112 @@
     for (NSString *typeKey in sortedKeys) {
         NSArray<id<WatchlistProvider>> *typeProviders = groupedProviders[typeKey];
         
-        // Create market type submenu item
-        NSString *typeDisplayName = [self displayNameForMarketTypeKey:typeKey];
-        NSMenuItem *typeItem = [[NSMenuItem alloc] initWithTitle:typeDisplayName action:nil keyEquivalent:@""];
-        
-        // Create sub-submenu for timeframes
-        NSMenu *timeframeSubmenu = [[NSMenu alloc] init];
-        
-        for (id<WatchlistProvider> provider in typeProviders) {
-            NSMenuItem *timeframeItem = [self createProviderMenuItem:provider];
-            // Remove the market type part from display name for cleaner submenu
-            if ([provider isKindOfClass:[MarketListProvider class]]) {
-                MarketListProvider *marketProvider = (MarketListProvider *)provider;
-                timeframeItem.title = [self displayNameForTimeframe:marketProvider.timeframe];
+        if (typeProviders.count == 1) {
+            // Single provider - add directly
+            NSMenuItem *providerItem = [self createProviderMenuItem:typeProviders.firstObject];
+            [submenu addItem:providerItem];
+        } else {
+            // Multiple providers - create sub-submenu for timeframes
+            NSString *typeDisplayName = [self displayNameForMarketTypeKey:typeKey];
+            NSMenuItem *typeItem = [[NSMenuItem alloc] initWithTitle:typeDisplayName action:nil keyEquivalent:@""];
+            
+            NSMenu *timeframeSubmenu = [[NSMenu alloc] init];
+            for (id<WatchlistProvider> provider in typeProviders) {
+                NSMenuItem *timeframeItem = [self createProviderMenuItem:provider];
+                [timeframeSubmenu addItem:timeframeItem];
             }
-            [timeframeSubmenu addItem:timeframeItem];
+            
+            typeItem.submenu = timeframeSubmenu;
+            [submenu addItem:typeItem];
         }
-        
-        typeItem.submenu = timeframeSubmenu;
-        [submenu addItem:typeItem];
     }
 }
 
-- (NSString *)keyForMarketType:(MarketListType)type {
-    switch (type) {
-        case MarketListTypeTopGainers: return @"gainers";
-        case MarketListTypeTopLosers: return @"losers";
-        case MarketListTypeEarnings: return @"earnings";
-        case MarketListTypeETF: return @"etf";
-        case MarketListTypeIndustry: return @"industry";
-        default: return @"gainers";
+- (NSMenuItem *)createProviderMenuItem:(id<WatchlistProvider>)provider {
+    NSString *title = provider.displayName;
+    
+    // Add count if provider shows count and has symbols
+    if (provider.showCount && provider.isLoaded && provider.symbols.count > 0) {
+        title = [NSString stringWithFormat:@"%@ (%lu)", title, (unsigned long)provider.symbols.count];
+    }
+    
+    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title action:@selector(providerSelected:) keyEquivalent:@""];
+    item.target = self;
+    item.representedObject = provider.providerId;
+    
+    return item;
+}
+
+// Helper methods for market lists
+- (NSString *)keyForMarketType:(MarketType)marketType {
+    switch (marketType) {
+        case MarketTypeSP500: return @"SP500";
+        case MarketTypeNASDAQ: return @"NASDAQ";
+        case MarketTypeRussell2000: return @"Russell2000";
+        case MarketTypeDowJones: return @"DowJones";
+        default: return @"Other";
     }
 }
 
-- (NSString *)displayNameForMarketTypeKey:(NSString *)key {
-    if ([key isEqualToString:@"gainers"]) return @"🚀 Top Gainers";
-    if ([key isEqualToString:@"losers"]) return @"📉 Top Losers";
-    if ([key isEqualToString:@"earnings"]) return @"💰 Earnings";
-    if ([key isEqualToString:@"etf"]) return @"🏛️ ETF";
-    if ([key isEqualToString:@"industry"]) return @"🏭 Industry";
-    return @"📊 Market";
+- (NSString *)displayNameForMarketTypeKey:(NSString *)typeKey {
+    if ([typeKey isEqualToString:@"SP500"]) return @"S&P 500";
+    if ([typeKey isEqualToString:@"NASDAQ"]) return @"NASDAQ";
+    if ([typeKey isEqualToString:@"Russell2000"]) return @"Russell 2000";
+    if ([typeKey isEqualToString:@"DowJones"]) return @"Dow Jones";
+    return typeKey;
 }
 
-- (NSString *)displayNameForTimeframe:(MarketTimeframe)timeframe {
-    switch (timeframe) {
-        case MarketTimeframePreMarket: return @"PreMarket";
-        case MarketTimeframeAfterHours: return @"AfterHours";
-        case MarketTimeframeFiveMinutes: return @"5 Minutes";
-        case MarketTimeframeOneDay: return @"1 Day";
-        case MarketTimeframeFiveDays: return @"5 Days";
-        case MarketTimeframeOneMonth: return @"1 Month";
-        case MarketTimeframeThreeMonths: return @"3 Months";
-        case MarketTimeframeFiftyTwoWeeks: return @"52 Weeks";
-        default: return @"1 Day";
+#pragma mark - Event Handling (SIMPLIFIED)
+
+- (void)popUpSelectionChanged:(NSPopUpButton *)sender {
+    NSMenuItem *selectedItem = [sender selectedItem];
+    
+    NSLog(@"🎯 HierarchicalSelector: popUpSelectionChanged called");
+    NSLog(@"   Selected item: %@", selectedItem.title);
+    NSLog(@"   RepresentedObject: %@", selectedItem.representedObject);
+    
+    if (!selectedItem || !selectedItem.representedObject) {
+        NSLog(@"⚠️ No valid provider selected from menu (no representedObject)");
+        return;
     }
-}
-
-#pragma mark - Actions
-
-- (void)popUpSelectionChanged:(id)sender {
-    // Handle direct selection (should not happen in hierarchical mode)
-    NSMenuItem *selectedItem = [self selectedItem];
-    if (selectedItem && selectedItem.representedObject) {
-        NSString *providerId = selectedItem.representedObject;
-        
-        id<WatchlistProvider> provider = [self.providerManager providerWithId:providerId];
-        if (!provider) return;
+    
+    NSString *providerId = selectedItem.representedObject;
+    id<WatchlistProvider> provider = [self.providerManager providerWithId:providerId];
+    
+    NSLog(@"🔍 Looking for provider with ID: %@", providerId);
+    NSLog(@"🔍 Found provider: %@", provider ? provider.displayName : @"NOT FOUND");
+    
+    if (provider) {
+        // Prevent loops - check if already selected
+        if (self.selectedProvider && [self.selectedProvider.providerId isEqualToString:providerId]) {
+            NSLog(@"⚠️ Provider already selected, avoiding delegate call");
+            return;
+        }
         
         // Update our selected provider
         self.selectedProvider = provider;
-        [self updateDisplayText];
+        [self updateDisplayTextWithoutClearingMenu];
         
         // Notify delegate about selection
         if (self.selectorDelegate && [self.selectorDelegate respondsToSelector:@selector(hierarchicalSelector:didSelectProvider:)]) {
-            NSLog(@"🔄 Provider selected via popup: %@", provider.displayName);
+            NSLog(@"🔄 Calling delegate with provider: %@", provider.displayName);
             [self.selectorDelegate hierarchicalSelector:self didSelectProvider:provider];
+        } else {
+            NSLog(@"⚠️ No delegate or delegate doesn't respond to selector");
         }
+    } else {
+        NSLog(@"❌ Provider not found for ID: %@", providerId);
     }
 }
 
 - (void)providerSelected:(NSMenuItem *)sender {
     NSString *providerId = sender.representedObject;
-    if (!providerId) return;
+    NSLog(@"🎯 HierarchicalSelector: providerSelected called with ID: %@", providerId);
+    
+    if (!providerId) {
+        NSLog(@"❌ providerSelected: No providerId in representedObject");
+        return;
+    }
     
     id<WatchlistProvider> provider = [self.providerManager providerWithId:providerId];
     if (!provider) {
@@ -426,25 +300,13 @@
     
     // Update our selected provider
     self.selectedProvider = provider;
-    [self updateDisplayText];
+    [self updateDisplayTextWithoutClearingMenu];
     
     // Notify delegate about user selection
     if (self.selectorDelegate && [self.selectorDelegate respondsToSelector:@selector(hierarchicalSelector:didSelectProvider:)]) {
         NSLog(@"🔄 User selected provider from menu: %@", provider.displayName);
         [self.selectorDelegate hierarchicalSelector:self didSelectProvider:provider];
     }
-}
-
-- (void)toggleCategoryExpansion:(NSMenuItem *)sender {
-    NSString *categoryName = sender.representedObject;
-    if (!categoryName) return;
-    
-    // Toggle expansion state
-    BOOL currentlyExpanded = [self isCategoryExpanded:categoryName];
-    [self setCategoryExpanded:!currentlyExpanded forCategory:categoryName];
-    
-    // Rebuild menu to reflect new state
-    [self rebuildMenuStructure];
 }
 
 #pragma mark - Selection Management
@@ -465,7 +327,7 @@
     }
     
     self.selectedProvider = provider;
-    [self updateDisplayText];
+    [self updateDisplayTextWithoutClearingMenu];
     
     NSLog(@"✅ Selector updated to provider: %@", provider.displayName);
 }
@@ -477,7 +339,7 @@
     }
 }
 
-- (void)updateDisplayText {
+- (void)updateDisplayTextWithoutClearingMenu {
     if (self.selectedProvider) {
         // Show compact version of provider name
         NSString *displayName = self.selectedProvider.displayName;
@@ -492,92 +354,34 @@
         self.currentDisplayText = @"Select Watchlist...";
     }
     
-    // Update button title
-    [self removeAllItems];
-    [self addItemWithTitle:self.currentDisplayText];
+    // Update button title WITHOUT clearing menu
+    [self setTitle:self.currentDisplayText];
 }
 
-#pragma mark - Category State Management
+#pragma mark - Search Filtering
 
-- (void)setCategoryExpanded:(BOOL)expanded forCategory:(NSString *)categoryName {
-    self.categoryExpansionState[categoryName] = @(expanded);
+- (void)setFilterText:(NSString *)filterText {
+    NSLog(@"🔍 HierarchicalSelector: setFilterText called with: '%@'", filterText);
     
-    // Save to user defaults for persistence
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSString *key = [NSString stringWithFormat:@"WatchlistSelector.%@.Expanded", categoryName];
-    [defaults setBool:expanded forKey:key];
+    _filterText = filterText ? [filterText copy] : @"";
+    
+    // Rebuild menu with filter applied
+    [self rebuildMenuStructure];
 }
 
-- (BOOL)isCategoryExpanded:(NSString *)categoryName {
-    // Check memory first
-    NSNumber *memoryState = self.categoryExpansionState[categoryName];
-    if (memoryState) {
-        return [memoryState boolValue];
-    }
-    
-    // Check user defaults
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    NSString *key = [NSString stringWithFormat:@"WatchlistSelector.%@.Expanded", categoryName];
-    if ([defaults objectForKey:key]) {
-        BOOL expanded = [defaults boolForKey:key];
-        self.categoryExpansionState[categoryName] = @(expanded);
-        return expanded;
-    }
-    
-    // Default state based on category config
-    for (ProviderCategoryConfig *config in self.categoryConfigs) {
-        if ([config.categoryName isEqualToString:categoryName]) {
-            return config.alwaysExpanded || (config.autoExpandLimit > 0);
-        }
-    }
-    
-    return NO; // Default to collapsed
+- (void)clearFilter {
+    NSLog(@"🔍 HierarchicalSelector: clearFilter called");
+    self.filterText = @"";
 }
 
-#pragma mark - Provider Count Updates
+#pragma mark - Public Interface
 
 - (void)updateProviderCounts {
     if (self.isUpdatingMenu) return;
     
-    // This method can be called to update provider counts without full rebuild
-    // Useful when providers finish loading their symbols
-    
-    BOOL needsRebuild = NO;
-    
-    for (NSString *categoryName in self.categoryItemCounts.allKeys) {
-        NSArray<id<WatchlistProvider>> *providers = [self.providerManager providersForCategory:categoryName];
-        
-        // Check if any provider now has count information that wasn't there before
-        for (id<WatchlistProvider> provider in providers) {
-            if (provider.showCount && provider.isLoaded && provider.symbols.count > 0) {
-                needsRebuild = YES;
-                break;
-            }
-        }
-        
-        if (needsRebuild) break;
-    }
-    
-    if (needsRebuild) {
-        [self rebuildMenuStructure];
-    }
+    // Simple rebuild since we don't track state anymore
+    [self rebuildMenuStructure];
 }
-
-#pragma mark - NSPopUpButton Overrides
-
-- (void)mouseDown:(NSEvent *)event {
-    // Notify delegate that menu will be shown
-    if (self.selectorDelegate && [self.selectorDelegate respondsToSelector:@selector(hierarchicalSelector:willShowMenuForCategory:)]) {
-        // We can't know which category will be accessed, so notify for all
-        for (ProviderCategoryConfig *config in self.categoryConfigs) {
-            [self.selectorDelegate hierarchicalSelector:self willShowMenuForCategory:config.categoryName];
-        }
-    }
-    
-    [super mouseDown:event];
-}
-
-#pragma mark - Public Interface
 
 - (void)refreshMenuForCategory:(NSString *)categoryName {
     // Refresh providers for specific category and rebuild menu
@@ -596,11 +400,19 @@
     }
 }
 
-#pragma mark - Debug
+#pragma mark - NSPopUpButton Overrides
 
-- (NSString *)description {
-    return [NSString stringWithFormat:@"<HierarchicalWatchlistSelector: %@ categories, selected: %@>",
-            @(self.categoryConfigs.count), self.selectedProvider.displayName ?: @"none"];
+- (void)mouseDown:(NSEvent *)event {
+    // Notify delegate that menu will be shown
+    if (self.selectorDelegate && [self.selectorDelegate respondsToSelector:@selector(hierarchicalSelector:willShowMenuForCategory:)]) {
+        // Notify for all categories since we can't know which will be accessed
+        NSArray<NSString *> *categories = @[@"Manual Watchlists", @"Market Lists", @"Baskets", @"Tag Lists", @"Archives"];
+        for (NSString *categoryName in categories) {
+            [self.selectorDelegate hierarchicalSelector:self willShowMenuForCategory:categoryName];
+        }
+    }
+    
+    [super mouseDown:event];
 }
 
 @end

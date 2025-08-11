@@ -4,6 +4,7 @@
 //
 //  NEW UNIFIED WIDGET: Replaces both WatchlistWidget and GeneralMarketWidget
 //  Supports hierarchical providers with 4 types: Manual, Market Lists, Baskets, Tag Lists
+//  UPDATED: Added search for watchlists and sorting for symbols
 //
 
 #import "BaseWidget.h"
@@ -17,14 +18,25 @@ NS_ASSUME_NONNULL_BEGIN
 @class HierarchicalWatchlistSelector;
 @protocol WatchlistProvider;
 
+// NEW: Sort type enumeration
+typedef NS_ENUM(NSInteger, WatchlistSortType) {
+    WatchlistSortTypeNone = 0,
+    WatchlistSortTypeChangePercent
+};
+
 @interface WatchlistWidget : BaseWidget <NSTableViewDelegate, NSTableViewDataSource>
 
 #pragma mark - UI Components
+@property (nonatomic, assign) BOOL isApplyingSorting;
 
-// Toolbar components (private)
+// Toolbar components
 @property (nonatomic, strong) NSView *toolbarView;
 @property (nonatomic, strong) HierarchicalWatchlistSelector *providerSelector;
 @property (nonatomic, strong) NSButton *actionsButton;
+
+// NEW: Search functionality
+@property (nonatomic, strong) NSTextField *searchField;
+@property (nonatomic, strong) NSString *searchText;
 
 // Table view components
 @property (nonatomic, strong) NSScrollView *scrollView;
@@ -59,6 +71,12 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) CGFloat currentWidth;
 @property (nonatomic, assign) NSInteger visibleColumns; // 1=symbol, 2=symbol+change%, 3=symbol+change%+arrow
 
+#pragma mark - NEW: Sorting State
+
+// Sorting functionality for symbols
+@property (nonatomic, assign) WatchlistSortType sortType;
+@property (nonatomic, assign) BOOL sortAscending;
+
 #pragma mark - Public Methods
 
 // Provider selection
@@ -71,6 +89,21 @@ NS_ASSUME_NONNULL_BEGIN
 // Symbol interaction
 - (void)addSymbol:(NSString *)symbol toManualWatchlist:(NSString *)watchlistName;
 - (void)createWatchlistFromCurrentSelection;
+
+#pragma mark - NEW: Search and Sorting Methods
+
+// Search (filters watchlists in popup)
+- (void)searchTextChanged:(NSTextField *)sender;
+- (void)clearSearch;
+
+// Sorting (sorts symbols in table)
+- (void)applySorting;
+- (void)toggleSortByChangePercent;
+- (void)updateHeaderTitle;
+
+// Utility methods
+- (BOOL)hasSelectedSymbols;
+- (NSArray<NSString *> *)selectedSymbols;
 
 @end
 

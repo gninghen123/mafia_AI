@@ -1,6 +1,6 @@
 //
-//
 //  HierarchicalWatchlistSelector.m - IMPLEMENTAZIONE SOLO SUBMENU
+//  FIXED: Errore ARC "Implicit conversion of 'MarketListType' to 'id' is disallowed with ARC"
 //
 
 #import "HierarchicalWatchlistSelector.h"
@@ -33,6 +33,8 @@
     self.currentDisplayText = @"Select Watchlist...";
     self.filterText = @"";
     [self setupPopUpButtonBehavior];
+    [self setAutoenablesItems:NO];
+    [self setPullsDown:NO];
 }
 
 - (void)setupPopUpButtonBehavior {
@@ -120,124 +122,79 @@
         }
         
         if (!firstCategory) {
-            // Add separator between categories
-            [[self menu] addItem:[NSMenuItem separatorItem]];
+            // Add separator
+            NSMenuItem *separator = [NSMenuItem separatorItem];
+            [[self menu] addItem:separator];
         }
         firstCategory = NO;
         
-        // Create category item with submenu
-        [self addCategorySubmenu:displayName providers:providers categoryName:categoryName];
-    }
-    
-    NSLog(@"🏗️ Submenu structure build complete");
-}
-
-- (void)addCategorySubmenu:(NSString *)displayName
-                 providers:(NSArray<id<WatchlistProvider>> *)providers
-              categoryName:(NSString *)categoryName {
-    
-    NSLog(@"📁 Creating submenu for '%@' with %lu providers", displayName, (unsigned long)providers.count);
-    
-    // Create main category item (always with submenu arrow >)
-    NSMenuItem *categoryItem = [[NSMenuItem alloc] initWithTitle:displayName action:nil keyEquivalent:@""];
-    
-    // Create submenu
-    NSMenu *submenu = [[NSMenu alloc] init];
-    
-    // Special handling for Market Lists (needs sub-submenus for timeframes)
-    if ([categoryName isEqualToString:@"Market Lists"]) {
-        [self buildMarketListsSubmenu:submenu withProviders:providers];
-    } else {
-        // Regular submenu with direct provider items
-        for (id<WatchlistProvider> provider in providers) {
-            NSMenuItem *providerItem = [self createProviderMenuItem:provider];
-            [submenu addItem:providerItem];
-        }
-    }
-    
-    categoryItem.submenu = submenu;
-    [[self menu] addItem:categoryItem];
-    
-    NSLog(@"✅ Added submenu for '%@' with %lu items", displayName, (unsigned long)submenu.numberOfItems);
-}
-
-- (void)buildMarketListsSubmenu:(NSMenu *)submenu withProviders:(NSArray<id<WatchlistProvider>> *)providers {
-    // Group market list providers by market type
-    NSMutableDictionary<NSString *, NSMutableArray *> *groupedProviders = [NSMutableDictionary dictionary];
-    
-    for (id<WatchlistProvider> provider in providers) {
-        if ([provider isKindOfClass:[MarketListProvider class]]) {
-            MarketListProvider *marketProvider = (MarketListProvider *)provider;
-            
-            // Create key for market type
-            NSString *typeKey = [self keyForMarketType:marketProvider.marketType];
-            
-            if (!groupedProviders[typeKey]) {
-                groupedProviders[typeKey] = [NSMutableArray array];
-            }
-            [groupedProviders[typeKey] addObject:provider];
-        }
-    }
-    
-    // Create submenu items for each market type
-    NSArray<NSString *> *sortedKeys = [[groupedProviders allKeys] sortedArrayUsingSelector:@selector(compare:)];
-    
-    for (NSString *typeKey in sortedKeys) {
-        NSArray<id<WatchlistProvider>> *typeProviders = groupedProviders[typeKey];
+        NSLog(@"🏗️ Building category: %@ with %lu providers", categoryName, (unsigned long)providers.count);
         
-        if (typeProviders.count == 1) {
-            // Single provider - add directly
-            NSMenuItem *providerItem = [self createProviderMenuItem:typeProviders.firstObject];
+        // Create parent menu item for category
+        NSMenuItem *categoryItem = [[NSMenuItem alloc] initWithTitle:displayName action:nil keyEquivalent:@""];
+        NSMenu *submenu = [[NSMenu alloc] initWithTitle:displayName];
+        
+        // Add providers to submenu
+        for (id<WatchlistProvider> provider in providers) {
+            NSMenuItem *providerItem = [self createMenuItemForProvider:provider];
             [submenu addItem:providerItem];
-        } else {
-            // Multiple providers - create sub-submenu for timeframes
-            NSString *typeDisplayName = [self displayNameForMarketTypeKey:typeKey];
-            NSMenuItem *typeItem = [[NSMenuItem alloc] initWithTitle:typeDisplayName action:nil keyEquivalent:@""];
-            
-            NSMenu *timeframeSubmenu = [[NSMenu alloc] init];
-            for (id<WatchlistProvider> provider in typeProviders) {
-                NSMenuItem *timeframeItem = [self createProviderMenuItem:provider];
-                [timeframeSubmenu addItem:timeframeItem];
-            }
-            
-            typeItem.submenu = timeframeSubmenu;
-            [submenu addItem:typeItem];
         }
+        
+        [categoryItem setSubmenu:submenu];
+        [[self menu] addItem:categoryItem];
+        
+        NSLog(@"✅ Added category '%@' with %lu items", categoryName, (unsigned long)submenu.numberOfItems);
     }
+    
+    NSLog(@"🏗️ Submenu structure completed with %ld categories", (long)[[self menu] numberOfItems]);
 }
 
-- (NSMenuItem *)createProviderMenuItem:(id<WatchlistProvider>)provider {
+- (NSMenuItem *)createMenuItemForProvider:(id<WatchlistProvider>)provider {
     NSString *title = provider.displayName;
     
-    // Add count if provider shows count and has symbols
+    // Add count if available and enabled
     if (provider.showCount && provider.isLoaded && provider.symbols.count > 0) {
         title = [NSString stringWithFormat:@"%@ (%lu)", title, (unsigned long)provider.symbols.count];
     }
     
     NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title action:@selector(providerSelected:) keyEquivalent:@""];
     item.target = self;
+    
+    // ✅ FIX ARC: Usa NSString invece di enum direttamente
     item.representedObject = provider.providerId;
     
     return item;
 }
 
-// Helper methods for market lists
-- (NSString *)keyForMarketType:(MarketType)marketType {
+// ✅ FIX ARC: Helper methods corretti per market lists
+- (NSString *)keyForMarketType:(MarketListType)marketType {
     switch (marketType) {
-        case MarketTypeSP500: return @"SP500";
-        case MarketTypeNASDAQ: return @"NASDAQ";
-        case MarketTypeRussell2000: return @"Russell2000";
-        case MarketTypeDowJones: return @"DowJones";
+        case MarketListTypeTopGainers: return @"TopGainers";
+        case MarketListTypeTopLosers: return @"TopLosers";
+        case MarketListTypeEarnings: return @"Earnings";
+        case MarketListTypeETF: return @"ETF";
+        case MarketListTypeIndustry: return @"Industry";
         default: return @"Other";
     }
 }
 
 - (NSString *)displayNameForMarketTypeKey:(NSString *)typeKey {
-    if ([typeKey isEqualToString:@"SP500"]) return @"S&P 500";
-    if ([typeKey isEqualToString:@"NASDAQ"]) return @"NASDAQ";
-    if ([typeKey isEqualToString:@"Russell2000"]) return @"Russell 2000";
-    if ([typeKey isEqualToString:@"DowJones"]) return @"Dow Jones";
+    if ([typeKey isEqualToString:@"TopGainers"]) return @"🚀 Top Gainers";
+    if ([typeKey isEqualToString:@"TopLosers"]) return @"📉 Top Losers";
+    if ([typeKey isEqualToString:@"Earnings"]) return @"📈 Earnings";
+    if ([typeKey isEqualToString:@"ETF"]) return @"🏛️ ETF";
+    if ([typeKey isEqualToString:@"Industry"]) return @"🏭 Industry";
     return typeKey;
+}
+
+// ✅ FIX ARC: Metodo per convertire da stringa a enum (se necessario)
+- (MarketListType)marketTypeFromKey:(NSString *)typeKey {
+    if ([typeKey isEqualToString:@"TopGainers"]) return MarketListTypeTopGainers;
+    if ([typeKey isEqualToString:@"TopLosers"]) return MarketListTypeTopLosers;
+    if ([typeKey isEqualToString:@"Earnings"]) return MarketListTypeEarnings;
+    if ([typeKey isEqualToString:@"ETF"]) return MarketListTypeETF;
+    if ([typeKey isEqualToString:@"Industry"]) return MarketListTypeIndustry;
+    return MarketListTypeTopGainers; // Default
 }
 
 #pragma mark - Event Handling (SIMPLIFIED)
@@ -254,75 +211,84 @@
         return;
     }
     
+    // ✅ FIX ARC: representedObject è già NSString (providerId)
     NSString *providerId = selectedItem.representedObject;
     id<WatchlistProvider> provider = [self.providerManager providerWithId:providerId];
     
     NSLog(@"🔍 Looking for provider with ID: %@", providerId);
     NSLog(@"🔍 Found provider: %@", provider ? provider.displayName : @"NOT FOUND");
     
-    if (provider) {
-        // Prevent loops - check if already selected
-        if (self.selectedProvider && [self.selectedProvider.providerId isEqualToString:providerId]) {
-            NSLog(@"⚠️ Provider already selected, avoiding delegate call");
-            return;
-        }
-        
-        // Update our selected provider
-        self.selectedProvider = provider;
-        [self updateDisplayTextWithoutClearingMenu];
-        
-        // Notify delegate about selection
-        if (self.selectorDelegate && [self.selectorDelegate respondsToSelector:@selector(hierarchicalSelector:didSelectProvider:)]) {
-            NSLog(@"🔄 Calling delegate with provider: %@", provider.displayName);
-            [self.selectorDelegate hierarchicalSelector:self didSelectProvider:provider];
-        } else {
-            NSLog(@"⚠️ No delegate or delegate doesn't respond to selector");
-        }
+    if (!provider) {
+        NSLog(@"❌ Provider with ID '%@' not found!", providerId);
+        return;
+    }
+    
+    // Store selection
+    self.selectedProvider = provider;
+    
+    // Update display text
+    [self updateDisplayTextWithoutClearingMenu];
+    
+    // Notify delegate
+    if (self.selectorDelegate && [self.selectorDelegate respondsToSelector:@selector(hierarchicalSelector:didSelectProvider:)]) {
+        NSLog(@"📢 Notifying delegate of provider selection: %@", provider.displayName);
+        [self.selectorDelegate hierarchicalSelector:self didSelectProvider:provider];
     } else {
-        NSLog(@"❌ Provider not found for ID: %@", providerId);
+        NSLog(@"⚠️ No delegate or delegate doesn't implement didSelectProvider:");
     }
 }
 
 - (void)providerSelected:(NSMenuItem *)sender {
+    NSLog(@"🎯 HierarchicalSelector: providerSelected called directly");
+    NSLog(@"   Selected item: %@", sender.title);
+    NSLog(@"   RepresentedObject: %@", sender.representedObject);
+    
+    if (!sender.representedObject) {
+        NSLog(@"⚠️ No representedObject in selected menu item");
+        return;
+    }
+    
+    // ✅ FIX ARC: representedObject è NSString (providerId)
     NSString *providerId = sender.representedObject;
-    NSLog(@"🎯 HierarchicalSelector: providerSelected called with ID: %@", providerId);
-    
-    if (!providerId) {
-        NSLog(@"❌ providerSelected: No providerId in representedObject");
-        return;
-    }
-    
     id<WatchlistProvider> provider = [self.providerManager providerWithId:providerId];
+    
     if (!provider) {
-        NSLog(@"⚠️ Provider not found for menu selection: %@", providerId);
+        NSLog(@"❌ Provider with ID '%@' not found!", providerId);
         return;
     }
     
-    // Update our selected provider
+    NSLog(@"✅ Direct provider selection: %@", provider.displayName);
+    
+    // Store selection
     self.selectedProvider = provider;
+    
+    // Update display text
     [self updateDisplayTextWithoutClearingMenu];
     
-    // Notify delegate about user selection
+    // Notify delegate
     if (self.selectorDelegate && [self.selectorDelegate respondsToSelector:@selector(hierarchicalSelector:didSelectProvider:)]) {
-        NSLog(@"🔄 User selected provider from menu: %@", provider.displayName);
+        NSLog(@"📢 Notifying delegate of provider selection: %@", provider.displayName);
         [self.selectorDelegate hierarchicalSelector:self didSelectProvider:provider];
     }
 }
 
-#pragma mark - Selection Management
+#pragma mark - Provider Selection
 
 - (void)selectProviderWithId:(NSString *)providerId {
-    if (!providerId) return;
+    NSLog(@"🎯 HierarchicalSelector: selectProviderWithId called with: %@", providerId);
     
     id<WatchlistProvider> provider = [self.providerManager providerWithId:providerId];
+    
     if (!provider) {
-        NSLog(@"⚠️ Provider not found for ID: %@", providerId);
+        NSLog(@"❌ Cannot select provider with ID '%@' - not found", providerId);
         return;
     }
     
-    // Prevent infinite loops - check if already selected
-    if (self.selectedProvider && [self.selectedProvider.providerId isEqualToString:providerId]) {
-        NSLog(@"✅ Provider already selected in selector: %@", provider.displayName);
+    NSLog(@"✅ Programmatic selection of provider: %@", provider.displayName);
+    
+    // Don't notify delegate for programmatic selection to avoid loops
+    if (self.selectedProvider == provider) {
+        NSLog(@"   Provider already selected, skipping notification");
         return;
     }
     

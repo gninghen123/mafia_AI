@@ -442,33 +442,46 @@
 #pragma mark - Discovery Methods
 
 - (NSArray<NSString *> *)discoverActiveTags {
-    // TODO: Implement tag discovery from Symbol entities
-    // For now return some example tags
-    NSMutableArray<NSString *> *tags = [NSMutableArray array];
+    // ✅ USA DATI REALI DA CORE DATA
+    __block NSArray<NSString *> *discoveredTags = @[];
     
-    // This should query Core Data for all unique tags from Symbol.tags arrays
-    // Placeholder implementation:
-    NSArray<NSString *> *commonTags = @[@"earnings", @"biotech", @"dividend", @"growth", @"value"];
-    [tags addObjectsFromArray:commonTags];
+    // Usa metodo sincrono per compatibilità con l'interfaccia esistente
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
     
-    return [tags copy];
+    [[DataHub shared] discoverAllActiveTagsWithCompletion:^(NSArray<NSString *> *tags) {
+        discoveredTags = tags ?: @[];
+        dispatch_semaphore_signal(semaphore);
+    }];
+    
+    // Aspetta max 2 secondi
+    dispatch_time_t timeout = dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC);
+    dispatch_semaphore_wait(semaphore, timeout);
+    
+    NSLog(@"🏷️ Discovered %lu active tags: %@", (unsigned long)discoveredTags.count, discoveredTags);
+    return discoveredTags;
 }
 
+
 - (NSArray<NSString *> *)discoverAvailableArchives {
-    // TODO: Implement archive discovery from filesystem
-    // Should scan ~/Library/Application Support/TradingApp/Archives/YYYY-QX/
-    NSMutableArray<NSString *> *archives = [NSMutableArray array];
+    // ✅ USA DATI REALI DA FILESYSTEM
+    __block NSArray<NSString *> *discoveredArchives = @[];
     
-    // Placeholder implementation - should scan actual archive files
-    NSArray<NSString *> *exampleArchives = @[
-        @"2024-Q4/2024-12-15",
-        @"2024-Q4/2024-12-01",
-        @"2024-Q3/2024-09-30"
-    ];
-    [archives addObjectsFromArray:exampleArchives];
+    // Usa metodo sincrono per compatibilità con l'interfaccia esistente
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
     
-    return [archives copy];
+    [[DataHub shared] discoverAvailableArchivesWithCompletion:^(NSArray<NSString *> *archiveKeys) {
+        discoveredArchives = archiveKeys ?: @[];
+        dispatch_semaphore_signal(semaphore);
+    }];
+    
+    // Aspetta max 2 secondi
+    dispatch_time_t timeout = dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC);
+    dispatch_semaphore_wait(semaphore, timeout);
+    
+    NSLog(@"📦 Discovered %lu available archives: %@", (unsigned long)discoveredArchives.count, discoveredArchives);
+    return discoveredArchives;
 }
+
 
 @end
 
@@ -720,33 +733,19 @@
 }
 
 - (void)loadSymbolsWithCompletion:(void(^)(NSArray<NSString *> * _Nullable symbols, NSError * _Nullable error))completion {
-    // TODO: Implement basket symbol loading based on Symbol.lastInteraction
-    // This should query Core Data for symbols with lastInteraction within dayRange
-    
-    // Placeholder implementation
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        NSMutableArray<NSString *> *symbols = [NSMutableArray array];
-        
-        // Example symbols based on basket type
-        switch (self.basketType) {
-            case BasketTypeToday:
-                [symbols addObjectsFromArray:@[@"AAPL", @"MSFT", @"GOOGL"]];
-                break;
-            case BasketTypeWeek:
-                [symbols addObjectsFromArray:@[@"AAPL", @"MSFT", @"GOOGL", @"TSLA", @"NVDA"]];
-                break;
-            case BasketTypeMonth:
-                [symbols addObjectsFromArray:@[@"AAPL", @"MSFT", @"GOOGL", @"TSLA", @"NVDA", @"META", @"AMZN"]];
-                break;
-        }
-        
+    // ✅ USA DATI REALI BASATI SU INTERAZIONI
+    [[DataHub shared] getSymbolsWithInteractionInLastDays:self.dayRange completion:^(NSArray<NSString *> *symbols) {
         dispatch_async(dispatch_get_main_queue(), ^{
+            NSLog(@"✅ BasketProvider (%@): Loaded %lu symbols with interactions in last %ld days",
+                  [self displayName], (unsigned long)symbols.count, (long)self.dayRange);
+            
             if (completion) {
-                completion([symbols copy], nil);
+                completion(symbols ?: @[], nil);
             }
         });
-    });
+    }];
 }
+
 
 - (void)addSymbol:(NSString *)symbol completion:(void(^)(BOOL success, NSError * _Nullable error))completion {
     // Baskets are read-only (populated by interaction tracking)
@@ -812,28 +811,17 @@
 }
 
 - (void)loadSymbolsWithCompletion:(void(^)(NSArray<NSString *> * _Nullable symbols, NSError * _Nullable error))completion {
-    // TODO: Implement tag-based symbol loading from Symbol.tags arrays
-    // This should query Core Data for symbols that contain this tag
-    
-    // Placeholder implementation
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        NSMutableArray<NSString *> *symbols = [NSMutableArray array];
-        
-        // Example symbols based on tag
-        if ([self.tag isEqualToString:@"earnings"]) {
-            [symbols addObjectsFromArray:@[@"AAPL", @"MSFT", @"GOOGL"]];
-        } else if ([self.tag isEqualToString:@"biotech"]) {
-            [symbols addObjectsFromArray:@[@"GILD", @"BIIB", @"REGN"]];
-        } else if ([self.tag isEqualToString:@"dividend"]) {
-            [symbols addObjectsFromArray:@[@"JNJ", @"PG", @"KO"]];
-        }
-        
+    // ✅ USA DATI REALI BASATI SU TAG
+    [[DataHub shared] getSymbolsWithTag:self.tag completion:^(NSArray<NSString *> *symbols) {
         dispatch_async(dispatch_get_main_queue(), ^{
+            NSLog(@"✅ TagListProvider (%@): Loaded %lu symbols with tag '%@'",
+                  [self displayName], (unsigned long)symbols.count, self.tag);
+            
             if (completion) {
-                completion([symbols copy], nil);
+                completion(symbols ?: @[], nil);
             }
         });
-    });
+    }];
 }
 
 - (void)addSymbol:(NSString *)symbol completion:(void(^)(BOOL success, NSError * _Nullable error))completion {
@@ -914,22 +902,21 @@
 }
 
 - (void)loadSymbolsWithCompletion:(void(^)(NSArray<NSString *> * _Nullable symbols, NSError * _Nullable error))completion {
-    // TODO: Implement archive loading from binary plist files
-    // Should load from ~/Library/Application Support/TradingApp/Archives/YYYY-QX/YYYY-MM-DD.plist
-    
-    // Placeholder implementation
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        NSMutableArray<NSString *> *symbols = [NSMutableArray array];
-        
-        // Example archived symbols
-        [symbols addObjectsFromArray:@[@"AAPL", @"MSFT", @"GOOGL", @"TSLA", @"NVDA"]];
-        
+    // ✅ USA DATI REALI DA ARCHIVI SU DISCO
+    [[DataHub shared] loadArchivedBasketWithKey:self.archiveKey completion:^(NSArray<NSString *> * _Nullable symbols, NSError * _Nullable error) {
         dispatch_async(dispatch_get_main_queue(), ^{
+            if (error) {
+                NSLog(@"❌ ArchiveProvider (%@): Failed to load archive: %@", [self displayName], error.localizedDescription);
+            } else {
+                NSLog(@"✅ ArchiveProvider (%@): Loaded %lu symbols from archive",
+                      [self displayName], (unsigned long)symbols.count);
+            }
+            
             if (completion) {
-                completion([symbols copy], nil);
+                completion(symbols ?: @[], error);
             }
         });
-    });
+    }];
 }
 
 - (void)addSymbol:(NSString *)symbol completion:(void(^)(BOOL success, NSError * _Nullable error))completion {

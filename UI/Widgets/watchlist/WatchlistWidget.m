@@ -671,19 +671,44 @@
 - (void)showActionsMenu:(NSButton *)sender {
     NSMenu *menu = [[NSMenu alloc] init];
     
-    // Provider-specific actions
+    // 🔧 SEZIONE 1: WATCHLIST MANAGEMENT (SEMPRE VISIBILI)
+    NSMenuItem *createWatchlistItem = [[NSMenuItem alloc] initWithTitle:@"📝 Create New Watchlist..."
+                                                                 action:@selector(showCreateWatchlistDialog:)
+                                                          keyEquivalent:@""];
+    createWatchlistItem.target = self;
+    [menu addItem:createWatchlistItem];
+    
+    // Solo per watchlist manuali - mostra Remove option
+    BOOL isManualWatchlist = [self.currentProvider isKindOfClass:[ManualWatchlistProvider class]];
+    if (isManualWatchlist) {
+        NSMenuItem *removeWatchlistItem = [[NSMenuItem alloc] initWithTitle:@"🗑️ Remove Current Watchlist..."
+                                                                     action:@selector(showRemoveWatchlistDialog:)
+                                                              keyEquivalent:@""];
+        removeWatchlistItem.target = self;
+        [menu addItem:removeWatchlistItem];
+    }
+    
+    [menu addItem:[NSMenuItem separatorItem]];
+    
+    // 🔧 SEZIONE 2: SYMBOL MANAGEMENT (SE PROVIDER SUPPORTA)
     if (self.currentProvider) {
         if (self.currentProvider.canAddSymbols) {
-            NSMenuItem *addItem = [[NSMenuItem alloc] initWithTitle:@"Add Symbol..."
-                                                             action:@selector(addSymbolToCurrentProvider:)
-                                                      keyEquivalent:@""];
-            addItem.target = self;
-            [menu addItem:addItem];
+            NSMenuItem *addSingleItem = [[NSMenuItem alloc] initWithTitle:@"➕ Add Single Symbol..."
+                                                                   action:@selector(showAddSingleSymbolDialog:)
+                                                            keyEquivalent:@""];
+            addSingleItem.target = self;
+            [menu addItem:addSingleItem];
+            
+            NSMenuItem *addBulkItem = [[NSMenuItem alloc] initWithTitle:@"📊 Add Multiple Symbols..."
+                                                                 action:@selector(showAddBulkSymbolsDialog:)
+                                                          keyEquivalent:@""];
+            addBulkItem.target = self;
+            [menu addItem:addBulkItem];
         }
         
         if ([self hasSelectedSymbols]) {
             if (self.currentProvider.canRemoveSymbols) {
-                NSMenuItem *removeItem = [[NSMenuItem alloc] initWithTitle:@"Remove Selected"
+                NSMenuItem *removeItem = [[NSMenuItem alloc] initWithTitle:@"➖ Remove Selected Symbols"
                                                                     action:@selector(removeSelectedSymbols:)
                                                              keyEquivalent:@""];
                 removeItem.target = self;
@@ -692,24 +717,35 @@
             
             [menu addItem:[NSMenuItem separatorItem]];
             
-            NSMenuItem *createWatchlistItem = [[NSMenuItem alloc] initWithTitle:@"Create Watchlist from Selection"
-                                                                         action:@selector(createWatchlistFromCurrentSelection)
-                                                                  keyEquivalent:@""];
-            createWatchlistItem.target = self;
-            [menu addItem:createWatchlistItem];
-        }
-        
-        // Add search clear option
-        if (self.searchText.length > 0) {
-            [menu addItem:[NSMenuItem separatorItem]];
-            NSMenuItem *clearSearchItem = [[NSMenuItem alloc] initWithTitle:@"Clear Search"
-                                                                     action:@selector(clearSearch)
-                                                              keyEquivalent:@""];
-            clearSearchItem.target = self;
-            [menu addItem:clearSearchItem];
+            NSMenuItem *createFromSelectionItem = [[NSMenuItem alloc] initWithTitle:@"📋 Create Watchlist from Selection"
+                                                                             action:@selector(createWatchlistFromCurrentSelection)
+                                                                      keyEquivalent:@""];
+            createFromSelectionItem.target = self;
+            [menu addItem:createFromSelectionItem];
         }
     }
     
+    // 🔧 SEZIONE 3: SEARCH & UTILITIES
+    if (self.searchText.length > 0) {
+        [menu addItem:[NSMenuItem separatorItem]];
+        NSMenuItem *clearSearchItem = [[NSMenuItem alloc] initWithTitle:@"🔍 Clear Search Filter"
+                                                                 action:@selector(clearSearch)
+                                                          keyEquivalent:@""];
+        clearSearchItem.target = self;
+        [menu addItem:clearSearchItem];
+    }
+    
+    // 🔧 SEZIONE 4: SORTING OPTIONS
+    [menu addItem:[NSMenuItem separatorItem]];
+    NSString *sortTitle = (self.sortType == WatchlistSortTypeChangePercent) ?
+                         @"📈 Disable Sorting" : @"📈 Sort by Change %";
+    NSMenuItem *sortItem = [[NSMenuItem alloc] initWithTitle:sortTitle
+                                                      action:@selector(toggleSortByChangePercent)
+                                               keyEquivalent:@""];
+    sortItem.target = self;
+    [menu addItem:sortItem];
+    
+    // Empty menu fallback
     if (menu.itemArray.count == 0) {
         NSMenuItem *emptyItem = [[NSMenuItem alloc] initWithTitle:@"No actions available"
                                                            action:nil
@@ -746,10 +782,7 @@
     NSLog(@"Add symbol requested for provider: %@", self.currentProvider.displayName);
 }
 
-- (void)removeSelectedSymbols:(NSMenuItem *)sender {
-    NSArray<NSString *> *selectedSymbols = [self selectedSymbols];
-    NSLog(@"Remove symbols requested: %@", selectedSymbols);
-}
+
 
 - (void)addSymbol:(NSString *)symbol toManualWatchlist:(NSString *)watchlistName {
     if (!symbol || !watchlistName) return;
@@ -899,6 +932,311 @@
 - (void)dealloc {
     [self stopDataRefreshTimer];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+}
+
+
+
+#pragma mark - Watchlist Management Actions
+
+- (void)showCreateWatchlistDialog:(NSMenuItem *)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Create New Watchlist";
+    alert.informativeText = @"Enter a name for your new watchlist:";
+    alert.alertStyle = NSAlertStyleInformational;
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 300, 24)];
+    input.placeholderString = @"My Custom Watchlist";
+    alert.accessoryView = input;
+    
+    [alert addButtonWithTitle:@"Create"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        NSString *watchlistName = [input.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        
+        if (watchlistName.length == 0) {
+            [self showErrorAlert:@"Invalid Name" message:@"Watchlist name cannot be empty."];
+            return;
+        }
+        
+        // Check if name already exists
+        NSArray<WatchlistModel *> *existingWatchlists = [[DataHub shared] getAllWatchlistModels];
+        for (WatchlistModel *existing in existingWatchlists) {
+            if ([existing.name.lowercaseString isEqualToString:watchlistName.lowercaseString]) {
+                [self showErrorAlert:@"Name Already Exists"
+                              message:[NSString stringWithFormat:@"A watchlist named '%@' already exists.", watchlistName]];
+                return;
+            }
+        }
+        
+        // Create new watchlist
+        WatchlistModel *newWatchlist = [[DataHub shared] createWatchlistModelWithName:watchlistName];
+        if (newWatchlist) {
+            // Refresh provider manager and selector
+            [self.providerManager refreshAllProviders];
+            [self.providerSelector rebuildMenuStructure];
+            
+            // Auto-select the new watchlist
+            NSString *providerId = [NSString stringWithFormat:@"manual:%@", watchlistName];
+            [self.providerSelector selectProviderWithId:providerId];
+            
+            NSLog(@"✅ Created new watchlist: %@", watchlistName);
+            
+            // Show success notification
+            [self showSuccessAlert:@"Watchlist Created"
+                           message:[NSString stringWithFormat:@"'%@' has been created successfully.", watchlistName]];
+        } else {
+            [self showErrorAlert:@"Creation Failed" message:@"Failed to create watchlist. Please try again."];
+        }
+    }
+}
+
+- (void)showRemoveWatchlistDialog:(NSMenuItem *)sender {
+    if (![self.currentProvider isKindOfClass:[ManualWatchlistProvider class]]) {
+        [self showErrorAlert:@"Cannot Delete" message:@"Only custom watchlists can be deleted."];
+        return;
+    }
+    
+    ManualWatchlistProvider *manualProvider = (ManualWatchlistProvider *)self.currentProvider;
+    NSString *watchlistName = manualProvider.watchlistModel.name;
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Delete Watchlist";
+    alert.informativeText = [NSString stringWithFormat:@"Are you sure you want to delete the watchlist '%@'?\n\nThis action cannot be undone.", watchlistName];
+    alert.alertStyle = NSAlertStyleWarning;
+    
+    [alert addButtonWithTitle:@"Delete"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        // Delete the watchlist
+        [[DataHub shared] deleteWatchlistModel:manualProvider.watchlistModel];
+        
+        // Refresh provider manager and selector
+        [self.providerManager refreshAllProviders];
+        [self.providerSelector rebuildMenuStructure];
+        
+        // Select default provider
+        [self.providerSelector selectDefaultProvider];
+        
+        NSLog(@"✅ Deleted watchlist: %@", watchlistName);
+        
+        // Show success notification
+        [self showSuccessAlert:@"Watchlist Deleted"
+                       message:[NSString stringWithFormat:@"'%@' has been deleted.", watchlistName]];
+    }
+}
+
+#pragma mark - Symbol Management Actions
+
+- (void)showAddSingleSymbolDialog:(NSMenuItem *)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Add Symbol";
+    alert.informativeText = @"Enter the symbol you want to add:";
+    alert.alertStyle = NSAlertStyleInformational;
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.placeholderString = @"e.g., AAPL, MSFT, GOOGL";
+    alert.accessoryView = input;
+    
+    [alert addButtonWithTitle:@"Add"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        NSString *symbolInput = [input.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        
+        if (symbolInput.length == 0) {
+            [self showErrorAlert:@"Invalid Input" message:@"Please enter a valid symbol."];
+            return;
+        }
+        
+        NSString *symbol = symbolInput.uppercaseString;
+        
+        // Add to current provider
+        [self addSymbolToCurrentProvider:symbol];
+    }
+}
+
+- (void)showAddBulkSymbolsDialog:(NSMenuItem *)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Add Multiple Symbols";
+    alert.informativeText = @"Enter symbols separated by commas, spaces, or new lines:";
+    alert.alertStyle = NSAlertStyleInformational;
+    
+    // Create a larger text view for bulk input
+    NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 400, 120)];
+    NSTextView *textView = [[NSTextView alloc] init];
+    textView.string = @"";
+    textView.font = [NSFont systemFontOfSize:13];
+    scrollView.documentView = textView;
+    scrollView.hasVerticalScroller = YES;
+    scrollView.autohidesScrollers = YES;
+    
+    // Add placeholder-like instruction
+    NSTextField *instructionLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 125, 400, 20)];
+    instructionLabel.stringValue = @"Examples: AAPL, MSFT, GOOGL  or  AAPL MSFT GOOGL  or  AAPL\\nMSFT\\nGOOGL";
+    instructionLabel.textColor = [NSColor secondaryLabelColor];
+    instructionLabel.font = [NSFont systemFontOfSize:11];
+    instructionLabel.bordered = NO;
+    instructionLabel.editable = NO;
+    instructionLabel.backgroundColor = [NSColor clearColor];
+    
+    NSView *containerView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 400, 150)];
+    [containerView addSubview:scrollView];
+    [containerView addSubview:instructionLabel];
+    
+    alert.accessoryView = containerView;
+    
+    [alert addButtonWithTitle:@"Add All"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        NSString *input = [textView.string stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        
+        if (input.length == 0) {
+            [self showErrorAlert:@"Invalid Input" message:@"Please enter at least one symbol."];
+            return;
+        }
+        
+        // Parse symbols intelligently
+        NSArray<NSString *> *symbols = [self parseSymbolsFromInput:input];
+        
+        if (symbols.count == 0) {
+            [self showErrorAlert:@"No Valid Symbols" message:@"No valid symbols found in the input."];
+            return;
+        }
+        
+        // Add all symbols to current provider
+        [self addSymbolsToCurrentProvider:symbols];
+    }
+}
+
+#pragma mark - Smart Symbol Parsing
+
+- (NSArray<NSString *> *)parseSymbolsFromInput:(NSString *)input {
+    if (!input || input.length == 0) return @[];
+    
+    NSMutableSet<NSString *> *symbolSet = [NSMutableSet set];
+    
+    // Replace multiple whitespace/newlines with single space
+    NSString *cleaned = [input stringByReplacingOccurrencesOfString:@"\\s+"
+                                                         withString:@" "
+                                                            options:NSRegularExpressionSearch
+                                                              range:NSMakeRange(0, input.length)];
+    
+    // Split by common separators: comma, space, newline, semicolon, tab
+    NSCharacterSet *separators = [NSCharacterSet characterSetWithCharactersInString:@", \\n\\r\\t;"];
+    NSArray<NSString *> *components = [cleaned componentsSeparatedByCharactersInSet:separators];
+    
+    for (NSString *component in components) {
+        NSString *symbol = [[component stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] uppercaseString];
+        
+        // Basic validation: 1-10 characters, alphanumeric only
+        if (symbol.length >= 1 && symbol.length <= 10) {
+            NSCharacterSet *validCharacters = [NSCharacterSet characterSetWithCharactersInString:@"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"];
+            if ([symbol rangeOfCharacterFromSet:[validCharacters invertedSet]].location == NSNotFound) {
+                [symbolSet addObject:symbol];
+            }
+        }
+    }
+    
+    NSArray<NSString *> *result = [[symbolSet allObjects] sortedArrayUsingSelector:@selector(compare:)];
+    NSLog(@"📊 Parsed %lu unique symbols from input: %@", (unsigned long)result.count, result);
+    
+    return result;
+}
+
+#pragma mark - Provider Symbol Management
+
+- (void)addSymbolsToCurrentProvider:(NSArray<NSString *> *)symbols {
+    if (!self.currentProvider || !self.currentProvider.canAddSymbols) {
+        [self showErrorAlert:@"Cannot Add Symbols" message:@"The current watchlist does not support adding symbols."];
+        return;
+    }
+    
+    if (![self.currentProvider isKindOfClass:[ManualWatchlistProvider class]]) {
+        [self showErrorAlert:@"Bulk Add Not Supported" message:@"Bulk symbol adding is only supported for manual watchlists."];
+        return;
+    }
+    
+    ManualWatchlistProvider *manualProvider = (ManualWatchlistProvider *)self.currentProvider;
+    
+    // Use DataHub bulk add method
+    [[DataHub shared] addSymbols:symbols toWatchlistModel:manualProvider.watchlistModel];
+    
+    // Refresh the provider
+    [self refreshCurrentProvider];
+    
+    // Show success message
+    [self showSuccessAlert:@"Symbols Added"
+                   message:[NSString stringWithFormat:@"Successfully added %lu symbols to %@",
+                           (unsigned long)symbols.count, manualProvider.watchlistModel.name]];
+    
+    NSLog(@"✅ Added %lu symbols to watchlist: %@", (unsigned long)symbols.count, symbols);
+}
+
+#pragma mark - UI Helper Methods
+
+- (void)showErrorAlert:(NSString *)title message:(NSString *)message {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = title;
+    alert.informativeText = message;
+    alert.alertStyle = NSAlertStyleWarning;
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+}
+
+- (void)showSuccessAlert:(NSString *)title message:(NSString *)message {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = title;
+    alert.informativeText = message;
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+}
+
+#pragma mark - Updated Existing Methods
+
+
+
+- (void)removeSelectedSymbols:(NSMenuItem *)sender {
+    NSArray<NSString *> *selectedSymbols = [self selectedSymbols];
+    
+    if (selectedSymbols.count == 0) {
+        [self showErrorAlert:@"No Selection" message:@"Please select symbols to remove."];
+        return;
+    }
+    
+    if (!self.currentProvider.canRemoveSymbols) {
+        [self showErrorAlert:@"Cannot Remove" message:@"The current watchlist does not support removing symbols."];
+        return;
+    }
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Remove Symbols";
+    alert.informativeText = [NSString stringWithFormat:@"Are you sure you want to remove %lu selected symbol(s)?", (unsigned long)selectedSymbols.count];
+    alert.alertStyle = NSAlertStyleWarning;
+    
+    [alert addButtonWithTitle:@"Remove"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        // Remove each selected symbol
+        for (NSString *symbol in selectedSymbols) {
+            [self.currentProvider removeSymbol:symbol completion:^(BOOL success, NSError * _Nullable error) {
+                if (!success) {
+                    NSLog(@"❌ Failed to remove symbol %@: %@", symbol, error.localizedDescription);
+                }
+            }];
+        }
+        
+        // Refresh provider after all removals
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self refreshCurrentProvider];
+        });
+        
+        NSLog(@"✅ Removed %lu symbols from watchlist", (unsigned long)selectedSymbols.count);
+    }
 }
 
 @end

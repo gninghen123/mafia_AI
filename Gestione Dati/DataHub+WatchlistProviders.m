@@ -6,7 +6,8 @@
 //
 
 #import "DataHub+WatchlistProviders.h"
-#import "CoreDataModel.h"
+#import "Symbol+CoreDataClass.h"
+#import "Symbol+CoreDataProperties.h"
 
 @implementation DataHub (WatchlistProviders)
 

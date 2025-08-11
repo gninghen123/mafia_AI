@@ -7,6 +7,9 @@
 
 #import "WatchlistProviderManager.h"
 #import "DataHub.h"
+#import "DataHub+MarketData.h"
+#import "DataHub+WatchlistProviders.h"
+#import "TradingAppTypes.h"
 
 @interface WatchlistProviderManager ()
 
@@ -99,17 +102,26 @@
 }
 
 - (NSArray<id<WatchlistProvider>> *)providersForCategory:(NSString *)categoryName {
+    NSLog(@"🔍 ProviderManager: Getting providers for category: '%@'", categoryName);
+    
     if ([categoryName isEqualToString:@"Manual Watchlists"]) {
+        NSLog(@"   Returning %lu manual providers", (unsigned long)self.manualWatchlistProviders.count);
         return self.manualWatchlistProviders;
     } else if ([categoryName isEqualToString:@"Market Lists"]) {
+        NSLog(@"   Returning %lu market providers", (unsigned long)self.marketListProviders.count);
         return self.marketListProviders;
     } else if ([categoryName isEqualToString:@"Baskets"]) {
+        NSLog(@"   Returning %lu basket providers", (unsigned long)self.basketProviders.count);
         return self.basketProviders;
     } else if ([categoryName isEqualToString:@"Tag Lists"]) {
+        NSLog(@"   Returning %lu tag providers", (unsigned long)self.tagListProviders.count);
         return self.tagListProviders;
     } else if ([categoryName isEqualToString:@"Archives"]) {
+        NSLog(@"   Returning %lu archive providers", (unsigned long)self.archiveProviders.count);
         return self.archiveProviders;
     }
+    
+    NSLog(@"❌ Unknown category: '%@'", categoryName);
     return @[];
 }
 
@@ -141,6 +153,8 @@
 #pragma mark - Provider Management
 
 - (void)refreshAllProviders {
+    NSLog(@"🔄 ProviderManager: Refreshing all providers");
+    
     [self.mutableManualProviders removeAllObjects];
     [self.mutableMarketListProviders removeAllObjects];
     [self.mutableBasketProviders removeAllObjects];
@@ -153,6 +167,8 @@
     [self loadBasketProviders];
     [self loadTagListProviders];
     [self loadArchiveProviders];
+    
+    NSLog(@"✅ ProviderManager: Refresh complete - Total providers: %lu", (unsigned long)self.allProviders.count);
 }
 
 - (void)refreshProvidersForCategory:(NSString *)categoryName {
@@ -207,6 +223,8 @@
 }
 
 - (void)loadBasketProviders {
+    NSLog(@"📅 Loading basket providers...");
+    
     // Remove existing basket providers from cache
     for (id<WatchlistProvider> provider in self.mutableBasketProviders) {
         [self.providerCache removeObjectForKey:provider.providerId];
@@ -219,6 +237,7 @@
     for (id<WatchlistProvider> provider in providers) {
         [self.mutableBasketProviders addObject:provider];
         self.providerCache[provider.providerId] = provider;
+        NSLog(@"   Created basket provider: %@", provider.displayName);
     }
     
     NSLog(@"📅 Loaded %lu basket providers", (unsigned long)self.mutableBasketProviders.count);
@@ -387,14 +406,27 @@
 }
 
 - (NSArray<id<WatchlistProvider>> *)createAllBasketProviders {
+    NSLog(@"📅 Creating all basket providers...");
     NSMutableArray *providers = [NSMutableArray array];
     
     // Create the 3 basket types
     for (NSInteger basketType = BasketTypeToday; basketType <= BasketTypeMonth; basketType++) {
-        BasketProvider *provider = [[BasketProvider alloc] initWithBasketType:basketType];
-        [providers addObject:provider];
+        @try {
+            NSLog(@"   Creating basket provider for type: %ld", (long)basketType);
+            BasketProvider *provider = [[BasketProvider alloc] initWithBasketType:basketType];
+            if (provider) {
+                [providers addObject:provider];
+                NSLog(@"   ✅ Created: %@", provider.displayName);
+            } else {
+                NSLog(@"   ❌ Failed to create provider for type: %ld", (long)basketType);
+            }
+        }
+        @catch (NSException *exception) {
+            NSLog(@"❌ Exception creating basket provider type %ld: %@", (long)basketType, exception);
+        }
     }
     
+    NSLog(@"📅 Created %lu basket providers total", (unsigned long)providers.count);
     return [providers copy];
 }
 
@@ -660,8 +692,13 @@
 }
 
 - (NSString *)displayName {
-    WatchlistProviderManager *manager = [WatchlistProviderManager sharedManager];
-    return [manager displayNameForBasketType:self.basketType];
+    // Don't call manager during init - use direct implementation
+    switch (self.basketType) {
+        case BasketTypeToday: return @"📅 TODAY";
+        case BasketTypeWeek: return @"📆 WEEK (7d)";
+        case BasketTypeMonth: return @"📊 MONTH (30d)";
+        default: return @"📅 Basket";
+    }
 }
 
 - (NSString *)categoryName {

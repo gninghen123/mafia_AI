@@ -9,9 +9,18 @@
 #import "HierarchicalWatchlistSelector.h"
 #import "WatchlistProviderManager.h"
 #import "DataHub.h"
+#import "DataHub+MarketData.h"
+#import "DataHub+WatchlistProviders.h"
+#import "TradingAppTypes.h"
+
+#import "WatchlistWidget.h"
+#import "HierarchicalWatchlistSelector.h"
+#import "WatchlistProviderManager.h"
+#import "DataHub.h"
 #import "TradingAppTypes.h"
 
 @interface WatchlistWidget () <HierarchicalWatchlistSelectorDelegate>
+
 
 // Layout management
 @property (nonatomic, strong) NSArray<NSLayoutConstraint *> *currentConstraints;
@@ -63,6 +72,17 @@
     [super setupContentView];
     [self setupProviderUI];
     [self setupInitialProvider];
+    [self startDataRefreshTimer];
+}
+
+- (void)viewWillAppear {
+    [super viewWillAppear];
+    [self startDataRefreshTimer];
+}
+
+- (void)viewWillDisappear {
+    [super viewWillDisappear];
+    [self stopDataRefreshTimer];
 }
 
 #pragma mark - UI Setup
@@ -266,13 +286,28 @@
 - (void)selectProvider:(id<WatchlistProvider>)provider {
     if (!provider) return;
     
+    // Prevent infinite loops
+    if (self.currentProvider == provider) {
+        NSLog(@"📋 WatchlistWidget: Provider already selected, skipping: %@", provider.displayName);
+        return;
+    }
+    
     NSLog(@"📋 WatchlistWidget: Selecting provider: %@", provider.displayName);
     
     self.currentProvider = provider;
     self.lastSelectedProviderId = provider.providerId;
     
-    // Update selector display
-    [self.providerSelector selectProviderWithId:provider.providerId];
+    // Update selector display WITHOUT triggering selection again
+    if (![self.providerSelector.selectedProvider.providerId isEqualToString:provider.providerId]) {
+        // Temporarily disconnect delegate to prevent recursion
+        id<HierarchicalWatchlistSelectorDelegate> tempDelegate = self.providerSelector.selectorDelegate;
+        self.providerSelector.selectorDelegate = nil;
+        
+        [self.providerSelector selectProviderWithId:provider.providerId];
+        
+        // Reconnect delegate
+        self.providerSelector.selectorDelegate = tempDelegate;
+    }
     
     // Load symbols for this provider
     [self loadSymbolsForCurrentProvider];
@@ -660,22 +695,7 @@
     }
 }
 
-#pragma mark - Widget Lifecycle
 
-- (void)widgetDidLoad {
-    [super widgetDidLoad];
-    [self startDataRefreshTimer];
-}
-
-- (void)widgetWillClose {
-    [self stopDataRefreshTimer];
-    [super widgetWillClose];
-}
-
-- (void)dealloc {
-    [self stopDataRefreshTimer];
-    [[NSNotificationCenter defaultCenter] removeObserver:self];
-}
 
 #pragma mark - BaseWidget Overrides
 
@@ -683,8 +703,8 @@
     return @"WatchlistWidget";
 }
 
-- (NSDictionary *)widgetState {
-    NSMutableDictionary *state = [[super widgetState] mutableCopy] ?: [NSMutableDictionary dictionary];
+- (NSDictionary *)serializeState {
+    NSMutableDictionary *state = [[super serializeState] mutableCopy] ?: [NSMutableDictionary dictionary];
     
     if (self.lastSelectedProviderId) {
         state[@"lastSelectedProviderId"] = self.lastSelectedProviderId;
@@ -695,8 +715,8 @@
     return [state copy];
 }
 
-- (void)restoreWidgetState:(NSDictionary *)state {
-    [super restoreWidgetState:state];
+- (void)restoreState:(NSDictionary *)state {
+    [super restoreState:state];
     
     NSString *providerId = state[@"lastSelectedProviderId"];
     if (providerId) {
@@ -711,6 +731,11 @@
         self.visibleColumns = [visibleColumns integerValue];
         [self reconfigureColumnsForCurrentWidth];
     }
+}
+
+- (void)dealloc {
+    [self stopDataRefreshTimer];
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
 @end

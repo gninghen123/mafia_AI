@@ -7,6 +7,7 @@
 
 #import "HierarchicalWatchlistSelector.h"
 #import "WatchlistProviderManager.h"
+#import "TradingAppTypes.h"
 
 @implementation ProviderCategoryConfig
 
@@ -64,6 +65,8 @@
 }
 
 - (void)setupDefaultCategoryConfigs {
+    NSLog(@"🔧 Setting up default category configs");
+    
     self.categoryConfigs = @[
         [ProviderCategoryConfig configWithName:@"Manual Watchlists"
                                     displayName:@"📝 MY LISTS"
@@ -100,6 +103,10 @@
                                autoExpandLimit:0
                                   rememberState:YES]
     ];
+    
+    for (ProviderCategoryConfig *config in self.categoryConfigs) {
+        NSLog(@"   Category: '%@' -> Display: '%@'", config.categoryName, config.displayName);
+    }
 }
 
 - (void)setupPopUpButtonBehavior {
@@ -115,9 +122,18 @@
 #pragma mark - Configuration
 
 - (void)configureWithProviderManager:(WatchlistProviderManager *)manager {
+    NSLog(@"🔧 HierarchicalSelector: Configuring with provider manager");
+    
     self.providerManager = manager;
-    [self rebuildMenuStructure];
-    self.enabled = YES;
+    
+    if (manager) {
+        NSLog(@"   Provider manager has %lu total providers", (unsigned long)manager.allProviders.count);
+        [self rebuildMenuStructure];
+        self.enabled = YES;
+    } else {
+        NSLog(@"❌ Provider manager is nil!");
+        self.enabled = NO;
+    }
 }
 
 #pragma mark - Menu Construction
@@ -128,6 +144,7 @@
     self.isUpdatingMenu = YES;
     
     NSLog(@"🔧 HierarchicalSelector: Rebuilding menu structure");
+    NSLog(@"   Available providers: %lu", (unsigned long)self.providerManager.allProviders.count);
     
     // Clear existing menu
     [self removeAllItems];
@@ -141,12 +158,28 @@
     self.isUpdatingMenu = NO;
     
     NSLog(@"✅ HierarchicalSelector: Menu rebuilt with %ld items", (long)self.numberOfItems);
+    
+    // Debug: List all menu items
+    for (NSInteger i = 0; i < self.numberOfItems; i++) {
+        NSMenuItem *item = [self itemAtIndex:i];
+        NSLog(@"   Menu item %ld: %@", (long)i, item.title);
+    }
 }
 
 - (void)buildMainMenu {
+    NSLog(@"🏗️ Building main menu with categories:");
+    
     BOOL firstCategory = YES;
     
     for (ProviderCategoryConfig *config in self.categoryConfigs) {
+        NSArray<id<WatchlistProvider>> *providers = [self.providerManager providersForCategory:config.categoryName];
+        NSLog(@"   %@ -> %lu providers", config.categoryName, (unsigned long)providers.count);
+        
+        if (providers.count == 0) {
+            NSLog(@"   Skipping empty category: %@", config.categoryName);
+            continue;
+        }
+        
         if (!firstCategory) {
             // Add separator between categories
             [[self menu] addItem:[NSMenuItem separatorItem]];
@@ -155,13 +188,17 @@
         
         [self buildCategorySection:config];
     }
+    
+    NSLog(@"🏗️ Main menu build complete");
 }
 
 - (void)buildCategorySection:(ProviderCategoryConfig *)config {
     NSArray<id<WatchlistProvider>> *providers = [self.providerManager providersForCategory:config.categoryName];
     
+    NSLog(@"🏗️ Building category section: %@ (%lu providers)", config.categoryName, (unsigned long)providers.count);
+    
     if (providers.count == 0) {
-        // Don't show empty categories
+        NSLog(@"⚠️ Category %@ has no providers, skipping", config.categoryName);
         return;
     }
     
@@ -170,6 +207,8 @@
     
     // Determine if this category should be expanded
     BOOL isExpanded = [self shouldExpandCategory:config];
+    
+    NSLog(@"   Category %@ will be %@", config.categoryName, isExpanded ? @"expanded" : @"collapsed");
     
     if (isExpanded) {
         // Show providers directly under category header
@@ -359,14 +398,40 @@
     NSMenuItem *selectedItem = [self selectedItem];
     if (selectedItem && selectedItem.representedObject) {
         NSString *providerId = selectedItem.representedObject;
-        [self selectProviderWithId:providerId];
+        
+        id<WatchlistProvider> provider = [self.providerManager providerWithId:providerId];
+        if (!provider) return;
+        
+        // Update our selected provider
+        self.selectedProvider = provider;
+        [self updateDisplayText];
+        
+        // Notify delegate about selection
+        if (self.selectorDelegate && [self.selectorDelegate respondsToSelector:@selector(hierarchicalSelector:didSelectProvider:)]) {
+            NSLog(@"🔄 Provider selected via popup: %@", provider.displayName);
+            [self.selectorDelegate hierarchicalSelector:self didSelectProvider:provider];
+        }
     }
 }
 
 - (void)providerSelected:(NSMenuItem *)sender {
     NSString *providerId = sender.representedObject;
-    if (providerId) {
-        [self selectProviderWithId:providerId];
+    if (!providerId) return;
+    
+    id<WatchlistProvider> provider = [self.providerManager providerWithId:providerId];
+    if (!provider) {
+        NSLog(@"⚠️ Provider not found for menu selection: %@", providerId);
+        return;
+    }
+    
+    // Update our selected provider
+    self.selectedProvider = provider;
+    [self updateDisplayText];
+    
+    // Notify delegate about user selection
+    if (self.selectorDelegate && [self.selectorDelegate respondsToSelector:@selector(hierarchicalSelector:didSelectProvider:)]) {
+        NSLog(@"🔄 User selected provider from menu: %@", provider.displayName);
+        [self.selectorDelegate hierarchicalSelector:self didSelectProvider:provider];
     }
 }
 
@@ -393,15 +458,16 @@
         return;
     }
     
+    // Prevent infinite loops - check if already selected
+    if (self.selectedProvider && [self.selectedProvider.providerId isEqualToString:providerId]) {
+        NSLog(@"✅ Provider already selected in selector: %@", provider.displayName);
+        return;
+    }
+    
     self.selectedProvider = provider;
     [self updateDisplayText];
     
-    // Notify delegate
-    if (self.selectorDelegate && [self.selectorDelegate respondsToSelector:@selector(hierarchicalSelector:didSelectProvider:)]) {
-        [self.selectorDelegate hierarchicalSelector:self didSelectProvider:provider];
-    }
-    
-    NSLog(@"✅ Selected provider: %@", provider.displayName);
+    NSLog(@"✅ Selector updated to provider: %@", provider.displayName);
 }
 
 - (void)selectDefaultProvider {

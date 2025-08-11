@@ -12,7 +12,6 @@
 #import "AlertWidget.h"
 #import "MultiChartWidget.h"
 #import "MiniChart.h"
-#import "GeneralMarketWidget.h"
 #import "ConnectionsWidget.h"
 #import "SymbolDataBase/SymbolDataBaseWidget.h"
 #import "SeasonalChartWidget.h"
@@ -106,7 +105,6 @@
     typeToClass[@"Watchlist"] = [WatchlistWidget class];
     typeToClass[@"Connection Status"] = [ConnectionStatusWidget class];
     typeToClass[@"MultiChart Widget"] = [MultiChartWidget class];
-    typeToClass[@"General Market"] = [GeneralMarketWidget class];
     typeToClass[@"Connections"] = [ConnectionsWidget class];
     typeToClass[@"SymbolDatabase"] = [SymbolDatabaseWidget class];
     typeToClass[@"Alerts"] = [AlertWidget class];

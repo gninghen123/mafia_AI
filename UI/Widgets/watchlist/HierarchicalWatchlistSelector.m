@@ -71,16 +71,18 @@
 #pragma mark - ✅ FIX: Simple Menu Structure (No Lazy Loading)
 
 - (void)buildSimpleMenuStructure {
-    if (self.isUpdatingMenu) return;
+    if (self.isUpdatingMenu) {
+        NSLog(@"⚠️ Menu update already in progress, skipping");
+        return;
+    }
     
     self.isUpdatingMenu = YES;
     
-    NSLog(@"🏗️ Building simple menu structure (no lazy loading)");
+    NSLog(@"🏗️ Building simple menu structure (REPO VERSION)");
     
     // Clear existing menu
     [[self menu] removeAllItems];
     
-    // Get all categories and populate them immediately
     NSArray<NSString *> *categories = @[
         @"Manual Watchlists",
         @"Baskets",
@@ -103,11 +105,21 @@
         NSString *categoryName = categories[i];
         NSString *displayName = categoryDisplayNames[i];
         
-        // ✅ FIX: Get providers immediately - no lazy loading
+        NSLog(@"🔍 Processing category: %@", categoryName);
+        
+        // ✅ FIX: Ensure providers are loaded for this category
+        [self.providerManager ensureProvidersLoadedForCategory:categoryName];
+        
         NSArray<id<WatchlistProvider>> *providers = [self.providerManager providersForCategory:categoryName];
+        NSLog(@"📊 Category %@ returned %lu providers", categoryName, (unsigned long)providers.count);
+        
+        // Debug: List all providers
+        for (id<WatchlistProvider> provider in providers) {
+            NSLog(@"   - Provider: %@ (ID: %@)", provider.displayName, provider.providerId);
+        }
         
         if (providers.count == 0) {
-            NSLog(@"   Skipping empty category: %@", categoryName);
+            NSLog(@"⚠️ Skipping empty category: %@", categoryName);
             continue;
         }
         
@@ -133,8 +145,7 @@
     }
     
     self.isUpdatingMenu = NO;
-    
-    NSLog(@"✅ Simple menu structure completed with %ld categories", (long)[[self menu] numberOfItems]);
+    NSLog(@"✅ Menu structure completed with %ld total categories", (long)[[self menu] numberOfItems]);
 }
 
 - (NSMenuItem *)createMenuItemForProvider:(id<WatchlistProvider>)provider {
@@ -279,7 +290,7 @@
 }
 
 - (void)setFilterText:(NSString *)filterText {
-    self.filterText = filterText ? [filterText copy] : @"";
+    _filterText = filterText ? [filterText copy] : @"";
     // For now, don't rebuild - filtering can be added later
 }
 

@@ -86,16 +86,21 @@
 }
 
 - (void)ensureProvidersLoadedForCategory:(NSString *)categoryName {
+    NSLog(@"⚡ ensureProvidersLoadedForCategory: %@", categoryName);
+    
     if ([categoryName isEqualToString:@"Market Lists"] && self.mutableMarketListProviders.count == 0) {
-        NSLog(@"⚡ Lazy loading: Market Lists");
+        NSLog(@"⚡ Force loading: Market Lists");
         [self loadMarketListProviders];
-    } else if ([categoryName isEqualToString:@"Tag Lists"] && self.mutableTagListProviders.count == 0) {
-        NSLog(@"⚡ Lazy loading: Tag Lists");
-        [self loadTagListProvidersAsync]; // Make async
+    } else if ([categoryName isEqualToString:@"Tag Lists"]) {
+        // ✅ FIX: SEMPRE ricarica i tag (potrebbero essere cambiati)
+        NSLog(@"⚡ Force loading: Tag Lists (always reload)");
+        [self loadTagListProviders];
     } else if ([categoryName isEqualToString:@"Archives"] && self.mutableArchiveProviders.count == 0) {
-        NSLog(@"⚡ Lazy loading: Archives");
-        [self loadArchiveProvidersAsync]; // Make async
+        NSLog(@"⚡ Force loading: Archives");
+        [self loadArchiveProviders];
     }
+    
+    NSLog(@"⚡ ensureProvidersLoadedForCategory completed: %@", categoryName);
 }
 
 #pragma mark - Provider Management
@@ -227,8 +232,31 @@
 }
 
 - (void)loadTagListProviders {
-    // Fallback sync version for backward compatibility
-    [self loadTagListProvidersAsync];
+    NSLog(@"🏷️ Loading tag list providers (SYNC VERSION)...");
+    
+    // Remove existing tag providers from cache
+    for (id<WatchlistProvider> provider in self.mutableTagListProviders) {
+        [self.providerCache removeObjectForKey:provider.providerId];
+    }
+    [self.mutableTagListProviders removeAllObjects];
+    
+    // ✅ FIX: Use sync version to avoid loading issues
+    NSArray<NSString *> *activeTags = [self discoverActiveTags];
+    NSLog(@"🏷️ Found %lu active tags to create providers for", (unsigned long)activeTags.count);
+    
+    if (activeTags.count == 0) {
+        NSLog(@"⚠️ No active tags found - tag system might be empty or not working");
+        return;
+    }
+    
+    for (NSString *tag in activeTags) {
+        TagListProvider *provider = [[TagListProvider alloc] initWithTag:tag];
+        [self.mutableTagListProviders addObject:provider];
+        self.providerCache[provider.providerId] = provider;
+        NSLog(@"🏷️ Created provider for tag: %@", tag);
+    }
+    
+    NSLog(@"✅ Loaded %lu tag list providers", (unsigned long)self.mutableTagListProviders.count);
 }
 
 - (void)loadArchiveProviders {
@@ -459,20 +487,28 @@
 }
 
 - (NSArray<NSString *> *)discoverActiveTags {
-    // Synchronous version for backward compatibility
+    NSLog(@"🏷️ Starting tag discovery...");
+    
     __block NSArray<NSString *> *discoveredTags = @[];
     
     dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
     
     [[DataHub shared] discoverAllActiveTagsWithCompletion:^(NSArray<NSString *> *tags) {
         discoveredTags = tags ?: @[];
+        NSLog(@"🏷️ DataHub returned %lu tags: %@", (unsigned long)discoveredTags.count, discoveredTags);
         dispatch_semaphore_signal(semaphore);
     }];
     
-    dispatch_time_t timeout = dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC);
-    dispatch_semaphore_wait(semaphore, timeout);
+    // ✅ FIX: Increase timeout for tag discovery
+    dispatch_time_t timeout = dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC);
+    long result = dispatch_semaphore_wait(semaphore, timeout);
     
-    NSLog(@"🏷️ Discovered %lu active tags: %@", (unsigned long)discoveredTags.count, discoveredTags);
+    if (result != 0) {
+        NSLog(@"❌ Tag discovery TIMEOUT after 5 seconds!");
+        return @[];
+    }
+    
+    NSLog(@"✅ Tag discovery completed with %lu tags", (unsigned long)discoveredTags.count);
     return discoveredTags;
 }
 

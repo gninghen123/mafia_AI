@@ -6,6 +6,7 @@
 #import "WatchlistProviders.h"
 #import "DataHub.h"
 #import "DataHub+WatchlistProviders.h"
+#import "datahub+marketdata.h"
 
 #pragma mark - Manual Watchlist Provider
 
@@ -161,23 +162,85 @@
 }
 
 - (void)loadSymbolsWithCompletion:(void(^)(NSArray<NSString *> * _Nullable symbols, NSError * _Nullable error))completion {
-    // TODO: Implement market data loading based on your DataManager API
-    // This is a placeholder - you'll need to implement based on your market data system
     
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        // Simulate API call delay
-        [NSThread sleepForTimeInterval:0.5];
+    // ✅ Convert enum to API strings che DataHub si aspetta
+    NSString *listType = [self listTypeStringForDataHub];
+    NSString *timeframe = [self timeframeStringForDataHub];
+    
+    NSLog(@"📊 MarketListProvider loading: %@ - %@ (via DataHub)", listType, timeframe);
+    
+    // ✅ CORRECT: Use the existing DataHub method
+    [[DataHub shared] getMarketPerformersForList:listType
+                                       timeframe:timeframe
+                                      completion:^(NSArray<MarketPerformerModel *> *performers, BOOL isFresh) {
         
-        // Placeholder symbols - replace with actual market data API call
-        NSArray<NSString *> *mockSymbols = @[@"AAPL", @"MSFT", @"GOOGL", @"AMZN", @"TSLA"];
+        // ✅ Extract symbols from MarketPerformerModel array
+        NSMutableArray<NSString *> *symbols = [NSMutableArray array];
+        for (MarketPerformerModel *performer in performers) {
+            if (performer.symbol && performer.symbol.length > 0) {
+                [symbols addObject:performer.symbol];
+            }
+        }
+        
+        NSLog(@"✅ MarketListProvider loaded %lu REAL symbols from DataHub (isFresh: %@)",
+              (unsigned long)symbols.count, isFresh ? @"YES" : @"NO");
+        
+        // Debug: mostra alcuni simboli
+        if (symbols.count > 0) {
+            NSArray *sampleSymbols = [symbols subarrayWithRange:NSMakeRange(0, MIN(5, symbols.count))];
+            NSLog(@"📊 Sample symbols: %@", sampleSymbols);
+        }
         
         dispatch_async(dispatch_get_main_queue(), ^{
             if (completion) {
-                completion(mockSymbols, nil);
+                completion([symbols copy], nil);
             }
         });
-    });
+    }];
 }
+
+// ✅ CORRECT Helper methods per conversion enum -> string:
+
+- (NSString *)listTypeStringForDataHub {
+    switch (self.marketType) {
+        case MarketListTypeTopGainers:
+            return @"gainers";
+        case MarketListTypeTopLosers:
+            return @"losers";
+        case MarketListTypeETF:
+            return @"etf";
+        case MarketListTypeEarnings:
+            return @"gainers"; // Fallback to gainers if earnings not supported
+        case MarketListTypeIndustry:
+            return @"gainers"; // Fallback to gainers if industry not supported
+        default:
+            return @"gainers";
+    }
+}
+
+- (NSString *)timeframeStringForDataHub {
+    switch (self.timeframe) {
+        case MarketTimeframeOneDay:
+            return @"1d";
+        case MarketTimeframeFiveDays:
+            return @"5d";
+        case MarketTimeframeOneMonth:
+            return @"1m";
+        case MarketTimeframeThreeMonths:
+            return @"3m";
+        case MarketTimeframeFiftyTwoWeeks:
+            return @"1y";
+        case MarketTimeframePreMarket:
+            return @"1d"; // Fallback
+        case MarketTimeframeAfterHours:
+            return @"1d"; // Fallback
+        case MarketTimeframeFiveMinutes:
+            return @"1d"; // Fallback
+        default:
+            return @"1d";
+    }
+}
+
 
 @end
 

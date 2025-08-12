@@ -14,6 +14,8 @@
 #import "DataHub+SmartTracking.h"
 #import "DataHub+WatchlistProviders.h"
 #import <objc/runtime.h>           // per objc_setAssociatedObject
+#import "DataHub+TrackingPreferences.h"
+#import "DataHub+OptimizedTracking.h"
 
 
 // Notification constants (copiati da BaseWidget.m)

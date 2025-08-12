@@ -900,20 +900,56 @@
     NSLog(@"✅ Tracking settings saved successfully");
 }
 
-- (void)updateSliderValues {
-    [self updateSliderValueLabel:self.userDefaultsIntervalSlider];
-    [self updateSliderValueLabel:self.coreDataIntervalSlider];
-    [self updateSliderValueLabel:self.maxBatchSizeSlider];
-    [self updateSliderValueLabel:self.chunkSizeSlider];
-}
-
 - (void)updateSliderValueLabel:(NSSlider *)slider {
-    NSString *format = objc_getAssociatedObject(slider, @"valueFormat");
+    NSString *suffix = objc_getAssociatedObject(slider, @"valueSuffix");
     NSTextField *valueLabel = objc_getAssociatedObject(slider, @"valueLabel");
     
-    if (format && valueLabel) {
-        valueLabel.stringValue = [NSString stringWithFormat:format, slider.doubleValue];
+    if (!suffix || !valueLabel) {
+        // Fallback: Determina il suffix e label dal slider stesso
+        if (slider == self.userDefaultsIntervalSlider) {
+            suffix = @" min";
+            valueLabel = self.userDefaultsIntervalValue;
+        } else if (slider == self.coreDataIntervalSlider) {
+            suffix = @" min";
+            valueLabel = self.coreDataIntervalValue;
+        } else if (slider == self.maxBatchSizeSlider) {
+            suffix = @" symbols";
+            valueLabel = self.maxBatchSizeValue;
+        } else if (slider == self.chunkSizeSlider) {
+            suffix = @" symbols";
+            valueLabel = self.chunkSizeValue;
+        }
     }
+    
+    if (suffix && valueLabel) {
+        valueLabel.stringValue = [NSString stringWithFormat:@"%.0f%@", slider.doubleValue, suffix];
+        NSLog(@"🔄 Updated slider value: %.0f%@", slider.doubleValue, suffix);
+    } else {
+        NSLog(@"⚠️ Could not update slider value - missing suffix or label");
+    }
+}
+
+// AGGIUNGI questo metodo per forzare l'aggiornamento di tutti i valori:
+
+- (void)updateSliderValues {
+    // Force update tutti gli slider con valori espliciti
+    if (self.userDefaultsIntervalSlider && self.userDefaultsIntervalValue) {
+        self.userDefaultsIntervalValue.stringValue = [NSString stringWithFormat:@"%.0f min", self.userDefaultsIntervalSlider.doubleValue];
+    }
+    
+    if (self.coreDataIntervalSlider && self.coreDataIntervalValue) {
+        self.coreDataIntervalValue.stringValue = [NSString stringWithFormat:@"%.0f min", self.coreDataIntervalSlider.doubleValue];
+    }
+    
+    if (self.maxBatchSizeSlider && self.maxBatchSizeValue) {
+        self.maxBatchSizeValue.stringValue = [NSString stringWithFormat:@"%.0f symbols", self.maxBatchSizeSlider.doubleValue];
+    }
+    
+    if (self.chunkSizeSlider && self.chunkSizeValue) {
+        self.chunkSizeValue.stringValue = [NSString stringWithFormat:@"%.0f symbols", self.chunkSizeSlider.doubleValue];
+    }
+    
+    NSLog(@"🔄 Force updated all slider values");
 }
 
 - (void)updateTrackingUIForPreset:(NSInteger)presetIndex {
@@ -941,13 +977,26 @@
     DataHub *dataHub = [DataHub shared];
     
     NSString *configDescription = [dataHub getTrackingConfigurationDescription];
-    self.currentStatusLabel.stringValue = [NSString stringWithFormat:@"Current: %@", configDescription];
     
+    // ✅ NEW: Add buffer statistics if optimized tracking is active
+    if ([dataHub isOptimizedTrackingActive]) {
+        NSDictionary *bufferStats = [dataHub getBufferStatistics];
+        NSUInteger pendingItems = [bufferStats[@"totalPendingItems"] unsignedIntegerValue];
+        double utilization = [bufferStats[@"bufferUtilization"] doubleValue] * 100;
+        
+        self.currentStatusLabel.stringValue = [NSString stringWithFormat:@"Current: %@ | Buffer: %lu items (%.1f%%)",
+                                               configDescription, (unsigned long)pendingItems, utilization];
+    } else {
+        self.currentStatusLabel.stringValue = [NSString stringWithFormat:@"Current: %@ | Legacy mode", configDescription];
+    }
+    
+    // Next operations display
     NSDictionary *nextOps = [dataHub getNextScheduledOperations];
     NSDate *nextBackup = nextOps[@"nextUserDefaultsBackup"];
     NSDate *nextFlush = nextOps[@"nextCoreDataFlush"];
     
     NSMutableString *nextOpsString = [NSMutableString string];
+    
     if (nextBackup && ![nextBackup isEqual:[NSNull null]]) {
         NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
         formatter.dateStyle = NSDateFormatterNoStyle;
@@ -963,7 +1012,13 @@
         [nextOpsString appendFormat:@"Next save: %@", [formatter stringFromDate:nextFlush]];
     }
     
-    self.nextOperationsLabel.stringValue = nextOpsString.length > 0 ? nextOpsString : @"Times estimated based on current settings";
+    if (nextOpsString.length > 0) {
+        self.nextOperationsLabel.stringValue = nextOpsString;
+    } else if ([dataHub isOptimizedTrackingActive]) {
+        self.nextOperationsLabel.stringValue = @"No pending operations scheduled";
+    } else {
+        self.nextOperationsLabel.stringValue = @"Legacy mode - immediate saves";
+    }
 }
 
 
@@ -1347,6 +1402,7 @@
 }
 
 - (void)coreDataAppCloseOnlyToggled:(NSButton *)sender {
+    [self updateSliderValueLabel:sender]; // ✅ Questo dovrebbe funzionare ora
     BOOL appCloseOnly = (sender.state == NSControlStateValueOn);
     self.coreDataIntervalSlider.enabled = !appCloseOnly;
     

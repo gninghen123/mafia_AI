@@ -49,10 +49,12 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
         [sharedInstance loadInitialData];
         [sharedInstance startAlertMonitoring];
         
-        // ✅ FIX: Initialize smart tracking after all core systems are ready
+        // ✅ NEW: Initialize tracking preferences and optimized system
+        [sharedInstance loadTrackingConfiguration];
         [sharedInstance initializeSmartTracking];
+        [sharedInstance initializeOptimizedTracking]; // ← AGGIUNGI QUESTA RIGA
         
-        NSLog(@"✅ DataHub singleton fully initialized with smart tracking");
+        NSLog(@"✅ DataHub singleton fully initialized with optimized tracking");
     });
     return sharedInstance;
 }
@@ -91,6 +93,14 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     }
 }
 
+
+
+- (void)restartOptimizedTrackingWithNewConfiguration {
+    NSLog(@"🔄 Restarting optimized tracking with new configuration");
+    
+    [self shutdownOptimizedTracking];
+    [self initializeOptimizedTracking];
+}
 #pragma mark - Core Data Stack
 
 - (void)setupCoreDataStack {

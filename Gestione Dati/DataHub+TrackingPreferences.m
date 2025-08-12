@@ -252,8 +252,9 @@ static const void *kFlushOnAppTerminateKey = &kFlushOnAppTerminateKey;
 - (void)applyTrackingConfiguration {
     [self saveTrackingConfiguration];
     
-    // Restart tracking system with new configuration
-    // This method should be called by the main tracking system
+    // ✅ NEW: Restart optimized tracking system with new configuration
+    [self restartOptimizedTrackingWithNewConfiguration];
+    
     [[NSNotificationCenter defaultCenter] postNotificationName:@"TrackingConfigurationChanged"
                                                         object:self
                                                       userInfo:@{
@@ -262,6 +263,7 @@ static const void *kFlushOnAppTerminateKey = &kFlushOnAppTerminateKey;
     
     NSLog(@"✅ Applied tracking configuration changes");
 }
+
 
 #pragma mark - Validation
 
@@ -358,41 +360,36 @@ static const void *kFlushOnAppTerminateKey = &kFlushOnAppTerminateKey;
 }
 
 - (NSDictionary *)getNextScheduledOperations {
-    // These would be calculated by the actual tracking system
-    // For now, return estimated times based on configuration
-    NSDate *now = [NSDate date];
-    
-    NSDate *nextUserDefaults = nil;
-    NSDate *nextCoreData = nil;
-    
-    if (self.optimizedTrackingEnabled) {
-        nextUserDefaults = [now dateByAddingTimeInterval:self.userDefaultsBackupInterval];
-        
-        if (self.coreDataFlushInterval > 0.0) {
-            nextCoreData = [now dateByAddingTimeInterval:self.coreDataFlushInterval];
-        }
+    if ([self isOptimizedTrackingActive]) {
+        return [self getLastOperationTimestamps];
+    } else {
+        // Fallback to estimated times
+        NSDate *now = [NSDate date];
+        return @{
+            @"nextUserDefaultsBackup": [NSNull null],
+            @"nextCoreDataFlush": [NSNull null],
+            @"estimatedOnly": @YES,
+            @"optimizedTrackingActive": @NO
+        };
     }
-    
-    return @{
-        @"nextUserDefaultsBackup": nextUserDefaults ?: [NSNull null],
-        @"nextCoreDataFlush": nextCoreData ?: [NSNull null],
-        @"estimatedOnly": @YES
-    };
 }
 
+
 - (void)forceUserDefaultsBackup {
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"ForceUserDefaultsBackup"
-                                                        object:self];
-    NSLog(@"🔄 Requested immediate UserDefaults backup");
+    if ([self isOptimizedTrackingActive]) {
+        [self performImmediateUserDefaultsBackup];
+    } else {
+        NSLog(@"⚠️ Optimized tracking not active - no UserDefaults backup needed");
+    }
 }
 
 - (void)forceCoreDataFlushWithCompletion:(void(^)(BOOL success))completion {
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"ForceCoreDataFlush"
-                                                        object:self
-                                                      userInfo:@{
-                                                          @"completion": completion ?: ^(BOOL success) {}
-                                                      }];
-    NSLog(@"🔄 Requested immediate Core Data flush");
+    if ([self isOptimizedTrackingActive]) {
+        [self performImmediateCoreDataFlush:completion];
+    } else {
+        NSLog(@"⚠️ Optimized tracking not active - no Core Data flush needed");
+        if (completion) completion(YES);
+    }
 }
 
 @end

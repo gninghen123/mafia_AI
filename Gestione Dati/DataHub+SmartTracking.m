@@ -90,140 +90,96 @@ static const void *kChainDeduplicationTimeoutKey = &kChainDeduplicationTimeoutKe
 - (void)trackChainSymbolChange:(NSNotification *)notification {
     // Check both possible keys for the update data
     NSDictionary *update = notification.userInfo[@"update"];
-    if (!update) {
-        // Try alternative key structure
-        update = notification.userInfo[@"chainUpdate"];
-    }
-    if (!update) {
-        // Try direct access to chain data
-        NSArray *symbols = notification.userInfo[@"symbols"];
-        NSString *action = notification.userInfo[@"action"];
-        if (symbols && action) {
-            update = @{@"action": action, @"symbols": symbols};
-        }
-    }
-    if (!update) return;
-    
-    NSString *action = update[@"action"];
-    NSArray *symbols = update[@"symbols"];
-    
-    if (![action isEqualToString:@"setSymbols"] || symbols.count == 0) return;
-    
-    // ✅ SMART: Only track the PRIMARY symbol (first in array)
-    NSString *primarySymbol = symbols.firstObject;
-    if (!primarySymbol || ![primarySymbol isKindOfClass:[NSString class]]) return;
-    
-    NSString *normalizedSymbol = primarySymbol.uppercaseString;
-    NSDate *now = [NSDate date];
-    
-    // ✅ ANTI-SPAM: Check if same symbol as last time
-    BOOL isDuplicate = NO;
-    if (self.lastChainSymbol && [self.lastChainSymbol isEqualToString:normalizedSymbol]) {
-        if (self.lastChainSymbolTime) {
-            NSTimeInterval timeSince = [now timeIntervalSinceDate:self.lastChainSymbolTime];
-            isDuplicate = (timeSince < self.chainDeduplicationTimeout);
-        }
-    }
-    
-    if (isDuplicate) {
-        NSLog(@"🔄 Chain symbol %@ ignored (duplicate within %.0fs)",
-              normalizedSymbol, self.chainDeduplicationTimeout);
-        return;
-    }
-    
-    // ✅ TRACK: Real user focus on this symbol
-    Symbol *symbolEntity = [self getSymbolWithName:normalizedSymbol];
-    if (!symbolEntity) {
-        // Create symbol without initial tracking
-        symbolEntity = [self createSymbolWithName:normalizedSymbol];
-    }
-    
-    if (symbolEntity) {
-        [self incrementInteractionForSymbol:symbolEntity];
-        
-        // Update anti-spam state
-        self.lastChainSymbol = normalizedSymbol;
-        self.lastChainSymbolTime = now;
-        
-        NSLog(@"🎯 Chain focus: %@ (interaction: %d)",
-              normalizedSymbol, symbolEntity.interactionCount);
-    }
-    if (symbolEntity) {
-           [self incrementInteractionForSymbol:symbolEntity];
-           
-           // Update anti-spam state
-           self.lastChainSymbol = normalizedSymbol;
-           self.lastChainSymbolTime = now;
-           
-           // ✅ NUOVO: Aggiungi simbolo all'archivio di oggi
-           [self addSymbolToTodayArchive:normalizedSymbol];
-           
-           NSLog(@"🎯 Chain focus: %@ (interaction: %d, archived today)",
-                 normalizedSymbol, symbolEntity.interactionCount);
-       }
-}
-
+     if (!update) return;
+     
+     NSString *action = update[@"action"];
+     NSArray *symbols = update[@"symbols"];
+     
+     if (![action isEqualToString:@"setSymbols"] || symbols.count == 0) return;
+     
+     NSString *primarySymbol = symbols.firstObject;
+     if (!primarySymbol || ![primarySymbol isKindOfClass:[NSString class]]) return;
+     
+     NSString *normalizedSymbol = primarySymbol.uppercaseString;
+     NSDate *now = [NSDate date];
+     
+     // Anti-spam logic...
+     BOOL isDuplicate = NO;
+     if (self.lastChainSymbol && [self.lastChainSymbol isEqualToString:normalizedSymbol]) {
+         if (self.lastChainSymbolTime) {
+             NSTimeInterval timeSince = [now timeIntervalSinceDate:self.lastChainSymbolTime];
+             isDuplicate = (timeSince < self.chainDeduplicationTimeout);
+         }
+     }
+     
+     if (isDuplicate) {
+         NSLog(@"🔄 Chain symbol %@ ignored (duplicate within %.0fs)",
+               normalizedSymbol, self.chainDeduplicationTimeout);
+         return;
+     }
+     
+     // ✅ NEW: Use optimized tracking instead of direct Core Data
+     [self trackSymbolInteraction:normalizedSymbol context:@"chain"];
+     [self trackSymbolForArchive:normalizedSymbol];
+     
+     // Update anti-spam state
+     self.lastChainSymbol = normalizedSymbol;
+     self.lastChainSymbolTime = now;
+     
+     NSLog(@"🎯 Chain focus: %@ (optimized tracking)", normalizedSymbol);
+ }
 #pragma mark - SMART: Connection Work Tracking
 
 - (void)trackConnectionWork:(NSNotification *)notification {
+    // Existing validation code...
     NSDictionary *userInfo = notification.userInfo;
     NSString *action = userInfo[@"action"];
     StockConnection *connection = userInfo[@"connection"];
     
-    // ✅ TRACK: Only when actively creating/modifying connections
     if (![action isEqualToString:@"created"] && ![action isEqualToString:@"updated"]) {
         return;
     }
     
     if (!connection || ![connection isKindOfClass:[StockConnection class]]) return;
     
-    // ✅ TRACK: All symbols involved in the connection work
-    NSSet *allSymbols = [NSSet setWithArray:@[]]; // Initialize empty set
-    
-    // Add source symbol if exists
+    // Get all symbols involved
+    NSSet *allSymbols = [NSSet setWithArray:@[]];
     if (connection.sourceSymbol) {
         allSymbols = [allSymbols setByAddingObject:connection.sourceSymbol];
     }
-    
-    // Add target symbols if they exist
     if (connection.targetSymbols && connection.targetSymbols.count > 0) {
         allSymbols = [allSymbols setByAddingObjectsFromSet:connection.targetSymbols];
     }
     
-    // Track each symbol involved in connection work
+    // ✅ NEW: Use optimized tracking for all symbols
     for (Symbol *symbol in allSymbols) {
-          if ([symbol isKindOfClass:[Symbol class]]) {
-              [self incrementInteractionForSymbol:symbol];
-              
-              // ✅ NUOVO: Aggiungi simbolo all'archivio di oggi
-              [self addSymbolToTodayArchive:symbol.symbol];
-              
-              NSLog(@"🔗 Connection work: %@ (interaction: %d, archived today)",
-                    symbol.symbol, symbol.interactionCount);
-          }
-      }
-      
-      NSLog(@"🔗 Connection %@ tracked: %lu symbols involved",
-            action, (unsigned long)allSymbols.count);
+        if ([symbol isKindOfClass:[Symbol class]]) {
+            [self trackSymbolInteraction:symbol.symbol context:@"connection"];
+            [self trackSymbolForArchive:symbol.symbol];
+        }
+    }
+    
+    NSLog(@"🔗 Connection %@ tracked: %lu symbols involved (optimized)",
+          action, (unsigned long)allSymbols.count);
 }
+
 
 #pragma mark - SMART: Tag Work Tracking
 
 - (void)trackTagWork:(NSNotification *)notification {
+    // Existing validation code...
     NSDictionary *userInfo = notification.userInfo;
     Symbol *symbol = userInfo[@"symbol"];
     NSString *tag = userInfo[@"tag"];
     
     if (!symbol || ![symbol isKindOfClass:[Symbol class]]) return;
     
-    // ✅ TRACK: User is actively categorizing this symbol
-    [self incrementInteractionForSymbol:symbol];
+    // ✅ NEW: Use optimized tracking
+    [self trackSymbolInteraction:symbol.symbol context:@"tag"];
+    [self trackSymbolForArchive:symbol.symbol];
     
-    [self addSymbolToTodayArchive:symbol.symbol];
-       
-       NSString *action = [notification.name hasSuffix:@"Added"] ? @"added" : @"removed";
-       NSLog(@"🏷️ Tag %@: '%@' %@ %@ (interaction: %d, archived today)",
-             action, tag, action, symbol.symbol, symbol.interactionCount);
+    NSString *action = [notification.name hasSuffix:@"Added"] ? @"added" : @"removed";
+    NSLog(@"🏷️ Tag %@: '%@' %@ %@ (optimized tracking)", action, tag, action, symbol.symbol);
 }
 
 #pragma mark - Configuration

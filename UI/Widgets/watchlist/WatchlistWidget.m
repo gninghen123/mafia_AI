@@ -168,10 +168,16 @@
     self.tableView.dataSource = self;
     self.tableView.allowsMultipleSelection = YES;
     self.tableView.intercellSpacing = NSMakeSize(0, 1);
-    self.tableView.rowHeight = 28; // Compact for narrow widgets
-    // NEW: Enable header view for sorting
+    self.tableView.rowHeight = 28;
     self.tableView.headerView = [[NSTableHeaderView alloc] init];
     self.tableView.gridStyleMask = NSTableViewSolidHorizontalGridLineMask;
+    
+    // ✅ NEW: Enable context menu
+    self.tableView.menu = [self createStandardContextMenu];
+    
+    // ✅ NEW: Enable double-click
+    self.tableView.target = self;
+    self.tableView.doubleAction = @selector(tableViewDoubleClick:);
     
     // Enable drag and drop for symbols
     [self.tableView registerForDraggedTypes:@[NSPasteboardTypeString]];
@@ -179,24 +185,62 @@
     self.scrollView.documentView = self.tableView;
 }
 
+- (void)tableViewDoubleClick:(id)sender {
+    NSInteger clickedRow = self.tableView.clickedRow;
+    [self tableView:self.tableView didDoubleClickRow:clickedRow];
+}
+
 - (void)setupConstraints {
     [NSLayoutConstraint activateConstraints:@[
-        // Toolbar at top - FIX #3: Aumentata height per maggiore spacing
+        // ===== TOOLBAR CONSTRAINTS =====
         [self.toolbarView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor],
         [self.toolbarView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
         [self.toolbarView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
-        [self.toolbarView.heightAnchor constraintEqualToConstant:44], // Aumentata da 40 per spacing
+        [self.toolbarView.heightAnchor constraintEqualToConstant:68], // ✅ Aumentata per due righe (era 44)
         
-        // Scroll view below toolbar
+        // ===== ROW 1: Search Field + Actions Button =====
+        // Search field (sinistra, riga 1)
+        [self.searchField.topAnchor constraintEqualToAnchor:self.toolbarView.topAnchor constant:8],
+        [self.searchField.leadingAnchor constraintEqualToAnchor:self.toolbarView.leadingAnchor constant:8],
+        [self.searchField.heightAnchor constraintEqualToConstant:24],
+        
+        // Actions button (destra, riga 1)
+        [self.actionsButton.topAnchor constraintEqualToAnchor:self.toolbarView.topAnchor constant:8],
+        [self.actionsButton.trailingAnchor constraintEqualToAnchor:self.toolbarView.trailingAnchor constant:-8],
+        [self.actionsButton.widthAnchor constraintEqualToConstant:32],
+        [self.actionsButton.heightAnchor constraintEqualToConstant:24],
+        
+        // ✅ CRITICAL: Gap between search field and actions button
+        [self.actionsButton.leadingAnchor constraintGreaterThanOrEqualToAnchor:self.searchField.trailingAnchor constant:8],
+        
+        // ===== ROW 2: Provider Selector + Loading + Status =====
+        // Provider selector (espandibile, riga 2)
+        [self.providerSelector.topAnchor constraintEqualToAnchor:self.searchField.bottomAnchor constant:8],
+        [self.providerSelector.leadingAnchor constraintEqualToAnchor:self.toolbarView.leadingAnchor constant:8],
+        [self.providerSelector.heightAnchor constraintEqualToConstant:24],
+        
+        // Loading indicator (riga 2, dopo provider selector)
+        [self.loadingIndicator.centerYAnchor constraintEqualToAnchor:self.providerSelector.centerYAnchor],
+        [self.loadingIndicator.leadingAnchor constraintEqualToAnchor:self.providerSelector.trailingAnchor constant:8],
+        [self.loadingIndicator.widthAnchor constraintEqualToConstant:16],
+        [self.loadingIndicator.heightAnchor constraintEqualToConstant:16],
+        
+        // Status label (destra, riga 2)
+        [self.statusLabel.centerYAnchor constraintEqualToAnchor:self.providerSelector.centerYAnchor],
+        [self.statusLabel.trailingAnchor constraintEqualToAnchor:self.toolbarView.trailingAnchor constant:-8],
+        [self.statusLabel.heightAnchor constraintEqualToConstant:16],
+        
+        // ✅ CRITICAL: Provider selector width constraint - flexible but leaves space for loading/status
+        [self.providerSelector.trailingAnchor constraintLessThanOrEqualToAnchor:self.statusLabel.leadingAnchor constant:-60],
+        
+        // ===== SCROLL VIEW BELOW TOOLBAR =====
         [self.scrollView.topAnchor constraintEqualToAnchor:self.toolbarView.bottomAnchor],
         [self.scrollView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
         [self.scrollView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
         [self.scrollView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor]
     ]];
     
-    // FIX #1: NESSUN constraint di larghezza fissa sul widget
-    // Rimuovere eventuali constraint di width constraint sul contentView
-    // Il widget ora si espande orizzontalmente seguendo il container
+    NSLog(@"✅ WatchlistWidget: Setup constraints completed - toolbar with two rows");
 }
 
 - (void)configureTableColumns {
@@ -695,9 +739,6 @@
     }
 }
 
-- (void)tableViewSelectionDidChange:(NSNotification *)notification {
-    // Handle selection changes for context menu, etc.
-}
 
 #pragma mark - Actions
 
@@ -796,25 +837,6 @@
 - (BOOL)hasSelectedSymbols {
     return self.tableView.selectedRowIndexes.count > 0;
 }
-
-- (NSArray<NSString *> *)selectedSymbols {
-    NSMutableArray *selected = [NSMutableArray array];
-    NSIndexSet *selectedRows = self.tableView.selectedRowIndexes;
-    
-    [selectedRows enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL * _Nonnull stop) {
-        if (idx < self.displaySymbols.count) {
-            [selected addObject:self.displaySymbols[idx]];
-        }
-    }];
-    
-    return [selected copy];
-}
-
-- (void)addSymbolToCurrentProvider:(NSMenuItem *)sender {
-    // Implementation for adding symbols
-    NSLog(@"Add symbol requested for provider: %@", self.currentProvider.displayName);
-}
-
 
 
 - (void)addSymbol:(NSString *)symbol toManualWatchlist:(NSString *)watchlistName {
@@ -1272,5 +1294,235 @@
         NSLog(@"✅ Removed %lu symbols from watchlist", (unsigned long)selectedSymbols.count);
     }
 }
+
+
+#pragma mark - NSTableViewDelegate Extensions (AGGIUNGI QUESTI METODI)
+
+- (void)tableViewSelectionDidChange:(NSNotification *)notification {
+    // ✅ FIX: Quando cambia la selezione, broadcast alla chain se attiva
+    if (self.chainActive) {
+        NSArray<NSString *> *selectedSymbols = [self selectedSymbols];
+        if (selectedSymbols.count > 0) {
+            [self broadcastUpdate:@{
+                @"action": @"setSymbols",
+                @"symbols": selectedSymbols
+            }];
+            
+            NSLog(@"🔗 WatchlistWidget: Broadcasted selection to chain: %@", selectedSymbols);
+        }
+    }
+}
+
+// ✅ NEW: Double-click support per invio immediato alla chain
+- (void)tableView:(NSTableView *)tableView didDoubleClickRow:(NSInteger)row {
+    if (row >= 0 && row < self.displaySymbols.count) {
+        NSString *symbol = self.displaySymbols[row];
+        
+        // Invia alla chain anche se non è attiva (comportamento di default)
+        [self broadcastUpdate:@{
+            @"action": @"setSymbols",
+            @"symbols": @[symbol]
+        }];
+        
+        NSLog(@"🔗 WatchlistWidget: Double-clicked symbol '%@' sent to chain", symbol);
+        
+        // Feedback visivo opzionale
+        [self.statusLabel setStringValue:[NSString stringWithFormat:@"Sent %@ to chain", symbol]];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self.statusLabel setStringValue:@"Ready"];
+        });
+    }
+}
+
+#pragma mark - BaseWidget Chain Integration Overrides (AGGIUNGI QUESTI METODI)
+
+// ✅ CRITICAL: Override selectedSymbols per BaseWidget context menu
+- (NSArray<NSString *> *)selectedSymbols {
+    NSMutableArray<NSString *> *selected = [NSMutableArray array];
+    
+    NSIndexSet *selectedRows = self.tableView.selectedRowIndexes;
+    [selectedRows enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL * _Nonnull stop) {
+        if (idx < self.displaySymbols.count) {
+            [selected addObject:self.displaySymbols[idx]];
+        }
+    }];
+    
+    return [selected copy];
+}
+
+// ✅ CRITICAL: Override contextualSymbols per BaseWidget context menu
+- (NSArray<NSString *> *)contextualSymbols {
+    // Se non c'è selezione, usa tutti i simboli visibili
+    NSArray<NSString *> *selected = [self selectedSymbols];
+    return selected.count > 0 ? selected : self.displaySymbols;
+}
+
+// ✅ CRITICAL: Override contextMenuTitle per BaseWidget context menu
+- (NSString *)contextMenuTitle {
+    NSArray<NSString *> *selected = [self selectedSymbols];
+    
+    if (selected.count == 1) {
+        return selected[0];
+    } else if (selected.count > 1) {
+        return [NSString stringWithFormat:@"Selection (%lu)", (unsigned long)selected.count];
+    } else if (self.displaySymbols.count > 0) {
+        return [NSString stringWithFormat:@"All Symbols (%lu)", (unsigned long)self.displaySymbols.count];
+    }
+    
+    return @"Watchlist";
+}
+
+// ✅ NEW: Handle symbols received from chain
+- (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
+    NSLog(@"📥 WatchlistWidget: Received %lu symbols from chain: %@",
+          (unsigned long)symbols.count, symbols);
+    
+    // ✅ Se il provider corrente può aggiungere simboli, chiedi conferma
+    if (self.currentProvider && self.currentProvider.canAddSymbols) {
+        
+        // Quick add per singolo simbolo
+        if (symbols.count == 1) {
+            NSString *symbol = symbols[0];
+            
+            // Verifica se già presente
+            if ([self.displaySymbols containsObject:symbol]) {
+                NSLog(@"⚠️ Symbol %@ already in watchlist", symbol);
+                return;
+            }
+            
+            // Aggiungi direttamente
+            [self addSymbolToCurrentProvider:symbol];
+            
+        } else {
+            // Multi-symbol: chiedi conferma
+            [self promptToAddSymbolsFromChain:symbols fromWidget:sender];
+        }
+        
+    } else {
+        // Provider non supporta add - mostra solo feedback
+        NSString *message = [NSString stringWithFormat:@"Received %@ from %@",
+                           [symbols componentsJoinedByString:@", "],
+                           NSStringFromClass([sender class])];
+        [self.statusLabel setStringValue:message];
+        
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self.statusLabel setStringValue:@"Ready"];
+        });
+    }
+}
+
+// ✅ NEW: Prompt helper for chain symbols
+- (void)promptToAddSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Add Symbols from Chain";
+    alert.informativeText = [NSString stringWithFormat:@"Add %lu symbols from %@ to current watchlist?\n\n%@",
+                           (unsigned long)symbols.count,
+                           NSStringFromClass([sender class]),
+                           [symbols componentsJoinedByString:@", "]];
+    alert.alertStyle = NSAlertStyleInformational;
+    
+    [alert addButtonWithTitle:@"Add"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        [self addSymbolsToCurrentProvider:symbols];
+        NSLog(@"✅ Added %lu symbols from chain to watchlist", (unsigned long)symbols.count);
+    }
+}
+
+#pragma mark - Enhanced Symbol Management (AGGIUNGI QUESTI METODI)
+
+// ✅ NEW: Single symbol add helper
+- (void)addSymbolToCurrentProvider:(NSString *)symbol {
+    if (!self.currentProvider || !self.currentProvider.canAddSymbols) return;
+    
+    if ([self.currentProvider isKindOfClass:[ManualWatchlistProvider class]]) {
+        ManualWatchlistProvider *manualProvider = (ManualWatchlistProvider *)self.currentProvider;
+        [[DataHub shared] addSymbol:symbol toWatchlistModel:manualProvider.watchlistModel];
+        
+        // Refresh immediately
+        [self refreshCurrentProvider];
+        
+        NSLog(@"✅ Added single symbol %@ to watchlist", symbol);
+    }
+}
+
+
+#pragma mark - Widget-Specific Context Menu Items (AGGIUNGI QUESTO METODO)
+
+// ✅ NEW: Override per aggiungere items specifici del watchlist al context menu
+- (void)appendWidgetSpecificItemsToMenu:(NSMenu *)menu {
+    [menu addItem:[NSMenuItem separatorItem]];
+    
+    // Add to different watchlist
+    NSMenuItem *addToWatchlistItem = [[NSMenuItem alloc] initWithTitle:@"📋 Add to Other Watchlist..."
+                                                               action:@selector(showAddToWatchlistDialog:)
+                                                        keyEquivalent:@""];
+    addToWatchlistItem.target = self;
+    addToWatchlistItem.representedObject = [self selectedSymbols];
+    addToWatchlistItem.enabled = ([self selectedSymbols].count > 0);
+    [menu addItem:addToWatchlistItem];
+    
+    // Remove from current watchlist (only for manual watchlists)
+    if (self.currentProvider.canRemoveSymbols && [self selectedSymbols].count > 0) {
+        NSMenuItem *removeItem = [[NSMenuItem alloc] initWithTitle:@"➖ Remove from Watchlist"
+                                                            action:@selector(removeSelectedSymbols:)
+                                                     keyEquivalent:@""];
+        removeItem.target = self;
+        [menu addItem:removeItem];
+    }
+}
+
+// ✅ NEW: Enhanced add to watchlist dialog
+- (void)showAddToWatchlistDialog:(NSMenuItem *)sender {
+    NSArray<NSString *> *symbols = sender.representedObject;
+    if (symbols.count == 0) return;
+    
+    // Get available watchlists
+    NSArray<WatchlistModel *> *watchlists = [[DataHub shared] getAllWatchlistModels];
+    NSMutableArray<NSString *> *watchlistNames = [NSMutableArray array];
+    
+    for (WatchlistModel *wl in watchlists) {
+        // Skip archive watchlists and current watchlist
+        if ([wl.name hasPrefix:@"Archive-"]) continue;
+        if (self.currentProvider && [self.currentProvider isKindOfClass:[ManualWatchlistProvider class]]) {
+            ManualWatchlistProvider *currentManual = (ManualWatchlistProvider *)self.currentProvider;
+            if ([wl.name isEqualToString:currentManual.watchlistModel.name]) continue;
+        }
+        [watchlistNames addObject:wl.name];
+    }
+    
+    if (watchlistNames.count == 0) {
+        [self showErrorAlert:@"No Available Watchlists"
+                     message:@"Create a new watchlist first or select a different current watchlist."];
+        return;
+    }
+    
+    // Show selection dialog
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Add to Watchlist";
+    alert.informativeText = [NSString stringWithFormat:@"Select watchlist for %lu symbols:", (unsigned long)symbols.count];
+    
+    NSPopUpButton *popup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    [popup addItemsWithTitles:watchlistNames];
+    alert.accessoryView = popup;
+    
+    [alert addButtonWithTitle:@"Add"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        NSString *selectedWatchlistName = popup.selectedItem.title;
+        
+        // Find and add to selected watchlist
+        for (WatchlistModel *wl in watchlists) {
+            if ([wl.name isEqualToString:selectedWatchlistName]) {
+                [[DataHub shared] addSymbols:symbols toWatchlistModel:wl];
+                NSLog(@"✅ Added %lu symbols to watchlist: %@", (unsigned long)symbols.count, selectedWatchlistName);
+                break;
+            }
+        }
+    }
+}
+
 
 @end

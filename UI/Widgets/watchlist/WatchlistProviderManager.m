@@ -120,6 +120,8 @@
 }
 
 - (void)loadManualWatchlistProviders {
+    NSLog(@"📋 Loading Manual Watchlist Providers (excluding Archive- prefixed)");
+    
     // Remove existing manual providers from cache
     for (id<WatchlistProvider> provider in self.mutableManualProviders) {
         [self.providerCache removeObjectForKey:provider.providerId];
@@ -130,12 +132,22 @@
     NSArray<WatchlistModel *> *watchlists = [[DataHub shared] getAllWatchlistModels];
     
     for (WatchlistModel *watchlist in watchlists) {
+        // ✅ FIX: Skip watchlists with "Archive-" prefix - they belong to Archives category
+        if ([watchlist.name hasPrefix:@"Archive-"]) {
+            NSLog(@"   📦 Skipping archive watchlist: %@", watchlist.name);
+            continue;
+        }
+        
+        // ✅ Only create manual providers for non-archive watchlists
         ManualWatchlistProvider *provider = [[ManualWatchlistProvider alloc] initWithWatchlistModel:watchlist];
         [self.mutableManualProviders addObject:provider];
         self.providerCache[provider.providerId] = provider;
+        
+        NSLog(@"   📝 Added manual watchlist: %@", watchlist.name);
     }
     
-    NSLog(@"📋 Loaded %lu manual watchlist providers", (unsigned long)self.mutableManualProviders.count);
+    NSLog(@"✅ Loaded %lu manual watchlist providers (archives excluded)",
+          (unsigned long)self.mutableManualProviders.count);
 }
 
 - (void)loadMarketListProviders {
@@ -260,9 +272,37 @@
 }
 
 - (void)loadArchiveProviders {
-    // Fallback sync version for backward compatibility
-    [self loadArchiveProvidersAsync];
+    NSLog(@"📦 Loading Archive Providers (Archive- prefixed only)");
+    
+    // Clear existing archive providers
+    for (id<WatchlistProvider> provider in self.mutableArchiveProviders) {
+        [self.providerCache removeObjectForKey:provider.providerId];
+    }
+    [self.mutableArchiveProviders removeAllObjects];
+    
+    // Load from DataHub - only Archive- prefixed watchlists
+    NSArray<WatchlistModel *> *watchlists = [[DataHub shared] getAllWatchlistModels];
+    
+    for (WatchlistModel *watchlist in watchlists) {
+        // ✅ FIX: Only process watchlists with "Archive-" prefix
+        if (![watchlist.name hasPrefix:@"Archive-"]) {
+            continue;
+        }
+        
+        // Extract archive key (remove "Archive-" prefix)
+        NSString *archiveKey = [watchlist.name substringFromIndex:8]; // "Archive-" = 8 chars
+        
+        // Create ArchiveProvider with the key
+        ArchiveProvider *provider = [[ArchiveProvider alloc] initWithArchiveKey:archiveKey];
+        [self.mutableArchiveProviders addObject:provider];
+        self.providerCache[provider.providerId] = provider;
+        
+        NSLog(@"   📦 Added archive provider: %@ (key: %@)", watchlist.name, archiveKey);
+    }
+    
+    NSLog(@"✅ Loaded %lu archive providers", (unsigned long)self.mutableArchiveProviders.count);
 }
+
 
 #pragma mark - Public Properties
 

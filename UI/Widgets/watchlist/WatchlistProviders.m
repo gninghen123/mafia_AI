@@ -411,15 +411,32 @@
 }
 
 - (void)loadSymbolsWithCompletion:(void(^)(NSArray<NSString *> * _Nullable symbols, NSError * _Nullable error))completion {
-    // TODO: Implement archive loading based on your archive system
-    // This is a placeholder - you'll need to implement based on your archive storage
     
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        // Simulate loading from archive system
-        [NSThread sleepForTimeInterval:0.3];
         
-        // Placeholder - replace with actual archive loading logic
-        NSArray<NSString *> *archivedSymbols = @[]; // Empty for now
+        // ✅ FIX: Load symbols from DataHub Archive- watchlist instead of placeholder
+        NSString *archiveWatchlistName = [NSString stringWithFormat:@"Archive-%@", self.archiveKey];
+        
+        // Find the archive watchlist in DataHub
+        NSArray<WatchlistModel *> *watchlists = [[DataHub shared] getAllWatchlistModels];
+        WatchlistModel *archiveWatchlist = nil;
+        
+        for (WatchlistModel *watchlist in watchlists) {
+            if ([watchlist.name isEqualToString:archiveWatchlistName]) {
+                archiveWatchlist = watchlist;
+                break;
+            }
+        }
+        
+        NSArray<NSString *> *archivedSymbols = @[];
+        
+        if (archiveWatchlist) {
+            archivedSymbols = archiveWatchlist.symbols ?: @[];
+            NSLog(@"✅ Found archive watchlist '%@' with %lu symbols",
+                  archiveWatchlistName, (unsigned long)archivedSymbols.count);
+        } else {
+            NSLog(@"⚠️ Archive watchlist '%@' not found in DataHub", archiveWatchlistName);
+        }
         
         dispatch_async(dispatch_get_main_queue(), ^{
             NSLog(@"✅ ArchiveProvider (%@): Loaded %lu symbols from archive '%@'",
@@ -430,5 +447,4 @@
         });
     });
 }
-
 @end

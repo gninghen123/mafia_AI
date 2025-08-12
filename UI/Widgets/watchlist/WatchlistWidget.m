@@ -13,18 +13,18 @@
 #import "DataHub+MarketData.h"
 #import "DataHub+WatchlistProviders.h"
 #import "TradingAppTypes.h"
-
-
+#import "WatchlistProviders.h"
 
 @interface WatchlistWidget () <HierarchicalWatchlistSelectorDelegate>
 
 // Layout management
 @property (nonatomic, strong) NSArray<NSLayoutConstraint *> *currentConstraints;
 
-// Refresh timing
-@property (nonatomic, strong) NSTimer *dataRefreshTimer;
-@property (nonatomic, assign) NSTimeInterval lastQuoteUpdate;
+// ✅ FIX 2: Resize throttling properties
+@property (nonatomic, strong) NSTimer *resizeThrottleTimer;
+@property (nonatomic, assign) CGFloat pendingWidth;
 
+@property (nonatomic, assign) NSTimeInterval lastQuoteUpdate;
 
 @end
 
@@ -66,6 +66,8 @@
     self.searchText = @"";
     self.sortType = WatchlistSortTypeNone;
     self.sortAscending = NO; // Start with highest change% first
+    self.pendingWidth = 0;
+
 }
 
 #pragma mark - BaseWidget Lifecycle
@@ -98,24 +100,21 @@
     // Set initial width tracking
     self.currentWidth = self.contentView.frame.size.width;
     
-    // Register for resize notifications
     [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(viewDidResize:)
-                                                 name:NSViewFrameDidChangeNotification
-                                               object:self.contentView];
-    
+                                              selector:@selector(viewDidResize:)
+                                                  name:NSViewFrameDidChangeNotification
+                                                object:self.contentView];
     // Enable frame change notifications
     self.contentView.postsBoundsChangedNotifications = YES;
     self.contentView.postsFrameChangedNotifications = YES;
 }
 
 - (void)createToolbar {
-    // Create our own toolbar view - UPDATED HEIGHT
     self.toolbarView = [[NSView alloc] init];
     self.toolbarView.translatesAutoresizingMaskIntoConstraints = NO;
     [self.contentView addSubview:self.toolbarView];
     
-    // NEW: Search field (Row 1)
+    // Search field
     self.searchField = [[NSTextField alloc] init];
     self.searchField.translatesAutoresizingMaskIntoConstraints = NO;
     self.searchField.placeholderString = @"Filter watchlists...";
@@ -125,52 +124,33 @@
     [self.searchField.cell setScrollable:YES];
     [self.toolbarView addSubview:self.searchField];
     
-    // Actions button (Row 1 - next to search)
+    // Actions button
     self.actionsButton = [NSButton buttonWithTitle:@"⚙️" target:self action:@selector(showActionsMenu:)];
     self.actionsButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.actionsButton.bezelStyle = NSBezelStyleTexturedRounded;
-    self.actionsButton.toolTip = @"Actions and settings";
     [self.toolbarView addSubview:self.actionsButton];
     
-    // Hierarchical provider selector (Row 2)
+    // Provider selector (Row 2)
     self.providerSelector = [[HierarchicalWatchlistSelector alloc] init];
     self.providerSelector.translatesAutoresizingMaskIntoConstraints = NO;
     self.providerSelector.selectorDelegate = self;
     [self.providerSelector configureWithProviderManager:self.providerManager];
     [self.toolbarView addSubview:self.providerSelector];
     
-    // Loading indicator (overlays actions button)
+    // Loading indicator (Row 2)
     self.loadingIndicator = [[NSProgressIndicator alloc] init];
-    self.loadingIndicator.style = NSProgressIndicatorStyleSpinning;
-    self.loadingIndicator.displayedWhenStopped = NO;
-    self.loadingIndicator.controlSize = NSControlSizeSmall;
     self.loadingIndicator.translatesAutoresizingMaskIntoConstraints = NO;
+    self.loadingIndicator.style = NSProgressIndicatorStyleSpinning;
+    self.loadingIndicator.controlSize = NSControlSizeSmall;
+    [self.loadingIndicator setDisplayedWhenStopped:NO];
     [self.toolbarView addSubview:self.loadingIndicator];
     
-    // FIX #3: MAGGIORE SPACING tra search e popup (era 2px, ora 6px)
-    [NSLayoutConstraint activateConstraints:@[
-        // Row 1: Search field + Actions button
-        [self.searchField.topAnchor constraintEqualToAnchor:self.toolbarView.topAnchor constant:2],
-        [self.searchField.leadingAnchor constraintEqualToAnchor:self.toolbarView.leadingAnchor constant:4],
-        [self.searchField.trailingAnchor constraintEqualToAnchor:self.actionsButton.leadingAnchor constant:-4],
-        [self.searchField.heightAnchor constraintEqualToConstant:18],
-        
-        [self.actionsButton.topAnchor constraintEqualToAnchor:self.toolbarView.topAnchor constant:2],
-        [self.actionsButton.trailingAnchor constraintEqualToAnchor:self.toolbarView.trailingAnchor constant:-4],
-        [self.actionsButton.widthAnchor constraintEqualToConstant:24],
-        [self.actionsButton.heightAnchor constraintEqualToConstant:18],
-        
-        // Row 2: Provider selector (full width) - FIX #3: Aumentato spacing da 2px a 6px
-        [self.providerSelector.topAnchor constraintEqualToAnchor:self.searchField.bottomAnchor constant:6], // CAMBIATO: era 2
-        [self.providerSelector.leadingAnchor constraintEqualToAnchor:self.toolbarView.leadingAnchor constant:4],
-        [self.providerSelector.trailingAnchor constraintEqualToAnchor:self.toolbarView.trailingAnchor constant:-4],
-        [self.providerSelector.heightAnchor constraintEqualToConstant:18],
-        [self.providerSelector.bottomAnchor constraintEqualToAnchor:self.toolbarView.bottomAnchor constant:-2],
-        
-        // Loading indicator (overlays actions button)
-        [self.loadingIndicator.centerXAnchor constraintEqualToAnchor:self.actionsButton.centerXAnchor],
-        [self.loadingIndicator.centerYAnchor constraintEqualToAnchor:self.actionsButton.centerYAnchor]
-    ]];
+    // Status label (Row 2)
+    self.statusLabel = [NSTextField labelWithString:@"Ready"];
+    self.statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.statusLabel.font = [NSFont systemFontOfSize:11];
+    self.statusLabel.textColor = [NSColor secondaryLabelColor];
+    [self.toolbarView addSubview:self.statusLabel];
 }
 
 
@@ -440,7 +420,31 @@
 }
 
 - (void)viewDidResize:(NSNotification *)notification {
-    [self updateLayoutForWidth:self.contentView.frame.size.width];
+    CGFloat newWidth = self.contentView.frame.size.width;
+    
+    // Only process if width actually changed significantly
+    if (fabs(newWidth - self.currentWidth) < 5.0) {
+        return; // Skip minor width changes
+    }
+    
+    self.pendingWidth = newWidth;
+    
+    // Cancel previous timer
+    [self.resizeThrottleTimer invalidate];
+    
+    // Schedule delayed resize processing
+    self.resizeThrottleTimer = [NSTimer scheduledTimerWithTimeInterval:0.1 // 100ms delay
+                                                                target:self
+                                                              selector:@selector(processDelayedResize)
+                                                              userInfo:nil
+                                                               repeats:NO];
+}
+
+- (void)processDelayedResize {
+    NSLog(@"🔄 WatchlistWidget: Processing delayed resize: %.0f -> %.0f",
+          self.currentWidth, self.pendingWidth);
+    [self updateLayoutForWidth:self.pendingWidth];
+    self.resizeThrottleTimer = nil;
 }
 
 #pragma mark - Provider Management
@@ -452,24 +456,20 @@
     }
 }
 
-
 - (void)selectProvider:(id<WatchlistProvider>)provider {
     if (!provider) {
         NSLog(@"❌ WatchlistWidget: selectProvider called with nil provider");
         return;
     }
     
-    // FIX #2: Logging dettagliato per debug click issue
     NSLog(@"🔄 WatchlistWidget: selectProvider called with: %@ (ID: %@)",
           provider.displayName, provider.providerId);
     
-    // Prevent infinite loops
     if (self.currentProvider == provider) {
         NSLog(@"📋 WatchlistWidget: Provider already selected, skipping: %@", provider.displayName);
         return;
     }
     
-    // FIX #2: Verifica che il provider abbia un ID valido
     if (!provider.providerId || provider.providerId.length == 0) {
         NSLog(@"❌ WatchlistWidget: Provider has invalid providerId: %@", provider);
         return;
@@ -478,18 +478,18 @@
     NSLog(@"📋 WatchlistWidget: Selecting provider: %@ -> %@",
           self.currentProvider.displayName ?: @"none", provider.displayName);
     
+    // ✅ FIX 1: Stop previous subscription before changing provider
+    [self stopDataRefreshTimer];
+    
     self.currentProvider = provider;
     self.lastSelectedProviderId = provider.providerId;
     
-    // FIX #2: Update selector display WITHOUT triggering selection again
-    // Ma SOLO se è diverso da quello già selezionato
     if (!self.providerSelector.selectedProvider ||
         ![self.providerSelector.selectedProvider.providerId isEqualToString:provider.providerId]) {
         NSLog(@"🔄 WatchlistWidget: Updating selector display to: %@", provider.displayName);
         [self.providerSelector selectProviderWithId:provider.providerId];
     }
     
-    // Load provider data
     [self refreshCurrentProvider];
 }
 
@@ -514,12 +514,11 @@
             }
             
             strongSelf.symbols = symbols;
-            
-            // NEW: Apply sorting instead of direct assignment
             [strongSelf applySorting];
-            
-            // Load quotes for visible symbols
             [strongSelf refreshQuotesForDisplaySymbols];
+            
+            // ✅ FIX 1: Start subscription for new symbols
+            [strongSelf startDataRefreshTimer];
         });
     }];
 }
@@ -527,13 +526,10 @@
 - (void)refreshQuotesForDisplaySymbols {
     if (self.displaySymbols.count == 0) return;
     
-    // Use displaySymbols for quote refresh
     [[DataHub shared] getQuotesForSymbols:self.displaySymbols completion:^(NSDictionary<NSString *,MarketQuoteModel *> * _Nonnull quotes, BOOL allLive) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            // Update cache
             [self.quotesCache addEntriesFromDictionary:quotes];
             
-            // NEW: Re-apply sorting since quotes changed (for change% sorting)
             if (self.sortType == WatchlistSortTypeChangePercent) {
                 [self applySorting];
             } else {
@@ -548,22 +544,59 @@
     }];
 }
 
+
 - (void)startDataRefreshTimer {
     [self stopDataRefreshTimer];
     
-    // Refresh every 30 seconds for auto-updating providers
-    if (self.currentProvider.isAutoUpdating) {
-        self.dataRefreshTimer = [NSTimer scheduledTimerWithTimeInterval:30.0
-                                                                  target:self
-                                                                selector:@selector(refreshQuotesForDisplaySymbols)
-                                                                userInfo:nil
-                                                                 repeats:YES];
+    // ✅ FIX: Use DataHub subscription instead of own timer
+    if (self.currentProvider.isAutoUpdating && self.displaySymbols.count > 0) {
+        [[DataHub shared] subscribeToQuoteUpdatesForSymbols:self.displaySymbols];
+        NSLog(@"✅ WatchlistWidget: Subscribed to DataHub quotes for %lu symbols",
+              (unsigned long)self.displaySymbols.count);
+        
+        // Listen for quote updates from DataHub
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(handleQuoteUpdate:)
+                                                     name:@"DataHubQuoteUpdated"
+                                                   object:nil];
     }
 }
 
 - (void)stopDataRefreshTimer {
-    [self.dataRefreshTimer invalidate];
-    self.dataRefreshTimer = nil;
+    // ✅ FIX: Unsubscribe from DataHub instead of stopping timer
+    if (self.displaySymbols.count > 0) {
+        for (NSString *symbol in self.displaySymbols) {
+            [[DataHub shared] unsubscribeFromQuoteUpdatesForSymbol:symbol];
+        }
+        NSLog(@"✅ WatchlistWidget: Unsubscribed from DataHub quotes");
+    }
+    
+    // Remove notification observer
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                     name:@"DataHubQuoteUpdated"
+                                                   object:nil];
+}
+
+- (void)handleQuoteUpdate:(NSNotification *)notification {
+    // Handle quote updates from DataHub subscription
+    NSString *symbol = notification.userInfo[@"symbol"];
+    MarketQuoteModel *quote = notification.userInfo[@"quote"];
+    
+    if ([self.displaySymbols containsObject:symbol] && quote) {
+        // Update cache
+        self.quotesCache[symbol] = quote;
+        
+        // Re-apply sorting if needed (on main queue)
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (self.sortType == WatchlistSortTypeChangePercent) {
+                [self applySorting];
+            } else {
+                [self.tableView reloadData];
+            }
+        });
+        
+        self.lastQuoteUpdate = [NSDate timeIntervalSinceReferenceDate];
+    }
 }
 
 #pragma mark - NSTableViewDataSource
@@ -929,11 +962,12 @@
     }
 }
 
+
 - (void)dealloc {
     [self stopDataRefreshTimer];
+    [self.resizeThrottleTimer invalidate];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
-
 
 
 #pragma mark - Watchlist Management Actions

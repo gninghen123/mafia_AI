@@ -1,5 +1,5 @@
 //
-//  HierarchicalWatchlistSelector.h - UPDATED: Solo submenu, niente espansione
+//  HierarchicalWatchlistSelector.h - UPDATED: Lazy submenu loading support
 //
 
 #import <Cocoa/Cocoa.h>
@@ -51,6 +51,9 @@ NS_ASSUME_NONNULL_BEGIN
 // Search filtering
 - (void)setFilterText:(NSString *)filterText;
 - (void)clearFilter;
+
+// ✅ NEW: Lazy loading methods
+- (void)loadSubmenuForCategory:(NSString *)categoryName;
 
 @end
 

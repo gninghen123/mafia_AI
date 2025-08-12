@@ -1,9 +1,5 @@
 //
-//  WatchlistProviderManager.h
-//  TradingApp
-//
-//  Factory and manager for all watchlist provider types
-//  Handles creation, caching, and organization of providers
+//  WatchlistProviderManager.h - UPDATED: Lazy loading support
 //
 
 #import <Foundation/Foundation.h>
@@ -49,15 +45,20 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)refreshAllProviders;
 - (void)refreshProvidersForCategory:(NSString *)categoryName;
 
+// ✅ NEW: Lazy loading support
+- (void)ensureProvidersLoadedForCategory:(NSString *)categoryName;
+
 // Add/remove manual watchlists
 - (void)addManualWatchlistProvider:(NSString *)watchlistName;
 - (void)removeManualWatchlistProvider:(NSString *)watchlistName;
 
-// Auto-discovery for tags
+// Auto-discovery for tags (now async)
 - (void)refreshTagListProviders;
+- (void)loadTagListProvidersAsync;
 
-// Archive management
+// Archive management (now async)
 - (void)refreshArchiveProviders;
+- (void)loadArchiveProvidersAsync;
 
 #pragma mark - Factory Methods
 
@@ -109,51 +110,11 @@ NS_ASSUME_NONNULL_BEGIN
 // Loading
 - (void)loadSymbolsWithCompletion:(void(^)(NSArray<NSString *> * _Nullable symbols, NSError * _Nullable error))completion;
 
-// Mutation (if supported)
+// Symbol management (optional)
+@optional
 - (void)addSymbol:(NSString *)symbol completion:(void(^)(BOOL success, NSError * _Nullable error))completion;
 - (void)removeSymbol:(NSString *)symbol completion:(void(^)(BOOL success, NSError * _Nullable error))completion;
 
-@optional
-// Auto-refresh for market lists
-- (void)scheduleAutoRefresh;
-- (void)cancelAutoRefresh;
-
-@end
-
-#pragma mark - Concrete Provider Classes
-
-// Manual watchlist provider (read-write)
-@interface ManualWatchlistProvider : NSObject <WatchlistProvider>
-@property (nonatomic, strong) WatchlistModel *watchlistModel;
-- (instancetype)initWithWatchlistModel:(WatchlistModel *)model;
-@end
-
-// Market list provider (read-only, API-driven)
-@interface MarketListProvider : NSObject <WatchlistProvider>
-@property (nonatomic, assign) MarketListType marketType;
-@property (nonatomic, assign) MarketTimeframe timeframe;
-@property (nonatomic, strong, nullable) NSArray<MarketPerformerModel *> *performers;
-- (instancetype)initWithMarketType:(MarketListType)type timeframe:(MarketTimeframe)timeframe;
-@end
-
-// Basket provider (read-only, interaction-based)
-@interface BasketProvider : NSObject <WatchlistProvider>
-@property (nonatomic, assign) BasketType basketType;
-@property (nonatomic, assign) NSInteger dayRange; // 1, 7, or 30
-- (instancetype)initWithBasketType:(BasketType)type;
-@end
-
-// Tag list provider (read-only, tag-based)
-@interface TagListProvider : NSObject <WatchlistProvider>
-@property (nonatomic, strong) NSString *tag;
-- (instancetype)initWithTag:(NSString *)tag;
-@end
-
-// Archive provider (read-only, historical data)
-@interface ArchiveProvider : NSObject <WatchlistProvider>
-@property (nonatomic, strong) NSString *archiveKey; // "2024-Q4/2024-12-15"
-@property (nonatomic, strong) NSDate *archiveDate;
-- (instancetype)initWithArchiveKey:(NSString *)key;
 @end
 
 NS_ASSUME_NONNULL_END

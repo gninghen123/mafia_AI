@@ -12,6 +12,9 @@
 #import "connectionmodel.h"
 #import "DataHub+Connections.h"
 #import "DataHub+SmartTracking.h"
+#import "DataHub+WatchlistProviders.h"
+#import <objc/runtime.h>           // per objc_setAssociatedObject
+
 
 // Notification constants (copiati da BaseWidget.m)
 static NSString *const kWidgetChainUpdateNotification = @"WidgetChainUpdateNotification";
@@ -100,9 +103,49 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
         } else {
             self.mainContext = self.persistentContainer.viewContext;
             NSLog(@"Core Data stack loaded successfully");
+            
+            // ✅ NUOVO: Setup sistema archiviazione automatica
+            [self setupAutomaticArchiving];
         }
     }];
 }
+
+- (void)setupAutomaticArchiving {
+    NSLog(@"🔄 Setting up automatic archiving system...");
+    
+    // 1. Esegui catch-up archiving all'avvio
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [self performCatchUpArchiving];
+    });
+    
+    // 2. Setup timer per check giornaliero (ogni 24 ore)
+    [self scheduleDailyArchiveCheck];
+    
+    NSLog(@"✅ Automatic archiving system configured");
+}
+
+- (void)scheduleDailyArchiveCheck {
+    // Timer che verifica ogni 24 ore se ci sono nuovi giorni da archiviare
+    NSTimer *dailyTimer = [NSTimer scheduledTimerWithTimeInterval:(24 * 60 * 60) // 24 ore
+                                                           target:self
+                                                         selector:@selector(performDailyArchiveCheck)
+                                                         userInfo:nil
+                                                          repeats:YES];
+    
+    // Mantieni riferimento per cleanup eventuale
+    objc_setAssociatedObject(self, @"dailyArchiveTimer", dailyTimer, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    
+    NSLog(@"⏰ Daily archive check scheduled (every 24 hours)");
+}
+
+- (void)performDailyArchiveCheck {
+    NSLog(@"⏰ Daily archive check triggered (app running continuously)");
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [self performCatchUpArchiving];
+    });
+}
+
 
 - (void)saveContext {
     NSError *error = nil;

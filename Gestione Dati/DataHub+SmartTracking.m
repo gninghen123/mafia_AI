@@ -14,7 +14,7 @@
 #import "Symbol+CoreDataClass.h"           // ✅ ADD: For Symbol access
 #import <objc/runtime.h>                   // ✅ ADD: For associated objects
 #import <Cocoa/Cocoa.h>
-
+#import "DataHub+WatchlistProviders.h"
 
 // Associated object keys for category properties
 static const void *kLastChainSymbolKey = &kLastChainSymbolKey;
@@ -148,6 +148,19 @@ static const void *kChainDeduplicationTimeoutKey = &kChainDeduplicationTimeoutKe
         NSLog(@"🎯 Chain focus: %@ (interaction: %d)",
               normalizedSymbol, symbolEntity.interactionCount);
     }
+    if (symbolEntity) {
+           [self incrementInteractionForSymbol:symbolEntity];
+           
+           // Update anti-spam state
+           self.lastChainSymbol = normalizedSymbol;
+           self.lastChainSymbolTime = now;
+           
+           // ✅ NUOVO: Aggiungi simbolo all'archivio di oggi
+           [self addSymbolToTodayArchive:normalizedSymbol];
+           
+           NSLog(@"🎯 Chain focus: %@ (interaction: %d, archived today)",
+                 normalizedSymbol, symbolEntity.interactionCount);
+       }
 }
 
 #pragma mark - SMART: Connection Work Tracking
@@ -179,15 +192,19 @@ static const void *kChainDeduplicationTimeoutKey = &kChainDeduplicationTimeoutKe
     
     // Track each symbol involved in connection work
     for (Symbol *symbol in allSymbols) {
-        if ([symbol isKindOfClass:[Symbol class]]) {
-            [self incrementInteractionForSymbol:symbol];
-            NSLog(@"🔗 Connection work: %@ (interaction: %d)",
-                  symbol.symbol, symbol.interactionCount);
-        }
-    }
-    
-    NSLog(@"🔗 Connection %@ tracked: %lu symbols involved",
-          action, (unsigned long)allSymbols.count);
+          if ([symbol isKindOfClass:[Symbol class]]) {
+              [self incrementInteractionForSymbol:symbol];
+              
+              // ✅ NUOVO: Aggiungi simbolo all'archivio di oggi
+              [self addSymbolToTodayArchive:symbol.symbol];
+              
+              NSLog(@"🔗 Connection work: %@ (interaction: %d, archived today)",
+                    symbol.symbol, symbol.interactionCount);
+          }
+      }
+      
+      NSLog(@"🔗 Connection %@ tracked: %lu symbols involved",
+            action, (unsigned long)allSymbols.count);
 }
 
 #pragma mark - SMART: Tag Work Tracking
@@ -202,9 +219,11 @@ static const void *kChainDeduplicationTimeoutKey = &kChainDeduplicationTimeoutKe
     // ✅ TRACK: User is actively categorizing this symbol
     [self incrementInteractionForSymbol:symbol];
     
-    NSString *action = [notification.name hasSuffix:@"Added"] ? @"added" : @"removed";
-    NSLog(@"🏷️ Tag %@: '%@' %@ %@ (interaction: %d)",
-          action, tag, action, symbol.symbol, symbol.interactionCount);
+    [self addSymbolToTodayArchive:symbol.symbol];
+       
+       NSString *action = [notification.name hasSuffix:@"Added"] ? @"added" : @"removed";
+       NSLog(@"🏷️ Tag %@: '%@' %@ %@ (interaction: %d, archived today)",
+             action, tag, action, symbol.symbol, symbol.interactionCount);
 }
 
 #pragma mark - Configuration

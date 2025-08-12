@@ -108,6 +108,42 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)getMostFrequentlyUsedSymbols:(NSInteger)limit
                           completion:(void(^)(NSArray<NSString *> *symbols))completion;
 
+
+#pragma mark - Daily Archive Management
+
+/**
+ * Ensure today's archive watchlist exists in Core Data
+ */
+- (void)ensureTodayArchiveExists;
+
+/**
+ * Add a symbol to today's archive
+ * @param symbolName The symbol to add to today's archive
+ */
+- (void)addSymbolToTodayArchive:(NSString *)symbolName;
+
+/**
+ * Perform catch-up archiving for missed days
+ */
+- (void)performCatchUpArchiving;
+
+/**
+ * Archive a specific day if it has symbol activity
+ * @param dateString Date in YYYY-MM-DD format
+ */
+- (void)archiveDayIfHasActivity:(NSString *)dateString;
+
+/**
+ * Perform archive cleanup (migrate old archives to disk)
+ */
+- (void)performArchiveCleanupIfNeeded;
+
+/**
+ * Get symbols that were active on a specific date
+ * @param date The date to check for symbol activity
+ * @return Array of symbol names that were active on that date
+ */
+- (NSArray<NSString *> *)getSymbolsForSpecificDate:(NSDate *)date;
 @end
 
 NS_ASSUME_NONNULL_END

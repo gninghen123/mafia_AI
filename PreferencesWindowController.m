@@ -100,58 +100,41 @@
 
 }
 
-
 - (void)setupPerformanceTab {
+    NSLog(@"🚀 setupPerformanceTab - START COMPLETE VERSION");
+    
     NSTabViewItem *performanceTab = [[NSTabViewItem alloc] init];
     performanceTab.label = @"Performance";
     performanceTab.identifier = @"performance";
     
-    NSScrollView *scrollView = [[NSScrollView alloc] init];
-    scrollView.hasVerticalScroller = YES;
-    scrollView.autohidesScrollers = YES;
-    scrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    NSView *performanceView = [[NSView alloc] init];
     
+    // Main stack per tutto il contenuto
     NSStackView *mainStack = [[NSStackView alloc] init];
     mainStack.orientation = NSUserInterfaceLayoutOrientationVertical;
     mainStack.spacing = 20;
-    mainStack.edgeInsets = NSEdgeInsetsMake(20, 20, 20, 20);
+    mainStack.alignment = NSLayoutAttributeLeading;
     mainStack.translatesAutoresizingMaskIntoConstraints = NO;
     
-    // Header Section
-    [mainStack addArrangedSubview:[self createPerformanceHeader]];
+    // 1. HEADER SECTION
+    NSTextField *titleLabel = [self createLabel:@"Performance & Tracking Settings"];
+    titleLabel.font = [NSFont boldSystemFontOfSize:16];
     
-    // Preset Section
-    [mainStack addArrangedSubview:[self createPresetSection]];
+    NSTextField *descLabel = [self createLabel:@"Configure how symbol interactions are tracked and saved. Optimized tracking improves UI responsiveness by batching operations."];
+    descLabel.textColor = [NSColor secondaryLabelColor];
+    descLabel.font = [NSFont systemFontOfSize:11];
+    descLabel.lineBreakMode = NSLineBreakByWordWrapping;
+    descLabel.usesSingleLineMode = NO;
     
-    // Enable/Disable Section
-    [mainStack addArrangedSubview:[self createOptimizationSection]];
+    [mainStack addArrangedSubview:titleLabel];
+    [mainStack addArrangedSubview:descLabel];
     
-    // Timing Section
-    [mainStack addArrangedSubview:[self createTimingSection]];
+    // 2. PRESET SECTION
+    NSTextField *presetSectionLabel = [self createLabel:@"Quick Configuration"];
+    presetSectionLabel.font = [NSFont boldSystemFontOfSize:14];
+    [mainStack addArrangedSubview:presetSectionLabel];
     
-    // Batch Section
-    [mainStack addArrangedSubview:[self createBatchSection]];
-    
-    // App Lifecycle Section
-    [mainStack addArrangedSubview:[self createLifecycleSection]];
-    
-    // Manual Actions Section
-    [mainStack addArrangedSubview:[self createActionsSection]];
-    
-    // Status Section
-    [mainStack addArrangedSubview:[self createStatusSection]];
-    
-    scrollView.documentView = mainStack;
-    performanceTab.view = scrollView;
-    
-    [self.tabView addTabViewItem:performanceTab];
-}
-- (NSView *)createPresetSection {
-    NSStackView *presetStack = [[NSStackView alloc] init];
-    presetStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-    presetStack.spacing = 12;
-    
-    // Preset row
+    // Preset dropdown
     NSStackView *presetRow = [[NSStackView alloc] init];
     presetRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     presetRow.spacing = 10;
@@ -175,21 +158,20 @@
     [presetRow addArrangedSubview:self.trackingPresetPopup];
     [presetRow addArrangedSubview:[[NSView alloc] init]]; // Spacer
     
-    // Description
+    // Preset description
     self.presetDescriptionLabel = [self createLabel:@""];
     self.presetDescriptionLabel.textColor = [NSColor secondaryLabelColor];
     self.presetDescriptionLabel.font = [NSFont systemFontOfSize:11];
+    self.presetDescriptionLabel.lineBreakMode = NSLineBreakByWordWrapping;
+    self.presetDescriptionLabel.usesSingleLineMode = NO;
     
-    [presetStack addArrangedSubview:presetRow];
-    [presetStack addArrangedSubview:self.presetDescriptionLabel];
+    [mainStack addArrangedSubview:presetRow];
+    [mainStack addArrangedSubview:self.presetDescriptionLabel];
     
-    return [self createSectionBox:presetStack title:@"Quick Configuration"];
-}
-
-- (NSView *)createOptimizationSection {
-    NSStackView *optimStack = [[NSStackView alloc] init];
-    optimStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-    optimStack.spacing = 8;
+    // 3. OPTIMIZATION TOGGLE SECTION
+    NSTextField *optimSectionLabel = [self createLabel:@"Optimization Mode"];
+    optimSectionLabel.font = [NSFont boldSystemFontOfSize:14];
+    [mainStack addArrangedSubview:optimSectionLabel];
     
     self.optimizedTrackingToggle = [self createCheckbox:@"Enable Optimized Tracking"];
     self.optimizedTrackingToggle.target = self;
@@ -198,109 +180,91 @@
     NSTextField *optimDesc = [self createLabel:@"When enabled, symbol interactions are batched and saved in background. When disabled, each interaction is saved immediately (may cause UI lag)."];
     optimDesc.textColor = [NSColor secondaryLabelColor];
     optimDesc.font = [NSFont systemFontOfSize:11];
+    optimDesc.lineBreakMode = NSLineBreakByWordWrapping;
+    optimDesc.usesSingleLineMode = NO;
     
-    [optimStack addArrangedSubview:self.optimizedTrackingToggle];
-    [optimStack addArrangedSubview:optimDesc];
+    [mainStack addArrangedSubview:self.optimizedTrackingToggle];
+    [mainStack addArrangedSubview:optimDesc];
     
-    return [self createSectionBox:optimStack title:@"Optimization Mode"];
-}
+  
+    // 4. TIMING SECTION
+       NSTextField *timingSectionLabel = [self createLabel:@"Save Timing"];
+       timingSectionLabel.font = [NSFont boldSystemFontOfSize:14];
+       [mainStack addArrangedSubview:timingSectionLabel];
+       
+       // UserDefaults slider - USA VARIABILI LOCALI
+       NSSlider *udSlider;
+       NSTextField *udValueLabel;
+       NSStackView *udSliderRow = [self createSimpleSliderRow:@"Memory Backup Interval:"
+                                                      minValue:1.0
+                                                      maxValue:120.0
+                                                        slider:&udSlider
+                                                    valueLabel:&udValueLabel
+                                                        action:@selector(userDefaultsIntervalChanged:)
+                                                        suffix:@" min"];
+       // Assegna alle proprietà DOPO la creazione
+       self.userDefaultsIntervalSlider = udSlider;
+       self.userDefaultsIntervalValue = udValueLabel;
+       [mainStack addArrangedSubview:udSliderRow];
+       
+       // Core Data slider - USA VARIABILI LOCALI
+       NSSlider *cdSlider;
+       NSTextField *cdValueLabel;
+       NSStackView *cdSliderRow = [self createSimpleSliderRow:@"Database Save Interval:"
+                                                      minValue:5.0
+                                                      maxValue:360.0
+                                                        slider:&cdSlider
+                                                    valueLabel:&cdValueLabel
+                                                        action:@selector(coreDataIntervalChanged:)
+                                                        suffix:@" min"];
+       // Assegna alle proprietà DOPO la creazione
+       self.coreDataIntervalSlider = cdSlider;
+       self.coreDataIntervalValue = cdValueLabel;
+       [mainStack addArrangedSubview:cdSliderRow];
 
-- (NSView *)createTimingSection {
-    NSStackView *timingStack = [[NSStackView alloc] init];
-    timingStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-    timingStack.spacing = 16;
-    
-    // UserDefaults interval
-    NSTextField *udLabel, *udValue;
-    NSSlider *udSlider;
-    NSStackView *udRow = [self createSliderRow:@"Memory Backup Interval:"
-                                   description:@"How often to backup pending changes to UserDefaults (crash protection)"
-                                      minValue:1.0
-                                      maxValue:120.0
-                                    labelField:&udLabel
-                                    valueField:&udValue
-                                   sliderField:&udSlider
-                                        action:@selector(userDefaultsIntervalChanged:)
-                                   valueFormat:@"%.0f min"];
-    self.userDefaultsIntervalLabel = udLabel;
-    self.userDefaultsIntervalValue = udValue;
-    self.userDefaultsIntervalSlider = udSlider;
-    
-    // Core Data interval
-    NSTextField *cdLabel, *cdValue;
-    NSSlider *cdSlider;
-    NSStackView *cdRow = [self createSliderRow:@"Database Save Interval:"
-                                   description:@"How often to save batched changes to Core Data"
-                                      minValue:5.0
-                                      maxValue:360.0
-                                    labelField:&cdLabel
-                                    valueField:&cdValue
-                                   sliderField:&cdSlider
-                                        action:@selector(coreDataIntervalChanged:)
-                                   valueFormat:@"%.0f min"];
-    self.coreDataIntervalLabel = cdLabel;
-    self.coreDataIntervalValue = cdValue;
-    self.coreDataIntervalSlider = cdSlider;
-    
-    // App close only
-    self.coreDataAppCloseOnlyToggle = [self createCheckbox:@"Save to database only when app closes (maximum performance)"];
-    self.coreDataAppCloseOnlyToggle.target = self;
-    self.coreDataAppCloseOnlyToggle.action = @selector(coreDataAppCloseOnlyToggled:);
-    
-    [timingStack addArrangedSubview:udRow];
-    [timingStack addArrangedSubview:cdRow];
-    [timingStack addArrangedSubview:self.coreDataAppCloseOnlyToggle];
-    
-    return [self createSectionBox:timingStack title:@"Save Timing"];
-}
+  
+       // 5. BATCH SECTION
+       NSTextField *batchSectionLabel = [self createLabel:@"Batch Processing"];
+       batchSectionLabel.font = [NSFont boldSystemFontOfSize:14];
+       [mainStack addArrangedSubview:batchSectionLabel];
+       
+       // Max batch size slider - USA VARIABILI LOCALI
+       NSSlider *maxBatchSlider;
+       NSTextField *maxBatchValueLabel;
+       NSStackView *maxBatchRow = [self createSimpleSliderRow:@"Maximum Batch Size:"
+                                                      minValue:100
+                                                      maxValue:5000
+                                                        slider:&maxBatchSlider
+                                                    valueLabel:&maxBatchValueLabel
+                                                        action:@selector(maxBatchSizeChanged:)
+                                                        suffix:@" symbols"];
+       // Assegna alle proprietà DOPO la creazione
+       self.maxBatchSizeSlider = maxBatchSlider;
+       self.maxBatchSizeValue = maxBatchValueLabel;
+       [mainStack addArrangedSubview:maxBatchRow];
+       
+       // Chunk size slider - USA VARIABILI LOCALI
+       NSSlider *chunkSlider;
+       NSTextField *chunkValueLabel;
+       NSStackView *chunkSizeRow = [self createSimpleSliderRow:@"Processing Chunk Size:"
+                                                       minValue:25
+                                                       maxValue:500
+                                                         slider:&chunkSlider
+                                                     valueLabel:&chunkValueLabel
+                                                         action:@selector(chunkSizeChanged:)
+                                                         suffix:@" symbols"];
+       // Assegna alle proprietà DOPO la creazione
+       self.chunkSizeSlider = chunkSlider;
+       self.chunkSizeValue = chunkValueLabel;
+       [mainStack addArrangedSubview:chunkSizeRow];
 
-- (NSView *)createBatchSection {
-    NSStackView *batchStack = [[NSStackView alloc] init];
-    batchStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-    batchStack.spacing = 16;
-    
-    // Max batch size
-    NSTextField *maxLabel, *maxValue;
-    NSSlider *maxSlider;
-    NSStackView *maxRow = [self createSliderRow:@"Maximum Batch Size:"
-                                    description:@"Maximum symbols to process in one batch (larger = more efficient, but longer pauses)"
-                                       minValue:100
-                                       maxValue:5000
-                                     labelField:&maxLabel
-                                     valueField:&maxValue
-                                    sliderField:&maxSlider
-                                         action:@selector(maxBatchSizeChanged:)
-                                    valueFormat:@"%.0f symbols"];
-    self.maxBatchSizeLabel = maxLabel;
-    self.maxBatchSizeValue = maxValue;
-    self.maxBatchSizeSlider = maxSlider;
-    
-    // Chunk size
-    NSTextField *chunkLabel, *chunkValue;
-    NSSlider *chunkSlider;
-    NSStackView *chunkRow = [self createSliderRow:@"Processing Chunk Size:"
-                                      description:@"Symbols processed per background operation (smaller = more responsive)"
-                                         minValue:25
-                                         maxValue:500
-                                       labelField:&chunkLabel
-                                       valueField:&chunkValue
-                                      sliderField:&chunkSlider
-                                           action:@selector(chunkSizeChanged:)
-                                      valueFormat:@"%.0f symbols"];
-    self.chunkSizeLabel = chunkLabel;
-    self.chunkSizeValue = chunkValue;
-    self.chunkSizeSlider = chunkSlider;
-    
-    [batchStack addArrangedSubview:maxRow];
-    [batchStack addArrangedSubview:chunkRow];
-    
-    return [self createSectionBox:batchStack title:@"Batch Processing"];
-}
+ 
 
-- (NSView *)createLifecycleSection {
-    NSStackView *lifecycleStack = [[NSStackView alloc] init];
-    lifecycleStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-    lifecycleStack.spacing = 8;
+    
+    // 6. APP LIFECYCLE SECTION
+    NSTextField *lifecycleSectionLabel = [self createLabel:@"App Lifecycle"];
+    lifecycleSectionLabel.font = [NSFont boldSystemFontOfSize:14];
+    [mainStack addArrangedSubview:lifecycleSectionLabel];
     
     self.flushOnBackgroundToggle = [self createCheckbox:@"Save pending changes when app goes to background"];
     self.flushOnBackgroundToggle.target = self;
@@ -310,17 +274,18 @@
     self.flushOnTerminateToggle.target = self;
     self.flushOnTerminateToggle.action = @selector(flushOnTerminateToggled:);
     
-    [lifecycleStack addArrangedSubview:self.flushOnBackgroundToggle];
-    [lifecycleStack addArrangedSubview:self.flushOnTerminateToggle];
+    [mainStack addArrangedSubview:self.flushOnBackgroundToggle];
+    [mainStack addArrangedSubview:self.flushOnTerminateToggle];
     
-    return [self createSectionBox:lifecycleStack title:@"App Lifecycle"];
-}
-
-- (NSView *)createActionsSection {
-    NSStackView *actionsStack = [[NSStackView alloc] init];
-    actionsStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-    actionsStack.spacing = 12;
-    actionsStack.alignment = NSLayoutAttributeCenterY;
+    // 7. MANUAL ACTIONS SECTION
+    NSTextField *actionsSectionLabel = [self createLabel:@"Manual Actions"];
+    actionsSectionLabel.font = [NSFont boldSystemFontOfSize:14];
+    [mainStack addArrangedSubview:actionsSectionLabel];
+    
+    NSStackView *actionsRow = [[NSStackView alloc] init];
+    actionsRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    actionsRow.spacing = 12;
+    actionsRow.alignment = NSLayoutAttributeCenterY;
     
     self.forceUserDefaultsBackupButton = [[NSButton alloc] init];
     self.forceUserDefaultsBackupButton.title = @"Backup Now";
@@ -340,20 +305,19 @@
     self.resetToDefaultsButton.target = self;
     self.resetToDefaultsButton.action = @selector(resetTrackingToDefaults:);
     
-    [actionsStack addArrangedSubview:self.forceUserDefaultsBackupButton];
-    [actionsStack addArrangedSubview:self.forceCoreDataFlushButton];
-    [actionsStack addArrangedSubview:[[NSView alloc] init]]; // Spacer
-    [actionsStack addArrangedSubview:self.resetToDefaultsButton];
+    [actionsRow addArrangedSubview:self.forceUserDefaultsBackupButton];
+    [actionsRow addArrangedSubview:self.forceCoreDataFlushButton];
+    [actionsRow addArrangedSubview:[[NSView alloc] init]]; // Spacer
+    [actionsRow addArrangedSubview:self.resetToDefaultsButton];
     
-    return [self createSectionBox:actionsStack title:@"Manual Actions"];
-}
-
-- (NSView *)createStatusSection {
-    NSStackView *statusStack = [[NSStackView alloc] init];
-    statusStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-    statusStack.spacing = 8;
+    [mainStack addArrangedSubview:actionsRow];
     
-    self.currentStatusLabel = [self createLabel:@"Loading..."];
+    // 8. STATUS SECTION
+    NSTextField *statusSectionLabel = [self createLabel:@"Current Status"];
+    statusSectionLabel.font = [NSFont boldSystemFontOfSize:14];
+    [mainStack addArrangedSubview:statusSectionLabel];
+    
+    self.currentStatusLabel = [self createLabel:@"Loading configuration..."];
     self.currentStatusLabel.textColor = [NSColor secondaryLabelColor];
     self.currentStatusLabel.font = [NSFont systemFontOfSize:11];
     
@@ -361,11 +325,25 @@
     self.nextOperationsLabel.textColor = [NSColor tertiaryLabelColor];
     self.nextOperationsLabel.font = [NSFont systemFontOfSize:11];
     
-    [statusStack addArrangedSubview:self.currentStatusLabel];
-    [statusStack addArrangedSubview:self.nextOperationsLabel];
+    [mainStack addArrangedSubview:self.currentStatusLabel];
+    [mainStack addArrangedSubview:self.nextOperationsLabel];
     
-    return [self createSectionBox:statusStack title:@"Current Status"];
+    // LAYOUT FINAL
+    [performanceView addSubview:mainStack];
+    [NSLayoutConstraint activateConstraints:@[
+        [mainStack.topAnchor constraintEqualToAnchor:performanceView.topAnchor constant:20],
+        [mainStack.leadingAnchor constraintEqualToAnchor:performanceView.leadingAnchor constant:20],
+        [mainStack.trailingAnchor constraintEqualToAnchor:performanceView.trailingAnchor constant:-20],
+        [mainStack.bottomAnchor constraintLessThanOrEqualToAnchor:performanceView.bottomAnchor constant:-20]
+    ]];
+    
+    performanceTab.view = performanceView;
+    [self.tabView addTabViewItem:performanceTab];
+    
+    NSLog(@"🚀 setupPerformanceTab - COMPLETED WITH ALL CONTROLS");
 }
+
+
 
 // ADD THESE HELPER METHODS to the existing .m file:
 
@@ -386,15 +364,13 @@
 }
 
 
-- (NSStackView *)createSliderRow:(NSString *)title
-                     description:(NSString *)description
-                        minValue:(double)minValue
-                        maxValue:(double)maxValue
-                      labelField:(NSTextField **)labelField
-                      valueField:(NSTextField **)valueField
-                     sliderField:(NSSlider **)sliderField
-                          action:(SEL)action
-                     valueFormat:(NSString *)format {
+- (NSStackView *)createSimpleSliderRow:(NSString *)title
+                              minValue:(double)minValue
+                              maxValue:(double)maxValue
+                                slider:(NSSlider **)slider
+                            valueLabel:(NSTextField **)valueLabel
+                                action:(SEL)action
+                                suffix:(NSString *)suffix {
     
     NSStackView *rowStack = [[NSStackView alloc] init];
     rowStack.orientation = NSUserInterfaceLayoutOrientationVertical;
@@ -405,39 +381,33 @@
     titleRow.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     titleRow.alignment = NSLayoutAttributeCenterY;
     
-    *labelField = [self createLabel:title];
-    [*labelField setContentHuggingPriority:NSLayoutPriorityRequired forOrientation:NSLayoutConstraintOrientationHorizontal];
+    NSTextField *titleLabel = [self createLabel:title];
+    [titleLabel setContentHuggingPriority:NSLayoutPriorityRequired forOrientation:NSLayoutConstraintOrientationHorizontal];
     
-    *valueField = [self createLabel:@""];
-    (*valueField).textColor = [NSColor controlAccentColor];
-    (*valueField).alignment = NSTextAlignmentRight;
-    (*valueField).font = [NSFont boldSystemFontOfSize:13];
-    [*valueField setContentHuggingPriority:NSLayoutPriorityRequired forOrientation:NSLayoutConstraintOrientationHorizontal];
+    *valueLabel = [self createLabel:@""];
+    (*valueLabel).textColor = [NSColor controlAccentColor];
+    (*valueLabel).alignment = NSTextAlignmentRight;
+    (*valueLabel).font = [NSFont boldSystemFontOfSize:13];
+    [*valueLabel setContentHuggingPriority:NSLayoutPriorityRequired forOrientation:NSLayoutConstraintOrientationHorizontal];
     
-    [titleRow addArrangedSubview:*labelField];
+    [titleRow addArrangedSubview:titleLabel];
     [titleRow addArrangedSubview:[[NSView alloc] init]]; // Spacer
-    [titleRow addArrangedSubview:*valueField];
+    [titleRow addArrangedSubview:*valueLabel];
     
     // Slider
-    *sliderField = [[NSSlider alloc] init];
-    (*sliderField).minValue = minValue;
-    (*sliderField).maxValue = maxValue;
-    (*sliderField).target = self;
-    (*sliderField).action = action;
-    (*sliderField).continuous = YES;
+    *slider = [[NSSlider alloc] init];
+    (*slider).minValue = minValue;
+    (*slider).maxValue = maxValue;
+    (*slider).target = self;
+    (*slider).action = action;
+    (*slider).continuous = YES;
     
-    // Store format and value label for updates
-    objc_setAssociatedObject(*sliderField, @"valueFormat", format, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(*sliderField, @"valueLabel", *valueField, OBJC_ASSOCIATION_ASSIGN);
-    
-    // Description
-    NSTextField *descLabel = [self createLabel:description];
-    descLabel.textColor = [NSColor tertiaryLabelColor];
-    descLabel.font = [NSFont systemFontOfSize:10];
+    // Store suffix for value updates
+    objc_setAssociatedObject(*slider, @"valueSuffix", suffix, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(*slider, @"valueLabel", *valueLabel, OBJC_ASSOCIATION_ASSIGN);
     
     [rowStack addArrangedSubview:titleRow];
-    [rowStack addArrangedSubview:*sliderField];
-    [rowStack addArrangedSubview:descLabel];
+    [rowStack addArrangedSubview:*slider];
     
     return rowStack;
 }
@@ -854,19 +824,26 @@
 }
 
 - (void)loadTrackingSettings {
+    NSLog(@"🔄 Loading tracking settings...");
+    
     DataHub *dataHub = [DataHub shared];
     [dataHub loadTrackingConfiguration];
     
     // Update UI with current settings
     self.optimizedTrackingToggle.state = dataHub.optimizedTrackingEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     
+    // Set slider values (convert seconds to minutes for display)
     self.userDefaultsIntervalSlider.doubleValue = dataHub.userDefaultsBackupInterval / 60.0;
     self.coreDataIntervalSlider.doubleValue = dataHub.coreDataFlushInterval / 60.0;
+    
+    // Handle app-close-only mode
     self.coreDataAppCloseOnlyToggle.state = (dataHub.coreDataFlushInterval == 0.0) ? NSControlStateValueOn : NSControlStateValueOff;
     
+    // Set batch values
     self.maxBatchSizeSlider.doubleValue = dataHub.maxBatchSize;
     self.chunkSizeSlider.doubleValue = dataHub.chunkSize;
     
+    // Set lifecycle toggles
     self.flushOnBackgroundToggle.state = dataHub.flushOnAppBackground ? NSControlStateValueOn : NSControlStateValueOff;
     self.flushOnTerminateToggle.state = dataHub.flushOnAppTerminate ? NSControlStateValueOn : NSControlStateValueOff;
     
@@ -878,30 +855,49 @@
         [self.trackingPresetPopup selectItemAtIndex:4]; // Custom
     }
     
+    // Update all slider value labels
     [self updateSliderValues];
+    
+    // Update UI state based on preset
     [self updateTrackingUIForPreset:self.trackingPresetPopup.indexOfSelectedItem];
+    
+    // Update status display
     [self updateTrackingStatusDisplay];
+    
+    NSLog(@"✅ Tracking settings loaded successfully");
 }
 
 - (void)saveTrackingSettings {
+    NSLog(@"💾 Saving tracking settings...");
+    
     DataHub *dataHub = [DataHub shared];
     
+    // Save all settings to DataHub
     dataHub.optimizedTrackingEnabled = (self.optimizedTrackingToggle.state == NSControlStateValueOn);
+    
+    // Convert minutes back to seconds for storage
     dataHub.userDefaultsBackupInterval = self.userDefaultsIntervalSlider.doubleValue * 60.0;
     
+    // Handle app-close-only mode
     if (self.coreDataAppCloseOnlyToggle.state == NSControlStateValueOn) {
-        dataHub.coreDataFlushInterval = 0.0;
+        dataHub.coreDataFlushInterval = 0.0; // App close only
     } else {
         dataHub.coreDataFlushInterval = self.coreDataIntervalSlider.doubleValue * 60.0;
     }
     
     dataHub.maxBatchSize = (NSInteger)self.maxBatchSizeSlider.doubleValue;
     dataHub.chunkSize = (NSInteger)self.chunkSizeSlider.doubleValue;
+    
     dataHub.flushOnAppBackground = (self.flushOnBackgroundToggle.state == NSControlStateValueOn);
     dataHub.flushOnAppTerminate = (self.flushOnTerminateToggle.state == NSControlStateValueOn);
     
+    // Apply configuration and restart tracking system
     [dataHub applyTrackingConfiguration];
+    
+    // Update status display
     [self updateTrackingStatusDisplay];
+    
+    NSLog(@"✅ Tracking settings saved successfully");
 }
 
 - (void)updateSliderValues {

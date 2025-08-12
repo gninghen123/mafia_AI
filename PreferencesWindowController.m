@@ -9,6 +9,7 @@
 #import "connectionmodel.h"
 #import "DataHub+TrackingPreferences.h"
 #import <objc/runtime.h>
+#import "datahub+optimizedTracking.h"
 
 @interface PreferencesWindowController ()
 

@@ -6,6 +6,7 @@
 #import "DataHub+TrackingPreferences.h"
 #import "DataHub+Private.h"
 #import <objc/runtime.h>
+#import "DataHub+OptimizedTracking.h"
 
 // NSUserDefaults Keys
 static NSString *const kTrackingOptimizedEnabledKey = @"TrackingOptimizedEnabled";

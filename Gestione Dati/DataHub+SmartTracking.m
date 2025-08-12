@@ -15,6 +15,7 @@
 #import <objc/runtime.h>                   // ✅ ADD: For associated objects
 #import <Cocoa/Cocoa.h>
 #import "DataHub+WatchlistProviders.h"
+#import "DataHub+OptimizedTracking.h"
 
 // Associated object keys for category properties
 static const void *kLastChainSymbolKey = &kLastChainSymbolKey;

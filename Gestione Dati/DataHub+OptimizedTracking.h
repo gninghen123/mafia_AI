@@ -56,6 +56,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// Clear all pending buffers (for testing)
 - (void)clearAllPendingBuffers;
 
+
+- (void)restartOptimizedTrackingWithNewConfiguration;
+
 @end
 
 NS_ASSUME_NONNULL_END

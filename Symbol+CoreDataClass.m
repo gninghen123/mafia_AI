@@ -93,13 +93,14 @@
     NSPredicate *predicate = [NSPredicate predicateWithFormat:@"timeframe == %d", timeframe];
     NSSet *filteredBars = [self.historicalBars filteredSetUsingPredicate:predicate];
     
-    NSSortDescriptor *sortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"date" ascending:NO];
+    NSSortDescriptor *sortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"date" ascending:YES];
     NSArray *sortedBars = [filteredBars sortedArrayUsingDescriptors:@[sortDescriptor]];
     
     if (limit > 0 && sortedBars.count > limit) {
-        NSRange range = NSMakeRange(0, limit);
-        return [sortedBars subarrayWithRange:range];
-    }
+           NSInteger startIndex = MAX(0, sortedBars.count - limit);
+           NSRange range = NSMakeRange(startIndex, sortedBars.count - startIndex);
+           return [sortedBars subarrayWithRange:range];
+       }
     
     return sortedBars;
 }

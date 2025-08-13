@@ -570,12 +570,16 @@
             NSPredicate *barsPredicate = [NSPredicate predicateWithFormat:@"timeframe == %d", (int)timeframe];
             NSSet *filteredBars = [symbolEntity.historicalBars filteredSetUsingPredicate:barsPredicate];
             
-            // Sort by date descending and limit
-            NSSortDescriptor *sortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"date" ascending:NO];
+            // ✅ FIX: CAMBIATO DA ascending:NO A ascending:YES per mantenere
+            // la coerenza con l'ordine originale di Schwab (più antica → più recente)
+            NSSortDescriptor *sortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"date" ascending:YES];
             NSArray *sortedBars = [filteredBars sortedArrayUsingDescriptors:@[sortDescriptor]];
             
-            // Take only the requested count
-            NSRange range = NSMakeRange(0, MIN(sortedBars.count, barCount));
+            // Take the LAST N bars (most recent)
+            // ✅ FIX: Prendi le ULTIME N barre invece delle prime
+            NSInteger totalBars = sortedBars.count;
+            NSInteger startIndex = MAX(0, totalBars - barCount);
+            NSRange range = NSMakeRange(startIndex, totalBars - startIndex);
             NSArray *limitedBars = [sortedBars subarrayWithRange:range];
             
             // Convert to runtime models
@@ -586,7 +590,14 @@
                     [mutableRuntimeBars addObject:runtimeBar];
                 }
             }
+            
             runtimeBars = [mutableRuntimeBars copy];
+            
+            NSLog(@"✅ DataHub: Loaded %lu HistoricalBarModel objects for %@ (timeframe: %d) - FIXED ORDERING",
+                  (unsigned long)runtimeBars.count, symbol, (int)timeframe);
+            
+           
+            
         }
         
         dispatch_async(dispatch_get_main_queue(), ^{

@@ -102,7 +102,10 @@ static const void *kSplitViewLeadingConstraintKey = &kSplitViewLeadingConstraint
     self.objectsPanel.delegate = self;
     
     [self.contentView addSubview:self.objectsPanel];
-    
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                              selector:@selector(chartObjectsVisibilityChanged:) // Stesso metodo!
+                                                  name:@"ChartObjectStylePreview"
+                                                object:nil];
     [[NSNotificationCenter defaultCenter] addObserver:self
                                                 selector:@selector(chartObjectsVisibilityChanged:)
                                                     name:@"ChartObjectsVisibilityChanged"

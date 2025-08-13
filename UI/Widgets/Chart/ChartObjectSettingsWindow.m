@@ -530,7 +530,8 @@
 
 - (IBAction)applyButtonClicked:(id)sender {
     NSLog(@"✅ ChartObjectSettingsWindow: Applying settings for object '%@'", self.targetObject.name);
-    
+    NSLog(@"🎯 APPLY START - Object: %@ (pointer: %p)", self.targetObject.name, self.targetObject);
+
     @try {
         // Validate objects exist
         if (!self.targetObject || !self.workingStyle) {
@@ -555,6 +556,9 @@
             // Save to DataHub
             [self.objectsManager saveToDataHub];
             NSLog(@"💾 ChartObjectSettingsWindow: Saved to DataHub");
+               
+               NSLog(@"🎯 APPLY AFTER SAVE - Object: %@ (pointer: %p)", self.targetObject.name, self.targetObject);
+               
         }
         
         // ✅ SAFE CALLBACK: Avoid retain cycles and check validity
@@ -676,19 +680,35 @@
 #pragma mark - Safe Window Management
 
 - (void)safeClose {
+    NSLog(@"🚪 SAFE CLOSE START - Object: %@ (pointer: %p)",
+              self.targetObject ? self.targetObject.name : @"(already nil)",
+              self.targetObject);
+        
+
     // Clear all references before closing
     self.onApplyCallback = nil;
-    self.targetObject = nil;
     self.originalStyle = nil;
     self.workingStyle = nil;
     self.objectsManager = nil;
-    
+    self.targetObject = nil;
+
     // Close window safely
     dispatch_async(dispatch_get_main_queue(), ^{
         [self close];
     });
     
     NSLog(@"🪟 ChartObjectSettingsWindow: Safely closed and cleaned up");
+}
+
+- (void)dealloc {
+    NSLog(@"🗑️ DEALLOC START - Object: %@ (pointer: %p)",
+             self.targetObject ? self.targetObject.name : @"(already nil)",
+             self.targetObject);
+
+    // Assicurati che sia tutto pulito
+    self.targetObject = nil;
+    self.objectsManager = nil;
+    self.onApplyCallback = nil;
 }
 
 

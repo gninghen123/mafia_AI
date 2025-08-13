@@ -77,7 +77,9 @@
     coreDataLayer.isVisible = layer.isVisible;
     coreDataLayer.orderIndex = (int16_t)layer.orderIndex;
     coreDataLayer.lastModified = [NSDate date];
-    
+    if (!coreDataLayer.creationDate) {
+        coreDataLayer.creationDate = layer.creationDate ?: [NSDate date];
+    }
     [self saveContext];
     
     NSLog(@"💾 DataHub: Saved chart layer %@ for symbol %@", layer.name, symbol);

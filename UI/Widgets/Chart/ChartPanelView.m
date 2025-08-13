@@ -679,7 +679,12 @@
                 hitObject = [self findObjectOwningControlPoint:hitCP];
             }
         }
-        
+        if (self.objectRenderer.editingObject) {
+              NSLog(@"⚠️ Clearing editing state before context menu");
+              self.objectRenderer.editingObject = nil;
+              self.objectRenderer.currentCPSelected = nil;
+              [self.objectRenderer invalidateEditingLayer];
+          }
         if (hitObject) {
             NSLog(@"🖱️ ChartPanelView: Right-click on object '%@' - showing context menu", hitObject.name);
             [self showContextMenuForObject:hitObject atPoint:locationInView withEvent:event];
@@ -696,7 +701,7 @@
         NSLog(@"❌ ChartPanelView: Cancelled object creation via right-click");
         return;
     }
-    
+   
     // PRIORITY 3: Delete editing object if active
     if (self.objectRenderer && self.objectRenderer.editingObject) {
         ChartObjectModel *objectToDelete = self.objectRenderer.editingObject;
@@ -1260,7 +1265,8 @@
 // Object settings window
 
 - (void)openObjectSettingsForObject:(ChartObjectModel *)object {
-    NSLog(@"⚙️ ChartPanelView: Opening settings for object '%@'", object.name);
+   
+    
     
     // Validate object before proceeding
     if (!object || !object.style) {
@@ -1275,6 +1281,12 @@
     self.objectSettingsWindow = nil;
     self.objectSettingsWindow = [[ChartObjectSettingsWindow alloc]
            initWithObject:object objectsManager:self.objectRenderer.objectsManager];
+    
+    
+    self.objectSettingsWindow.onApplyCallback = ^(ChartObjectModel *object) {
+        self.objectSettingsWindow = nil; // Rilascia reference
+    };
+    
     
     if (!self.objectSettingsWindow) {
         NSLog(@"❌ ChartPanelView: Failed to create settings window");

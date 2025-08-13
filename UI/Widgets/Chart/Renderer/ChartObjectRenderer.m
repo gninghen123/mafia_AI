@@ -508,32 +508,41 @@
     ControlPointModel *cp = object.controlPoints.firstObject;
     NSPoint screenPoint = [self screenPointFromControlPoint:cp];
     
-    // Apply object style
+    // ✅ Apply global style (color, opacity)
     [self applyStyleForObject:object];
     
-    // Draw horizontal line across entire panel width
+    // ✅ Create and style path
     NSBezierPath *path = [NSBezierPath bezierPath];
     [path moveToPoint:NSMakePoint(0, screenPoint.y)];
     [path lineToPoint:NSMakePoint(self.coordinateContext.panelBounds.size.width, screenPoint.y)];
-    [path stroke];
+    
+    // ✅ Apply path-specific style and stroke
+    [self strokePath:path withStyle:object.style];
 }
 
 - (void)drawTrendline:(ChartObjectModel *)object {
     if (object.controlPoints.count < 1) return;
     
     ControlPointModel *cp1 = object.controlPoints[0];
-    ControlPointModel *cp2 = object.controlPoints.count > 1 ? object.controlPoints[1] : cp1; // FALLBACK
+    ControlPointModel *cp2 = object.controlPoints.count > 1 ?
+        object.controlPoints[1] : cp1; // FALLBACK
     
     NSPoint startPoint = [self screenPointFromControlPoint:cp1];
     NSPoint endPoint = [self screenPointFromControlPoint:cp2];
     
-    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
-    CGContextMoveToPoint(ctx, startPoint.x, startPoint.y);
-    CGContextAddLineToPoint(ctx, endPoint.x, endPoint.y);
-    CGContextStrokePath(ctx);
+    // ✅ Apply global style (color, opacity)
+    [self applyStyleForObject:object];
     
-    NSLog(@"🎨 Drew trendline from (%.1f,%.1f) to (%.1f,%.1f)",
-          startPoint.x, startPoint.y, endPoint.x, endPoint.y);
+    // ✅ Create and style path
+    NSBezierPath *path = [NSBezierPath bezierPath];
+    [path moveToPoint:startPoint];
+    [path lineToPoint:endPoint];
+    
+    // ✅ Apply path-specific style and stroke
+    [self strokePath:path withStyle:object.style];
+    
+    NSLog(@"🎨 Drew trendline from (%.1f,%.1f) to (%.1f,%.1f) with thickness %.1f",
+          startPoint.x, startPoint.y, endPoint.x, endPoint.y, object.style.thickness);
 }
 
 - (void)drawTrendlineControlPoints:(NSPoint)pointA pointB:(NSPoint)pointB {
@@ -611,94 +620,79 @@
     if (object.controlPoints.count < 1) return;
     
     ControlPointModel *cp1 = object.controlPoints[0];
-    ControlPointModel *cp2 = object.controlPoints.count > 1 ? object.controlPoints[1] : cp1; // FALLBACK
+    ControlPointModel *cp2 = object.controlPoints.count > 1 ? object.controlPoints[1] : cp1;
     
     NSPoint startPoint = [self screenPointFromControlPoint:cp1];
     NSPoint endPoint = [self screenPointFromControlPoint:cp2];
     
-    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    // ✅ Apply global style (color, opacity)
+    [self applyStyleForObject:object];
     
     if (cp2 == cp1) {
         // Single point - draw horizontal line
-        CGContextMoveToPoint(ctx, 0, startPoint.y);
-        CGContextAddLineToPoint(ctx, self.coordinateContext.panelBounds.size.width, startPoint.y);
-        CGContextStrokePath(ctx);
+        NSBezierPath *path = [NSBezierPath bezierPath];
+        [path moveToPoint:NSMakePoint(0, startPoint.y)];
+        [path lineToPoint:NSMakePoint(self.coordinateContext.panelBounds.size.width, startPoint.y)];
+        [self strokePath:path withStyle:object.style];
     } else {
         // Full fibonacci with levels
-        [self drawFibonacciLevels:startPoint endPoint:endPoint];
+        [self drawFibonacciLevels:startPoint endPoint:endPoint style:object.style];
     }
 }
 
-- (void)drawFibonacciLevels:(NSPoint)startPoint endPoint:(NSPoint)endPoint {
-    // ✅ STESSO CALCOLO per Fibonacci standard
-    
-    // Calcola prezzi dai punti schermo
+
+- (void)drawFibonacciLevels:(NSPoint)startPoint endPoint:(NSPoint)endPoint style:(ObjectStyleModel *)style {
+    // Calculate prices from screen points
     CGFloat cp1Price = [self priceFromScreenY:startPoint.y];
     CGFloat cp2Price = [self priceFromScreenY:endPoint.y];
     CGFloat priceRange = cp2Price - cp1Price;
     
-    // Fibonacci levels con extensions
+    // Fibonacci levels with extensions
     NSArray *fibRatios = @[@0.0, @0.236, @0.382, @0.5, @0.618, @0.786, @1.0, @1.272, @1.414, @1.618, @2.618, @4.236];
     NSArray *fibLabels = @[@"0%", @"23.6%", @"38.2%", @"50%", @"61.8%", @"78.6%", @"100%", @"127.2%", @"141.4%", @"161.8%", @"261.8%", @"423.6%"];
     
-    // Draw main line (CP1 -> CP2)
-    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
-    CGContextSetLineWidth(ctx, 1.5);
-    CGContextSetRGBStrokeColor(ctx, 0.5, 0.5, 0.5, 1.0); // Grigio per linea principale
-    CGContextMoveToPoint(ctx, startPoint.x, startPoint.y);
-    CGContextAddLineToPoint(ctx, endPoint.x, endPoint.y);
-    CGContextStrokePath(ctx);
+    CGFloat panelWidth = self.coordinateContext.panelBounds.size.width;
     
     for (NSUInteger i = 0; i < fibRatios.count; i++) {
-        CGFloat ratio = [fibRatios[i] floatValue];
-        NSString *label = fibLabels[i];
+        CGFloat ratio = [fibRatios[i] doubleValue];
+        CGFloat fibPrice = cp1Price + (priceRange * ratio);
+        CGFloat fibY = [self yCoordinateForPrice:fibPrice];
         
-        // ✅ CALCOLO CORRETTO
-        CGFloat levelPrice;
-        if (ratio <= 1.0) {
-            // Retracements: da CP2 verso CP1
-            levelPrice = cp2Price - (ratio * priceRange);
-        } else {
-            // Extensions: oltre CP2
-            levelPrice = cp2Price + ((ratio - 1.0) * priceRange);
-        }
+        // Skip levels outside visible range
+        if (fibY < 0 || fibY > self.coordinateContext.panelBounds.size.height) continue;
         
-        CGFloat levelY = [self yCoordinateForPrice:levelPrice];
+        // Draw fibonacci level line
+        NSBezierPath *levelPath = [NSBezierPath bezierPath];
+        [levelPath moveToPoint:NSMakePoint(0, fibY)];
+        [levelPath lineToPoint:NSMakePoint(panelWidth, fibY)];
+        [self strokePath:levelPath withStyle:style];
         
-        // Skip se fuori viewport
-        if (levelY < -20 || levelY > self.coordinateContext.panelBounds.size.height + 20) {
-            continue;
-        }
-        
-        // Stile in base al tipo di livello
-        if (ratio == 0.0 || ratio == 1.0) {
-            // Livelli chiave (CP1, CP2)
-            CGContextSetLineWidth(ctx, 2.0);
-            CGContextSetRGBStrokeColor(ctx, 0.0, 0.5, 1.0, 1.0); // Blu
-        } else if (ratio > 1.0) {
-            // Extensions - viola
-            CGContextSetLineWidth(ctx, 1.5);
-            CGContextSetRGBStrokeColor(ctx, 0.7, 0.0, 1.0, 0.8); // Viola
-        } else {
-            // Retracements standard - arancione
-            CGContextSetLineWidth(ctx, 1.0);
-            CGContextSetRGBStrokeColor(ctx, 1.0, 0.6, 0.0, 1.0); // Arancione
-        }
-        
-        // Disegna linea livello
-        CGContextMoveToPoint(ctx, 0, levelY);
-        CGContextAddLineToPoint(ctx, self.coordinateContext.panelBounds.size.width, levelY);
-        CGContextStrokePath(ctx);
-        
-        // Label con % e valore
-        NSString *fullLabel = [NSString stringWithFormat:@"%@ (%.2f)", label, levelPrice];
-        [self drawFibonacciLabel:fullLabel
-                         atPoint:NSMakePoint(5, levelY + 2)
-                      isKeyLevel:(ratio == 0.0 || ratio == 1.0)
-                     isExtension:(ratio > 1.0)];
+        // Draw label
+        NSString *labelText = [NSString stringWithFormat:@"%@ (%.2f)", fibLabels[i], fibPrice];
+        [self drawFibLabel:labelText atPoint:NSMakePoint(panelWidth - 80, fibY) color:style.color];
     }
 }
-
+- (void)drawFibLabel:(NSString *)text atPoint:(NSPoint)point color:(NSColor *)textColor {
+    NSDictionary *attributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:11],
+        NSForegroundColorAttributeName: textColor,
+        NSBackgroundColorAttributeName: [[NSColor controlBackgroundColor] colorWithAlphaComponent:0.8]
+    };
+    
+    NSAttributedString *attributedText = [[NSAttributedString alloc] initWithString:text attributes:attributes];
+    NSSize textSize = [attributedText size];
+    
+    NSRect labelRect = NSMakeRect(point.x - textSize.width - 4, point.y - textSize.height/2 - 2,
+                                  textSize.width + 8, textSize.height + 4);
+    
+    // Draw background
+    [[NSColor controlBackgroundColor] setFill];
+    NSBezierPath *bgPath = [NSBezierPath bezierPathWithRoundedRect:labelRect xRadius:2 yRadius:2];
+    [bgPath fill];
+    
+    // Draw text
+    [attributedText drawAtPoint:NSMakePoint(point.x - textSize.width, point.y - textSize.height/2)];
+}
 
 - (void)drawFibonacciLabel:(NSString *)label
                    atPoint:(NSPoint)point
@@ -759,25 +753,33 @@
     if (object.controlPoints.count < 1) return;
     
     ControlPointModel *cp1 = object.controlPoints[0];
-    ControlPointModel *cp2 = object.controlPoints.count > 1 ? object.controlPoints[1] : cp1; // FALLBACK
+    ControlPointModel *cp2 = object.controlPoints.count > 1 ?
+        object.controlPoints[1] : cp1; // FALLBACK
     
     NSPoint startPoint = [self screenPointFromControlPoint:cp1];
     NSPoint endPoint = [self screenPointFromControlPoint:cp2];
     
-    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    // ✅ Apply global style (color, opacity)
+    [self applyStyleForObject:object];
+    
+    // ✅ Create and style path
+    NSBezierPath *path;
     
     if (cp2 == cp1) {
         // Single point - draw small square
-        CGRect rect = CGRectMake(startPoint.x - 2, startPoint.y - 2, 4, 4);
-        CGContextStrokeRect(ctx, rect);
+        NSRect rect = NSMakeRect(startPoint.x - 2, startPoint.y - 2, 4, 4);
+        path = [NSBezierPath bezierPathWithRect:rect];
     } else {
         // Full rectangle
-        CGRect rect = CGRectMake(MIN(startPoint.x, endPoint.x),
+        NSRect rect = NSMakeRect(MIN(startPoint.x, endPoint.x),
                                 MIN(startPoint.y, endPoint.y),
                                 fabs(endPoint.x - startPoint.x),
                                 fabs(endPoint.y - startPoint.y));
-        CGContextStrokeRect(ctx, rect);
+        path = [NSBezierPath bezierPathWithRect:rect];
     }
+    
+    // ✅ Apply path-specific style and stroke
+    [self strokePath:path withStyle:object.style];
 }
 
 
@@ -787,20 +789,25 @@
     NSPoint center = [self screenPointFromControlPoint:object.controlPoints[0]];
     NSPoint edge = [self screenPointFromControlPoint:object.controlPoints[1]];
     
+    // ✅ Apply global style (color, opacity)
     [self applyStyleForObject:object];
     
+    // ✅ Create and style path
     CGFloat radius = sqrt(pow(edge.x - center.x, 2) + pow(edge.y - center.y, 2));
     NSRect circleRect = NSMakeRect(center.x - radius, center.y - radius, radius * 2, radius * 2);
-    
     NSBezierPath *path = [NSBezierPath bezierPathWithOvalInRect:circleRect];
-    [path stroke];
+    
+    // ✅ Apply path-specific style and stroke
+    [self strokePath:path withStyle:object.style];
 }
 
 - (void)drawFreeDrawing:(ChartObjectModel *)object {
     if (object.controlPoints.count < 2) return;
     
+    // ✅ Apply global style (color, opacity)
     [self applyStyleForObject:object];
     
+    // ✅ Create and style path
     NSBezierPath *path = [NSBezierPath bezierPath];
     NSPoint firstPoint = [self screenPointFromControlPoint:object.controlPoints.firstObject];
     [path moveToPoint:firstPoint];
@@ -810,7 +817,8 @@
         [path lineToPoint:point];
     }
     
-    [path stroke];
+    // ✅ Apply path-specific style and stroke
+    [self strokePath:path withStyle:object.style];
 }
 - (void)drawChannel:(ChartObjectModel *)object {
     if (object.controlPoints.count < 1) return;
@@ -823,41 +831,42 @@
     NSPoint point2 = [self screenPointFromControlPoint:cp2];
     NSPoint point3 = [self screenPointFromControlPoint:cp3];
     
-    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    // ✅ Apply global style (color, opacity)
+    [self applyStyleForObject:object];
     
     if (object.controlPoints.count == 1) {
         // Solo CP1 - disegna punto
-        CGContextFillEllipseInRect(ctx, CGRectMake(point1.x - 2, point1.y - 2, 4, 4));
+        NSRect rect = NSMakeRect(point1.x - 2, point1.y - 2, 4, 4);
+        NSBezierPath *path = [NSBezierPath bezierPathWithOvalInRect:rect];
+        [path fill]; // Point is filled, not stroked
         
     } else if (object.controlPoints.count == 2) {
         // CP1 + CP2 - disegna prima trendline
-        CGContextMoveToPoint(ctx, point1.x, point1.y);
-        CGContextAddLineToPoint(ctx, point2.x, point2.y);
-        CGContextStrokePath(ctx);
+        NSBezierPath *path = [NSBezierPath bezierPath];
+        [path moveToPoint:point1];
+        [path lineToPoint:point2];
+        [self strokePath:path withStyle:object.style];
         
     } else {
         // Tutti e 3 CP - disegna channel completo
         
         // Prima trendline (CP1 - CP2)
-        CGContextMoveToPoint(ctx, point1.x, point1.y);
-        CGContextAddLineToPoint(ctx, point2.x, point2.y);
-        CGContextStrokePath(ctx);
+        NSBezierPath *path1 = [NSBezierPath bezierPath];
+        [path1 moveToPoint:point1];
+        [path1 lineToPoint:point2];
+        [self strokePath:path1 withStyle:object.style];
         
         // Calcola parallela attraverso CP3
-        // Vettore direzione della prima linea
         CGFloat dx = point2.x - point1.x;
         CGFloat dy = point2.y - point1.y;
         
-        // Lunghezza estesa per coprire tutto il panel
         CGFloat panelWidth = self.coordinateContext.panelBounds.size.width;
         CGFloat lineLength = sqrt(dx*dx + dy*dy);
-        CGFloat extensionFactor = panelWidth / lineLength * 2; // Estendi oltre i bordi
+        CGFloat extensionFactor = panelWidth / lineLength * 2;
         
-        // Normalizza vettore direzione
         CGFloat dirX = dx / lineLength;
         CGFloat dirY = dy / lineLength;
         
-        // Calcola punti estesi della parallela
         CGFloat extendedDx = dirX * extensionFactor * lineLength;
         CGFloat extendedDy = dirY * extensionFactor * lineLength;
         
@@ -865,22 +874,24 @@
         NSPoint parallelEnd = NSMakePoint(point3.x + extendedDx/2, point3.y + extendedDy/2);
         
         // Seconda trendline (parallela attraverso CP3)
-        CGContextMoveToPoint(ctx, parallelStart.x, parallelStart.y);
-        CGContextAddLineToPoint(ctx, parallelEnd.x, parallelEnd.y);
-        CGContextStrokePath(ctx);
+        NSBezierPath *path2 = [NSBezierPath bezierPath];
+        [path2 moveToPoint:parallelStart];
+        [path2 lineToPoint:parallelEnd];
+        [self strokePath:path2 withStyle:object.style];
         
-        // Linee di connessione (opzionali - tratteggiate)
-        CGContextSaveGState(ctx);
-        CGFloat dashLengths[] = {3.0, 3.0};
-        CGContextSetLineDash(ctx, 0, dashLengths, 2);
-        CGContextSetAlpha(ctx, 0.5);
+        // Linee di connessione (tratteggiate)
+        ObjectStyleModel *dashStyle = [object.style copy];
+        dashStyle.lineType = ChartLineTypeDashed;
+        dashStyle.opacity = 0.5;
         
-        // Connessione perpendicolare
-        CGContextMoveToPoint(ctx, point1.x, point1.y);
-        CGContextAddLineToPoint(ctx, point3.x, point3.y);
-        CGContextStrokePath(ctx);
+        NSBezierPath *connectionPath = [NSBezierPath bezierPath];
+        [connectionPath moveToPoint:point1];
+        [connectionPath lineToPoint:point3];
         
-        CGContextRestoreGState(ctx);
+        // Apply dashed style temporarily
+        CGContextSetAlpha([[NSGraphicsContext currentContext] CGContext], dashStyle.opacity);
+        [self strokePath:connectionPath withStyle:dashStyle];
+        CGContextSetAlpha([[NSGraphicsContext currentContext] CGContext], object.style.opacity); // Restore
     }
     
     NSLog(@"🎨 Drew channel with %lu CPs", (unsigned long)object.controlPoints.count);
@@ -891,96 +902,49 @@
 - (void)drawTargetPrice:(ChartObjectModel *)object {
     if (object.controlPoints.count < 1) return;
     
-    ControlPointModel *buyCP = object.controlPoints[0];
-    ControlPointModel *stopCP = object.controlPoints.count > 1 ? object.controlPoints[1] : buyCP;
-    ControlPointModel *targetCP = object.controlPoints.count > 2 ? object.controlPoints[2] : buyCP;
+    ControlPointModel *cp = object.controlPoints.firstObject;
+    NSPoint screenPoint = [self screenPointFromControlPoint:cp];
     
-    NSPoint buyPoint = [self screenPointFromControlPoint:buyCP];
-    NSPoint stopPoint = [self screenPointFromControlPoint:stopCP];
-    NSPoint targetPoint = [self screenPointFromControlPoint:targetCP];
+    // ✅ Apply global style (color, opacity)
+    [self applyStyleForObject:object];
     
-    // ✅ CALCOLA X LIMITE: non estendere le linee dietro CP1 (buyPoint)
-    CGFloat panelWidth = self.coordinateContext.panelBounds.size.width;
-    CGFloat lineStartX = buyPoint.x;  // Parte da CP1
-    CGFloat lineEndX = panelWidth;    // Fino al bordo destro
+    // ✅ Create and style path for target line
+    NSBezierPath *path = [NSBezierPath bezierPath];
+    [path moveToPoint:NSMakePoint(0, screenPoint.y)];
+    [path lineToPoint:NSMakePoint(self.coordinateContext.panelBounds.size.width, screenPoint.y)];
+    [self strokePath:path withStyle:object.style];
     
-    if (object.controlPoints.count == 1) {
-        // Solo Buy point - punto verde
-        [self drawTargetPoint:buyPoint color:[NSColor systemGreenColor] label:@"BUY"];
-        
-    } else if (object.controlPoints.count == 2) {
-        // Buy + Stop - linee con highlight
-        
-        // ✅ HIGHLIGHT ZONE STOP con alpha SEMPRE 0.1
-        [self drawTargetHighlight:NSMakeRect(lineStartX, MIN(buyPoint.y, stopPoint.y),
-                                           lineEndX - lineStartX, fabs(buyPoint.y - stopPoint.y))
-                            color:[NSColor systemRedColor]];
-        
-        // Linee limitate da CP1 in poi
-        [self drawTargetLine:buyPoint.y startX:lineStartX endX:lineEndX
-                       color:[NSColor systemGreenColor] width:2.0];
-        [self drawTargetLine:stopPoint.y startX:lineStartX endX:lineEndX
-                       color:[NSColor systemRedColor] width:2.0];
-        
-        // Label
-        [self drawTargetLabel:@"BUY" atPoint:NSMakePoint(lineStartX + 10, buyPoint.y)
-                       color:[NSColor systemGreenColor] size:14];
-        [self drawTargetLabel:@"STOP" atPoint:NSMakePoint(lineStartX + 10, stopPoint.y)
-                       color:[NSColor systemRedColor] size:14];
-        
-    } else {
-        // Target completo con calcoli e highlight zones
-        
-        // Calcola prezzi
-        double buyPrice = [self priceFromControlPoint:buyCP];
-        double stopPrice = [self priceFromControlPoint:stopCP];
-        double targetPrice = [self priceFromControlPoint:targetCP];
-        
-        // Calcola metriche
-        double stopLossPercent = ((buyPrice - stopPrice) / buyPrice) * 100.0;
-        double targetPercent = ((targetPrice - buyPrice) / buyPrice) * 100.0;
-        double riskRewardRatio = fabs(targetPrice - buyPrice) / fabs(buyPrice - stopPrice);
-        
-        // ✅ HIGHLIGHT ZONES CORRETTE - sempre alpha 0.1
-        
-        // Zone STOP (da buy a stop) - rosso
-        CGFloat stopZoneTop = MAX(buyPoint.y, stopPoint.y);
-        CGFloat stopZoneBottom = MIN(buyPoint.y, stopPoint.y);
-        [self drawTargetHighlight:NSMakeRect(lineStartX, stopZoneBottom,
-                                           lineEndX - lineStartX, stopZoneTop - stopZoneBottom)
-                            color:[NSColor systemRedColor]];
-        
-        // Zone TARGET (da buy a target) - verde
-        CGFloat targetZoneTop = MAX(buyPoint.y, targetPoint.y);
-        CGFloat targetZoneBottom = MIN(buyPoint.y, targetPoint.y);
-        [self drawTargetHighlight:NSMakeRect(lineStartX, targetZoneBottom,
-                                           lineEndX - lineStartX, targetZoneTop - targetZoneBottom)
-                            color:[NSColor systemGreenColor]];
-        
-        // ✅ LINEE LIMITATE da CP1 in poi
-        [self drawTargetLine:buyPoint.y startX:lineStartX endX:lineEndX
-                       color:[NSColor systemBlueColor] width:3.0];    // BUY - blu
-        [self drawTargetLine:stopPoint.y startX:lineStartX endX:lineEndX
-                       color:[NSColor systemRedColor] width:2.5];     // STOP - rosso
-        [self drawTargetLine:targetPoint.y startX:lineStartX endX:lineEndX
-                       color:[NSColor systemGreenColor] width:2.5];   // TARGET - verde
-        
-        // Label più grandi con info dettagliate
-        NSString *buyText = [NSString stringWithFormat:@"BUY: $%.2f", buyPrice];
-        [self drawTargetEnhancedLabel:buyText atPoint:NSMakePoint(lineStartX + 10, buyPoint.y)
-                               color:[NSColor systemBlueColor] size:15 isBold:YES];
-        
-        NSString *stopText = [NSString stringWithFormat:@"STOP: $%.2f (-%.1f%%)", stopPrice, fabs(stopLossPercent)];
-        [self drawTargetEnhancedLabel:stopText atPoint:NSMakePoint(lineStartX + 10, stopPoint.y)
-                               color:[NSColor systemRedColor] size:14 isBold:NO];
-        
-        NSString *targetText = [NSString stringWithFormat:@"TARGET: $%.2f (+%.1f%%) RRR: %.1f",
-                               targetPrice, targetPercent, riskRewardRatio];
-        [self drawTargetEnhancedLabel:targetText atPoint:NSMakePoint(lineStartX + 10, targetPoint.y)
-                               color:[NSColor systemGreenColor] size:14 isBold:NO];
-    }
+    // Draw target label
+    CGFloat targetPrice = [self priceFromScreenY:screenPoint.y];
+    NSString *labelText = [NSString stringWithFormat:@"Target: %.2f", targetPrice];
+    [self drawTargetLabel:labelText atPoint:NSMakePoint(10, screenPoint.y) color:object.style.color];
 }
-
+- (void)drawTargetLabel:(NSString *)text atPoint:(NSPoint)point color:(NSColor *)textColor {
+    NSDictionary *attributes = @{
+        NSFontAttributeName: [NSFont boldSystemFontOfSize:12],
+        NSForegroundColorAttributeName: textColor,
+        NSBackgroundColorAttributeName: [[NSColor controlBackgroundColor] colorWithAlphaComponent:0.9]
+    };
+    
+    NSAttributedString *attributedText = [[NSAttributedString alloc] initWithString:text attributes:attributes];
+    NSSize textSize = [attributedText size];
+    
+    NSRect labelRect = NSMakeRect(point.x, point.y - textSize.height/2 - 2,
+                                  textSize.width + 8, textSize.height + 4);
+    
+    // Draw background
+    [[NSColor controlBackgroundColor] setFill];
+    NSBezierPath *bgPath = [NSBezierPath bezierPathWithRoundedRect:labelRect xRadius:3 yRadius:3];
+    [bgPath fill];
+    
+    // Draw border
+    [textColor setStroke];
+    bgPath.lineWidth = 1.0;
+    [bgPath stroke];
+    
+    // Draw text
+    [attributedText drawAtPoint:NSMakePoint(point.x + 4, point.y - textSize.height/2)];
+}
 
 // Helper per label semplici (backward compatibility)
 - (void)drawTargetLabel:(NSString *)text
@@ -1129,41 +1093,65 @@
     CGContextRestoreGState(ctx);
 }
 
+#pragma mark - Unified Style Application
 
+// ✅ COMPLETE applyStyleForObject - now works with both CGContext AND NSBezierPath
 - (void)applyStyleForObject:(ChartObjectModel *)object {
     ObjectStyleModel *style = object.style;
     
+    if (!style) {
+        NSLog(@"⚠️ ChartObjectRenderer: Object %@ has no style, using defaults", object.name);
+        style = [ObjectStyleModel defaultStyleForObjectType:object.type];
+    }
+    
+    // ✅ Set stroke color globally
     [style.color setStroke];
     
-    // Apply line dash pattern
-    CGFloat dashPattern[4];
-    NSInteger dashCount = 0;
+    // ✅ Set opacity globally via graphics context
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    CGContextSetAlpha(ctx, style.opacity);
     
+    NSLog(@"🎨 Applied global style - Color: %@, Opacity: %.1f for object: %@",
+          style.color, style.opacity, object.name);
+}
+
+// ✅ NEW: Helper method to apply complete style to NSBezierPath
+- (void)applyStyle:(ObjectStyleModel *)style toPath:(NSBezierPath *)path {
+    if (!style) return;
+    
+    // Apply thickness
+    path.lineWidth = style.thickness;
+    
+    // Apply dash pattern
     switch (style.lineType) {
-        case ChartLineTypeDashed:
-            dashPattern[0] = 5.0;
-            dashPattern[1] = 3.0;
-            dashCount = 2;
+        case ChartLineTypeDashed: {
+            CGFloat pattern[] = {5.0, 3.0};
+            [path setLineDash:pattern count:2 phase:0];
             break;
-        case ChartLineTypeDotted:
-            dashPattern[0] = 2.0;
-            dashPattern[1] = 2.0;
-            dashCount = 2;
+        }
+        case ChartLineTypeDotted: {
+            CGFloat pattern[] = {2.0, 2.0};
+            [path setLineDash:pattern count:2 phase:0];
             break;
-        case ChartLineTypeDashDot:
-            dashPattern[0] = 5.0;
-            dashPattern[1] = 2.0;
-            dashPattern[2] = 2.0;
-            dashPattern[3] = 2.0;
-            dashCount = 4;
+        }
+        case ChartLineTypeDashDot: {
+            CGFloat pattern[] = {5.0, 2.0, 2.0, 2.0};
+            [path setLineDash:pattern count:4 phase:0];
             break;
+        }
         default: // ChartLineTypeSolid
-            dashCount = 0;
+            [path setLineDash:NULL count:0 phase:0];
             break;
     }
     
-    // This would be applied to the current NSBezierPath in a real implementation
-    // For now, we set the basic properties
+    NSLog(@"🎨 Applied path style - Thickness: %.1f, LineType: %ld",
+          style.thickness, (long)style.lineType);
+}
+
+// ✅ NEW: Convenience method to create and stroke a styled path
+- (void)strokePath:(NSBezierPath *)path withStyle:(ObjectStyleModel *)style {
+    [self applyStyle:style toPath:path];
+    [path stroke];
 }
 
 #pragma mark - Object Creation/Editing

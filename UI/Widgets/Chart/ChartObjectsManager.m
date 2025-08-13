@@ -33,7 +33,8 @@
 - (ChartLayerModel *)createLayerWithName:(NSString *)name {
     ChartLayerModel *layer = [ChartLayerModel layerWithName:name];
     layer.orderIndex = self.layers.count;
-    
+    layer.creationDate = [NSDate date];  // ✅ AGGIUNGI QUESTA RIGA
+
     [self.layers addObject:layer];
     
     // Set as active if it's the first layer

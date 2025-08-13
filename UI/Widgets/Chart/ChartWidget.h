@@ -9,7 +9,13 @@
 #import "ObjectsPanel.h"
 #import "ChartObjectsManager.h"
 #import "ChartObjectRenderer.h"
+#import "CommonTypes.h"          // Per BarTimeframe enum
+
+
 @class ChartPanelView;
+@class HistoricalBarModel;       
+@class MarketQuoteModel;
+
 
 typedef NS_ENUM(NSInteger, ChartTimeframe) {
     ChartTimeframe1Min,
@@ -71,4 +77,15 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 - (void)zoomOut:(id)sender;
 - (void)zoomAll:(id)sender;
 
+#pragma mark - Current Bar Management (Private)
+- (void)checkAndAddCurrentBarIfNeeded:(NSArray<HistoricalBarModel *> *)historicalBars
+                               symbol:(NSString *)symbol
+                            timeframe:(BarTimeframe)timeframe
+                           completion:(void(^)(NSArray<HistoricalBarModel *> *finalData))completion;
+
+- (BOOL)isDailyOrHigherTimeframe:(BarTimeframe)timeframe;
+- (BOOL)lastBarIsToday:(NSArray<HistoricalBarModel *> *)bars;
+- (HistoricalBarModel *)createCurrentBarFromQuote:(MarketQuoteModel *)quote
+                                        timeframe:(BarTimeframe)timeframe;
+- (NSDate *)adjustDateForTimeframe:(NSDate *)date timeframe:(BarTimeframe)timeframe;
 @end

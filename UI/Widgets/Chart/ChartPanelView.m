@@ -1262,60 +1262,95 @@
 - (void)openObjectSettingsForObject:(ChartObjectModel *)object {
     NSLog(@"⚙️ ChartPanelView: Opening settings for object '%@'", object.name);
     
+    // Validate object before proceeding
+    if (!object || !object.style) {
+        NSLog(@"❌ ChartPanelView: Invalid object or object.style is nil");
+        return;
+    }
+    
+    if (!self.objectRenderer || !self.objectRenderer.objectsManager) {
+        NSLog(@"❌ ChartPanelView: ObjectRenderer or ObjectsManager is nil");
+        return;
+    }
+    
     ChartObjectSettingsWindow *settingsWindow = [[ChartObjectSettingsWindow alloc]
            initWithObject:object objectsManager:self.objectRenderer.objectsManager];
-       
-       // Position and show
-       [settingsWindow makeKeyAndOrderFront:nil];
     
-    // ✅ NUOVO: Setup callback per redraw
+    if (!settingsWindow) {
+        NSLog(@"❌ ChartPanelView: Failed to create settings window");
+        return;
+    }
+    
+    // ✅ SAFE CALLBACK: Use weak references to avoid retain cycles
     __weak typeof(self) weakSelf = self;
+    __weak typeof(settingsWindow) weakWindow = settingsWindow;
+    
     settingsWindow.onApplyCallback = ^(ChartObjectModel *updatedObject) {
-        [weakSelf handleObjectSettingsApplied:updatedObject];
+        // Use strong references inside block
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        __strong typeof(weakWindow) strongWindow = weakWindow;
+        
+        if (!strongSelf) {
+            NSLog(@"⚠️ ChartPanelView callback: ChartPanelView was deallocated");
+            return;
+        }
+        
+        // Validate objects still exist
+        if (!updatedObject) {
+            NSLog(@"⚠️ ChartPanelView callback: updatedObject is nil");
+            return;
+        }
+        
+        if (!strongSelf.objectRenderer) {
+            NSLog(@"⚠️ ChartPanelView callback: ObjectRenderer was deallocated");
+            return;
+        }
+        
+        // Safe redraw
+        @try {
+            [strongSelf handleObjectSettingsApplied:updatedObject];
+        } @catch (NSException *exception) {
+            NSLog(@"❌ ChartPanelView callback: Exception in handleObjectSettingsApplied: %@", exception.reason);
+        }
+        
+        // Clear callback to break retain cycle
+        if (strongWindow) {
+            strongWindow.onApplyCallback = nil;
+        }
     };
     
-    // Position the window near the mouse cursor but avoid screen edges
-    NSPoint mouseLocation = [NSEvent mouseLocation];
-    NSSize windowSize = settingsWindow.frame.size;
-    NSScreen *screen = [NSScreen mainScreen];
-    NSRect screenFrame = screen.visibleFrame;
-    
-    // Calculate position (offset slightly to avoid cursor)
-    CGFloat offsetX = 20;
-    CGFloat offsetY = -20;
-    NSPoint windowOrigin = NSMakePoint(mouseLocation.x + offsetX, mouseLocation.y + offsetY);
-    
-    // Ensure window stays on screen
-    if (windowOrigin.x + windowSize.width > NSMaxX(screenFrame)) {
-        windowOrigin.x = mouseLocation.x - windowSize.width - offsetX;
-    }
-    if (windowOrigin.y - windowSize.height < NSMinY(screenFrame)) {
-        windowOrigin.y = mouseLocation.y + windowSize.height + offsetY;
-    }
-    
-    [settingsWindow setFrameOrigin:windowOrigin];
-    
-    // Show the window
+    // Position and show
     [settingsWindow makeKeyAndOrderFront:nil];
     
-    NSLog(@"🪟 ChartPanelView: Settings window opened at (%.1f, %.1f)", windowOrigin.x, windowOrigin.y);
+    NSLog(@"✅ ChartPanelView: Settings window opened successfully");
 }
+
 
 // AGGIUNGERE questo metodo di callback:
 - (void)handleObjectSettingsApplied:(ChartObjectModel *)object {
-    NSLog(@"🔄 ChartPanelView: Settings applied for object '%@' - triggering redraw", object.name);
+    NSLog(@"🔄 ChartPanelView: Settings applied for object '%@' - triggering redraw", object.name ?: @"unknown");
     
-    // Re-render all objects with new settings
-    if (self.objectRenderer) {
+    @try {
+        // Validate object renderer exists
+        if (!self.objectRenderer) {
+            NSLog(@"❌ ChartPanelView: ObjectRenderer is nil, cannot redraw");
+            return;
+        }
+        
+        // Re-render all objects with new settings
         [self.objectRenderer renderAllObjects];
         NSLog(@"✅ ChartPanelView: Objects re-rendered successfully");
-    }
-    
-    // Notify chart widget if needed
-    if (self.chartWidget && [self.chartWidget respondsToSelector:@selector(objectSettingsDidChange:)]) {
-        [(id)self.chartWidget performSelector:@selector(objectSettingsDidChange:) withObject:object];
+        
+        // Notify chart widget if needed (optional)
+        if (self.chartWidget && [self.chartWidget respondsToSelector:@selector(objectSettingsDidChange:)]) {
+            [(id)self.chartWidget performSelector:@selector(objectSettingsDidChange:) withObject:object];
+        }
+        
+    } @catch (NSException *exception) {
+        NSLog(@"❌ ChartPanelView: Exception in handleObjectSettingsApplied: %@", exception.reason);
     }
 }
+
 // Helper methods
 - (BOOL)isPoint:(NSPoint)point nearEditingObject:(ChartObjectModel *)object tolerance:(CGFloat)tolerance {
     // Simple bounding box check for editing object

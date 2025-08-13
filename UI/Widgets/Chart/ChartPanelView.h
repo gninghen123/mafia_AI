@@ -12,6 +12,7 @@
 @class ChartAlertRenderer;
 #import "ChartAlertRenderer.h"
 #import "AlertEditController.h"
+#import "ChartObjectSettingsWindow.h"
 
 @class ChartWidget;
 @class ChartObjectRenderer;
@@ -47,6 +48,8 @@
 
 // NUOVO: Objects rendering
 @property (nonatomic, strong) ChartObjectRenderer *objectRenderer;
+
+@property (nonatomic, strong, nullable) ChartObjectSettingsWindow *activeSettingsWindow;
 
 
 - (void)setupAlertRenderer;

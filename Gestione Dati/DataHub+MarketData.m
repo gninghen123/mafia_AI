@@ -615,23 +615,134 @@
     
     if (!bars || bars.count == 0) return;
     
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
+    // ✅ SOLUZIONE 1: Usa una coda seriale per evitare salvataggi concorrenti
+    static dispatch_queue_t saveQueue;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        saveQueue = dispatch_queue_create("com.app.coredata.save", DISPATCH_QUEUE_SERIAL);
+    });
+    
+    dispatch_async(saveQueue, ^{
         
         NSManagedObjectContext *backgroundContext = [self.persistentContainer newBackgroundContext];
         
+        // ✅ SOLUZIONE 2: Imposta merge policy per risolvere conflitti automaticamente
+        backgroundContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy;
+        
         [backgroundContext performBlock:^{
             
+            // ✅ SOLUZIONE 3: Verifica esistenza prima di creare/aggiornare
             for (HistoricalBarModel *barModel in bars) {
-                [self saveHistoricalBarModel:barModel inContext:backgroundContext];
+                [self saveHistoricalBarModelSafely:barModel
+                                            symbol:symbol
+                                         timeframe:timeframe
+                                         inContext:backgroundContext];
             }
             
             NSError *error = nil;
             if (![backgroundContext save:&error]) {
-                NSLog(@"Error saving historical bars to Core Data: %@", error);
+                NSLog(@"❌ Error saving historical bars to Core Data: %@", error);
+                
+                // ✅ SOLUZIONE 4: Retry con refresh degli oggetti in caso di errore
+                if (error.code == NSManagedObjectMergeError) {
+                    [self retryHistoricalBarsSave:bars
+                                           symbol:symbol
+                                        timeframe:timeframe
+                                        inContext:backgroundContext];
+                }
+            } else {
+                NSLog(@"✅ Successfully saved %lu historical bars to Core Data for %@",
+                      (unsigned long)bars.count, symbol);
             }
         }];
     });
 }
+
+- (void)saveHistoricalBarModelSafely:(HistoricalBarModel *)barModel
+                              symbol:(NSString *)symbol
+                           timeframe:(BarTimeframe)timeframe
+                           inContext:(NSManagedObjectContext *)context {
+    
+    if (!barModel || !barModel.date) return;
+    
+    // Cerca se esiste già una barra per questa data/simbolo/timeframe
+    NSFetchRequest *request = [HistoricalBar fetchRequest];
+    request.predicate = [NSPredicate predicateWithFormat:
+                        @"symbol.symbol == %@ AND date == %@ AND timeframe == %d",
+                        symbol, barModel.date, timeframe];
+    request.fetchLimit = 1;
+    
+    NSError *error = nil;
+    NSArray *results = [context executeFetchRequest:request error:&error];
+    
+    if (error) {
+        NSLog(@"❌ Error fetching existing HistoricalBar: %@", error);
+        return;
+    }
+    
+    HistoricalBar *coreDataBar;
+    BOOL isNew = NO;
+    
+    if (results.count > 0) {
+        // Aggiorna la barra esistente
+        coreDataBar = results.firstObject;
+        
+        // ✅ SOLUZIONE 5: Refresh dell'oggetto per evitare conflitti di versione
+        [context refreshObject:coreDataBar mergeChanges:YES];
+    } else {
+        // Crea nuova barra
+        coreDataBar = [NSEntityDescription insertNewObjectForEntityForName:@"HistoricalBar"
+                                                    inManagedObjectContext:context];
+        isNew = YES;
+    }
+    
+    // Aggiorna i dati solo se necessario
+    if (isNew || [self shouldUpdateHistoricalBar:coreDataBar withModel:barModel]) {
+        [self updateCoreDataBar:coreDataBar withRuntimeModel:barModel symbol:symbol timeframe:timeframe inContext:context];
+    }
+}
+
+// ✅ NUOVO METODO: Verifica se l'aggiornamento è necessario
+- (BOOL)shouldUpdateHistoricalBar:(HistoricalBar *)coreDataBar withModel:(HistoricalBarModel *)barModel {
+    // Confronta i valori chiave per vedere se è cambiato qualcosa
+    return (fabs(coreDataBar.close - barModel.close) > 0.001 ||
+            fabs(coreDataBar.open - barModel.open) > 0.001 ||
+            fabs(coreDataBar.high - barModel.high) > 0.001 ||
+            fabs(coreDataBar.low - barModel.low) > 0.001 ||
+            coreDataBar.volume != barModel.volume);
+}
+
+// ✅ NUOVO METODO: Retry in caso di errore di merge
+- (void)retryHistoricalBarsSave:(NSArray<HistoricalBarModel *> *)bars
+                         symbol:(NSString *)symbol
+                      timeframe:(BarTimeframe)timeframe
+                      inContext:(NSManagedObjectContext *)context {
+    
+    NSLog(@"🔄 Retrying historical bars save after merge conflict...");
+    
+    // Reset del context per pulire lo stato
+    [context reset];
+    
+    // Attendi un breve momento per evitare conflitti immediati
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_current_queue(), ^{
+        
+        // Riprova il salvataggio
+        for (HistoricalBarModel *barModel in bars) {
+            [self saveHistoricalBarModelSafely:barModel
+                                        symbol:symbol
+                                     timeframe:timeframe
+                                     inContext:context];
+        }
+        
+        NSError *retryError = nil;
+        if (![context save:&retryError]) {
+            NSLog(@"❌ Retry failed for historical bars save: %@", retryError);
+        } else {
+            NSLog(@"✅ Retry successful for historical bars save");
+        }
+    });
+}
+
 
 #pragma mark - Core Data Conversion Helpers (FIXED)
 
@@ -678,6 +789,28 @@
     return runtimeQuote;
 }
 
+- (void)updateCoreDataBar:(HistoricalBar *)coreDataBar
+        withRuntimeModel:(HistoricalBarModel *)barModel
+                  symbol:(NSString *)symbolName
+               timeframe:(BarTimeframe)timeframe
+               inContext:(NSManagedObjectContext *)context {
+    
+    // Assicurati che il Symbol esista
+    if (!coreDataBar.symbol) {
+        Symbol *symbol = [self findOrCreateSymbolWithName:symbolName inContext:context];
+        coreDataBar.symbol = symbol;
+    }
+    
+    // Aggiorna i dati della barra
+    coreDataBar.date = barModel.date;
+    coreDataBar.open = barModel.open;
+    coreDataBar.high = barModel.high;
+    coreDataBar.low = barModel.low ;
+    coreDataBar.close = barModel.close;
+    coreDataBar.adjustedClose = barModel.adjustedClose;
+    coreDataBar.volume = barModel.volume ;
+    coreDataBar.timeframe = timeframe;
+}
 
 - (void)updateCoreDataQuote:(MarketQuote *)coreDataQuote withRuntimeModel:(MarketQuoteModel *)runtimeQuote {
     // Ensure Symbol relationship is set
@@ -1135,30 +1268,23 @@
 }
 
 - (Symbol *)findOrCreateSymbolWithName:(NSString *)symbolName inContext:(NSManagedObjectContext *)context {
-    if (!symbolName || symbolName.length == 0 || !context) return nil;
-    
-    NSString *normalizedSymbol = symbolName.uppercaseString;
-    
-    // Try to find existing Symbol
+    // Cerca il simbolo esistente
     NSFetchRequest *request = [Symbol fetchRequest];
-    request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", normalizedSymbol];
+    request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbolName];
+    request.fetchLimit = 1;
     
-    NSError *error;
+    NSError *error = nil;
     NSArray *results = [context executeFetchRequest:request error:&error];
     
-    Symbol *symbol;
     if (results.count > 0) {
-        symbol = results.firstObject;
-    } else {
-        // Create new Symbol
-        symbol = [NSEntityDescription insertNewObjectForEntityForName:@"Symbol" inManagedObjectContext:context];
-        symbol.symbol = normalizedSymbol;
-        symbol.creationDate = [NSDate date];
-        symbol.interactionCount = 0;
-        symbol.isFavorite = NO;
+        return results.firstObject;
     }
     
-    return symbol;
+    // Crea nuovo simbolo se non esiste
+    Symbol *newSymbol = [NSEntityDescription insertNewObjectForEntityForName:@"Symbol"
+                                                      inManagedObjectContext:context];
+    newSymbol.symbol = symbolName;
+    return newSymbol;
 }
 
 #pragma mark - VALIDATION: Market Data Architecture Compliance

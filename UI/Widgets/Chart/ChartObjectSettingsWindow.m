@@ -19,6 +19,8 @@
 
 #pragma mark - Initialization
 
+
+
 - (instancetype)initWithObject:(ChartObjectModel *)object
                 objectsManager:(ChartObjectsManager *)manager {
     
@@ -35,18 +37,107 @@
         _targetObject = object;
         _objectsManager = manager;
         
+        // ✅ VALIDATION: Check oggetto e style
+        if (!object || !object.style) {
+            NSLog(@"❌ ChartObjectSettingsWindow: Invalid object or style");
+            return nil;
+        }
+        
         // Create working copy of style
         _originalStyle = [object.style copy];
         _workingStyle = [object.style copy];
         
-        [self setupWindow];
-        [self setupUI];
-        [self refreshUI];
+        // ✅ VALIDATION: Check copy successo
+        if (!_originalStyle || !_workingStyle) {
+            NSLog(@"❌ ChartObjectSettingsWindow: Failed to copy style");
+            return nil;
+        }
         
-        NSLog(@"✅ ChartObjectSettingsWindow: Initialized for object '%@'", object.name);
+        [self setupWindow];
+        
+        @try {
+            [self setupUI];
+            
+            // ✅ SAFE: Chiama refreshUI solo se tutti i controlli esistono
+            if (self.objectNameLabel && self.colorWell && self.thicknessSlider) {
+                [self refreshUI];
+            } else {
+                NSLog(@"⚠️ ChartObjectSettingsWindow: UI controls not ready, skipping refreshUI");
+            }
+            
+        } @catch (NSException *exception) {
+            NSLog(@"❌ ChartObjectSettingsWindow: Exception during initialization: %@", exception.reason);
+            return nil;
+        }
+        
+        NSLog(@"✅ ChartObjectSettingsWindow: Initialized successfully for object '%@'", object.name);
     }
     
     return self;
+}
+
+
+- (void)refreshUI {
+    if (!self.targetObject || !self.workingStyle) {
+        NSLog(@"⚠️ ChartObjectSettingsWindow: refreshUI called with nil objects");
+        return;
+    }
+    
+    @try {
+        // ✅ SAFE: Controlla ogni controllo prima di usarlo
+        
+        // Update header
+        if (self.objectNameLabel) {
+            self.objectNameLabel.stringValue = self.targetObject.name ?: @"Unknown Object";
+        }
+        
+        if (self.objectTypeLabel) {
+            self.objectTypeLabel.stringValue = [self stringForObjectType:self.targetObject.type];
+        }
+        
+        // Update style controls
+        if (self.colorWell) {
+            self.colorWell.color = self.workingStyle.color ?: [NSColor systemBlueColor];
+        }
+        
+        if (self.thicknessSlider) {
+            self.thicknessSlider.doubleValue = self.workingStyle.thickness;
+        }
+        
+        if (self.thicknessLabel) {
+            self.thicknessLabel.stringValue = [NSString stringWithFormat:@"%.1f", self.workingStyle.thickness];
+        }
+        
+        if (self.lineTypePopup) {
+            // Safe select - check bounds
+            NSInteger lineType = self.workingStyle.lineType;
+            if (lineType >= 0 && lineType < self.lineTypePopup.numberOfItems) {
+                [self.lineTypePopup selectItemAtIndex:lineType];
+            }
+        }
+        
+        if (self.opacitySlider) {
+            self.opacitySlider.doubleValue = self.workingStyle.opacity;
+        }
+        
+        if (self.opacityLabel) {
+            self.opacityLabel.stringValue = [NSString stringWithFormat:@"%.1f", self.workingStyle.opacity];
+        }
+        
+        // Update state controls
+        if (self.visibilityCheckbox) {
+            self.visibilityCheckbox.state = self.targetObject.isVisible ? NSControlStateValueOn : NSControlStateValueOff;
+        }
+        
+        if (self.lockCheckbox) {
+            self.lockCheckbox.state = self.targetObject.isLocked ? NSControlStateValueOn : NSControlStateValueOff;
+        }
+        
+        NSLog(@"✅ ChartObjectSettingsWindow: refreshUI completed successfully");
+        
+    } @catch (NSException *exception) {
+        NSLog(@"❌ ChartObjectSettingsWindow: Exception in refreshUI: %@", exception.reason);
+    }
 }
 
 #pragma mark - Window Setup
@@ -62,102 +153,96 @@
 }
 
 - (void)setupUI {
-    // Main content container
-    self.contentContainer = [[NSView alloc] init];
-    self.contentContainer.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.contentView addSubview:self.contentContainer];
-    
-    [self createHeaderSection];
-    [self createStyleSection];
-    [self createVisibilitySection];
-    [self createActionButtons];
-    [self setupConstraints];
+    @try {
+        // Main content container
+        self.contentContainer = [[NSView alloc] init];
+        self.contentContainer.translatesAutoresizingMaskIntoConstraints = NO;
+        [self.contentView addSubview:self.contentContainer];
+        
+        // Create sections in try-catch
+        [self createHeaderSection];
+        [self createStyleSection];
+        [self createVisibilitySection];
+        [self createActionButtons];
+        [self setupConstraints];
+        
+        NSLog(@"✅ ChartObjectSettingsWindow: UI setup completed");
+        
+    } @catch (NSException *exception) {
+        NSLog(@"❌ ChartObjectSettingsWindow: Exception in setupUI: %@", exception.reason);
+        @throw exception; // Re-throw per permettere al constructor di gestirlo
+    }
 }
 
+
+
 - (void)createHeaderSection {
-    // Object name label
-    self.objectNameLabel = [[NSTextField alloc] init];
-    self.objectNameLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.objectNameLabel.editable = NO;
-    self.objectNameLabel.bordered = NO;
-    self.objectNameLabel.backgroundColor = [NSColor clearColor];
-    self.objectNameLabel.font = [NSFont systemFontOfSize:16 weight:NSFontWeightSemibold];
-    self.objectNameLabel.alignment = NSTextAlignmentCenter;
-    [self.contentContainer addSubview:self.objectNameLabel];
-    
-    // Object type label
-    self.objectTypeLabel = [[NSTextField alloc] init];
-    self.objectTypeLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.objectTypeLabel.editable = NO;
-    self.objectTypeLabel.bordered = NO;
-    self.objectTypeLabel.backgroundColor = [NSColor clearColor];
-    self.objectTypeLabel.font = [NSFont systemFontOfSize:12];
-    self.objectTypeLabel.textColor = [NSColor secondaryLabelColor];
-    self.objectTypeLabel.alignment = NSTextAlignmentCenter;
-    [self.contentContainer addSubview:self.objectTypeLabel];
+    @try {
+        // Object name label
+        self.objectNameLabel = [[NSTextField alloc] init];
+        self.objectNameLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        self.objectNameLabel.editable = NO;
+        self.objectNameLabel.bordered = NO;
+        self.objectNameLabel.backgroundColor = [NSColor clearColor];
+        self.objectNameLabel.font = [NSFont boldSystemFontOfSize:16];
+        self.objectNameLabel.stringValue = @"Object Name";
+        [self.contentContainer addSubview:self.objectNameLabel];
+        
+        // Object type label
+        self.objectTypeLabel = [[NSTextField alloc] init];
+        self.objectTypeLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        self.objectTypeLabel.editable = NO;
+        self.objectTypeLabel.bordered = NO;
+        self.objectTypeLabel.backgroundColor = [NSColor clearColor];
+        self.objectTypeLabel.font = [NSFont systemFontOfSize:12];
+        self.objectTypeLabel.textColor = [NSColor secondaryLabelColor];
+        self.objectTypeLabel.stringValue = @"Object Type";
+        [self.contentContainer addSubview:self.objectTypeLabel];
+        
+        NSLog(@"✅ Header section created");
+        
+    } @catch (NSException *exception) {
+        NSLog(@"❌ Exception in createHeaderSection: %@", exception.reason);
+        @throw exception;
+    }
 }
 
 - (void)createStyleSection {
-    // Style section title
-    NSTextField *styleTitle = [self createSectionTitle:@"Style Properties"];
-    [self.contentContainer addSubview:styleTitle];
-    
-    // Color well with label
-    NSTextField *colorLabel = [self createLabel:@"Color:"];
-    self.colorWell = [[NSColorWell alloc] init];
-    self.colorWell.translatesAutoresizingMaskIntoConstraints = NO;
-    self.colorWell.action = @selector(colorChanged:);
-    self.colorWell.target = self;
-    
-    NSView *colorGroup = [self createControlGroup:colorLabel control:self.colorWell];
-    [self.contentContainer addSubview:colorGroup];
-    
-    // Thickness slider with label
-    NSTextField *thicknessLabelText = [self createLabel:@"Thickness:"];
-    self.thicknessSlider = [[NSSlider alloc] init];
-    self.thicknessSlider.translatesAutoresizingMaskIntoConstraints = NO;
-    self.thicknessSlider.minValue = 0.5;
-    self.thicknessSlider.maxValue = 8.0;
-    self.thicknessSlider.action = @selector(thicknessChanged:);
-    self.thicknessSlider.target = self;
-    
-    self.thicknessLabel = [self createValueLabel:@"2.0"];
-    
-    NSView *thicknessGroup = [self createSliderGroup:thicknessLabelText
-                                              slider:self.thicknessSlider
-                                           valueLabel:self.thicknessLabel];
-    [self.contentContainer addSubview:thicknessGroup];
-    
-    // Line type popup
-    NSTextField *lineTypeLabel = [self createLabel:@"Line Type:"];
-    self.lineTypePopup = [[NSPopUpButton alloc] init];
-    self.lineTypePopup.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.lineTypePopup addItemWithTitle:@"Solid"];
-    [self.lineTypePopup addItemWithTitle:@"Dashed"];
-    [self.lineTypePopup addItemWithTitle:@"Dotted"];
-    [self.lineTypePopup addItemWithTitle:@"Dash-Dot"];
-    self.lineTypePopup.action = @selector(lineTypeChanged:);
-    self.lineTypePopup.target = self;
-    
-    NSView *lineTypeGroup = [self createControlGroup:lineTypeLabel control:self.lineTypePopup];
-    [self.contentContainer addSubview:lineTypeGroup];
-    
-    // Opacity slider with label
-    NSTextField *opacityLabelText = [self createLabel:@"Opacity:"];
-    self.opacitySlider = [[NSSlider alloc] init];
-    self.opacitySlider.translatesAutoresizingMaskIntoConstraints = NO;
-    self.opacitySlider.minValue = 0.1;
-    self.opacitySlider.maxValue = 1.0;
-    self.opacitySlider.action = @selector(opacityChanged:);
-    self.opacitySlider.target = self;
-    
-    self.opacityLabel = [self createValueLabel:@"1.0"];
-    
-    NSView *opacityGroup = [self createSliderGroup:opacityLabelText
-                                            slider:self.opacitySlider
-                                         valueLabel:self.opacityLabel];
-    [self.contentContainer addSubview:opacityGroup];
+    @try {
+        // Color well
+        self.colorWell = [[NSColorWell alloc] init];
+        self.colorWell.translatesAutoresizingMaskIntoConstraints = NO;
+        self.colorWell.target = self;
+        self.colorWell.action = @selector(colorChanged:);
+        [self.contentContainer addSubview:self.colorWell];
+        
+        // Thickness slider
+        self.thicknessSlider = [[NSSlider alloc] init];
+        self.thicknessSlider.translatesAutoresizingMaskIntoConstraints = NO;
+        self.thicknessSlider.minValue = 0.5;
+        self.thicknessSlider.maxValue = 10.0;
+        self.thicknessSlider.doubleValue = 2.0;
+        self.thicknessSlider.target = self;
+        self.thicknessSlider.action = @selector(thicknessChanged:);
+        [self.contentContainer addSubview:self.thicknessSlider];
+        
+        // Thickness label
+        self.thicknessLabel = [[NSTextField alloc] init];
+        self.thicknessLabel.translatesAutoresizingMaskIntoConstraints = NO;
+        self.thicknessLabel.editable = NO;
+        self.thicknessLabel.bordered = NO;
+        self.thicknessLabel.backgroundColor = [NSColor clearColor];
+        self.thicknessLabel.stringValue = @"2.0";
+        [self.contentContainer addSubview:self.thicknessLabel];
+        
+        NSLog(@"✅ Style section created");
+        
+    } @catch (NSException *exception) {
+        NSLog(@"❌ Exception in createStyleSection: %@", exception.reason);
+        @throw exception;
+    }
 }
+
 
 - (void)createVisibilitySection {
     // Visibility section title
@@ -354,65 +439,71 @@
 #pragma mark - Public Methods
 
 - (void)showSettingsForObject:(ChartObjectModel *)object {
-    self.targetObject = object;
-    self.originalStyle = [object.style copy];
-    self.workingStyle = [object.style copy];
-    
-    [self refreshUI];
-    [self makeKeyAndOrderFront:nil];
-    
-    NSLog(@"🔧 ChartObjectSettingsWindow: Showing settings for object '%@'", object.name);
+    @try {
+        if (!object || !object.style) {
+            NSLog(@"❌ ChartObjectSettingsWindow: Invalid object or object.style is nil");
+            return;
+        }
+        
+        self.targetObject = object;
+        self.originalStyle = [object.style copy];
+        self.workingStyle = [object.style copy];
+        
+        if (!self.originalStyle || !self.workingStyle) {
+            NSLog(@"❌ ChartObjectSettingsWindow: Failed to copy object style");
+            return;
+        }
+        
+        [self refreshUI];
+        [self makeKeyAndOrderFront:nil];
+        
+        NSLog(@"🔧 ChartObjectSettingsWindow: Showing settings for object '%@'", object.name);
+        
+    } @catch (NSException *exception) {
+        NSLog(@"❌ ChartObjectSettingsWindow: Exception in showSettingsForObject: %@", exception.reason);
+    }
 }
 
-- (void)refreshUI {
-    if (!self.targetObject) return;
-    
-    // Update header
-    self.objectNameLabel.stringValue = self.targetObject.name;
-    self.objectTypeLabel.stringValue = [self stringForObjectType:self.targetObject.type];
-    
-    // Update style controls
-    self.colorWell.color = self.workingStyle.color;
-    self.thicknessSlider.doubleValue = self.workingStyle.thickness;
-    self.thicknessLabel.stringValue = [NSString stringWithFormat:@"%.1f", self.workingStyle.thickness];
-    [self.lineTypePopup selectItemAtIndex:self.workingStyle.lineType];
-    self.opacitySlider.doubleValue = self.workingStyle.opacity;
-    self.opacityLabel.stringValue = [NSString stringWithFormat:@"%.1f", self.workingStyle.opacity];
-    
-    // Update state controls
-    self.visibilityCheckbox.state = self.targetObject.isVisible ? NSControlStateValueOn : NSControlStateValueOff;
-    self.lockCheckbox.state = self.targetObject.isLocked ? NSControlStateValueOn : NSControlStateValueOff;
-}
 
 - (NSString *)stringForObjectType:(ChartObjectType)type {
     switch (type) {
-        case ChartObjectTypeHorizontalLine: return @"Horizontal Line";
         case ChartObjectTypeTrendline: return @"Trendline";
         case ChartObjectTypeFibonacci: return @"Fibonacci";
+        case ChartObjectTypeTarget: return @"Target Price";
+        case ChartObjectTypeChannel: return @"Channel";
         case ChartObjectTypeRectangle: return @"Rectangle";
         case ChartObjectTypeCircle: return @"Circle";
-        case ChartObjectTypeChannel: return @"Channel";
-        case ChartObjectTypeTarget: return @"Target Price";
-        case ChartObjectTypeFreeDrawing: return @"Free Drawing";
-        default: return @"Unknown";
+        case ChartObjectTypeTrailingFibo: return @"Trailing Fibonacci";
+        case ChartObjectTypeTrailingFiboBetween: return @"Trailing Fibonacci Between";
+        default: return @"Unknown Object";
     }
 }
 
 #pragma mark - Actions
 
 - (IBAction)colorChanged:(id)sender {
-    self.workingStyle.color = self.colorWell.color;
-    [self applyWorkingStyleToObject];
-    NSLog(@"🎨 Color changed to: %@", self.colorWell.color);
+    @try {
+        if (self.workingStyle && [sender isKindOfClass:[NSColorWell class]]) {
+            self.workingStyle.color = [(NSColorWell *)sender color];
+            [self applyWorkingStyleToObject];
+        }
+    } @catch (NSException *exception) {
+        NSLog(@"❌ ChartObjectSettingsWindow: Exception in colorChanged: %@", exception.reason);
+    }
 }
+
 
 - (IBAction)thicknessChanged:(id)sender {
-    self.workingStyle.thickness = self.thicknessSlider.doubleValue;
-    self.thicknessLabel.stringValue = [NSString stringWithFormat:@"%.1f", self.workingStyle.thickness];
-    [self applyWorkingStyleToObject];
-    NSLog(@"📏 Thickness changed to: %.1f", self.workingStyle.thickness);
+    @try {
+        if (self.workingStyle && [sender isKindOfClass:[NSSlider class]]) {
+            self.workingStyle.thickness = [(NSSlider *)sender doubleValue];
+            self.thicknessLabel.stringValue = [NSString stringWithFormat:@"%.1f", self.workingStyle.thickness];
+            [self applyWorkingStyleToObject];
+        }
+    } @catch (NSException *exception) {
+        NSLog(@"❌ ChartObjectSettingsWindow: Exception in thicknessChanged: %@", exception.reason);
+    }
 }
-
 - (IBAction)lineTypeChanged:(id)sender {
     self.workingStyle.lineType = (ChartLineType)self.lineTypePopup.indexOfSelectedItem;
     [self applyWorkingStyleToObject];
@@ -440,82 +531,165 @@
 - (IBAction)applyButtonClicked:(id)sender {
     NSLog(@"✅ ChartObjectSettingsWindow: Applying settings for object '%@'", self.targetObject.name);
     
-    // Apply the working style permanently
-    self.targetObject.style = [self.workingStyle copy];
-    self.targetObject.lastModified = [NSDate date];
-    
-    // Find and update layer timestamp
-    for (ChartLayerModel *layer in self.objectsManager.layers) {
-        if ([layer.objects containsObject:self.targetObject]) {
-            layer.lastModified = [NSDate date];
-            break;
+    @try {
+        // Validate objects exist
+        if (!self.targetObject || !self.workingStyle) {
+            NSLog(@"❌ ChartObjectSettingsWindow: Invalid state - targetObject or workingStyle is nil");
+            [self close];
+            return;
         }
+        
+        // Apply the working style permanently
+        self.targetObject.style = [self.workingStyle copy];
+        self.targetObject.lastModified = [NSDate date];
+        
+        // Find and update layer timestamp
+        if (self.objectsManager) {
+            for (ChartLayerModel *layer in self.objectsManager.layers) {
+                if ([layer.objects containsObject:self.targetObject]) {
+                    layer.lastModified = [NSDate date];
+                    break;
+                }
+            }
+            
+            // Save to DataHub
+            [self.objectsManager saveToDataHub];
+            NSLog(@"💾 ChartObjectSettingsWindow: Saved to DataHub");
+        }
+        
+        // ✅ SAFE CALLBACK: Avoid retain cycles and check validity
+        if (self.onApplyCallback) {
+            // Create safe copy of object for callback
+            ChartObjectModel *objectCopy = self.targetObject;
+            
+            // Clear callback before calling to avoid retain cycle
+            void (^callback)(ChartObjectModel *) = self.onApplyCallback;
+            self.onApplyCallback = nil;
+            
+            // Call callback on main thread
+            dispatch_async(dispatch_get_main_queue(), ^{
+                callback(objectCopy);
+            });
+            
+            NSLog(@"🔄 ChartObjectSettingsWindow: Triggered chart redraw via callback");
+        } else {
+            // ✅ FALLBACK: Trigger redraw via notification
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"ChartObjectSettingsApplied"
+                                                                object:nil  // Don't pass self
+                                                              userInfo:@{
+                @"objectId": self.targetObject.objectID ?: @"unknown",
+                                                                  @"symbol": self.objectsManager.currentSymbol ?: @""
+                                                              }];
+            NSLog(@"🔄 ChartObjectSettingsWindow: Triggered chart redraw via notification");
+        }
+        
+    } @catch (NSException *exception) {
+        NSLog(@"❌ ChartObjectSettingsWindow: Exception in applyButtonClicked: %@", exception.reason);
+    } @finally {
+        // Always close window
+        [self safeClose];
     }
-    
-    // Save to DataHub
-    [self.objectsManager saveToDataHub];
-    NSLog(@"💾 ChartObjectSettingsWindow: Saved to DataHub");
-    
-    // ✅ NUOVO: Trigger chart redraw via callback
-    if (self.onApplyCallback) {
-        self.onApplyCallback(self.targetObject);
-        NSLog(@"🔄 ChartObjectSettingsWindow: Triggered chart redraw via callback");
-    } else {
-        // ✅ FALLBACK: Trigger redraw via notification
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"ChartObjectSettingsApplied"
-                                                            object:self
-                                                          userInfo:@{
-                                                              @"object": self.targetObject,
-                                                              @"symbol": self.objectsManager.currentSymbol
-                                                          }];
-        NSLog(@"🔄 ChartObjectSettingsWindow: Triggered chart redraw via notification");
-    }
-    
-    [self close];
-    NSLog(@"✅ ChartObjectSettingsWindow: Settings applied successfully");
 }
+
+
 - (IBAction)cancelButtonClicked:(id)sender {
-    // Restore original style
-    self.targetObject.style = [self.originalStyle copy];
-    [self requestChartRefresh];
+    NSLog(@"❌ ChartObjectSettingsWindow: Cancelling changes");
     
-    [self close];
-    NSLog(@"❌ ChartObjectSettingsWindow: Cancelled changes");
+    @try {
+        // ✅ SAFE RESTORE: Check objects exist
+        if (self.targetObject && self.originalStyle) {
+            self.targetObject.style = [self.originalStyle copy];
+            NSLog(@"🔄 ChartObjectSettingsWindow: Restored original style");
+        }
+        
+        // Clear callback to avoid retain cycle
+        self.onApplyCallback = nil;
+        
+    } @catch (NSException *exception) {
+        NSLog(@"❌ ChartObjectSettingsWindow: Exception in cancelButtonClicked: %@", exception.reason);
+    } @finally {
+        // Always close window
+        [self safeClose];
+    }
 }
 
 - (IBAction)deleteButtonClicked:(id)sender {
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"Delete Object";
-    alert.informativeText = [NSString stringWithFormat:@"Are you sure you want to delete '%@'?", self.targetObject.name];
+    alert.informativeText = [NSString stringWithFormat:@"Are you sure you want to delete '%@'?",
+                            self.targetObject.name ?: @"this object"];
     [alert addButtonWithTitle:@"Delete"];
     [alert addButtonWithTitle:@"Cancel"];
     alert.alertStyle = NSAlertStyleWarning;
     
+    // ✅ SAFE SHEET: Use weak reference
+    __weak typeof(self) weakSelf = self;
     [alert beginSheetModalForWindow:self completionHandler:^(NSModalResponse returnCode) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (!strongSelf) return;
+        
         if (returnCode == NSAlertFirstButtonReturn) {
-            [self.objectsManager deleteObject:self.targetObject];
-            [self close];
-            NSLog(@"🗑️ ChartObjectSettingsWindow: Object deleted");
+            @try {
+                if (strongSelf.objectsManager && strongSelf.targetObject) {
+                    [strongSelf.objectsManager deleteObject:strongSelf.targetObject];
+                    NSLog(@"🗑️ ChartObjectSettingsWindow: Object deleted");
+                }
+            } @catch (NSException *exception) {
+                NSLog(@"❌ ChartObjectSettingsWindow: Exception in delete: %@", exception.reason);
+            }
         }
+        
+        [strongSelf safeClose];
     }];
 }
+
 
 #pragma mark - Private Helpers
 
 - (void)applyWorkingStyleToObject {
-    // Apply working style temporarily for preview
-    self.targetObject.style = [self.workingStyle copy];
-    [self requestChartRefresh];
+    @try {
+        if (self.targetObject && self.workingStyle) {
+            // Apply working style temporarily for preview
+            self.targetObject.style = [self.workingStyle copy];
+            [self requestChartRefresh];
+        }
+    } @catch (NSException *exception) {
+        NSLog(@"❌ ChartObjectSettingsWindow: Exception in applyWorkingStyleToObject: %@", exception.reason);
+    }
 }
 
 - (void)requestChartRefresh {
-    // Request chart refresh through the objects manager
-    // This would typically trigger a redraw of the chart
+    // Safe chart refresh request
     if (self.objectsManager) {
-        // The manager could have a delegate or notification system
-        // For now we just log the request
         NSLog(@"🔄 Requesting chart refresh for style preview");
+        
+        // Use notification instead of direct calls to avoid crashes
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"ChartObjectStylePreview"
+                                                            object:nil
+                                                          userInfo:@{
+            @"objectId": self.targetObject.objectID ?: @"unknown"
+                                                          }];
     }
 }
+
+
+#pragma mark - Safe Window Management
+
+- (void)safeClose {
+    // Clear all references before closing
+    self.onApplyCallback = nil;
+    self.targetObject = nil;
+    self.originalStyle = nil;
+    self.workingStyle = nil;
+    self.objectsManager = nil;
+    
+    // Close window safely
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self close];
+    });
+    
+    NSLog(@"🪟 ChartObjectSettingsWindow: Safely closed and cleaned up");
+}
+
 
 @end

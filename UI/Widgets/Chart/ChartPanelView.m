@@ -1272,20 +1272,20 @@
         NSLog(@"❌ ChartPanelView: ObjectRenderer or ObjectsManager is nil");
         return;
     }
-    
-    ChartObjectSettingsWindow *settingsWindow = [[ChartObjectSettingsWindow alloc]
+    self.objectSettingsWindow = nil;
+    self.objectSettingsWindow = [[ChartObjectSettingsWindow alloc]
            initWithObject:object objectsManager:self.objectRenderer.objectsManager];
     
-    if (!settingsWindow) {
+    if (!self.objectSettingsWindow) {
         NSLog(@"❌ ChartPanelView: Failed to create settings window");
         return;
     }
     
     // ✅ SAFE CALLBACK: Use weak references to avoid retain cycles
     __weak typeof(self) weakSelf = self;
-    __weak typeof(settingsWindow) weakWindow = settingsWindow;
+    __weak typeof(self.objectSettingsWindow) weakWindow = self.objectSettingsWindow;
     
-    settingsWindow.onApplyCallback = ^(ChartObjectModel *updatedObject) {
+    self.objectSettingsWindow.onApplyCallback = ^(ChartObjectModel *updatedObject) {
         // Use strong references inside block
         __strong typeof(weakSelf) strongSelf = weakSelf;
         __strong typeof(weakWindow) strongWindow = weakWindow;
@@ -1320,7 +1320,7 @@
     };
     
     // Position and show
-    [settingsWindow makeKeyAndOrderFront:nil];
+    [self.objectSettingsWindow makeKeyAndOrderFront:nil];
     
     NSLog(@"✅ ChartPanelView: Settings window opened successfully");
 }

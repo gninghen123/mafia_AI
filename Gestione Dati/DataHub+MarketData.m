@@ -251,8 +251,8 @@
     
     // ✅ CACHE: Include extended hours flag in cache key
     NSString *cacheKey = [NSString stringWithFormat:@"historical_%@_%ld_%ld_%@",
-                         symbol, (long)timeframe, (long)barCount,
-                         needExtendedHours ? @"extended" : @"regular"];
+                          symbol, (long)timeframe, (long)barCount,
+                          needExtendedHours ? @"extended" : @"regular"];
     
     NSArray<HistoricalBarModel *> *cachedBars = self.historicalCache[cacheKey];
     BOOL isStale = [self isCacheStale:cacheKey dataType:DataFreshnessTypeHistorical];
@@ -268,7 +268,7 @@
         [self loadHistoricalDataFromCoreData:symbol
                                    timeframe:timeframe
                                     barCount:barCount
-                            needExtendedHours:needExtendedHours  // ✅ PASS PARAMETER
+                           needExtendedHours:needExtendedHours  // ✅ PASS PARAMETER
                                   completion:^(NSArray<HistoricalBarModel *> *bars) {
             if (bars.count > 0) {
                 self.historicalCache[cacheKey] = bars;
@@ -282,9 +282,11 @@
         NSLog(@"📡 DataHub: Requesting fresh historical data for %@ (extended: %@)",
               symbol, needExtendedHours ? @"YES" : @"NO");
         
+        // ✅ CHIAMARE IL NUOVO METODO CON needExtendedHours
         [[DataManager sharedManager] requestHistoricalDataForSymbol:symbol
                                                           timeframe:timeframe
                                                               count:barCount
+                                                  needExtendedHours:needExtendedHours  // ✅ PASSARE IL PARAMETRO
                                                          completion:^(NSArray<HistoricalBarModel *> *bars, NSError *error) {
             if (error) {
                 NSLog(@"❌ DataHub: Historical data request failed: %@", error.localizedDescription);
@@ -294,13 +296,13 @@
             if (bars.count > 0) {
                 // Update cache with extended hours flag
                 self.historicalCache[cacheKey] = bars;
-                self.cacheTimestamps[cacheKey] = [NSDate date];  // Set timestamp directly
+                self.cacheTimestamps[cacheKey] = [NSDate date];
                 
                 // Save to Core Data with extended hours flag
                 [self saveHistoricalDataToCoreData:bars
                                             symbol:symbol
                                          timeframe:timeframe
-                                  needExtendedHours:needExtendedHours];
+                                 needExtendedHours:needExtendedHours];
                 
                 // Call completion with fresh data
                 dispatch_async(dispatch_get_main_queue(), ^{

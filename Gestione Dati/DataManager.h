@@ -46,7 +46,7 @@
 
 // Market data requests
 - (NSString *)requestQuoteForSymbol:(NSString *)symbol
-                          completion:(void (^)(MarketData *quote, NSError *error))completion;
+                         completion:(void (^)(MarketData *quote, NSError *error))completion;
 // Batch quote request
 - (NSString *)requestQuotesForSymbols:(NSArray<NSString *> *)symbols
                            completion:(void (^)(NSDictionary *quotes, NSError *error))completion;
@@ -67,8 +67,22 @@
 
 - (NSString *)requestOrderBookForSymbol:(NSString *)symbol
                              completion:(void (^)(NSArray<OrderBookEntry *> *bids,
-                                                 NSArray<OrderBookEntry *> *asks,
-                                                 NSError *error))completion;
+                                                  NSArray<OrderBookEntry *> *asks,
+                                                  NSError *error))completion;
+// Historical data - with count + extended hours (NUOVO)
+- (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
+                                   timeframe:(BarTimeframe)timeframe
+                                       count:(NSInteger)count
+                           needExtendedHours:(BOOL)needExtendedHours
+                                  completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion;
+
+// Historical data - with date range + extended hours (NUOVO)
+- (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
+                                   timeframe:(BarTimeframe)timeframe
+                                   startDate:(NSDate *)startDate
+                                     endDate:(NSDate *)endDate
+                           needExtendedHours:(BOOL)needExtendedHours
+                                  completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion;
 
 // Account data requests
 // TODO: Update these when Position/Order runtime models are created
@@ -106,4 +120,8 @@
  */
 - (void)requestZacksData:(NSDictionary *)parameters
               completion:(void (^)(SeasonalDataModel * _Nullable data, NSError * _Nullable error))completion;
+
+
+
+
 @end

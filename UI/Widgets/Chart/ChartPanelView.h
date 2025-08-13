@@ -20,6 +20,7 @@
 
 @interface ChartPanelView : NSView
 
+@property (nonatomic, strong) ChartObjectSettingsWindow *objectSettingsWindow;
 
 @property (nonatomic, strong) ChartAlertRenderer *alertRenderer;
 

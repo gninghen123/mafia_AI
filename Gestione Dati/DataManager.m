@@ -178,58 +178,21 @@
     
     return requestID;
 }
-// Historical data - with date range
 - (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
                                    timeframe:(BarTimeframe)timeframe
                                    startDate:(NSDate *)startDate
                                      endDate:(NSDate *)endDate
                                   completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion {
     
-    if (!symbol || symbol.length == 0) {
-        NSError *error = [NSError errorWithDomain:@"DataManager"
-                                             code:100
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid symbol"}];
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(nil, error);
-            });
-        }
-        return nil;
-    }
-    
-    NSString *requestID = [[NSUUID UUID] UUIDString];
-    NSDictionary *parameters = @{
-        @"symbol": symbol,
-        @"timeframe": @(timeframe),
-        @"startDate": startDate ?: [NSDate dateWithTimeIntervalSinceNow:-86400 * 30], // Default 30 days
-        @"endDate": endDate ?: [NSDate date]
-    };
-    
-    NSMutableDictionary *requestInfo = [@{
-        @"type": @"historical",
-        @"symbol": symbol,
-        @"timeframe": @(timeframe)
-    } mutableCopy];
-    
-    if (completion) {
-        requestInfo[@"completion"] = [completion copy];
-    }
-    
-    self.activeRequests[requestID] = requestInfo;
-    
-    [self.downloadManager executeRequest:DataRequestTypeHistoricalBars
-                              parameters:parameters
-                              completion:^(id result, DataSourceType usedSource, NSError *error) {
-        [self handleHistoricalResponse:result
-                                 error:error
-                             forSymbol:symbol
-                            timeframe:timeframe
-                             requestID:requestID
-                            completion:completion];
-    }];
-    
-    return requestID;
+    // ✅ CHIAMARE IL NUOVO METODO CON needExtendedHours = NO
+    return [self requestHistoricalDataForSymbol:symbol
+                                      timeframe:timeframe
+                                      startDate:startDate
+                                        endDate:endDate
+                              needExtendedHours:NO  // Default: NO extended hours
+                                     completion:completion];
 }
+
 
 // Historical data - with count
 
@@ -238,49 +201,12 @@
                                        count:(NSInteger)count
                                   completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion {
     
-    if (!symbol || symbol.length == 0) {
-        NSError *error = [NSError errorWithDomain:@"DataManager"
-                                             code:100
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid symbol"}];
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(nil, error);
-            });
-        }
-        return nil;
-    }
-    
-    NSString *requestID = [[NSUUID UUID] UUIDString];
-    NSDictionary *parameters = @{
-        @"symbol": symbol,
-        @"timeframe": @(timeframe),
-        @"count": @(count),
-        @"needExtendedHours": @(NO)
-    };
-    
-    NSMutableDictionary *requestInfo = [@{
-        @"type": @"historical",
-        @"symbol": symbol,
-        @"timeframe": @(timeframe)
-    } mutableCopy];
-    
-    if (completion) {
-        requestInfo[@"completion"] = [completion copy];
-    }
-    
-    self.activeRequests[requestID] = requestInfo;
-    
-    [[DownloadManager sharedManager] executeHistoricalRequestWithCount:parameters
-                                                             completion:^(id result, DataSourceType usedSource, NSError *error) {
-        [self handleHistoricalResponse:result
-                                 error:error
-                             forSymbol:symbol
-                            timeframe:timeframe
-                             requestID:requestID
-                            completion:completion];
-    }];
-    
-    return requestID;
+    // ✅ CHIAMARE IL NUOVO METODO CON needExtendedHours = NO
+    return [self requestHistoricalDataForSymbol:symbol
+                                      timeframe:timeframe
+                                          count:count
+                              needExtendedHours:NO  // Default: NO extended hours
+                                     completion:completion];
 }
 
 #pragma mark - Response Handlers
@@ -874,6 +800,124 @@
 
 - (id<DataSourceAdapter>)getAdapterForDataSource:(DataSourceType)sourceType {
     return [DataAdapterFactory adapterForDataSource:sourceType];
+}
+
+
+#pragma mark - Historical Data with Extended Hours Support
+
+// Historical data - with count + extended hours
+- (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
+                                   timeframe:(BarTimeframe)timeframe
+                                       count:(NSInteger)count
+                           needExtendedHours:(BOOL)needExtendedHours
+                                  completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion {
+    
+    if (!symbol || symbol.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"DataManager"
+                                             code:100
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid symbol"}];
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, error);
+            });
+        }
+        return nil;
+    }
+    
+    NSLog(@"📊 DataManager: Requesting %ld bars for %@ (timeframe:%ld, extended:%@)",
+          (long)count, symbol, (long)timeframe, needExtendedHours ? @"YES" : @"NO");
+    
+    NSString *requestID = [[NSUUID UUID] UUIDString];
+    NSDictionary *parameters = @{
+        @"symbol": symbol,
+        @"timeframe": @(timeframe),
+        @"count": @(count),
+        @"needExtendedHours": @(needExtendedHours)  // ✅ AGGIUNTO IL PARAMETRO
+    };
+    
+    NSMutableDictionary *requestInfo = [@{
+        @"type": @"historical",
+        @"symbol": symbol,
+        @"timeframe": @(timeframe),
+        @"needExtendedHours": @(needExtendedHours)  // ✅ TRACCIAMO IL PARAMETRO
+    } mutableCopy];
+    
+    if (completion) {
+        requestInfo[@"completion"] = [completion copy];
+    }
+    
+    self.activeRequests[requestID] = requestInfo;
+    
+    [[DownloadManager sharedManager] executeHistoricalRequestWithCount:parameters
+                                                             completion:^(id result, DataSourceType usedSource, NSError *error) {
+        [self handleHistoricalResponse:result
+                                 error:error
+                             forSymbol:symbol
+                            timeframe:timeframe
+                             requestID:requestID
+                            completion:completion];
+    }];
+    
+    return requestID;
+}
+
+// Historical data - with date range + extended hours
+- (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
+                                   timeframe:(BarTimeframe)timeframe
+                                   startDate:(NSDate *)startDate
+                                     endDate:(NSDate *)endDate
+                           needExtendedHours:(BOOL)needExtendedHours
+                                  completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion {
+    
+    if (!symbol || symbol.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"DataManager"
+                                             code:100
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid symbol"}];
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, error);
+            });
+        }
+        return nil;
+    }
+    
+    NSLog(@"📊 DataManager: Requesting historical data for %@ from %@ to %@ (timeframe:%ld, extended:%@)",
+          symbol, startDate, endDate, (long)timeframe, needExtendedHours ? @"YES" : @"NO");
+    
+    NSString *requestID = [[NSUUID UUID] UUIDString];
+    NSDictionary *parameters = @{
+        @"symbol": symbol,
+        @"timeframe": @(timeframe),
+        @"startDate": startDate ?: [NSDate dateWithTimeIntervalSinceNow:-86400 * 30], // Default 30 days
+        @"endDate": endDate ?: [NSDate date],
+        @"needExtendedHours": @(needExtendedHours)  // ✅ AGGIUNTO IL PARAMETRO
+    };
+    
+    NSMutableDictionary *requestInfo = [@{
+        @"type": @"historical",
+        @"symbol": symbol,
+        @"timeframe": @(timeframe),
+        @"needExtendedHours": @(needExtendedHours)  // ✅ TRACCIAMO IL PARAMETRO
+    } mutableCopy];
+    
+    if (completion) {
+        requestInfo[@"completion"] = [completion copy];
+    }
+    
+    self.activeRequests[requestID] = requestInfo;
+    
+    [self.downloadManager executeRequest:DataRequestTypeHistoricalBars
+                              parameters:parameters
+                              completion:^(id result, DataSourceType usedSource, NSError *error) {
+        [self handleHistoricalResponse:result
+                                 error:error
+                             forSymbol:symbol
+                            timeframe:timeframe
+                             requestID:requestID
+                            completion:completion];
+    }];
+    
+    return requestID;
 }
 
 @end

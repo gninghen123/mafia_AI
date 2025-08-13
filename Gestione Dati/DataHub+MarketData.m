@@ -51,9 +51,9 @@
         case DataFreshnessTypeQuote:
             return 10.0; // 10 seconds for quotes
         case DataFreshnessTypeMarketOverview:
-            return 60.0; // 1 minute
+            return 300.0; // 5 minute
         case DataFreshnessTypeHistorical:
-            return 300.0; // 5 minutes
+            return 60.0; // 1 minutes
         case DataFreshnessTypeCompanyInfo:
             return 86400.0; // 24 hours
         case DataFreshnessTypeWatchlist:

@@ -25,6 +25,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) double yRangeMin;
 @property (nonatomic, assign) double yRangeMax;
 @property (nonatomic, assign) CGRect panelBounds;
+
+@property (nonatomic, assign) NSInteger barsPerDay;
+@property (nonatomic, assign) NSInteger currentTimeframeMinutes;
+
 @end
 
 #pragma mark - Chart Object Renderer

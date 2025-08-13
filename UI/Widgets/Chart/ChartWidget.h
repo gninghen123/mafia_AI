@@ -10,6 +10,7 @@
 #import "ChartObjectsManager.h"
 #import "ChartObjectRenderer.h"
 #import "CommonTypes.h"          // Per BarTimeframe enum
+#import "ChartPreferencesWindow.h"
 
 
 @class ChartPanelView;
@@ -31,10 +32,14 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 
 @interface ChartWidget : BaseWidget
 
+
+#pragma mark - Trading Hours Preferences
+@property (nonatomic, assign) ChartTradingHours tradingHoursMode;
+
+
 #pragma mark - UI Components (Programmatic - STRONG references)
 @property (nonatomic, strong) NSTextField *symbolTextField;
 @property (nonatomic, strong) NSSegmentedControl *timeframeSegmented;
-@property (nonatomic, strong) NSTextField *barsCountTextField;
 @property (nonatomic, strong) NSPopUpButton *templatePopup;
 @property (nonatomic, strong) NSButton *preferencesButton;
 @property (nonatomic, strong) NSSplitView *panelsSplitView;
@@ -88,4 +93,13 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 - (HistoricalBarModel *)createCurrentBarFromQuote:(MarketQuoteModel *)quote
                                         timeframe:(BarTimeframe)timeframe;
 - (NSDate *)adjustDateForTimeframe:(NSDate *)date timeframe:(BarTimeframe)timeframe;
+
+#pragma mark - Preferences Management
+- (void)preferencesDidChange:(BOOL)needsDataReload;
+
+#pragma mark - Trading Hours Calculation (Public for ChartObjectRenderer)
+- (NSInteger)barsPerDayForCurrentTimeframe;
+- (NSInteger)getCurrentTimeframeInMinutes;
+
+
 @end

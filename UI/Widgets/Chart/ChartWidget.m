@@ -78,45 +78,50 @@ extern NSString *const DataHubDataLoadedNotification;
     [self setupBottomControls];
 }
 
-// ======== AGGIUNGI setupTopToolbar ========
 - (void)setupTopToolbar {
-    // Symbol text field (come nello XIB)
+    // Objects panel toggle (NUOVO - primo elemento)
+    self.objectsPanelToggle = [[NSButton alloc] init];
+    self.objectsPanelToggle.title = @"📊";
+    self.objectsPanelToggle.bezelStyle = NSBezelStyleRounded;
+    self.objectsPanelToggle.state = NSControlStateValueOff;
+    self.objectsPanelToggle.target = self;
+    self.objectsPanelToggle.action = @selector(toggleObjectsPanel:);
+    self.objectsPanelToggle.toolTip = @"Toggle Objects Panel";
+    [self.contentView addSubview:self.objectsPanelToggle];
+    
+    // Symbol text field
     self.symbolTextField = [[NSTextField alloc] init];
-    self.symbolTextField.translatesAutoresizingMaskIntoConstraints = NO;
-    self.symbolTextField.placeholderString = @"Enter symbol";
+    self.symbolTextField.stringValue = @"";
+    self.symbolTextField.placeholderString = @"Symbol";
     self.symbolTextField.delegate = self;
     [self.contentView addSubview:self.symbolTextField];
     
-    self.objectsVisibilityToggle = [NSButton buttonWithTitle:@"👁️"
-                                                     target:self
-                                                     action:@selector(toggleAllObjectsVisibility:)];
-    self.objectsVisibilityToggle.translatesAutoresizingMaskIntoConstraints = NO;
+    // Objects visibility toggle (NUOVO)
+    self.objectsVisibilityToggle = [[NSButton alloc] init];
+    self.objectsVisibilityToggle.title = @"👁";
+    self.objectsVisibilityToggle.bezelStyle = NSBezelStyleRounded;
+    self.objectsVisibilityToggle.state = NSControlStateValueOn;
+    self.objectsVisibilityToggle.target = self;
+    self.objectsVisibilityToggle.action = @selector(toggleAllObjectsVisibility:);
+    self.objectsVisibilityToggle.toolTip = @"Toggle Objects Visibility";
     [self.contentView addSubview:self.objectsVisibilityToggle];
-
-    // Timeframe segmented control (come nello XIB)
+    
+    // Timeframe segmented control
     self.timeframeSegmented = [[NSSegmentedControl alloc] init];
-    self.timeframeSegmented.translatesAutoresizingMaskIntoConstraints = NO;
     self.timeframeSegmented.segmentCount = 8;
-    self.timeframeSegmented.segmentStyle = NSSegmentStyleRounded;
     [self.contentView addSubview:self.timeframeSegmented];
     
-    // Bars count text field (come nello XIB)
-    self.barsCountTextField = [[NSTextField alloc] init];
-    self.barsCountTextField.translatesAutoresizingMaskIntoConstraints = NO;
-    self.barsCountTextField.stringValue = @"1000";
-    [self.contentView addSubview:self.barsCountTextField];
+    // Template popup (mantieni)
+    self.templatePopup = [[NSPopUpButton alloc] init];
+    [self.contentView addSubview:self.templatePopup];
     
-    // Template popup (come nello XIB)
-      self.templatePopup = [[NSPopUpButton alloc] init];
-      self.templatePopup.translatesAutoresizingMaskIntoConstraints = NO;
-      [self.contentView addSubview:self.templatePopup];
-    
-    // Preferences button (come nello XIB)
-    self.preferencesButton = [NSButton buttonWithTitle:@"⚙"
-                                                target:self
-                                                action:@selector(showPreferences:)];
-    self.preferencesButton.translatesAutoresizingMaskIntoConstraints = NO;
+    // Preferences button (MODIFICATO - ora apre preferences window)
+    self.preferencesButton = [[NSButton alloc] init];
+    self.preferencesButton.title = @"⚙️";
     self.preferencesButton.bezelStyle = NSBezelStyleRounded;
+    self.preferencesButton.target = self;
+    self.preferencesButton.action = @selector(showPreferences:);
+    self.preferencesButton.toolTip = @"Chart Preferences";
     [self.contentView addSubview:self.preferencesButton];
 }
 
@@ -142,43 +147,57 @@ extern NSString *const DataHubDataLoadedNotification;
     
     // Zoom out button (come nello XIB)
     self.zoomOutButton = [NSButton buttonWithTitle:@"-"
-                                           target:self
-                                           action:@selector(zoomOut:)];
+                                            target:self
+                                            action:@selector(zoomOut:)];
     self.zoomOutButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.zoomOutButton.bezelStyle = NSBezelStyleRounded;
     [self.contentView addSubview:self.zoomOutButton];
     
     // Zoom in button (come nello XIB)
     self.zoomInButton = [NSButton buttonWithTitle:@"+"
-                                          target:self
-                                          action:@selector(zoomIn:)];
+                                           target:self
+                                           action:@selector(zoomIn:)];
     self.zoomInButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.zoomInButton.bezelStyle = NSBezelStyleRounded;
     [self.contentView addSubview:self.zoomInButton];
     
     // Zoom all button (come nello XIB)
     self.zoomAllButton = [NSButton buttonWithTitle:@"All"
-                                           target:self
-                                           action:@selector(zoomAll:)];
+                                            target:self
+                                            action:@selector(zoomAll:)];
     self.zoomAllButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.zoomAllButton.bezelStyle = NSBezelStyleRounded;
     [self.contentView addSubview:self.zoomAllButton];
 }
 
 - (void)setupConstraints {
+    // Disable autoresizing
+    self.objectsPanelToggle.translatesAutoresizingMaskIntoConstraints = NO;
+    self.symbolTextField.translatesAutoresizingMaskIntoConstraints = NO;
+    self.objectsVisibilityToggle.translatesAutoresizingMaskIntoConstraints = NO;
+    self.timeframeSegmented.translatesAutoresizingMaskIntoConstraints = NO;
+    // RIMUOVERE: self.barsCountTextField.translatesAutoresizingMaskIntoConstraints = NO;
+    self.templatePopup.translatesAutoresizingMaskIntoConstraints = NO;
+    self.preferencesButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.panelsSplitView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.objectsPanel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.panSlider.translatesAutoresizingMaskIntoConstraints = NO;
+    self.zoomOutButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.zoomInButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.zoomAllButton.translatesAutoresizingMaskIntoConstraints = NO;
     
+    // Create constraint per split view (per animazione sidebar)
     self.splitViewLeadingConstraint = [self.panelsSplitView.leadingAnchor
-                                         constraintEqualToAnchor:self.contentView.leadingAnchor
-                                         constant:14];
+                                      constraintEqualToAnchor:self.contentView.leadingAnchor
+                                      constant:8];
     
     [NSLayoutConstraint activateConstraints:@[
-        // Objects panel toggle - NUOVO (all'estrema sinistra)
+        // Top toolbar - AGGIORNATO senza barsCountTextField
         [self.objectsPanelToggle.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:8],
         [self.objectsPanelToggle.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
-        [self.objectsPanelToggle.widthAnchor constraintEqualToConstant:30],
+        [self.objectsPanelToggle.widthAnchor constraintEqualToConstant:32],
         [self.objectsPanelToggle.heightAnchor constraintEqualToConstant:21],
         
-        // Symbol field - MODIFICATO (ora dopo il toggle button)
         [self.symbolTextField.centerYAnchor constraintEqualToAnchor:self.objectsPanelToggle.centerYAnchor],
         [self.symbolTextField.leadingAnchor constraintEqualToAnchor:self.objectsPanelToggle.trailingAnchor constant:8],
         [self.symbolTextField.widthAnchor constraintEqualToConstant:100],
@@ -189,19 +208,14 @@ extern NSString *const DataHubDataLoadedNotification;
         [self.objectsVisibilityToggle.widthAnchor constraintEqualToConstant:32],
         [self.objectsVisibilityToggle.heightAnchor constraintEqualToConstant:21],
         
-        // Timeframe segments (spostati per fare spazio)
+        // Timeframe segments - COLLEGATO DIRETTAMENTE al visibility toggle
         [self.timeframeSegmented.leadingAnchor constraintEqualToAnchor:self.objectsVisibilityToggle.trailingAnchor constant:8],
         [self.timeframeSegmented.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
         
-        // Bars count field - INVARIATO (relativo al timeframe)
-        [self.barsCountTextField.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
-        [self.barsCountTextField.leadingAnchor constraintEqualToAnchor:self.timeframeSegmented.trailingAnchor constant:8],
-        [self.barsCountTextField.widthAnchor constraintEqualToConstant:60],
-        
-        // Template popup - INVARIATO (relativo al bars count)
+        // Template popup - COLLEGATO DIRETTAMENTE al timeframe
         [self.templatePopup.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
-        [self.templatePopup.leadingAnchor constraintEqualToAnchor:self.barsCountTextField.trailingAnchor constant:8],
-        [self.templatePopup.widthAnchor constraintEqualToConstant:80],
+        [self.templatePopup.leadingAnchor constraintEqualToAnchor:self.timeframeSegmented.trailingAnchor constant:8],
+        [self.templatePopup.widthAnchor constraintEqualToConstant:100],
         
         // Preferences button - INVARIATO (all'estrema destra)
         [self.preferencesButton.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
@@ -209,18 +223,17 @@ extern NSString *const DataHubDataLoadedNotification;
         [self.preferencesButton.widthAnchor constraintEqualToConstant:30],
         [self.preferencesButton.heightAnchor constraintEqualToConstant:21],
         
-        // Objects panel - NUOVO (a sinistra del main split view quando visibile)
+        // Objects panel e resto INVARIATO...
         [self.objectsPanel.topAnchor constraintEqualToAnchor:self.panelsSplitView.topAnchor],
         [self.objectsPanel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
         [self.objectsPanel.bottomAnchor constraintEqualToAnchor:self.panelsSplitView.bottomAnchor],
         
-        // Main split view - INVARIATO in alto e destra, MA leading sarà animato
         [self.panelsSplitView.topAnchor constraintEqualToAnchor:self.symbolTextField.bottomAnchor constant:8],
-        self.splitViewLeadingConstraint, // ← Usa il constraint memorizzato
+        self.splitViewLeadingConstraint,
         [self.panelsSplitView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-20],
         [self.panelsSplitView.bottomAnchor constraintEqualToAnchor:self.panSlider.topAnchor constant:-8],
         
-        // Bottom controls - TUTTI INVARIATI
+        // Bottom controls INVARIATI
         [self.panSlider.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-6],
         [self.panSlider.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
         [self.panSlider.trailingAnchor constraintEqualToAnchor:self.zoomOutButton.leadingAnchor constant:-8],
@@ -242,14 +255,15 @@ extern NSString *const DataHubDataLoadedNotification;
 
 
 - (void)setupChartDefaults {
-    // Codice esistente...
     self.currentSymbol = @"CRCL";
     self.currentTimeframe = ChartTimeframeDaily;
+    
+    // NUOVO: Default preferences
+    self.tradingHoursMode = ChartTradingHoursRegularOnly;
     self.barsToDownload = 1000;
     self.initialBarsToShow = 100;
-    self.chartPanels = [NSMutableArray array];
     
-    // NUOVO: Inizializza objects manager
+    self.chartPanels = [NSMutableArray array];
     self.objectsManager = [ChartObjectsManager managerForSymbol:self.currentSymbol];
     
     // Reset viewport state
@@ -259,12 +273,12 @@ extern NSString *const DataHubDataLoadedNotification;
     self.yRangeMax = 0;
     self.isYRangeOverridden = NO;
 }
+
 - (void)setupInitialUI {
     // Setup text field delegates e actions
     self.symbolTextField.delegate = self;
     self.symbolTextField.target = self;
     self.symbolTextField.action = @selector(symbolChanged:);
-    self.barsCountTextField.stringValue = @"1000";
     
     // Setup timeframe segmented control (mantieni codice esistente)
     if (self.timeframeSegmented.segmentCount >= 8) {
@@ -300,7 +314,7 @@ extern NSString *const DataHubDataLoadedNotification;
     // - zoomInButton -> zoomIn:
     // - zoomAllButton -> zoomAll:
     // - preferencesButton -> showPreferences:
-
+    
 }
 
 - (void)ensureRenderersAreSetup {
@@ -324,13 +338,13 @@ extern NSString *const DataHubDataLoadedNotification;
     // Ora setup panels DOPO che la UI è stata creata
     [self setupDefaultPanels];
     [self ensureRenderersAreSetup];
-
+    
 }
 
 - (void)setupDefaultPanels {
     
     
-   
+    
     // Remove any existing panels
     [self.chartPanels removeAllObjects];
     
@@ -365,41 +379,41 @@ extern NSString *const DataHubDataLoadedNotification;
     
     [_panelsSplitView arrangesAllSubviews];
     
- 
     
- /*   // Force layout
-    [self.panelsSplitView setNeedsLayout:YES];
-    [self.view setNeedsLayout:YES];
-    [self configureSplitViewPriorities];
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self setInitialDividerPosition];
-    });
-    // Set initial divider position after a delay to ensure layout is complete
-    dispatch_async(dispatch_get_main_queue(), ^{
-        NSLog(@"🔧 Setting divider position...");
-        CGFloat totalHeight = self.panelsSplitView.frame.size.height;
-        NSLog(@"🔍 Total height for divider calculation: %.2f", totalHeight);
-        
-        if (totalHeight > 150) { // Only if we have reasonable height
-            CGFloat securityHeight = totalHeight * 0.8;
-            [self.panelsSplitView setPosition:securityHeight ofDividerAtIndex:0];
-            NSLog(@"✅ Set divider at position: %.2f (80%% of %.2f)", securityHeight, totalHeight);
-        } else {
-            NSLog(@"⚠️ Height too small (%.2f), will retry later", totalHeight);
-            // Retry after view is properly sized
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-                CGFloat retryHeight = self.panelsSplitView.frame.size.height;
-                NSLog(@"🔄 Retry height: %.2f", retryHeight);
-                if (retryHeight > 150) {
-                    [self.panelsSplitView setPosition:retryHeight * 0.8 ofDividerAtIndex:0];
-                    NSLog(@"✅ Retry: Set divider at position: %.2f", retryHeight * 0.8);
-                } else {
-                    NSLog(@"❌ Still too small after retry: %.2f", retryHeight);
-                }
-            });
-        }
-    });
-    */
+    
+    /*   // Force layout
+     [self.panelsSplitView setNeedsLayout:YES];
+     [self.view setNeedsLayout:YES];
+     [self configureSplitViewPriorities];
+     dispatch_async(dispatch_get_main_queue(), ^{
+     [self setInitialDividerPosition];
+     });
+     // Set initial divider position after a delay to ensure layout is complete
+     dispatch_async(dispatch_get_main_queue(), ^{
+     NSLog(@"🔧 Setting divider position...");
+     CGFloat totalHeight = self.panelsSplitView.frame.size.height;
+     NSLog(@"🔍 Total height for divider calculation: %.2f", totalHeight);
+     
+     if (totalHeight > 150) { // Only if we have reasonable height
+     CGFloat securityHeight = totalHeight * 0.8;
+     [self.panelsSplitView setPosition:securityHeight ofDividerAtIndex:0];
+     NSLog(@"✅ Set divider at position: %.2f (80%% of %.2f)", securityHeight, totalHeight);
+     } else {
+     NSLog(@"⚠️ Height too small (%.2f), will retry later", totalHeight);
+     // Retry after view is properly sized
+     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+     CGFloat retryHeight = self.panelsSplitView.frame.size.height;
+     NSLog(@"🔄 Retry height: %.2f", retryHeight);
+     if (retryHeight > 150) {
+     [self.panelsSplitView setPosition:retryHeight * 0.8 ofDividerAtIndex:0];
+     NSLog(@"✅ Retry: Set divider at position: %.2f", retryHeight * 0.8);
+     } else {
+     NSLog(@"❌ Still too small after retry: %.2f", retryHeight);
+     }
+     });
+     }
+     });
+     */
     NSLog(@"🎯 Default panels setup completed");
 }
 - (void)configureSplitViewPriorities {
@@ -411,15 +425,15 @@ extern NSString *const DataHubDataLoadedNotification;
         
         // Set holding priorities for resize behavior
         [self.panelsSplitView setHoldingPriority:NSLayoutPriorityDefaultHigh
-                                  forSubviewAtIndex:0]; // Security panel
+                               forSubviewAtIndex:0]; // Security panel
         [self.panelsSplitView setHoldingPriority:NSLayoutPriorityDefaultLow
-                                  forSubviewAtIndex:1]; // Volume panel
+                               forSubviewAtIndex:1]; // Volume panel
         
         // Set content hugging priorities
         [securityPanel setContentHuggingPriority:NSLayoutPriorityDefaultLow
-                                   forOrientation:NSLayoutConstraintOrientationVertical];
+                                  forOrientation:NSLayoutConstraintOrientationVertical];
         [volumePanel setContentHuggingPriority:NSLayoutPriorityDefaultHigh
-                                 forOrientation:NSLayoutConstraintOrientationVertical];
+                                forOrientation:NSLayoutConstraintOrientationVertical];
         
         // Set compression resistance
         [securityPanel setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh
@@ -594,7 +608,9 @@ extern NSString *const DataHubDataLoadedNotification;
     
     // Convert ChartTimeframe to BarTimeframe
     BarTimeframe barTimeframe = [self chartTimeframeToBarTimeframe:self.currentTimeframe];
-    NSInteger barsCount = self.barsCountTextField.integerValue;
+    NSInteger barsCount = self.barsToDownload;
+       if (barsCount <= 0) barsCount = 1000; // Fallback se non impostato
+    
     if (barsCount <= 0) barsCount = self.barsToDownload;
     
     // Request data from DataHub
@@ -613,9 +629,9 @@ extern NSString *const DataHubDataLoadedNotification;
             
             // ✅ NUOVO: Controllo se serve aggiungere la barra corrente
             [self checkAndAddCurrentBarIfNeeded:data
-                                        symbol:symbol
-                                     timeframe:barTimeframe
-                                    completion:^(NSArray<HistoricalBarModel *> *finalData) {
+                                         symbol:symbol
+                                      timeframe:barTimeframe
+                                     completion:^(NSArray<HistoricalBarModel *> *finalData) {
                 
                 self.chartData = finalData;
                 if (!sameSymbol) {
@@ -772,8 +788,8 @@ extern NSString *const DataHubDataLoadedNotification;
         [panel updateWithData:self.chartData
                    startIndex:self.visibleStartIndex
                      endIndex:self.visibleEndIndex
-                     yRangeMin:self.yRangeMin
-                     yRangeMax:self.yRangeMax];
+                    yRangeMin:self.yRangeMin
+                    yRangeMax:self.yRangeMax];
     }
 }
 
@@ -847,50 +863,7 @@ extern NSString *const DataHubDataLoadedNotification;
 
 
 
-#pragma mark - State Serialization
 
-- (NSDictionary *)serializeState {
-    NSMutableDictionary *state = [[super serializeState] mutableCopy];
-    
-    if (self.currentSymbol) {
-    state[@"currentSymbol"] = self.currentSymbol;
-    }
-    
-    state[@"timeframe"] = @(self.currentTimeframe);
-    state[@"barsToDownload"] = @(self.barsToDownload);
-    state[@"initialBarsToShow"] = @(self.initialBarsToShow);
-    state[@"visibleStartIndex"] = @(self.visibleStartIndex);
-    state[@"visibleEndIndex"] = @(self.visibleEndIndex);
-    state[@"isYRangeOverridden"] = @(self.isYRangeOverridden);
-
-    return state;
-}
-
-- (void)restoreState:(NSDictionary *)state {
-    [super restoreState:state];
-    
-    NSString *symbol = state[@"currentSymbol"];
-    if (symbol) {
-        [self loadSymbol:symbol];
-    }
-    
-    NSNumber *timeframe = state[@"timeframe"];
-    if (timeframe) {
-        [self setTimeframe:timeframe.integerValue];
-    }
-    
-    NSNumber *barsToDownload = state[@"barsToDownload"];
-    if (barsToDownload) {
-        self.barsToDownload = barsToDownload.integerValue;
-    }
-    
-    NSNumber *initialBarsToShow = state[@"initialBarsToShow"];
-    if (initialBarsToShow) {
-        self.initialBarsToShow = initialBarsToShow.integerValue;
-
-        self.isYRangeOverridden = [state[@"isYRangeOverridden"] boolValue];
-    }
-}
 // ======== AGGIUNGI metodi delegate per symbolTextField ========
 #pragma mark - NSTextFieldDelegate
 
@@ -1087,15 +1060,38 @@ extern NSString *const DataHubDataLoadedNotification;
     
     // Calculate visible range (CODICE ESISTENTE)
     NSInteger dataCount = data.count;
-    NSInteger barsToShow = MIN(100, dataCount); // Default visible bars
+    NSInteger barsToShow = MIN(self.initialBarsToShow, dataCount);
     
     self.visibleStartIndex = MAX(0, dataCount - barsToShow);
     self.visibleEndIndex = dataCount;
     
-    // Calculate Y range if not overridden (CODICE ESISTENTE)
+    // Calculate Y range if not overridden (CODICE CHE AVEVI CANCELLATO)
+    if (!self.isYRangeOverridden) {
+        double minPrice = CGFLOAT_MAX;
+        double maxPrice = CGFLOAT_MIN;
+        
+        // Find min/max in visible range
+        for (NSInteger i = self.visibleStartIndex; i < self.visibleEndIndex && i < data.count; i++) {
+            HistoricalBarModel *bar = data[i];
+            minPrice = MIN(minPrice, bar.low);
+            maxPrice = MAX(maxPrice, bar.high);
+        }
+        
+        // Add 5% padding
+        double range = maxPrice - minPrice;
+        double padding = range * 0.05;
+        
+        self.yRangeMin = minPrice - padding;
+        self.yRangeMax = maxPrice + padding;
+        
+        // Ensure non-zero range
+        if (self.yRangeMax <= self.yRangeMin) {
+            self.yRangeMin = minPrice - 1.0;
+            self.yRangeMax = maxPrice + 1.0;
+        }
+    }
     
-    
-    // Update all panels (CODICE ESISTENTE + NUOVO)
+    // Update all panels (AGGIORNATO)
     for (ChartPanelView *panel in self.chartPanels) {
         // Update chart data (ESISTENTE)
         [panel updateWithData:data
@@ -1104,23 +1100,17 @@ extern NSString *const DataHubDataLoadedNotification;
                     yRangeMin:self.yRangeMin
                     yRangeMax:self.yRangeMax];
         
-        // 🆕 NUOVO: Alert coordinate context è già aggiornato in updateWithData
-        // ma assicuriamoci che il simbolo sia aggiornato
-        if (panel.alertRenderer && self.currentSymbol) {
-            [panel.alertRenderer updateCoordinateContext:data
-                                               startIndex:self.visibleStartIndex
-                                                 endIndex:self.visibleEndIndex
-                                                yRangeMin:self.yRangeMin
-                                                yRangeMax:self.yRangeMax
-                                                   bounds:panel.bounds
-                                            currentSymbol:self.currentSymbol];
+        // ✅ NUOVO: Update coordinate context con trading hours info
+        if (panel.objectRenderer) {
+            [panel.objectRenderer updateCoordinateContext:data
+                                                startIndex:self.visibleStartIndex
+                                                  endIndex:self.visibleEndIndex
+                                                 yRangeMin:self.yRangeMin
+                                                 yRangeMax:self.yRangeMax
+                                                    bounds:panel.bounds];
         }
     }
-    
-    NSLog(@"📊 Updated %lu panels with %lu data points for %@",
-          (unsigned long)self.chartPanels.count, (unsigned long)data.count, self.currentSymbol);
 }
-
 // ============================================================
 // NUOVO: Public Symbol Access Method
 // ============================================================
@@ -1293,6 +1283,127 @@ extern NSString *const DataHubDataLoadedNotification;
         default:
             return date;
     }
+}
+#pragma mark - Preferences Management
+
+- (IBAction)showPreferences:(id)sender {
+    ChartPreferencesWindow *prefsWindow = [[ChartPreferencesWindow alloc] initWithChartWidget:self];
+    [prefsWindow showPreferencesWindow];
+    NSLog(@"🛠️ Chart preferences window opened");
+}
+
+- (void)preferencesDidChange:(BOOL)needsDataReload {
+    NSLog(@"⚙️ Chart preferences changed - Data reload needed: %@", needsDataReload ? @"YES" : @"NO");
+    
+    if (needsDataReload) {
+        // Ricarica dati con nuove impostazioni trading hours
+        if (self.currentSymbol) {
+            [self loadSymbol:self.currentSymbol];
+        }
+        
+        // Notifica tutti i renderer del cambio context
+        [self updateAllRenderersContext];
+    } else {
+        // Solo aggiornamenti UI senza ricarica dati
+        if (self.chartData) {
+                    [self updatePanelsWithData:self.chartData]; // ✅ CORREZIONE: usa updatePanelsWithData:
+                }    }
+}
+
+- (void)updateAllRenderersContext {
+    for (ChartPanelView *panel in self.chartPanels) {
+        if (panel.objectRenderer) {
+            // Gli object renderer useranno le nuove preferenze per calcolare coordinate X
+            [panel.objectRenderer invalidateObjectsLayer];
+            NSLog(@"🔄 Updated object renderer context for panel %@", panel.panelType);
+        }
+    }
+}
+
+- (NSInteger)barsPerDayForCurrentTimeframe {
+    NSInteger timeframeMinutes = [self getCurrentTimeframeInMinutes];
+    
+    switch (self.tradingHoursMode) {
+        case ChartTradingHoursRegularOnly:
+            return (6.5 * 60) / timeframeMinutes;  // 09:30-16:00
+            
+        case ChartTradingHoursWithPreMarket:
+            return (12 * 60) / timeframeMinutes;   // 04:00-16:00
+            
+        case ChartTradingHoursWithAfterHours:
+            return (10.5 * 60) / timeframeMinutes; // 09:30-20:00
+            
+        case ChartTradingHoursExtended:
+            return (16 * 60) / timeframeMinutes;   // 04:00-20:00
+    }
+}
+
+- (NSInteger)getCurrentTimeframeInMinutes {
+    switch (self.currentTimeframe) {
+        case ChartTimeframe1Min: return 1;
+        case ChartTimeframe5Min: return 5;
+        case ChartTimeframe15Min: return 15;
+        case ChartTimeframe30Min: return 30;
+        case ChartTimeframe1Hour: return 60;
+        case ChartTimeframe4Hour: return 240;
+        case ChartTimeframeDaily: return 1440;
+        case ChartTimeframeWeekly: return 10080;
+        case ChartTimeframeMonthly: return 43200;
+        default: return 1440;
+    }
+}
+
+#pragma mark - State Serialization
+
+
+- (NSDictionary *)serializeState {
+    NSMutableDictionary *state = [[super serializeState] mutableCopy];
+    
+    if (self.currentSymbol) {
+        state[@"currentSymbol"] = self.currentSymbol;
+    }
+    
+    state[@"timeframe"] = @(self.currentTimeframe);
+    state[@"tradingHoursMode"] = @(self.tradingHoursMode);  // NUOVO
+    state[@"barsToDownload"] = @(self.barsToDownload);
+    state[@"initialBarsToShow"] = @(self.initialBarsToShow);
+    state[@"visibleStartIndex"] = @(self.visibleStartIndex);
+    state[@"visibleEndIndex"] = @(self.visibleEndIndex);
+    state[@"isYRangeOverridden"] = @(self.isYRangeOverridden);
+
+    return state;
+}
+
+- (void)restoreState:(NSDictionary *)state {
+    [super restoreState:state];
+    
+    NSString *symbol = state[@"currentSymbol"];
+    if (symbol) {
+        [self loadSymbol:symbol];
+    }
+    
+    NSNumber *timeframe = state[@"timeframe"];
+    if (timeframe) {
+        [self setTimeframe:timeframe.integerValue];
+    }
+    
+    // NUOVO: Restore trading hours mode
+    NSNumber *tradingHoursMode = state[@"tradingHoursMode"];
+    if (tradingHoursMode) {
+        self.tradingHoursMode = tradingHoursMode.integerValue;
+    }
+    
+    NSNumber *barsToDownload = state[@"barsToDownload"];
+    if (barsToDownload) {
+        self.barsToDownload = barsToDownload.integerValue;
+    }
+    
+    NSNumber *initialBarsToShow = state[@"initialBarsToShow"];
+    if (initialBarsToShow) {
+        self.initialBarsToShow = initialBarsToShow.integerValue;
+    }
+
+    self.isYRangeOverridden = [state[@"isYRangeOverridden"] boolValue];
 }
 
 @end

@@ -115,90 +115,61 @@
         self.coordinateContext.yRangeMax = yMax;
         self.coordinateContext.panelBounds = bounds;
         
+        // NUOVO: Aggiorna trading hours context
+        ChartWidget *chartWidget = self.panelView.chartWidget;
+        if (chartWidget) {
+            self.coordinateContext.barsPerDay = [chartWidget barsPerDayForCurrentTimeframe];
+            self.coordinateContext.currentTimeframeMinutes = [chartWidget getCurrentTimeframeInMinutes];
+        }
+        
         [self updateLayerFrames];
         [self invalidateObjectsLayer];
         
-        NSLog(@"🔄 ChartObjectRenderer: Coordinate context updated");
+        NSLog(@"🔄 ChartObjectRenderer: Coordinate context updated - BarsPerDay: %ld",
+              (long)self.coordinateContext.barsPerDay);
     }
 }
-
 - (NSPoint)screenPointFromControlPoint:(ControlPointModel *)controlPoint {
     if (!controlPoint || !self.coordinateContext.chartData) {
-        return NSZeroPoint;
+        return NSMakePoint(-9999, -9999); // Coordinate invalide
     }
     
-    // Step 1: Try to find exact bar in ALL data (not just visible range)
+    // Step 1: Find exact bar in data
     HistoricalBarModel *targetBar = [self findBarForDate:controlPoint.dateAnchor];
     
-    NSPoint screenPoint = NSZeroPoint;
+    NSPoint screenPoint = NSMakePoint(-9999, -9999);
     
-    // Step 2: Calculate X coordinate using temporal extrapolation
-    screenPoint.x = [self calculateXCoordinateForDate:controlPoint.dateAnchor];
-    
-    // Step 3: Calculate Y coordinate
-    double actualPrice;
     if (targetBar) {
-        // Use actual bar data if available
-        double indicatorValue = [self getIndicatorValue:controlPoint.indicatorRef fromBar:targetBar];
-        if (indicatorValue == 0.0) {
-            return NSZeroPoint;
+        // Barra trovata - calcolo preciso
+        NSInteger barIndex = [self findBarIndexForDate:controlPoint.dateAnchor];
+        if (barIndex != NSNotFound) {
+            screenPoint.x = [self xCoordinateForBarIndex:barIndex];
         }
-        actualPrice = indicatorValue * (1.0 + controlPoint.valuePercent / 100.0);
-    } else {
-        // No bar data available - extrapolate price based on Y range
-        // For now, we'll use the middle of the range as a fallback
-        // This could be enhanced with price extrapolation algorithms
-        double midPrice = (self.coordinateContext.yRangeMin + self.coordinateContext.yRangeMax) / 2.0;
-        actualPrice = midPrice * (1.0 + controlPoint.valuePercent / 100.0);
         
-        NSLog(@"⚠️ ChartObjectRenderer: Extrapolating price for date %@ (no bar data)", controlPoint.dateAnchor);
-    }
-    
-    // Y coordinate: Price to pixel
-    if (self.coordinateContext.yRangeMax != self.coordinateContext.yRangeMin) {
-        double normalizedPrice = (actualPrice - self.coordinateContext.yRangeMin) /
-                                (self.coordinateContext.yRangeMax - self.coordinateContext.yRangeMin);
-        screenPoint.y = 10 + normalizedPrice * (self.coordinateContext.panelBounds.size.height - 20);
+        // Y coordinate dal prezzo reale
+        double indicatorValue = [self getIndicatorValue:controlPoint.indicatorRef fromBar:targetBar];
+        if (indicatorValue > 0.0) {
+            double actualPrice = indicatorValue * (1.0 + controlPoint.valuePercent / 100.0);
+            
+            if (self.coordinateContext.yRangeMax != self.coordinateContext.yRangeMin) {
+                double normalizedPrice = (actualPrice - self.coordinateContext.yRangeMin) /
+                                        (self.coordinateContext.yRangeMax - self.coordinateContext.yRangeMin);
+                screenPoint.y = 10 + normalizedPrice * (self.coordinateContext.panelBounds.size.height - 20);
+            }
+        }
+    } else {
+        // ✅ BARRA NON TROVATA - USA ESTRAPOLAZIONE SMART
+        screenPoint.x = [self xCoordinateForDate:controlPoint.dateAnchor];
+        
+        // Per Y, non inventare prezzi - skip questo CP
+        return NSMakePoint(-9999, -9999);
     }
     
     return screenPoint;
 }
 
-- (CGFloat)calculateXCoordinateForDate:(NSDate *)targetDate {
-    if (!targetDate || self.coordinateContext.chartData.count == 0) {
-        return 0.0;
-    }
-    
-    NSInteger visibleBars = self.coordinateContext.visibleEndIndex - self.coordinateContext.visibleStartIndex;
-    if (visibleBars <= 0) {
-        return 0.0;
-    }
-    
-    // Get first and last visible dates
-    HistoricalBarModel *firstVisibleBar = self.coordinateContext.chartData[self.coordinateContext.visibleStartIndex];
-    HistoricalBarModel *lastVisibleBar = self.coordinateContext.chartData[self.coordinateContext.visibleEndIndex - 1];
-    
-    NSDate *firstVisibleDate = firstVisibleBar.date;
-    NSDate *lastVisibleDate = lastVisibleBar.date;
-    
-    // Calculate time span and pixels per bar (not per second)
-    NSTimeInterval totalVisibleTimeSpan = [lastVisibleDate timeIntervalSinceDate:firstVisibleDate];
-    if (totalVisibleTimeSpan <= 0) {
-        return 10; // Fallback
-    }
-    
-    CGFloat availableWidth = self.coordinateContext.panelBounds.size.width - 20; // Minus margins
-    CGFloat barWidth = availableWidth / visibleBars;
-    
-    // Calculate which "bar index" this date would be at
-    NSTimeInterval deltaTime = [targetDate timeIntervalSinceDate:firstVisibleDate];
-    CGFloat proportionalIndex = (deltaTime / totalVisibleTimeSpan) * (visibleBars - 1);
-    
-    // Calculate X position at CENTER of bar
-    CGFloat xPosition = 10 + (proportionalIndex * barWidth) + (barWidth / 2); // 10 = left margin
-    
-    return xPosition;
-}
+
+
 
 - (ControlPointModel *)controlPointFromScreenPoint:(NSPoint)screenPoint
                                        indicatorRef:(NSString *)indicatorRef {
@@ -206,27 +177,18 @@
         return nil;
     }
     
-    // Step 1: Convert screen X to bar index
-    NSInteger visibleBars = self.coordinateContext.visibleEndIndex - self.coordinateContext.visibleStartIndex;
-    if (visibleBars <= 0) return nil;
+    // ✅ USA IL NUOVO METODO UNIFICATO
+    NSInteger barIndex = [self barIndexForXCoordinate:screenPoint.x];
     
-    CGFloat barWidth = (self.coordinateContext.panelBounds.size.width - 20) / visibleBars;
-    NSInteger relativeIndex = (screenPoint.x - 10) / barWidth;
-    NSInteger absoluteIndex = self.coordinateContext.visibleStartIndex + relativeIndex;
-    
-    // Clamp to valid range
-    absoluteIndex = MAX(self.coordinateContext.visibleStartIndex,
-                       MIN(absoluteIndex, self.coordinateContext.visibleEndIndex - 1));
-    
-    if (absoluteIndex >= self.coordinateContext.chartData.count) {
+    if (barIndex < 0 || barIndex >= self.coordinateContext.chartData.count) {
         return nil;
     }
     
     // Step 2: Get the bar and date
-    HistoricalBarModel *targetBar = self.coordinateContext.chartData[absoluteIndex];
+    HistoricalBarModel *targetBar = self.coordinateContext.chartData[barIndex];
     NSDate *dateAnchor = targetBar.date;
     
-    // Step 3: Convert screen Y to price
+    // Step 3: Convert screen Y to price (INVARIATO)
     double normalizedY = (screenPoint.y - 10) / (self.coordinateContext.panelBounds.size.height - 20);
     double screenPrice = self.coordinateContext.yRangeMin +
                         normalizedY * (self.coordinateContext.yRangeMax - self.coordinateContext.yRangeMin);
@@ -244,6 +206,7 @@
                                 valuePercent:valuePercent
                                    indicator:indicatorRef];
 }
+
 
 #pragma mark - Rendering
 
@@ -1933,5 +1896,83 @@
 - (BOOL)areObjectsVisible {
     return !self.objectsLayer.hidden;
 }
+
+#pragma mark - Unified X Coordinate Calculation
+
+// NUOVO: Metodo centralizzato che usa le preferenze del ChartWidget
+- (CGFloat)xCoordinateForBarIndex:(NSInteger)barIndex {
+    if (barIndex < self.coordinateContext.visibleStartIndex ||
+        barIndex >= self.coordinateContext.visibleEndIndex) {
+        
+        // Control point fuori viewport - calcola comunque la posizione
+        // (può risultare in coordinate negative o oltre la larghezza)
+    }
+    
+    NSInteger visibleBars = self.coordinateContext.visibleEndIndex - self.coordinateContext.visibleStartIndex;
+    if (visibleBars <= 0) return 0;
+    
+    CGFloat totalWidth = self.coordinateContext.panelBounds.size.width - 20; // Margini
+    CGFloat barWidth = totalWidth / visibleBars;
+    CGFloat barSpacing = MAX(1, barWidth * 0.1);
+    
+    NSInteger relativeIndex = barIndex - self.coordinateContext.visibleStartIndex;
+    
+    // ✅ STESSO CALCOLO del drawCandlesticks
+    return 10 + (relativeIndex * barWidth);  // Bordo sinistro della barra
+}
+
+- (NSInteger)barIndexForXCoordinate:(CGFloat)x {
+    NSInteger visibleBars = self.coordinateContext.visibleEndIndex - self.coordinateContext.visibleStartIndex;
+    if (visibleBars <= 0) return -1;
+    
+    CGFloat barWidth = (self.coordinateContext.panelBounds.size.width - 20) / visibleBars;
+    NSInteger relativeIndex = (x - 10) / barWidth;
+    NSInteger absoluteIndex = self.coordinateContext.visibleStartIndex + relativeIndex;
+    
+    return MAX(self.coordinateContext.visibleStartIndex,
+              MIN(absoluteIndex, self.coordinateContext.visibleEndIndex - 1));
+}
+#pragma mark - Updated Date-Based X Coordinate (con preferenze Trading Hours)
+
+- (CGFloat)xCoordinateForDate:(NSDate *)targetDate {
+    if (!targetDate || self.coordinateContext.chartData.count == 0) {
+        return -9999; // Coordinate invalide
+    }
+    
+    // 1. Cerca barra esistente nei dati
+    for (NSInteger i = 0; i < self.coordinateContext.chartData.count; i++) {
+        HistoricalBarModel *bar = self.coordinateContext.chartData[i];
+        if ([bar.date compare:targetDate] != NSOrderedAscending) {
+            // Trovata barra >= data target
+            return [self xCoordinateForBarIndex:i];
+        }
+    }
+    
+    // 2. Data prima del dataset - ESTRAPOLAZIONE intelligente
+    NSDate *firstDate = self.coordinateContext.chartData.firstObject.date;
+    NSTimeInterval daysDiff = [firstDate timeIntervalSinceDate:targetDate] / 86400;
+    
+    // 3. Rimuovi weekend (logica dalla tua vecchia funzione)
+    NSInteger weeks = daysDiff / 7;
+    daysDiff = daysDiff - (weeks * 2);
+    
+    // 4. ✅ USA I VALORI DAL COORDINATE CONTEXT
+    NSInteger barsPerDay = self.coordinateContext.barsPerDay;
+    if (barsPerDay <= 0) {
+        // Fallback se non disponibile
+        barsPerDay = 26; // Default 15m regular hours
+    }
+    
+    CGFloat totalBars = daysDiff * barsPerDay;
+    
+    // 5. Calcola posizione (coordinate negative = fuori viewport sinistra)
+    NSInteger visibleBars = self.coordinateContext.visibleEndIndex - self.coordinateContext.visibleStartIndex;
+    CGFloat barWidth = (self.coordinateContext.panelBounds.size.width - 20) / visibleBars;
+    
+    // Posizione relativa al primo indice visibile
+    CGFloat firstBarX = [self xCoordinateForBarIndex:self.coordinateContext.visibleStartIndex];
+    return firstBarX - (totalBars * barWidth);
+}
+
 
 @end

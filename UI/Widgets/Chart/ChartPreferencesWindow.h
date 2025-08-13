@@ -12,20 +12,18 @@
 NS_ASSUME_NONNULL_BEGIN
 
 typedef NS_ENUM(NSInteger, ChartTradingHours) {
-    ChartTradingHoursRegularOnly = 0,    // 09:30-16:00 (6.5h)
-    ChartTradingHoursWithPreMarket,      // 04:00-16:00 (12h)
-    ChartTradingHoursWithAfterHours,     // 09:30-20:00 (10.5h)
-    ChartTradingHoursExtended            // 04:00-20:00 (16h)
+    ChartTradingHoursRegularOnly = 0,    // Regular hours only (09:30-16:00)
+    ChartTradingHoursWithAfterHours = 1  // Include after-hours data
 };
 
 @interface ChartPreferencesWindow : NSWindowController
 
-// UI Controls
-@property (nonatomic, weak) IBOutlet NSPopUpButton *tradingHoursPopup;
-@property (nonatomic, weak) IBOutlet NSTextField *barsToDownloadField;
-@property (nonatomic, weak) IBOutlet NSTextField *initialBarsToShowField;
-@property (nonatomic, weak) IBOutlet NSButton *saveButton;
-@property (nonatomic, weak) IBOutlet NSButton *cancelButton;
+// UI Controls - CHANGED: Removed IBOutlet, made strong for programmatic creation
+@property (nonatomic, strong) NSButton *includeAfterHoursSwitch;  // Changed from popup to switch
+@property (nonatomic, strong) NSTextField *barsToDownloadField;
+@property (nonatomic, strong) NSTextField *initialBarsToShowField;
+@property (nonatomic, strong) NSButton *saveButton;
+@property (nonatomic, strong) NSButton *cancelButton;
 
 // Reference to chart widget
 @property (nonatomic, weak) ChartWidget *chartWidget;
@@ -36,7 +34,7 @@ typedef NS_ENUM(NSInteger, ChartTradingHours) {
 // Actions
 - (IBAction)savePreferences:(id)sender;
 - (IBAction)cancelPreferences:(id)sender;
-- (IBAction)tradingHoursChanged:(id)sender;
+- (IBAction)afterHoursSwitchChanged:(id)sender;  // Changed from tradingHoursChanged
 
 // Window management
 - (void)showPreferencesWindow;

@@ -1326,15 +1326,8 @@ extern NSString *const DataHubDataLoadedNotification;
     switch (self.tradingHoursMode) {
         case ChartTradingHoursRegularOnly:
             return (6.5 * 60) / timeframeMinutes;  // 09:30-16:00
-            
-        case ChartTradingHoursWithPreMarket:
-            return (12 * 60) / timeframeMinutes;   // 04:00-16:00
-            
         case ChartTradingHoursWithAfterHours:
-            return (10.5 * 60) / timeframeMinutes; // 09:30-20:00
-            
-        case ChartTradingHoursExtended:
-            return (16 * 60) / timeframeMinutes;   // 04:00-20:00
+            return (24 * 60) / timeframeMinutes;   // 00:00-24:00
     }
 }
 

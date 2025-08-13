@@ -57,103 +57,112 @@
 - (void)createControls {
     NSView *contentView = self.window.contentView;
     
-    // Trading Hours Section
-    NSTextField *tradingHoursLabel = [self createLabel:@"Trading Hours:" frame:NSMakeRect(20, 220, 120, 20)];
-    [contentView addSubview:tradingHoursLabel];
+    // Include After-Hours Section
+    NSTextField *afterHoursLabel = [self createLabel:@"Include After-Hours:" frame:NSMakeRect(20, 220, 140, 20)];
+    [contentView addSubview:afterHoursLabel];
     
-    self.tradingHoursPopup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(150, 218, 220, 24)];
-    [self.tradingHoursPopup addItemsWithTitles:@[
-        @"Regular Hours Only (09:30-16:00)",
-        @"Pre-Market + Regular (04:00-16:00)",
-        @"Regular + After Hours (09:30-20:00)",
-        @"Extended Hours (04:00-20:00)"
-    ]];
-    self.tradingHoursPopup.target = self;
-    self.tradingHoursPopup.action = @selector(tradingHoursChanged:);
-    [contentView addSubview:self.tradingHoursPopup];
+    self.includeAfterHoursSwitch = [[NSButton alloc] initWithFrame:NSMakeRect(170, 218, 200, 24)];
+    [self.includeAfterHoursSwitch setButtonType:NSButtonTypeSwitch];
+    [self.includeAfterHoursSwitch setTitle:@"Include extended hours data"];
+    [self.includeAfterHoursSwitch setTarget:self];
+    [self.includeAfterHoursSwitch setAction:@selector(afterHoursSwitchChanged:)];
+    [self.includeAfterHoursSwitch setEnabled:YES];
+    [contentView addSubview:self.includeAfterHoursSwitch];
     
     // Bars to Download Section
-    NSTextField *barsDownloadLabel = [self createLabel:@"Bars to Download:" frame:NSMakeRect(20, 180, 120, 20)];
-    [contentView addSubview:barsDownloadLabel];
+    NSTextField *barsToDownloadLabel = [self createLabel:@"Bars to Download:" frame:NSMakeRect(20, 180, 120, 20)];
+    [contentView addSubview:barsToDownloadLabel];
     
     self.barsToDownloadField = [[NSTextField alloc] initWithFrame:NSMakeRect(150, 178, 100, 24)];
-    self.barsToDownloadField.placeholderString = @"1000";
+    self.barsToDownloadField.placeholderString = @"50-10000";
+    [self.barsToDownloadField setEnabled:YES];  // Enable the field
     [contentView addSubview:self.barsToDownloadField];
     
-    NSTextField *barsDownloadHint = [self createLabel:@"(More bars = longer history)"
-                                                frame:NSMakeRect(260, 180, 120, 20)];
-    barsDownloadHint.font = [NSFont systemFontOfSize:11];
-    barsDownloadHint.textColor = [NSColor secondaryLabelColor];
-    [contentView addSubview:barsDownloadHint];
+    NSTextField *barsToDownloadInfo = [self createLabel:@"(More bars = longer history)" frame:NSMakeRect(260, 180, 120, 20)];
+    barsToDownloadInfo.textColor = [NSColor secondaryLabelColor];
+    barsToDownloadInfo.font = [NSFont systemFontOfSize:11];
+    [contentView addSubview:barsToDownloadInfo];
     
-    // Initial Bars to Show Section
+    // Initial Bars Visible Section
     NSTextField *initialBarsLabel = [self createLabel:@"Initial Bars Visible:" frame:NSMakeRect(20, 140, 120, 20)];
     [contentView addSubview:initialBarsLabel];
     
     self.initialBarsToShowField = [[NSTextField alloc] initWithFrame:NSMakeRect(150, 138, 100, 24)];
-    self.initialBarsToShowField.placeholderString = @"100";
+    self.initialBarsToShowField.placeholderString = @"10-500";
+    [self.initialBarsToShowField setEnabled:YES];  // Enable the field
     [contentView addSubview:self.initialBarsToShowField];
     
-    NSTextField *initialBarsHint = [self createLabel:@"(Default zoom level)"
-                                               frame:NSMakeRect(260, 140, 120, 20)];
-    initialBarsHint.font = [NSFont systemFontOfSize:11];
-    initialBarsHint.textColor = [NSColor secondaryLabelColor];
-    [contentView addSubview:initialBarsHint];
+    NSTextField *initialBarsInfo = [self createLabel:@"(Default zoom level)" frame:NSMakeRect(260, 140, 120, 20)];
+    initialBarsInfo.textColor = [NSColor secondaryLabelColor];
+    initialBarsInfo.font = [NSFont systemFontOfSize:11];
+    [contentView addSubview:initialBarsInfo];
     
-    // Info Section
-    NSTextField *infoLabel = [self createLabel:@"Trading Hours Info:" frame:NSMakeRect(20, 100, 120, 20)];
-    infoLabel.font = [NSFont boldSystemFontOfSize:12];
-    [contentView addSubview:infoLabel];
-    
-    NSTextField *infoText = [self createLabel:@"• Regular: 09:30-16:00 (6.5 hours)\n• Pre-Market: 04:00-09:30 (5.5 hours)\n• After-Hours: 16:00-20:00 (4 hours)\n• Extended: All sessions (16 hours total)"
-                                        frame:NSMakeRect(150, 60, 220, 60)];
-    infoText.font = [NSFont systemFontOfSize:10];
-    infoText.textColor = [NSColor secondaryLabelColor];
-    [contentView addSubview:infoText];
+    // Separator Line
+    NSBox *separator = [[NSBox alloc] initWithFrame:NSMakeRect(20, 100, 360, 1)];
+    separator.boxType = NSBoxSeparator;
+    [contentView addSubview:separator];
     
     // Buttons
-    self.cancelButton = [[NSButton alloc] initWithFrame:NSMakeRect(210, 20, 80, 24)];
-    self.cancelButton.title = @"Cancel";
-    self.cancelButton.bezelStyle = NSBezelStyleRounded;
-    self.cancelButton.target = self;
-    self.cancelButton.action = @selector(cancelPreferences:);
+    self.saveButton = [[NSButton alloc] initWithFrame:NSMakeRect(280, 40, 80, 32)];
+    [self.saveButton setTitle:@"Save"];
+    [self.saveButton setBezelStyle:NSBezelStyleRounded];
+    [self.saveButton setKeyEquivalent:@"\r"]; // Enter key
+    [self.saveButton setTarget:self];
+    [self.saveButton setAction:@selector(savePreferences:)];
+    [self.saveButton setEnabled:YES];  // Enable the button
+    [contentView addSubview:self.saveButton];
+    
+    self.cancelButton = [[NSButton alloc] initWithFrame:NSMakeRect(190, 40, 80, 32)];
+    [self.cancelButton setTitle:@"Cancel"];
+    [self.cancelButton setBezelStyle:NSBezelStyleRounded];
+    [self.cancelButton setKeyEquivalent:@"\033"]; // Escape key
+    [self.cancelButton setTarget:self];
+    [self.cancelButton setAction:@selector(cancelPreferences:)];
+    [self.cancelButton setEnabled:YES];  // Enable the button
     [contentView addSubview:self.cancelButton];
     
-    self.saveButton = [[NSButton alloc] initWithFrame:NSMakeRect(300, 20, 80, 24)];
-    self.saveButton.title = @"Save";
-    self.saveButton.bezelStyle = NSBezelStyleRounded;
-    self.saveButton.keyEquivalent = @"\r"; // Enter key
-    self.saveButton.target = self;
-    self.saveButton.action = @selector(savePreferences:);
-    [contentView addSubview:self.saveButton];
+    NSLog(@"✅ Chart preferences controls created");
 }
+
+#pragma mark - Helper Methods
 
 - (NSTextField *)createLabel:(NSString *)text frame:(NSRect)frame {
     NSTextField *label = [[NSTextField alloc] initWithFrame:frame];
     label.stringValue = text;
-    label.bordered = NO;
     label.editable = NO;
+    label.bordered = NO;
     label.backgroundColor = [NSColor clearColor];
+    label.font = [NSFont systemFontOfSize:13];
     return label;
 }
 
-#pragma mark - Data Management
+#pragma mark - Data Loading
 
 - (void)loadCurrentValues {
-    // Load trading hours
-    [self.tradingHoursPopup selectItemAtIndex:self.chartWidget.tradingHoursMode];
+    if (!self.chartWidget) {
+        NSLog(@"⚠️ No chart widget reference");
+        return;
+    }
+    
+    // Load after-hours setting
+    BOOL includeAfterHours = (self.chartWidget.tradingHoursMode == ChartTradingHoursWithAfterHours);
+    [self.includeAfterHoursSwitch setState:(includeAfterHours ? NSControlStateValueOn : NSControlStateValueOff)];
     
     // Load bars settings
     self.barsToDownloadField.integerValue = self.chartWidget.barsToDownload;
     self.initialBarsToShowField.integerValue = self.chartWidget.initialBarsToShow;
+    
+    NSLog(@"📊 Loaded preferences - After-Hours: %@, Bars: %ld/%ld",
+          includeAfterHours ? @"YES" : @"NO",
+          (long)self.chartWidget.barsToDownload,
+          (long)self.chartWidget.initialBarsToShow);
 }
 
 #pragma mark - Actions
 
-- (IBAction)tradingHoursChanged:(id)sender {
-    // Update info text based on selection
-    NSInteger selectedIndex = self.tradingHoursPopup.indexOfSelectedItem;
-    NSLog(@"📊 Trading hours changed to index: %ld", (long)selectedIndex);
+- (IBAction)afterHoursSwitchChanged:(id)sender {
+    BOOL isOn = (self.includeAfterHoursSwitch.state == NSControlStateValueOn);
+    NSLog(@"⏰ After-hours switch changed to: %@", isOn ? @"ON" : @"OFF");
 }
 
 - (IBAction)savePreferences:(id)sender {
@@ -163,6 +172,16 @@
     
     if (barsToDownload < 50) {
         [self showAlert:@"Bars to download must be at least 50"];
+        return;
+    }
+    
+    if (barsToDownload > 10000) {
+        [self showAlert:@"Bars to download cannot exceed 10,000"];
+        return;
+    }
+    
+    if (initialBarsToShow > 500) {
+        [self showAlert:@"Initial bars to show cannot exceed 500"];
         return;
     }
     
@@ -177,7 +196,8 @@
     }
     
     // Apply changes to chart widget
-    ChartTradingHours newTradingHours = (ChartTradingHours)self.tradingHoursPopup.indexOfSelectedItem;
+    BOOL includeAfterHours = (self.includeAfterHoursSwitch.state == NSControlStateValueOn);
+    ChartTradingHours newTradingHours = includeAfterHours ? ChartTradingHoursWithAfterHours : ChartTradingHoursRegularOnly;
     
     BOOL needsDataReload = (newTradingHours != self.originalTradingHours ||
                            barsToDownload != self.originalBarsToDownload);
@@ -189,8 +209,8 @@
     // Notify chart widget of changes
     [self.chartWidget preferencesDidChange:needsDataReload];
     
-    NSLog(@"✅ Chart preferences saved - Trading Hours: %ld, Bars: %ld/%ld",
-          (long)newTradingHours, (long)barsToDownload, (long)initialBarsToShow);
+    NSLog(@"✅ Chart preferences saved - After-Hours: %@, Bars: %ld/%ld, Reload needed: %@",
+          includeAfterHours ? @"YES" : @"NO", (long)barsToDownload, (long)initialBarsToShow, needsDataReload ? @"YES" : @"NO");
     
     [self closeWindow];
 }
@@ -204,12 +224,20 @@
 
 - (void)showPreferencesWindow {
     [self loadCurrentValues];
+    [self.window center];  // Center before showing
     [self.window makeKeyAndOrderFront:nil];
+    
+    // Make window key and focused
+    [[NSApplication sharedApplication] activateIgnoringOtherApps:YES];
+    [self.window makeFirstResponder:self.includeAfterHoursSwitch];
+    
     NSLog(@"🪟 Chart preferences window opened");
 }
 
 - (void)closeWindow {
-    [self.window close];
+    NSLog(@"🔻 Closing preferences window");
+    [self.window orderOut:self];
+    [[NSApplication sharedApplication] stopModal];
 }
 
 #pragma mark - Helpers

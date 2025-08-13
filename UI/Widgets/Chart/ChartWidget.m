@@ -34,6 +34,9 @@ extern NSString *const DataHubDataLoadedNotification;
 @property (nonatomic, assign) NSPoint currentCrosshairPoint;
 @property (nonatomic, assign) BOOL crosshairVisible;
 
+@property (nonatomic, strong) ChartPreferencesWindow *preferencesWindowController;
+
+
 @end
 
 @implementation ChartWidget
@@ -609,14 +612,19 @@ extern NSString *const DataHubDataLoadedNotification;
     // Convert ChartTimeframe to BarTimeframe
     BarTimeframe barTimeframe = [self chartTimeframeToBarTimeframe:self.currentTimeframe];
     NSInteger barsCount = self.barsToDownload;
-       if (barsCount <= 0) barsCount = 1000; // Fallback se non impostato
+    if (barsCount <= 0) barsCount = 500; // Fallback se non impostato
     
-    if (barsCount <= 0) barsCount = self.barsToDownload;
+    // ✅ NUOVO: Determina se includere after-hours dalle preferenze
+    BOOL needExtendedHours = (self.tradingHoursMode == ChartTradingHoursWithAfterHours);
     
-    // Request data from DataHub
+    NSLog(@"📊 ChartWidget: Loading %@ with %ld bars (timeframe: %ld, after-hours: %@)",
+          symbol, (long)barsCount, (long)barTimeframe, needExtendedHours ? @"YES" : @"NO");
+    
+    // Request data from DataHub WITH after-hours parameter
     [[DataHub shared] getHistoricalBarsForSymbol:symbol
                                        timeframe:barTimeframe
                                         barCount:barsCount
+                            needExtendedHours:needExtendedHours  // ✅ NUOVO PARAMETRO
                                       completion:^(NSArray<HistoricalBarModel *> *data, BOOL isFresh) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (!data || data.count == 0) {
@@ -624,10 +632,11 @@ extern NSString *const DataHubDataLoadedNotification;
                 return;
             }
             
-            NSLog(@"✅ ChartWidget: Received %lu bars for %@ (%@)",
-                  (unsigned long)data.count, symbol, isFresh ? @"fresh" : @"cached");
+            NSLog(@"✅ ChartWidget: Received %lu bars for %@ (%@, extended-hours: %@)",
+                  (unsigned long)data.count, symbol, isFresh ? @"fresh" : @"cached",
+                  needExtendedHours ? @"included" : @"excluded");
             
-            // ✅ NUOVO: Controllo se serve aggiungere la barra corrente
+            // ✅ CONTROLLO: Aggiungere la barra corrente se necessario
             [self checkAndAddCurrentBarIfNeeded:data
                                          symbol:symbol
                                       timeframe:barTimeframe
@@ -663,6 +672,7 @@ extern NSString *const DataHubDataLoadedNotification;
         });
     }
 }
+
 
 - (void)forceChartRedraw {
     // Metodo helper per forzare redraw completo
@@ -1287,8 +1297,8 @@ extern NSString *const DataHubDataLoadedNotification;
 #pragma mark - Preferences Management
 
 - (IBAction)showPreferences:(id)sender {
-    ChartPreferencesWindow *prefsWindow = [[ChartPreferencesWindow alloc] initWithChartWidget:self];
-    [prefsWindow showPreferencesWindow];
+    self.preferencesWindowController = [[ChartPreferencesWindow alloc] initWithChartWidget:self];
+    [self.preferencesWindowController showPreferencesWindow];
     NSLog(@"🛠️ Chart preferences window opened");
 }
 

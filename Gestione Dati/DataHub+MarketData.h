@@ -32,12 +32,26 @@ NS_ASSUME_NONNULL_BEGIN
 
 #pragma mark - Historical Data with Smart Caching
 
-// Get historical data with automatic refresh if stale
-// RETURNS: Array of runtime HistoricalBarModel objects (thread-safe)
+/**
+ * Get historical bars for a symbol with extended hours option
+ * @param symbol The symbol to get data for
+ * @param timeframe The bar timeframe (1min, 5min, daily, etc.)
+ * @param barCount Number of bars to request
+ * @param needExtendedHours YES to include after-hours data, NO for regular hours only
+ * @param completion Completion block with bars array and freshness
+ */
 - (void)getHistoricalBarsForSymbol:(NSString *)symbol
                          timeframe:(BarTimeframe)timeframe
                           barCount:(NSInteger)barCount
-                        completion:(void(^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion;
+                  needExtendedHours:(BOOL)needExtendedHours
+                        completion:(void (^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion;
+
+// E ANCHE aggiornare il metodo esistente per backward compatibility:
+- (void)getHistoricalBarsForSymbol:(NSString *)symbol
+                         timeframe:(BarTimeframe)timeframe
+                          barCount:(NSInteger)barCount
+                        completion:(void (^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion;
+// Questo metodo dovrebbe internamente chiamare quello nuovo con needExtendedHours = NO
 
 // Get historical data for date range
 - (void)getHistoricalBarsForSymbol:(NSString *)symbol

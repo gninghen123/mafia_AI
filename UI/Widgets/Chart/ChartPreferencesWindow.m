@@ -34,7 +34,6 @@
         _originalTradingHours = chartWidget.tradingHoursMode;
         _originalBarsToDownload = chartWidget.barsToDownload;
         _originalInitialBarsToShow = chartWidget.initialBarsToShow;
-        
         [self setupWindow];
         [self createControls];
         [self loadCurrentValues];
@@ -144,6 +143,9 @@
         return;
     }
     
+    // ✅ LOAD FROM USER DEFAULTS FIRST
+    [ChartPreferencesWindow loadDefaultPreferencesForChartWidget:self.chartWidget];
+    
     // Load after-hours setting
     BOOL includeAfterHours = (self.chartWidget.tradingHoursMode == ChartTradingHoursWithAfterHours);
     [self.includeAfterHoursSwitch setState:(includeAfterHours ? NSControlStateValueOn : NSControlStateValueOff)];
@@ -175,15 +177,6 @@
         return;
     }
     
-    if (barsToDownload > 10000) {
-        [self showAlert:@"Bars to download cannot exceed 10,000"];
-        return;
-    }
-    
-    if (initialBarsToShow > 500) {
-        [self showAlert:@"Initial bars to show cannot exceed 500"];
-        return;
-    }
     
     if (initialBarsToShow < 10) {
         [self showAlert:@"Initial bars to show must be at least 10"];
@@ -205,6 +198,11 @@
     self.chartWidget.tradingHoursMode = newTradingHours;
     self.chartWidget.barsToDownload = barsToDownload;
     self.chartWidget.initialBarsToShow = initialBarsToShow;
+    
+    // ✅ SAVE TO USER DEFAULTS
+    [self savePreferencesToUserDefaults:newTradingHours
+                         barsToDownload:barsToDownload
+                     initialBarsToShow:initialBarsToShow];
     
     // Notify chart widget of changes
     [self.chartWidget preferencesDidChange:needsDataReload];
@@ -238,6 +236,48 @@
     NSLog(@"🔻 Closing preferences window");
     [self.window orderOut:self];
     [[NSApplication sharedApplication] stopModal];
+}
+
+#pragma mark - User Defaults Management
+
++ (void)loadDefaultPreferencesForChartWidget:(ChartWidget *)chartWidget {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    // Load with default values if not set
+    NSInteger tradingHours = [defaults integerForKey:@"ChartWidget_TradingHours"];
+    NSInteger barsToDownload = [defaults integerForKey:@"ChartWidget_BarsToDownload"];
+    NSInteger initialBarsToShow = [defaults integerForKey:@"ChartWidget_InitialBarsToShow"];
+    
+    // Apply defaults if values are invalid or not set
+    if (barsToDownload < 50) barsToDownload = 500;           // Default: 500 bars
+    if (initialBarsToShow < 10) initialBarsToShow = 100;     // Default: 100 bars visible
+    if (initialBarsToShow > barsToDownload) initialBarsToShow = barsToDownload / 2;
+    
+    // Apply to chart widget
+    chartWidget.tradingHoursMode = (ChartTradingHours)tradingHours;
+    chartWidget.barsToDownload = barsToDownload;
+    chartWidget.initialBarsToShow = initialBarsToShow;
+    
+    NSLog(@"📂 Loaded chart preferences from defaults - After-Hours: %@, Bars: %ld/%ld",
+          (tradingHours == ChartTradingHoursWithAfterHours) ? @"YES" : @"NO",
+          (long)barsToDownload, (long)initialBarsToShow);
+}
+
+- (void)savePreferencesToUserDefaults:(ChartTradingHours)tradingHours
+                       barsToDownload:(NSInteger)barsToDownload
+                   initialBarsToShow:(NSInteger)initialBarsToShow {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    [defaults setInteger:(NSInteger)tradingHours forKey:@"ChartWidget_TradingHours"];
+    [defaults setInteger:barsToDownload forKey:@"ChartWidget_BarsToDownload"];
+    [defaults setInteger:initialBarsToShow forKey:@"ChartWidget_InitialBarsToShow"];
+    
+    // Force synchronization
+    [defaults synchronize];
+    
+    NSLog(@"💾 Saved chart preferences to defaults - After-Hours: %@, Bars: %ld/%ld",
+          (tradingHours == ChartTradingHoursWithAfterHours) ? @"YES" : @"NO",
+          (long)barsToDownload, (long)initialBarsToShow);
 }
 
 #pragma mark - Helpers

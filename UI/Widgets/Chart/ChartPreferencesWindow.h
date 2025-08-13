@@ -39,6 +39,9 @@ typedef NS_ENUM(NSInteger, ChartTradingHours) {
 // Window management
 - (void)showPreferencesWindow;
 
+// User Defaults management
++ (void)loadDefaultPreferencesForChartWidget:(ChartWidget *)chartWidget;
+
 @end
 
 NS_ASSUME_NONNULL_END

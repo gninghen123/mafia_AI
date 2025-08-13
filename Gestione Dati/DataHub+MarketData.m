@@ -244,32 +244,31 @@
 - (void)getHistoricalBarsForSymbol:(NSString *)symbol
                          timeframe:(BarTimeframe)timeframe
                           barCount:(NSInteger)barCount
-                        completion:(void(^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion {
+                  needExtendedHours:(BOOL)needExtendedHours
+                        completion:(void (^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion {
     
-    if (!symbol || !completion) return;
+    if (!completion) return;
     
-    [self initializeMarketDataCaches];
+    // ✅ CACHE: Include extended hours flag in cache key
+    NSString *cacheKey = [NSString stringWithFormat:@"historical_%@_%ld_%ld_%@",
+                         symbol, (long)timeframe, (long)barCount,
+                         needExtendedHours ? @"extended" : @"regular"];
     
-    NSLog(@"📈 DataHub: Getting historical data for %@ timeframe:%ld count:%ld", symbol, (long)timeframe, (long)barCount);
-    
-    // 1. Check memory cache
-    NSString *cacheKey = [NSString stringWithFormat:@"historical_%@_%ld_%ld", symbol, (long)timeframe, (long)barCount];
     NSArray<HistoricalBarModel *> *cachedBars = self.historicalCache[cacheKey];
     BOOL isStale = [self isCacheStale:cacheKey dataType:DataFreshnessTypeHistorical];
     
-    // 2. Return cached data immediately if available
+    // Return cached data immediately if available
     if (cachedBars) {
         completion(cachedBars, !isStale);
-        
-        // If fresh, we're done
         if (!isStale) return;
     }
     
-    // 3. Check Core Data if no memory cache
+    // Check Core Data if no memory cache (with extended hours consideration)
     if (!cachedBars) {
         [self loadHistoricalDataFromCoreData:symbol
                                    timeframe:timeframe
                                     barCount:barCount
+                            needExtendedHours:needExtendedHours  // ✅ PASS PARAMETER
                                   completion:^(NSArray<HistoricalBarModel *> *bars) {
             if (bars.count > 0) {
                 self.historicalCache[cacheKey] = bars;
@@ -278,30 +277,83 @@
         }];
     }
     
-    // 4. Request fresh data if needed
-    if (isStale && ![self.activeHistoricalRequests containsObject:cacheKey]) {
-        [self.activeHistoricalRequests addObject:cacheKey];
+    // Request fresh data if needed
+    if (isStale) {
+        NSLog(@"📡 DataHub: Requesting fresh historical data for %@ (extended: %@)",
+              symbol, needExtendedHours ? @"YES" : @"NO");
         
         [[DataManager sharedManager] requestHistoricalDataForSymbol:symbol
                                                           timeframe:timeframe
                                                               count:barCount
-                                                         completion:^(NSArray<HistoricalBarModel *> *runtimeBars, NSError *error) {
-            [self.activeHistoricalRequests removeObject:cacheKey];
+                                                         completion:^(NSArray<HistoricalBarModel *> *bars, NSError *error) {
+            if (error) {
+                NSLog(@"❌ DataHub: Historical data request failed: %@", error.localizedDescription);
+                return;
+            }
             
-            if (runtimeBars && runtimeBars.count > 0) {
-                // Cache in memory
-                [self cacheHistoricalBars:runtimeBars forKey:cacheKey];
+            if (bars.count > 0) {
+                // Update cache with extended hours flag
+                self.historicalCache[cacheKey] = bars;
+                self.cacheTimestamps[cacheKey] = [NSDate date];  // Set timestamp directly
                 
-                // Save to Core Data in background
-                [self saveHistoricalBarsModelToCoreData:runtimeBars symbol:symbol timeframe:timeframe];
+                // Save to Core Data with extended hours flag
+                [self saveHistoricalDataToCoreData:bars
+                                            symbol:symbol
+                                         timeframe:timeframe
+                                  needExtendedHours:needExtendedHours];
                 
-                // Call completion if this is the first response
-                if (!cachedBars && completion) {
-                    completion(runtimeBars, YES);
-                }
+                // Call completion with fresh data
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(bars, YES);
+                });
+                
+                NSLog(@"✅ DataHub: Fresh historical data cached for %@ (extended: %@, %lu bars)",
+                      symbol, needExtendedHours ? @"YES" : @"NO", (unsigned long)bars.count);
             }
         }];
     }
+}
+
+- (void)loadHistoricalDataFromCoreData:(NSString *)symbol
+                             timeframe:(BarTimeframe)timeframe
+                              barCount:(NSInteger)barCount
+                      needExtendedHours:(BOOL)needExtendedHours
+                            completion:(void (^)(NSArray<HistoricalBarModel *> *bars))completion {
+    
+    // Implementation should filter Core Data based on extended hours flag
+    // This would require updating the Core Data model to store this information
+    // For now, call existing method and add TODO
+    
+    // TODO: Update Core Data schema to include extended_hours flag
+    [self loadHistoricalDataFromCoreData:symbol
+                               timeframe:timeframe
+                                barCount:barCount
+                              completion:completion];
+}
+
+- (void)saveHistoricalDataToCoreData:(NSArray<HistoricalBarModel *> *)bars
+                              symbol:(NSString *)symbol
+                           timeframe:(BarTimeframe)timeframe
+                    needExtendedHours:(BOOL)needExtendedHours {
+    
+    // TODO: Save with extended hours flag to Core Data
+    // For now, call existing method
+    [self saveHistoricalBarsModelToCoreData:bars symbol:symbol timeframe:timeframe];
+}
+
+
+// ✅ BACKWARD COMPATIBILITY: Metodo esistente chiama quello nuovo
+- (void)getHistoricalBarsForSymbol:(NSString *)symbol
+                         timeframe:(BarTimeframe)timeframe
+                          barCount:(NSInteger)barCount
+                        completion:(void (^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion {
+    
+    // Default: NO extended hours per backward compatibility
+    [self getHistoricalBarsForSymbol:symbol
+                           timeframe:timeframe
+                            barCount:barCount
+                    needExtendedHours:NO
+                          completion:completion];
 }
 
 - (void)getHistoricalBarsForSymbol:(NSString *)symbol

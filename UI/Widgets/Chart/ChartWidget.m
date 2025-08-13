@@ -563,12 +563,22 @@ extern NSString *const DataHubDataLoadedNotification;
     if (!self.chartData || self.chartData.count == 0) return;
     
     NSInteger currentRange = self.visibleEndIndex - self.visibleStartIndex;
-    double percentage = sender.doubleValue / 100.0;
-    NSInteger maxStartIndex = self.chartData.count - currentRange;
-    NSInteger newStartIndex = maxStartIndex * percentage;
+    double timelinePercentage = sender.doubleValue / 100.0; // 0.0 = inizio timeline, 1.0 = fine timeline
     
-    [self zoomToRange:newStartIndex endIndex:newStartIndex + currentRange];
+    // ✅ TIMELINE LOGIC: Calcola dove posizionare la finestra visibile nella timeline
+    NSInteger maxStartIndex = self.chartData.count - currentRange;
+    NSInteger newStartIndex = (NSInteger)(maxStartIndex * timelinePercentage);
+    
+    // Clamp ai limiti validi
+    newStartIndex = MAX(0, MIN(maxStartIndex, newStartIndex));
+    NSInteger newEndIndex = newStartIndex + currentRange;
+    
+    [self zoomToRange:newStartIndex endIndex:newEndIndex];
+    
+    NSLog(@"📅 Timeline position: %.1f%% -> showing bars [%ld-%ld] (%.1f%% through history)",
+          sender.doubleValue, (long)newStartIndex, (long)newEndIndex, timelinePercentage * 100.0);
 }
+
 
 #pragma mark - Public Methods
 
@@ -675,28 +685,18 @@ extern NSString *const DataHubDataLoadedNotification;
     self.visibleStartIndex = startIndex;
     self.visibleEndIndex = endIndex;
     
-    // ✅ AGGIUNGI: Aggiorna slider senza triggerare action
-    if (self.chartData.count > 0) {
-        NSInteger visibleRange = endIndex - startIndex;
-        double percentage = (double)startIndex / (self.chartData.count - visibleRange);
-        percentage = MAX(0.0, MIN(1.0, percentage));
-        
-        // Temporaneamente rimuovi target per evitare loop
-        id originalTarget = self.panSlider.target;
-        self.panSlider.target = nil;
-        [self.panSlider setDoubleValue:percentage * 100.0];
-        self.panSlider.target = originalTarget;
-    }
-    
+    // ✅ MODIFICATO: updatePanSlider ora gestisce la logica invertita
     [self updateViewport];
     [self synchronizePanels];
     
-    NSLog(@"📊 Zoom applied: [%ld-%ld], slider at %.1f%%",
-          (long)startIndex, (long)endIndex, self.panSlider.doubleValue);
+    NSLog(@"📊 Zoom applied: [%ld-%ld]", (long)startIndex, (long)endIndex);
 }
+
+
 - (void)resetZoom {
     if (!self.chartData || self.chartData.count == 0) return;
     
+    // ✅ INVARIATO: Mostra tutti i dati (0 to end)
     [self zoomToRange:0 endIndex:self.chartData.count - 1];
 }
 
@@ -709,7 +709,10 @@ extern NSString *const DataHubDataLoadedNotification;
     NSInteger barsToShow = MIN(self.initialBarsToShow, totalBars);
     NSInteger startIndex = MAX(0, totalBars - barsToShow);
     
+    // ✅ MOSTRA DATI RECENTI: Questo posizionerà lo slider verso destra (circa 100%)
     [self zoomToRange:startIndex endIndex:totalBars - 1];
+    
+    NSLog(@"📅 Reset to recent data: slider will be near 100%% (recent timeline position)");
 }
 
 - (void)updateViewport {
@@ -745,12 +748,24 @@ extern NSString *const DataHubDataLoadedNotification;
     NSInteger maxStartIndex = self.chartData.count - currentRange;
     
     if (maxStartIndex > 0) {
-        double percentage = (double)self.visibleStartIndex / maxStartIndex * 100.0;
-        self.panSlider.doubleValue = percentage;
+        // ✅ TIMELINE PERCENTAGE: Dove siamo nella timeline (0% = inizio, 100% = fine)
+        double timelinePercentage = (double)self.visibleStartIndex / maxStartIndex;
+        timelinePercentage = MAX(0.0, MIN(1.0, timelinePercentage));
+        
+        // Aggiorna slider senza triggerare l'action
+        id originalTarget = self.panSlider.target;
+        self.panSlider.target = nil;
+        [self.panSlider setDoubleValue:timelinePercentage * 100.0];
+        self.panSlider.target = originalTarget;
+        
+        NSLog(@"📅 Timeline slider updated: %.1f%% (showing [%ld-%ld])",
+              timelinePercentage * 100.0, (long)self.visibleStartIndex, (long)self.visibleEndIndex);
     } else {
-        self.panSlider.doubleValue = 0;
+        // Se stiamo vedendo tutto il dataset, siamo all'inizio della timeline
+        self.panSlider.doubleValue = 0.0;
     }
 }
+
 
 - (void)synchronizePanels {
     for (ChartPanelView *panel in self.chartPanels) {

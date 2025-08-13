@@ -570,14 +570,16 @@ static const void *kIsOptimizedTrackingActiveKey = &kIsOptimizedTrackingActiveKe
 
 - (Symbol *)getSymbolWithName:(NSString *)symbolName inContext:(NSManagedObjectContext *)context {
     NSFetchRequest *request = [Symbol fetchRequest];
-    request.predicate = [NSPredicate predicateWithFormat:@"name == %@", symbolName];
+    
+    // ✅ FIX: Usa "symbol" invece di "name" (il keypath corretto nel modello Core Data)
+    request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbolName];
     request.fetchLimit = 1;
     
     NSError *error = nil;
     NSArray *results = [context executeFetchRequest:request error:&error];
     
     if (error) {
-        NSLog(@"❌ Error fetching symbol %@: %@", symbolName, error.localizedDescription);
+        NSLog(@"❌ Error fetching symbol %@: %@", symbolName, error);
         return nil;
     }
     

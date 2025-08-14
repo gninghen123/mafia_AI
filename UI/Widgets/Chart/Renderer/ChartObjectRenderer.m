@@ -10,10 +10,7 @@
 #import "RuntimeModels.h"
 #import "ChartWidget.h"
 
-#pragma mark - Coordinate Context Implementation
 
-@implementation ChartCoordinateContext
-@end
 
 #pragma mark - Chart Object Renderer Implementation
 
@@ -129,9 +126,10 @@
               (long)self.coordinateContext.barsPerDay);
     }
 }
+
 - (NSPoint)screenPointFromControlPoint:(ControlPointModel *)controlPoint {
     if (!controlPoint || !self.coordinateContext.chartData) {
-        return NSMakePoint(-9999, -9999); // Coordinate invalide
+        return NSMakePoint(-9999, -9999);
     }
     
     // Step 1: Find exact bar in data
@@ -140,28 +138,23 @@
     NSPoint screenPoint = NSMakePoint(-9999, -9999);
     
     if (targetBar) {
-        // Barra trovata - calcolo preciso
+        // X coordinate calculation (INVARIATO)
         NSInteger barIndex = [self findBarIndexForDate:controlPoint.dateAnchor];
         if (barIndex != NSNotFound) {
             screenPoint.x = [self xCoordinateForBarIndex:barIndex];
         }
         
-        // Y coordinate dal prezzo reale
+        // ✅ Y coordinate usando METODO UNIFICATO
         double indicatorValue = [self getIndicatorValue:controlPoint.indicatorRef fromBar:targetBar];
         if (indicatorValue > 0.0) {
             double actualPrice = indicatorValue * (1.0 + controlPoint.valuePercent / 100.0);
             
-            if (self.coordinateContext.yRangeMax != self.coordinateContext.yRangeMin) {
-                double normalizedPrice = (actualPrice - self.coordinateContext.yRangeMin) /
-                                        (self.coordinateContext.yRangeMax - self.coordinateContext.yRangeMin);
-                screenPoint.y = 10 + normalizedPrice * (self.coordinateContext.panelBounds.size.height - 20);
-            }
+            // ✅ USA IL METODO UNIFICATO invece del calcolo locale
+            screenPoint.y = [self.coordinateContext screenYForValue:actualPrice];
         }
     } else {
-        // ✅ BARRA NON TROVATA - USA ESTRAPOLAZIONE SMART
+        // Estrapolazione (INVARIATO)
         screenPoint.x = [self xCoordinateForDate:controlPoint.dateAnchor];
-        
-        // Per Y, non inventare prezzi - skip questo CP
         return NSMakePoint(-9999, -9999);
     }
     
@@ -177,23 +170,19 @@
         return nil;
     }
     
-    // ✅ USA IL NUOVO METODO UNIFICATO
+    // Step 1 & 2: X coordinate conversion (INVARIATO)
     NSInteger barIndex = [self barIndexForXCoordinate:screenPoint.x];
-    
     if (barIndex < 0 || barIndex >= self.coordinateContext.chartData.count) {
         return nil;
     }
     
-    // Step 2: Get the bar and date
     HistoricalBarModel *targetBar = self.coordinateContext.chartData[barIndex];
     NSDate *dateAnchor = targetBar.date;
     
-    // Step 3: Convert screen Y to price (INVARIATO)
-    double normalizedY = (screenPoint.y - 10) / (self.coordinateContext.panelBounds.size.height - 20);
-    double screenPrice = self.coordinateContext.yRangeMin +
-                        normalizedY * (self.coordinateContext.yRangeMax - self.coordinateContext.yRangeMin);
+    // ✅ Step 3: Y coordinate conversion usando METODO UNIFICATO
+    double screenPrice = [self.coordinateContext valueForScreenY:screenPoint.y];
     
-    // Step 4: Get indicator value and calculate percentage
+    // Step 4: Calculate percentage (INVARIATO)
     double indicatorValue = [self getIndicatorValue:indicatorRef fromBar:targetBar];
     if (indicatorValue == 0.0) {
         return nil;
@@ -201,11 +190,12 @@
     
     double valuePercent = ((screenPrice - indicatorValue) / indicatorValue) * 100.0;
     
-    // Step 5: Create control point
+    // Step 5: Create control point (INVARIATO)
     return [ControlPointModel pointWithDate:dateAnchor
                                 valuePercent:valuePercent
                                    indicator:indicatorRef];
 }
+
 
 
 #pragma mark - Rendering
@@ -492,15 +482,6 @@
     [markerPath stroke];
 }
 
-- (CGFloat)yCoordinateForPrice:(double)price {
-    if (self.coordinateContext.yRangeMax == self.coordinateContext.yRangeMin) {
-        return self.coordinateContext.panelBounds.size.height / 2;
-    }
-    
-    double normalizedPrice = (price - self.coordinateContext.yRangeMin) /
-                            (self.coordinateContext.yRangeMax - self.coordinateContext.yRangeMin);
-    return 10 + normalizedPrice * (self.coordinateContext.panelBounds.size.height - 20);
-}
 
 - (void)drawHorizontalLine:(ChartObjectModel *)object {
     if (object.controlPoints.count < 1) return;
@@ -676,7 +657,7 @@
         
         // ✅ STILE DIVERSO per livelli chiave vs extensions
         NSBezierPath *levelPath = [NSBezierPath bezierPath];
-        [levelPath moveToPoint:NSMakePoint(0, fibY)];
+        [levelPath moveToPoint:NSMakePoint(startPoint.x, fibY)];
         [levelPath lineToPoint:NSMakePoint(panelWidth, fibY)];
         
         if (ratio == 0.0 || ratio == 1.0) {
@@ -700,8 +681,8 @@
         // ✅ DRAW LABEL con prezzo calcolato
         NSString *labelText = [NSString stringWithFormat:@"%@ (%.2f)", fibLabels[i], fibPrice];
         [self drawFibonacciLabel:labelText
-                         atPoint:NSMakePoint(panelWidth - 100, fibY)
-                      isKeyLevel:(ratio == 0.0 || ratio == 1.0)
+                         atPoint:NSMakePoint(startPoint.x, fibY)
+                      isKeyLevel:(ratio == 0.5 || ratio == 0.0 || ratio == 1.0)
                      isExtension:(ratio > 1.0)];
     }
     
@@ -791,12 +772,11 @@
 
 
 - (CGFloat)priceFromScreenY:(CGFloat)screenY {
-    // Inverte la conversione di yCoordinateForPrice
-    CGFloat panelHeight = self.coordinateContext.panelBounds.size.height;
-    CGFloat normalizedY = (panelHeight - screenY - 10) / (panelHeight - 20);
-    
-    return self.coordinateContext.yRangeMin +
-           normalizedY * (self.coordinateContext.yRangeMax - self.coordinateContext.yRangeMin);
+    return [self.coordinateContext valueForScreenY:screenY];
+}
+
+- (CGFloat)yCoordinateForPrice:(double)price {
+    return [self.coordinateContext screenYForValue:price];
 }
 
 - (void)drawRectangle:(ChartObjectModel *)object {
@@ -958,24 +938,24 @@
 - (void)drawTargetPrice:(ChartObjectModel *)object {
     // ✅ VERIFICA: Target deve avere esattamente 3 CP (buy, stop, target)
     if (object.controlPoints.count < 3) {
-        // Se non completo, disegna solo le linee disponibili come prima
-        if (object.controlPoints.count >= 1) {
-            ControlPointModel *cp = object.controlPoints.firstObject;
-            NSPoint screenPoint = [self screenPointFromControlPoint:cp];
-            
-            [self applyStyleForObject:object];
-            
-            NSBezierPath *path = [NSBezierPath bezierPath];
-            [path moveToPoint:NSMakePoint(0, screenPoint.y)];
-            [path lineToPoint:NSMakePoint(self.coordinateContext.panelBounds.size.width, screenPoint.y)];
-            [self strokePath:path withStyle:object.style];
-            
-            CGFloat targetPrice = [self priceFromScreenY:screenPoint.y];
-            NSString *labelText = [NSString stringWithFormat:@"Target: %.2f", targetPrice];
-            [self drawTargetLabel:labelText atPoint:NSMakePoint(10, screenPoint.y) color:object.style.color];
-        }
-        return;
-    }
+           if (object.controlPoints.count >= 1) {
+               ControlPointModel *cp = object.controlPoints.firstObject;
+               NSPoint screenPoint = [self screenPointFromControlPoint:cp];
+               
+               [self applyStyleForObject:object];
+               
+               NSBezierPath *path = [NSBezierPath bezierPath];
+               [path moveToPoint:NSMakePoint(0, screenPoint.y)];
+               [path lineToPoint:NSMakePoint(self.coordinateContext.panelBounds.size.width, screenPoint.y)];
+               [self strokePath:path withStyle:object.style];
+               
+               // ✅ USA METODO UNIFICATO
+               CGFloat targetPrice = [self.coordinateContext valueForScreenY:screenPoint.y];
+               NSString *labelText = [NSString stringWithFormat:@"Target: %.2f", targetPrice];
+               [self drawTargetLabel:labelText atPoint:NSMakePoint(10, screenPoint.y) color:object.style.color];
+           }
+           return;
+       }
     
     // ✅ ESTRAI i 3 control points
     ControlPointModel *buyCP = object.controlPoints[0];    // CP1 = Buy Signal
@@ -1044,32 +1024,7 @@
                   buyPrice:buyPrice stopPrice:stopPrice targetPrice:targetPrice
               stopLossPercent:stopLossPercent targetPercent:targetPercent rrr:rrr];
 }
-- (void)drawTargetLabel:(NSString *)text atPoint:(NSPoint)point color:(NSColor *)textColor {
-    NSDictionary *attributes = @{
-        NSFontAttributeName: [NSFont boldSystemFontOfSize:24],
-        NSForegroundColorAttributeName: textColor,
-        NSBackgroundColorAttributeName: [[NSColor controlBackgroundColor] colorWithAlphaComponent:0.9]
-    };
-    
-    NSAttributedString *attributedText = [[NSAttributedString alloc] initWithString:text attributes:attributes];
-    NSSize textSize = [attributedText size];
-    
-    NSRect labelRect = NSMakeRect(point.x, point.y - textSize.height/2 - 2,
-                                  textSize.width + 8, textSize.height + 4);
-    
-    // Draw background
-    [[NSColor controlBackgroundColor] setFill];
-    NSBezierPath *bgPath = [NSBezierPath bezierPathWithRoundedRect:labelRect xRadius:3 yRadius:3];
-    [bgPath fill];
-    
-    // Draw border
-    [textColor setStroke];
-    bgPath.lineWidth = 1.0;
-    [bgPath stroke];
-    
-    // Draw text
-    [attributedText drawAtPoint:NSMakePoint(point.x + 4, point.y - textSize.height/2)];
-}
+
 
 // Helper per label semplici (backward compatibility)
 - (void)drawTargetLabel:(NSString *)text
@@ -1100,7 +1055,7 @@
         [self drawTargetEnhancedLabel:label
                               atPoint:NSMakePoint(point.x + 15, point.y)
                                 color:color
-                                 size:13
+                                 size:16
                                isBold:YES];
     }
 }

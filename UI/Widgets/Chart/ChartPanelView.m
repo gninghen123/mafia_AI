@@ -291,10 +291,10 @@
         HistoricalBarModel *bar = self.chartData[i];
         
         CGFloat x = 10 + (i - self.visibleStartIndex) * (barWidth + barSpacing);
-        CGFloat openY = [self yCoordinateForPrice:bar.open];
-        CGFloat closeY = [self yCoordinateForPrice:bar.close];
-        CGFloat highY = [self yCoordinateForPrice:bar.high];
-        CGFloat lowY = [self yCoordinateForPrice:bar.low];
+        CGFloat openY = [self.objectRenderer.coordinateContext screenYForValue:bar.open];
+        CGFloat closeY = [self.objectRenderer.coordinateContext screenYForValue:bar.close];
+        CGFloat highY = [self.objectRenderer.coordinateContext screenYForValue:bar.high];
+        CGFloat lowY = [self.objectRenderer.coordinateContext screenYForValue:bar.low];
         
         // Color based on direction
         NSColor *bodyColor = (bar.close >= bar.open) ? [NSColor systemGreenColor] : [NSColor systemRedColor];
@@ -537,6 +537,10 @@
 #pragma mark - Coordinate Conversion
 
 - (CGFloat)yCoordinateForPrice:(double)price {
+    if (self.objectRenderer && self.objectRenderer.coordinateContext) {
+           return [self.objectRenderer.coordinateContext screenYForValue:price];
+       }
+    
     if (self.yRangeMax == self.yRangeMin) return self.bounds.size.height / 2;
     
     double normalizedPrice = (price - self.yRangeMin) / (self.yRangeMax - self.yRangeMin);
@@ -544,6 +548,11 @@
 }
 
 - (double)priceForYCoordinate:(CGFloat)y {
+    if (self.objectRenderer && self.objectRenderer.coordinateContext) {
+        return [self.objectRenderer.coordinateContext priceFromScreenY:y];
+       }
+    
+    
     if (self.bounds.size.height <= 20) return self.yRangeMin;
     
     double normalizedY = (y - 10) / (self.bounds.size.height - 20);

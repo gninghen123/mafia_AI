@@ -8,23 +8,12 @@
 #import <Foundation/Foundation.h>
 #import <Cocoa/Cocoa.h>
 #import "RuntimeModels.h"
+#import "ChartCoordinateContext.h"
 
 @class ChartPanelView;
 @class HistoricalBarModel;
 
 NS_ASSUME_NONNULL_BEGIN
-
-#pragma mark - Alert Coordinate Context
-
-@interface AlertCoordinateContext : NSObject
-@property (nonatomic, strong) NSArray<HistoricalBarModel *> *chartData;
-@property (nonatomic, assign) NSInteger visibleStartIndex;
-@property (nonatomic, assign) NSInteger visibleEndIndex;
-@property (nonatomic, assign) double yRangeMin;
-@property (nonatomic, assign) double yRangeMax;
-@property (nonatomic, assign) CGRect panelBounds;
-@property (nonatomic, strong) NSString *currentSymbol;
-@end
 
 #pragma mark - Chart Alert Renderer
 
@@ -32,7 +21,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 // Context and dependencies
 @property (nonatomic, weak) ChartPanelView *panelView;
-@property (nonatomic, strong) AlertCoordinateContext *coordinateContext;
+@property (nonatomic, strong) ChartCoordinateContext *coordinateContext;
 
 // Rendering layers (will be added to ChartPanelView)
 @property (nonatomic, strong) CALayer *alertsLayer;        // Static alerts

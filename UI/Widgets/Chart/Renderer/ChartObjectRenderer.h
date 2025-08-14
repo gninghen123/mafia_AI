@@ -9,27 +9,13 @@
 #import <Cocoa/Cocoa.h>
 #import "ChartObjectModels.h"
 #import "ChartObjectsManager.h"
+#import "ChartCoordinateContext.h"
 
 
 @class ChartPanelView;
 @class HistoricalBarModel;
 
 NS_ASSUME_NONNULL_BEGIN
-
-#pragma mark - Coordinate Context
-
-@interface ChartCoordinateContext : NSObject
-@property (nonatomic, strong) NSArray<HistoricalBarModel *> *chartData;
-@property (nonatomic, assign) NSInteger visibleStartIndex;
-@property (nonatomic, assign) NSInteger visibleEndIndex;
-@property (nonatomic, assign) double yRangeMin;
-@property (nonatomic, assign) double yRangeMax;
-@property (nonatomic, assign) CGRect panelBounds;
-
-@property (nonatomic, assign) NSInteger barsPerDay;
-@property (nonatomic, assign) NSInteger currentTimeframeMinutes;
-
-@end
 
 #pragma mark - Chart Object Renderer
 

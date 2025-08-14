@@ -9,10 +9,7 @@
 #import "ChartPanelView.h"
 #import "DataHub.h"
 
-#pragma mark - Alert Coordinate Context Implementation
 
-@implementation AlertCoordinateContext
-@end
 
 #pragma mark - Chart Alert Renderer Implementation
 
@@ -31,7 +28,7 @@
     self = [super init];
     if (self) {
         _panelView = panelView;
-        _coordinateContext = [[AlertCoordinateContext alloc] init];
+        _coordinateContext = [[ChartCoordinateContext alloc] init];
         _alerts = @[];
         
         [self setupLayersInPanelView];
@@ -327,29 +324,12 @@
 #pragma mark - Coordinate Conversion
 
 - (CGFloat)screenYForTriggerValue:(double)triggerValue {
-    if (self.coordinateContext.yRangeMax <= self.coordinateContext.yRangeMin) {
-        return 0;
-    }
-    
-    CGRect bounds = self.coordinateContext.panelBounds;
-    double range = self.coordinateContext.yRangeMax - self.coordinateContext.yRangeMin;
-    double normalizedValue = (triggerValue - self.coordinateContext.yRangeMin) / range;
-    
-    // Flip Y coordinate (top = high price, bottom = low price)
-    return bounds.size.height - (normalizedValue * (bounds.size.height - 20)) - 10;
+    return [self.coordinateContext screenYForValue:triggerValue];
 }
 
+
 - (double)triggerValueForScreenY:(CGFloat)screenY {
-    if (self.coordinateContext.yRangeMax <= self.coordinateContext.yRangeMin) {
-        return 0;
-    }
-    
-    CGRect bounds = self.coordinateContext.panelBounds;
-    double range = self.coordinateContext.yRangeMax - self.coordinateContext.yRangeMin;
-    
-    // Convert flipped Y coordinate back to price
-    double normalizedY = (bounds.size.height - screenY - 10) / (bounds.size.height - 20);
-    return self.coordinateContext.yRangeMin + (normalizedY * range);
+    return [self.coordinateContext valueForScreenY:screenY];
 }
 
 #pragma mark - Alert Drag Operations

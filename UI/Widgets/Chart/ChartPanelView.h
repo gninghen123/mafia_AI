@@ -9,11 +9,12 @@
 #import <Cocoa/Cocoa.h>
 #import "RuntimeModels.h"
 #import "ChartObjectModels.h"
-@class ChartAlertRenderer;
 #import "ChartAlertRenderer.h"
 #import "AlertEditController.h"
 #import "ChartObjectSettingsWindow.h"
+#import "ChartCoordinateContext.h"
 
+@class ChartAlertRenderer;
 @class ChartWidget;
 @class ChartObjectRenderer;
 @class ChartObjectsManager;

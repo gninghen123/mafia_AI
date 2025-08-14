@@ -344,77 +344,19 @@
             [self drawFreeDrawing:object];
             break;
             
+        case ChartObjectTypeTrailingFibo:
+            [self drawTrailingFibo:object];
+            break;
+        case ChartObjectTypeTrailingFiboBetween:
+            [self drawTrailingFibo:object];
+            break;
+            
         default:
             NSLog(@"⚠️ ChartObjectRenderer: Unknown object type %ld", (long)object.type);
             break;
     }
 }
 
-- (void)drawTrailingFibo:(ChartObjectModel *)object {
-    // Calculate fibonacci levels using the algorithm
-    NSArray<NSDictionary *> *fibLevels = [self calculateTrailingFibonacciForObject:object];
-    
-    if (fibLevels.count == 0) {
-        NSLog(@"⚠️ TrailingFibo: No levels calculated for object %@", object.name);
-        return;
-    }
-    
-    [self applyStyleForObject:object];
-    
-    // Get viewport bounds for line extension
-    CGFloat leftX = 0;
-    CGFloat rightX = self.coordinateContext.panelBounds.size.width;
-    
-    // For TrailingFiboBetween, limit right extension to CP2
-    if (object.type == ChartObjectTypeTrailingFiboBetween && object.controlPoints.count >= 2) {
-        NSPoint cp2Screen = [self screenPointFromControlPoint:object.controlPoints[1]];
-        rightX = cp2Screen.x;
-    }
-    
-    // Draw each fibonacci level
-    for (NSDictionary *level in fibLevels) {
-        double levelPrice = [level[@"price"] doubleValue];
-        double ratio = [level[@"ratio"] doubleValue];
-        NSString *label = level[@"label"];  // Ora include % e valore
-        
-        // Convert price to screen Y coordinate
-        CGFloat y = [self yCoordinateForPrice:levelPrice];
-        
-        // Skip levels outside viewport
-        if (y < -10 || y > self.coordinateContext.panelBounds.size.height + 10) {
-            continue;
-        }
-        
-        // Different line styles for different levels
-        NSBezierPath *path = [NSBezierPath bezierPath];
-        
-        if (ratio == 0.0 || ratio == 1.0) {
-            // 0% and 100% levels - solid and thicker
-            path.lineWidth = 2.0;
-            [[NSColor systemBlueColor] setStroke];
-        } else {
-            // Intermediate levels - thinner
-            path.lineWidth = 1.0;
-            [[NSColor systemOrangeColor] setStroke];
-        }
-        
-        // Draw the line
-        [path moveToPoint:NSMakePoint(leftX, y)];
-        [path lineToPoint:NSMakePoint(rightX, y)];
-        [path stroke];
-        
-        // ✅ MIGLIORE RENDERING LABEL: sulla sinistra con % e valore
-        [self drawTrailingFiboEnhancedLabel:label
-                                    atPoint:NSMakePoint(leftX + 5, y + 2)
-                                    isKeyLevel:(ratio == 0.0 || ratio == 1.0)];
-    }
-    
-    // Draw start point marker
-    if (object.controlPoints.count > 0) {
-        NSPoint startPoint = [self screenPointFromControlPoint:object.controlPoints.firstObject];
-        [self drawTrailingFiboStartMarker:startPoint];
-    }
-}
 
 - (void)drawTrailingFiboEnhancedLabel:(NSString *)label
                                atPoint:(NSPoint)point
@@ -1244,6 +1186,7 @@
 - (BOOL)needsMoreControlPointsForCreation {
     switch (self.creationObjectType) {
         case ChartObjectTypeHorizontalLine:
+        case ChartObjectTypeTrailingFibo:
             // ✅ Questi oggetti hanno bisogno di solo 1 CP
             return self.tempControlPoints.count < 1;
             
@@ -1251,6 +1194,7 @@
         case ChartObjectTypeFibonacci:
         case ChartObjectTypeRectangle:
         case ChartObjectTypeCircle:
+        case ChartObjectTypeTrailingFiboBetween:
             // ✅ Questi oggetti hanno bisogno di 2 CP
             return self.tempControlPoints.count < 2;
             
@@ -1599,28 +1543,402 @@
 
 #pragma mark - TrailingFibo Core Algorithm
 
+/**
+ * Calcola i livelli Fibonacci trailing basandosi sui picchi progressivi
+ * Adattato dal codice esistente della vecchia app
+ */
 - (NSArray<NSDictionary *> *)calculateTrailingFibonacciForObject:(ChartObjectModel *)object {
-    if (object.controlPoints.count < 1) return @[];
+    NSMutableArray<NSDictionary *> *segments = [NSMutableArray array];
     
-    ControlPointModel *startCP = object.controlPoints.firstObject;
-    NSDate *startDate = startCP.dateAnchor;
-    NSDate *endDate = nil;
-    
-    // Determine end date for TrailingFiboBetween
-    if (object.type == ChartObjectTypeTrailingFiboBetween && object.controlPoints.count >= 2) {
-        endDate = object.controlPoints[1].dateAnchor;
+    // Ottieni dati storici dal coordinateContext
+    NSArray<HistoricalBarModel *> *data = self.coordinateContext.chartData;
+    if (data.count == 0 || object.controlPoints.count == 0) {
+        NSLog(@"⚠️ TrailingFibo: No data or control points available");
+        return @[];
     }
     
-    // Auto-detect direction based on CP1 position
-    BOOL searchForHighs = [self shouldSearchForHighsFromControlPoint:startCP];
+    // Estrai informazioni del control point di partenza
+    ControlPointModel *startCP = object.controlPoints.firstObject;
+    NSDate *cp1Date = startCP.dateAnchor;
+    double cp1Value = [self priceFromControlPoint:startCP];
     
-    // Calculate trailing peaks
-    NSArray<NSDictionary *> *peaks = [self calculateTrailingPeaksFromDate:startDate
-                                                                   toDate:endDate
-                                                            searchForHighs:searchForHighs];
+    // ✅ TRAILING BETWEEN: Gestione del secondo control point
+    ControlPointModel *endCP = nil;
+    NSDate *cp2Date = nil;
+    CGFloat maxSegmentX = self.coordinateContext.panelBounds.size.width; // Default: bordo destro
     
-    // Convert peaks to fibonacci levels
-    return [self calculateFibonacciLevelsFromPeaks:peaks startControlPoint:startCP];
+    if (object.type == ChartObjectTypeTrailingFiboBetween && object.controlPoints.count >= 2) {
+        endCP = object.controlPoints[1];
+        cp2Date = endCP.dateAnchor;
+        maxSegmentX = [self xCoordinateForDataIndex:[self findDataIndexForDate:cp2Date]];
+        NSLog(@"🎯 TrailingFiboBetween: Limited from %@ to %@ (maxX: %.1f)", cp1Date, cp2Date, maxSegmentX);
+    } else {
+        NSLog(@"🎯 TrailingFibo: Starting from CP1 at %@ with price %.2f", cp1Date, cp1Value);
+    }
+    
+    // 1️⃣ Trova indice di partenza nei dati storici
+    NSInteger startIndex = [self findDataIndexForDate:cp1Date];
+    if (startIndex == -1) {
+        NSLog(@"❌ TrailingFibo: Could not find start date in historical data");
+        return @[];
+    }
+    
+    // 2️⃣ Determina direzione del trailing Fibonacci
+    BOOL upFibo = [self shouldSearchForHighsFromBar:data[startIndex] cpValue:cp1Value];
+    NSLog(@"📈 TrailingFibo: Direction = %@ (searching for %@)",
+          upFibo ? @"UP" : @"DOWN", upFibo ? @"highs" : @"lows");
+    
+    // 3️⃣ Trova la data di fine
+    NSInteger endIndex = data.count - 1;
+    if (cp2Date) {
+        endIndex = [self findDataIndexForDate:cp2Date];
+        if (endIndex == -1) endIndex = data.count - 1;
+        NSLog(@"🏁 TrailingFiboBetween: End date limiting to index %ld", (long)endIndex);
+    }
+    
+    // 4️⃣ Inizializza min/max tracking
+    double minPrice = cp1Value;
+    double maxPrice = cp1Value;
+    CGFloat lastX = [self xCoordinateForDataIndex:startIndex];
+    
+    // 5️⃣ Ciclo progressivo per trovare picchi
+    for (NSInteger i = startIndex; i <= endIndex; i++) {
+        HistoricalBarModel *bar = data[i];
+        
+        if (upFibo) {
+            // Cerca nuovi massimi
+            double currentHigh = bar.high > 0 ? bar.high : bar.close;
+            if (currentHigh > maxPrice) {
+                // 🔹 Chiudi segmento precedente se esistente
+                if (maxPrice > minPrice) {
+                    CGFloat segmentEndX = [self xCoordinateForDataIndex:i];
+                    // ✅ TRAILING BETWEEN: Limita segmentEndX al massimo consentito
+                    if (cp2Date) {
+                        segmentEndX = MIN(segmentEndX, maxSegmentX);
+                    }
+                    
+                    [self addTrailingFiboSegments:segments
+                                            fromX:lastX
+                                              toX:segmentEndX
+                                              min:minPrice
+                                              max:maxPrice
+                                          uptrend:YES];
+                }
+                
+                // Aggiorna massimo e punto di partenza
+                maxPrice = currentHigh;
+                lastX = [self xCoordinateForDataIndex:i];
+                NSLog(@"📈 New HIGH: %.2f at index %ld", maxPrice, (long)i);
+            }
+        } else {
+            // Cerca nuovi minimi
+            double currentLow = (bar.low > 0) ? bar.low : bar.close;
+            if (currentLow < minPrice && currentLow > 0.0) {
+                // 🔹 Chiudi segmento precedente se esistente
+                if (maxPrice > minPrice) {
+                    CGFloat segmentEndX = [self xCoordinateForDataIndex:i];
+                    // ✅ TRAILING BETWEEN: Limita segmentEndX al massimo consentito
+                    if (cp2Date) {
+                        segmentEndX = MIN(segmentEndX, maxSegmentX);
+                    }
+                    
+                    [self addTrailingFiboSegments:segments
+                                            fromX:lastX
+                                              toX:segmentEndX
+                                              min:minPrice
+                                              max:maxPrice
+                                          uptrend:NO];
+                }
+                
+                // Aggiorna minimo e punto di partenza
+                minPrice = currentLow;
+                lastX = [self xCoordinateForDataIndex:i];
+                NSLog(@"📉 New LOW: %.2f at index %ld", minPrice, (long)i);
+            }
+        }
+    }
+    
+    // 6️⃣ Ultimo tratto
+    if (maxPrice > minPrice) {
+        // ✅ TRAILING BETWEEN: Usa maxSegmentX invece del bordo destro
+        CGFloat finalEndX = cp2Date ? maxSegmentX : self.coordinateContext.panelBounds.size.width;
+        
+        [self addTrailingFiboSegments:segments
+                                fromX:lastX
+                                  toX:finalEndX
+                                  min:minPrice
+                                  max:maxPrice
+                              uptrend:upFibo];
+        
+        if (cp2Date) {
+            NSLog(@"📏 Final segment (BETWEEN): %.2f to %.2f, ends at CP2 (X: %.1f)", minPrice, maxPrice, finalEndX);
+        } else {
+            NSLog(@"📏 Final segment (NORMAL): %.2f to %.2f, extends to right edge", minPrice, maxPrice);
+        }
+    }
+    
+    NSLog(@"✅ TrailingFibo: Generated %lu segments", (unsigned long)segments.count);
+    return segments;
+}
+/**
+ * Helper per aggiungere i segmenti Fibonacci di un blocco di livelli
+ * Adattato dal codice della vecchia app
+ */
+- (void)addTrailingFiboSegments:(NSMutableArray<NSDictionary *> *)segments
+                          fromX:(CGFloat)fromX
+                            toX:(CGFloat)toX
+                            min:(double)minPrice
+                            max:(double)maxPrice
+                        uptrend:(BOOL)uptrend {
+    
+    // Calcola i livelli Fibonacci standard
+    double range = maxPrice - minPrice;
+    if (range <= 0) return;
+    
+    // Livelli per uptrend: dal max verso il basso
+    // Livelli per downtrend: dal min verso l'alto
+    double p100 = uptrend ? maxPrice : minPrice;
+    double p618 = uptrend ? (maxPrice - range * 0.618) : (minPrice + range * 0.618);
+    double p50  = uptrend ? (maxPrice - range * 0.5)   : (minPrice + range * 0.5);
+    double p382 = uptrend ? (maxPrice - range * 0.382) : (minPrice + range * 0.382);
+    double p236 = uptrend ? (maxPrice - range * 0.236) : (minPrice + range * 0.236);
+    double p0   = uptrend ? minPrice : maxPrice;
+    
+    // Aggiungi segmenti con ratio per styling differenziato
+    [segments addObject:@{
+        @"fromX": @(fromX),
+        @"toX": @(toX),
+        @"price": @(p100),
+        @"ratio": @(1.0),
+        @"label": [NSString stringWithFormat:@"100%% (%.2f)", p100]
+    }];
+    
+    [segments addObject:@{
+        @"fromX": @(fromX),
+        @"toX": @(toX),
+        @"price": @(p618),
+        @"ratio": @(0.618),
+        @"label": [NSString stringWithFormat:@"61.8%% (%.2f)", p618]
+    }];
+    
+    [segments addObject:@{
+        @"fromX": @(fromX),
+        @"toX": @(toX),
+        @"price": @(p50),
+        @"ratio": @(0.5),
+        @"label": [NSString stringWithFormat:@"50%% (%.2f)", p50]
+    }];
+    
+    [segments addObject:@{
+        @"fromX": @(fromX),
+        @"toX": @(toX),
+        @"price": @(p382),
+        @"ratio": @(0.382),
+        @"label": [NSString stringWithFormat:@"38.2%% (%.2f)", p382]
+    }];
+    
+    [segments addObject:@{
+        @"fromX": @(fromX),
+        @"toX": @(toX),
+        @"price": @(p236),
+        @"ratio": @(0.236),
+        @"label": [NSString stringWithFormat:@"23.6%% (%.2f)", p236]
+    }];
+    
+    [segments addObject:@{
+        @"fromX": @(fromX),
+        @"toX": @(toX),
+        @"price": @(p0),
+        @"ratio": @(0.0),
+        @"label": [NSString stringWithFormat:@"0%% (%.2f)", p0]
+    }];
+}
+
+#pragma mark - TrailingFibo Helper Methods
+
+/**
+ * Trova l'indice nei dati storici corrispondente a una data
+ */
+- (NSInteger)findDataIndexForDate:(NSDate *)targetDate {
+    NSArray<HistoricalBarModel *> *data = self.coordinateContext.chartData;
+    
+    for (NSInteger i = 0; i < data.count; i++) {
+        if ([data[i].date compare:targetDate] != NSOrderedAscending) {
+            return i;
+        }
+    }
+    return -1; // Not found
+}
+
+/**
+ * Determina se cercare massimi o minimi basandosi sulla posizione del CP nel bar
+ */
+- (BOOL)shouldSearchForHighsFromBar:(HistoricalBarModel *)bar cpValue:(double)cpValue {
+    if (!bar) return YES;
+    
+    // Confronta distanza del CP dal high vs low
+    double distanceToHigh = fabs(bar.high - cpValue);
+    double distanceToLow = fabs(bar.low - cpValue);
+    
+    // Se CP è più vicino al low, cerca highs (trend up)
+    BOOL searchForHighs = (distanceToLow < distanceToHigh);
+    
+    NSLog(@"🎯 Direction analysis: CP %.2f, High %.2f, Low %.2f → Search for %@",
+          cpValue, bar.high, bar.low, searchForHighs ? @"HIGHS" : @"LOWS");
+    
+    return searchForHighs;
+}
+
+/**
+ * Ottieni coordinata X dello schermo per un indice di dati
+ */
+- (CGFloat)xCoordinateForDataIndex:(NSInteger)index {
+    if (!self.coordinateContext || !self.coordinateContext.chartData) return 0;
+    
+    NSArray<HistoricalBarModel *> *data = self.coordinateContext.chartData;
+    if (index < 0 || index >= data.count) return 0;
+    
+    // Usa il sistema di coordinate esistente del context
+    CGRect bounds = self.coordinateContext.panelBounds;
+    NSInteger visibleStart = self.coordinateContext.visibleStartIndex;
+    NSInteger visibleEnd = self.coordinateContext.visibleEndIndex;
+    
+    if (index < visibleStart || index > visibleEnd) {
+        // Index fuori viewport - calcola posizione teorica
+        CGFloat barsPerPixel = (CGFloat)(visibleEnd - visibleStart) / bounds.size.width;
+        CGFloat offsetFromStart = index - visibleStart;
+        return offsetFromStart / barsPerPixel;
+    }
+    
+    // Index nel viewport visibile
+    CGFloat barWidth = bounds.size.width / (CGFloat)(visibleEnd - visibleStart + 1);
+    return (index - visibleStart) * barWidth + barWidth / 2.0;
+}
+
+/**
+ * Ottieni prezzo reale da un control point
+ */
+- (double)priceFromControlPoint:(ControlPointModel *)cp {
+    NSInteger index = [self findDataIndexForDate:cp.dateAnchor];
+    if (index == -1) return 0.0;
+    
+    NSArray<HistoricalBarModel *> *data = self.coordinateContext.chartData;
+    if (index >= data.count) return 0.0;
+    
+    HistoricalBarModel *bar = data[index];
+    
+    // Calcola valore base dall'indicatore
+    double baseValue = 0.0;
+    if ([cp.indicatorRef isEqualToString:@"high"]) {
+        baseValue = bar.high;
+    } else if ([cp.indicatorRef isEqualToString:@"low"]) {
+        baseValue = bar.low;
+    } else if ([cp.indicatorRef isEqualToString:@"open"]) {
+        baseValue = bar.open;
+    } else {
+        baseValue = bar.close; // default
+    }
+    
+    // Applica offset percentuale
+    return baseValue * (1.0 + cp.valuePercent / 100.0);
+}
+
+#pragma mark - TrailingFibo Rendering - UPDATED
+
+/**
+ * Disegna i livelli trailing Fibonacci con styling migliorato
+ */
+- (void)drawTrailingFibo:(ChartObjectModel *)object {
+    // Calcola i livelli usando il nuovo algoritmo
+    NSArray<NSDictionary *> *fibLevels = [self calculateTrailingFibonacciForObject:object];
+    
+    if (fibLevels.count == 0) {
+        NSLog(@"⚠️ TrailingFibo: No levels calculated for object %@", object.name);
+        return;
+    }
+    
+    BOOL isBetweenType = (object.type == ChartObjectTypeTrailingFiboBetween);
+    NSLog(@"🎨 Drawing %lu trailing fibonacci levels (%@)",
+          (unsigned long)fibLevels.count, isBetweenType ? @"BETWEEN" : @"NORMAL");
+    
+    // Applica lo stile globale dell'oggetto
+    [self applyStyleForObject:object];
+    
+    // Disegna ogni livello Fibonacci
+    for (NSDictionary *level in fibLevels) {
+        double levelPrice = [level[@"price"] doubleValue];
+        double ratio = [level[@"ratio"] doubleValue];
+        NSString *label = level[@"label"];
+        CGFloat fromX = [level[@"fromX"] floatValue];
+        CGFloat toX = [level[@"toX"] floatValue];
+        
+        // Converti prezzo in coordinata Y dello schermo
+        CGFloat y = [self yCoordinateForPrice:levelPrice];
+        
+        // Salta livelli fuori dal viewport
+        CGRect bounds = self.coordinateContext.panelBounds;
+        if (y < -10 || y > bounds.size.height + 10) {
+            continue;
+        }
+        
+        // Stile differenziato per livelli chiave
+        NSBezierPath *path = [NSBezierPath bezierPath];
+        
+        if (ratio == 0.0 || ratio == 1.0) {
+            // Livelli 0% e 100% - più evidenti
+            path.lineWidth = 2.0;
+            [[NSColor systemBlueColor] setStroke];
+        } else if (ratio == 0.618 || ratio == 0.382) {
+            // Livelli golden ratio - medi
+            path.lineWidth = 1.5;
+            [[NSColor systemOrangeColor] setStroke];
+        } else {
+            // Altri livelli - sottili
+            path.lineWidth = 1.0;
+            [[NSColor systemGrayColor] setStroke];
+        }
+        
+        // ✅ TRAILING BETWEEN: Usa i segmenti calcolati invece di leftX/rightX fissi
+        [path moveToPoint:NSMakePoint(fromX, y)];
+        [path lineToPoint:NSMakePoint(toX, y)];
+        [path stroke];
+        
+        // Disegna label migliorata
+        // per ora non disegno label troppa confusione
+       /* [self drawTrailingFiboEnhancedLabel:label
+                                    atPoint:NSMakePoint(fromX + 5, y + 2)
+                                 isKeyLevel:(ratio == 0.0 || ratio == 1.0 || ratio == 0.618)];
+        */
+    }
+    
+    // Disegna marker del punto di partenza
+    if (object.controlPoints.count > 0) {
+        NSPoint startPoint = [self screenPointFromControlPoint:object.controlPoints.firstObject];
+        [self drawTrailingFiboStartMarker:startPoint];
+    }
+    
+    // ✅ TRAILING BETWEEN: Disegna anche marker di fine se presente
+    if (isBetweenType && object.controlPoints.count >= 2) {
+        NSPoint endPoint = [self screenPointFromControlPoint:object.controlPoints[1]];
+        [self drawTrailingFiboEndMarker:endPoint];
+    }
+}
+
+
+/**
+ * Disegna marker di fine per TrailingFiboBetween
+ */
+- (void)drawTrailingFiboEndMarker:(NSPoint)point {
+    [[NSColor systemRedColor] setFill];
+    
+    NSRect markerRect = NSMakeRect(point.x - 4, point.y - 4, 8, 8);
+    NSBezierPath *markerPath = [NSBezierPath bezierPathWithRect:markerRect];
+    [markerPath fill];
+    
+    // White border
+    [[NSColor whiteColor] setStroke];
+    markerPath.lineWidth = 1.0;
+    [markerPath stroke];
 }
 
 - (BOOL)shouldSearchForHighsFromControlPoint:(ControlPointModel *)controlPoint {
@@ -1847,20 +2165,6 @@
 }
 
 
-- (double)priceFromControlPoint:(ControlPointModel *)cp {
-    // Trova la barra corrispondente alla data del CP
-    for (HistoricalBarModel *bar in self.coordinateContext.chartData) {
-        if ([bar.date isEqualToDate:cp.dateAnchor]) {
-            double basePrice = [self getIndicatorValue:cp.indicatorRef fromBar:bar];
-            return basePrice * (1.0 + cp.valuePercent / 100.0);
-        }
-    }
-    
-    // Fallback: calcola prezzo dal range Y
-    NSPoint screenPoint = [self screenPointFromControlPoint:cp];
-    double normalizedY = (screenPoint.y - 10) / (self.coordinateContext.panelBounds.size.height - 20);
-    return self.coordinateContext.yRangeMin + normalizedY * (self.coordinateContext.yRangeMax - self.coordinateContext.yRangeMin);
-}
 
 - (void)drawTargetLabels:(NSPoint)buyPoint stopPoint:(NSPoint)stopPoint targetPoint:(NSPoint)targetPoint
                 buyPrice:(double)buyPrice stopPrice:(double)stopPrice targetPrice:(double)targetPrice

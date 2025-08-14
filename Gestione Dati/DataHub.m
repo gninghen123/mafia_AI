@@ -16,6 +16,7 @@
 #import <objc/runtime.h>           // per objc_setAssociatedObject
 #import "DataHub+TrackingPreferences.h"
 #import "DataHub+OptimizedTracking.h"
+#import "DataHub+MarketData.h"
 
 
 // Notification constants (copiati da BaseWidget.m)
@@ -638,10 +639,10 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 }
 
 - (void)startAlertMonitoring {
-    // Check alerts every 5 seconds
-    self.alertCheckTimer = [NSTimer scheduledTimerWithTimeInterval:5.0
+    // Check alerts every 10 seconds
+    self.alertCheckTimer = [NSTimer scheduledTimerWithTimeInterval:10.0
                                                             target:self
-                                                          selector:@selector(checkAlerts)
+                                                          selector:@selector(checkAlertsOptimized)
                                                           userInfo:nil
                                                            repeats:YES];
 }
@@ -672,6 +673,114 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     [self saveContext];
     
     return alert;
+}
+
+/**
+ * METODO OTTIMIZZATO: Usa chiamate bulk invece di chiamate singole
+ * - Raccoglie tutti i simboli degli alert attivi
+ * - Fa UNA SOLA chiamata API per tutti i simboli
+ * - Controlla tutti gli alert con i risultati
+ */
+- (void)checkAlertsOptimized {
+    // Get all active alerts
+    NSArray<Alert *> *activeAlerts = [self getActiveAlerts];
+    
+    if (activeAlerts.count == 0) {
+        NSLog(@"📊 No active alerts to check");
+        return;
+    }
+    
+    // ✅ OPTIMIZATION: Collect ALL unique symbols from active alerts
+    NSMutableSet<NSString *> *uniqueSymbols = [NSMutableSet set];
+    for (Alert *alert in activeAlerts) {
+        // ✅ FIXED: Alert.symbol è una relazione Symbol entity, non una stringa
+        if (alert.symbol && alert.symbol.symbol && alert.symbol.symbol.length > 0) {
+            [uniqueSymbols addObject:alert.symbol.symbol.uppercaseString];
+        }
+    }
+    
+    if (uniqueSymbols.count == 0) {
+        NSLog(@"⚠️ No valid symbols found in active alerts");
+        return;
+    }
+    
+    NSArray<NSString *> *symbolsArray = [uniqueSymbols allObjects];
+    NSLog(@"📊 Checking %lu alerts for %lu unique symbols: %@",
+          (unsigned long)activeAlerts.count,
+          (unsigned long)symbolsArray.count,
+          symbolsArray);
+    
+    // ✅ BULK CALL: Get quotes for all symbols at once using the existing bulk method
+    [self getQuotesForSymbols:symbolsArray completion:^(NSDictionary<NSString *, MarketQuoteModel *> *quotes, BOOL allLive) {
+        
+        if (!quotes || quotes.count == 0) {
+            NSLog(@"❌ Failed to get bulk quotes for alert monitoring");
+            return;
+        }
+        
+        NSLog(@"✅ Received %lu quotes for alert checking", (unsigned long)quotes.count);
+        
+        // ✅ EFFICIENT: Check all alerts with the bulk quote results
+        [self checkAllAlertsWithBulkQuotes:quotes];
+    }];
+}
+
+/**
+ * NUOVO METODO: Controlla tutti gli alert con i dati delle quote bulk
+ * @param bulkQuotes Dictionary con simbolo -> MarketQuoteModel dalle API bulk
+ */
+- (void)checkAllAlertsWithBulkQuotes:(NSDictionary<NSString *, MarketQuoteModel *> *)bulkQuotes {
+    NSArray<Alert *> *activeAlerts = [self getActiveAlerts];
+    NSInteger triggeredCount = 0;
+    
+    for (Alert *alert in activeAlerts) {
+        // ✅ FIXED: Alert.symbol è una relazione Symbol entity
+        NSString *symbolString = alert.symbol.symbol.uppercaseString;
+        MarketQuoteModel *quote = bulkQuotes[symbolString];
+        
+        if (!quote) {
+            NSLog(@"⚠️ No quote data for alert symbol: %@", symbolString);
+            continue;
+        }
+        
+        // ✅ FIXED: MarketQuoteModel.last è NSNumber, non double
+        double currentPrice = quote.last ? [quote.last doubleValue] : 0.0;
+        if (currentPrice <= 0.0) {
+            NSLog(@"⚠️ Invalid price (%.2f) for symbol: %@", currentPrice, symbolString);
+            continue;
+        }
+        
+        BOOL shouldTrigger = [self shouldAlertTrigger:alert withCurrentPrice:currentPrice];
+        
+        if (shouldTrigger && !alert.isTriggered) {
+            [self triggerAlert:alert];
+            triggeredCount++;
+            NSLog(@"🚨 Alert TRIGGERED: %@ %@ %.2f (current: %.2f)",
+                  symbolString, alert.conditionString, alert.triggerValue, currentPrice);
+        }
+    }
+    
+    if (triggeredCount > 0) {
+        NSLog(@"✅ Alert check complete: %ld alerts triggered", (long)triggeredCount);
+    }
+}
+
+
+- (BOOL)shouldAlertTrigger:(Alert *)alert withCurrentPrice:(double)currentPrice {
+    if ([alert.conditionString isEqualToString:@"above"]) {
+        return currentPrice > alert.triggerValue;
+    } else if ([alert.conditionString isEqualToString:@"below"]) {
+        return currentPrice < alert.triggerValue;
+    } else if ([alert.conditionString isEqualToString:@"crosses_above"]) {
+        // TODO: Implementare logica per crosses (richiede prezzo precedente)
+        return currentPrice > alert.triggerValue;
+    } else if ([alert.conditionString isEqualToString:@"crosses_below"]) {
+        // TODO: Implementare logica per crosses (richiede prezzo precedente)
+        return currentPrice < alert.triggerValue;
+    }
+    
+    NSLog(@"⚠️ Unknown alert condition: %@", alert.conditionString);
+    return NO;
 }
 
 - (void)updateAlert:(Alert *)alert {
@@ -978,9 +1087,9 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     if (!alertModel || !alertModel.symbol) return;
     
     // Find corresponding Core Data object
-    Alert *coreDataAlert = [self findAlertBySymbolAndValue:alertModel.symbol
-                                               triggerValue:alertModel.triggerValue
-                                            conditionString:alertModel.conditionString];
+    Alert *coreDataAlert = [self findAlertBySymbolAndCreationDate:alertModel.symbol
+                                                      creationDate:alertModel.creationDate];
+    
     if (coreDataAlert) {
         [self updateCoreDataAlertFromRuntimeModel:alertModel coreDataAlert:coreDataAlert];
         [self saveContext];
@@ -996,9 +1105,8 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     if (!alertModel || !alertModel.symbol) return;
     
     // Find corresponding Core Data object
-    Alert *coreDataAlert = [self findAlertBySymbolAndValue:alertModel.symbol
-                                               triggerValue:alertModel.triggerValue
-                                            conditionString:alertModel.conditionString];
+    Alert *coreDataAlert = [self findAlertBySymbolAndCreationDate:alertModel.symbol
+                                                        creationDate:alertModel.creationDate];
     if (coreDataAlert) {
         [self deleteAlert:coreDataAlert];
         
@@ -1092,9 +1200,18 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     [self saveContext];
 }
 
+/**
+ * LEGACY METHOD: Mantieni per compatibilità e sicurezza
+ * ⚠️ DEPRECATED: Usa findAlertBySymbolAndCreationDate invece per maggiore affidabilità
+ */
 - (Alert *)findAlertBySymbolAndValue:(NSString *)symbol
                         triggerValue:(double)triggerValue
                      conditionString:(NSString *)conditionString {
+    
+    // ✅ LOGGING: Aiuta a tracciare dove viene ancora usato
+    NSLog(@"⚠️ DEPRECATED: findAlertBySymbolAndValue called for %@ %.2f %@",
+          symbol, triggerValue, conditionString);
+    NSLog(@"   RECOMMEND: Update caller to use findAlertBySymbolAndCreationDate instead");
     
     // Find Symbol entity first
     Symbol *symbolEntity = [self getSymbolWithName:symbol];
@@ -1112,8 +1229,60 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
         return nil;
     }
     
-    return results.firstObject;
+    Alert *foundAlert = results.firstObject;
+    if (foundAlert) {
+        NSLog(@"✅ LEGACY FINDER: Found alert via old method");
+    } else {
+        NSLog(@"❌ LEGACY FINDER: Alert not found - this might be why you should use the new method!");
+    }
+    
+    return foundAlert;
 }
+/**
+ * NUOVO METODO: Trova alert usando symbol e creation date (immutabile e univoco)
+ * @param symbol Nome del simbolo
+ * @param creationDate Data di creazione dell'alert (univoca)
+ * @return Alert trovato o nil
+ */
+- (Alert *)findAlertBySymbolAndCreationDate:(NSString *)symbol
+                               creationDate:(NSDate *)creationDate {
+    
+    // Find Symbol entity first
+    Symbol *symbolEntity = [self getSymbolWithName:symbol];
+    if (!symbolEntity) {
+        NSLog(@"❌ Symbol entity not found: %@", symbol);
+        return nil;
+    }
+    
+    if (!creationDate) {
+        NSLog(@"❌ Creation date is nil for symbol: %@", symbol);
+        return nil;
+    }
+    
+    NSFetchRequest *request = [Alert fetchRequest];
+    // ✅ NUOVO: Usa symbol entity + creation date per ricerca univoca
+    request.predicate = [NSPredicate predicateWithFormat:@"symbol == %@ AND creationDate == %@",
+                        symbolEntity, creationDate];
+    request.fetchLimit = 1;
+    
+    NSError *error;
+    NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
+    if (error) {
+        NSLog(@"❌ Error finding alert by symbol+creationDate: %@", error);
+        return nil;
+    }
+    
+    Alert *foundAlert = results.firstObject;
+    if (foundAlert) {
+        NSLog(@"✅ Found alert: %@ created %@ (current trigger: %.2f)",
+              symbol, creationDate, foundAlert.triggerValue);
+    } else {
+        NSLog(@"⚠️ No alert found for %@ created %@", symbol, creationDate);
+    }
+    
+    return foundAlert;
+}
+
 
 #pragma mark - Alert Conversion Methods (Private)
 - (WatchlistModel *)convertWatchlistCoreDataToRuntimeModel:(Watchlist *)coreDataWatchlist {

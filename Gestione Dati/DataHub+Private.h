@@ -87,6 +87,11 @@
 - (void)initializeMarketDataCaches;
 - (void)initializeMarketListsCache;
 
+
+// Alert finder methods
+- (Alert *)findAlertBySymbolAndCreationDate:(NSString *)symbol creationDate:(NSDate *)creationDate;
+- (Alert *)findAlertBySymbolAndValue:(NSString *)symbol triggerValue:(double)triggerValue conditionString:(NSString *)conditionString;
+
 // Core Data <-> Runtime Model conversion methods (ESSENTIAL)
 - (MarketQuoteModel *)convertCoreDataQuoteToRuntimeModel:(MarketQuote *)coreDataQuote;
 - (HistoricalBarModel *)convertCoreDataBarToRuntimeModel:(HistoricalBar *)coreDataBar;
@@ -184,4 +189,11 @@
                             symbol:(Symbol *)symbolEntity
                          timeframe:(BarTimeframe)timeframe
                          inContext:(NSManagedObjectContext *)context;
+
+
+- (void)checkAlertsOptimized;
+- (void)checkAllAlertsWithBulkQuotes:(NSDictionary<NSString *, MarketQuoteModel *> *)bulkQuotes;
+- (BOOL)shouldAlertTrigger:(Alert *)alert withCurrentPrice:(double)currentPrice;
+
+
 @end

@@ -25,12 +25,6 @@
     return self;
 }
 
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    [self setupDateFormatter];
-    [self registerForNotifications];
-    [self loadAlerts];
-}
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
@@ -42,6 +36,11 @@
     self.dateFormatter = [[NSDateFormatter alloc] init];
     self.dateFormatter.dateStyle = NSDateFormatterShortStyle;
     self.dateFormatter.timeStyle = NSDateFormatterShortStyle;
+    
+    // ✅ SAFETY: Aggiungi locale per evitare problemi di formattazione
+    self.dateFormatter.locale = [NSLocale currentLocale];
+    
+    NSLog(@"✅ AlertWidget: Date formatter configured with locale: %@", self.dateFormatter.locale.localeIdentifier);
 }
 
 - (void)registerForNotifications {
@@ -70,7 +69,8 @@
     self.tableView.intercellSpacing = NSMakeSize(0, 1);
     self.tableView.gridStyleMask = NSTableViewSolidHorizontalGridLineMask;
     self.tableView.columnAutoresizingStyle = NSTableViewUniformColumnAutoresizingStyle;
-    
+    self.tableView.target = self;
+    self.tableView.doubleAction = @selector(tableViewDoubleClick:);
     [self createTableColumns];
     self.scrollView.documentView = self.tableView;
     
@@ -95,6 +95,12 @@
         [self.scrollView.trailingAnchor constraintEqualToAnchor:container.trailingAnchor],
         [self.scrollView.bottomAnchor constraintEqualToAnchor:container.bottomAnchor]
     ]];
+    
+    
+    [self setupDateFormatter];
+    [self registerForNotifications];
+    [self loadAlerts];
+    
 }
 
 - (NSView *)createToolbar {
@@ -316,6 +322,15 @@
     }];
 }
 
+
+- (void)tableViewDoubleClick:(id)sender {
+    NSInteger clickedRow = self.tableView.clickedRow;
+    if (clickedRow >= 0) {
+        [self tableView:self.tableView didDoubleClickAtRow:clickedRow];
+    }
+}
+
+
 #pragma mark - Table View Data Source
 
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
@@ -327,6 +342,12 @@
     
     AlertModel *alert = self.filteredAlerts[row];
     NSString *identifier = tableColumn.identifier;
+    
+    // ✅ SAFETY CHECK: Alert non deve essere nil
+    if (!alert) {
+        NSLog(@"⚠️ AlertWidget: Alert at row %ld is nil!", (long)row);
+        return nil;
+    }
     
     NSTableCellView *cellView = [tableView makeViewWithIdentifier:identifier owner:self];
     if (!cellView) {
@@ -350,49 +371,85 @@
         ]];
     }
     
-    // Set cell content based on column
+    // ✅ SAFETY CHECK: TextField non deve essere nil
+    if (!cellView.textField) {
+        NSLog(@"⚠️ AlertWidget: cellView.textField is nil for identifier: %@", identifier);
+        return cellView;
+    }
+    
+    // Set cell content based on column - CON PROTECTION DA NIL
     if ([identifier isEqualToString:@"symbol"]) {
-        cellView.textField.stringValue = alert.symbol ?: @"";
+        NSString *symbolValue = alert.symbol ?: @"--";
+        cellView.textField.stringValue = symbolValue;
         cellView.textField.font = [NSFont boldSystemFontOfSize:12];
+        
     } else if ([identifier isEqualToString:@"condition"]) {
-        NSString *conditionText = @"";
-        if ([alert.conditionString isEqualToString:@"above"]) {
-            conditionText = @"Above";
-        } else if ([alert.conditionString isEqualToString:@"below"]) {
-            conditionText = @"Below";
-        } else if ([alert.conditionString isEqualToString:@"crosses_above"]) {
-            conditionText = @"Crosses Above";
-        } else if ([alert.conditionString isEqualToString:@"crosses_below"]) {
-            conditionText = @"Crosses Below";
+        NSString *conditionText = @"--";
+        if (alert.conditionString) {
+            if ([alert.conditionString isEqualToString:@"above"]) {
+                conditionText = @"Above";
+            } else if ([alert.conditionString isEqualToString:@"below"]) {
+                conditionText = @"Below";
+            } else if ([alert.conditionString isEqualToString:@"crosses_above"]) {
+                conditionText = @"Crosses Above";
+            } else if ([alert.conditionString isEqualToString:@"crosses_below"]) {
+                conditionText = @"Crosses Below";
+            } else {
+                conditionText = alert.conditionString; // Fallback
+            }
         }
         cellView.textField.stringValue = conditionText;
-    } else if ([identifier isEqualToString:@"value"]) {
-        cellView.textField.stringValue = [alert formattedTriggerValue];
-        cellView.textField.alignment = NSTextAlignmentRight;
-    } else if ([identifier isEqualToString:@"status"]) {
-        cellView.textField.stringValue = [alert statusString];
         
-        // Color coding for status
+    } else if ([identifier isEqualToString:@"value"]) {
+        // ✅ SAFE: Usa formato semplice invece di currency formatter
+        NSString *valueText = [NSString stringWithFormat:@"%.2f", alert.triggerValue];
+        cellView.textField.stringValue = valueText;
+        cellView.textField.alignment = NSTextAlignmentRight;
+        
+    } else if ([identifier isEqualToString:@"status"]) {
+        // ✅ SAFE: Status string sicuro
+        NSString *statusText = @"Unknown";
         if (alert.isTriggered) {
+            statusText = @"Triggered";
             cellView.textField.textColor = [NSColor systemRedColor];
         } else if (alert.isActive) {
+            statusText = @"Active";
             cellView.textField.textColor = [NSColor systemGreenColor];
         } else {
+            statusText = @"Inactive";
             cellView.textField.textColor = [NSColor secondaryLabelColor];
         }
+        cellView.textField.stringValue = statusText;
+        
     } else if ([identifier isEqualToString:@"created"]) {
-        cellView.textField.stringValue = alert.creationDate ? [self.dateFormatter stringFromDate:alert.creationDate] : @"";
+        NSString *createdText = @"--";
+        if (alert.creationDate && self.dateFormatter) {
+            @try {
+                createdText = [self.dateFormatter stringFromDate:alert.creationDate];
+                if (!createdText) createdText = @"--";
+            } @catch (NSException *exception) {
+                NSLog(@"⚠️ Date formatting error: %@", exception.reason);
+                createdText = @"--";
+            }
+        }
+        cellView.textField.stringValue = createdText;
         cellView.textField.font = [NSFont systemFontOfSize:11];
         cellView.textField.textColor = [NSColor secondaryLabelColor];
+        
     } else if ([identifier isEqualToString:@"notes"]) {
-        cellView.textField.stringValue = alert.notes ?: @"";
+        NSString *notesText = alert.notes ?: @"";
+        cellView.textField.stringValue = notesText;
         cellView.textField.font = [NSFont systemFontOfSize:11];
         cellView.textField.textColor = [NSColor tertiaryLabelColor];
+        
+    } else {
+        // ✅ FALLBACK per colonne sconosciute
+        cellView.textField.stringValue = @"--";
+        NSLog(@"⚠️ AlertWidget: Unknown column identifier: %@", identifier);
     }
     
     return cellView;
 }
-
 #pragma mark - Table View Delegate
 
 - (void)tableViewSelectionDidChange:(NSNotification *)notification {

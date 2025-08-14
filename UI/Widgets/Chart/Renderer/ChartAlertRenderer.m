@@ -295,7 +295,9 @@
     } else if ([alert.conditionString isEqualToString:@"crosses_below"]) {
         condition = @"⤵";
     }
-    
+    if (alert.triggerValue < 1) {
+        return [NSString stringWithFormat:@"%@ %.4f", condition, alert.triggerValue];
+    }
     return [NSString stringWithFormat:@"%@ %.2f", condition, alert.triggerValue];
 }
 

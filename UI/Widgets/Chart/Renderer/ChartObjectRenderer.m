@@ -949,31 +949,104 @@
 
 // 4. ChartObjectRenderer.m - Implementazione drawTargetPrice
 
+// ✅ CORREZIONE: Modifica solo il metodo drawTargetPrice esistente
+// Riutilizza tutti i metodi già presenti nel codice
+
+// ✅ CORREZIONE: Modifica solo il metodo drawTargetPrice esistente
+// Riutilizza tutti i metodi già presenti nel codice
+
 - (void)drawTargetPrice:(ChartObjectModel *)object {
-    if (object.controlPoints.count < 1) return;
+    // ✅ VERIFICA: Target deve avere esattamente 3 CP (buy, stop, target)
+    if (object.controlPoints.count < 3) {
+        // Se non completo, disegna solo le linee disponibili come prima
+        if (object.controlPoints.count >= 1) {
+            ControlPointModel *cp = object.controlPoints.firstObject;
+            NSPoint screenPoint = [self screenPointFromControlPoint:cp];
+            
+            [self applyStyleForObject:object];
+            
+            NSBezierPath *path = [NSBezierPath bezierPath];
+            [path moveToPoint:NSMakePoint(0, screenPoint.y)];
+            [path lineToPoint:NSMakePoint(self.coordinateContext.panelBounds.size.width, screenPoint.y)];
+            [self strokePath:path withStyle:object.style];
+            
+            CGFloat targetPrice = [self priceFromScreenY:screenPoint.y];
+            NSString *labelText = [NSString stringWithFormat:@"Target: %.2f", targetPrice];
+            [self drawTargetLabel:labelText atPoint:NSMakePoint(10, screenPoint.y) color:object.style.color];
+        }
+        return;
+    }
     
-    ControlPointModel *cp = object.controlPoints.firstObject;
-    NSPoint screenPoint = [self screenPointFromControlPoint:cp];
+    // ✅ ESTRAI i 3 control points
+    ControlPointModel *buyCP = object.controlPoints[0];    // CP1 = Buy Signal
+    ControlPointModel *stopCP = object.controlPoints[1];   // CP2 = Stop Loss
+    ControlPointModel *targetCP = object.controlPoints[2]; // CP3 = Target Price
     
-    // ✅ Apply global style (color, opacity)
+    // ✅ CONVERTI in coordinate schermo
+    NSPoint buyPoint = [self screenPointFromControlPoint:buyCP];
+    NSPoint stopPoint = [self screenPointFromControlPoint:stopCP];
+    NSPoint targetPoint = [self screenPointFromControlPoint:targetCP];
+    
+    // ✅ CALCOLA prezzi reali
+    double buyPrice = [self priceFromControlPoint:buyCP];
+    double stopPrice = [self priceFromControlPoint:stopCP];
+    double targetPrice = [self priceFromControlPoint:targetCP];
+    
+    // ✅ CALCOLA percentuali e RRR
+    double stopLossPercent = ((stopPrice - buyPrice) / buyPrice) * 100.0;
+    double targetPercent = ((targetPrice - buyPrice) / buyPrice) * 100.0;
+    double rrr = fabs(targetPercent) / fabs(stopLossPercent);
+    
+    // ✅ DISEGNA zone evidenziate (solo da CP1 in poi)
+    CGFloat panelWidth = self.coordinateContext.panelBounds.size.width;
+    
+    // Zona Loss (tra buy e stop) - rossa traslucida, solo da CP1 verso destra
+    CGFloat lossTop = MIN(buyPoint.y, stopPoint.y);
+    CGFloat lossBottom = MAX(buyPoint.y, stopPoint.y);
+    NSRect lossZone = NSMakeRect(buyPoint.x, lossTop, panelWidth - buyPoint.x, lossBottom - lossTop);
+    [self drawTargetHighlight:lossZone color:[NSColor systemRedColor]];
+    
+    // Zona Profit (tra buy e target) - verde traslucida, solo da CP1 verso destra
+    CGFloat profitTop = MIN(buyPoint.y, targetPoint.y);
+    CGFloat profitBottom = MAX(buyPoint.y, targetPoint.y);
+    NSRect profitZone = NSMakeRect(buyPoint.x, profitTop, panelWidth - buyPoint.x, profitBottom - profitTop);
+    [self drawTargetHighlight:profitZone color:[NSColor systemGreenColor]];
+    
+    // ✅ DISEGNA le 3 linee orizzontali (da CP1 verso destra, fermate a sinistra su CP1)
     [self applyStyleForObject:object];
     
-    // ✅ Create and style path for target line
-    NSBezierPath *path = [NSBezierPath bezierPath];
-    [path moveToPoint:NSMakePoint(0, screenPoint.y)];
-    [path lineToPoint:NSMakePoint(self.coordinateContext.panelBounds.size.width, screenPoint.y)];
-    [self strokePath:path withStyle:object.style];
+    // Linea BUY - da CP1 verso destra infinito
+    NSBezierPath *buyPath = [NSBezierPath bezierPath];
+    [buyPath moveToPoint:NSMakePoint(buyPoint.x, buyPoint.y)];
+    [buyPath lineToPoint:NSMakePoint(panelWidth, buyPoint.y)];
+    [self strokePath:buyPath withStyle:object.style];
     
-    // Draw target label
-    CGFloat targetPrice = [self priceFromScreenY:screenPoint.y];
-    NSString *labelText = [NSString stringWithFormat:@"Target: %.2f", targetPrice];
-    [self drawTargetLabel:labelText atPoint:NSMakePoint(10, screenPoint.y) color:object.style.color];
+    // Linea STOP - da CP1 verso destra infinito, tratteggiata rossa
+    ObjectStyleModel *stopStyle = [object.style copy];
+    stopStyle.color = [NSColor systemRedColor];
+    stopStyle.lineType = ChartLineTypeDashed;
+    NSBezierPath *stopPath = [NSBezierPath bezierPath];
+    [stopPath moveToPoint:NSMakePoint(buyPoint.x, stopPoint.y)];
+    [stopPath lineToPoint:NSMakePoint(panelWidth, stopPoint.y)];
+    [self strokePath:stopPath withStyle:stopStyle];
+    
+    // Linea TARGET - da CP1 verso destra infinito, tratteggiata verde
+    ObjectStyleModel *targetStyle = [object.style copy];
+    targetStyle.color = [NSColor systemGreenColor];
+    targetStyle.lineType = ChartLineTypeDashed;
+    NSBezierPath *targetPath = [NSBezierPath bezierPath];
+    [targetPath moveToPoint:NSMakePoint(buyPoint.x, targetPoint.y)];
+    [targetPath lineToPoint:NSMakePoint(panelWidth, targetPoint.y)];
+    [self strokePath:targetPath withStyle:targetStyle];
+    
+    // ✅ USA IL METODO ESISTENTE per i labels
+    [self drawTargetLabels:buyPoint stopPoint:stopPoint targetPoint:targetPoint
+                  buyPrice:buyPrice stopPrice:stopPrice targetPrice:targetPrice
+              stopLossPercent:stopLossPercent targetPercent:targetPercent rrr:rrr];
 }
-
-
 - (void)drawTargetLabel:(NSString *)text atPoint:(NSPoint)point color:(NSColor *)textColor {
     NSDictionary *attributes = @{
-        NSFontAttributeName: [NSFont boldSystemFontOfSize:12],
+        NSFontAttributeName: [NSFont boldSystemFontOfSize:24],
         NSForegroundColorAttributeName: textColor,
         NSBackgroundColorAttributeName: [[NSColor controlBackgroundColor] colorWithAlphaComponent:0.9]
     };

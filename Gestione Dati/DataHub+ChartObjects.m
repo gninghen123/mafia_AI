@@ -227,16 +227,51 @@
     });
 }
 
+// ✅ CORREZIONE: Modifica del metodo saveChartObjects in DataHub+ChartObjects.m
+// Aggiunge logica per rimuovere oggetti orfani da CoreData
+
 - (void)saveChartObjects:(NSArray<ChartLayerModel *> *)layers forSymbol:(NSString *)symbol {
+    // ✅ STEP 1: Ottieni tutti gli oggetti esistenti in CoreData per questo symbol
+    NSMutableSet<NSString *> *existingObjectIDs = [NSMutableSet set];
+    Symbol *symbolEntity = [self getSymbolWithName:symbol];
+    if (symbolEntity) {
+        for (ChartLayer *layer in symbolEntity.chartLayers) {
+            for (ChartObject *object in layer.objects) {
+                [existingObjectIDs addObject:object.objectUUID];
+            }
+        }
+    }
+    
+    // ✅ STEP 2: Salva tutti i layer e oggetti attuali
+    NSMutableSet<NSString *> *currentObjectIDs = [NSMutableSet set];
     for (ChartLayerModel *layer in layers) {
         [self saveChartLayer:layer forSymbol:symbol];
         
         for (ChartObjectModel *object in layer.objects) {
             [self saveChartObject:object toLayerID:layer.layerID];
+            [currentObjectIDs addObject:object.objectID];
         }
     }
     
-    NSLog(@"💾 DataHub: Bulk saved %lu layers for symbol %@", (unsigned long)layers.count, symbol);
+    // ✅ STEP 3: Identifica e rimuovi oggetti orfani
+    NSMutableSet<NSString *> *orphanedObjectIDs = [existingObjectIDs mutableCopy];
+    [orphanedObjectIDs minusSet:currentObjectIDs]; // Rimuovi quelli che esistono ancora
+    
+    NSUInteger orphanedCount = orphanedObjectIDs.count;
+    if (orphanedCount > 0) {
+        NSLog(@"🧹 DataHub: Found %lu orphaned objects to delete for symbol %@",
+              (unsigned long)orphanedCount, symbol);
+        
+        // Rimuovi ogni oggetto orfano
+        for (NSString *orphanedID in orphanedObjectIDs) {
+            [self deleteChartObjectWithID:orphanedID];
+        }
+        
+        NSLog(@"✅ DataHub: Cleaned up %lu orphaned objects", (unsigned long)orphanedCount);
+    }
+    
+    NSLog(@"💾 DataHub: Bulk saved %lu layers with %lu total objects for symbol %@",
+          (unsigned long)layers.count, (unsigned long)currentObjectIDs.count, symbol);
 }
 
 - (void)clearChartObjectsForSymbol:(NSString *)symbol {

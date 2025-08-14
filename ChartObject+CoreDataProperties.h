@@ -2,7 +2,7 @@
 //  ChartObject+CoreDataProperties.h
 //  mafia_AI
 //
-//  Created by fabio gattone on 07/08/25.
+//  Created by fabio gattone on 14/08/25.
 //
 //
 
@@ -22,7 +22,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) BOOL isVisible;
 @property (nullable, nonatomic, copy) NSDate *lastModified;
 @property (nullable, nonatomic, copy) NSString *name;
-@property (nullable, nonatomic, copy) NSString *objectID;
+@property (nullable, nonatomic, copy) NSString *objectUUID;
 @property (nullable, nonatomic, retain) NSDictionary *styleData;
 @property (nonatomic) int16_t type;
 @property (nullable, nonatomic, retain) ChartLayer *layer;

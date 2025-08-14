@@ -530,12 +530,10 @@
 
 - (IBAction)applyButtonClicked:(id)sender {
     NSLog(@"✅ ChartObjectSettingsWindow: Applying settings for object '%@'", self.targetObject.name);
-    NSLog(@"🎯 APPLY START - Object: %@ (pointer: %p)", self.targetObject.name, self.targetObject);
 
     @try {
-        // Validate objects exist
         if (!self.targetObject || !self.workingStyle) {
-            NSLog(@"❌ ChartObjectSettingsWindow: Invalid state - targetObject or workingStyle is nil");
+            NSLog(@"❌ ChartObjectSettingsWindow: Invalid state");
             [self close];
             return;
         }
@@ -553,46 +551,41 @@
                 }
             }
             
-            // Save to DataHub
-            [self.objectsManager saveToDataHub];
-            NSLog(@"💾 ChartObjectSettingsWindow: Saved to DataHub");
-               
-               NSLog(@"🎯 APPLY AFTER SAVE - Object: %@ (pointer: %p)", self.targetObject.name, self.targetObject);
-               
+            // ❌ RIMOSSO: [self.objectsManager saveToDataHub]; - Non salvare qui!
+            NSLog(@"💫 ChartObjectSettingsWindow: Applied style (will save on window close)");
         }
         
-        // ✅ SAFE CALLBACK: Avoid retain cycles and check validity
+        // Trigger redraw callback
         if (self.onApplyCallback) {
-            // Create safe copy of object for callback
-            ChartObjectModel *objectCopy = self.targetObject;
-            
-            // Clear callback before calling to avoid retain cycle
             void (^callback)(ChartObjectModel *) = self.onApplyCallback;
             self.onApplyCallback = nil;
             
-            // Call callback on main thread
             dispatch_async(dispatch_get_main_queue(), ^{
-                callback(objectCopy);
+                callback(self.targetObject);
             });
-            
-            NSLog(@"🔄 ChartObjectSettingsWindow: Triggered chart redraw via callback");
-        } else {
-            // ✅ FALLBACK: Trigger redraw via notification
-            [[NSNotificationCenter defaultCenter] postNotificationName:@"ChartObjectSettingsApplied"
-                                                                object:nil  // Don't pass self
-                                                              userInfo:@{
-                @"objectId": self.targetObject.objectID ?: @"unknown",
-                                                                  @"symbol": self.objectsManager.currentSymbol ?: @""
-                                                              }];
-            NSLog(@"🔄 ChartObjectSettingsWindow: Triggered chart redraw via notification");
         }
         
+        // Close window
+        [self close];
+        
     } @catch (NSException *exception) {
-        NSLog(@"❌ ChartObjectSettingsWindow: Exception in applyButtonClicked: %@", exception.reason);
-    } @finally {
-        // Always close window
-        [self safeClose];
+        NSLog(@"❌ ChartObjectSettingsWindow: Exception in apply: %@", exception);
     }
+}
+
+
+- (void)windowWillClose:(NSNotification *)notification {
+    // ✅ SALVA solo quando chiudi la finestra (modifica completata)
+    if (self.objectsManager) {
+        [self.objectsManager saveToDataHub];
+        NSLog(@"💾 ChartObjectSettingsWindow: Saved on window close");
+    }
+    
+    // Cleanup
+    self.targetObject = nil;
+    self.workingStyle = nil;
+    self.objectsManager = nil;
+    self.onApplyCallback = nil;
 }
 
 

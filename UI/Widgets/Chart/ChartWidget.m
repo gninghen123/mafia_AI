@@ -557,20 +557,41 @@ extern NSString *const DataHubDataLoadedNotification;
 - (void)zoomIn:(NSButton *)sender {
     NSInteger currentRange = self.visibleEndIndex - self.visibleStartIndex;
     NSInteger newRange = MAX(10, currentRange / 1.5);
-    NSInteger center = (self.visibleStartIndex + self.visibleEndIndex) / 2;
     
-    [self zoomToRange:MAX(0, center - newRange/2)
-             endIndex:MIN(self.chartData.count - 1, center + newRange/2)];
+    // ✅ NUOVO: Mantieni l'endIndex fisso (barra più recente visualizzata) come punto di riferimento
+    NSInteger fixedEndIndex = self.visibleEndIndex;
+    NSInteger newStartIndex = fixedEndIndex - newRange;
+    
+    // Clamp ai limiti validi (solo per startIndex, endIndex rimane fisso)
+    if (newStartIndex < 0) {
+        newStartIndex = 0;
+    }
+    
+    [self zoomToRange:newStartIndex endIndex:fixedEndIndex];
+    
+    NSLog(@"🔍➕ Zoom In: fixed end at %ld, new range [%ld-%ld] (pan slider stays same)",
+          (long)fixedEndIndex, (long)newStartIndex, (long)fixedEndIndex);
 }
 
 - (void)zoomOut:(NSButton *)sender {
     NSInteger currentRange = self.visibleEndIndex - self.visibleStartIndex;
     NSInteger newRange = MIN(self.chartData.count, currentRange * 1.5);
-    NSInteger center = (self.visibleStartIndex + self.visibleEndIndex) / 2;
     
-    [self zoomToRange:MAX(0, center - newRange/2)
-             endIndex:MIN(self.chartData.count - 1, center + newRange/2)];
+    // ✅ NUOVO: Mantieni l'endIndex fisso (barra più recente visualizzata) come punto di riferimento
+    NSInteger fixedEndIndex = self.visibleEndIndex;
+    NSInteger newStartIndex = fixedEndIndex - newRange;
+    
+    // Clamp ai limiti validi (solo per startIndex, endIndex rimane fisso)
+    if (newStartIndex < 0) {
+        newStartIndex = 0;
+    }
+    
+    [self zoomToRange:newStartIndex endIndex:fixedEndIndex];
+    
+    NSLog(@"🔍➖ Zoom Out: fixed end at %ld, new range [%ld-%ld] (pan slider stays same)",
+          (long)fixedEndIndex, (long)newStartIndex, (long)fixedEndIndex);
 }
+
 
 - (void)zoomAll:(NSButton *)sender {
     [self resetZoom];
@@ -580,22 +601,28 @@ extern NSString *const DataHubDataLoadedNotification;
     if (!self.chartData || self.chartData.count == 0) return;
     
     NSInteger currentRange = self.visibleEndIndex - self.visibleStartIndex;
-    double timelinePercentage = sender.doubleValue / 100.0; // 0.0 = inizio timeline, 1.0 = fine timeline
+    NSInteger totalBars = self.chartData.count;
+    double recentDataPercentage = sender.doubleValue / 100.0; // 0.0 = inizio timeline, 1.0 = fine timeline
     
-    // ✅ TIMELINE LOGIC: Calcola dove posizionare la finestra visibile nella timeline
-    NSInteger maxStartIndex = self.chartData.count - currentRange;
-    NSInteger newStartIndex = (NSInteger)(maxStartIndex * timelinePercentage);
+    // ✅ NUOVA LOGICA: Calcola dove posizionare la finestra basandosi sull'estremo più recente desiderato
+    NSInteger desiredEndIndex = (NSInteger)((totalBars - 1) * recentDataPercentage);
+    NSInteger newStartIndex = desiredEndIndex - currentRange;
+    NSInteger newEndIndex = desiredEndIndex;
     
     // Clamp ai limiti validi
-    newStartIndex = MAX(0, MIN(maxStartIndex, newStartIndex));
-    NSInteger newEndIndex = newStartIndex + currentRange;
+    if (newStartIndex < 0) {
+        newStartIndex = 0;
+        newEndIndex = currentRange;
+    } else if (newEndIndex >= totalBars) {
+        newEndIndex = totalBars - 1;
+        newStartIndex = newEndIndex - currentRange;
+    }
     
     [self zoomToRange:newStartIndex endIndex:newEndIndex];
     
-    NSLog(@"📅 Timeline position: %.1f%% -> showing bars [%ld-%ld] (%.1f%% through history)",
-          sender.doubleValue, (long)newStartIndex, (long)newEndIndex, timelinePercentage * 100.0);
+    NSLog(@"📅 Timeline position: %.1f%% -> showing bars [%ld-%ld] (most recent at bar %ld)",
+          sender.doubleValue, (long)newStartIndex, (long)newEndIndex, (long)newEndIndex);
 }
-
 
 #pragma mark - Public Methods
 
@@ -770,26 +797,21 @@ extern NSString *const DataHubDataLoadedNotification;
 - (void)updatePanSlider {
     if (!self.chartData || self.chartData.count == 0) return;
     
-    NSInteger currentRange = self.visibleEndIndex - self.visibleStartIndex;
-    NSInteger maxStartIndex = self.chartData.count - currentRange;
+    // ✅ NUOVA LOGICA: Calcola la posizione basandosi sull'ESTREMO PIÙ RECENTE dei dati visibili
+    NSInteger totalBars = self.chartData.count;
     
-    if (maxStartIndex > 0) {
-        // ✅ TIMELINE PERCENTAGE: Dove siamo nella timeline (0% = inizio, 100% = fine)
-        double timelinePercentage = (double)self.visibleStartIndex / maxStartIndex;
-        timelinePercentage = MAX(0.0, MIN(1.0, timelinePercentage));
-        
-        // Aggiorna slider senza triggerare l'action
-        id originalTarget = self.panSlider.target;
-        self.panSlider.target = nil;
-        [self.panSlider setDoubleValue:timelinePercentage * 100.0];
-        self.panSlider.target = originalTarget;
-        
-        NSLog(@"📅 Timeline slider updated: %.1f%% (showing [%ld-%ld])",
-              timelinePercentage * 100.0, (long)self.visibleStartIndex, (long)self.visibleEndIndex);
-    } else {
-        // Se stiamo vedendo tutto il dataset, siamo all'inizio della timeline
-        self.panSlider.doubleValue = 0.0;
-    }
+    // Percentuale della timeline raggiunta dall'estremo destro (più recente) della finestra visibile
+    double recentDataPercentage = (double)self.visibleEndIndex / (totalBars - 1);
+    recentDataPercentage = MAX(0.0, MIN(1.0, recentDataPercentage));
+    
+    // Aggiorna slider senza triggerare l'action
+    id originalTarget = self.panSlider.target;
+    self.panSlider.target = nil;
+    [self.panSlider setDoubleValue:recentDataPercentage * 100.0];
+    self.panSlider.target = originalTarget;
+    
+    NSLog(@"📅 Timeline slider updated: %.1f%% (most recent visible: bar %ld of %ld)",
+          recentDataPercentage * 100.0, (long)self.visibleEndIndex, (long)(totalBars - 1));
 }
 
 

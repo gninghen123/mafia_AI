@@ -647,7 +647,7 @@
     CGFloat cp2Price = [self priceFromScreenY:endPoint.y];
     CGFloat priceRange = cp2Price - cp1Price;
     
-    // Fibonacci levels with extensions
+    // ✅ FIBONACCI CORRETTI: Retracements da CP2 verso CP1, Extensions oltre CP2
     NSArray *fibRatios = @[@0.0, @0.236, @0.382, @0.5, @0.618, @0.786, @1.0, @1.272, @1.414, @1.618, @2.618, @4.236];
     NSArray *fibLabels = @[@"0%", @"23.6%", @"38.2%", @"50%", @"61.8%", @"78.6%", @"100%", @"127.2%", @"141.4%", @"161.8%", @"261.8%", @"423.6%"];
     
@@ -655,23 +655,117 @@
     
     for (NSUInteger i = 0; i < fibRatios.count; i++) {
         CGFloat ratio = [fibRatios[i] doubleValue];
-        CGFloat fibPrice = cp1Price + (priceRange * ratio);
+        CGFloat fibPrice;
+        
+        if (ratio <= 1.0) {
+            // ✅ RETRACEMENTS (0% - 100%): da CP2 verso CP1
+            // Formula: CP2 - (ratio × range)
+            // Esempio: 23.6% = $100 - (0.236 × $99) = $76.64 (vicino a CP2)
+            fibPrice = cp2Price - (ratio * priceRange);
+        } else {
+            // ✅ EXTENSIONS (>100%): oltre CP2 verso l'alto
+            // Formula: CP2 + ((ratio - 1.0) × range)
+            // Esempio: 127.2% = $100 + (0.272 × $99) = $126.93 (sopra CP2)
+            fibPrice = cp2Price + ((ratio - 1.0) * priceRange);
+        }
+        
         CGFloat fibY = [self yCoordinateForPrice:fibPrice];
         
         // Skip levels outside visible range
-        if (fibY < 0 || fibY > self.coordinateContext.panelBounds.size.height) continue;
+        if (fibY < -20 || fibY > self.coordinateContext.panelBounds.size.height + 20) continue;
         
-        // Draw fibonacci level line
+        // ✅ STILE DIVERSO per livelli chiave vs extensions
         NSBezierPath *levelPath = [NSBezierPath bezierPath];
         [levelPath moveToPoint:NSMakePoint(0, fibY)];
         [levelPath lineToPoint:NSMakePoint(panelWidth, fibY)];
-        [self strokePath:levelPath withStyle:style];
         
-        // Draw label
+        if (ratio == 0.0 || ratio == 1.0) {
+            // 0% e 100% - linee principali più spesse
+            levelPath.lineWidth = 2.0;
+            [[NSColor systemBlueColor] setStroke];
+        } else if (ratio > 1.0) {
+            // Extensions - linee tratteggiate
+            levelPath.lineWidth = 1.5;
+            CGFloat dashPattern[] = {5.0, 3.0};
+            [levelPath setLineDash:dashPattern count:2 phase:0];
+            [[NSColor systemRedColor] setStroke];
+        } else {
+            // Retracements normali
+            levelPath.lineWidth = 1.0;
+            [style.color setStroke];
+        }
+        
+        [levelPath stroke];
+        
+        // ✅ DRAW LABEL con prezzo calcolato
         NSString *labelText = [NSString stringWithFormat:@"%@ (%.2f)", fibLabels[i], fibPrice];
-        [self drawFibLabel:labelText atPoint:NSMakePoint(panelWidth - 80, fibY) color:style.color];
+        [self drawFibonacciLabel:labelText
+                         atPoint:NSMakePoint(panelWidth - 100, fibY)
+                      isKeyLevel:(ratio == 0.0 || ratio == 1.0)
+                     isExtension:(ratio > 1.0)];
     }
+    
+    // ✅ DRAW CONTROL POINTS per riferimento
+    [self drawFibonacciControlPoint:startPoint label:@"CP1" price:cp1Price];
+    [self drawFibonacciControlPoint:endPoint label:@"CP2" price:cp2Price];
 }
+
+- (void)drawFibonacciLabel:(NSString *)label
+                   atPoint:(NSPoint)point
+                isKeyLevel:(BOOL)isKeyLevel
+               isExtension:(BOOL)isExtension {
+    
+    NSFont *font = isKeyLevel ? [NSFont boldSystemFontOfSize:12] : [NSFont systemFontOfSize:10];
+    NSColor *textColor = isExtension ? [NSColor systemRedColor] :
+                        isKeyLevel ? [NSColor systemBlueColor] : [NSColor labelColor];
+    
+    NSDictionary *attributes = @{
+        NSFontAttributeName: font,
+        NSForegroundColorAttributeName: textColor,
+        NSBackgroundColorAttributeName: [[NSColor controlBackgroundColor] colorWithAlphaComponent:0.9]
+    };
+    
+    NSAttributedString *attributedText = [[NSAttributedString alloc] initWithString:label attributes:attributes];
+    NSSize textSize = [attributedText size];
+    
+    NSRect labelRect = NSMakeRect(point.x - textSize.width - 4, point.y - textSize.height/2 - 2,
+                                  textSize.width + 8, textSize.height + 4);
+    
+    // Draw background with rounded corners
+    [[NSColor controlBackgroundColor] setFill];
+    NSBezierPath *bgPath = [NSBezierPath bezierPathWithRoundedRect:labelRect xRadius:3 yRadius:3];
+    [bgPath fill];
+    
+    // Draw border for extensions
+    if (isExtension) {
+        [[NSColor systemRedColor] setStroke];
+        bgPath.lineWidth = 1.0;
+        [bgPath stroke];
+    }
+    
+    // Draw text
+    [attributedText drawAtPoint:NSMakePoint(point.x - textSize.width, point.y - textSize.height/2)];
+}
+- (void)drawFibonacciControlPoint:(NSPoint)point label:(NSString *)label price:(CGFloat)price {
+    // Draw control point marker
+    NSBezierPath *circle = [NSBezierPath bezierPathWithOvalInRect:
+                           NSMakeRect(point.x - 4, point.y - 4, 8, 8)];
+    [[NSColor systemOrangeColor] setFill];
+    [circle fill];
+    [[NSColor blackColor] setStroke];
+    circle.lineWidth = 1.0;
+    [circle stroke];
+    
+    // Draw label
+    NSString *fullLabel = [NSString stringWithFormat:@"%@ (%.2f)", label, price];
+    NSDictionary *attributes = @{
+        NSFontAttributeName: [NSFont boldSystemFontOfSize:11],
+        NSForegroundColorAttributeName: [NSColor systemOrangeColor]
+    };
+    
+    [fullLabel drawAtPoint:NSMakePoint(point.x + 8, point.y + 4) withAttributes:attributes];
+}
+
 - (void)drawFibLabel:(NSString *)text atPoint:(NSPoint)point color:(NSColor *)textColor {
     NSDictionary *attributes = @{
         NSFontAttributeName: [NSFont systemFontOfSize:11],
@@ -694,51 +788,7 @@
     [attributedText drawAtPoint:NSMakePoint(point.x - textSize.width, point.y - textSize.height/2)];
 }
 
-- (void)drawFibonacciLabel:(NSString *)label
-                   atPoint:(NSPoint)point
-                isKeyLevel:(BOOL)isKeyLevel
-               isExtension:(BOOL)isExtension {
-    
-    NSFont *font = isKeyLevel ?
-        [NSFont boldSystemFontOfSize:11] :
-        [NSFont systemFontOfSize:10];
-    
-    NSColor *textColor;
-    if (isKeyLevel) {
-        textColor = [NSColor systemBlueColor];
-    } else if (isExtension) {
-        textColor = [NSColor systemPurpleColor];
-    } else {
-        textColor = [NSColor systemOrangeColor];
-    }
-    
-    NSDictionary *attributes = @{
-        NSFontAttributeName: font,
-        NSForegroundColorAttributeName: textColor,
-        NSBackgroundColorAttributeName: [[NSColor controlBackgroundColor] colorWithAlphaComponent:0.9]
-    };
-    
-    NSAttributedString *attributedLabel = [[NSAttributedString alloc]
-                                          initWithString:label
-                                          attributes:attributes];
-    
-    NSSize labelSize = [attributedLabel size];
-    NSRect labelRect = NSMakeRect(point.x,
-                                 point.y - labelSize.height/2,
-                                 labelSize.width + 6,
-                                 labelSize.height + 2);
-    
-    // Background per leggibilità
-    [[NSColor controlBackgroundColor] setFill];
-    NSRectFillUsingOperation(labelRect, NSCompositingOperationSourceOver);
-    
-    // Bordo sottile
-    [[NSColor tertiaryLabelColor] setStroke];
-    NSFrameRect(labelRect);
-    
-    // Testo
-    [attributedLabel drawAtPoint:NSMakePoint(point.x + 3, point.y - labelSize.height/2 + 1)];
-}
+
 
 - (CGFloat)priceFromScreenY:(CGFloat)screenY {
     // Inverte la conversione di yCoordinateForPrice
@@ -919,6 +969,8 @@
     NSString *labelText = [NSString stringWithFormat:@"Target: %.2f", targetPrice];
     [self drawTargetLabel:labelText atPoint:NSMakePoint(10, screenPoint.y) color:object.style.color];
 }
+
+
 - (void)drawTargetLabel:(NSString *)text atPoint:(NSPoint)point color:(NSColor *)textColor {
     NSDictionary *attributes = @{
         NSFontAttributeName: [NSFont boldSystemFontOfSize:12],
@@ -1195,28 +1247,35 @@
     [self.tempControlPoints addObject:newCP];
     self.currentCPSelected = newCP;
     
-    // NUOVO: Crea oggetto normale e lo mette in editing layer
+    // Crea oggetto preview
     [self createEditingObjectFromTempCPs];
     
-    NSLog(@"🎯 Added CP %lu, created editing object", (unsigned long)self.tempControlPoints.count);
+    NSLog(@"🎯 Added CP %lu for type %ld", (unsigned long)self.tempControlPoints.count, (long)self.creationObjectType);
     
-    // Check if object is complete
-    BOOL isComplete = [self isObjectCreationComplete];
-    if (isComplete) {
-        [self finishCreatingObject];
-    }
-    
-    return isComplete;
+ 
+    NSLog(@"🔄 Object needs more CPs, continuing creation...");
+    return NO; // Continua la creazione
 }
 
 
 - (void)consolidateCurrentCPAndPrepareNext {
     if (!self.isInCreationMode || !self.currentCPSelected) return;
     
-    NSLog(@"🎯 Consolidating current CP...");
+    NSLog(@"🎯 Consolidating current CP... (tempPoints: %lu)", (unsigned long)self.tempControlPoints.count);
     
     // Clear currentCPSelected (consolida)
     self.currentCPSelected = nil;
+    
+    // ✅ FIX: Check se l'oggetto è già completo PRIMA di aggiungere altri CP
+    BOOL isAlreadyComplete = [self isObjectCreationComplete];
+    
+    if (isAlreadyComplete) {
+        // ✅ OGGETTO GIÀ COMPLETO: Non aggiungere altri CP, finisci
+        NSLog(@"✅ Object already complete, finishing creation");
+        [self finishCreatingObject];
+        [self notifyObjectCreationCompleted];
+        return;
+    }
     
     // Check if object needs more control points
     BOOL needsMorePoints = [self needsMoreControlPointsForCreation];
@@ -1236,32 +1295,39 @@
         }
     } else {
         // Object is complete
+        NSLog(@"✅ Object creation completed in consolidate");
         [self finishCreatingObject];
         [self notifyObjectCreationCompleted];
-        NSLog(@"✅ Object creation completed!");
     }
 }
 
 - (BOOL)needsMoreControlPointsForCreation {
     switch (self.creationObjectType) {
         case ChartObjectTypeHorizontalLine:
+            // ✅ Questi oggetti hanno bisogno di solo 1 CP
             return self.tempControlPoints.count < 1;
             
         case ChartObjectTypeTrendline:
         case ChartObjectTypeFibonacci:
         case ChartObjectTypeRectangle:
         case ChartObjectTypeCircle:
+            // ✅ Questi oggetti hanno bisogno di 2 CP
             return self.tempControlPoints.count < 2;
             
         case ChartObjectTypeChannel:
         case ChartObjectTypeTarget:
-            return self.tempControlPoints.count < 3; // NUOVO: 3 CP per channel e target
+            // ✅ Channel ha bisogno di 3 CP
+            return self.tempControlPoints.count < 3;
             
         default:
             return NO;
     }
 }
 
+- (BOOL)isObjectCreationComplete {
+    // ✅ Semplicemente nega needsMoreControlPointsForCreation
+    return ![self needsMoreControlPointsForCreation];
+}
 
 - (void)notifyObjectCreationCompleted {
     // Find ChartWidget through panelView
@@ -1337,9 +1403,7 @@
 
 
 
-- (BOOL)isObjectCreationComplete {
-    return ![self needsMoreControlPointsForCreation];
-}
+
 
 - (void)finishCreatingObject {
     if (!self.isInCreationMode || self.tempControlPoints.count == 0) return;
@@ -1350,7 +1414,7 @@
         activeLayer = [self.objectsManager createLayerWithName:@"Drawing"];
     }
     
-    // ✅ QUESTO è l'oggetto REALE che va nel model
+    // ✅ Crea oggetto SENZA salvare
     ChartObjectModel *finalObject = [self.objectsManager createObjectOfType:self.creationObjectType
                                                                      inLayer:activeLayer];
     
@@ -1359,12 +1423,16 @@
         [finalObject addControlPoint:cp];
     }
     
-    // ✅ PULITO: Nessun cleanup layer temp - non esistono!
-    [self cancelCreatingObject];  // Pulisce solo editing state
-    [self invalidateObjectsLayer]; // Ridisegna con oggetto reale
+    // ✅ SALVA SOLO QUI - quando l'oggetto è completamente configurato
+    [self.objectsManager saveToDataHub];
     
-    NSLog(@"✅ Created final object '%@' in layer '%@'", finalObject.name, activeLayer.name);
+    // Cleanup
+    [self cancelCreatingObject];
+    [self invalidateObjectsLayer];
+    
+    NSLog(@"✅ Created and saved complete object '%@' in layer '%@'", finalObject.name, activeLayer.name);
 }
+
 
 // 4. Modificare cancelCreatingObject per clear currentCPSelected
 - (void)cancelCreatingObject {
@@ -1403,15 +1471,18 @@
     
     ChartObjectModel *object = self.editingObject;
     
-    // ✅ SEMPLICE: Rimetti l'oggetto nel rendering normale
+    // ✅ SALVA quando finisci di editare
+    [self.objectsManager saveToDataHub];
+    
+    // Cleanup editing state
     self.editingObject = nil;
     [self.objectsManager clearSelection];
     
     // Move object visualization back to static layer
-    [self invalidateObjectsLayer];  // Redraw with this object
-    [self invalidateEditingLayer];  // Clear editing layer
+    [self invalidateObjectsLayer];
+    [self invalidateEditingLayer];
     
-    NSLog(@"✅ Stopped editing object '%@' - moved back to static layer", object.name);
+    NSLog(@"✅ Stopped editing object '%@' and saved changes", object.name);
 }
 
 #pragma mark - Hit Testing

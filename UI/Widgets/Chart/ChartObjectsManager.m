@@ -93,10 +93,9 @@
     ChartObjectModel *object = [ChartObjectModel objectWithType:type name:uniqueName];
     [layer addObject:object];
     
-    // ✅ AUTO-SAVE dopo creazione
-    [self saveToDataHub];
+    // ❌ RIMOSSO: [self saveToDataHub]; - Non salvare immediatamente!
     
-    NSLog(@"✅ ChartObjectsManager: Created object '%@' in layer '%@' and saved", uniqueName, layer.name);
+    NSLog(@"✅ ChartObjectsManager: Created object '%@' in layer '%@' (not saved yet)", uniqueName, layer.name);
     return object;
 }
 
@@ -116,7 +115,7 @@
         [self clearSelection];
     }
     
-    // ✅ AUTO-SAVE dopo delete
+    // ✅ SALVA SUBITO per le delete (ok per operazioni distruttive)
     [self saveToDataHub];
     
     NSLog(@"🗑️ ChartObjectsManager: Deleted object '%@' and saved", object.name);
@@ -362,4 +361,12 @@
                                                         object:self
                                                       userInfo:@{@"symbol": self.currentSymbol}];
 }
+
+
+- (void)saveChanges {
+    [self saveToDataHub];
+    NSLog(@"💾 ChartObjectsManager: Manual save completed");
+}
+
+
 @end

@@ -58,6 +58,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)clearAllObjects;
 
+- (void)saveChanges; // Per save manuali quando necessario
+
 
 @end
 

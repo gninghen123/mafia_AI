@@ -15,6 +15,8 @@
 		954D30DD2E28531C00C7DC88 /* PROJECT_ARCHITECTURE.md in Resources */ = {isa = PBXBuildFile; fileRef = 954D30C02E28531C00C7DC88 /* PROJECT_ARCHITECTURE.md */; };
 		954D30E32E2860F100C7DC88 /* PreferencesWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */; };
 		954D30E72E28612100C7DC88 /* AppSettings.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30E62E28612100C7DC88 /* AppSettings.m */; };
+		95519E202E4DBC95007686FA /* ChartObject+CoreDataClass.m in Sources */ = {isa = PBXBuildFile; fileRef = 95519E1D2E4DBC95007686FA /* ChartObject+CoreDataClass.m */; };
+		95519E212E4DBC95007686FA /* ChartObject+CoreDataProperties.m in Sources */ = {isa = PBXBuildFile; fileRef = 95519E1F2E4DBC95007686FA /* ChartObject+CoreDataProperties.m */; };
 		9560C4042E3BC337003FCF67 /* Watchlist+CoreDataClass.m in Sources */ = {isa = PBXBuildFile; fileRef = 9560C3EE2E3BC337003FCF67 /* Watchlist+CoreDataClass.m */; };
 		95A040E62E4313800026FB2D /* Alert+CoreDataClass.m in Sources */ = {isa = PBXBuildFile; fileRef = 95A040C32E4313800026FB2D /* Alert+CoreDataClass.m */; };
 		95A040E82E4313800026FB2D /* CompanyInfo+CoreDataClass.m in Sources */ = {isa = PBXBuildFile; fileRef = 95A040C72E4313800026FB2D /* CompanyInfo+CoreDataClass.m */; };
@@ -24,7 +26,6 @@
 		95A040F32E4313800026FB2D /* StockConnection+CoreDataClass.m in Sources */ = {isa = PBXBuildFile; fileRef = 95A040DD2E4313800026FB2D /* StockConnection+CoreDataClass.m */; };
 		95A040F62E4313800026FB2D /* TradingModel+CoreDataClass.m in Sources */ = {isa = PBXBuildFile; fileRef = 95A040E22E4313800026FB2D /* TradingModel+CoreDataClass.m */; };
 		95A041802E4482740026FB2D /* ChartLayer+CoreDataClass.m in Sources */ = {isa = PBXBuildFile; fileRef = 95A0415B2E4482740026FB2D /* ChartLayer+CoreDataClass.m */; };
-		95A041822E4482740026FB2D /* ChartObject+CoreDataClass.m in Sources */ = {isa = PBXBuildFile; fileRef = 95A0415F2E4482740026FB2D /* ChartObject+CoreDataClass.m */; };
 		95A0418B2E4482740026FB2D /* Symbol+CoreDataClass.m in Sources */ = {isa = PBXBuildFile; fileRef = 95A041772E4482740026FB2D /* Symbol+CoreDataClass.m */; };
 		95A041C92E44860C0026FB2D /* MarketQuote+CoreDataProperties.m in Sources */ = {isa = PBXBuildFile; fileRef = 95A041C02E44860C0026FB2D /* MarketQuote+CoreDataProperties.m */; };
 		95A041CA2E44860C0026FB2D /* HistoricalBar+CoreDataProperties.m in Sources */ = {isa = PBXBuildFile; fileRef = 95A041BC2E44860C0026FB2D /* HistoricalBar+CoreDataProperties.m */; };
@@ -32,7 +33,6 @@
 		95A041CC2E44860C0026FB2D /* Symbol+CoreDataProperties.m in Sources */ = {isa = PBXBuildFile; fileRef = 95A041C42E44860C0026FB2D /* Symbol+CoreDataProperties.m */; };
 		95A041CD2E44860C0026FB2D /* Watchlist+CoreDataProperties.m in Sources */ = {isa = PBXBuildFile; fileRef = 95A041C82E44860C0026FB2D /* Watchlist+CoreDataProperties.m */; };
 		95A041CE2E44860C0026FB2D /* TradingModel+CoreDataProperties.m in Sources */ = {isa = PBXBuildFile; fileRef = 95A041C62E44860C0026FB2D /* TradingModel+CoreDataProperties.m */; };
-		95A041CF2E44860C0026FB2D /* ChartObject+CoreDataProperties.m in Sources */ = {isa = PBXBuildFile; fileRef = 95A041B82E44860C0026FB2D /* ChartObject+CoreDataProperties.m */; };
 		95A041D02E44860C0026FB2D /* MarketPerformer+CoreDataProperties.m in Sources */ = {isa = PBXBuildFile; fileRef = 95A041BE2E44860C0026FB2D /* MarketPerformer+CoreDataProperties.m */; };
 		95A041D12E44860C0026FB2D /* Alert+CoreDataProperties.m in Sources */ = {isa = PBXBuildFile; fileRef = 95A041B42E44860C0026FB2D /* Alert+CoreDataProperties.m */; };
 		95A041D22E44860C0026FB2D /* CompanyInfo+CoreDataProperties.m in Sources */ = {isa = PBXBuildFile; fileRef = 95A041BA2E44860C0026FB2D /* CompanyInfo+CoreDataProperties.m */; };
@@ -76,6 +76,10 @@
 		954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PreferencesWindowController.m; sourceTree = "<group>"; };
 		954D30E52E28612100C7DC88 /* AppSettings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppSettings.h; sourceTree = "<group>"; };
 		954D30E62E28612100C7DC88 /* AppSettings.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppSettings.m; sourceTree = "<group>"; };
+		95519E1C2E4DBC95007686FA /* ChartObject+CoreDataClass.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "ChartObject+CoreDataClass.h"; sourceTree = "<group>"; };
+		95519E1D2E4DBC95007686FA /* ChartObject+CoreDataClass.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "ChartObject+CoreDataClass.m"; sourceTree = "<group>"; };
+		95519E1E2E4DBC95007686FA /* ChartObject+CoreDataProperties.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "ChartObject+CoreDataProperties.h"; sourceTree = "<group>"; };
+		95519E1F2E4DBC95007686FA /* ChartObject+CoreDataProperties.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "ChartObject+CoreDataProperties.m"; sourceTree = "<group>"; };
 		9560C3ED2E3BC337003FCF67 /* Watchlist+CoreDataClass.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Watchlist+CoreDataClass.h"; sourceTree = "<group>"; };
 		9560C3EE2E3BC337003FCF67 /* Watchlist+CoreDataClass.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "Watchlist+CoreDataClass.m"; sourceTree = "<group>"; };
 		95A040C22E4313800026FB2D /* Alert+CoreDataClass.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Alert+CoreDataClass.h"; sourceTree = "<group>"; };
@@ -94,16 +98,12 @@
 		95A040E22E4313800026FB2D /* TradingModel+CoreDataClass.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "TradingModel+CoreDataClass.m"; sourceTree = "<group>"; };
 		95A0415A2E4482740026FB2D /* ChartLayer+CoreDataClass.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "ChartLayer+CoreDataClass.h"; sourceTree = "<group>"; };
 		95A0415B2E4482740026FB2D /* ChartLayer+CoreDataClass.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "ChartLayer+CoreDataClass.m"; sourceTree = "<group>"; };
-		95A0415E2E4482740026FB2D /* ChartObject+CoreDataClass.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "ChartObject+CoreDataClass.h"; sourceTree = "<group>"; };
-		95A0415F2E4482740026FB2D /* ChartObject+CoreDataClass.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "ChartObject+CoreDataClass.m"; sourceTree = "<group>"; };
 		95A041762E4482740026FB2D /* Symbol+CoreDataClass.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Symbol+CoreDataClass.h"; sourceTree = "<group>"; };
 		95A041772E4482740026FB2D /* Symbol+CoreDataClass.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "Symbol+CoreDataClass.m"; sourceTree = "<group>"; };
 		95A041B32E44860C0026FB2D /* Alert+CoreDataProperties.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Alert+CoreDataProperties.h"; sourceTree = "<group>"; };
 		95A041B42E44860C0026FB2D /* Alert+CoreDataProperties.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "Alert+CoreDataProperties.m"; sourceTree = "<group>"; };
 		95A041B52E44860C0026FB2D /* ChartLayer+CoreDataProperties.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "ChartLayer+CoreDataProperties.h"; sourceTree = "<group>"; };
 		95A041B62E44860C0026FB2D /* ChartLayer+CoreDataProperties.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "ChartLayer+CoreDataProperties.m"; sourceTree = "<group>"; };
-		95A041B72E44860C0026FB2D /* ChartObject+CoreDataProperties.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "ChartObject+CoreDataProperties.h"; sourceTree = "<group>"; };
-		95A041B82E44860C0026FB2D /* ChartObject+CoreDataProperties.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "ChartObject+CoreDataProperties.m"; sourceTree = "<group>"; };
 		95A041B92E44860C0026FB2D /* CompanyInfo+CoreDataProperties.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "CompanyInfo+CoreDataProperties.h"; sourceTree = "<group>"; };
 		95A041BA2E44860C0026FB2D /* CompanyInfo+CoreDataProperties.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "CompanyInfo+CoreDataProperties.m"; sourceTree = "<group>"; };
 		95A041BB2E44860C0026FB2D /* HistoricalBar+CoreDataProperties.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "HistoricalBar+CoreDataProperties.h"; sourceTree = "<group>"; };
@@ -194,12 +194,14 @@
 		954D2FF72E28514A00C7DC88 = {
 			isa = PBXGroup;
 			children = (
+				95519E1C2E4DBC95007686FA /* ChartObject+CoreDataClass.h */,
+				95519E1D2E4DBC95007686FA /* ChartObject+CoreDataClass.m */,
+				95519E1E2E4DBC95007686FA /* ChartObject+CoreDataProperties.h */,
+				95519E1F2E4DBC95007686FA /* ChartObject+CoreDataProperties.m */,
 				95A041B32E44860C0026FB2D /* Alert+CoreDataProperties.h */,
 				95A041B42E44860C0026FB2D /* Alert+CoreDataProperties.m */,
 				95A041B52E44860C0026FB2D /* ChartLayer+CoreDataProperties.h */,
 				95A041B62E44860C0026FB2D /* ChartLayer+CoreDataProperties.m */,
-				95A041B72E44860C0026FB2D /* ChartObject+CoreDataProperties.h */,
-				95A041B82E44860C0026FB2D /* ChartObject+CoreDataProperties.m */,
 				95A041B92E44860C0026FB2D /* CompanyInfo+CoreDataProperties.h */,
 				95A041BA2E44860C0026FB2D /* CompanyInfo+CoreDataProperties.m */,
 				95A041BB2E44860C0026FB2D /* HistoricalBar+CoreDataProperties.h */,
@@ -232,8 +234,6 @@
 				95A0415B2E4482740026FB2D /* ChartLayer+CoreDataClass.m */,
 				95A040DC2E4313800026FB2D /* StockConnection+CoreDataClass.h */,
 				95A040DD2E4313800026FB2D /* StockConnection+CoreDataClass.m */,
-				95A0415E2E4482740026FB2D /* ChartObject+CoreDataClass.h */,
-				95A0415F2E4482740026FB2D /* ChartObject+CoreDataClass.m */,
 				95A041762E4482740026FB2D /* Symbol+CoreDataClass.h */,
 				95A041772E4482740026FB2D /* Symbol+CoreDataClass.m */,
 				9560C3ED2E3BC337003FCF67 /* Watchlist+CoreDataClass.h */,
@@ -429,6 +429,8 @@
 				95A040E62E4313800026FB2D /* Alert+CoreDataClass.m in Sources */,
 				95A040E82E4313800026FB2D /* CompanyInfo+CoreDataClass.m in Sources */,
 				95A040EA2E4313800026FB2D /* HistoricalBar+CoreDataClass.m in Sources */,
+				95519E202E4DBC95007686FA /* ChartObject+CoreDataClass.m in Sources */,
+				95519E212E4DBC95007686FA /* ChartObject+CoreDataProperties.m in Sources */,
 				95A040EC2E4313800026FB2D /* MarketPerformer+CoreDataClass.m in Sources */,
 				95A040EE2E4313800026FB2D /* MarketQuote+CoreDataClass.m in Sources */,
 				95A040F32E4313800026FB2D /* StockConnection+CoreDataClass.m in Sources */,
@@ -439,13 +441,11 @@
 				95A041CC2E44860C0026FB2D /* Symbol+CoreDataProperties.m in Sources */,
 				95A041CD2E44860C0026FB2D /* Watchlist+CoreDataProperties.m in Sources */,
 				95A041CE2E44860C0026FB2D /* TradingModel+CoreDataProperties.m in Sources */,
-				95A041CF2E44860C0026FB2D /* ChartObject+CoreDataProperties.m in Sources */,
 				95A041D02E44860C0026FB2D /* MarketPerformer+CoreDataProperties.m in Sources */,
 				95A041D12E44860C0026FB2D /* Alert+CoreDataProperties.m in Sources */,
 				95A041D22E44860C0026FB2D /* CompanyInfo+CoreDataProperties.m in Sources */,
 				95A041D32E44860C0026FB2D /* ChartLayer+CoreDataProperties.m in Sources */,
 				95A041802E4482740026FB2D /* ChartLayer+CoreDataClass.m in Sources */,
-				95A041822E4482740026FB2D /* ChartObject+CoreDataClass.m in Sources */,
 				95A0418B2E4482740026FB2D /* Symbol+CoreDataClass.m in Sources */,
 				954D30E32E2860F100C7DC88 /* PreferencesWindowController.m in Sources */,
 				954D30E72E28612100C7DC88 /* AppSettings.m in Sources */,

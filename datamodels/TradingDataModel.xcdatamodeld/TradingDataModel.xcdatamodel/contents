@@ -33,7 +33,7 @@
         <attribute name="isVisible" attributeType="Boolean" defaultValueString="YES" usesScalarValueType="YES"/>
         <attribute name="lastModified" optional="YES" attributeType="Date"/>
         <attribute name="name" attributeType="String"/>
-        <attribute name="objectID" attributeType="String"/>
+        <attribute name="objectUUID" attributeType="String"/>
         <attribute name="styleData" attributeType="Transformable" valueTransformerName="NSSecureUnarchiveFromDataTransformer" customClassName="NSDictionary"/>
         <attribute name="type" attributeType="Integer 16" usesScalarValueType="YES"/>
         <relationship name="layer" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="ChartLayer" inverseName="objects" inverseEntity="ChartLayer"/>
@@ -42,7 +42,7 @@
             <fetchIndexElement property="type" type="Binary" order="ascending"/>
         </fetchIndex>
         <fetchIndex name="byObjectID">
-            <fetchIndexElement property="objectID" type="Binary" order="ascending"/>
+            <fetchIndexElement property="objectUUID" type="Binary" order="ascending"/>
         </fetchIndex>
     </entity>
     <entity name="CompanyInfo" representedClassName="CompanyInfo" syncable="YES">

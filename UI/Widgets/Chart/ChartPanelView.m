@@ -617,6 +617,9 @@
     self.dragStartPoint = locationInView;
     self.isDragging = NO;
   
+    
+    //alert
+    
     if (self.alertRenderer) {
            AlertModel *hitAlert = [self.alertRenderer alertAtScreenPoint:locationInView tolerance:12.0];
            if (hitAlert) {
@@ -626,6 +629,8 @@
                return; // Don't handle other interactions during alert drag
            }
        }
+    
+    //
     
     // NEW LOGIC: Check if ObjectsPanel has active object type
     ChartObjectType activeType = -1;
@@ -654,162 +659,6 @@
     self.isMouseDown = YES;
     self.lastMousePoint = locationInView;
 }
-
-
-
-- (void)rightMouseDown:(NSEvent *)event {
-    NSPoint locationInView = [self convertPoint:event.locationInWindow fromView:nil];
-    // 🎯 PRIORITÀ 1: CONTEXT MENU PER OGGETTI (NUOVA FUNZIONALITÀ)
-    if (self.objectRenderer && self.objectRenderer.objectsManager) {
-        // Hit test per trovare oggetto sotto il cursore
-        ChartObjectModel *hitObject = [self.objectRenderer objectAtScreenPoint:locationInView tolerance:15.0];
-        
-        // Se non trova oggetto normale, controlla se c'è un oggetto in editing
-        if (!hitObject && self.objectRenderer.editingObject) {
-            // Verifica se il right-click è sull'oggetto in editing
-            if ([self isPoint:locationInView nearEditingObject:self.objectRenderer.editingObject tolerance:15.0]) {
-                hitObject = self.objectRenderer.editingObject;
-            }
-        }
-        
-        // Se non trova ancora oggetto, controlla control point
-        if (!hitObject) {
-            ControlPointModel *hitCP = [self.objectRenderer.objectsManager controlPointAtPoint:locationInView tolerance:8.0];
-            if (hitCP) {
-                hitObject = [self findObjectOwningControlPoint:hitCP];
-            }
-        }
-        if (self.objectRenderer.editingObject) {
-              NSLog(@"⚠️ Clearing editing state before context menu");
-              self.objectRenderer.editingObject = nil;
-              self.objectRenderer.currentCPSelected = nil;
-              [self.objectRenderer invalidateEditingLayer];
-          }
-        if (hitObject) {
-            NSLog(@"🖱️ ChartPanelView: Right-click on object '%@' - showing context menu", hitObject.name);
-            [self showContextMenuForObject:hitObject atPoint:locationInView withEvent:event];
-            return; // Stop all other processing for object context menu
-        }
-    }
-    
-    // RESTO DEL CODICE ORIGINALE (PRIORITÀ 2, 3, 4...)
-    
-    // PRIORITY 2: Cancel object creation if active
-    if (self.objectRenderer && self.objectRenderer.isInCreationMode) {
-        [self.objectRenderer cancelCreatingObject];
-        self.isInObjectCreationMode = NO;
-        NSLog(@"❌ ChartPanelView: Cancelled object creation via right-click");
-        return;
-    }
-   
-    // PRIORITY 3: Delete editing object if active
-    if (self.objectRenderer && self.objectRenderer.editingObject) {
-        ChartObjectModel *objectToDelete = self.objectRenderer.editingObject;
-        [self.objectRenderer stopEditing];
-        [self.objectRenderer.objectsManager deleteObject:objectToDelete];
-        [self.objectRenderer renderAllObjects];
-        self.isInObjectEditingMode = NO;
-        NSLog(@"🗑️ ChartPanelView: Deleted object via right-click");
-        return;
-    }
-    
-    // 🆕 PRIORITÀ 2: CONTEXT MENU PER ALERT (NUOVO)
-     if (self.alertRenderer) {
-         AlertModel *hitAlert = [self.alertRenderer alertAtScreenPoint:locationInView tolerance:15.0];
-         if (hitAlert) {
-             NSLog(@"🚨 ChartPanelView: Right-click on alert %@ %.2f - showing context menu",
-                   hitAlert.symbol, hitAlert.triggerValue);
-             [self showContextMenuForAlert:hitAlert atPoint:locationInView withEvent:event];
-             return; // Stop processing for alert context menu
-         }
-     }
-     
-     // 🆕 PRIORITÀ 3: MENU GENERICO PER CREARE NUOVO ALERT (NUOVO)
-     [self showGeneralContextMenuAtPoint:locationInView withEvent:event];
-    
-    
-    // PRIORITY 5: Original right-click behavior (pan mode)
-    self.isRightMouseDown = YES;
-    self.dragStartPoint = locationInView;
-    self.lastMousePoint = self.dragStartPoint;
-}
-
-
-- (void)showContextMenuForObject:(ChartObjectModel *)object atPoint:(NSPoint)point {
-    NSMenu *contextMenu = [[NSMenu alloc] initWithTitle:@"Object Actions"];
-    
-    NSMenuItem *editItem = [[NSMenuItem alloc] initWithTitle:@"Edit Object"
-                                                      action:@selector(editSelectedObject:)
-                                               keyEquivalent:@""];
-    editItem.target = self;
-    editItem.representedObject = object;
-    [contextMenu addItem:editItem];
-    
-    NSMenuItem *deleteItem = [[NSMenuItem alloc] initWithTitle:@"Delete Object"
-                                                        action:@selector(deleteSelectedObject:)
-                                                 keyEquivalent:@""];
-    deleteItem.target = self;
-    deleteItem.representedObject = object;
-    [contextMenu addItem:deleteItem];
-    
-    [NSMenu popUpContextMenu:contextMenu withEvent:[NSApp currentEvent] forView:self];
-}
-
-- (void)editSelectedObject:(NSMenuItem *)menuItem {
-    ChartObjectModel *object = menuItem.representedObject;
-    if (object && self.objectRenderer) {
-        [self.objectRenderer startEditingObject:object];
-        self.isInObjectEditingMode = YES;
-    }
-}
-
-- (void)deleteSelectedObject:(NSMenuItem *)menuItem {
-    ChartObjectModel *object = menuItem.representedObject;
-    if (object && self.objectRenderer) {
-        [self.objectRenderer.objectsManager deleteObject:object];
-        [self.objectRenderer renderAllObjects];
-    }
-}
-#pragma mark - Key Events (NEW)
-/*
-// ADD keyboard shortcuts for object creation:
-- (void)keyDown:(NSEvent *)event {
-    NSString *characters = event.charactersIgnoringModifiers.lowercaseString;
-    
-    if ([characters isEqualToString:@"h"]) {
-        // H key - Horizontal Line
-        [self startCreatingObjectOfType:ChartObjectTypeHorizontalLine];
-    } else if ([characters isEqualToString:@"t"]) {
-        // T key - Trendline
-        [self startCreatingObjectOfType:ChartObjectTypeTrendline];
-    } else if ([characters isEqualToString:@"f"]) {
-        // F key - Fibonacci
-        [self startCreatingObjectOfType:ChartObjectTypeFibonacci];
-    } else if ([characters isEqualToString:@"r"]) {
-        // R key - Rectangle
-        [self startCreatingObjectOfType:ChartObjectTypeRectangle];
-    } else if (event.keyCode == 53) { // ESC key
-        // Cancel current operation
-        if (self.isInObjectCreationMode && self.objectRenderer) {
-            [self.objectRenderer cancelCreatingObject];
-            self.isInObjectCreationMode = NO;
-        } else if (self.isInObjectEditingMode) {
-            [self stopEditingObject];
-        }
-    } else {
-        [super keyDown:event];
-    }
-}
-*/
-// ENSURE view can receive key events:
-- (BOOL)acceptsFirstResponder {
-    return YES;
-}
-
-- (BOOL)canBecomeKeyView {
-    return YES;
-}
-
 
 
 - (void)mouseDragged:(NSEvent *)event {
@@ -956,13 +805,8 @@
 - (void)scrollWheel:(NSEvent *)event {
     if (!self.chartData || self.chartData.count == 0) return;
     
-    NSPoint mouseLocation = [self convertPoint:event.locationInWindow fromView:nil];
-    
-    // Calcola quale barra è sotto il mouse
-    NSInteger mouseBarIndex = [self barIndexForXCoordinate:mouseLocation.x];
-    if (mouseBarIndex < 0) return;
-    
-    // Calcola range attuale
+    // ✅ NUOVO: Usa l'endIndex corrente come punto fisso invece del mouse
+    NSInteger fixedEndIndex = self.chartWidget.visibleEndIndex;
     NSInteger currentRange = self.chartWidget.visibleEndIndex - self.chartWidget.visibleStartIndex;
     NSInteger newRange;
     
@@ -974,30 +818,179 @@
         newRange = MIN(self.chartData.count, currentRange * 2);
     }
     
-    // ✅ ZOOM INTELLIGENTE: Mantieni la barra sotto il mouse come punto fisso
+    // Calcola nuovo startIndex mantenendo endIndex fisso
+    NSInteger newStartIndex = fixedEndIndex - newRange;
     
-    // Calcola la posizione relativa del mouse nel range attuale (0.0 - 1.0)
-    double mouseRatio = (double)(mouseBarIndex - self.chartWidget.visibleStartIndex) / currentRange;
-    
-    // Calcola nuovo start/end mantenendo la stessa proporzione
-    NSInteger newStartIndex = mouseBarIndex - (NSInteger)(newRange * mouseRatio);
-    NSInteger newEndIndex = newStartIndex + newRange;
-    
-    // Clamp ai limiti validi
+    // Clamp ai limiti validi (solo per startIndex)
     if (newStartIndex < 0) {
         newStartIndex = 0;
-        newEndIndex = newRange;
-    } else if (newEndIndex >= self.chartData.count) {
-        newEndIndex = self.chartData.count - 1;
-        newStartIndex = newEndIndex - newRange;
     }
     
     // Applica zoom
-    [self.chartWidget zoomToRange:newStartIndex endIndex:newEndIndex];
+    [self.chartWidget zoomToRange:newStartIndex endIndex:fixedEndIndex];
     
-    NSLog(@"🔍 Smart zoom: mouse at bar %ld (ratio %.2f), new range [%ld-%ld]",
-          (long)mouseBarIndex, mouseRatio, (long)newStartIndex, (long)newEndIndex);
+    NSLog(@"🔍🖱 Scroll zoom: fixed end at %ld, new range [%ld-%ld] (pan slider stays same)",
+          (long)fixedEndIndex, (long)newStartIndex, (long)fixedEndIndex);
 }
+
+- (void)rightMouseDown:(NSEvent *)event {
+    NSPoint locationInView = [self convertPoint:event.locationInWindow fromView:nil];
+    // 🎯 PRIORITÀ 1: CONTEXT MENU PER OGGETTI (NUOVA FUNZIONALITÀ)
+    if (self.objectRenderer && self.objectRenderer.objectsManager) {
+        // Hit test per trovare oggetto sotto il cursore
+        ChartObjectModel *hitObject = [self.objectRenderer objectAtScreenPoint:locationInView tolerance:15.0];
+        
+        // Se non trova oggetto normale, controlla se c'è un oggetto in editing
+        if (!hitObject && self.objectRenderer.editingObject) {
+            // Verifica se il right-click è sull'oggetto in editing
+            if ([self isPoint:locationInView nearEditingObject:self.objectRenderer.editingObject tolerance:15.0]) {
+                hitObject = self.objectRenderer.editingObject;
+            }
+        }
+        
+        // Se non trova ancora oggetto, controlla control point
+        if (!hitObject) {
+            ControlPointModel *hitCP = [self.objectRenderer.objectsManager controlPointAtPoint:locationInView tolerance:8.0];
+            if (hitCP) {
+                hitObject = [self findObjectOwningControlPoint:hitCP];
+            }
+        }
+        if (self.objectRenderer.editingObject) {
+              NSLog(@"⚠️ Clearing editing state before context menu");
+              self.objectRenderer.editingObject = nil;
+              self.objectRenderer.currentCPSelected = nil;
+              [self.objectRenderer invalidateEditingLayer];
+          }
+        if (hitObject) {
+            NSLog(@"🖱️ ChartPanelView: Right-click on object '%@' - showing context menu", hitObject.name);
+            [self showContextMenuForObject:hitObject atPoint:locationInView withEvent:event];
+            return; // Stop all other processing for object context menu
+        }
+    }
+    
+    // RESTO DEL CODICE ORIGINALE (PRIORITÀ 2, 3, 4...)
+    
+    // PRIORITY 2: Cancel object creation if active
+    if (self.objectRenderer && self.objectRenderer.isInCreationMode) {
+        [self.objectRenderer cancelCreatingObject];
+        self.isInObjectCreationMode = NO;
+        NSLog(@"❌ ChartPanelView: Cancelled object creation via right-click");
+        return;
+    }
+   
+    // PRIORITY 3: Delete editing object if active
+    if (self.objectRenderer && self.objectRenderer.editingObject) {
+        ChartObjectModel *objectToDelete = self.objectRenderer.editingObject;
+        [self.objectRenderer stopEditing];
+        [self.objectRenderer.objectsManager deleteObject:objectToDelete];
+        [self.objectRenderer renderAllObjects];
+        self.isInObjectEditingMode = NO;
+        NSLog(@"🗑️ ChartPanelView: Deleted object via right-click");
+        return;
+    }
+    
+    // 🆕 PRIORITÀ 2: CONTEXT MENU PER ALERT (NUOVO)
+     if (self.alertRenderer) {
+         AlertModel *hitAlert = [self.alertRenderer alertAtScreenPoint:locationInView tolerance:15.0];
+         if (hitAlert) {
+             NSLog(@"🚨 ChartPanelView: Right-click on alert %@ %.2f - showing context menu",
+                   hitAlert.symbol, hitAlert.triggerValue);
+             [self showContextMenuForAlert:hitAlert atPoint:locationInView withEvent:event];
+             return; // Stop processing for alert context menu
+         }
+     }
+     
+     // 🆕 PRIORITÀ 3: MENU GENERICO PER CREARE NUOVO ALERT (NUOVO)
+     [self showGeneralContextMenuAtPoint:locationInView withEvent:event];
+    
+    
+    // PRIORITY 5: Original right-click behavior (pan mode)
+    self.isRightMouseDown = YES;
+    self.dragStartPoint = locationInView;
+    self.lastMousePoint = self.dragStartPoint;
+}
+
+
+- (void)showContextMenuForObject:(ChartObjectModel *)object atPoint:(NSPoint)point {
+    NSMenu *contextMenu = [[NSMenu alloc] initWithTitle:@"Object Actions"];
+    
+    NSMenuItem *editItem = [[NSMenuItem alloc] initWithTitle:@"Edit Object"
+                                                      action:@selector(editSelectedObject:)
+                                               keyEquivalent:@""];
+    editItem.target = self;
+    editItem.representedObject = object;
+    [contextMenu addItem:editItem];
+    
+    NSMenuItem *deleteItem = [[NSMenuItem alloc] initWithTitle:@"Delete Object"
+                                                        action:@selector(deleteSelectedObject:)
+                                                 keyEquivalent:@""];
+    deleteItem.target = self;
+    deleteItem.representedObject = object;
+    [contextMenu addItem:deleteItem];
+    
+    [NSMenu popUpContextMenu:contextMenu withEvent:[NSApp currentEvent] forView:self];
+}
+
+- (void)editSelectedObject:(NSMenuItem *)menuItem {
+    ChartObjectModel *object = menuItem.representedObject;
+    if (object && self.objectRenderer) {
+        [self.objectRenderer startEditingObject:object];
+        self.isInObjectEditingMode = YES;
+    }
+}
+
+- (void)deleteSelectedObject:(NSMenuItem *)menuItem {
+    ChartObjectModel *object = menuItem.representedObject;
+    if (object && self.objectRenderer) {
+        [self.objectRenderer.objectsManager deleteObject:object];
+        [self.objectRenderer renderAllObjects];
+    }
+}
+
+
+
+#pragma mark - Key Events (NEW)
+/*
+// ADD keyboard shortcuts for object creation:
+- (void)keyDown:(NSEvent *)event {
+    NSString *characters = event.charactersIgnoringModifiers.lowercaseString;
+    
+    if ([characters isEqualToString:@"h"]) {
+        // H key - Horizontal Line
+        [self startCreatingObjectOfType:ChartObjectTypeHorizontalLine];
+    } else if ([characters isEqualToString:@"t"]) {
+        // T key - Trendline
+        [self startCreatingObjectOfType:ChartObjectTypeTrendline];
+    } else if ([characters isEqualToString:@"f"]) {
+        // F key - Fibonacci
+        [self startCreatingObjectOfType:ChartObjectTypeFibonacci];
+    } else if ([characters isEqualToString:@"r"]) {
+        // R key - Rectangle
+        [self startCreatingObjectOfType:ChartObjectTypeRectangle];
+    } else if (event.keyCode == 53) { // ESC key
+        // Cancel current operation
+        if (self.isInObjectCreationMode && self.objectRenderer) {
+            [self.objectRenderer cancelCreatingObject];
+            self.isInObjectCreationMode = NO;
+        } else if (self.isInObjectEditingMode) {
+            [self stopEditingObject];
+        }
+    } else {
+        [super keyDown:event];
+    }
+}
+*/
+// ENSURE view can receive key events:
+- (BOOL)acceptsFirstResponder {
+    return YES;
+}
+
+- (BOOL)canBecomeKeyView {
+    return YES;
+}
+
+
+
 #pragma mark - Pan Handling
 
 
@@ -1067,8 +1060,6 @@
                                               bounds:self.bounds];
         NSLog(@"🎨 ChartObjectRenderer initialized with existing data (%lu bars)", (unsigned long)self.chartData.count);
     }
-    
-    NSLog(@"🎨 ChartPanelView (%@): Objects renderer setup completed", self.panelType);
 }
 
 #pragma mark - Objects Interaction (NEW)

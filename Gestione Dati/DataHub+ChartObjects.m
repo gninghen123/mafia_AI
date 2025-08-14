@@ -133,7 +133,7 @@
     if (!coreDataObject) {
         coreDataObject = [NSEntityDescription insertNewObjectForEntityForName:@"ChartObject"
                                                        inManagedObjectContext:self.mainContext];
-        coreDataObject.objectID = object.objectID;
+        coreDataObject.objectUUID = object.objectID;
         coreDataObject.creationDate = object.creationDate ?: [NSDate date];
     }
     
@@ -308,7 +308,8 @@
 
 - (nullable ChartObject *)findChartObjectWithID:(NSString *)objectID {
     NSFetchRequest *request = [NSFetchRequest fetchRequestWithEntityName:@"ChartObject"];
-    request.predicate = [NSPredicate predicateWithFormat:@"objectID == %@", objectID];
+    request.predicate = [NSPredicate predicateWithFormat:@"objectUUID == %@", objectID];
+
     request.fetchLimit = 1;
     
     NSError *error;
@@ -345,7 +346,12 @@
 - (ChartObjectModel *)objectModelFromCoreData:(ChartObject *)coreDataObject {
     ChartObjectModel *model = [ChartObjectModel objectWithType:(ChartObjectType)coreDataObject.type
                                                           name:coreDataObject.name];
-    model.objectID = coreDataObject.objectID;
+    if (coreDataObject.objectUUID && [coreDataObject.objectUUID isKindOfClass:[NSString class]]) {
+          model.objectID = coreDataObject.objectUUID;
+      } else {
+          model.objectID = [[NSUUID UUID] UUIDString];
+          NSLog(@"⚠️ DataHub: Generated new objectID for object %@", coreDataObject.name);
+      }
     model.isVisible = coreDataObject.isVisible;
     model.isLocked = coreDataObject.isLocked;
     model.creationDate = coreDataObject.creationDate;

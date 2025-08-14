@@ -8,6 +8,8 @@
 
 #import "BaseWidget.h"
 #import "RuntimeModels.h"
+#import "AlertEditController.h"
+
 
 @interface AlertWidget : BaseWidget <NSTableViewDelegate, NSTableViewDataSource>
 
@@ -23,5 +25,6 @@
 @property (nonatomic, strong) NSArray<AlertModel *> *alerts;
 @property (nonatomic, strong) NSArray<AlertModel *> *filteredAlerts;
 @property (nonatomic, assign) NSInteger currentFilter; // 0=All, 1=Active, 2=Triggered
+@property (nonatomic, strong) AlertEditController *alertEditController;
 
 @end

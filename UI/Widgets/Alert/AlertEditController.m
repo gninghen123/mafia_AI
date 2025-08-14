@@ -1,9 +1,11 @@
+
+
 //
 //  AlertEditController.m
 //  mafia_AI
 //
 //  Window controller per creare/modificare alert
-//  UPDATED: Usa solo DataHub e RuntimeModels
+//  UPDATED: Pattern corretto come ChartPreferencesWindow - NO SHEET!
 //
 
 #import "AlertEditController.h"
@@ -23,201 +25,178 @@
 // State
 @property (nonatomic, assign) BOOL isEditing;
 
+// ✅ AGGIUNGI: Store original values for cancel (come ChartPreferencesWindow)
+@property (nonatomic, strong) NSString *originalSymbol;
+@property (nonatomic, assign) double originalTriggerValue;
+@property (nonatomic, strong) NSString *originalConditionString;
+@property (nonatomic, assign) BOOL originalNotificationEnabled;
+@property (nonatomic, strong) NSString *originalNotes;
+
 @end
 
 @implementation AlertEditController
 
-- (instancetype)initWithAlert:(AlertModel *)alert {
-    if (self = [super init]) {
-        _alert = alert;
-        _isEditing = (alert != nil);
-        [self setupWindow];
-    }
-    return self;
-}
+#pragma mark - Initialization
 
-- (void)setupWindow {
-    // Create window
+- (instancetype)initWithAlert:(AlertModel *)alert {
+    // ✅ PATTERN ChartPreferencesWindow: Create window programmatically
     NSRect windowFrame = NSMakeRect(0, 0, 400, 300);
     NSWindow *window = [[NSWindow alloc] initWithContentRect:windowFrame
                                                    styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
                                                      backing:NSBackingStoreBuffered
                                                        defer:NO];
     
-    window.title = self.isEditing ? @"Edit Alert" : @"New Alert";
-    window.level = NSFloatingWindowLevel;
-    [window center];
-    
-    self.window = window;
-    
-    [self setupContentView];
-    [self populateFields];
+    self = [super initWithWindow:window];
+    if (self) {
+        _alert = alert;
+        _isEditing = (alert != nil);
+        
+        // ✅ Store original values for cancel (come ChartPreferencesWindow)
+        if (alert) {
+            _originalSymbol = alert.symbol;
+            _originalTriggerValue = alert.triggerValue;
+            _originalConditionString = alert.conditionString;
+            _originalNotificationEnabled = alert.notificationEnabled;
+            _originalNotes = alert.notes;
+        }
+        
+        [self setupWindow];
+        [self createControls];
+        [self loadCurrentValues];
+    }
+    return self;
 }
 
-- (void)setupContentView {
+#pragma mark - Window Setup
+
+- (void)setupWindow {
+    NSWindow *window = self.window;
+    
+    // ✅ SETUP IDENTICO a ChartPreferencesWindow
+    window.title = self.isEditing ? @"Edit Alert" : @"New Alert";
+    window.level = NSFloatingWindowLevel;
+    window.hidesOnDeactivate = YES;
+    
+    // Center on screen
+    [window center];
+}
+
+- (void)createControls {
     NSView *contentView = self.window.contentView;
     
-    // Symbol field
-    NSTextField *symbolLabel = [self createLabel:@"Symbol:"];
-    self.symbolField = [self createTextField];
+    // Symbol Section
+    NSTextField *symbolLabel = [self createLabel:@"Symbol:" frame:NSMakeRect(20, 220, 100, 20)];
+    [contentView addSubview:symbolLabel];
+    
+    self.symbolField = [[NSTextField alloc] initWithFrame:NSMakeRect(130, 218, 240, 24)];
     self.symbolField.placeholderString = @"e.g., AAPL";
     self.symbolField.delegate = self;
+    [contentView addSubview:self.symbolField];
     
-    // Condition popup
-    NSTextField *conditionLabel = [self createLabel:@"Condition:"];
-    self.conditionPopup = [[NSPopUpButton alloc] init];
+    // Condition Section
+    NSTextField *conditionLabel = [self createLabel:@"Condition:" frame:NSMakeRect(20, 180, 100, 20)];
+    [contentView addSubview:conditionLabel];
+    
+    self.conditionPopup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(130, 178, 240, 24)];
     [self.conditionPopup addItemWithTitle:@"Above"];
     [self.conditionPopup addItemWithTitle:@"Below"];
     [self.conditionPopup addItemWithTitle:@"Crosses Above"];
     [self.conditionPopup addItemWithTitle:@"Crosses Below"];
+    [contentView addSubview:self.conditionPopup];
     
-    // Value field
-    NSTextField *valueLabel = [self createLabel:@"Trigger Value:"];
-    self.valueField = [self createTextField];
+    // Value Section
+    NSTextField *valueLabel = [self createLabel:@"Trigger Value:" frame:NSMakeRect(20, 140, 100, 20)];
+    [contentView addSubview:valueLabel];
+    
+    self.valueField = [[NSTextField alloc] initWithFrame:NSMakeRect(130, 138, 240, 24)];
     self.valueField.placeholderString = @"0.00";
     self.valueField.delegate = self;
+    [contentView addSubview:self.valueField];
     
-    // Notification checkbox
-    self.notificationCheckbox = [[NSButton alloc] init];
+    // Notification Section
+    self.notificationCheckbox = [[NSButton alloc] initWithFrame:NSMakeRect(20, 100, 350, 24)];
     [self.notificationCheckbox setButtonType:NSButtonTypeSwitch];
-    self.notificationCheckbox.title = @"Show notification when triggered";
-    self.notificationCheckbox.state = NSControlStateValueOn;
+    [self.notificationCheckbox setTitle:@"Show notification when triggered"];
+    [self.notificationCheckbox setState:NSControlStateValueOn];
+    [contentView addSubview:self.notificationCheckbox];
     
-    // Notes field
-    NSTextField *notesLabel = [self createLabel:@"Notes:"];
-    self.notesField = [self createTextField];
+    // Notes Section
+    NSTextField *notesLabel = [self createLabel:@"Notes:" frame:NSMakeRect(20, 70, 100, 20)];
+    [contentView addSubview:notesLabel];
+    
+    self.notesField = [[NSTextField alloc] initWithFrame:NSMakeRect(130, 68, 240, 24)];
     self.notesField.placeholderString = @"Optional notes...";
+    [contentView addSubview:self.notesField];
     
-    // Buttons
-    self.cancelButton = [[NSButton alloc] init];
+    // ✅ BUTTONS - CONFIGURAZIONE IDENTICA a ChartPreferencesWindow
+    self.cancelButton = [[NSButton alloc] initWithFrame:NSMakeRect(190, 20, 80, 32)];
     [self.cancelButton setTitle:@"Cancel"];
-    self.cancelButton.bezelStyle = NSBezelStyleRounded;
-    self.cancelButton.target = self;
-    self.cancelButton.action = @selector(cancel:);
+    [self.cancelButton setBezelStyle:NSBezelStyleRounded];
+    [self.cancelButton setKeyEquivalent:@"\033"]; // Escape key
+    [self.cancelButton setTarget:self];
+    [self.cancelButton setAction:@selector(cancelAlert:)];
+    [self.cancelButton setEnabled:YES];
+    [contentView addSubview:self.cancelButton];
     
-    self.saveButton = [[NSButton alloc] init];
+    self.saveButton = [[NSButton alloc] initWithFrame:NSMakeRect(280, 20, 80, 32)];
     [self.saveButton setTitle:self.isEditing ? @"Update" : @"Create"];
-    self.saveButton.bezelStyle = NSBezelStyleRounded;
-    self.saveButton.keyEquivalent = @"\r"; // Enter key
-    self.saveButton.target = self;
-    self.saveButton.action = @selector(save:);
+    [self.saveButton setBezelStyle:NSBezelStyleRounded];
+    [self.saveButton setKeyEquivalent:@"\r"]; // Enter key
+    [self.saveButton setTarget:self];
+    [self.saveButton setAction:@selector(saveAlert:)];
+    [self.saveButton setEnabled:YES];
+    [contentView addSubview:self.saveButton];
     
-    // Layout all components
-    [self layoutComponents:@[
-        symbolLabel, self.symbolField,
-        conditionLabel, self.conditionPopup,
-        valueLabel, self.valueField,
-        self.notificationCheckbox,
-        notesLabel, self.notesField,
-        self.cancelButton, self.saveButton
-    ] inContentView:contentView];
+    NSLog(@"✅ Alert edit controls created - Save target: %@, Cancel target: %@",
+          self.saveButton.target, self.cancelButton.target);
 }
 
-- (NSTextField *)createLabel:(NSString *)text {
-    NSTextField *label = [[NSTextField alloc] init];
+#pragma mark - Helper Methods
+
+- (NSTextField *)createLabel:(NSString *)text frame:(NSRect)frame {
+    NSTextField *label = [[NSTextField alloc] initWithFrame:frame];
     label.stringValue = text;
     label.editable = NO;
-    label.bezeled = NO;
+    label.bordered = NO;
     label.backgroundColor = [NSColor clearColor];
-    label.font = [NSFont boldSystemFontOfSize:12];
+    label.font = [NSFont systemFontOfSize:13];
     return label;
 }
 
-- (NSTextField *)createTextField {
-    NSTextField *textField = [[NSTextField alloc] init];
-    textField.bezelStyle = NSTextFieldSquareBezel;
-    textField.bezeled = YES;
-    return textField;
-}
+#pragma mark - Data Loading
 
-- (void)layoutComponents:(NSArray *)components inContentView:(NSView *)contentView {
-    for (NSView *component in components) {
-        component.translatesAutoresizingMaskIntoConstraints = NO;
-        [contentView addSubview:component];
+- (void)loadCurrentValues {
+    if (!self.alert) {
+        NSLog(@"💡 Loading defaults for new alert");
+        return;
     }
     
-    // Create constraints
-    NSTextField *symbolLabel = components[0];
-    NSTextField *conditionLabel = components[2];
-    NSTextField *valueLabel = components[4];
-    NSTextField *notesLabel = components[7];
+    // Load current alert values
+    self.symbolField.stringValue = self.alert.symbol ?: @"";
+    self.valueField.stringValue = [NSString stringWithFormat:@"%.2f", self.alert.triggerValue];
+    self.notificationCheckbox.state = self.alert.notificationEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    self.notesField.stringValue = self.alert.notes ?: @"";
     
-    [NSLayoutConstraint activateConstraints:@[
-        // Symbol
-        [symbolLabel.topAnchor constraintEqualToAnchor:contentView.topAnchor constant:20],
-        [symbolLabel.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:20],
-        [symbolLabel.widthAnchor constraintEqualToConstant:100],
-        
-        [self.symbolField.topAnchor constraintEqualToAnchor:symbolLabel.topAnchor],
-        [self.symbolField.leadingAnchor constraintEqualToAnchor:symbolLabel.trailingAnchor constant:10],
-        [self.symbolField.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20],
-        
-        // Condition
-        [conditionLabel.topAnchor constraintEqualToAnchor:symbolLabel.bottomAnchor constant:20],
-        [conditionLabel.leadingAnchor constraintEqualToAnchor:symbolLabel.leadingAnchor],
-        [conditionLabel.widthAnchor constraintEqualToConstant:100],
-        
-        [self.conditionPopup.topAnchor constraintEqualToAnchor:conditionLabel.topAnchor],
-        [self.conditionPopup.leadingAnchor constraintEqualToAnchor:conditionLabel.trailingAnchor constant:10],
-        [self.conditionPopup.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20],
-        
-        // Value
-        [valueLabel.topAnchor constraintEqualToAnchor:conditionLabel.bottomAnchor constant:20],
-        [valueLabel.leadingAnchor constraintEqualToAnchor:symbolLabel.leadingAnchor],
-        [valueLabel.widthAnchor constraintEqualToConstant:100],
-        
-        [self.valueField.topAnchor constraintEqualToAnchor:valueLabel.topAnchor],
-        [self.valueField.leadingAnchor constraintEqualToAnchor:valueLabel.trailingAnchor constant:10],
-        [self.valueField.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20],
-        
-        // Notification checkbox
-        [self.notificationCheckbox.topAnchor constraintEqualToAnchor:valueLabel.bottomAnchor constant:20],
-        [self.notificationCheckbox.leadingAnchor constraintEqualToAnchor:symbolLabel.leadingAnchor],
-        [self.notificationCheckbox.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20],
-        
-        // Notes
-        [notesLabel.topAnchor constraintEqualToAnchor:self.notificationCheckbox.bottomAnchor constant:20],
-        [notesLabel.leadingAnchor constraintEqualToAnchor:symbolLabel.leadingAnchor],
-        [notesLabel.widthAnchor constraintEqualToConstant:100],
-        
-        [self.notesField.topAnchor constraintEqualToAnchor:notesLabel.topAnchor],
-        [self.notesField.leadingAnchor constraintEqualToAnchor:notesLabel.trailingAnchor constant:10],
-        [self.notesField.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20],
-        
-        // Buttons
-        [self.saveButton.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor constant:-20],
-        [self.saveButton.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-20],
-        [self.saveButton.widthAnchor constraintEqualToConstant:80],
-        
-        [self.cancelButton.bottomAnchor constraintEqualToAnchor:self.saveButton.bottomAnchor],
-        [self.cancelButton.trailingAnchor constraintEqualToAnchor:self.saveButton.leadingAnchor constant:-10],
-        [self.cancelButton.widthAnchor constraintEqualToConstant:80]
-    ]];
-}
-
-- (void)populateFields {
-    if (self.alert) {
-        self.symbolField.stringValue = self.alert.symbol ?: @"";
-        self.valueField.stringValue = [NSString stringWithFormat:@"%.2f", self.alert.triggerValue];
-        self.notificationCheckbox.state = self.alert.notificationEnabled ? NSControlStateValueOn : NSControlStateValueOff;
-        self.notesField.stringValue = self.alert.notes ?: @"";
-        
-        // Set condition popup
-        if ([self.alert.conditionString isEqualToString:@"above"]) {
-            [self.conditionPopup selectItemAtIndex:0];
-        } else if ([self.alert.conditionString isEqualToString:@"below"]) {
-            [self.conditionPopup selectItemAtIndex:1];
-        } else if ([self.alert.conditionString isEqualToString:@"crosses_above"]) {
-            [self.conditionPopup selectItemAtIndex:2];
-        } else if ([self.alert.conditionString isEqualToString:@"crosses_below"]) {
-            [self.conditionPopup selectItemAtIndex:3];
-        }
+    // Set condition popup
+    if ([self.alert.conditionString isEqualToString:@"above"]) {
+        [self.conditionPopup selectItemAtIndex:0];
+    } else if ([self.alert.conditionString isEqualToString:@"below"]) {
+        [self.conditionPopup selectItemAtIndex:1];
+    } else if ([self.alert.conditionString isEqualToString:@"crosses_above"]) {
+        [self.conditionPopup selectItemAtIndex:2];
+    } else if ([self.alert.conditionString isEqualToString:@"crosses_below"]) {
+        [self.conditionPopup selectItemAtIndex:3];
     }
+    
+    NSLog(@"📊 Loaded alert values - Symbol: %@, Value: %.2f, Condition: %@",
+          self.alert.symbol, self.alert.triggerValue, self.alert.conditionString);
 }
 
 #pragma mark - Actions
 
-- (void)save:(id)sender {
+- (IBAction)saveAlert:(id)sender {
+    NSLog(@"🚨 SAVE ALERT CALLED! Sender: %@", sender);
+    
     // Validate input
     NSString *symbol = [self.symbolField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].uppercaseString;
     NSString *valueString = [self.valueField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
@@ -266,6 +245,8 @@
         
         [[DataHub shared] updateAlertModel:self.alert];
         resultAlert = self.alert;
+        
+        NSLog(@"✅ Updated existing alert: %@ at %.2f", symbol, triggerValue);
     } else {
         // Create new alert
         resultAlert = [[DataHub shared] createAlertModelWithSymbol:symbol
@@ -273,23 +254,51 @@
                                                     conditionString:conditionString
                                                notificationEnabled:notificationEnabled
                                                               notes:notes];
+        
+        NSLog(@"✅ Created new alert: %@ at %.2f", symbol, triggerValue);
     }
     
-    // Close and call completion
-    [self.window.sheetParent endSheet:self.window returnCode:NSModalResponseOK];
+    // ✅ CLOSE WINDOW (ChartPreferencesWindow pattern)
+    [self closeWindow];
     
+    // Call completion handler
     if (self.completionHandler) {
         self.completionHandler(resultAlert, YES);
     }
 }
 
-- (void)cancel:(id)sender {
-    [self.window.sheetParent endSheet:self.window returnCode:NSModalResponseCancel];
+- (IBAction)cancelAlert:(id)sender {
+    NSLog(@"❌ CANCEL ALERT CALLED! Sender: %@", sender);
     
+    // ✅ CLOSE WINDOW (ChartPreferencesWindow pattern)
+    [self closeWindow];
+    
+    // Call completion handler
     if (self.completionHandler) {
         self.completionHandler(nil, NO);
     }
 }
+
+#pragma mark - Window Management
+
+- (void)showAlertEditWindow {
+    [self loadCurrentValues];
+    [self.window center];  // Center before showing
+    [self.window makeKeyAndOrderFront:nil];  // ✅ PATTERN ChartPreferencesWindow
+    
+    // Make window key and focused
+    [[NSApplication sharedApplication] activateIgnoringOtherApps:YES];
+    [self.window makeFirstResponder:self.symbolField];
+    
+    NSLog(@"🪟 Alert edit window opened");
+}
+
+- (void)closeWindow {
+    NSLog(@"🔻 Closing alert edit window");
+    [self.window orderOut:self];  // ✅ PATTERN ChartPreferencesWindow
+}
+
+#pragma mark - Error Handling
 
 - (void)showErrorAlert:(NSString *)message {
     NSAlert *alert = [[NSAlert alloc] init];
@@ -298,6 +307,7 @@
     [alert addButtonWithTitle:@"OK"];
     alert.alertStyle = NSAlertStyleWarning;
     
+    // ✅ Show as sheet on this window
     [alert beginSheetModalForWindow:self.window completionHandler:nil];
 }
 
@@ -310,5 +320,9 @@
         self.symbolField.stringValue = text.uppercaseString;
     }
 }
+
+
+
+
 
 @end

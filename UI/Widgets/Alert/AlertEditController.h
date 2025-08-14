@@ -3,7 +3,7 @@
 //  mafia_AI
 //
 //  Window controller per creare/modificare alert
-//  UPDATED: Usa solo RuntimeModels
+//  UPDATED: Pattern corretto come ChartPreferencesWindow
 //
 
 #import <Cocoa/Cocoa.h>
@@ -14,6 +14,10 @@
 @property (nonatomic, strong) AlertModel *alert; // nil for new alert
 @property (nonatomic, copy) void (^completionHandler)(AlertModel *alert, BOOL saved);
 
+// Initialization
 - (instancetype)initWithAlert:(AlertModel *)alert;
+
+// Window management
+- (void)showAlertEditWindow;
 
 @end

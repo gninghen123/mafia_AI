@@ -927,13 +927,27 @@
     NSLog(@"🎨 Drew channel with %lu CPs", (unsigned long)object.controlPoints.count);
 }
 
-// 4. ChartObjectRenderer.m - Implementazione drawTargetPrice
-
-// ✅ CORREZIONE: Modifica solo il metodo drawTargetPrice esistente
-// Riutilizza tutti i metodi già presenti nel codice
-
-// ✅ CORREZIONE: Modifica solo il metodo drawTargetPrice esistente
-// Riutilizza tutti i metodi già presenti nel codice
+- (void)drawSimpleTargetLabel:(NSString *)text atPoint:(NSPoint)point color:(NSColor *)textColor {
+    NSDictionary *attributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:16], // Coerente con drawTargetLabels
+        NSForegroundColorAttributeName: textColor,
+        NSBackgroundColorAttributeName: [[NSColor controlBackgroundColor] colorWithAlphaComponent:0.9]
+    };
+    
+    NSAttributedString *attributedText = [[NSAttributedString alloc] initWithString:text attributes:attributes];
+    NSSize textSize = [attributedText size];
+    
+    NSRect labelRect = NSMakeRect(point.x, point.y - textSize.height/2 - 2,
+                                  textSize.width + 8, textSize.height + 4);
+    
+    // Draw background
+    [[NSColor controlBackgroundColor] setFill];
+    NSBezierPath *bgPath = [NSBezierPath bezierPathWithRoundedRect:labelRect xRadius:2 yRadius:2];
+    [bgPath fill];
+    
+    // Draw text
+    [attributedText drawAtPoint:NSMakePoint(point.x + 4, point.y - textSize.height/2)];
+}
 
 - (void)drawTargetPrice:(ChartObjectModel *)object {
     // ✅ VERIFICA: Target deve avere esattamente 3 CP (buy, stop, target)
@@ -949,10 +963,10 @@
                [path lineToPoint:NSMakePoint(self.coordinateContext.panelBounds.size.width, screenPoint.y)];
                [self strokePath:path withStyle:object.style];
                
-               // ✅ USA METODO UNIFICATO
+               // ✅ CORRETTO: Usa metodo semplice invece di drawTargetLabel obsoleto
                CGFloat targetPrice = [self.coordinateContext valueForScreenY:screenPoint.y];
                NSString *labelText = [NSString stringWithFormat:@"Target: %.2f", targetPrice];
-               [self drawTargetLabel:labelText atPoint:NSMakePoint(10, screenPoint.y) color:object.style.color];
+               [self drawSimpleTargetLabel:labelText atPoint:NSMakePoint(10, screenPoint.y) color:object.style.color];
            }
            return;
        }
@@ -1026,39 +1040,7 @@
 }
 
 
-// Helper per label semplici (backward compatibility)
-- (void)drawTargetLabel:(NSString *)text
-                atPoint:(NSPoint)point
-                  color:(NSColor *)color
-                   size:(CGFloat)size {
-    [self drawTargetEnhancedLabel:text atPoint:point color:color size:size isBold:NO];
-}
 
-// Helper per punti target
-- (void)drawTargetPoint:(NSPoint)point color:(NSColor *)color label:(NSString *)label {
-    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
-    CGContextSaveGState(ctx);
-    
-    // Punto più grande
-    CGContextSetFillColorWithColor(ctx, color.CGColor);
-    CGContextFillEllipseInRect(ctx, CGRectMake(point.x - 5, point.y - 5, 10, 10));
-    
-    // Bordo bianco
-    CGContextSetStrokeColorWithColor(ctx, [NSColor whiteColor].CGColor);
-    CGContextSetLineWidth(ctx, 2.0);
-    CGContextStrokeEllipseInRect(ctx, CGRectMake(point.x - 5, point.y - 5, 10, 10));
-    
-    CGContextRestoreGState(ctx);
-    
-    // Label
-    if (label) {
-        [self drawTargetEnhancedLabel:label
-                              atPoint:NSMakePoint(point.x + 15, point.y)
-                                color:color
-                                 size:16
-                               isBold:YES];
-    }
-}
 - (void)drawTargetHighlight:(NSRect)rect color:(NSColor *)color {
     CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
     CGContextSaveGState(ctx);
@@ -1077,77 +1059,7 @@
           highlightColor.alphaComponent, NSStringFromRect(rect));
 }
 
-- (void)drawTargetLine:(CGFloat)y startX:(CGFloat)startX endX:(CGFloat)endX
-                 color:(NSColor *)color width:(CGFloat)width {
-    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
-    CGContextSaveGState(ctx);
-    
-    CGContextSetStrokeColorWithColor(ctx, color.CGColor);
-    CGContextSetLineWidth(ctx, width);
-    CGContextMoveToPoint(ctx, startX, y);
-    CGContextAddLineToPoint(ctx, endX, y);
-    CGContextStrokePath(ctx);
-    
-    CGContextRestoreGState(ctx);
-}
 
-// ✅ NUOVO: Line con spessore variabile
-- (void)drawTargetLine:(CGFloat)y color:(NSColor *)color width:(CGFloat)width {
-    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
-    CGFloat panelWidth = self.coordinateContext.panelBounds.size.width;
-    
-    CGContextSetStrokeColorWithColor(ctx, color.CGColor);
-    CGContextSetLineWidth(ctx, width);
-    CGContextMoveToPoint(ctx, 0, y);
-    CGContextAddLineToPoint(ctx, panelWidth, y);
-    CGContextStrokePath(ctx);
-}
-
-// ✅ NUOVO: Label grandi e migliorate
-- (void)drawTargetEnhancedLabel:(NSString *)text
-                        atPoint:(NSPoint)point
-                          color:(NSColor *)textColor
-                           size:(CGFloat)fontSize
-                         isBold:(BOOL)isBold {
-    
-    NSFont *font = isBold ?
-        [NSFont boldSystemFontOfSize:fontSize] :
-        [NSFont systemFontOfSize:fontSize];
-    
-    // ✅ Background con alpha controllato
-    NSColor *bgColor = [[NSColor controlBackgroundColor] colorWithAlphaComponent:0.95];
-    
-    NSDictionary *attributes = @{
-        NSFontAttributeName: font,
-        NSForegroundColorAttributeName: textColor,
-        NSBackgroundColorAttributeName: bgColor
-    };
-    
-    NSAttributedString *attributedText = [[NSAttributedString alloc]
-                                         initWithString:text
-                                         attributes:attributes];
-    
-    NSSize textSize = [attributedText size];
-    NSRect labelRect = NSMakeRect(point.x - 2,
-                                 point.y - textSize.height/2 - 2,
-                                 textSize.width + 8,
-                                 textSize.height + 4);
-    
-    // ✅ Background con alpha fisso
-    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
-    CGContextSaveGState(ctx);
-    CGContextSetFillColorWithColor(ctx, bgColor.CGColor);
-    CGContextFillRect(ctx, labelRect);
-    
-    // Bordo sottile del colore del testo
-    CGContextSetStrokeColorWithColor(ctx, textColor.CGColor);
-    CGContextSetLineWidth(ctx, 1.0);
-    CGContextStrokeRect(ctx, labelRect);
-    CGContextRestoreGState(ctx);
-    
-    // Testo centrato
-    [attributedText drawAtPoint:NSMakePoint(point.x + 2, point.y - textSize.height/2)];
-}
 
 - (void)drawControlPointsForObject:(ChartObjectModel *)object {
     CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];

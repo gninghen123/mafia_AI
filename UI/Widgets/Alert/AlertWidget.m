@@ -7,7 +7,6 @@
 //
 
 #import "AlertWidget.h"
-#import "AlertEditController.h"
 #import "DataHub.h"
 
 @interface AlertWidget ()
@@ -265,15 +264,36 @@
 }
 
 - (void)addAlert:(id)sender {
-    AlertEditController *editor = [[AlertEditController alloc] initWithAlert:nil];
-    editor.completionHandler = ^(AlertModel *alert, BOOL saved) {
-        if (saved && alert) {
-            [self loadAlerts];
+    self.alertEditController = [[AlertEditController alloc] initWithAlert:nil];
+    if (!self.alertEditController) {
+            NSLog(@"❌ Failed to create AlertEditController!");
+            return;
         }
-    };
-    
-    [self.view.window beginSheet:editor.window completionHandler:nil];
-}
+        
+        NSLog(@"✅ AlertEditController created: %@", self.alertEditController);
+        
+        // ✅ COMPLETION HANDLER con cleanup
+        __weak typeof(self) weakSelf = self;
+        self.alertEditController.completionHandler = ^(AlertModel *alert, BOOL saved) {
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf) return;
+            
+            NSLog(@"📝 AlertEditController completion - saved: %@", saved ? @"YES" : @"NO");
+            
+            if (saved && alert) {
+                [strongSelf loadAlerts];
+            }
+            
+            // ✅ PULISCI REFERENCE SOLO DOPO COMPLETION
+            strongSelf.alertEditController = nil;
+            NSLog(@"🧹 AlertEditController reference cleared");
+        };
+        
+        // ✅ USA PATTERN ChartPreferencesWindow INVECE DI SHEET
+        [self.alertEditController showAlertEditWindow];
+        
+        NSLog(@"🪟 AlertEditController shown, reference maintained: %@", self.alertEditController);
+    }
 
 - (void)deleteAlert:(id)sender {
     NSInteger selectedRow = self.tableView.selectedRow;
@@ -383,16 +403,28 @@
     if (row >= 0 && row < self.filteredAlerts.count) {
         AlertModel *alert = self.filteredAlerts[row];
         
-        AlertEditController *editor = [[AlertEditController alloc] initWithAlert:alert];
-        editor.completionHandler = ^(AlertModel *editedAlert, BOOL saved) {
+        NSLog(@"✏️ Double-click edit alert: %@", alert.symbol);
+        
+        // ✅ MANTIENI STRONG REFERENCE
+        self.alertEditController = [[AlertEditController alloc] initWithAlert:alert];
+        
+        __weak typeof(self) weakSelf = self;
+        self.alertEditController.completionHandler = ^(AlertModel *editedAlert, BOOL saved) {
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf) return;
+            
             if (saved) {
-                [self loadAlerts];
+                [strongSelf loadAlerts];
             }
+            
+            // ✅ PULISCI REFERENCE
+            strongSelf.alertEditController = nil;
         };
         
-        [self.view.window beginSheet:editor.window completionHandler:nil];
+        [self.alertEditController showAlertEditWindow];
     }
 }
+
 
 #pragma mark - Notifications
 

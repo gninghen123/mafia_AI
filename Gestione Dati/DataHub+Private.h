@@ -125,6 +125,63 @@
 - (NSInteger)estimateBarCountForTimeframe:(BarTimeframe)timeframe startDate:(NSDate *)startDate endDate:(NSDate *)endDate;
 
 - (Symbol *)findOrCreateSymbolWithName:(NSString *)symbolName inContext:(NSManagedObjectContext *)context;
+#pragma mark - Smart Cache Methods (NEW)
 
 
+
+#pragma mark - Smart Cache Methods (NEW)
+
+// Core smart cache methods
+- (void)performSmartUpdateForSymbol:(NSString *)symbol
+                          timeframe:(BarTimeframe)timeframe
+                           barCount:(NSInteger)barCount
+                  needExtendedHours:(BOOL)needExtendedHours
+                         cachedBars:(NSArray<HistoricalBarModel *> *)cachedBars
+                           cacheKey:(NSString *)cacheKey
+                         completion:(void (^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion;
+
+- (NSInteger)getGoBackPeriodForTimeframe:(BarTimeframe)timeframe;
+- (NSTimeInterval)secondsPerBarForTimeframe:(BarTimeframe)timeframe;
+
+- (NSArray<HistoricalBarModel *> *)mergeHistoricalBars:(NSArray<HistoricalBarModel *> *)cachedBars
+                                           withNewBars:(NSArray<HistoricalBarModel *> *)newBars
+                                              barCount:(NSInteger)barCount;
+
+- (void)performFullHistoricalRequest:(NSString *)symbol
+                           timeframe:(BarTimeframe)timeframe
+                            barCount:(NSInteger)barCount
+                   needExtendedHours:(BOOL)needExtendedHours
+                            cacheKey:(NSString *)cacheKey
+                          completion:(void (^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion;
+
+#pragma mark - Core Data Safe Loading (NEW)
+
+// Safe Core Data loading with deduplication
+- (void)loadHistoricalDataFromCoreDataSafely:(NSString *)symbol
+                                   timeframe:(BarTimeframe)timeframe
+                                    barCount:(NSInteger)barCount
+                           needExtendedHours:(BOOL)needExtendedHours
+                                  completion:(void(^)(NSArray<HistoricalBarModel *> *bars))completion;
+
+#pragma mark - Deduplication Utilities (NEW)
+
+// Duplicate detection and removal
+- (BOOL)isBarDuplicate:(HistoricalBarModel *)bar inArray:(NSArray<HistoricalBarModel *> *)array;
+- (BOOL)areBarsEqual:(HistoricalBarModel *)bar1 other:(HistoricalBarModel *)bar2;
+- (NSArray<HistoricalBarModel *> *)removeDuplicatesFromSortedBars:(NSArray<HistoricalBarModel *> *)sortedBars;
+- (NSArray<HistoricalBarModel *> *)limitBarsToCount:(NSArray<HistoricalBarModel *> *)bars maxCount:(NSInteger)maxCount;
+- (NSArray<HistoricalBar *> *)deduplicateCoreDataBars:(NSArray<HistoricalBar *> *)coreDataBars;
+- (NSArray<HistoricalBarModel *> *)removeDuplicatesFromBars:(NSArray<HistoricalBarModel *> *)bars;
+
+#pragma mark - Core Data Duplicate Prevention (NEW)
+
+// Core Data saving with complete duplicate prevention
+- (void)cleanExistingBarsForSymbol:(NSString *)symbol
+                         timeframe:(BarTimeframe)timeframe
+                         inContext:(NSManagedObjectContext *)context;
+
+- (void)createCoreDataBarFromModel:(HistoricalBarModel *)barModel
+                            symbol:(Symbol *)symbolEntity
+                         timeframe:(BarTimeframe)timeframe
+                         inContext:(NSManagedObjectContext *)context;
 @end

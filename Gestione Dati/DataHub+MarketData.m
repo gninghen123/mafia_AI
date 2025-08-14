@@ -249,7 +249,8 @@
     
     if (!completion) return;
     
-    // ✅ CACHE: Include extended hours flag in cache key
+    [self initializeMarketDataCaches];
+    
     NSString *cacheKey = [NSString stringWithFormat:@"historical_%@_%ld_%ld_%@",
                           symbol, (long)timeframe, (long)barCount,
                           needExtendedHours ? @"extended" : @"regular"];
@@ -257,64 +258,427 @@
     NSArray<HistoricalBarModel *> *cachedBars = self.historicalCache[cacheKey];
     BOOL isStale = [self isCacheStale:cacheKey dataType:DataFreshnessTypeHistorical];
     
-    // Return cached data immediately if available
-    if (cachedBars) {
-        completion(cachedBars, !isStale);
-        if (!isStale) return;
+    // 🚀 LOGIC 1: Fresh cache -> return immediately
+    if (cachedBars && !isStale) {
+        NSLog(@"✅ DataHub SMART: Returning fresh cached data for %@ (%lu bars)",
+              symbol, (unsigned long)cachedBars.count);
+        completion(cachedBars, YES);
+        return;
     }
     
-    // Check Core Data if no memory cache (with extended hours consideration)
-    if (!cachedBars) {
-        [self loadHistoricalDataFromCoreData:symbol
-                                   timeframe:timeframe
-                                    barCount:barCount
-                           needExtendedHours:needExtendedHours  // ✅ PASS PARAMETER
-                                  completion:^(NSArray<HistoricalBarModel *> *bars) {
-            if (bars.count > 0) {
-                self.historicalCache[cacheKey] = bars;
-                completion(bars, NO); // From Core Data = not fresh
-            }
-        }];
-    }
-    
-    // Request fresh data if needed
-    if (isStale) {
-        NSLog(@"📡 DataHub: Requesting fresh historical data for %@ (extended: %@)",
-              symbol, needExtendedHours ? @"YES" : @"NO");
+    // 🚀 LOGIC 2: Stale cache -> Smart Update ONLY (NO double callback)
+    if (cachedBars && cachedBars.count > 0 && isStale) {
+        NSLog(@"🔄 DataHub SMART: Cache stale, performing smart update for %@", symbol);
         
-        // ✅ CHIAMARE IL NUOVO METODO CON needExtendedHours
-        [[DataManager sharedManager] requestHistoricalDataForSymbol:symbol
-                                                          timeframe:timeframe
-                                                              count:barCount
-                                                  needExtendedHours:needExtendedHours  // ✅ PASSARE IL PARAMETRO
-                                                         completion:^(NSArray<HistoricalBarModel *> *bars, NSError *error) {
-            if (error) {
-                NSLog(@"❌ DataHub: Historical data request failed: %@", error.localizedDescription);
+        // ✅ FIX: Solo smart update, eliminato double callback
+        [self performSmartUpdateForSymbol:symbol
+                                timeframe:timeframe
+                                 barCount:barCount
+                        needExtendedHours:needExtendedHours
+                               cachedBars:cachedBars
+                                 cacheKey:cacheKey
+                               completion:completion];
+        return;
+    }
+    
+    // 🚀 LOGIC 3: No memory cache -> Check Core Data first
+    if (!cachedBars) {
+        [self loadHistoricalDataFromCoreDataSafely:symbol
+                                         timeframe:timeframe
+                                          barCount:barCount
+                                 needExtendedHours:needExtendedHours
+                                        completion:^(NSArray<HistoricalBarModel *> *bars) {
+            if (bars.count > 0) {
+                // Cache in memory
+                self.historicalCache[cacheKey] = bars;
+                [self updateCacheTimestamp:cacheKey];
+                
+                // ✅ FIX: Smart update da Core Data senza double callback
+                NSLog(@"📦 DataHub SMART: Found Core Data cache, performing smart update for %@", symbol);
+                [self performSmartUpdateForSymbol:symbol
+                                        timeframe:timeframe
+                                         barCount:barCount
+                                needExtendedHours:needExtendedHours
+                                       cachedBars:bars
+                                         cacheKey:cacheKey
+                                       completion:completion];
                 return;
             }
             
-            if (bars.count > 0) {
-                // Update cache with extended hours flag
-                self.historicalCache[cacheKey] = bars;
-                self.cacheTimestamps[cacheKey] = [NSDate date];
-                
-                // Save to Core Data with extended hours flag
-                [self saveHistoricalDataToCoreData:bars
-                                            symbol:symbol
-                                         timeframe:timeframe
-                                 needExtendedHours:needExtendedHours];
-                
-                // Call completion with fresh data
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(bars, YES);
-                });
-                
-                NSLog(@"✅ DataHub: Fresh historical data cached for %@ (extended: %@, %lu bars)",
-                      symbol, needExtendedHours ? @"YES" : @"NO", (unsigned long)bars.count);
-            }
+            // No Core Data either - full request
+            NSLog(@"📡 DataHub SMART: No cache found, performing full request for %@", symbol);
+            [self performFullHistoricalRequest:symbol
+                                     timeframe:timeframe
+                                      barCount:barCount
+                             needExtendedHours:needExtendedHours
+                                      cacheKey:cacheKey
+                                    completion:completion];
         }];
+        return;
+    }
+    
+    // 🚀 LOGIC 4: Fallback to full request
+    [self performFullHistoricalRequest:symbol
+                             timeframe:timeframe
+                              barCount:barCount
+                     needExtendedHours:needExtendedHours
+                              cacheKey:cacheKey
+                            completion:completion];
+}
+
+- (void)loadHistoricalDataFromCoreDataSafely:(NSString *)symbol
+                                   timeframe:(BarTimeframe)timeframe
+                                    barCount:(NSInteger)barCount
+                           needExtendedHours:(BOOL)needExtendedHours
+                                  completion:(void(^)(NSArray<HistoricalBarModel *> *bars))completion {
+    
+    if (!completion || !symbol) {
+        if (completion) completion(@[]);
+        return;
+    }
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        NSManagedObjectContext *backgroundContext = [[NSManagedObjectContext alloc] initWithConcurrencyType:NSPrivateQueueConcurrencyType];
+        backgroundContext.parentContext = self.mainContext;
+        
+        [backgroundContext performBlock:^{
+            NSFetchRequest *symbolRequest = [Symbol fetchRequest];
+            symbolRequest.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbol];
+            
+            NSError *error = nil;
+            NSArray *symbolResults = [backgroundContext executeFetchRequest:symbolRequest error:&error];
+            
+            if (error || symbolResults.count == 0) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(@[]);
+                });
+                return;
+            }
+            
+            Symbol *symbolEntity = symbolResults.firstObject;
+            
+            // ✅ IMPROVED: Fetch con ordinamento e limit per evitare duplicati
+            NSFetchRequest *barsRequest = [HistoricalBar fetchRequest];
+            barsRequest.predicate = [NSPredicate predicateWithFormat:
+                                   @"symbol == %@ AND timeframe == %d", symbolEntity, (int)timeframe];
+            
+            // Ordina per data (ascending per poi prendere le ultime)
+            NSSortDescriptor *dateSort = [NSSortDescriptor sortDescriptorWithKey:@"date" ascending:YES];
+            barsRequest.sortDescriptors = @[dateSort];
+            
+            // ✅ PERFORMANCE: Fetch solo quello che serve
+            barsRequest.fetchLimit = barCount * 2; // Un po' di buffer per sicurezza
+            
+            NSArray *coreDataBars = [backgroundContext executeFetchRequest:barsRequest error:&error];
+            
+            if (error) {
+                NSLog(@"❌ Error loading historical bars from Core Data: %@", error);
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(@[]);
+                });
+                return;
+            }
+            
+            // ✅ DEDUPLICATION: Rimuovi duplicati già in Core Data
+            NSArray *deduplicatedBars = [self deduplicateCoreDataBars:coreDataBars];
+            
+            // Convert to runtime models
+            NSMutableArray<HistoricalBarModel *> *runtimeBars = [NSMutableArray array];
+            for (HistoricalBar *coreDataBar in deduplicatedBars) {
+                HistoricalBarModel *runtimeBar = [self convertCoreDataBarToRuntimeModel:coreDataBar];
+                if (runtimeBar) {
+                    [runtimeBars addObject:runtimeBar];
+                }
+            }
+            
+            // Take only the most recent bars if we have more than requested
+            if (runtimeBars.count > barCount) {
+                NSRange range = NSMakeRange(runtimeBars.count - barCount, barCount);
+                runtimeBars = [[runtimeBars subarrayWithRange:range] mutableCopy];
+            }
+            
+            NSLog(@"📦 DataHub: Loaded %lu bars from Core Data for %@ (timeframe: %ld)",
+                  (unsigned long)runtimeBars.count, symbol, (long)timeframe);
+            
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion([runtimeBars copy]);
+            });
+        }];
+    });
+}
+
+#pragma mark - Smart Update Implementation (Private Methods)
+
+/**
+ * 🎯 CORE DELLA SMART LOGIC: Aggiorna solo le barre mancanti
+ */
+- (void)performSmartUpdateForSymbol:(NSString *)symbol
+                          timeframe:(BarTimeframe)timeframe
+                           barCount:(NSInteger)barCount
+                  needExtendedHours:(BOOL)needExtendedHours
+                         cachedBars:(NSArray<HistoricalBarModel *> *)cachedBars
+                           cacheKey:(NSString *)cacheKey
+                         completion:(void (^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion {
+    
+    // Find last bar date in cache
+    HistoricalBarModel *lastBar = [cachedBars lastObject];
+    NSDate *lastCacheDate = lastBar.date;
+    
+    if (!lastCacheDate) {
+        NSLog(@"❌ DataHub SMART: Invalid last cache date, performing full request");
+        [self performFullHistoricalRequest:symbol timeframe:timeframe barCount:barCount
+                         needExtendedHours:needExtendedHours cacheKey:cacheKey completion:completion];
+        return;
+    }
+    
+    // 🧠 SMART CALCULATION: GoBack period based on timeframe
+    NSInteger goBackBars = [self getGoBackPeriodForTimeframe:timeframe];
+    NSTimeInterval goBackSeconds = goBackBars * [self secondsPerBarForTimeframe:timeframe];
+    
+    // Smart date range: last cache date - goback to NOW
+    NSDate *smartStartDate = [lastCacheDate dateByAddingTimeInterval:-goBackSeconds];
+    NSDate *smartEndDate = [NSDate date];
+    
+    NSLog(@"🎯 DataHub SMART: Updating %@ from %@ to %@ (goback: %ld bars)",
+          symbol, smartStartDate, smartEndDate, (long)goBackBars);
+    
+    // Smart API call for only missing bars
+    [[DataManager sharedManager] requestHistoricalDataForSymbol:symbol
+                                                      timeframe:timeframe
+                                                      startDate:smartStartDate
+                                                        endDate:smartEndDate
+                                              needExtendedHours:needExtendedHours
+                                                     completion:^(NSArray<HistoricalBarModel *> *newBars, NSError *error) {
+        
+        if (error) {
+            NSLog(@"❌ DataHub SMART: Smart update failed for %@: %@", symbol, error.localizedDescription);
+            return; // Original cache already returned, nothing more to do
+        }
+        
+        if (!newBars || newBars.count == 0) {
+            NSLog(@"⚠️ DataHub SMART: No new bars received for %@", symbol);
+            return;
+        }
+        
+        // 🔧 MERGE: Intelligent merging with duplicate removal
+        NSArray<HistoricalBarModel *> *mergedBars = [self mergeHistoricalBars:cachedBars
+                                                                  withNewBars:newBars
+                                                                     barCount:barCount];
+        
+        // Update cache with merged data
+        @synchronized(self.historicalCache) {
+            self.historicalCache[cacheKey] = mergedBars;
+            [self updateCacheTimestamp:cacheKey];
+        }
+        
+        NSLog(@"✅ DataHub SMART: Updated cache for %@ (%lu total bars, %lu new)",
+              symbol, (unsigned long)mergedBars.count, (unsigned long)newBars.count);
+        
+        // Broadcast update and send fresh data (second callback)
+        [self broadcastHistoricalDataUpdate:mergedBars forSymbol:symbol];
+        completion(mergedBars, YES);
+    }];
+}
+
+/**
+ * 🧮 GOBACK PERIOD CALCULATION per timeframe
+ */
+- (NSInteger)getGoBackPeriodForTimeframe:(BarTimeframe)timeframe {
+    // Configurabile via UserDefaults per fine-tuning
+    NSDictionary *customGoBackPeriods = [[NSUserDefaults standardUserDefaults]
+                                        dictionaryForKey:@"SmartCacheGoBackPeriods"];
+    
+    if (customGoBackPeriods) {
+        NSNumber *customPeriod = customGoBackPeriods[@(timeframe)];
+        if (customPeriod) {
+            return customPeriod.integerValue;
+        }
+    }
+    
+    // 🎯 DEFAULT VALUES come da tua proposta:
+    switch (timeframe) {
+        case BarTimeframe1Min:
+            return 4; // 4 barre indietro per 1min (es: 10:31 -> 10:28)
+            
+        case BarTimeframe5Min:
+        case BarTimeframe15Min:
+        case BarTimeframe30Min:
+        case BarTimeframe1Hour:
+        case BarTimeframe4Hour:
+            return 2; // 2 barre indietro per altri intraday
+            
+        case BarTimeframe1Day:
+        case BarTimeframe1Week:
+        case BarTimeframe1Month:
+        default:
+            return 1; // 1 barra indietro per daily+
     }
 }
+
+/**
+ * ⏱️ SECONDS PER BAR calculation
+ */
+- (NSTimeInterval)secondsPerBarForTimeframe:(BarTimeframe)timeframe {
+    switch (timeframe) {
+        case BarTimeframe1Min:   return 60;        // 1 minuto
+        case BarTimeframe5Min:   return 300;       // 5 minuti
+        case BarTimeframe15Min:  return 900;       // 15 minuti
+        case BarTimeframe30Min:  return 1800;      // 30 minuti
+        case BarTimeframe1Hour:  return 3600;      // 1 ora
+        case BarTimeframe4Hour:  return 14400;     // 4 ore
+        case BarTimeframe1Day:   return 86400;     // 1 giorno
+        case BarTimeframe1Week:  return 604800;    // 1 settimana
+        case BarTimeframe1Month: return 2592000;   // ~30 giorni
+        default: return 60;
+    }
+}
+
+/**
+ * 🔧 INTELLIGENT MERGE di cache esistente + nuove barre
+ */
+- (NSArray<HistoricalBarModel *> *)mergeHistoricalBars:(NSArray<HistoricalBarModel *> *)cachedBars
+                                           withNewBars:(NSArray<HistoricalBarModel *> *)newBars
+                                              barCount:(NSInteger)barCount {
+    
+    if (!newBars || newBars.count == 0) {
+        return cachedBars ?: @[];
+    }
+    
+    if (!cachedBars || cachedBars.count == 0) {
+        return [self limitBarsToCount:newBars maxCount:barCount];
+    }
+    
+    NSMutableArray<HistoricalBarModel *> *allBars = [NSMutableArray array];
+    
+    // 1. Add all cached bars
+    [allBars addObjectsFromArray:cachedBars];
+    
+    // 2. Add new bars with precise duplicate detection
+    for (HistoricalBarModel *newBar in newBars) {
+        if (![self isBarDuplicate:newBar inArray:cachedBars]) {
+            [allBars addObject:newBar];
+        }
+    }
+    
+    // 3. Sort chronologically (oldest to newest)
+    [allBars sortUsingComparator:^NSComparisonResult(HistoricalBarModel *bar1, HistoricalBarModel *bar2) {
+        return [bar1.date compare:bar2.date];
+    }];
+    
+    // 4. Final pass: remove any remaining duplicates after sorting
+    NSArray<HistoricalBarModel *> *finalBars = [self removeDuplicatesFromSortedBars:allBars];
+    
+    // 5. Limit to requested count
+    finalBars = [self limitBarsToCount:finalBars maxCount:barCount];
+    
+    NSLog(@"🔄 DataHub SMART MERGE: %lu cached + %lu new = %lu final (duplicates removed)",
+          (unsigned long)cachedBars.count, (unsigned long)newBars.count, (unsigned long)finalBars.count);
+    
+    return finalBars;
+}
+
+- (BOOL)isBarDuplicate:(HistoricalBarModel *)bar inArray:(NSArray<HistoricalBarModel *> *)array {
+    for (HistoricalBarModel *existingBar in array) {
+        if ([self areBarsEqual:bar other:existingBar]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+- (BOOL)areBarsEqual:(HistoricalBarModel *)bar1 other:(HistoricalBarModel *)bar2 {
+    if (!bar1.date || !bar2.date) return NO;
+    
+    // ✅ PRECISE: Date comparison with 30-second tolerance for safety
+    NSTimeInterval timeDiff = fabs([bar1.date timeIntervalSinceDate:bar2.date]);
+    return timeDiff < 30.0;
+}
+
+- (NSArray<HistoricalBarModel *> *)removeDuplicatesFromSortedBars:(NSArray<HistoricalBarModel *> *)sortedBars {
+    if (sortedBars.count <= 1) return sortedBars;
+    
+    NSMutableArray<HistoricalBarModel *> *deduplicatedBars = [NSMutableArray arrayWithObject:sortedBars.firstObject];
+    
+    for (NSInteger i = 1; i < sortedBars.count; i++) {
+        HistoricalBarModel *currentBar = sortedBars[i];
+        HistoricalBarModel *previousBar = deduplicatedBars.lastObject;
+        
+        if (![self areBarsEqual:currentBar other:previousBar]) {
+            [deduplicatedBars addObject:currentBar];
+        }
+    }
+    
+    return [deduplicatedBars copy];
+}
+
+- (NSArray<HistoricalBarModel *> *)limitBarsToCount:(NSArray<HistoricalBarModel *> *)bars maxCount:(NSInteger)maxCount {
+    if (bars.count <= maxCount) return bars;
+    
+    // Take the most recent bars
+    NSRange range = NSMakeRange(bars.count - maxCount, maxCount);
+    return [bars subarrayWithRange:range];
+}
+
+- (NSArray<HistoricalBar *> *)deduplicateCoreDataBars:(NSArray<HistoricalBar *> *)coreDataBars {
+    if (coreDataBars.count <= 1) return coreDataBars;
+    
+    NSMutableArray<HistoricalBar *> *deduplicatedBars = [NSMutableArray array];
+    
+    for (HistoricalBar *bar in coreDataBars) {
+        BOOL isDuplicate = NO;
+        
+        for (HistoricalBar *existingBar in deduplicatedBars) {
+            if (existingBar.date && bar.date) {
+                NSTimeInterval timeDiff = fabs([existingBar.date timeIntervalSinceDate:bar.date]);
+                if (timeDiff < 30.0) { // 30 second tolerance
+                    isDuplicate = YES;
+                    break;
+                }
+            }
+        }
+        
+        if (!isDuplicate) {
+            [deduplicatedBars addObject:bar];
+        }
+    }
+    
+    return [deduplicatedBars copy];
+}
+/**
+ * 📡 FULL REQUEST fallback (unchanged from original)
+ */
+- (void)performFullHistoricalRequest:(NSString *)symbol
+                           timeframe:(BarTimeframe)timeframe
+                            barCount:(NSInteger)barCount
+                   needExtendedHours:(BOOL)needExtendedHours
+                            cacheKey:(NSString *)cacheKey
+                          completion:(void (^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion {
+    
+    NSLog(@"📡 DataHub: Performing full historical request for %@ (%ld bars)", symbol, (long)barCount);
+    
+    // Original logic - full request via DataManager
+    [[DataManager sharedManager] requestHistoricalDataForSymbol:symbol
+                                                      timeframe:timeframe
+                                                          count:barCount
+                                              needExtendedHours:needExtendedHours
+                                                     completion:^(NSArray<HistoricalBarModel *> *bars, NSError *error) {
+        
+        if (error) {
+            NSLog(@"❌ DataHub: Full historical request failed for %@: %@", symbol, error.localizedDescription);
+            completion(@[], NO);
+            return;
+        }
+        
+        // Cache and return
+        @synchronized(self.historicalCache) {
+            self.historicalCache[cacheKey] = bars ?: @[];
+            [self updateCacheTimestamp:cacheKey];
+        }
+        
+        [self broadcastHistoricalDataUpdate:bars forSymbol:symbol];
+        completion(bars ?: @[], YES);
+    }];
+}
+
 
 - (void)loadHistoricalDataFromCoreData:(NSString *)symbol
                              timeframe:(BarTimeframe)timeframe
@@ -350,7 +714,7 @@
                           barCount:(NSInteger)barCount
                         completion:(void (^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion {
     
-    // Default: NO extended hours per backward compatibility
+    // Default: NO extended hours for backward compatibility
     [self getHistoricalBarsForSymbol:symbol
                            timeframe:timeframe
                             barCount:barCount
@@ -678,50 +1042,114 @@
                                    symbol:(NSString *)symbol
                                 timeframe:(BarTimeframe)timeframe {
     
-    if (!bars || bars.count == 0) return;
+    if (!bars || bars.count == 0 || !symbol) return;
     
-    // ✅ SOLUZIONE 1: Usa una coda seriale per evitare salvataggi concorrenti
-    static dispatch_queue_t saveQueue;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        saveQueue = dispatch_queue_create("com.app.coredata.save", DISPATCH_QUEUE_SERIAL);
-    });
-    
-    dispatch_async(saveQueue, ^{
-        
-        NSManagedObjectContext *backgroundContext = [self.persistentContainer newBackgroundContext];
-        
-        // ✅ SOLUZIONE 2: Imposta merge policy per risolvere conflitti automaticamente
-        backgroundContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy;
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
+        NSManagedObjectContext *backgroundContext = [[NSManagedObjectContext alloc] initWithConcurrencyType:NSPrivateQueueConcurrencyType];
+        backgroundContext.parentContext = self.mainContext;
         
         [backgroundContext performBlock:^{
             
-            // ✅ SOLUZIONE 3: Verifica esistenza prima di creare/aggiornare
-            for (HistoricalBarModel *barModel in bars) {
-                [self saveHistoricalBarModelSafely:barModel
-                                            symbol:symbol
-                                         timeframe:timeframe
-                                         inContext:backgroundContext];
-            }
+            // ✅ STEP 1: Clean existing bars per questo symbol/timeframe
+            [self cleanExistingBarsForSymbol:symbol timeframe:timeframe inContext:backgroundContext];
             
-            NSError *error = nil;
-            if (![backgroundContext save:&error]) {
-                NSLog(@"❌ Error saving historical bars to Core Data: %@", error);
-                
-                // ✅ SOLUZIONE 4: Retry con refresh degli oggetti in caso di errore
-                if (error.code == NSManagedObjectMergeError) {
-                    [self retryHistoricalBarsSave:bars
-                                           symbol:symbol
+            // ✅ STEP 2: Find or create symbol entity
+            Symbol *symbolEntity = [self findOrCreateSymbolWithName:symbol inContext:backgroundContext];
+            
+            // ✅ STEP 3: Save new bars with additional duplicate prevention
+            NSArray<HistoricalBarModel *> *deduplicatedBars = [self removeDuplicatesFromBars:bars];
+            
+            for (HistoricalBarModel *barModel in deduplicatedBars) {
+                [self createCoreDataBarFromModel:barModel
+                                           symbol:symbolEntity
                                         timeframe:timeframe
                                         inContext:backgroundContext];
+            }
+            
+            // ✅ STEP 4: Save with error handling
+            NSError *saveError = nil;
+            if (![backgroundContext save:&saveError]) {
+                NSLog(@"❌ Error saving historical bars to Core Data: %@", saveError);
+                
+                // Retry once on conflict
+                if (saveError.code == NSManagedObjectMergeError) {
+                    [backgroundContext rollback];
+                    // Could implement retry logic here if needed
                 }
             } else {
-                NSLog(@"✅ Successfully saved %lu historical bars to Core Data for %@",
-                      (unsigned long)bars.count, symbol);
+                NSLog(@"✅ Successfully saved %lu deduplicated bars to Core Data for %@",
+                      (unsigned long)deduplicatedBars.count, symbol);
+                
+                // ✅ STEP 5: Save to parent context
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    NSError *parentSaveError = nil;
+                    if (![self.mainContext save:&parentSaveError]) {
+                        NSLog(@"❌ Error saving to main context: %@", parentSaveError);
+                    }
+                });
             }
         }];
     });
 }
+- (NSArray<HistoricalBarModel *> *)removeDuplicatesFromBars:(NSArray<HistoricalBarModel *> *)bars {
+    if (bars.count <= 1) return bars;
+    
+    NSMutableArray<HistoricalBarModel *> *deduplicatedBars = [NSMutableArray array];
+    
+    for (HistoricalBarModel *bar in bars) {
+        if (![self isBarDuplicate:bar inArray:deduplicatedBars]) {
+            [deduplicatedBars addObject:bar];
+        }
+    }
+    
+    return [deduplicatedBars copy];
+}
+
+- (void)createCoreDataBarFromModel:(HistoricalBarModel *)barModel
+                            symbol:(Symbol *)symbolEntity
+                         timeframe:(BarTimeframe)timeframe
+                         inContext:(NSManagedObjectContext *)context {
+    
+    if (!barModel || !barModel.date || !symbolEntity) return;
+    
+    HistoricalBar *coreDataBar = [NSEntityDescription insertNewObjectForEntityForName:@"HistoricalBar"
+                                                               inManagedObjectContext:context];
+    
+    // Set all properties
+    coreDataBar.date = barModel.date;
+    coreDataBar.open = barModel.open;
+    coreDataBar.high = barModel.high;
+    coreDataBar.low = barModel.low;
+    coreDataBar.close = barModel.close;
+    coreDataBar.volume = barModel.volume;
+    coreDataBar.timeframe = timeframe;
+    coreDataBar.symbol = symbolEntity;
+}
+
+- (void)cleanExistingBarsForSymbol:(NSString *)symbol
+                         timeframe:(BarTimeframe)timeframe
+                         inContext:(NSManagedObjectContext *)context {
+    
+    // ✅ BATCH DELETE for performance
+    NSFetchRequest *deleteRequest = [HistoricalBar fetchRequest];
+    deleteRequest.predicate = [NSPredicate predicateWithFormat:
+                              @"symbol.symbol == %@ AND timeframe == %d", symbol, timeframe];
+    
+    NSBatchDeleteRequest *batchDelete = [[NSBatchDeleteRequest alloc] initWithFetchRequest:deleteRequest];
+    batchDelete.resultType = NSBatchDeleteResultTypeCount;
+    
+    NSError *deleteError = nil;
+    NSBatchDeleteResult *result = [context executeRequest:batchDelete error:&deleteError];
+    
+    if (deleteError) {
+        NSLog(@"⚠️ Error cleaning existing bars for %@: %@", symbol, deleteError);
+    } else {
+        NSLog(@"🗑️ Cleaned %@ existing bars for %@ timeframe %d",
+              result.result, symbol, timeframe);
+    }
+}
+
+
 
 - (void)saveHistoricalBarModelSafely:(HistoricalBarModel *)barModel
                               symbol:(NSString *)symbol

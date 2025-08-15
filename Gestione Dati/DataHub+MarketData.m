@@ -91,9 +91,7 @@
         NSLog(@"✅ Created Symbol entity for quote: %@", quote.symbol);
     }
     
-    // Update last interaction for tracking
     if (symbolEntity) {
-        symbolEntity.lastInteraction = [NSDate date];
         [self saveContext];
     }
 }

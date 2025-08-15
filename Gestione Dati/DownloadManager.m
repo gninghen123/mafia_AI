@@ -1135,62 +1135,67 @@
     
     NSLog(@"📈 DownloadManager: Executing count-based historical request for %@ (%ld bars, timeframe:%ld, extended:%@) using %@ (attempt %ld/%lu)",
           symbol, (long)count, (long)timeframe, needExtendedHours ? @"YES" : @"NO",
-          dataSource.sourceName, (long)(index + 1), (unsigned long)sources.count);
+          dataSource.sourceName, (long)index + 1, (unsigned long)sources.count);
     
-    // Check if this is a SchwabDataSource that supports the new method
+    // ✅ ESEGUI RICHIESTA HISTORICAL NORMALE - METODI CORRETTI
     if ([dataSource isKindOfClass:[SchwabDataSource class]]) {
+        // SchwabDataSource ha il metodo specifico con count
         SchwabDataSource *schwabSource = (SchwabDataSource *)dataSource;
         
-        // Use the new count-based method
         [schwabSource fetchHistoricalDataForSymbolWithCount:symbol
                                                   timeframe:timeframe
                                                       count:count
                                       needExtendedHoursData:needExtendedHours
                                            needPreviousClose:YES
                                                   completion:^(NSArray *bars, NSError *error) {
-            [self handleCountBasedResponse:bars
-                                     error:error
-                                sourceInfo:sourceInfo
-                                   sources:sources
-                               sourceIndex:index
-                                 requestID:requestID
-                                completion:completion];
+            [self handleHistoricalResponseWithAutoComplete:bars
+                                                      error:error
+                                                 parameters:parameters
+                                                 dataSource:dataSource
+                                                 sourceInfo:sourceInfo
+                                                    sources:sources
+                                                sourceIndex:index
+                                                  requestID:requestID
+                                                 completion:completion];
         }];
         
     } else if ([dataSource respondsToSelector:@selector(fetchHistoricalDataForSymbol:timeframe:startDate:endDate:completion:)]) {
-        // Fallback to date-based method for other data sources
-        NSLog(@"📊 DownloadManager: Using fallback date-based method for %@", dataSource.sourceName);
+        // Altri DataSource usano il metodo con date range
+        NSLog(@"📊 DownloadManager: Using date-based method for %@", dataSource.sourceName);
         
-        // Calculate date range from count (approximate)
+        // Calcola date range approssimativo dal count
         NSDate *endDate = [NSDate date];
         NSTimeInterval secondsPerBar = [self secondsPerBarForTimeframe:timeframe];
         NSTimeInterval totalSeconds = count * secondsPerBar;
         
-        // Add buffer for non-trading hours
-        if (timeframe < BarTimeframe1Day) {
-            totalSeconds *= 1.5;
+        // Buffer per non-trading hours
+        if (timeframe >= BarTimeframe1Day) {
+            totalSeconds *= 1.5; // 50% buffer per weekend/holidays
+        } else {
+            totalSeconds *= 2.0; // 100% buffer per non-trading hours
         }
         
         NSDate *startDate = [endDate dateByAddingTimeInterval:-totalSeconds];
         
         [dataSource fetchHistoricalDataForSymbol:symbol
-                                        timeframe:timeframe
-                                        startDate:startDate
-                                          endDate:endDate
-                                       completion:^(NSArray *bars, NSError *error) {
-            [self handleCountBasedResponse:bars
-                                     error:error
-                                sourceInfo:sourceInfo
-                                   sources:sources
-                               sourceIndex:index
-                                 requestID:requestID
-                                completion:completion];
+                                       timeframe:timeframe
+                                       startDate:startDate
+                                         endDate:endDate
+                                      completion:^(NSArray *bars, NSError *error) {
+            [self handleHistoricalResponseWithAutoComplete:bars
+                                                      error:error
+                                                 parameters:parameters
+                                                 dataSource:dataSource
+                                                 sourceInfo:sourceInfo
+                                                    sources:sources
+                                                sourceIndex:index
+                                                  requestID:requestID
+                                                 completion:completion];
         }];
         
     } else {
-        // Data source doesn't support historical data - try next source
-        NSLog(@"❌ DownloadManager: Data source %@ doesn't support historical data", dataSource.sourceName);
-        
+        // DataSource non supporta historical data
+        NSLog(@"❌ DownloadManager: DataSource %@ doesn't support historical data", dataSource.sourceName);
         [self executeCountBasedHistoricalWithSources:sources
                                           parameters:parameters
                                          sourceIndex:index + 1
@@ -1198,6 +1203,8 @@
                                           completion:completion];
     }
 }
+
+
 - (void)handleCountBasedResponse:(NSArray *)bars
                            error:(NSError *)error
                       sourceInfo:(DataSourceInfo *)sourceInfo
@@ -1468,7 +1475,465 @@
     }
 }
 
+#pragma mark - Current Bar Auto-Completion
+
+- (BOOL)isDailyOrHigherTimeframe:(BarTimeframe)timeframe {
+    return (timeframe >= BarTimeframe1Day);
+}
+
+- (BOOL)needsCurrentBarCompletion:(id)historicalData timeframe:(BarTimeframe)timeframe {
+    
+    // ✅ VERIFICA TIPO DI DATO RICEVUTO
+    NSArray *historicalBars = nil;
+    
+    if ([historicalData isKindOfClass:[NSArray class]]) {
+        // Caso normale: array di barre
+        historicalBars = (NSArray *)historicalData;
+    } else if ([historicalData isKindOfClass:[NSDictionary class]]) {
+        // Caso particolare: dictionary con array inside
+        NSDictionary *dataDict = (NSDictionary *)historicalData;
+        
+        // Prova chiavi comuni per array di barre
+        historicalBars = dataDict[@"bars"] ?: dataDict[@"data"] ?: dataDict[@"candles"] ?: dataDict[@"results"];
+        
+        if (!historicalBars) {
+            NSLog(@"⚠️ DownloadManager: Dictionary received but no bars array found. Keys: %@", dataDict.allKeys);
+            return YES; // Assume current bar needed se non riusciamo a determinare
+        }
+    } else {
+        NSLog(@"⚠️ DownloadManager: Unexpected data type: %@. Expected NSArray or NSDictionary", [historicalData class]);
+        return YES; // Assume current bar needed per sicurezza
+    }
+    
+    if (!historicalBars || historicalBars.count == 0) {
+        NSLog(@"⚠️ DownloadManager: No historical bars found, assuming current bar needed");
+        return YES;
+    }
+    
+    // ✅ PROCEDI CON LA LOGICA NORMALE
+    // Check se l'ultima barra è di oggi
+    id lastBarData = historicalBars.lastObject;
+    NSDate *lastBarDate = nil;
+    
+    if ([lastBarData isKindOfClass:[NSDictionary class]]) {
+        NSDictionary *lastBar = (NSDictionary *)lastBarData;
+        
+        // ✅ CERCA IL CAMPO DATA CON TUTTE LE VARIANTI POSSIBILI
+        id dateValue = lastBar[@"date"] ?: lastBar[@"datetime"] ?: lastBar[@"timestamp"] ?: lastBar[@"time"];
+        
+        if (!dateValue) {
+            NSLog(@"⚠️ DownloadManager: Last bar has no date field. Available keys: %@", lastBar.allKeys);
+            return YES; // Assume current bar needed
+        }
+        
+        // ✅ CONVERTI IL VALORE IN NSDate GESTENDO TUTTI I TIPI
+        lastBarDate = [self convertToNSDate:dateValue];
+        
+    } else {
+        NSLog(@"⚠️ DownloadManager: Last bar is not a dictionary: %@", [lastBarData class]);
+        return YES; // Assume current bar needed
+    }
+    
+    if (!lastBarDate) {
+        NSLog(@"⚠️ DownloadManager: Could not convert last bar date, assuming current bar needed");
+        return YES;
+    }
+    
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDateComponents *lastBarComponents = [calendar components:NSCalendarUnitYear | NSCalendarUnitMonth | NSCalendarUnitDay
+                                                      fromDate:lastBarDate];
+    NSDateComponents *todayComponents = [calendar components:NSCalendarUnitYear | NSCalendarUnitMonth | NSCalendarUnitDay
+                                                    fromDate:[NSDate date]];
+    
+    BOOL isToday = (lastBarComponents.year == todayComponents.year &&
+                    lastBarComponents.month == todayComponents.month &&
+                    lastBarComponents.day == todayComponents.day);
+    
+    if (isToday) {
+        NSLog(@"📊 DownloadManager: Last bar (%@) is already today - no current bar needed", lastBarDate);
+    } else {
+        NSLog(@"📊 DownloadManager: Last bar (%@) is not today - current bar needed", lastBarDate);
+    }
+    
+    return !isToday;  // Serve current bar se l'ultima NON è di oggi
+}
+
+- (NSDate *)convertToNSDate:(id)dateValue {
+    if (!dateValue || [dateValue isKindOfClass:[NSNull class]]) {
+        return nil;
+    }
+    
+    if ([dateValue isKindOfClass:[NSDate class]]) {
+        // Già un NSDate
+        return (NSDate *)dateValue;
+    }
+    
+    if ([dateValue isKindOfClass:[NSNumber class]]) {
+        // Unix timestamp (seconds or milliseconds)
+        NSNumber *timestamp = (NSNumber *)dateValue;
+        double timeInterval = [timestamp doubleValue];
+        
+        // Detect se è in milliseconds (typical for modern APIs)
+        if (timeInterval > 1000000000000) { // Greater than year 2001 in milliseconds
+            timeInterval = timeInterval / 1000.0; // Convert to seconds
+        }
+        
+        NSDate *convertedDate = [NSDate dateWithTimeIntervalSince1970:timeInterval];
+        NSLog(@"🔄 DownloadManager: Converted timestamp %@ to date %@", timestamp, convertedDate);
+        return convertedDate;
+    }
+    
+    if ([dateValue isKindOfClass:[NSString class]]) {
+        // String date - prova vari formati
+        NSString *dateString = (NSString *)dateValue;
+        NSArray *dateFormats = @[
+            @"yyyy-MM-dd",
+            @"yyyy-MM-dd HH:mm:ss",
+            @"yyyy-MM-dd'T'HH:mm:ss",
+            @"yyyy-MM-dd'T'HH:mm:ss'Z'",
+            @"yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+            @"MM/dd/yyyy",
+            @"MM-dd-yyyy"
+        ];
+        
+        NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+        formatter.locale = [[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"];
+        formatter.timeZone = [NSTimeZone timeZoneWithAbbreviation:@"UTC"];
+        
+        for (NSString *format in dateFormats) {
+            formatter.dateFormat = format;
+            NSDate *parsedDate = [formatter dateFromString:dateString];
+            if (parsedDate) {
+                NSLog(@"🔄 DownloadManager: Parsed date string '%@' with format '%@' to %@", dateString, format, parsedDate);
+                return parsedDate;
+            }
+        }
+        
+        NSLog(@"❌ DownloadManager: Could not parse date string: %@", dateString);
+        return nil;
+    }
+    
+    NSLog(@"❌ DownloadManager: Unknown date type: %@ (value: %@)", [dateValue class], dateValue);
+    return nil;
+}
 
 
+- (NSArray *)extractBarsArrayFromData:(id)historicalData {
+    if ([historicalData isKindOfClass:[NSArray class]]) {
+        return (NSArray *)historicalData;
+    } else if ([historicalData isKindOfClass:[NSDictionary class]]) {
+        NSDictionary *dataDict = (NSDictionary *)historicalData;
+        NSArray *bars = dataDict[@"bars"] ?: dataDict[@"data"] ?: dataDict[@"candles"] ?: dataDict[@"results"];
+        if (bars && [bars isKindOfClass:[NSArray class]]) {
+            return bars;
+        }
+    }
+    
+    NSLog(@"❌ DownloadManager: Cannot extract bars array from data type: %@", [historicalData class]);
+    return @[]; // Return empty array as fallback
+}
 
+
+// ===================================================================
+// FIX: PARSING CORRETTO DEL QUOTE RESPONSE SCHWAB
+// ===================================================================
+
+// ✅ SOSTITUISCI la parte di parsing nel metodo autoCompleteWithCurrentBar:
+
+- (void)autoCompleteWithCurrentBar:(id)historicalData
+                        parameters:(NSDictionary *)parameters
+                        dataSource:(id<DataSource>)dataSource
+                        sourceInfo:(DataSourceInfo *)sourceInfo
+                        completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    NSString *symbol = parameters[@"symbol"];
+    BarTimeframe timeframe = [parameters[@"timeframe"] integerValue];
+    
+    // ✅ ESTRAI ARRAY DAI DATI
+    NSArray *historicalBars = [self extractBarsArrayFromData:historicalData];
+    
+    NSLog(@"📞 DownloadManager: Requesting quote for current bar completion");
+    
+    // ✅ RICHIEDI QUOTE PER COSTRUIRE CURRENT BAR
+    [dataSource fetchQuoteForSymbol:symbol completion:^(id quoteResult, NSError *quoteError) {
+        
+        if (quoteError || !quoteResult) {
+            NSLog(@"⚠️ DownloadManager: Quote request failed (%@), returning historical only",
+                  quoteError.localizedDescription ?: @"no quote data");
+            
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(historicalData, sourceInfo.type, nil);
+            });
+            return;
+        }
+        
+        // ✅ PARSING CORRETTO DEL QUOTE RESPONSE SCHWAB
+        NSMutableDictionary *currentBar = [NSMutableDictionary dictionary];
+        
+        double openPrice = 0.0;
+        double highPrice = 0.0;
+        double lowPrice = 0.0;
+        double lastPrice = 0.0;
+        double closePrice = 0.0;
+        NSInteger volume = 0;
+        NSDate *timestamp = nil;
+        
+        if ([quoteResult isKindOfClass:[NSDictionary class]]) {
+            NSDictionary *quoteDict = (NSDictionary *)quoteResult;
+            
+            // ✅ SCHWAB STRUCTURE: Estrai dai nested dictionaries
+            NSDictionary *quoteSection = quoteDict[@"quote"];
+            NSDictionary *regularSection = quoteDict[@"regular"];
+            NSDictionary *extendedSection = quoteDict[@"extended"];
+            
+            if (quoteSection) {
+                // Dati principali dalla sezione "quote"
+                openPrice = [quoteSection[@"openPrice"] doubleValue];
+                highPrice = [quoteSection[@"highPrice"] doubleValue];
+                lowPrice = [quoteSection[@"lowPrice"] doubleValue];
+                lastPrice = [quoteSection[@"lastPrice"] doubleValue];
+                closePrice = [quoteSection[@"closePrice"] doubleValue];  // Previous close
+                volume = [quoteSection[@"totalVolume"] integerValue];
+                
+                // Timestamp (in milliseconds)
+                NSNumber *tradeTime = quoteSection[@"tradeTime"];
+                if (tradeTime) {
+                    timestamp = [self convertToNSDate:tradeTime];
+                }
+                
+                NSLog(@"📊 DownloadManager: Schwab quote parsed - O:%.4f H:%.4f L:%.4f Last:%.4f Close:%.4f V:%ld",
+                      openPrice, highPrice, lowPrice, lastPrice, closePrice, (long)volume);
+            }
+            
+            // ✅ FALLBACK: Se regular session ha dati migliori
+            if (regularSection && openPrice == 0) {
+                lastPrice = [regularSection[@"regularMarketLastPrice"] doubleValue];
+                volume = [regularSection[@"regularMarketLastSize"] integerValue];
+                
+                NSNumber *regularTradeTime = regularSection[@"regularMarketTradeTime"];
+                if (regularTradeTime) {
+                    timestamp = [self convertToNSDate:regularTradeTime];
+                }
+                
+                NSLog(@"📊 DownloadManager: Using regular market data - Last:%.4f V:%ld", lastPrice, (long)volume);
+            }
+            
+            // ✅ EXTENDED HOURS: Se siamo in after-hours
+            if (extendedSection && [quoteSection[@"securityStatus"] isEqualToString:@"Closed"]) {
+                double extendedLast = [extendedSection[@"lastPrice"] doubleValue];
+                if (extendedLast > 0) {
+                    lastPrice = extendedLast;
+                    NSLog(@"📊 DownloadManager: Using extended hours price: %.4f", lastPrice);
+                }
+            }
+            
+        } else if ([quoteResult isKindOfClass:[MarketData class]]) {
+            // Fallback per MarketData objects (se qualcuno converte già)
+            MarketData *marketData = (MarketData *)quoteResult;
+            openPrice = marketData.open ? [marketData.open doubleValue] : 0.0;
+            highPrice = marketData.high ? [marketData.high doubleValue] : 0.0;
+            lowPrice = marketData.low ? [marketData.low doubleValue] : 0.0;
+            lastPrice = marketData.last ? [marketData.last doubleValue] : 0.0;
+            volume = marketData.volume;
+            timestamp = marketData.timestamp;
+            
+        } else {
+            NSLog(@"❌ DownloadManager: Unknown quote result type: %@", [quoteResult class]);
+        }
+        
+        // ✅ VALIDAZIONE DATI
+        if (lastPrice <= 0) {
+            NSLog(@"⚠️ DownloadManager: Invalid quote price (%.4f), returning historical only", lastPrice);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(historicalData, sourceInfo.type, nil);
+            });
+            return;
+        }
+        
+        // ✅ GESTIONE TIMESTAMP
+        if (!timestamp) {
+            timestamp = [self adjustDateForTimeframe:[NSDate date] timeframe:timeframe];
+        }
+        
+        // ✅ GESTIONE OPEN:
+        // - Se abbiamo openPrice > 0, usalo
+        // - Altrimenti usa closePrice (previous close)
+        double finalOpen;
+        if (openPrice > 0) {
+            finalOpen = openPrice;
+        } else if (closePrice > 0) {
+            finalOpen = closePrice;  // Previous close diventa open
+        } else {
+            finalOpen = lastPrice;   // Ultimo fallback
+        }
+        
+        // ✅ GESTIONE HIGH/LOW:
+        // - Se abbiamo high/low > 0, usali
+        // - Altrimenti calcola da open/close
+        double finalHigh;
+        if (highPrice > 0) {
+            finalHigh = highPrice;
+        } else {
+            finalHigh = MAX(finalOpen, lastPrice);
+        }
+        
+        double finalLow;
+        if (lowPrice > 0) {
+            finalLow = lowPrice;
+        } else {
+            finalLow = MIN(finalOpen, lastPrice);
+        }
+        
+        // ✅ VALIDAZIONE FINALE OHLC
+        // Assicura logica OHLC corretta
+        if (finalHigh < MAX(finalOpen, lastPrice)) {
+            finalHigh = MAX(finalOpen, lastPrice);
+        }
+        if (finalLow > MIN(finalOpen, lastPrice)) {
+            finalLow = MIN(finalOpen, lastPrice);
+        }
+        
+        // ✅ COSTRUISCI BARRA CORRENTE CON FORMATO UNIFORME AI DATI STORICI
+        // Converti timestamp in formato Schwab (milliseconds Unix timestamp)
+        NSTimeInterval timeInterval = [timestamp timeIntervalSince1970];
+        long long timestampMillis = (long long)(timeInterval * 1000); // Convert to milliseconds
+        
+        // ✅ USA STESSO FORMATO E CHIAVI DEI DATI STORICI
+        currentBar[@"datetime"] = @(timestampMillis);  // ← STESSO FORMATO degli historical!
+        currentBar[@"close"] = [NSString stringWithFormat:@"%.4f", lastPrice];  // ← String come historical
+        currentBar[@"open"] = [NSString stringWithFormat:@"%.4f", finalOpen];
+        currentBar[@"high"] = [NSString stringWithFormat:@"%.4f", finalHigh];
+        currentBar[@"low"] = [NSString stringWithFormat:@"%.4f", finalLow];
+        currentBar[@"volume"] = @(volume);  // ← Number come historical
+        
+        // ✅ VERIFICA UNIFORMITÀ
+        if (historicalBars.count > 0) {
+            NSDictionary *lastHistoricalBar = historicalBars.lastObject;
+            NSLog(@"🔍 DownloadManager: Format comparison:");
+            NSLog(@"   Last historical: datetime=%@, close=%@",
+                  lastHistoricalBar[@"datetime"], lastHistoricalBar[@"close"]);
+            NSLog(@"   New current bar: datetime=%@, close=%@",
+                  currentBar[@"datetime"], currentBar[@"close"]);
+        }
+        
+        // ✅ MERGE CON HISTORICAL DATA
+        NSMutableArray *completeBars = [historicalBars mutableCopy];
+        [completeBars addObject:currentBar];
+        
+        // Se il dato originale era un dictionary, mantieni la struttura
+        id finalResult;
+        if ([historicalData isKindOfClass:[NSDictionary class]]) {
+            NSMutableDictionary *resultDict = [(NSDictionary *)historicalData mutableCopy];
+            // Trova la chiave che conteneva i bars e aggiorna
+            for (NSString *key in @[@"bars", @"data", @"candles", @"results"]) {
+                if (resultDict[key]) {
+                    resultDict[key] = [completeBars copy];
+                    break;
+                }
+            }
+            finalResult = [resultDict copy];
+        } else {
+            finalResult = [completeBars copy];
+        }
+        
+        NSLog(@"✅ DownloadManager: Current bar added with uniform format - O:%@ H:%@ L:%@ C:%@ V:%ld (Total: %lu bars)",
+              currentBar[@"open"], currentBar[@"high"], currentBar[@"low"], currentBar[@"close"],
+              (long)volume, (unsigned long)completeBars.count);
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(finalResult, sourceInfo.type, nil);
+        });
+    }];
+}
+
+- (NSDate *)adjustDateForTimeframe:(NSDate *)date timeframe:(BarTimeframe)timeframe {
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    
+    switch (timeframe) {
+        case BarTimeframe1Day:
+            // Per daily, usa la data così com'è
+            return date;
+            
+        case BarTimeframe1Week: {
+            // Per weekly, vai al lunedì della settimana corrente
+            NSDateComponents *components = [calendar components:NSCalendarUnitYear | NSCalendarUnitWeekOfYear
+                                                       fromDate:date];
+            components.weekday = 2; // Monday
+            return [calendar dateFromComponents:components];
+        }
+            
+        case BarTimeframe1Month: {
+            // Per monthly, vai al primo del mese corrente
+            NSDateComponents *components = [calendar components:NSCalendarUnitYear | NSCalendarUnitMonth
+                                                       fromDate:date];
+            components.day = 1;
+            return [calendar dateFromComponents:components];
+        }
+            
+        default:
+            return date;
+    }
+}
+
+- (void)handleHistoricalResponseWithAutoComplete:(NSArray *)bars
+                                            error:(NSError *)error
+                                       parameters:(NSDictionary *)parameters
+                                       dataSource:(id<DataSource>)dataSource
+                                       sourceInfo:(DataSourceInfo *)sourceInfo
+                                          sources:(NSArray<DataSourceInfo *> *)sources
+                                      sourceIndex:(NSInteger)index
+                                        requestID:(NSString *)requestID
+                                       completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    if (!self.activeRequests[requestID]) return;
+    
+    if (error && self.fallbackEnabled && index < sources.count - 1) {
+        NSLog(@"❌ DownloadManager: Historical request failed with %@, trying next source", dataSource.sourceName);
+        sourceInfo.failureCount++;
+        sourceInfo.lastFailureTime = [NSDate date];
+        
+        [self executeCountBasedHistoricalWithSources:sources
+                                          parameters:parameters
+                                         sourceIndex:index + 1
+                                           requestID:requestID
+                                          completion:completion];
+        return;
+    }
+    
+    [self.activeRequests removeObjectForKey:requestID];
+    
+    if (error) {
+        NSLog(@"❌ DownloadManager: Historical request failed: %@", error.localizedDescription);
+        completion(nil, sourceInfo.type, error);
+        return;
+    }
+    
+    NSLog(@"✅ DownloadManager: Historical request succeeded with %@, got %lu bars",
+          sourceInfo.dataSource.sourceName, (unsigned long)bars.count);
+    
+    // ✅ Auto-complete logic per daily+ timeframes
+    BarTimeframe timeframe = [parameters[@"timeframe"] integerValue];
+    
+    if ([self isDailyOrHigherTimeframe:timeframe] &&
+        [self needsCurrentBarCompletion:bars timeframe:timeframe] &&
+        sourceInfo.type == DataSourceTypeSchwab) {
+        
+        NSString *symbol = parameters[@"symbol"];
+        NSLog(@"🔧 DownloadManager: Auto-completing daily data with current bar for %@", symbol);
+        
+        [self autoCompleteWithCurrentBar:bars
+                              parameters:parameters
+                              dataSource:dataSource
+                              sourceInfo:sourceInfo
+                              completion:completion];
+    } else {
+        NSLog(@"✅ DownloadManager: Historical data complete as-is (%@)",
+              sourceInfo.type == DataSourceTypeIBKR ? @"IBKR includes current" :
+              sourceInfo.type == DataSourceTypeSchwab ? @"intraday timeframe" : @"other provider");
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(bars, sourceInfo.type, nil);
+        });
+    }
+}
 @end

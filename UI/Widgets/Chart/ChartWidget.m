@@ -47,7 +47,6 @@ extern NSString *const DataHubDataLoadedNotification;
     self = [super initWithType:type panelType:panelType];
     if (self) {
         [self setupChartDefaults];
-        [self registerForChainNotifications];
         [self registerForDataNotifications];
     }
     return self;
@@ -491,35 +490,9 @@ extern NSString *const DataHubDataLoadedNotification;
 
 #pragma mark - Chain Notifications
 
-- (void)registerForChainNotifications {
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(handleSymbolChainNotification:)
-                                                 name:kWidgetChainUpdateNotification
-                                               object:nil];
-}
 
-- (void)handleSymbolChainNotification:(NSNotification *)notification {
-    if (!self.chainActive) return;
-    
-    NSDictionary *userInfo = notification.userInfo;
-    NSDictionary *update = userInfo[kChainUpdateKey];
-    NSString *senderId = userInfo[kChainSenderKey];
-    
-    // Don't react to our own broadcasts
-    if ([senderId isEqualToString:self.widgetID]) return;
-    
-    if (update) {
-        NSString *action = update[@"action"];
-        NSArray *symbols = update[@"symbols"];
-        
-        if ([action isEqualToString:@"setSymbols"] && symbols.count > 0) {
-            NSString *symbol = symbols.firstObject;
-            if (symbol && ![symbol isEqualToString:self.currentSymbol]) {
-                [self loadSymbol:symbol];
-            }
-        }
-    }
-}
+
+
 
 - (void)broadcastSymbolToChain:(NSString *)symbol {
     if (!self.chainActive || !symbol) return;
@@ -647,39 +620,33 @@ extern NSString *const DataHubDataLoadedNotification;
     NSLog(@"📊 ChartWidget: Loading %@ with %ld bars (timeframe: %ld, after-hours: %@)",
           symbol, (long)barsCount, (long)barTimeframe, needExtendedHours ? @"YES" : @"NO");
     
-    // Request data from DataHub WITH after-hours parameter
     [[DataHub shared] getHistoricalBarsForSymbol:symbol
-                                       timeframe:barTimeframe
-                                        barCount:barsCount
-                            needExtendedHours:needExtendedHours  // ✅ NUOVO PARAMETRO
-                                      completion:^(NSArray<HistoricalBarModel *> *data, BOOL isFresh) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (!data || data.count == 0) {
-                NSLog(@"❌ ChartWidget: No data received for %@", symbol);
-                return;
-            }
-            
-            NSLog(@"✅ ChartWidget: Received %lu bars for %@ (%@, extended-hours: %@)",
-                  (unsigned long)data.count, symbol, isFresh ? @"fresh" : @"cached",
-                  needExtendedHours ? @"included" : @"excluded");
-            
-            // ✅ CONTROLLO: Aggiungere la barra corrente se necessario
-            [self checkAndAddCurrentBarIfNeeded:data
-                                         symbol:symbol
-                                      timeframe:barTimeframe
-                                     completion:^(NSArray<HistoricalBarModel *> *finalData) {
-                
-                self.chartData = finalData;
-                if (!sameSymbol) {
-                    [self resetToInitialView];
-                }
-                [self synchronizePanels];
-                
-                NSLog(@"📊 ChartWidget: Final dataset has %lu bars (potentially including current bar)",
-                      (unsigned long)finalData.count);
-            }];
-        });
-    }];
+                                          timeframe:barTimeframe
+                                           barCount:barsCount
+                               needExtendedHours:needExtendedHours
+                                         completion:^(NSArray<HistoricalBarModel *> *data, BOOL isFresh) {
+           dispatch_async(dispatch_get_main_queue(), ^{
+               if (!data || data.count == 0) {
+                   NSLog(@"❌ ChartWidget: No data received for %@", symbol);
+                   return;
+               }
+               
+               NSLog(@"✅ ChartWidget: Received %lu bars for %@ (%@, extended-hours: %@)",
+                     (unsigned long)data.count, symbol, isFresh ? @"fresh" : @"cached",
+                     needExtendedHours ? @"included" : @"excluded");
+               
+               // ✅ DIRETTO: Dataset già completo dal DownloadManager
+               self.chartData = data;
+               if (!sameSymbol) {
+                   [self resetToInitialView];
+               }
+               [self synchronizePanels];
+               
+               NSLog(@"📊 ChartWidget: Final dataset has %lu bars (auto-completed by DownloadManager)",
+                     (unsigned long)data.count);
+           });
+       }];
+    
     
     [self refreshAlertsForCurrentSymbol];
     
@@ -699,6 +666,7 @@ extern NSString *const DataHubDataLoadedNotification;
         });
     }
 }
+
 
 
 - (void)forceChartRedraw {
@@ -1151,171 +1119,7 @@ extern NSString *const DataHubDataLoadedNotification;
     return self.currentSymbol;
 }
 
-#pragma mark - Current Bar Management
 
-/**
- * Controlla se serve aggiungere la barra corrente e la aggiunge se necessario
- * @param historicalBars Array di barre storiche ricevute
- * @param symbol Simbolo per cui controllare
- * @param timeframe Timeframe utilizzato
- * @param completion Callback con l'array finale (con o senza barra corrente)
- */
-- (void)checkAndAddCurrentBarIfNeeded:(NSArray<HistoricalBarModel *> *)historicalBars
-                               symbol:(NSString *)symbol
-                            timeframe:(BarTimeframe)timeframe
-                           completion:(void(^)(NSArray<HistoricalBarModel *> *finalData))completion {
-    
-    // ✅ CONDIZIONE 1: Solo per timeframe daily e superiori
-    if (![self isDailyOrHigherTimeframe:timeframe]) {
-        NSLog(@"📊 ChartWidget: Timeframe %ld is intraday - no current bar needed", (long)timeframe);
-        completion(historicalBars);
-        return;
-    }
-    
-    // ✅ CONDIZIONE 2: Controlla se l'ultima barra è di oggi
-    if ([self lastBarIsToday:historicalBars]) {
-        NSLog(@"📊 ChartWidget: Last bar is already today - no current bar needed");
-        completion(historicalBars);
-        return;
-    }
-    
-    NSLog(@"📊 ChartWidget: Need to add current bar for %@ (timeframe: %ld)", symbol, (long)timeframe);
-    
-    // ✅ AZIONE: Richiedi quote corrente per costruire la barra
-    [[DataHub shared] getQuoteForSymbol:symbol completion:^(MarketQuoteModel *quote, BOOL isLive) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            
-            if (!quote) {
-                NSLog(@"❌ ChartWidget: No quote available for current bar - using historical data only");
-                completion(historicalBars);
-                return;
-            }
-            
-            // ✅ COSTRUZIONE: Crea la barra corrente dal quote
-            HistoricalBarModel *currentBar = [self createCurrentBarFromQuote:quote timeframe:timeframe];
-            
-            if (!currentBar) {
-                NSLog(@"❌ ChartWidget: Failed to create current bar from quote");
-                completion(historicalBars);
-                return;
-            }
-            
-            // ✅ INTEGRAZIONE: Aggiungi la barra corrente ai dati storici
-            NSMutableArray<HistoricalBarModel *> *finalData = [historicalBars mutableCopy];
-            [finalData addObject:currentBar];
-            
-            NSLog(@"✅ ChartWidget: Added current bar for %@ (price: %.2f, volume: %ld)",
-                  symbol, currentBar.close, (long)currentBar.volume);
-            
-            completion([finalData copy]);
-        });
-    }];
-}
-
-/**
- * Controlla se il timeframe è daily o superiore
- */
-- (BOOL)isDailyOrHigherTimeframe:(BarTimeframe)timeframe {
-    return (timeframe >= BarTimeframe1Day);
-}
-
-/**
- * Controlla se l'ultima barra nell'array è di oggi
- */
-- (BOOL)lastBarIsToday:(NSArray<HistoricalBarModel *> *)bars {
-    if (bars.count == 0) return NO;
-    
-    HistoricalBarModel *lastBar = bars.lastObject;
-    NSDate *today = [NSDate date];
-    
-    NSCalendar *calendar = [NSCalendar currentCalendar];
-    NSDateComponents *lastBarComponents = [calendar components:NSCalendarUnitYear | NSCalendarUnitMonth | NSCalendarUnitDay
-                                                      fromDate:lastBar.date];
-    NSDateComponents *todayComponents = [calendar components:NSCalendarUnitYear | NSCalendarUnitMonth | NSCalendarUnitDay
-                                                    fromDate:today];
-    
-    BOOL isToday = (lastBarComponents.year == todayComponents.year &&
-                    lastBarComponents.month == todayComponents.month &&
-                    lastBarComponents.day == todayComponents.day);
-    
-    if (isToday) {
-        NSLog(@"📊 ChartWidget: Last bar (%@) is already today", lastBar.date);
-    } else {
-        NSLog(@"📊 ChartWidget: Last bar (%@) is not today - current bar needed", lastBar.date);
-    }
-    
-    return isToday;
-}
-
-/**
- * Crea una barra corrente dal quote per il timeframe specificato
- */
-- (HistoricalBarModel *)createCurrentBarFromQuote:(MarketQuoteModel *)quote
-                                        timeframe:(BarTimeframe)timeframe {
-    
-    if (!quote) return nil;
-    
-    HistoricalBarModel *currentBar = [[HistoricalBarModel alloc] init];
-    
-    // ✅ DATA: Imposta la data della barra in base al timeframe
-    currentBar.date = [self adjustDateForTimeframe:[NSDate date] timeframe:timeframe];
-    
-    // ✅ PREZZI: Costruisci i prezzi OHLC dalla quote
-    // Per la barra corrente, abbiamo informazioni limitate:
-    // - Close = current price
-    // - Open = previous close (se disponibile) o current price
-    // - High/Low = current price (approssimazione)
-    
-    currentBar.close = [quote.close doubleValue];
-    currentBar.open = [quote.previousClose doubleValue] > 0 ? [quote.previousClose doubleValue]: [quote.close doubleValue];
-    
-    // Per high/low, usiamo il current price come approssimazione
-    // In una implementazione più sofisticata, potremmo tenere traccia del day's high/low
-    currentBar.high = MAX(currentBar.open, currentBar.close);
-    currentBar.low = MIN(currentBar.open, currentBar.close);
-    
-    // ✅ VOLUME: Usa il volume corrente (se disponibile)
-    currentBar.volume = quote.volume;
-    
-    NSLog(@"📊 ChartWidget: Created current bar - O:%.2f H:%.2f L:%.2f C:%.2f V:%ld",
-          currentBar.open, currentBar.high, currentBar.low, currentBar.close, (long)currentBar.volume);
-    
-    return currentBar;
-}
-
-/**
- * Aggiusta la data per il timeframe specificato
- * Per weekly: va al lunedì della settimana corrente
- * Per monthly: va al primo del mese corrente
- */
-- (NSDate *)adjustDateForTimeframe:(NSDate *)date timeframe:(BarTimeframe)timeframe {
-    NSCalendar *calendar = [NSCalendar currentCalendar];
-    
-    switch (timeframe) {
-        case BarTimeframe1Day:
-            // Per daily, usa la data così com'è
-            return date;
-            
-        case BarTimeframe1Week: {
-            // Per weekly, vai al lunedì della settimana corrente
-            NSDateComponents *components = [calendar components:NSCalendarUnitYear | NSCalendarUnitWeekOfYear
-                                                       fromDate:date];
-            components.weekday = 2; // Lunedì
-            return [calendar dateFromComponents:components];
-        }
-            
-        case BarTimeframe1Month: {
-            // Per monthly, vai al primo del mese corrente
-            NSDateComponents *components = [calendar components:NSCalendarUnitYear | NSCalendarUnitMonth
-                                                       fromDate:date];
-            components.day = 1;
-            return [calendar dateFromComponents:components];
-        }
-            
-        default:
-            return date;
-    }
-}
 #pragma mark - Preferences Management
 
 - (IBAction)showPreferences:(id)sender {

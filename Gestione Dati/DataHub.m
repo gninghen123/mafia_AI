@@ -650,8 +650,25 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 
 
 - (NSArray<Alert *> *)getAlertsForSymbol:(NSString *)symbol {
-    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbol];
-    return [self.alerts filteredArrayUsingPredicate:predicate];
+    if (!symbol || symbol.length == 0) {
+        return @[];
+    }
+    
+    // ✅ FIXED: Find Symbol entity first, then search by relationship
+    Symbol *symbolEntity = [self getSymbolWithName:symbol];
+    if (!symbolEntity) {
+        NSLog(@"⚠️ No Symbol entity found for: %@", symbol);
+        return @[];
+    }
+    
+    // ✅ FIXED: Use Symbol entity in predicate, not string comparison
+    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbolEntity];
+    NSArray<Alert *> *filteredAlerts = [self.alerts filteredArrayUsingPredicate:predicate];
+    
+    NSLog(@"📋 Found %lu alerts for symbol entity: %@",
+          (unsigned long)filteredAlerts.count, symbolEntity.symbol);
+    
+    return filteredAlerts;
 }
 
 - (Alert *)createAlertForSymbol:(NSString *)symbol
@@ -659,9 +676,18 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
                           value:(double)value
                          active:(BOOL)active {
     
+    // ✅ FIXED: Find or create Symbol entity before creating alert
+    Symbol *symbolEntity = [self findOrCreateSymbolWithName:symbol inContext:self.mainContext];
+    if (!symbolEntity) {
+        NSLog(@"❌ Failed to create/find Symbol entity for: %@", symbol);
+        return nil;
+    }
+    
     Alert *alert = [NSEntityDescription insertNewObjectForEntityForName:@"Alert"
                                                   inManagedObjectContext:self.mainContext];
-    alert.symbol = symbol;
+    
+    // ✅ FIXED: Use Symbol entity instead of string
+    alert.symbol = symbolEntity;
     alert.conditionString = condition;
     alert.triggerValue = value;
     alert.isActive = active;
@@ -671,6 +697,9 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     
     [self.alerts addObject:alert];
     [self saveContext];
+    
+    NSLog(@"✅ Created alert for Symbol entity: %@ (%.2f %@)",
+          symbolEntity.symbol, value, condition);
     
     return alert;
 }

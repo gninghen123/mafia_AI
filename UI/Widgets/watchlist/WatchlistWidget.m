@@ -1119,53 +1119,64 @@
     alert.informativeText = @"Enter symbols separated by commas, spaces, or new lines:";
     alert.alertStyle = NSAlertStyleInformational;
     
-    // Create a larger text view for bulk input
-    NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 400, 120)];
-    NSTextView *textView = [[NSTextView alloc] init];
-    textView.string = @"";
-    textView.font = [NSFont systemFontOfSize:13];
-    scrollView.documentView = textView;
-    scrollView.hasVerticalScroller = YES;
-    scrollView.autohidesScrollers = YES;
+    // ✅ FIX 1: Create text field instead of text view per evitare problemi UI
+        NSTextField *textField = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 400, 80)];
+        textField.placeholderString = @"Enter symbols: AAPL, MSFT, GOOGL or AAPL MSFT GOOGL";
+        textField.font = [NSFont systemFontOfSize:13];
+  
     
+    // ✅ FIX 2: Configure per multi-line input
+       NSTextFieldCell *cell = (NSTextFieldCell *)textField.cell;
+       [cell setWraps:YES];
+       [cell setScrollable:YES];
+       textField.bordered = YES;
+       textField.bezeled = YES;
+       textField.editable = YES;
+       textField.selectable = YES;
     // Add placeholder-like instruction
-    NSTextField *instructionLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 125, 400, 20)];
-    instructionLabel.stringValue = @"Examples: AAPL, MSFT, GOOGL  or  AAPL MSFT GOOGL  or  AAPL\\nMSFT\\nGOOGL";
-    instructionLabel.textColor = [NSColor secondaryLabelColor];
-    instructionLabel.font = [NSFont systemFontOfSize:11];
-    instructionLabel.bordered = NO;
-    instructionLabel.editable = NO;
-    instructionLabel.backgroundColor = [NSColor clearColor];
-    
-    NSView *containerView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 400, 150)];
-    [containerView addSubview:scrollView];
-    [containerView addSubview:instructionLabel];
-    
-    alert.accessoryView = containerView;
-    
-    [alert addButtonWithTitle:@"Add All"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    if ([alert runModal] == NSAlertFirstButtonReturn) {
-        NSString *input = [textView.string stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        
-        if (input.length == 0) {
-            [self showErrorAlert:@"Invalid Input" message:@"Please enter at least one symbol."];
-            return;
-        }
-        
-        // Parse symbols intelligently
-        NSArray<NSString *> *symbols = [self parseSymbolsFromInput:input];
-        
-        if (symbols.count == 0) {
-            [self showErrorAlert:@"No Valid Symbols" message:@"No valid symbols found in the input."];
-            return;
-        }
-        
-        // Add all symbols to current provider
-        [self addSymbolsToCurrentProvider:symbols];
-    }
-}
+    NSTextField *instructionLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 85, 400, 20)];
+      instructionLabel.stringValue = @"Examples: AAPL, MSFT, GOOGL  or  AAPL MSFT GOOGL";
+      instructionLabel.textColor = [NSColor secondaryLabelColor];
+      instructionLabel.font = [NSFont systemFontOfSize:11];
+      instructionLabel.bordered = NO;
+      instructionLabel.editable = NO;
+      instructionLabel.backgroundColor = [NSColor clearColor];
+      instructionLabel.alignment = NSTextAlignmentCenter;
+      
+      // ✅ FIX 5: Container view with proper layout
+      NSView *containerView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 400, 110)];
+      [containerView addSubview:textField];
+      [containerView addSubview:instructionLabel];
+      
+      alert.accessoryView = containerView;
+      
+      // ✅ FIX 6: Set initial first responder
+      [alert.window setInitialFirstResponder:textField];
+      
+      [alert addButtonWithTitle:@"Add All"];
+      [alert addButtonWithTitle:@"Cancel"];
+      
+      if ([alert runModal] == NSAlertFirstButtonReturn) {
+          // ✅ FIX 7: Get text from field, non da textView potenzialmente problematica
+          NSString *input = [textField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+          
+          if (input.length == 0) {
+              [self showErrorAlert:@"Invalid Input" message:@"Please enter at least one symbol."];
+              return;
+          }
+          
+          // Parse symbols intelligently
+          NSArray<NSString *> *symbols = [self parseSymbolsFromInput:input];
+          
+          if (symbols.count == 0) {
+              [self showErrorAlert:@"No Valid Symbols" message:@"No valid symbols found in the input."];
+              return;
+          }
+          
+          // Add all symbols to current provider
+          [self addSymbolsToCurrentProvider:symbols];
+      }
+  }
 
 #pragma mark - Smart Symbol Parsing
 

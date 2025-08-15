@@ -9,7 +9,6 @@ NS_ASSUME_NONNULL_BEGIN
 @interface Alert : NSManagedObject
 
 // Convenience methods
-- (NSString *)symbolName;
 - (BOOL)shouldTriggerWithPrice:(double)currentPrice previousPrice:(double)previousPrice;
 - (NSString *)formattedTriggerValue;
 - (NSString *)conditionDescription;

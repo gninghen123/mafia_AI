@@ -116,6 +116,15 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (void)fetchPositionsWithCompletion:(void (^)(NSArray *positions, NSError *error))completion;
 - (void)fetchOrdersWithCompletion:(void (^)(NSArray *orders, NSError *error))completion;
+// Current bar logic for DataSource-specific behavior
+- (BOOL)isDailyOrHigherTimeframe:(BarTimeframe)timeframe;
+- (BOOL)needsCurrentBarCompletion:(NSArray *)historicalBars
+                        timeframe:(BarTimeframe)timeframe;
+- (void)autoCompleteWithCurrentBar:(id)historicalData
+                        parameters:(NSDictionary *)parameters
+                        dataSource:(id<DataSource>)dataSource
+                        completion:(void (^)(NSArray *bars, DataSourceType usedSource, NSError *error))completion;
+
 
 @end
 

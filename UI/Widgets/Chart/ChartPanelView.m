@@ -154,6 +154,7 @@
     [NSGraphicsContext restoreGraphicsState];
 }
 
+
 - (void)setupMouseTracking {
     self.trackingArea = [[NSTrackingArea alloc] initWithRect:NSZeroRect
                                                      options:(NSTrackingActiveInKeyWindow |
@@ -371,22 +372,22 @@
     [borderPath stroke];
     
     // Calculate tick values
-    double priceRange = self.yRangeMax - self.yRangeMin;
+    double valueRange = self.yRangeMax - self.yRangeMin;
     NSInteger tickCount = 8; // Approximate number of ticks
-    double tickStep = [self calculateOptimalTickStep:priceRange targetTicks:tickCount];
+    double tickStep = [self calculateOptimalTickStep:valueRange targetTicks:tickCount];
     
     // Start from first tick above yRangeMin
     double firstTick = ceil(self.yRangeMin / tickStep) * tickStep;
     
-    // Text attributes for price labels
+    // Text attributes for labels
     NSDictionary *textAttributes = @{
         NSFontAttributeName: [NSFont systemFontOfSize:11],
         NSForegroundColorAttributeName: [NSColor secondaryLabelColor]
     };
     
     // Draw ticks and labels
-    for (double price = firstTick; price <= self.yRangeMax; price += tickStep) {
-        CGFloat yPosition = [self yCoordinateForPrice:price];
+    for (double value = firstTick; value <= self.yRangeMax; value += tickStep) {
+        CGFloat yPosition = [self yCoordinateForValue:value];
         
         // Ensure yPosition is within bounds
         if (yPosition < 0 || yPosition > self.bounds.size.height) continue;
@@ -399,15 +400,16 @@
         [tickPath lineToPoint:NSMakePoint(8, yPosition)];
         [tickPath stroke];
         
-        // Format and draw price label
-        NSString *priceText = [self formatPriceForDisplay:price];
-        NSSize textSize = [priceText sizeWithAttributes:textAttributes];
+        // Format label based on panel type
+        NSString *labelText = [self formatValueForDisplay:value];
+        NSSize textSize = [labelText sizeWithAttributes:textAttributes];
         
         // Center text vertically on tick
         NSPoint textPoint = NSMakePoint(12, yPosition - textSize.height/2);
-        [priceText drawAtPoint:textPoint withAttributes:textAttributes];
+        [labelText drawAtPoint:textPoint withAttributes:textAttributes];
     }
 }
+
 
 // 7. 🆕 Helper methods for Y-Axis
 
@@ -430,23 +432,80 @@
     }
 }
 
+- (void)calculatePanelSpecificYRange {
+    if (!self.chartData || self.chartData.count == 0) return;
+    
+    double minValue = DBL_MAX;
+    double maxValue = -DBL_MAX;
+    
+    for (NSInteger i = self.visibleStartIndex; i < self.visibleEndIndex && i < self.chartData.count; i++) {
+        HistoricalBarModel *bar = self.chartData[i];
+        
+        if ([self.panelType isEqualToString:@"security"]) {
+            // Price panel: use high/low
+            minValue = MIN(minValue, bar.low);
+            maxValue = MAX(maxValue, bar.high);
+        } else if ([self.panelType isEqualToString:@"volume"]) {
+            // Volume panel: use volume (min is always 0 for volumes)
+            minValue = 0;
+            maxValue = MAX(maxValue, bar.volume);
+        }
+        // Add other panel types here as needed
+    }
+    
+    if (maxValue > minValue) {
+        // Add 5% padding for security panels, 2% for volume panels
+        double paddingPercent = [self.panelType isEqualToString:@"security"] ? 0.05 : 0.02;
+        double range = maxValue - minValue;
+        double padding = range * paddingPercent;
+        
+        self.yRangeMin = minValue - padding;
+        self.yRangeMax = maxValue + padding;
+        
+        // Ensure volume panels start from 0
+        if ([self.panelType isEqualToString:@"volume"]) {
+            self.yRangeMin = 0;
+        }
+        
+        NSLog(@"📊 %@ panel Y-range: [%.2f - %.2f]", self.panelType, self.yRangeMin, self.yRangeMax);
+    }
+}
+
 - (void)invalidateYAxis {
     [self.yAxisLayer setNeedsDisplay];
 }
 
 
-- (NSString *)formatPriceForDisplay:(double)price {
-    // Smart formatting based on price magnitude
-    if (price >= 1000) {
-        return [NSString stringWithFormat:@"%.0f", price];
-    } else if (price >= 100) {
-        return [NSString stringWithFormat:@"%.1f", price];
-    } else if (price >= 10) {
-        return [NSString stringWithFormat:@"%.2f", price];
-    } else if (price >= 1) {
-        return [NSString stringWithFormat:@"%.3f", price];
+- (NSString *)formatValueForDisplay:(double)value {
+    if ([self.panelType isEqualToString:@"volume"]) {
+        return [self formatVolumeForDisplay:value];
     } else {
+        return [self formatPriceForDisplay:value];
+    }
+}
+
+- (NSString *)formatVolumeForDisplay:(double)volume {
+    if (volume >= 1000000000) {
+        // Billions
+        return [NSString stringWithFormat:@"%.1fB", volume / 1000000000.0];
+    } else if (volume >= 1000000) {
+        // Millions
+        return [NSString stringWithFormat:@"%.1fM", volume / 1000000.0];
+    } else if (volume >= 1000) {
+        // Thousands
+        return [NSString stringWithFormat:@"%.0fK", volume / 1000.0];
+    } else {
+        return [NSString stringWithFormat:@"%.0f", volume];
+    }
+}
+
+
+- (NSString *)formatPriceForDisplay:(double)price {
+    // Smart formatting: <$1 = 4 decimals, >=$1 = 2 decimals
+    if (price < 1.0) {
         return [NSString stringWithFormat:@"%.4f", price];
+    } else {
+        return [NSString stringWithFormat:@"%.2f", price];
     }
 }
 
@@ -658,6 +717,7 @@
 
 #pragma mark - Coordinate Conversion
 
+
 - (CGFloat)yCoordinateForPrice:(double)price {
     if (self.objectRenderer && self.objectRenderer.coordinateContext) {
         return [self.objectRenderer.coordinateContext screenYForValue:price];
@@ -667,6 +727,20 @@
     
     double normalizedPrice = (price - self.yRangeMin) / (self.yRangeMax - self.yRangeMin);
     return CHART_MARGIN_LEFT + normalizedPrice * (self.bounds.size.height - 20);
+}
+
+- (CGFloat)yCoordinateForValue:(double)value {
+    if (self.yRangeMax == self.yRangeMin) return self.bounds.size.height / 2;
+    
+    double normalizedValue = (value - self.yRangeMin) / (self.yRangeMax - self.yRangeMin);
+    return CHART_MARGIN_LEFT + normalizedValue * (self.bounds.size.height - 20);
+}
+
+- (double)valueForYCoordinate:(CGFloat)y {
+    if (self.bounds.size.height <= 20) return self.yRangeMin;
+    
+    double normalizedY = (y - CHART_MARGIN_LEFT) / (self.bounds.size.height - 20);
+    return self.yRangeMin + normalizedY * (self.yRangeMax - self.yRangeMin);
 }
 
 - (double)priceForYCoordinate:(CGFloat)y {

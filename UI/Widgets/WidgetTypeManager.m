@@ -2,7 +2,7 @@
 //  WidgetTypeManager.m
 //  TradingApp
 //
-
+#import "APIPlaygroundWidget.h"
 #import "WidgetTypeManager.h"
 #import "BaseWidget.h"
 #import "QuoteWidget.h"
@@ -93,7 +93,8 @@
             @"Risk Manager",
             @"Position Sizer",
             @"Market Clock",
-            @"Performance Analytics"
+            @"Performance Analytics",
+            @"API Playground"
         ]
     };
     
@@ -111,7 +112,7 @@
     typeToClass[@"Alert"] = [AlertWidget class];
     typeToClass[@"Seasonal Chart"] = [SeasonalChartWidget class];
     typeToClass[@"Tick Chart"] = [TickChartWidget class];
-
+    typeToClass[@"API Playground"] = [APIPlaygroundWidget class];
     typeToClass[@"Chart Widget"] = [ChartWidget class];
       typeToClass[@"Candlestick Chart"] = [ChartWidget class];
       typeToClass[@"Line Chart"] = [ChartWidget class];
@@ -143,13 +144,13 @@
         @"Connections": @"link",
         @"SymbolDatabase":@"tray.2",
         @"Tick Chart": @"list.bullet.rectangle",
-
         @"Order Entry": @"plus.square",
         @"Order Book": @"book",
         @"Positions": @"briefcase",
         @"Open Orders": @"doc.text",
         @"Trade History": @"clock",
         @"P&L Summary": @"dollarsign.circle",
+        @"API Playground": @"briefcase",
         
         @"Technical Indicators": @"waveform.path.ecg",
         @"Scanner": @"magnifyingglass",

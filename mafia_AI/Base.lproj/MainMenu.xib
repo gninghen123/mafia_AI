@@ -608,6 +608,93 @@
                         </items>
                     </menu>
                 </menuItem>
+                <menuItem title="Tools" id="Tools-Menu-Item">
+                    <modifierMask key="keyEquivalentModifierMask"/>
+                    <menu key="submenu" title="Tools" id="Tools-Submenu">
+                        <items>
+                            <menuItem title="Chart Widget" keyEquivalent="1" id="Open-Chart-Widget">
+                                <modifierMask key="keyEquivalentModifierMask" control="YES" command="YES"/>
+                                <connections>
+                                    <action selector="openFloatingWidget:" target="Voe-Tx-rLC" id="Chart-Widget-Action"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="MultiChart Widget" keyEquivalent="2" id="Open-MultiChart-Widget">
+                                <modifierMask key="keyEquivalentModifierMask" control="YES" command="YES"/>
+                                <connections>
+                                    <action selector="openFloatingWidget:" target="Voe-Tx-rLC" id="MultiChart-Widget-Action"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Alerts" keyEquivalent="3" id="Open-Alert-Widget">
+                                <modifierMask key="keyEquivalentModifierMask" control="YES" command="YES"/>
+                                <connections>
+                                    <action selector="openFloatingWidget:" target="Voe-Tx-rLC" id="Alert-Widget-Action"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Watchlist" keyEquivalent="4" id="Open-Watchlist-Widget">
+                                <modifierMask key="keyEquivalentModifierMask" control="YES" command="YES"/>
+                                <connections>
+                                    <action selector="openFloatingWidget:" target="Voe-Tx-rLC" id="Watchlist-Widget-Action"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Connections" keyEquivalent="5" id="Open-Connections-Widget">
+                                <modifierMask key="keyEquivalentModifierMask" control="YES" command="YES"/>
+                                <connections>
+                                    <action selector="openFloatingWidget:" target="Voe-Tx-rLC" id="Connections-Widget-Action"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="SymbolDatabase" keyEquivalent="6" id="Open-SymbolDatabase-Widget">
+                                <modifierMask key="keyEquivalentModifierMask" control="YES" command="YES"/>
+                                <connections>
+                                    <action selector="openFloatingWidget:" target="Voe-Tx-rLC" id="SymbolDatabase-Widget-Action"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Seasonal Chart" keyEquivalent="7" id="Open-SeasonalChart-Widget">
+                                <modifierMask key="keyEquivalentModifierMask" control="YES" command="YES"/>
+                                <connections>
+                                    <action selector="openFloatingWidget:" target="Voe-Tx-rLC" id="SeasonalChart-Widget-Action"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Tick Chart" keyEquivalent="8" id="Open-TickChart-Widget">
+                                <modifierMask key="keyEquivalentModifierMask" control="YES" command="YES"/>
+                                <connections>
+                                    <action selector="openFloatingWidget:" target="Voe-Tx-rLC" id="TickChart-Widget-Action"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem isSeparatorItem="YES" id="Tools-Separator-1"/>
+                            <menuItem title="Quote" keyEquivalent="q" id="Open-Quote-Widget">
+                                <modifierMask key="keyEquivalentModifierMask" control="YES" option="YES"/>
+                                <connections>
+                                    <action selector="openFloatingWidget:" target="Voe-Tx-rLC" id="Quote-Widget-Action"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Connection Status" keyEquivalent="s" id="Open-ConnectionStatus-Widget">
+                                <modifierMask key="keyEquivalentModifierMask" control="YES" option="YES"/>
+                                <connections>
+                                    <action selector="openFloatingWidget:" target="Voe-Tx-rLC" id="ConnectionStatus-Widget-Action"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="API Playground" keyEquivalent="p" id="Open-APIPlayground-Widget">
+                                <modifierMask key="keyEquivalentModifierMask" control="YES" option="YES"/>
+                                <connections>
+                                    <action selector="openFloatingWidget:" target="Voe-Tx-rLC" id="APIPlayground-Widget-Action"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem isSeparatorItem="YES" id="Tools-Separator-2"/>
+                            <menuItem title="Arrange Floating Windows" id="Arrange-Windows">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="arrangeFloatingWindows:" target="Voe-Tx-rLC" id="Arrange-Action"/>
+                                </connections>
+                            </menuItem>
+                            <menuItem title="Close All Floating Windows" id="Close-All-Windows">
+                                <modifierMask key="keyEquivalentModifierMask"/>
+                                <connections>
+                                    <action selector="closeAllFloatingWindows:" target="Voe-Tx-rLC" id="Close-All-Action"/>
+                                </connections>
+                            </menuItem>
+                        </items>
+                    </menu>
+                </menuItem>
                 <menuItem title="View" id="H8h-7b-M4v">
                     <modifierMask key="keyEquivalentModifierMask"/>
                     <menu key="submenu" title="View" id="HyV-fh-RgO">

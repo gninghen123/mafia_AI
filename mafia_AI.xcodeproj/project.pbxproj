@@ -15,6 +15,7 @@
 		954D30DD2E28531C00C7DC88 /* PROJECT_ARCHITECTURE.md in Resources */ = {isa = PBXBuildFile; fileRef = 954D30C02E28531C00C7DC88 /* PROJECT_ARCHITECTURE.md */; };
 		954D30E32E2860F100C7DC88 /* PreferencesWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */; };
 		954D30E72E28612100C7DC88 /* AppSettings.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30E62E28612100C7DC88 /* AppSettings.m */; };
+		954D388F2E50D1A6000454EF /* FloatingWidgetWindow.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D388E2E50D1A6000454EF /* FloatingWidgetWindow.m */; };
 		95519E202E4DBC95007686FA /* ChartObject+CoreDataClass.m in Sources */ = {isa = PBXBuildFile; fileRef = 95519E1D2E4DBC95007686FA /* ChartObject+CoreDataClass.m */; };
 		95519E212E4DBC95007686FA /* ChartObject+CoreDataProperties.m in Sources */ = {isa = PBXBuildFile; fileRef = 95519E1F2E4DBC95007686FA /* ChartObject+CoreDataProperties.m */; };
 		9560C4042E3BC337003FCF67 /* Watchlist+CoreDataClass.m in Sources */ = {isa = PBXBuildFile; fileRef = 9560C3EE2E3BC337003FCF67 /* Watchlist+CoreDataClass.m */; };
@@ -76,6 +77,8 @@
 		954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PreferencesWindowController.m; sourceTree = "<group>"; };
 		954D30E52E28612100C7DC88 /* AppSettings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppSettings.h; sourceTree = "<group>"; };
 		954D30E62E28612100C7DC88 /* AppSettings.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AppSettings.m; sourceTree = "<group>"; };
+		954D388D2E50D1A6000454EF /* FloatingWidgetWindow.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = FloatingWidgetWindow.h; sourceTree = "<group>"; };
+		954D388E2E50D1A6000454EF /* FloatingWidgetWindow.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = FloatingWidgetWindow.m; sourceTree = "<group>"; };
 		95519E1C2E4DBC95007686FA /* ChartObject+CoreDataClass.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "ChartObject+CoreDataClass.h"; sourceTree = "<group>"; };
 		95519E1D2E4DBC95007686FA /* ChartObject+CoreDataClass.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "ChartObject+CoreDataClass.m"; sourceTree = "<group>"; };
 		95519E1E2E4DBC95007686FA /* ChartObject+CoreDataProperties.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "ChartObject+CoreDataProperties.h"; sourceTree = "<group>"; };
@@ -194,6 +197,8 @@
 		954D2FF72E28514A00C7DC88 = {
 			isa = PBXGroup;
 			children = (
+				954D388D2E50D1A6000454EF /* FloatingWidgetWindow.h */,
+				954D388E2E50D1A6000454EF /* FloatingWidgetWindow.m */,
 				95519E1C2E4DBC95007686FA /* ChartObject+CoreDataClass.h */,
 				95519E1D2E4DBC95007686FA /* ChartObject+CoreDataClass.m */,
 				95519E1E2E4DBC95007686FA /* ChartObject+CoreDataProperties.h */,
@@ -438,6 +443,7 @@
 				95A041C92E44860C0026FB2D /* MarketQuote+CoreDataProperties.m in Sources */,
 				95A041CA2E44860C0026FB2D /* HistoricalBar+CoreDataProperties.m in Sources */,
 				95A041CB2E44860C0026FB2D /* StockConnection+CoreDataProperties.m in Sources */,
+				954D388F2E50D1A6000454EF /* FloatingWidgetWindow.m in Sources */,
 				95A041CC2E44860C0026FB2D /* Symbol+CoreDataProperties.m in Sources */,
 				95A041CD2E44860C0026FB2D /* Watchlist+CoreDataProperties.m in Sources */,
 				95A041CE2E44860C0026FB2D /* TradingModel+CoreDataProperties.m in Sources */,

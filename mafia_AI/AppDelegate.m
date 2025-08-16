@@ -6,6 +6,19 @@
 #import "OtherDataSource.h"      // NUOVO: Import per OtherDataSource
 #import "DataHub.h"
 #import "ClaudeDataSource.h"
+#import "FloatingWidgetWindow.h"
+#import "WidgetTypeManager.h"
+#import "BaseWidget.h"
+
+// Import specifici per ogni widget (solo quelli che esistono)
+#import "ChartWidget.h"
+#import "AlertWidget.h"
+#import "WatchlistWidget.h"
+#import "ConnectionsWidget.h"
+#import "SeasonalChartWidget.h"
+#import "QuoteWidget.h"
+#import "ConnectionStatusWidget.h"
+#import "APIPlaygroundWidget.h"
 
 @interface AppDelegate ()
 @property (nonatomic, strong) MainWindowController *mainWindowController;
@@ -23,7 +36,8 @@
        [DataHub shared];
 
     [self registerDataSources];
-      
+    self.floatingWindows = [[NSMutableArray alloc] init];
+        self.widgetTypeManager = [WidgetTypeManager sharedManager];
       NSLog(@"AppDelegate: Creating MainWindowController");
       self.mainWindowController = [[MainWindowController alloc] init];
       
@@ -76,10 +90,7 @@
     NSLog(@"AppDelegate: Registered all data sources (Schwab, Webull, Other, Claude)");
 }
 
-- (void)applicationWillTerminate:(NSNotification *)aNotification {
-    // Clear any restoration state
-      [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"NSQuitAlwaysKeepsWindows"];
-      [[NSUserDefaults standardUserDefaults] synchronize];}
+
 
 - (BOOL)applicationSupportsSecureRestorableState:(NSApplication *)app {
     return NO;
@@ -331,8 +342,210 @@
         completionHandler(nil, error);
     }
 }
+- (IBAction)openFloatingWidget:(id)sender {
+   // 🎯 UNICA FUNZIONE che gestisce TUTTI i widget
+   
+   NSMenuItem *menuItem = (NSMenuItem *)sender;
+   NSString *widgetTitle = menuItem.title;
+   
+   NSLog(@"🚀 AppDelegate: Opening floating widget: %@", widgetTitle);
+   
+   // Create widget using CORRECTED method
+   BaseWidget *widget = [self createWidgetOfType:widgetTitle];
+   if (!widget) {
+       NSLog(@"❌ AppDelegate: Failed to create widget of type: %@", widgetTitle);
+       return;
+   }
+   
+   // ✅ CORRETTO: Usa loadView invece di setupWidget (che non esiste)
+   [widget loadView];
+   
+   // ✅ CORRETTO: Configura il widget dopo loadView
+   if (widget.titleComboBox) {
+       widget.titleComboBox.stringValue = widgetTitle;
+   }
+   
+   // Get default size for this widget type
+   NSSize windowSize = [self defaultSizeForWidgetType:widgetTitle];
+   
+   // Create and show floating window
+   FloatingWidgetWindow *window = [self createFloatingWindowWithWidget:widget
+                                                                  title:widgetTitle
+                                                                   size:windowSize];
+   [window makeKeyAndOrderFront:self];
+   
+   NSLog(@"✅ AppDelegate: Successfully opened floating %@ widget", widgetTitle);
+}
 
+#pragma mark - Widget Creation Helper
 
+- (BaseWidget *)createWidgetOfType:(NSString *)widgetType {
+   // Use WidgetTypeManager to get the correct class
+   Class widgetClass = [self.widgetTypeManager classForWidgetType:widgetType];
+   
+   if (!widgetClass) {
+       NSLog(@"⚠️ AppDelegate: No class found for widget type: %@, using BaseWidget", widgetType);
+       widgetClass = [BaseWidget class];
+   }
+   
+   // ✅ CORRETTO: Usa il metodo di inizializzazione corretto di BaseWidget
+   BaseWidget *widget = [[widgetClass alloc] initWithType:widgetType panelType:PanelTypeCenter];
+   
+   NSLog(@"🔧 AppDelegate: Created widget: %@ -> %@", widgetType, NSStringFromClass(widgetClass));
+   
+   return widget;
+}
+
+- (NSSize)defaultSizeForWidgetType:(NSString *)widgetType {
+   // Define default sizes for different widget types
+   NSDictionary *widgetSizes = @{
+       // Chart widgets - need more space
+       @"Chart Widget": [NSValue valueWithSize:NSMakeSize(800, 600)],
+       @"MultiChart Widget": [NSValue valueWithSize:NSMakeSize(1000, 700)],
+       @"Seasonal Chart": [NSValue valueWithSize:NSMakeSize(800, 500)],
+       @"Tick Chart": [NSValue valueWithSize:NSMakeSize(700, 500)],
+       
+       // List-based widgets - vertical orientation
+       @"Watchlist": [NSValue valueWithSize:NSMakeSize(400, 600)],
+       @"Alerts": [NSValue valueWithSize:NSMakeSize(450, 500)],
+       @"SymbolDatabase": [NSValue valueWithSize:NSMakeSize(500, 650)],
+       
+       // Information widgets - compact
+       @"Quote": [NSValue valueWithSize:NSMakeSize(350, 400)],
+       @"Connection Status": [NSValue valueWithSize:NSMakeSize(300, 250)],
+       @"Connections": [NSValue valueWithSize:NSMakeSize(600, 450)],
+       
+       // Utility widgets
+       @"API Playground": [NSValue valueWithSize:NSMakeSize(700, 500)]
+   };
+   
+   NSValue *sizeValue = widgetSizes[widgetType];
+   if (sizeValue) {
+       return [sizeValue sizeValue];
+   }
+   
+   // Default size for unknown widget types
+   return NSMakeSize(500, 400);
+}
+
+#pragma mark - Window Management Actions
+
+- (IBAction)arrangeFloatingWindows:(id)sender {
+   NSLog(@"🎯 AppDelegate: Arranging floating windows");
+   
+   if (self.floatingWindows.count == 0) {
+       NSLog(@"ℹ️ AppDelegate: No floating windows to arrange");
+       return;
+   }
+   
+   // Get screen bounds
+   NSScreen *mainScreen = [NSScreen mainScreen];
+   NSRect screenFrame = mainScreen.visibleFrame;
+   
+   // Calculate grid arrangement
+   NSInteger windowCount = self.floatingWindows.count;
+   NSInteger columns = (NSInteger)ceil(sqrt(windowCount));
+   NSInteger rows = (NSInteger)ceil((double)windowCount / columns);
+   
+   CGFloat windowWidth = screenFrame.size.width / columns;
+   CGFloat windowHeight = screenFrame.size.height / rows;
+   
+   // Arrange windows in grid
+   for (NSInteger i = 0; i < windowCount; i++) {
+       FloatingWidgetWindow *window = self.floatingWindows[i];
+       
+       NSInteger row = i / columns;
+       NSInteger col = i % columns;
+       
+       NSRect newFrame = NSMakeRect(
+           screenFrame.origin.x + (col * windowWidth),
+           screenFrame.origin.y + screenFrame.size.height - ((row + 1) * windowHeight),
+           windowWidth - 10, // Small margin
+           windowHeight - 10
+       );
+       
+       [window setFrame:newFrame display:YES animate:YES];
+   }
+   
+   NSLog(@"✅ AppDelegate: Arranged %ld windows in %ldx%ld grid",
+         (long)windowCount, (long)columns, (long)rows);
+}
+
+- (IBAction)closeAllFloatingWindows:(id)sender {
+   NSLog(@"🗑️ AppDelegate: Closing all floating windows");
+   
+   // Create copy to avoid mutation during enumeration
+   NSArray *windowsCopy = [self.floatingWindows copy];
+   
+   for (FloatingWidgetWindow *window in windowsCopy) {
+       [window close];
+   }
+   
+   NSLog(@"✅ AppDelegate: Closed %ld floating windows", (long)windowsCopy.count);
+}
+
+#pragma mark - Floating Window Management
+
+- (FloatingWidgetWindow *)createFloatingWindowWithWidget:(BaseWidget *)widget
+                                                  title:(NSString *)title
+                                                   size:(NSSize)size {
+   
+   FloatingWidgetWindow *window = [[FloatingWidgetWindow alloc] initWithWidget:widget
+                                                                         title:title
+                                                                          size:size
+                                                                   appDelegate:self];
+   
+   [self registerFloatingWindow:window];
+   
+   NSLog(@"🪟 AppDelegate: Created floating window: %@", title);
+   return window;
+}
+
+- (void)registerFloatingWindow:(FloatingWidgetWindow *)window {
+   if (window && ![self.floatingWindows containsObject:window]) {
+       [self.floatingWindows addObject:window];
+       NSLog(@"📝 AppDelegate: Registered floating window (total: %ld)",
+             (long)self.floatingWindows.count);
+   }
+}
+
+- (void)unregisterFloatingWindow:(FloatingWidgetWindow *)window {
+   if (window && [self.floatingWindows containsObject:window]) {
+       [self.floatingWindows removeObject:window];
+       NSLog(@"🗑️ AppDelegate: Unregistered floating window (remaining: %ld)",
+             (long)self.floatingWindows.count);
+   }
+}
+#pragma mark - Application Delegate Extensions
+
+- (void)applicationWillTerminate:(NSNotification *)aNotification {
+    [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"NSQuitAlwaysKeepsWindows"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    
+    // Save all floating window states before terminating
+    for (FloatingWidgetWindow *window in self.floatingWindows) {
+        [window saveWindowState];
+    }
+    
+    NSLog(@"💾 AppDelegate: Saved state for %ld floating windows",
+          (long)self.floatingWindows.count);
+}
+
+#pragma mark - Menu Validation
+
+- (BOOL)validateMenuItem:(NSMenuItem *)menuItem {
+    if (menuItem.action == @selector(arrangeFloatingWindows:) ||
+        menuItem.action == @selector(closeAllFloatingWindows:)) {
+        return self.floatingWindows.count > 0;
+    }
+    
+    // Enable all widget menu items
+    if (menuItem.action == @selector(openFloatingWidget:)) {
+        return YES;
+    }
+    
+    return YES;
+}
 
 
 @end

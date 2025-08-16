@@ -19,6 +19,8 @@
 @interface ChartPanelView ()
 
 
+- (void)drawYAxisContent;
+- (double)calculateOptimalTickStep:(double)range targetTicks:(NSInteger)targetTicks;
 
 
 @property (nonatomic, assign) BOOL isInAlertDragMode;
@@ -148,12 +150,11 @@
     } else if (layer == self.chartPortionSelectionLayer) {
         [self drawChartPortionSelectionContent];
     } else if (layer == self.yAxisLayer) {
-        [self drawYAxisContent]; // 🆕 NEW
+        [self drawYAxisContent]; // 🆕 QUESTO DEVE ESSERE PRESENTE!
     }
     
     [NSGraphicsContext restoreGraphicsState];
 }
-
 
 - (void)setupMouseTracking {
     self.trackingArea = [[NSTrackingArea alloc] initWithRect:NSZeroRect
@@ -267,22 +268,235 @@
     NSBezierPath *crosshair = [NSBezierPath bezierPath];
     crosshair.lineWidth = 1.0;
     
-    // Vertical line
-    [crosshair moveToPoint:NSMakePoint(point.x, 0)];
-    [crosshair lineToPoint:NSMakePoint(point.x, self.bounds.size.height)];
+    // Vertical line (spans full height, but only in chart area)
+    CGFloat chartAreaWidth = self.bounds.size.width - Y_AXIS_WIDTH;
+    if (point.x <= chartAreaWidth) { // Solo se dentro l'area chart
+        [crosshair moveToPoint:NSMakePoint(point.x, 0)];
+        [crosshair lineToPoint:NSMakePoint(point.x, self.bounds.size.height)];
+    }
     
-    // Horizontal line
-    [crosshair moveToPoint:NSMakePoint(0, point.y)];
-    [crosshair lineToPoint:NSMakePoint(self.bounds.size.width, point.y)];
+    // 🔧 FIX: Horizontal line - FERMARSI al chart area, NON entrare nell'asse Y
+    [crosshair moveToPoint:NSMakePoint(CHART_MARGIN_LEFT, point.y)];
+    [crosshair lineToPoint:NSMakePoint(chartAreaWidth, point.y)]; // Stop at chart area edge
     
     [crosshair stroke];
     
-    // ✅ USA IL METODO ESISTENTE se presente
-    if ([self respondsToSelector:@selector(drawPriceLabelAtPoint:)]) {
-     //todo   [self drawPriceLabelAtPoint:point];
+    // 🆕 NEW: Price/Value bubble nell'asse Y
+    [self drawPriceBubbleAtCrosshair];
+    
+    // 🆕 NEW: Date/Time bubble in basso (solo se crosshair in chart area)
+    if (point.x <= chartAreaWidth) {
+        [self drawDateBubbleAtCrosshair];
     }
 }
 
+- (NSPoint)clampCrosshairToChartArea:(NSPoint)rawPoint {
+    CGFloat chartAreaWidth = self.bounds.size.width - Y_AXIS_WIDTH;
+    
+    // Clamp X to chart area (non entrare nell'asse Y)
+    CGFloat clampedX = MAX(CHART_MARGIN_LEFT, MIN(rawPoint.x, chartAreaWidth));
+    
+    // Y può essere ovunque nell'altezza
+    CGFloat clampedY = MAX(0, MIN(rawPoint.y, self.bounds.size.height));
+    
+    return NSMakePoint(clampedX, clampedY);
+}
+
+// 2. 🆕 AGGIUNGERE: Price/Value bubble nell'asse Y
+
+- (void)drawPriceBubbleAtCrosshair {
+    if (!self.crosshairVisible) return;
+    
+    // Calcola il valore alla posizione Y del crosshair
+    double currentValue = [self valueForYCoordinate:self.crosshairPoint.y];
+    NSString *valueText = [self formatValueForDisplay:currentValue];
+    
+    // Font più grande e bold per effetto magnifier
+    NSDictionary *bubbleAttributes = @{
+        NSFontAttributeName: [NSFont boldSystemFontOfSize:13], // vs 11 per asse normale
+        NSForegroundColorAttributeName: [NSColor controlBackgroundColor]
+    };
+    
+    NSSize textSize = [valueText sizeWithAttributes:bubbleAttributes];
+    
+    // Posiziona nell'area dell'asse Y (lato destro)
+    CGFloat bubbleX = self.bounds.size.width - Y_AXIS_WIDTH + 8;
+    CGFloat bubbleY = self.crosshairPoint.y - textSize.height/2;
+    
+    // Clamp alla vista per evitare che esca dai bounds
+    bubbleY = MAX(5, MIN(bubbleY, self.bounds.size.height - textSize.height - 5));
+    
+    // Bubble background con colore accent
+    NSRect bubbleRect = NSMakeRect(bubbleX - 4, bubbleY - 3,
+                                  textSize.width + 8, textSize.height + 6);
+    
+    // Colore dinamico basato sul tipo di panel
+    NSColor *bubbleColor;
+    if ([self.panelType isEqualToString:@"volume"]) {
+        bubbleColor = [NSColor systemOrangeColor]; // Volume = arancione
+    } else {
+        bubbleColor = [NSColor systemBlueColor];   // Price = blu
+    }
+    
+    [bubbleColor setFill];
+    NSBezierPath *bubblePath = [NSBezierPath bezierPathWithRoundedRect:bubbleRect
+                                                              xRadius:4 yRadius:4];
+    [bubblePath fill];
+    
+    // Border sottile per definizione
+    [[NSColor controlBackgroundColor] setStroke];
+    bubblePath.lineWidth = 1.0;
+    [bubblePath stroke];
+    
+    // Disegna il testo del valore
+    [valueText drawAtPoint:NSMakePoint(bubbleX, bubbleY) withAttributes:bubbleAttributes];
+}
+
+// 3. 🆕 AGGIUNGERE: Date/Time bubble in basso
+
+- (void)drawDateBubbleAtCrosshair {
+    if (!self.crosshairVisible || !self.chartData || self.chartData.count == 0) return;
+    
+    // 🆕 FIX: Only show if crosshair is in chart area
+    CGFloat chartAreaWidth = self.bounds.size.width - Y_AXIS_WIDTH;
+    if (self.crosshairPoint.x > chartAreaWidth) return;
+    
+    // Trova l'indice della barra sotto il crosshair
+    NSInteger barIndex = [self barIndexForXCoordinate:self.crosshairPoint.x];
+    if (barIndex < 0 || barIndex >= self.chartData.count) return;
+    
+    HistoricalBarModel *bar = self.chartData[barIndex];
+    if (!bar.date) return;
+    
+    // Formatta data/orario basandosi sul timeframe
+    NSString *dateText = [self formatDateTimeForDisplay:bar.date];
+    
+    // Font per la bubble temporale
+    NSDictionary *dateAttributes = @{
+        NSFontAttributeName: [NSFont boldSystemFontOfSize:12],
+        NSForegroundColorAttributeName: [NSColor controlBackgroundColor]
+    };
+    
+    NSSize textSize = [dateText sizeWithAttributes:dateAttributes];
+    
+    // Posiziona in basso, centrata sulla linea verticale del crosshair
+    CGFloat bubbleX = self.crosshairPoint.x - textSize.width/2;
+    CGFloat bubbleY = 8; // 8px dal bottom
+    
+    // 🆕 FIX: Clamp orizzontalmente DENTRO l'area chart (non nell'asse Y)
+    CGFloat maxX = chartAreaWidth - textSize.width - 8;
+    bubbleX = MAX(CHART_MARGIN_LEFT + 8, MIN(bubbleX, maxX));
+    
+    // Bubble background
+    NSRect bubbleRect = NSMakeRect(bubbleX - 6, bubbleY - 3,
+                                  textSize.width + 12, textSize.height + 6);
+    
+    // Colore distintivo per il tempo
+    [[NSColor systemGreenColor] setFill];
+    NSBezierPath *bubblePath = [NSBezierPath bezierPathWithRoundedRect:bubbleRect
+                                                              xRadius:4 yRadius:4];
+    [bubblePath fill];
+    
+    // Border
+    [[NSColor controlBackgroundColor] setStroke];
+    bubblePath.lineWidth = 1.0;
+    [bubblePath stroke];
+    
+    // Disegna il testo della data/ora
+    [dateText drawAtPoint:NSMakePoint(bubbleX, bubbleY) withAttributes:dateAttributes];
+}
+
+
+// 4. 🆕 AGGIUNGERE: Helper per formattare date/time
+
+- (NSString *)formatDateTimeForDisplay:(NSDate *)timestamp {
+    if (!timestamp) return @"--";
+    
+    // Ottieni il timeframe corrente dal ChartWidget
+    NSInteger timeframeMinutes = 0;
+    if (self.chartWidget && [self.chartWidget respondsToSelector:@selector(getCurrentTimeframeInMinutes)]) {
+        timeframeMinutes = [self.chartWidget getCurrentTimeframeInMinutes];
+    }
+    
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    
+    // Formatazione intelligente basata sul timeframe
+    if (timeframeMinutes <= 0) {
+        // Timeframe sconosciuto - mostra data e ora complete
+        formatter.dateFormat = @"MMM dd HH:mm";
+    } else if (timeframeMinutes < 60) {
+        // Intraday (< 1 ora): mostra data e ora
+        formatter.dateFormat = @"MMM dd HH:mm";
+    } else if (timeframeMinutes < 1440) {
+        // Intraday (>= 1 ora, < 1 giorno): mostra data e ora
+        formatter.dateFormat = @"MMM dd HH:mm";
+    } else if (timeframeMinutes == 1440) {
+        // Daily: mostra solo data
+        formatter.dateFormat = @"MMM dd, yyyy";
+    } else if (timeframeMinutes == 10080) {
+        // Weekly: mostra settimana
+        formatter.dateFormat = @"'Week of' MMM dd";
+    } else {
+        // Monthly o superiore: mostra mese/anno
+        formatter.dateFormat = @"MMM yyyy";
+    }
+    
+    return [formatter stringFromDate:timestamp];
+}
+
+
+- (void)drawYAxisContent {
+    if (self.yRangeMax == self.yRangeMin) return;
+    
+    // Y-Axis background
+    [[NSColor controlBackgroundColor] setFill];
+    NSRect axisBounds = NSMakeRect(0, 0, Y_AXIS_WIDTH, self.bounds.size.height);
+    [[NSBezierPath bezierPathWithRect:axisBounds] fill];
+    
+    // Y-Axis border (left edge)
+    [[NSColor separatorColor] setStroke];
+    NSBezierPath *borderPath = [NSBezierPath bezierPath];
+    borderPath.lineWidth = 1.0;
+    [borderPath moveToPoint:NSMakePoint(0, 0)];
+    [borderPath lineToPoint:NSMakePoint(0, self.bounds.size.height)];
+    [borderPath stroke];
+    
+    // Calculate tick values
+    double valueRange = self.yRangeMax - self.yRangeMin;
+    NSInteger tickCount = 8;
+    double tickStep = [self calculateOptimalTickStep:valueRange targetTicks:tickCount];
+    
+    // Start from first tick above yRangeMin
+    double firstTick = ceil(self.yRangeMin / tickStep) * tickStep;
+    
+    // Text attributes for labels
+    NSDictionary *textAttributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:11],
+        NSForegroundColorAttributeName: [NSColor secondaryLabelColor]
+    };
+    
+    // Draw ticks and labels
+    for (double value = firstTick; value <= self.yRangeMax; value += tickStep) {
+        CGFloat yPosition = [self yCoordinateForValue:value];
+        
+        if (yPosition < 0 || yPosition > self.bounds.size.height) continue;
+        
+        // Draw tick mark
+        [[NSColor tertiaryLabelColor] setStroke];
+        NSBezierPath *tickPath = [NSBezierPath bezierPath];
+        tickPath.lineWidth = 1.0;
+        [tickPath moveToPoint:NSMakePoint(0, yPosition)];
+        [tickPath lineToPoint:NSMakePoint(8, yPosition)];
+        [tickPath stroke];
+        
+        // Format label based on panel type
+        NSString *labelText = [self formatValueForDisplay:value];
+        NSSize textSize = [labelText sizeWithAttributes:textAttributes];
+        
+        NSPoint textPoint = NSMakePoint(12, yPosition - textSize.height/2);
+        [labelText drawAtPoint:textPoint withAttributes:textAttributes];
+    }
+}
 
 - (void)drawChartPortionSelectionContent {
     if (!self.isInChartPortionSelectionMode) return;
@@ -355,60 +569,6 @@
 
 // 6. 🆕 NEW method: Y-Axis rendering
 
-- (void)drawYAxisContent {
-    if (self.yRangeMax == self.yRangeMin) return;
-    
-    // Y-Axis background
-    [[NSColor controlBackgroundColor] setFill];
-    NSRect axisBounds = NSMakeRect(0, 0, Y_AXIS_WIDTH, self.bounds.size.height);
-    [[NSBezierPath bezierPathWithRect:axisBounds] fill];
-    
-    // Y-Axis border (left edge)
-    [[NSColor separatorColor] setStroke];
-    NSBezierPath *borderPath = [NSBezierPath bezierPath];
-    borderPath.lineWidth = 1.0;
-    [borderPath moveToPoint:NSMakePoint(0, 0)];
-    [borderPath lineToPoint:NSMakePoint(0, self.bounds.size.height)];
-    [borderPath stroke];
-    
-    // Calculate tick values
-    double valueRange = self.yRangeMax - self.yRangeMin;
-    NSInteger tickCount = 8; // Approximate number of ticks
-    double tickStep = [self calculateOptimalTickStep:valueRange targetTicks:tickCount];
-    
-    // Start from first tick above yRangeMin
-    double firstTick = ceil(self.yRangeMin / tickStep) * tickStep;
-    
-    // Text attributes for labels
-    NSDictionary *textAttributes = @{
-        NSFontAttributeName: [NSFont systemFontOfSize:11],
-        NSForegroundColorAttributeName: [NSColor secondaryLabelColor]
-    };
-    
-    // Draw ticks and labels
-    for (double value = firstTick; value <= self.yRangeMax; value += tickStep) {
-        CGFloat yPosition = [self yCoordinateForValue:value];
-        
-        // Ensure yPosition is within bounds
-        if (yPosition < 0 || yPosition > self.bounds.size.height) continue;
-        
-        // Draw tick mark
-        [[NSColor tertiaryLabelColor] setStroke];
-        NSBezierPath *tickPath = [NSBezierPath bezierPath];
-        tickPath.lineWidth = 1.0;
-        [tickPath moveToPoint:NSMakePoint(0, yPosition)];
-        [tickPath lineToPoint:NSMakePoint(8, yPosition)];
-        [tickPath stroke];
-        
-        // Format label based on panel type
-        NSString *labelText = [self formatValueForDisplay:value];
-        NSSize textSize = [labelText sizeWithAttributes:textAttributes];
-        
-        // Center text vertically on tick
-        NSPoint textPoint = NSMakePoint(12, yPosition - textSize.height/2);
-        [labelText drawAtPoint:textPoint withAttributes:textAttributes];
-    }
-}
 
 
 // 7. 🆕 Helper methods for Y-Axis
@@ -524,7 +684,10 @@
     if (maxVolume == 0) return;
     
     NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
-    CGFloat barWidth = (self.bounds.size.width - 20) / visibleBars;
+    
+    // 🆕 FIX: Use chart area width (excluding Y-axis)
+    CGFloat chartAreaWidth = self.bounds.size.width - Y_AXIS_WIDTH - (2 * CHART_MARGIN_LEFT);
+    CGFloat barWidth = chartAreaWidth / visibleBars;
     CGFloat barSpacing = MAX(1, barWidth * 0.1);
     barWidth = barWidth - barSpacing;
     
@@ -533,19 +696,24 @@
     for (NSInteger i = self.visibleStartIndex; i < self.visibleEndIndex && i < self.chartData.count; i++) {
         HistoricalBarModel *bar = self.chartData[i];
         
-        CGFloat x = 10 + (i - self.visibleStartIndex) * (barWidth + barSpacing);
+        // 🆕 FIX: Use CHART_MARGIN_LEFT instead of hardcoded 10
+        CGFloat x = CHART_MARGIN_LEFT + (i - self.visibleStartIndex) * (barWidth + barSpacing);
         CGFloat height = (bar.volume / maxVolume) * chartHeight;
         CGFloat y = 10; // Start from bottom margin
         
         // Color based on price direction
-        NSColor *barColor = (bar.close >= bar.open) ? [NSColor systemGreenColor] : [NSColor systemRedColor];
+        NSColor *barColor = (bar.close >= bar.open) ?
+                            [NSColor systemGreenColor] : [NSColor systemRedColor];
         
         NSRect volumeRect = NSMakeRect(x, y, barWidth, height);
         [barColor setFill];
         NSBezierPath *volumePath = [NSBezierPath bezierPathWithRect:volumeRect];
         [volumePath fill];
     }
+    
+    NSLog(@"📊 Volume histogram drawn with chartAreaWidth: %.1f", chartAreaWidth);
 }
+
 
 - (void)drawChartPortionSelection {
     if (labs(self.selectionStartIndex-self.selectionEndIndex)==0) return;
@@ -783,61 +951,65 @@
 
 - (void)mouseMoved:(NSEvent *)event {
     NSPoint locationInView = [self convertPoint:event.locationInWindow fromView:nil];
-    self.crosshairPoint = locationInView;
+    
+    // 🆕 FIX: Clamp crosshair position to chart area
+    NSPoint clampedPoint = [self clampCrosshairToChartArea:locationInView];
+    self.crosshairPoint = clampedPoint;
+    
     [self.crosshairLayer setNeedsDisplay];
     
     // PRIORITA' 1: Se abbiamo currentCPSelected, aggiorna sempre le coordinate
     if (self.objectRenderer && self.objectRenderer.currentCPSelected) {
-        [self.objectRenderer updateCurrentCPCoordinates:locationInView];
-        
-     
+        [self.objectRenderer updateCurrentCPCoordinates:clampedPoint]; // Use clamped
         return;
     }
     
     // Update crosshair during object editing
     if (self.objectRenderer && self.objectRenderer.editingObject) {
-        [self.objectRenderer updateEditingHoverAtPoint:locationInView];
+        [self.objectRenderer updateEditingHoverAtPoint:clampedPoint]; // Use clamped
         
-        // Sync crosshair anche durante editing
+        // Sync crosshair anche durante editing (sync X, keep individual Y)
         for (ChartPanelView *panel in self.chartWidget.chartPanels) {
             if (panel != self) {
-                [panel setCrosshairPoint:NSMakePoint(locationInView.x, panel.crosshairPoint.y) visible:YES];
+                NSPoint syncPoint = NSMakePoint(clampedPoint.x, panel.crosshairPoint.y);
+                [panel setCrosshairPoint:syncPoint visible:YES];
             }
         }
         return;
     }
     
-    // Normal crosshair sync
+    // Normal crosshair sync (sync X across panels, keep individual Y)
     for (ChartPanelView *panel in self.chartWidget.chartPanels) {
         if (panel != self) {
-            [panel setCrosshairPoint:NSMakePoint(locationInView.x, panel.crosshairPoint.y) visible:YES];
+            NSPoint syncPoint = NSMakePoint(clampedPoint.x, panel.crosshairPoint.y);
+            [panel setCrosshairPoint:syncPoint visible:YES];
         }
     }
 }
+
 
 
 - (void)mouseDown:(NSEvent *)event {
     if (self.objectRenderer.currentCPSelected) {
         return;
     }
+    
     NSPoint locationInView = [self convertPoint:event.locationInWindow fromView:nil];
-    self.dragStartPoint = locationInView;
+    NSPoint clampedPoint = [self clampCrosshairToChartArea:locationInView]; // 🆕 FIX
+    
+    self.dragStartPoint = clampedPoint; // Use clamped
     self.isDragging = NO;
-  
     
-    //alert
-    
+    // Alert hit testing
     if (self.alertRenderer) {
-           AlertModel *hitAlert = [self.alertRenderer alertAtScreenPoint:locationInView tolerance:12.0];
-           if (hitAlert) {
-               [self.alertRenderer startDraggingAlert:hitAlert atPoint:locationInView];
-               self.isInAlertDragMode = YES;
-               NSLog(@"🚨 Started dragging alert %@ %.2f", hitAlert.symbol, hitAlert.triggerValue);
-               return; // Don't handle other interactions during alert drag
-           }
-       }
-    
-    //
+        AlertModel *hitAlert = [self.alertRenderer alertAtScreenPoint:clampedPoint tolerance:12.0];
+        if (hitAlert) {
+            [self.alertRenderer startDraggingAlert:hitAlert atPoint:clampedPoint];
+            self.isInAlertDragMode = YES;
+            NSLog(@"🚨 Started dragging alert %@ %.2f", hitAlert.symbol, hitAlert.triggerValue);
+            return;
+        }
+    }
     
     // NEW LOGIC: Check if ObjectsPanel has active object type
     ChartObjectType activeType = -1;

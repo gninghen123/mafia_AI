@@ -716,25 +716,59 @@
 
 
 - (void)drawChartPortionSelection {
-    if (labs(self.selectionStartIndex-self.selectionEndIndex)==0) return;
+    if (labs(self.selectionStartIndex - self.selectionEndIndex) == 0) return;
     
     NSInteger startIdx = MIN(self.selectionStartIndex, self.selectionEndIndex);
     NSInteger endIdx = MAX(self.selectionStartIndex, self.selectionEndIndex);
     
     NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
-    CGFloat barWidth = (self.bounds.size.width - 20) / visibleBars;
+    CGFloat chartAreaWidth = self.bounds.size.width - Y_AXIS_WIDTH - (2 * CHART_MARGIN_LEFT);
+    CGFloat barWidth = chartAreaWidth / visibleBars;
+
+    CGFloat startX = CHART_MARGIN_LEFT + (startIdx - self.visibleStartIndex) * barWidth;
+    CGFloat endX = CHART_MARGIN_LEFT + (endIdx - self.visibleStartIndex) * barWidth;
     
-    CGFloat startX = 10 + (startIdx - self.visibleStartIndex) * barWidth;
-    CGFloat endX = 10 + (endIdx - self.visibleStartIndex) * barWidth;
+    // ✅ NUOVO: Calcola variazioni per determinare i colori
+    if (!self.chartData || startIdx >= self.chartData.count || endIdx >= self.chartData.count) return;
     
-    // Draw selection background
+    HistoricalBarModel *startBar = self.chartData[startIdx];
+    HistoricalBarModel *endBar = self.chartData[endIdx];
+    double startValue = startBar.close;
+    double endValue = endBar.close;
+    double priceVariationPercent = ((endValue - startValue) / startValue) * 100.0;
+    
+    // Trova max e min nella selezione
+    double maxValue = -DBL_MAX;
+    double minValue = DBL_MAX;
+    for (NSInteger i = startIdx; i <= endIdx && i < self.chartData.count; i++) {
+        HistoricalBarModel *bar = self.chartData[i];
+        maxValue = MAX(maxValue, bar.high);
+        minValue = MIN(minValue, bar.low);
+    }
+    
+    // Coordinate Y per max e min
+    CGFloat maxY = [self yCoordinateForPrice:maxValue];
+    CGFloat minY = [self yCoordinateForPrice:minValue];
+    
+    // Variazione mouse drag
+    double dragStartPrice = [self priceForYCoordinate:self.dragStartPoint.y];
+    double dragEndPrice = [self priceForYCoordinate:self.crosshairPoint.y];
+    double dragVariationPercent = ((dragEndPrice - dragStartPrice) / dragStartPrice) * 100.0;
+    
+    // ✅ NUOVO: Colori basati sulla variazione prezzo
+    NSColor *selectionColor = (priceVariationPercent >= 0) ?
+                              [NSColor systemGreenColor] : [NSColor systemRedColor];
+    NSColor *dragColor = (dragVariationPercent >= 0) ?
+                         [NSColor systemGreenColor] : [NSColor systemRedColor];
+    
+    // ✅ NUOVO: Draw selection background con colore dinamico
     NSRect selectionRect = NSMakeRect(startX, 0, endX - startX, self.bounds.size.height);
-    [[[NSColor selectedControlColor] colorWithAlphaComponent:0.3] setFill];
+    [[selectionColor colorWithAlphaComponent:0.15] setFill]; // Più trasparente per essere meno invasivo
     NSBezierPath *selectionPath = [NSBezierPath bezierPathWithRect:selectionRect];
     [selectionPath fill];
     
-    // Draw selection borders
-    [[NSColor selectedControlColor] setStroke];
+    // ✅ NUOVO: Draw selection borders con colore dinamico
+    [selectionColor setStroke];
     NSBezierPath *startLine = [NSBezierPath bezierPath];
     [startLine moveToPoint:NSMakePoint(startX, 0)];
     [startLine lineToPoint:NSMakePoint(startX, self.bounds.size.height)];
@@ -747,11 +781,112 @@
     endLine.lineWidth = 2.0;
     [endLine stroke];
     
+    // ✅ NUOVO: Linee orizzontali per MAX e MIN
+    [[NSColor systemOrangeColor] setStroke];
+    
+    // Linea MAX
+    NSBezierPath *maxLine = [NSBezierPath bezierPath];
+    [maxLine moveToPoint:NSMakePoint(startX, maxY)];
+    [maxLine lineToPoint:NSMakePoint(endX, maxY)];
+    maxLine.lineWidth = 1.5;
+    [maxLine setLineDash:(CGFloat[]){4.0, 2.0} count:2 phase:0]; // Linea tratteggiata
+    [maxLine stroke];
+    
+    // Linea MIN
+    NSBezierPath *minLine = [NSBezierPath bezierPath];
+    [minLine moveToPoint:NSMakePoint(startX, minY)];
+    [minLine lineToPoint:NSMakePoint(endX, minY)];
+    minLine.lineWidth = 1.5;
+    [minLine setLineDash:(CGFloat[]){4.0, 2.0} count:2 phase:0]; // Linea tratteggiata
+    [minLine stroke];
+    
+    // ✅ NUOVO: Connection line con colore del drag
+    NSBezierPath *connectionLine = [NSBezierPath bezierPath];
+    [connectionLine moveToPoint:NSMakePoint(startX, self.dragStartPoint.y)];
+    [connectionLine lineToPoint:NSMakePoint(endX, self.crosshairPoint.y)];
+    connectionLine.lineWidth = 2.0;
+    [dragColor setStroke];
+    [connectionLine stroke];
+    
+    // ✅ NUOVO: Label variazione prezzo - DENTRO la selezione con bubble
+    NSString *priceVariationText = [NSString stringWithFormat:@"%+.2f%%", priceVariationPercent];
+    NSDictionary *priceTextAttributes = @{
+        NSFontAttributeName: [NSFont boldSystemFontOfSize:12],
+        NSForegroundColorAttributeName: [NSColor whiteColor] // Testo bianco per contrasto
+    };
+    
+    NSSize priceTextSize = [priceVariationText sizeWithAttributes:priceTextAttributes];
+    CGFloat priceTextY = (self.bounds.size.height / 2) - (priceTextSize.height / 2);
+    CGFloat priceTextX = startX + 15; // Dentro la selezione, a destra della barra sinistra
+    NSPoint priceTextPoint = NSMakePoint(priceTextX, priceTextY);
+    
+    // ✅ BUBBLE per il testo della variazione prezzo
+    NSRect priceBubbleRect = NSMakeRect(priceTextPoint.x - 8, priceTextPoint.y - 4,
+                                       priceTextSize.width + 16, priceTextSize.height + 8);
+    
+    // Background bubble con colore della selezione
+    [selectionColor setFill];
+    NSBezierPath *priceBubble = [NSBezierPath bezierPathWithRoundedRect:priceBubbleRect xRadius:8 yRadius:8];
+    [priceBubble fill];
+    
+    // Bordo bianco per la bubble
+    [[NSColor whiteColor] setStroke];
+    priceBubble.lineWidth = 1.0;
+    [priceBubble stroke];
+    
+    [priceVariationText drawAtPoint:priceTextPoint withAttributes:priceTextAttributes];
+    
+    // ✅ NUOVO: Label variazione drag - DENTRO la selezione con bubble
+    NSString *dragVariationText = [NSString stringWithFormat:@"%+.2f%%", dragVariationPercent];
+    NSDictionary *dragTextAttributes = @{
+        NSFontAttributeName: [NSFont boldSystemFontOfSize:12],
+        NSForegroundColorAttributeName: [NSColor whiteColor] // Testo bianco per contrasto
+    };
+    
+    NSSize dragTextSize = [dragVariationText sizeWithAttributes:dragTextAttributes];
+    
+    // Posiziona DENTRO la selezione, vicino al crosshair ma spostato verso l'interno
+    CGFloat dragTextX = self.crosshairPoint.x;
+    CGFloat dragTextY = self.crosshairPoint.y - dragTextSize.height - 15; // Sopra il crosshair
+    
+    // Assicurati che sia dentro la selezione
+    if (dragTextX < startX + 10) {
+        dragTextX = startX + 10;
+    } else if (dragTextX + dragTextSize.width + 16 > endX - 10) { // +16 per la bubble padding
+        dragTextX = endX - dragTextSize.width - 26; // -26 per bubble padding
+    }
+    
+    // Controlla limiti verticali
+    if (dragTextY < 10) {
+        dragTextY = self.crosshairPoint.y + 15; // Metti sotto il crosshair
+    }
+    
+    NSPoint dragTextPoint = NSMakePoint(dragTextX, dragTextY);
+    
+    // ✅ BUBBLE per il testo della variazione drag
+    NSRect dragBubbleRect = NSMakeRect(dragTextPoint.x - 8, dragTextPoint.y - 4,
+                                      dragTextSize.width + 16, dragTextSize.height + 8);
+    
+    // Background bubble con colore del drag
+    [dragColor setFill];
+    NSBezierPath *dragBubble = [NSBezierPath bezierPathWithRoundedRect:dragBubbleRect xRadius:8 yRadius:8];
+    [dragBubble fill];
+    
+    // Bordo bianco per la bubble
+    [[NSColor whiteColor] setStroke];
+    dragBubble.lineWidth = 1.0;
+    [dragBubble stroke];
+    
+    [dragVariationText drawAtPoint:dragTextPoint withAttributes:dragTextAttributes];
+    
     // Draw info box (only for security panel)
     if ([self.panelType isEqualToString:@"security"]) {
         [self drawChartPortionSelectionInfoBox:startIdx endIdx:endIdx];
     }
 }
+
+// Enhanced drawChartPortionSelectionInfoBox with mouse drag variation % and styling
+// Sostituisci il metodo esistente in ChartPanelView.m
 
 - (void)drawChartPortionSelectionInfoBox:(NSInteger)startIdx endIdx:(NSInteger)endIdx {
     if (!self.chartData || startIdx >= self.chartData.count || endIdx >= self.chartData.count) return;
@@ -773,11 +908,15 @@
         minValue = MIN(minValue, bar.low);
     }
     
-    // Calculate percentages
+    // ✅ NUOVO: Calculate mouse drag variation %
+    // Trova i prezzi ai punti di mouse start e end
+    double dragStartPrice = [self priceForYCoordinate:self.dragStartPoint.y];
+    double dragEndPrice = [self priceForYCoordinate:self.crosshairPoint.y];
+    double dragVariationPercent = ((dragEndPrice - dragStartPrice) / dragStartPrice) * 100.0;
+    
+    // Calculate other percentages
     double varPercentStartEnd = ((endValue - startValue) / startValue) * 100.0;
     double varPercentMaxMin = ((maxValue - minValue) / minValue) * 100.0;
-    double varPercentMaxMinPerBar = varPercentMaxMin / barCount;
-    double varPercentStartEndPerBar = varPercentStartEnd / barCount;
     
     // Format dates
     NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
@@ -787,74 +926,149 @@
     NSString *startDate = [dateFormatter stringFromDate:startBar.date];
     NSString *endDate = [dateFormatter stringFromDate:endBar.date];
     
-    // Create info text
+    // ✅ NUOVO: Create styled info text with enhanced formatting
     NSArray *infoLines = @[
+        [NSString stringWithFormat:@"📊 SELECTION STATS"],
+        @"",
         [NSString stringWithFormat:@"Start: %@ (%.2f)", startDate, startValue],
         [NSString stringWithFormat:@"End: %@ (%.2f)", endDate, endValue],
-        [NSString stringWithFormat:@"Max: %.2f", maxValue],
-        [NSString stringWithFormat:@"Min: %.2f", minValue],
-        [NSString stringWithFormat:@"Bars: %ld", (long)barCount],
+        [NSString stringWithFormat:@"Max: %.2f  •  Min: %.2f", maxValue, minValue],
         @"",
-        [NSString stringWithFormat:@"Var%% Start→End: %+.2f%%", varPercentStartEnd],
-        [NSString stringWithFormat:@"Var%% Max→Min: %.2f%%", varPercentMaxMin],
-        [NSString stringWithFormat:@"Var%% Max-Min/Bar: %.3f%%", varPercentMaxMinPerBar],
-        [NSString stringWithFormat:@"Var%% Start-End/Bar: %+.3f%%", varPercentStartEndPerBar]
+        [NSString stringWithFormat:@"📏 Bars: %ld", (long)barCount],
+        @"",
+        [NSString stringWithFormat:@"🎯 Mouse Drag: %+.2f%%", dragVariationPercent],
+        [NSString stringWithFormat:@"📈 Price Change: %+.2f%%", varPercentStartEnd],
+        [NSString stringWithFormat:@"📊 Range: %.2f%%", varPercentMaxMin]
     ];
     
-    // Calculate box size
-    NSDictionary *textAttributes = @{
-        NSFontAttributeName: [NSFont systemFontOfSize:11],
-        NSForegroundColorAttributeName: [NSColor controlTextColor]
+    // ✅ NUOVO: Enhanced text attributes with different styles
+    NSDictionary *headerAttributes = @{
+        NSFontAttributeName: [NSFont boldSystemFontOfSize:11],
+        NSForegroundColorAttributeName: [NSColor labelColor]
     };
     
+    NSDictionary *normalAttributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:11],
+        NSForegroundColorAttributeName: [NSColor secondaryLabelColor]
+    };
+    
+    NSDictionary *boldAttributes = @{
+        NSFontAttributeName: [NSFont boldSystemFontOfSize:11],
+        NSForegroundColorAttributeName: [NSColor labelColor]
+    };
+    
+    // ✅ NUOVO: Color attributes for positive/negative values
+    NSColor *positiveColor = [NSColor systemGreenColor];
+    NSColor *negativeColor = [NSColor systemRedColor];
+    NSColor *neutralColor = [NSColor labelColor];
+    
+    NSDictionary *positiveAttributes = @{
+        NSFontAttributeName: [NSFont boldSystemFontOfSize:11],
+        NSForegroundColorAttributeName: positiveColor
+    };
+    
+    NSDictionary *negativeAttributes = @{
+        NSFontAttributeName: [NSFont boldSystemFontOfSize:11],
+        NSForegroundColorAttributeName: negativeColor
+    };
+    
+    // Calculate box size
     CGFloat maxWidth = 0;
     CGFloat totalHeight = 0;
-    CGFloat lineHeight = 14;
+    CGFloat lineHeight = 16; // Increased for better readability
     
     for (NSString *line in infoLines) {
         if (line.length > 0) {
-            NSSize lineSize = [line sizeWithAttributes:textAttributes];
+            NSSize lineSize = [line sizeWithAttributes:normalAttributes];
             maxWidth = MAX(maxWidth, lineSize.width);
         }
         totalHeight += lineHeight;
     }
     
-    // Position info box near crosshair, but keep it visible
-    CGFloat boxWidth = maxWidth + 16;
-    CGFloat boxHeight = totalHeight + 10;
-    CGFloat boxX = self.crosshairPoint.x + 10;
-    CGFloat boxY = self.crosshairPoint.y - boxHeight/2;
+    // Box dimensions with padding
+    CGFloat padding = 12;
+    CGFloat boxWidth = maxWidth + (padding * 2);
+    CGFloat boxHeight = totalHeight + (padding * 2);
     
-    // Keep box within bounds
-    if (boxX + boxWidth > self.bounds.size.width - 10) {
-        boxX = self.crosshairPoint.x - boxWidth - 10;
-    }
-    if (boxY < 10) boxY = 10;
-    if (boxY + boxHeight > self.bounds.size.height - 10) {
-        boxY = self.bounds.size.height - boxHeight - 10;
-    }
+    // ✅ NUOVO: Position box intelligently (avoid chart edges)
+    CGFloat chartAreaWidth = self.bounds.size.width - Y_AXIS_WIDTH;
+    CGFloat boxX = 20; // Fixed left position
+    CGFloat boxY = self.bounds.size.height - boxHeight - 20; // Fixed top position
+    
+   
     
     NSRect boxRect = NSMakeRect(boxX, boxY, boxWidth, boxHeight);
     
-    // Draw box background
-    [[[NSColor controlBackgroundColor] colorWithAlphaComponent:0.95] setFill];
-    NSBezierPath *boxPath = [NSBezierPath bezierPathWithRoundedRect:boxRect xRadius:6 yRadius:6];
-    [boxPath fill];
+    // ✅ NUOVO: Enhanced box background with shadow effect
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    CGContextSaveGState(ctx);
     
-    // Draw box border
+    // Shadow
+    CGContextSetShadowWithColor(ctx, CGSizeMake(2, -2), 4,
+                               [[NSColor blackColor] colorWithAlphaComponent:0.3].CGColor);
+    
+    // Background with rounded corners
+    NSBezierPath *backgroundPath = [NSBezierPath bezierPathWithRoundedRect:boxRect
+                                                                   xRadius:8
+                                                                   yRadius:8];
+    [[NSColor controlBackgroundColor] setFill];
+    [backgroundPath fill];
+    
+    // Border
     [[NSColor separatorColor] setStroke];
-    boxPath.lineWidth = 1.0;
-    [boxPath stroke];
+    backgroundPath.lineWidth = 1.0;
+    [backgroundPath stroke];
     
-    // Draw text lines
-    CGFloat textY = boxY + boxHeight - 15;
-    for (NSString *line in infoLines) {
-        if (line.length > 0) {
-            NSPoint textPoint = NSMakePoint(boxX + 8, textY);
-            [line drawAtPoint:textPoint withAttributes:textAttributes];
+    CGContextRestoreGState(ctx);
+    
+    // ✅ NUOVO: Draw enhanced text with smart styling
+    CGFloat yPosition = boxY + boxHeight - padding - 12;
+    
+    for (NSInteger i = 0; i < infoLines.count; i++) {
+        NSString *line = infoLines[i];
+        
+        if (line.length == 0) {
+            yPosition -= lineHeight / 2; // Half space for empty lines
+            continue;
         }
-        textY -= lineHeight;
+        
+        NSDictionary *attributes = normalAttributes;
+        
+        // ✅ NUOVO: Smart text styling based on content
+        if ([line containsString:@"📊 SELECTION STATS"]) {
+            attributes = headerAttributes;
+        } else if ([line containsString:@"📏 Bars:"]) {
+            attributes = boldAttributes;
+        } else if ([line containsString:@"🎯 Mouse Drag:"]) {
+            // Color based on drag variation
+            if (dragVariationPercent > 0) {
+                attributes = positiveAttributes;
+            } else if (dragVariationPercent < 0) {
+                attributes = negativeAttributes;
+            } else {
+                attributes = boldAttributes;
+            }
+        } else if ([line containsString:@"📈 Price Change:"]) {
+            // Color based on price change
+            if (varPercentStartEnd > 0) {
+                attributes = positiveAttributes;
+            } else if (varPercentStartEnd < 0) {
+                attributes = negativeAttributes;
+            } else {
+                attributes = boldAttributes;
+            }
+        } else if ([line containsString:@"📊 Range:"]) {
+            attributes = boldAttributes;
+        }
+        
+        NSPoint textPoint = NSMakePoint(boxX + padding, yPosition);
+        [line drawAtPoint:textPoint withAttributes:attributes];
+        
+        yPosition -= lineHeight;
     }
+    
+    NSLog(@"📊 Enhanced selection info: Bars=%ld, Drag=%.2f%%, Price=%.2f%%",
+          (long)barCount, dragVariationPercent, varPercentStartEnd);
 }
 
 - (void)drawCrosshair {
@@ -1602,7 +1816,7 @@
         // Offset position slightly
         for (ControlPointModel *cp in duplicate.controlPoints) {
             cp.dateAnchor = [cp.dateAnchor dateByAddingTimeInterval:86400]; // +1 day
-            cp.valuePercent += 0.02; // +2%
+            cp.absoluteValue *= 1.02; // +2%
         }
         
         [currentLayer addObject:duplicate];

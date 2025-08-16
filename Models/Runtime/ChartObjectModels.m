@@ -3,6 +3,7 @@
 //  mafia_AI
 //
 //  Implementation of runtime models for chart objects
+//  NEW: Using absolute price values instead of percentage deltas
 //
 
 #import "ChartObjectModels.h"
@@ -15,15 +16,15 @@
     return YES;
 }
 
-+ (instancetype)pointWithDate:(NSDate *)date valuePercent:(double)percent indicator:(NSString *)indicator {
-    return [[self alloc] initWithDate:date valuePercent:percent indicator:indicator];
++ (instancetype)pointWithDate:(NSDate *)date absoluteValue:(double)value indicator:(NSString *)indicator {
+    return [[self alloc] initWithDate:date absoluteValue:value indicator:indicator];
 }
 
-- (instancetype)initWithDate:(NSDate *)date valuePercent:(double)percent indicator:(NSString *)indicator {
+- (instancetype)initWithDate:(NSDate *)date absoluteValue:(double)value indicator:(NSString *)indicator {
     self = [super init];
     if (self) {
         _dateAnchor = date;
-        _valuePercent = percent;
+        _absoluteValue = value;
         _indicatorRef = indicator ?: @"close";
         _isSelected = NO;
         _isDragging = NO;
@@ -34,8 +35,8 @@
 
 - (instancetype)copyWithZone:(NSZone *)zone {
     ControlPointModel *copy = [[ControlPointModel alloc] initWithDate:self.dateAnchor
-                                                          valuePercent:self.valuePercent
-                                                             indicator:self.indicatorRef];
+                                                        absoluteValue:self.absoluteValue
+                                                            indicator:self.indicatorRef];
     copy.screenPoint = self.screenPoint;
     copy.isSelected = self.isSelected;
     copy.isDragging = self.isDragging;
@@ -44,22 +45,22 @@
 
 - (void)encodeWithCoder:(NSCoder *)coder {
     [coder encodeObject:self.dateAnchor forKey:@"dateAnchor"];
-    [coder encodeDouble:self.valuePercent forKey:@"valuePercent"];
+    [coder encodeDouble:self.absoluteValue forKey:@"absoluteValue"];
     [coder encodeObject:self.indicatorRef forKey:@"indicatorRef"];
 }
 
 - (instancetype)initWithCoder:(NSCoder *)coder {
     NSDate *date = [coder decodeObjectOfClass:[NSDate class] forKey:@"dateAnchor"];
-    double percent = [coder decodeDoubleForKey:@"valuePercent"];
+    double value = [coder decodeDoubleForKey:@"absoluteValue"];
     NSString *indicator = [coder decodeObjectOfClass:[NSString class] forKey:@"indicatorRef"];
     
-    return [self initWithDate:date valuePercent:percent indicator:indicator];
+    return [self initWithDate:date absoluteValue:value indicator:indicator];
 }
 
 - (NSDictionary *)toDictionary {
     return @{
         @"dateAnchor": @([self.dateAnchor timeIntervalSince1970]),
-        @"valuePercent": @(self.valuePercent),
+        @"absoluteValue": @(self.absoluteValue),
         @"indicatorRef": self.indicatorRef ?: @"close"
     };
 }
@@ -69,10 +70,10 @@
     
     NSTimeInterval timestamp = [dict[@"dateAnchor"] doubleValue];
     NSDate *date = [NSDate dateWithTimeIntervalSince1970:timestamp];
-    double percent = [dict[@"valuePercent"] doubleValue];
+    double value = [dict[@"absoluteValue"] doubleValue];
     NSString *indicator = dict[@"indicatorRef"] ?: @"close";
     
-    return [self pointWithDate:date valuePercent:percent indicator:indicator];
+    return [self pointWithDate:date absoluteValue:value indicator:indicator];
 }
 
 @end
@@ -128,9 +129,9 @@
         _thickness = [coder decodeDoubleForKey:@"thickness"] ?: 2.0;
         _lineType = [coder decodeIntegerForKey:@"lineType"];
         _opacity = [coder decodeDoubleForKey:@"opacity"] ?: 1.0;
-        _font = [coder decodeObjectOfClass:[NSFont class] forKey:@"font"];
-        _textColor = [coder decodeObjectOfClass:[NSColor class] forKey:@"textColor"];
-        _backgroundColor = [coder decodeObjectOfClass:[NSColor class] forKey:@"backgroundColor"];
+        _font = [coder decodeObjectOfClass:[NSFont class] forKey:@"font"] ?: [NSFont systemFontOfSize:12];
+        _textColor = [coder decodeObjectOfClass:[NSColor class] forKey:@"textColor"] ?: [NSColor labelColor];
+        _backgroundColor = [coder decodeObjectOfClass:[NSColor class] forKey:@"backgroundColor"] ?: [NSColor controlBackgroundColor];
     }
     return self;
 }
@@ -140,31 +141,45 @@
     
     switch (type) {
         case ChartObjectTypeTrendline:
-            return [self trendlineStyle];
+            style.color = [NSColor systemBlueColor];
+            style.thickness = 2.0;
+            break;
             
         case ChartObjectTypeHorizontalLine:
             style.color = [NSColor systemOrangeColor];
             style.thickness = 1.5;
-            style.lineType = ChartLineTypeDashed;
             break;
             
         case ChartObjectTypeFibonacci:
-            return [self fibonacciStyle];
+        case ChartObjectTypeTrailingFibo:
+        case ChartObjectTypeTrailingFiboBetween:
+            style.color = [NSColor systemPurpleColor];
+            style.thickness = 1.0;
+            break;
             
         case ChartObjectTypeTarget:
             style.color = [NSColor systemGreenColor];
             style.thickness = 2.0;
-            style.lineType = ChartLineTypeSolid;
+            break;
+            
+        case ChartObjectTypeRectangle:
+        case ChartObjectTypeCircle:
+        case ChartObjectTypeOval:
+            style.color = [NSColor systemRedColor];
+            style.thickness = 1.5;
+            break;
+            
+        case ChartObjectTypeChannel:
+            style.color = [NSColor systemTealColor];
+            style.thickness = 1.5;
             break;
             
         case ChartObjectTypeFreeDrawing:
-            style.color = [NSColor systemPurpleColor];
-            style.thickness = 3.0;
-            style.lineType = ChartLineTypeSolid;
+            style.color = [NSColor labelColor];
+            style.thickness = 1.0;
             break;
             
         default:
-            // Keep default values
             break;
     }
     
@@ -176,53 +191,52 @@
     style.color = [NSColor systemBlueColor];
     style.thickness = 2.0;
     style.lineType = ChartLineTypeSolid;
-    style.opacity = 0.8;
     return style;
 }
 
 + (instancetype)fibonacciStyle {
     ObjectStyleModel *style = [[ObjectStyleModel alloc] init];
-    style.color = [NSColor systemTealColor];
+    style.color = [NSColor systemPurpleColor];
     style.thickness = 1.0;
-    style.lineType = ChartLineTypeDashed;
-    style.opacity = 0.7;
+    style.lineType = ChartLineTypeSolid;
+    style.opacity = 0.8;
     return style;
 }
 
 + (instancetype)textStyle {
     ObjectStyleModel *style = [[ObjectStyleModel alloc] init];
-    style.font = [NSFont systemFontOfSize:14 weight:NSFontWeightMedium];
     style.textColor = [NSColor labelColor];
-    style.backgroundColor = [[NSColor controlBackgroundColor] colorWithAlphaComponent:0.9];
+    style.backgroundColor = [NSColor controlBackgroundColor];
+    style.font = [NSFont systemFontOfSize:12];
     return style;
 }
 
 - (NSDictionary *)toDictionary {
     NSMutableDictionary *dict = [NSMutableDictionary dictionary];
     
-    // Color as hex string
+    // Colors as hex strings for portability
     if (self.color) {
-        dict[@"color"] = [self colorToHexString:self.color];
+        NSData *colorData = [NSKeyedArchiver archivedDataWithRootObject:self.color requiringSecureCoding:YES error:nil];
+        if (colorData) dict[@"color"] = colorData;
     }
     
     dict[@"thickness"] = @(self.thickness);
     dict[@"lineType"] = @(self.lineType);
     dict[@"opacity"] = @(self.opacity);
     
-    // Font as dictionary
     if (self.font) {
-        dict[@"font"] = @{
-            @"name": self.font.fontName,
-            @"size": @(self.font.pointSize)
-        };
+        NSData *fontData = [NSKeyedArchiver archivedDataWithRootObject:self.font requiringSecureCoding:YES error:nil];
+        if (fontData) dict[@"font"] = fontData;
     }
     
-    // Text colors
     if (self.textColor) {
-        dict[@"textColor"] = [self colorToHexString:self.textColor];
+        NSData *textColorData = [NSKeyedArchiver archivedDataWithRootObject:self.textColor requiringSecureCoding:YES error:nil];
+        if (textColorData) dict[@"textColor"] = textColorData;
     }
+    
     if (self.backgroundColor) {
-        dict[@"backgroundColor"] = [self colorToHexString:self.backgroundColor];
+        NSData *bgColorData = [NSKeyedArchiver archivedDataWithRootObject:self.backgroundColor requiringSecureCoding:YES error:nil];
+        if (bgColorData) dict[@"backgroundColor"] = bgColorData;
     }
     
     return [dict copy];
@@ -233,67 +247,32 @@
     
     ObjectStyleModel *style = [[ObjectStyleModel alloc] init];
     
-    // Color from hex string
-    NSString *colorHex = dict[@"color"];
-    if (colorHex) {
-        style.color = [self colorFromHexString:colorHex];
+    // Restore colors from data
+    if (dict[@"color"]) {
+        NSColor *color = [NSKeyedUnarchiver unarchivedObjectOfClass:[NSColor class] fromData:dict[@"color"] error:nil];
+        if (color) style.color = color;
     }
     
     style.thickness = [dict[@"thickness"] doubleValue] ?: 2.0;
     style.lineType = [dict[@"lineType"] integerValue];
     style.opacity = [dict[@"opacity"] doubleValue] ?: 1.0;
     
-    // Font from dictionary
-    NSDictionary *fontDict = dict[@"font"];
-    if (fontDict) {
-        NSString *fontName = fontDict[@"name"];
-        CGFloat fontSize = [fontDict[@"size"] doubleValue] ?: 12.0;
-        style.font = [NSFont fontWithName:fontName size:fontSize] ?: [NSFont systemFontOfSize:fontSize];
+    if (dict[@"font"]) {
+        NSFont *font = [NSKeyedUnarchiver unarchivedObjectOfClass:[NSFont class] fromData:dict[@"font"] error:nil];
+        if (font) style.font = font;
     }
     
-    // Text colors
-    NSString *textColorHex = dict[@"textColor"];
-    if (textColorHex) {
-        style.textColor = [self colorFromHexString:textColorHex];
+    if (dict[@"textColor"]) {
+        NSColor *textColor = [NSKeyedUnarchiver unarchivedObjectOfClass:[NSColor class] fromData:dict[@"textColor"] error:nil];
+        if (textColor) style.textColor = textColor;
     }
     
-    NSString *backgroundColorHex = dict[@"backgroundColor"];
-    if (backgroundColorHex) {
-        style.backgroundColor = [self colorFromHexString:backgroundColorHex];
+    if (dict[@"backgroundColor"]) {
+        NSColor *bgColor = [NSKeyedUnarchiver unarchivedObjectOfClass:[NSColor class] fromData:dict[@"backgroundColor"] error:nil];
+        if (bgColor) style.backgroundColor = bgColor;
     }
     
     return style;
-}
-
-#pragma mark - Color Helpers
-
-- (NSString *)colorToHexString:(NSColor *)color {
-    NSColor *rgbColor = [color colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
-    return [NSString stringWithFormat:@"#%02X%02X%02X%02X",
-            (int)(rgbColor.redComponent * 255),
-            (int)(rgbColor.greenComponent * 255),
-            (int)(rgbColor.blueComponent * 255),
-            (int)(rgbColor.alphaComponent * 255)];
-}
-
-+ (NSColor *)colorFromHexString:(NSString *)hexString {
-    if (!hexString || hexString.length < 7) {
-        return [NSColor systemBlueColor]; // fallback
-    }
-    
-    NSString *cleanString = [hexString stringByReplacingOccurrencesOfString:@"#" withString:@""];
-    
-    unsigned int red, green, blue, alpha = 255;
-    
-    [[NSScanner scannerWithString:[cleanString substringWithRange:NSMakeRange(0, 2)]] scanHexInt:&red];
-    [[NSScanner scannerWithString:[cleanString substringWithRange:NSMakeRange(2, 2)]] scanHexInt:&green];
-    [[NSScanner scannerWithString:[cleanString substringWithRange:NSMakeRange(4, 2)]] scanHexInt:&blue];
-    
-    if (cleanString.length >= 8) {
-        [[NSScanner scannerWithString:[cleanString substringWithRange:NSMakeRange(6, 2)]] scanHexInt:&alpha];
-    }
-    
-    return [NSColor colorWithRed:red/255.0 green:green/255.0 blue:blue/255.0 alpha:alpha/255.0];
 }
 
 @end
@@ -301,10 +280,6 @@
 #pragma mark - ChartObjectModel Implementation
 
 @implementation ChartObjectModel
-
-+ (instancetype)objectWithType:(ChartObjectType)type name:(NSString *)name {
-    return [[self alloc] initWithType:type name:name];
-}
 
 - (instancetype)initWithType:(ChartObjectType)type name:(NSString *)name {
     self = [super init];
@@ -321,6 +296,10 @@
         _creationDate = [NSDate date];
     }
     return self;
+}
+
++ (instancetype)objectWithType:(ChartObjectType)type name:(NSString *)name {
+    return [[self alloc] initWithType:type name:name];
 }
 
 - (instancetype)copyWithZone:(NSZone *)zone {
@@ -401,48 +380,37 @@
 }
 
 - (NSString *)displayName {
-    return self.name ?: @"Untitled Object";
+    return self.name ?: [self defaultNameForType:self.type];
 }
 
 - (BOOL)isValidForType {
-    NSUInteger requiredPoints = 0;
-    
     switch (self.type) {
-        case ChartObjectTypeTrendline:
-            requiredPoints = 2;
-            break;
         case ChartObjectTypeHorizontalLine:
-            requiredPoints = 1;
-            break;
+            return self.controlPoints.count >= 1;
+            
+        case ChartObjectTypeTrendline:
         case ChartObjectTypeFibonacci:
-            requiredPoints = 2;
-            break;
-        case ChartObjectTypeTrailingFibo:
-            requiredPoints = 1;
-            break;
-        case ChartObjectTypeTrailingFiboBetween:
-            requiredPoints = 2;
-            break;
-        case ChartObjectTypeTarget:
-            requiredPoints = 3;
-            break;
-        case ChartObjectTypeCircle:
         case ChartObjectTypeRectangle:
+        case ChartObjectTypeCircle:
         case ChartObjectTypeOval:
-            requiredPoints = 2;
-            break;
+            return self.controlPoints.count >= 2;
+            
+        case ChartObjectTypeTrailingFibo:
+            return self.controlPoints.count >= 1;
+            
+        case ChartObjectTypeTrailingFiboBetween:
+            return self.controlPoints.count >= 2;
+            
+        case ChartObjectTypeTarget:
         case ChartObjectTypeChannel:
-            requiredPoints = 3;
-            break;
+            return self.controlPoints.count >= 3;
+            
         case ChartObjectTypeFreeDrawing:
-            requiredPoints = 1; // At least one point
-            break;
+            return self.controlPoints.count >= 1;
+            
         default:
-            requiredPoints = 1;
-            break;
+            return self.controlPoints.count > 0;
     }
-    
-    return self.controlPoints.count >= requiredPoints;
 }
 
 - (NSRect)boundingRect {
@@ -450,19 +418,22 @@
         return NSZeroRect;
     }
     
-    CGFloat minX = CGFLOAT_MAX;
-    CGFloat maxX = -CGFLOAT_MAX;
-    CGFloat minY = CGFLOAT_MAX;
-    CGFloat maxY = -CGFLOAT_MAX;
+    CGFloat minX = CGFLOAT_MAX, maxX = -CGFLOAT_MAX;
+    CGFloat minY = CGFLOAT_MAX, maxY = -CGFLOAT_MAX;
     
-    for (ControlPointModel *point in self.controlPoints) {
-        minX = MIN(minX, point.screenPoint.x);
-        maxX = MAX(maxX, point.screenPoint.x);
-        minY = MIN(minY, point.screenPoint.y);
-        maxY = MAX(maxY, point.screenPoint.y);
+    for (ControlPointModel *cp in self.controlPoints) {
+        NSPoint point = cp.screenPoint;
+        minX = MIN(minX, point.x);
+        maxX = MAX(maxX, point.x);
+        minY = MIN(minY, point.y);
+        maxY = MAX(maxY, point.y);
     }
     
-    return NSMakeRect(minX, minY, maxX - minX, maxY - minY);
+    // Add padding for hit testing
+    CGFloat padding = 10.0;
+    return NSMakeRect(minX - padding, minY - padding,
+                     (maxX - minX) + 2 * padding,
+                     (maxY - minY) + 2 * padding);
 }
 
 @end
@@ -479,7 +450,7 @@
     self = [super init];
     if (self) {
         _layerID = [[NSUUID UUID] UUIDString];
-        _name = name ?: @"Untitled Layer";
+        _name = name ?: @"Layer";
         _objects = [NSMutableArray array];
         _isVisible = YES;
         _orderIndex = 0;
@@ -490,10 +461,11 @@
 
 - (instancetype)copyWithZone:(NSZone *)zone {
     ChartLayerModel *copy = [[ChartLayerModel alloc] initWithName:self.name];
+    copy.layerID = [[NSUUID UUID] UUIDString]; // New ID for copy
     copy.isVisible = self.isVisible;
     copy.orderIndex = self.orderIndex;
     
-    // Copy all objects
+    // Copy objects
     for (ChartObjectModel *object in self.objects) {
         [copy addObject:[object copy]];
     }
@@ -502,7 +474,7 @@
 }
 
 - (void)addObject:(ChartObjectModel *)object {
-    if (object) {
+    if (object && ![self.objects containsObject:object]) {
         [self.objects addObject:object];
         self.lastModified = [NSDate date];
     }
@@ -542,13 +514,13 @@
 }
 
 - (NSArray<ChartObjectModel *> *)visibleObjects {
-    NSMutableArray *visibleObjects = [NSMutableArray array];
+    NSMutableArray *visible = [NSMutableArray array];
     for (ChartObjectModel *object in self.objects) {
         if (object.isVisible) {
-            [visibleObjects addObject:object];
+            [visible addObject:object];
         }
     }
-    return [visibleObjects copy];
+    return [visible copy];
 }
 
 @end

@@ -132,36 +132,29 @@
         return NSMakePoint(-9999, -9999);
     }
     
-    // Step 1: Find exact bar in data
-    HistoricalBarModel *targetBar = [self findBarForDate:controlPoint.dateAnchor];
+    NSPoint screenPoint = NSZeroPoint;
     
-    NSPoint screenPoint = NSMakePoint(-9999, -9999);
-    
-    if (targetBar) {
-        // X coordinate calculation (INVARIATO)
-        NSInteger barIndex = [self findBarIndexForDate:controlPoint.dateAnchor];
-        if (barIndex != NSNotFound) {
-            screenPoint.x = [self xCoordinateForBarIndex:barIndex];
-        }
+    // X coordinate: trova la barra (usa metodo corretto)
+    NSInteger barIndex = [self findBarIndexForDate:controlPoint.dateAnchor];
+    if (barIndex != NSNotFound && barIndex >= 0) {
+        screenPoint.x = [self xCoordinateForBarIndex:barIndex];
         
-        // ✅ Y coordinate usando METODO UNIFICATO
-        double indicatorValue = [self getIndicatorValue:controlPoint.indicatorRef fromBar:targetBar];
-        if (indicatorValue > 0.0) {
-            double actualPrice = indicatorValue * (1.0 + controlPoint.valuePercent / 100.0);
-            
-            // ✅ USA IL METODO UNIFICATO invece del calcolo locale
-            screenPoint.y = [self.coordinateContext screenYForValue:actualPrice];
-        }
+        // ✅ NUOVO: Usa absoluteValue direttamente
+        screenPoint.y = [self.coordinateContext screenYForValue:controlPoint.absoluteValue];
+        
     } else {
-        // Estrapolazione (INVARIATO)
+        // Estrapolazione per date fuori dal dataset
         screenPoint.x = [self xCoordinateForDate:controlPoint.dateAnchor];
-        return NSMakePoint(-9999, -9999);
+        // Se la coordinata X è valida ma non abbiamo la barra, usiamo comunque absoluteValue
+        if (screenPoint.x > -9999) {
+            screenPoint.y = [self.coordinateContext screenYForValue:controlPoint.absoluteValue];
+        } else {
+            return NSMakePoint(-9999, -9999);
+        }
     }
     
     return screenPoint;
 }
-
-
 
 
 - (ControlPointModel *)controlPointFromScreenPoint:(NSPoint)screenPoint
@@ -170,7 +163,7 @@
         return nil;
     }
     
-    // Step 1 & 2: X coordinate conversion (INVARIATO)
+    // X coordinate conversion (usa metodo corretto)
     NSInteger barIndex = [self barIndexForXCoordinate:screenPoint.x];
     if (barIndex < 0 || barIndex >= self.coordinateContext.chartData.count) {
         return nil;
@@ -179,21 +172,9 @@
     HistoricalBarModel *targetBar = self.coordinateContext.chartData[barIndex];
     NSDate *dateAnchor = targetBar.date;
     
-    // ✅ Step 3: Y coordinate conversion usando METODO UNIFICATO
-    double screenPrice = [self.coordinateContext valueForScreenY:screenPoint.y];
-    
-    // Step 4: Calculate percentage (INVARIATO)
-    double indicatorValue = [self getIndicatorValue:indicatorRef fromBar:targetBar];
-    if (indicatorValue == 0.0) {
-        return nil;
-    }
-    
-    double valuePercent = ((screenPrice - indicatorValue) / indicatorValue) * 100.0;
-    
-    // Step 5: Create control point (INVARIATO)
-    return [ControlPointModel pointWithDate:dateAnchor
-                                valuePercent:valuePercent
-                                   indicator:indicatorRef];
+    // ✅ NUOVO: Y coordinate → valore assoluto diretto
+    double absoluteValue = [self.coordinateContext valueForScreenY:screenPoint.y];
+    return [ControlPointModel pointWithDate:dateAnchor absoluteValue:absoluteValue indicator:indicatorRef];
 }
 
 
@@ -1249,24 +1230,22 @@
 - (void)updateCurrentCPCoordinates:(NSPoint)screenPoint {
     if (!self.currentCPSelected) return;
     
-    // Convert screen point back to control point coordinates
     ControlPointModel *newCP = [self controlPointFromScreenPoint:screenPoint
                                                      indicatorRef:self.currentCPSelected.indicatorRef];
     if (!newCP) return;
     
-    // Update the current selected CP coordinates
+    // ✅ CAMBIAMENTO: Aggiorna absoluteValue invece di valuePercent
     self.currentCPSelected.dateAnchor = newCP.dateAnchor;
-    self.currentCPSelected.valuePercent = newCP.valuePercent;
+    self.currentCPSelected.absoluteValue = newCP.absoluteValue;
     
-    // NUOVO: Se in creation mode, update editing object
+    // Resto invariato
     if (self.isInCreationMode) {
         [self createEditingObjectFromTempCPs];
     }
     
-    // Force redraw editing layer
     [self invalidateEditingLayer];
     
-    NSLog(@"🎯 Updated currentCP coordinates: %.2f%%", self.currentCPSelected.valuePercent);
+    NSLog(@"🎯 Updated currentCP coordinates: %.2f (absolute)", self.currentCPSelected.absoluteValue);
 }
 
 - (void)selectControlPointForEditing:(ControlPointModel *)controlPoint {
@@ -1815,32 +1794,8 @@
     return (index - visibleStart) * barWidth + barWidth / 2.0;
 }
 
-/**
- * Ottieni prezzo reale da un control point
- */
-- (double)priceFromControlPoint:(ControlPointModel *)cp {
-    NSInteger index = [self findDataIndexForDate:cp.dateAnchor];
-    if (index == -1) return 0.0;
-    
-    NSArray<HistoricalBarModel *> *data = self.coordinateContext.chartData;
-    if (index >= data.count) return 0.0;
-    
-    HistoricalBarModel *bar = data[index];
-    
-    // Calcola valore base dall'indicatore
-    double baseValue = 0.0;
-    if ([cp.indicatorRef isEqualToString:@"high"]) {
-        baseValue = bar.high;
-    } else if ([cp.indicatorRef isEqualToString:@"low"]) {
-        baseValue = bar.low;
-    } else if ([cp.indicatorRef isEqualToString:@"open"]) {
-        baseValue = bar.open;
-    } else {
-        baseValue = bar.close; // default
-    }
-    
-    // Applica offset percentuale
-    return baseValue * (1.0 + cp.valuePercent / 100.0);
+- (double)priceFromControlPoint:(ControlPointModel *)controlPoint {
+    return controlPoint.absoluteValue;
 }
 
 #pragma mark - TrailingFibo Rendering - UPDATED
@@ -1942,23 +1897,21 @@
 }
 
 - (BOOL)shouldSearchForHighsFromControlPoint:(ControlPointModel *)controlPoint {
-    // Find the bar for this control point
     HistoricalBarModel *bar = [self findBarForDate:controlPoint.dateAnchor];
     if (!bar) return YES; // Default fallback
     
-    // Calculate actual price at control point
-    double indicatorValue = [self getIndicatorValue:controlPoint.indicatorRef fromBar:bar];
-    double actualPrice = indicatorValue * (1.0 + controlPoint.valuePercent / 100.0);
     
-    // Compare distance to high vs low
+    double actualPrice = controlPoint.absoluteValue;
+    
+    // RESTO INVARIATO
     double distanceToHigh = fabs(bar.high - actualPrice);
     double distanceToLow = fabs(bar.low - actualPrice);
     
-    // If CP1 is closer to low, search for highs (trend up)
     BOOL searchForHighs = (distanceToLow < distanceToHigh);
     
-    NSLog(@"🎯 TrailingFibo Direction: %@ (CP1 price: %.2f, High: %.2f, Low: %.2f)",
-          searchForHighs ? @"SEARCH HIGHS" : @"SEARCH LOWS", actualPrice, bar.high, bar.low);
+    NSLog(@"🎯 TrailingFibo Direction: %@ (CP price: %.2f, High: %.2f, Low: %.2f)",
+          searchForHighs ? @"UP (search highs)" : @"DOWN (search lows)",
+          actualPrice, bar.high, bar.low);
     
     return searchForHighs;
 }
@@ -2065,7 +2018,7 @@
     if (!startBar) return fibLevels;
     
     double startIndicatorValue = [self getIndicatorValue:startCP.indicatorRef fromBar:startBar];
-    double cp1Price = startIndicatorValue * (1.0 + startCP.valuePercent / 100.0);
+    double cp1Price = startCP.absoluteValue;
     
     // Get latest extreme price (CP2)
     NSDictionary *lastPeak = peaks.lastObject;

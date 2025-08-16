@@ -321,13 +321,22 @@ extern NSString *const DataHubDataLoadedNotification;
 
 - (void)ensureRenderersAreSetup {
     for (ChartPanelView *panel in self.chartPanels) {
-        // Setup objects renderer (ESISTENTE)
-        if (!panel.objectRenderer) {
-            [panel setupObjectsRendererWithManager:self.objectsManager];
-            NSLog(@"🔧 Setup missing objects renderer for panel %@", panel.panelType);
+        
+        // ✅ SETUP OBJECTS RENDERER: SOLO per il pannello dei prezzi (security)
+        if ([panel.panelType isEqualToString:@"security"]) {
+            if (!panel.objectRenderer) {
+                [panel setupObjectsRendererWithManager:self.objectsManager];
+                NSLog(@"🔧 Setup objects renderer for SECURITY panel only");
+            }
+        } else {
+            // ✅ ASSICURATI che altri pannelli NON abbiano l'objects renderer
+            if (panel.objectRenderer) {
+                panel.objectRenderer = nil;
+                NSLog(@"🚫 Removed objects renderer from %@ panel", panel.panelType);
+            }
         }
         
-        // 🆕 NUOVO: Setup alert renderer
+        // ✅ SETUP ALERT RENDERER: Per tutti i pannelli (gli alert possono essere ovunque)
         if (!panel.alertRenderer) {
             [panel setupAlertRenderer];
             NSLog(@"🚨 Setup alert renderer for panel %@", panel.panelType);

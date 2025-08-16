@@ -3,6 +3,7 @@
 //  mafia_AI
 //
 //  Runtime models for chart objects and drawing tools
+//  NEW: Using absolute price values instead of percentage deltas
 //
 
 #import <Foundation/Foundation.h>
@@ -38,9 +39,9 @@ typedef NS_ENUM(NSInteger, ChartLineType) {
 @interface ControlPointModel : NSObject <NSCoding, NSSecureCoding, NSCopying>
 
 // Position anchoring
-@property (nonatomic, strong) NSDate *dateAnchor;          // X-axis anchor
-@property (nonatomic, assign) double valuePercent;        // Y-axis as % from indicator
-@property (nonatomic, strong) NSString *indicatorRef;     // "close", "high", "low", "open"
+@property (nonatomic, strong) NSDate *dateAnchor;          // X-axis anchor (specific date)
+@property (nonatomic, assign) double absoluteValue;       // Y-axis as absolute price value
+@property (nonatomic, strong) NSString *indicatorRef;     // Reference indicator for metadata/context
 
 // Runtime state (not persisted)
 @property (nonatomic, assign) NSPoint screenPoint;        // Current screen coordinates
@@ -48,8 +49,8 @@ typedef NS_ENUM(NSInteger, ChartLineType) {
 @property (nonatomic, assign) BOOL isDragging;            // During drag operation
 
 // Initialization
-+ (instancetype)pointWithDate:(NSDate *)date valuePercent:(double)percent indicator:(NSString *)indicator;
-- (instancetype)initWithDate:(NSDate *)date valuePercent:(double)percent indicator:(NSString *)indicator;
++ (instancetype)pointWithDate:(NSDate *)date absoluteValue:(double)value indicator:(NSString *)indicator;
+- (instancetype)initWithDate:(NSDate *)date absoluteValue:(double)value indicator:(NSString *)indicator;
 
 // Utilities
 - (NSDictionary *)toDictionary;

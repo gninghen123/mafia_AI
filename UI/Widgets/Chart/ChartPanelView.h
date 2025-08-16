@@ -14,12 +14,22 @@
 #import "ChartObjectSettingsWindow.h"
 #import "ChartCoordinateContext.h"
 
+#pragma mark - Constants for Y-Axis Layout
+
+#define CHART_MARGIN_LEFT 10
+#define CHART_MARGIN_RIGHT 10
+#define Y_AXIS_WIDTH 60
+#define CHART_MARGIN_RIGHT_WITH_AXIS (CHART_MARGIN_RIGHT + Y_AXIS_WIDTH)
+
 @class ChartAlertRenderer;
 @class ChartWidget;
 @class ChartObjectRenderer;
 @class ChartObjectsManager;
 
 @interface ChartPanelView : NSView
+
+@property (nonatomic, strong) CALayer *yAxisLayer;
+
 
 @property (nonatomic, weak) ChartObjectSettingsWindow *objectSettingsWindow;
 

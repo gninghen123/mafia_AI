@@ -29,7 +29,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSPopUpButton *periodTypePopup;
 @property (nonatomic, strong) NSTextField *frequencyField;
 @property (nonatomic, strong) NSPopUpButton *frequencyTypePopup;
-@property (nonatomic, strong) NSTextField *barCountField; // NUOVO: Controllo numero barre
+@property (nonatomic, strong) NSTextField *barCountField; 
 
 // Data Source Selection
 @property (nonatomic, strong) NSSegmentedControl *dataSourceSegmented;

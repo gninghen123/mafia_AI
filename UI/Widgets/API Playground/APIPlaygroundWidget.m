@@ -135,7 +135,7 @@
     NSTextField *barCountLabel = [self createLabel:@"Bar Count:"];
     self.barCountField = [self createTextField:@"100"];
     self.barCountField.formatter = [[NSNumberFormatter alloc] init];
-    ((NSNumberFormatter *)self.barCountField.formatter).numberStyle = NSNumberFormatterDecimalStyle;
+   // ((NSNumberFormatter *)self.barCountField.formatter).numberStyle = NSNumberFormatterDecimalStyle;
     
     // Data source selection
     NSTextField *sourceLabel = [self createLabel:@"Data Source:"];
@@ -161,8 +161,8 @@
     self.clearButton.bezelStyle = NSBezelStyleRounded;
     
     // Layout con Stack Views
-    NSStackView *row1 = [self createHorizontalStack:@[symbolLabel, self.symbolField, startLabel, self.startDatePicker, endLabel, self.endDatePicker]];
-    NSStackView *row2 = [self createHorizontalStack:@[timeframeLabel, self.timeframePopup, self.extendedHoursCheckbox, barCountLabel, self.barCountField, periodLabel, self.periodField]];
+    NSStackView *row1 = [self createHorizontalStack:@[symbolLabel, self.symbolField,barCountLabel, self.barCountField, startLabel, self.startDatePicker, endLabel, self.endDatePicker ]];
+    NSStackView *row2 = [self createHorizontalStack:@[timeframeLabel,self.timeframePopup,self.extendedHoursCheckbox, periodLabel, self.periodField]];
     NSStackView *row3 = [self createHorizontalStack:@[periodTypeLabel, self.periodTypePopup, frequencyLabel, self.frequencyField, frequencyTypeLabel, self.frequencyTypePopup, sourceLabel, self.dataSourceSegmented]];
     NSStackView *row4 = [self createHorizontalStack:@[self.parametersLabel, [[NSView alloc] init], self.executeButton, self.clearButton]];
     
@@ -276,7 +276,6 @@
     label.bordered = NO;
     label.backgroundColor = [NSColor clearColor];
     label.font = [NSFont systemFontOfSize:12];
-    [label setContentHuggingPriority:NSLayoutPriorityRequired forOrientation:NSLayoutConstraintOrientationHorizontal];
     return label;
 }
 
@@ -284,7 +283,6 @@
     NSTextField *textField = [[NSTextField alloc] init];
     textField.placeholderString = placeholder;
     textField.stringValue = placeholder;
-    [textField setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
     return textField;
 }
 

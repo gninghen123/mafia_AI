@@ -68,6 +68,7 @@
     [self setupMouseTracking];
 }
 
+
 - (void)setupPerformanceLayers {
     // Chart content layer (static - redraws only when data changes)
     self.chartContentLayer = [CALayer layer];
@@ -80,13 +81,20 @@
     self.chartPortionSelectionLayer.delegate = self;
     [self.layer addSublayer:self.chartPortionSelectionLayer];
     
+    // 🆕 Y-Axis layer (redraws only when Y range changes)
+    self.yAxisLayer = [CALayer layer];
+    self.yAxisLayer.delegate = self;
+    self.yAxisLayer.needsDisplayOnBoundsChange = YES;
+    [self.layer addSublayer:self.yAxisLayer];
+    
     // Crosshair layer (redraws frequently but lightweight)
     self.crosshairLayer = [CALayer layer];
     self.crosshairLayer.delegate = self;
     [self.layer addSublayer:self.crosshairLayer];
     
-    NSLog(@"🎯 ChartPanelView: Performance layers setup completed");
+    NSLog(@"🎯 ChartPanelView: Performance layers setup completed with Y-Axis");
 }
+
 
 
 - (void)layout {
@@ -94,22 +102,34 @@
     
     // Update all layer frames
     NSRect bounds = self.bounds;
-    self.chartContentLayer.frame = bounds;
-    self.chartPortionSelectionLayer.frame = bounds;
+    
+    // Chart content area (reduced width for Y-axis)
+    NSRect chartContentBounds = NSMakeRect(0, 0,
+                                         bounds.size.width - Y_AXIS_WIDTH,
+                                         bounds.size.height);
+    self.chartContentLayer.frame = chartContentBounds;
+    self.chartPortionSelectionLayer.frame = chartContentBounds;
+    
+    // Y-Axis area (right side)
+    NSRect yAxisBounds = NSMakeRect(bounds.size.width - Y_AXIS_WIDTH, 0,
+                                   Y_AXIS_WIDTH, bounds.size.height);
+    self.yAxisLayer.frame = yAxisBounds;
+    
+    // Crosshair spans full width
     self.crosshairLayer.frame = bounds;
     
     // Update objects renderer layer frames AND coordinate context bounds
     if (self.objectRenderer) {
         [self.objectRenderer updateLayerFrames];
         
-        // Update bounds in coordinate context
+        // Update bounds in coordinate context (use chart area, not full bounds)
         if (self.chartData) {
             [self.objectRenderer updateCoordinateContext:self.chartData
                                               startIndex:self.visibleStartIndex
                                                 endIndex:self.visibleEndIndex
                                                yRangeMin:self.yRangeMin
                                                yRangeMax:self.yRangeMax
-                                                  bounds:bounds];
+                                                  bounds:chartContentBounds]; // Use chart area
         }
     }
 }
@@ -127,6 +147,8 @@
         [self drawCrosshairContent];
     } else if (layer == self.chartPortionSelectionLayer) {
         [self drawChartPortionSelectionContent];
+    } else if (layer == self.yAxisLayer) {
+        [self drawYAxisContent]; // 🆕 NEW
     }
     
     [NSGraphicsContext restoreGraphicsState];
@@ -153,40 +175,51 @@
              yRangeMin:(double)yMin
              yRangeMax:(double)yMax {
     
-    // Update panel data (CODICE ESISTENTE)
+    // Check if Y range changed
+    BOOL yRangeChanged = (self.yRangeMin != yMin || self.yRangeMax != yMax);
+    
+    // Update data properties
     self.chartData = data;
     self.visibleStartIndex = startIndex;
     self.visibleEndIndex = endIndex;
     self.yRangeMin = yMin;
     self.yRangeMax = yMax;
     
-    // CRITICO: Update objects renderer coordinate context (CODICE ESISTENTE)
+    // Update objects renderer coordinate context
     if (self.objectRenderer) {
+        NSRect chartBounds = NSMakeRect(0, 0,
+                                      self.bounds.size.width - Y_AXIS_WIDTH,
+                                      self.bounds.size.height);
         [self.objectRenderer updateCoordinateContext:data
                                           startIndex:startIndex
                                             endIndex:endIndex
                                            yRangeMin:yMin
                                            yRangeMax:yMax
-                                              bounds:self.bounds];
-        NSLog(@"🔄 Updated ChartObjectRenderer coordinate context with %lu bars", (unsigned long)data.count);
+                                              bounds:chartBounds];
     }
     
-    // 🆕 NUOVO: Update alert renderer coordinate context
-    if (self.alertRenderer && self.chartWidget.currentSymbol) {
+    // Update alert renderer if available
+    if (self.alertRenderer) {
+        NSRect chartBounds = NSMakeRect(0, 0,
+                                      self.bounds.size.width - Y_AXIS_WIDTH,
+                                      self.bounds.size.height);
         [self.alertRenderer updateCoordinateContext:data
                                          startIndex:startIndex
                                            endIndex:endIndex
                                           yRangeMin:yMin
                                           yRangeMax:yMax
-                                             bounds:self.bounds
+                                             bounds:chartBounds
                                       currentSymbol:self.chartWidget.currentSymbol];
-        NSLog(@"🚨 Updated ChartAlertRenderer coordinate context with %lu bars for %@",
-              (unsigned long)data.count, self.chartWidget.currentSymbol);
     }
     
-    [self invalidateChartContent]; // CODICE ESISTENTE
+    [self invalidateChartContent];
+    
+    // Invalidate Y-Axis only if range changed (performance optimization)
+    if (yRangeChanged) {
+        [self invalidateYAxis];
+        NSLog(@"📊 Y-Axis invalidated: range [%.2f - %.2f]", yMin, yMax);
+    }
 }
-
 - (void)setCrosshairPoint:(NSPoint)point visible:(BOOL)visible {
     self.crosshairPoint = point;
     self.crosshairVisible = visible;
@@ -283,48 +316,137 @@
     }
     
     NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
-    CGFloat barWidth = (self.bounds.size.width - 20) / visibleBars; // 10px margin each side
+    // Use chart area width (excluding Y-axis)
+    CGFloat chartAreaWidth = self.bounds.size.width - Y_AXIS_WIDTH - (2 * CHART_MARGIN_LEFT);
+    CGFloat barWidth = chartAreaWidth / visibleBars;
     CGFloat barSpacing = MAX(1, barWidth * 0.1);
     barWidth = barWidth - barSpacing;
     
     for (NSInteger i = self.visibleStartIndex; i < self.visibleEndIndex && i < self.chartData.count; i++) {
         HistoricalBarModel *bar = self.chartData[i];
         
-        CGFloat x = 10 + (i - self.visibleStartIndex) * (barWidth + barSpacing);
-        CGFloat openY = [self.objectRenderer.coordinateContext screenYForValue:bar.open];
-        CGFloat closeY = [self.objectRenderer.coordinateContext screenYForValue:bar.close];
-        CGFloat highY = [self.objectRenderer.coordinateContext screenYForValue:bar.high];
-        CGFloat lowY = [self.objectRenderer.coordinateContext screenYForValue:bar.low];
+        CGFloat x = CHART_MARGIN_LEFT + (i - self.visibleStartIndex) * (barWidth + barSpacing);
+        CGFloat openY = [self yCoordinateForPrice:bar.open];
+        CGFloat closeY = [self yCoordinateForPrice:bar.close];
+        CGFloat highY = [self yCoordinateForPrice:bar.high];
+        CGFloat lowY = [self yCoordinateForPrice:bar.low];
         
         // Color based on direction
-        NSColor *bodyColor = (bar.close >= bar.open) ? [NSColor systemGreenColor] : [NSColor systemRedColor];
-        NSColor *wickColor = [NSColor labelColor];
+        NSColor *bodyColor = (bar.close >= bar.open) ?
+                            [NSColor systemGreenColor] : [NSColor systemRedColor];
         
         // Draw wick (high-low line)
-        NSBezierPath *wickPath = [NSBezierPath bezierPath];
-        [wickPath moveToPoint:NSMakePoint(x + barWidth/2, lowY)];
-        [wickPath lineToPoint:NSMakePoint(x + barWidth/2, highY)];
-        wickPath.lineWidth = 1.0;
-        [wickColor setStroke];
-        [wickPath stroke];
+        [bodyColor setStroke];
+        NSBezierPath *wick = [NSBezierPath bezierPath];
+        wick.lineWidth = 1.0;
+        [wick moveToPoint:NSMakePoint(x + barWidth/2, lowY)];
+        [wick lineToPoint:NSMakePoint(x + barWidth/2, highY)];
+        [wick stroke];
         
         // Draw body (open-close rectangle)
-        CGFloat bodyTop = MAX(openY, closeY);
-        CGFloat bodyBottom = MIN(openY, closeY);
-        CGFloat bodyHeight = MAX(1, bodyTop - bodyBottom); // Minimum 1px height
+        NSRect bodyRect = NSMakeRect(x, MIN(openY, closeY), barWidth, fabs(closeY - openY));
+        if (bodyRect.size.height < 1) bodyRect.size.height = 1; // Minimum height for doji
         
-        NSRect bodyRect = NSMakeRect(x, bodyBottom, barWidth, bodyHeight);
+        [bodyColor setFill];
+        [[NSBezierPath bezierPathWithRect:bodyRect] fill];
+    }
+}
+
+// 6. 🆕 NEW method: Y-Axis rendering
+
+- (void)drawYAxisContent {
+    if (self.yRangeMax == self.yRangeMin) return;
+    
+    // Y-Axis background
+    [[NSColor controlBackgroundColor] setFill];
+    NSRect axisBounds = NSMakeRect(0, 0, Y_AXIS_WIDTH, self.bounds.size.height);
+    [[NSBezierPath bezierPathWithRect:axisBounds] fill];
+    
+    // Y-Axis border (left edge)
+    [[NSColor separatorColor] setStroke];
+    NSBezierPath *borderPath = [NSBezierPath bezierPath];
+    borderPath.lineWidth = 1.0;
+    [borderPath moveToPoint:NSMakePoint(0, 0)];
+    [borderPath lineToPoint:NSMakePoint(0, self.bounds.size.height)];
+    [borderPath stroke];
+    
+    // Calculate tick values
+    double priceRange = self.yRangeMax - self.yRangeMin;
+    NSInteger tickCount = 8; // Approximate number of ticks
+    double tickStep = [self calculateOptimalTickStep:priceRange targetTicks:tickCount];
+    
+    // Start from first tick above yRangeMin
+    double firstTick = ceil(self.yRangeMin / tickStep) * tickStep;
+    
+    // Text attributes for price labels
+    NSDictionary *textAttributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:11],
+        NSForegroundColorAttributeName: [NSColor secondaryLabelColor]
+    };
+    
+    // Draw ticks and labels
+    for (double price = firstTick; price <= self.yRangeMax; price += tickStep) {
+        CGFloat yPosition = [self yCoordinateForPrice:price];
         
-        if (bar.close >= bar.open) {
-            [bodyColor setFill];
-            NSBezierPath *bodyPath = [NSBezierPath bezierPathWithRect:bodyRect];
-            [bodyPath fill];
-        } else {
-            // Red candle - filled
-            [bodyColor setFill];
-            NSBezierPath *bodyPath = [NSBezierPath bezierPathWithRect:bodyRect];
-            [bodyPath fill];
-        }
+        // Ensure yPosition is within bounds
+        if (yPosition < 0 || yPosition > self.bounds.size.height) continue;
+        
+        // Draw tick mark
+        [[NSColor tertiaryLabelColor] setStroke];
+        NSBezierPath *tickPath = [NSBezierPath bezierPath];
+        tickPath.lineWidth = 1.0;
+        [tickPath moveToPoint:NSMakePoint(0, yPosition)];
+        [tickPath lineToPoint:NSMakePoint(8, yPosition)];
+        [tickPath stroke];
+        
+        // Format and draw price label
+        NSString *priceText = [self formatPriceForDisplay:price];
+        NSSize textSize = [priceText sizeWithAttributes:textAttributes];
+        
+        // Center text vertically on tick
+        NSPoint textPoint = NSMakePoint(12, yPosition - textSize.height/2);
+        [priceText drawAtPoint:textPoint withAttributes:textAttributes];
+    }
+}
+
+// 7. 🆕 Helper methods for Y-Axis
+
+- (double)calculateOptimalTickStep:(double)range targetTicks:(NSInteger)targetTicks {
+    if (range <= 0 || targetTicks <= 0) return 1.0;
+    
+    double rawStep = range / targetTicks;
+    double magnitude = pow(10, floor(log10(rawStep)));
+    double normalizedStep = rawStep / magnitude;
+    
+    // Choose nice step sizes
+    if (normalizedStep <= 1.0) {
+        return magnitude;
+    } else if (normalizedStep <= 2.0) {
+        return 2.0 * magnitude;
+    } else if (normalizedStep <= 5.0) {
+        return 5.0 * magnitude;
+    } else {
+        return 10.0 * magnitude;
+    }
+}
+
+- (void)invalidateYAxis {
+    [self.yAxisLayer setNeedsDisplay];
+}
+
+
+- (NSString *)formatPriceForDisplay:(double)price {
+    // Smart formatting based on price magnitude
+    if (price >= 1000) {
+        return [NSString stringWithFormat:@"%.0f", price];
+    } else if (price >= 100) {
+        return [NSString stringWithFormat:@"%.1f", price];
+    } else if (price >= 10) {
+        return [NSString stringWithFormat:@"%.2f", price];
+    } else if (price >= 1) {
+        return [NSString stringWithFormat:@"%.3f", price];
+    } else {
+        return [NSString stringWithFormat:@"%.4f", price];
     }
 }
 
@@ -538,24 +660,23 @@
 
 - (CGFloat)yCoordinateForPrice:(double)price {
     if (self.objectRenderer && self.objectRenderer.coordinateContext) {
-           return [self.objectRenderer.coordinateContext screenYForValue:price];
-       }
+        return [self.objectRenderer.coordinateContext screenYForValue:price];
+    }
     
     if (self.yRangeMax == self.yRangeMin) return self.bounds.size.height / 2;
     
     double normalizedPrice = (price - self.yRangeMin) / (self.yRangeMax - self.yRangeMin);
-    return 10 + normalizedPrice * (self.bounds.size.height - 20); // 10px margins
+    return CHART_MARGIN_LEFT + normalizedPrice * (self.bounds.size.height - 20);
 }
 
 - (double)priceForYCoordinate:(CGFloat)y {
     if (self.objectRenderer && self.objectRenderer.coordinateContext) {
         return [self.objectRenderer.coordinateContext priceFromScreenY:y];
-       }
-    
+    }
     
     if (self.bounds.size.height <= 20) return self.yRangeMin;
     
-    double normalizedY = (y - 10) / (self.bounds.size.height - 20);
+    double normalizedY = (y - CHART_MARGIN_LEFT) / (self.bounds.size.height - 20);
     return self.yRangeMin + normalizedY * (self.yRangeMax - self.yRangeMin);
 }
 
@@ -563,13 +684,16 @@
     if (self.visibleStartIndex >= self.visibleEndIndex) return -1;
     
     NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
-    CGFloat barWidth = (self.bounds.size.width - 20) / visibleBars;
+    // Use chart area width (excluding Y-axis)
+    CGFloat chartAreaWidth = self.bounds.size.width - Y_AXIS_WIDTH - (2 * CHART_MARGIN_LEFT);
+    CGFloat barWidth = chartAreaWidth / visibleBars;
     
-    NSInteger relativeIndex = (x - 10) / barWidth;
+    NSInteger relativeIndex = (x - CHART_MARGIN_LEFT) / barWidth;
     NSInteger absoluteIndex = self.visibleStartIndex + relativeIndex;
     
     return MAX(self.visibleStartIndex, MIN(absoluteIndex, self.visibleEndIndex - 1));
 }
+
 
 #pragma mark - Mouse Events
 

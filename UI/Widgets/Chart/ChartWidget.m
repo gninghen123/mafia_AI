@@ -498,6 +498,10 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 - (void)handleHistoricalDataUpdate:(NSNotification *)notification {
+    if (self.isMicroscopeMode) {
+            NSLog(@"🔬 Microscopio: Ignoring DataHub update (static data mode)");
+            return;
+        }
     NSDictionary *userInfo = notification.userInfo;
     NSString *symbol = userInfo[@"symbol"];
     
@@ -643,35 +647,39 @@ extern NSString *const DataHubDataLoadedNotification;
     NSLog(@"📊 ChartWidget: Loading %@ with %ld bars (timeframe: %ld, after-hours: %@)",
           symbol, (long)barsCount, (long)barTimeframe, needExtendedHours ? @"YES" : @"NO");
     
-    [[DataHub shared] getHistoricalBarsForSymbol:symbol
-                                          timeframe:barTimeframe
-                                           barCount:barsCount
-                               needExtendedHours:needExtendedHours
-                                         completion:^(NSArray<HistoricalBarModel *> *data, BOOL isFresh) {
-           dispatch_async(dispatch_get_main_queue(), ^{
-               if (!data || data.count == 0) {
-                   NSLog(@"❌ ChartWidget: No data received for %@", symbol);
-                   return;
-               }
-               
-               NSLog(@"✅ ChartWidget: Received %lu bars for %@ (%@, extended-hours: %@)",
-                     (unsigned long)data.count, symbol, isFresh ? @"fresh" : @"cached",
-                     needExtendedHours ? @"included" : @"excluded");
-               
-               // ✅ DIRETTO: Dataset già completo dal DownloadManager
-               self.chartData = data;
-               
-               [self resetToInitialView];
-               
-               [self synchronizePanels];
-               
-               NSLog(@"📊 ChartWidget: Final dataset has %lu bars (auto-completed by DownloadManager)",
-                     (unsigned long)data.count);
-           });
-       }];
-    
-    
-    [self refreshAlertsForCurrentSymbol];
+    if (!self.isMicroscopeMode) {
+        [[DataHub shared] getHistoricalBarsForSymbol:symbol
+                                              timeframe:barTimeframe
+                                               barCount:barsCount
+                                   needExtendedHours:needExtendedHours
+                                             completion:^(NSArray<HistoricalBarModel *> *data, BOOL isFresh) {
+               dispatch_async(dispatch_get_main_queue(), ^{
+                   if (!data || data.count == 0) {
+                       NSLog(@"❌ ChartWidget: No data received for %@", symbol);
+                       return;
+                   }
+                   
+                   NSLog(@"✅ ChartWidget: Received %lu bars for %@ (%@, extended-hours: %@)",
+                         (unsigned long)data.count, symbol, isFresh ? @"fresh" : @"cached",
+                         needExtendedHours ? @"included" : @"excluded");
+                   
+                   // ✅ DIRETTO: Dataset già completo dal DownloadManager
+                   self.chartData = data;
+                   
+                   [self resetToInitialView];
+                   
+                   
+                   NSLog(@"📊 ChartWidget: Final dataset has %lu bars (auto-completed by DownloadManager)",
+                         (unsigned long)data.count);
+               });
+           }];
+        
+        
+        [self refreshAlertsForCurrentSymbol];
+    }else{
+        [self showMicroscopeModeNotification];
+    }
+ 
     
     // ✅ OGGETTI: Aggiorna manager per nuovo symbol e forza load
     if (self.objectsManager) {
@@ -690,7 +698,41 @@ extern NSString *const DataHubDataLoadedNotification;
     }
 }
 
-
+- (void)showMicroscopeModeNotification {
+    // Trova il primo panel per mostrare il messaggio
+    ChartPanelView *targetPanel = self.chartPanels.firstObject;
+    if (!targetPanel) return;
+    
+    // Crea messaggio temporaneo
+    NSTextField *notificationLabel = [[NSTextField alloc] init];
+    notificationLabel.stringValue = @"🔬 MICROSCOPE MODE - Static Data";
+    notificationLabel.font = [NSFont boldSystemFontOfSize:14];
+    notificationLabel.textColor = [NSColor systemBlueColor];
+    notificationLabel.backgroundColor = [[NSColor systemBlueColor] colorWithAlphaComponent:0.1];
+    notificationLabel.bordered = YES;
+    notificationLabel.bezeled = YES;
+    notificationLabel.editable = NO;
+    notificationLabel.selectable = NO;
+    notificationLabel.alignment = NSTextAlignmentCenter;
+    
+    // Posiziona al centro del panel
+    notificationLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [targetPanel addSubview:notificationLabel];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [notificationLabel.centerXAnchor constraintEqualToAnchor:targetPanel.centerXAnchor],
+        [notificationLabel.topAnchor constraintEqualToAnchor:targetPanel.topAnchor constant:10],
+        [notificationLabel.widthAnchor constraintEqualToConstant:250],
+        [notificationLabel.heightAnchor constraintEqualToConstant:30]
+    ]];
+    
+    // Rimuovi dopo 3 secondi
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [notificationLabel removeFromSuperview];
+    });
+    
+    NSLog(@"🔬 Showed microscope mode notification to user");
+}
 
 - (void)forceChartRedraw {
     // Metodo helper per forzare redraw completo
@@ -754,11 +796,15 @@ extern NSString *const DataHubDataLoadedNotification;
 
 - (void)resetToInitialView {
     if (!self.chartData || self.chartData.count == 0) return;
-    
+        
     NSInteger totalBars = self.chartData.count;
-    NSInteger barsToShow = MIN(self.initialBarsToShow, totalBars);
-    NSInteger startIndex = MAX(0, totalBars - barsToShow);
-    
+    NSInteger barsToShow = totalBars;
+    NSInteger startIndex = 0;
+   
+    if (!self.isMicroscopeMode) {
+        NSInteger barsToShow = MIN(self.initialBarsToShow, totalBars);
+        NSInteger startIndex = MAX(0, totalBars - barsToShow);
+    }
     // ✅ FIX: endIndex corretto (ultimo elemento valido)
     NSInteger endIndex = totalBars - 1;  // ❌ ERA: totalBars (fuori range)
     
@@ -1558,8 +1604,6 @@ extern NSString *const DataHubDataLoadedNotification;
     // Reset alla vista iniziale per mostrare tutti i dati microscopi
     [self resetToInitialView];
     
-    // Sincronizza tutti i pannelli con i nuovi dati
-    [self synchronizePanels];
     
     NSLog(@"✅ ChartWidget: Microscope data update completed");
 }

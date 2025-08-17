@@ -2312,13 +2312,14 @@
     
     // Converte timeframe per API DataHub
     BarTimeframe apiTimeframe = [self chartTimeframeToBarTimeframe:targetTimeframe];
-    
+    BOOL needExtendedHours = (self.chartWidget.tradingHoursMode == ChartTradingHoursWithAfterHours);
+
     // Chiamata DataHub per dati microscopi (API date range)
     [[DataHub shared] getHistoricalBarsForSymbol:self.chartWidget.currentSymbol
                                         timeframe:apiTimeframe
                                         startDate:startDate
                                           endDate:endDate
-                                needExtendedHours:NO
+                               needExtendedHours:needExtendedHours
                                        completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (!isFresh) {
@@ -2393,13 +2394,16 @@
     // Crea ChartWidget per la finestra microscopio
     ChartWidget *microscopeChart = [[ChartWidget alloc] initWithType:@"chart"
                                                            panelType:PanelTypeCenter];
+   
     
-    // Configura il ChartWidget con i dati microscopio
-    [microscopeChart loadSymbol:self.chartWidget.currentSymbol];
+    [microscopeChart setChainActive:NO withColor:nil];
+    microscopeChart.isMicroscopeMode = YES;
+
+    
+    microscopeChart.currentSymbol = self.chartWidget.currentSymbol;
     [microscopeChart setTimeframe:timeframe];
     
     // Popola direttamente con i dati ricevuti invece di ricaricare
-    [microscopeChart updateWithHistoricalBars:bars];
     
     // Genera titolo finestra descrittivo
     NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
@@ -2431,6 +2435,12 @@
     FloatingWidgetWindow *microscopeWindow = [appDelegate createMicroscopeWindowWithChartWidget:microscopeChart
                                                                                            title:windowTitle
                                                                                             size:microscopeSize];
+    [microscopeChart.view setWantsLayer:YES];
+    microscopeChart.view.layer.backgroundColor = [[NSColor systemBlueColor] colorWithAlphaComponent:0.1].CGColor;
+    microscopeChart.view.layer.borderColor = [NSColor systemBlueColor].CGColor;
+    microscopeChart.view.layer.borderWidth = 2.0;
+    
+
     
     if (!microscopeWindow) {
         NSLog(@"❌ ChartPanelView: Failed to create microscope window via AppDelegate");
@@ -2439,7 +2449,8 @@
     
     // Mostra la finestra
     [microscopeWindow makeKeyAndOrderFront:nil];
-    
+    [microscopeChart updateWithHistoricalBars:bars];
+
     NSLog(@"✅ ChartPanelView: Microscope window opened via AppDelegate with %lu bars", (unsigned long)bars.count);
 }
 

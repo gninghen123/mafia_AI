@@ -32,6 +32,7 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 
 @interface ChartWidget : BaseWidget
 
+@property (nonatomic, assign) BOOL isMicroscopeMode;
 
 #pragma mark - Trading Hours Preferences
 @property (nonatomic, assign) ChartTradingHours tradingHoursMode;

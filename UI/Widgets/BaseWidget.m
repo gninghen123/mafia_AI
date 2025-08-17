@@ -60,7 +60,7 @@ static NSString *const kChainSenderKey = @"sender";
         _widgetType = type;
         _panelType = panelType;
         _widgetID = [[NSUUID UUID] UUIDString];
-        _chainActive = NO;
+        _chainActive = YES;
         _chainColor = [NSColor systemRedColor]; // Default color
         _collapsed = NO;
         _savedHeight = 200;
@@ -192,9 +192,9 @@ static NSString *const kChainSenderKey = @"sender";
       [self.chainButton.widthAnchor constraintEqualToConstant:24].active = YES;
       [self.chainButton.heightAnchor constraintEqualToConstant:20].active = YES;
     // Imposta chain attiva di default con colore rosso
-    self.chainActive = YES;
-    self.chainColor = [NSColor systemRedColor];
-    
+    if (self.chainActive){
+        self.chainColor = [NSColor systemRedColor];
+    }
       [self updateChainButtonAppearance];
 
     self.addButton = [self createHeaderButton:@"+" action:@selector(showAddMenu:)];

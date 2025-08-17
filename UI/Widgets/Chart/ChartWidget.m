@@ -14,6 +14,20 @@
 #import "ChartObjectManagerWindow.h"
 #import "ChartWidget+ObjectsUI.h"
 
+
+#pragma mark - Smart Symbol Input Parameters
+
+// Structure per i parametri parsati dal simbolo
+typedef struct {
+    NSString *symbol;
+    ChartTimeframe timeframe;
+    NSInteger barsToDownload;
+    BOOL hasTimeframe;
+    BOOL hasBarsToDownload;
+    BOOL useDaysInsteadOfBars;
+    NSInteger daysToDownload;
+} SmartSymbolParameters;
+
 // Define constants locally instead of importing
 static NSString *const kWidgetChainUpdateNotification = @"WidgetChainUpdateNotification";
 static NSString *const kChainUpdateKey = @"update";
@@ -621,7 +635,7 @@ extern NSString *const DataHubDataLoadedNotification;
     // Convert ChartTimeframe to BarTimeframe
     BarTimeframe barTimeframe = [self chartTimeframeToBarTimeframe:self.currentTimeframe];
     NSInteger barsCount = self.barsToDownload;
-    if (barsCount <= 0) barsCount = 500; // Fallback se non impostato
+    if (barsCount <= 0) barsCount = 50; // Fallback se non impostato
     
     // ✅ NUOVO: Determina se includere after-hours dalle preferenze
     BOOL needExtendedHours = (self.tradingHoursMode == ChartTradingHoursWithAfterHours);
@@ -646,9 +660,9 @@ extern NSString *const DataHubDataLoadedNotification;
                
                // ✅ DIRETTO: Dataset già completo dal DownloadManager
                self.chartData = data;
-               if (!sameSymbol) {
-                   [self resetToInitialView];
-               }
+               
+               [self resetToInitialView];
+               
                [self synchronizePanels];
                
                NSLog(@"📊 ChartWidget: Final dataset has %lu bars (auto-completed by DownloadManager)",
@@ -706,30 +720,36 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 - (void)zoomToRange:(NSInteger)startIndex endIndex:(NSInteger)endIndex {
-    // Clamp indices
-    startIndex = MAX(0, startIndex);
-    endIndex = MIN(self.chartData.count - 1, endIndex);
+    if (!self.chartData || self.chartData.count == 0) return;
     
-    if (startIndex >= endIndex) return;
+    // ✅ FIX: Clamp indices ai valori validi dell'array
+    startIndex = MAX(0, startIndex);
+    endIndex = MIN(self.chartData.count - 1, endIndex);  // ❌ ERA: self.chartData.count
+    
+    // ✅ VERIFICA: Ensure valid range
+    if (startIndex >= endIndex) {
+        NSLog(@"⚠️ Invalid zoom range: start=%ld >= end=%ld, data count=%ld",
+              (long)startIndex, (long)endIndex, (long)self.chartData.count);
+        return;
+    }
     
     self.visibleStartIndex = startIndex;
     self.visibleEndIndex = endIndex;
     
-    // ✅ MODIFICATO: updatePanSlider ora gestisce la logica invertita
     [self updateViewport];
     [self synchronizePanels];
     
-    NSLog(@"📊 Zoom applied: [%ld-%ld]", (long)startIndex, (long)endIndex);
+    NSLog(@"📊 Zoom applied: [%ld-%ld] (%ld bars visible, data=%ld bars total)",
+          (long)startIndex, (long)endIndex,
+          (long)(endIndex - startIndex + 1), (long)self.chartData.count);
 }
-
 
 - (void)resetZoom {
     if (!self.chartData || self.chartData.count == 0) return;
     
-    // ✅ INVARIATO: Mostra tutti i dati (0 to end)
-    [self zoomToRange:0 endIndex:self.chartData.count - 1];
+    // ✅ FIX: endIndex corretto
+    [self zoomToRange:0 endIndex:self.chartData.count - 1];  // ❌ ERA: self.chartData.count
 }
-
 #pragma mark - Helper Methods
 
 - (void)resetToInitialView {
@@ -739,10 +759,13 @@ extern NSString *const DataHubDataLoadedNotification;
     NSInteger barsToShow = MIN(self.initialBarsToShow, totalBars);
     NSInteger startIndex = MAX(0, totalBars - barsToShow);
     
-    // ✅ MOSTRA DATI RECENTI: Questo posizionerà lo slider verso destra (circa 100%)
-    [self zoomToRange:startIndex endIndex:totalBars - 1];
+    // ✅ FIX: endIndex corretto (ultimo elemento valido)
+    NSInteger endIndex = totalBars - 1;  // ❌ ERA: totalBars (fuori range)
     
-    NSLog(@"📅 Reset to recent data: slider will be near 100%% (recent timeline position)");
+    [self zoomToRange:startIndex endIndex:endIndex];
+    
+    NSLog(@"📅 Reset to initial view: [%ld-%ld] showing %ld recent bars",
+          (long)startIndex, (long)endIndex, (long)barsToShow);
 }
 
 - (void)updateViewport {
@@ -885,12 +908,11 @@ extern NSString *const DataHubDataLoadedNotification;
         return;
     }
     
-    // Gestisci symbol text field
+    // ✅ NUOVO: Gestisci smart symbol text field
     if (textField == self.symbolTextField) {
-        NSString *symbol = textField.stringValue.uppercaseString;
-        if (symbol.length > 0) {
-            [self loadSymbol:symbol];
-            [self broadcastSymbolToChain:symbol];
+        NSString *inputText = [textField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (inputText.length > 0) {
+            [self processSmartSymbolInput:inputText];
         }
     }
 }
@@ -1067,20 +1089,31 @@ extern NSString *const DataHubDataLoadedNotification;
 - (void)updatePanelsWithData:(NSArray<HistoricalBarModel *> *)data {
     if (data.count == 0) return;
     
-    // Calculate visible range (CODICE ESISTENTE)
+    // Store data reference
+    self.chartData = data;
+    
+    // ✅ FIX: Calculate visible range CORRETTAMENTE
     NSInteger dataCount = data.count;
     NSInteger barsToShow = MIN(self.initialBarsToShow, dataCount);
     
+    // ✅ CORREZIONE CRUCIALE: endIndex deve essere l'ultimo elemento valido, non oltre
     self.visibleStartIndex = MAX(0, dataCount - barsToShow);
-    self.visibleEndIndex = dataCount;
+    self.visibleEndIndex = dataCount - 1;  // ❌ ERA: dataCount (fuori range)
     
-    // Calculate Y range if not overridden (CODICE CHE AVEVI CANCELLATO)
+    NSLog(@"📊 Setting initial viewport - Data: %ld bars, Showing: [%ld-%ld] (%ld bars visible)",
+          (long)dataCount, (long)self.visibleStartIndex, (long)self.visibleEndIndex,
+          (long)(self.visibleEndIndex - self.visibleStartIndex + 1));
+    
+    // Calculate Y range if not overridden
     if (!self.isYRangeOverridden) {
         double minPrice = CGFLOAT_MAX;
         double maxPrice = CGFLOAT_MIN;
         
+        // ✅ FIX: Ensure we don't exceed array bounds
+        NSInteger endIndex = MIN(self.visibleEndIndex, dataCount - 1);
+        
         // Find min/max in visible range
-        for (NSInteger i = self.visibleStartIndex; i < self.visibleEndIndex && i < data.count; i++) {
+        for (NSInteger i = self.visibleStartIndex; i <= endIndex; i++) {
             HistoricalBarModel *bar = data[i];
             minPrice = MIN(minPrice, bar.low);
             maxPrice = MAX(maxPrice, bar.high);
@@ -1098,28 +1131,19 @@ extern NSString *const DataHubDataLoadedNotification;
             self.yRangeMin = minPrice - 1.0;
             self.yRangeMax = maxPrice + 1.0;
         }
+        
+        NSLog(@"📊 Y-Range calculated: %.2f - %.2f (padding: %.2f)",
+              self.yRangeMin, self.yRangeMax, padding);
     }
     
-    // Update all panels (AGGIORNATO)
-    for (ChartPanelView *panel in self.chartPanels) {
-        // Update chart data (ESISTENTE)
-        [panel updateWithData:data
-                   startIndex:self.visibleStartIndex
-                     endIndex:self.visibleEndIndex
-                    yRangeMin:self.yRangeMin
-                    yRangeMax:self.yRangeMax];
-        
-        // ✅ NUOVO: Update coordinate context con trading hours info
-        if (panel.objectRenderer) {
-            [panel.objectRenderer updateCoordinateContext:data
-                                                startIndex:self.visibleStartIndex
-                                                  endIndex:self.visibleEndIndex
-                                                 yRangeMin:self.yRangeMin
-                                                 yRangeMax:self.yRangeMax
-                                                    bounds:panel.bounds];
-        }
-    }
+    // Update all panels with new data and viewport
+    [self updateViewport];
+    [self synchronizePanels];
+    
+    NSLog(@"✅ Chart data updated successfully - %ld bars loaded, viewport: [%ld-%ld]",
+          (long)dataCount, (long)self.visibleStartIndex, (long)self.visibleEndIndex);
 }
+
 // ============================================================
 // NUOVO: Public Symbol Access Method
 // ============================================================
@@ -1243,5 +1267,302 @@ extern NSString *const DataHubDataLoadedNotification;
 
     self.isYRangeOverridden = [state[@"isYRangeOverridden"] boolValue];
 }
+
+- (void)logViewportState {
+    NSLog(@"🔍 Viewport State Debug:");
+    NSLog(@"   - Data count: %ld", (long)self.chartData.count);
+    NSLog(@"   - Visible range: [%ld-%ld]", (long)self.visibleStartIndex, (long)self.visibleEndIndex);
+    NSLog(@"   - Visible bars: %ld", (long)(self.visibleEndIndex - self.visibleStartIndex + 1));
+    NSLog(@"   - Y range: %.2f - %.2f", self.yRangeMin, self.yRangeMax);
+    NSLog(@"   - Initial bars to show: %ld", (long)self.initialBarsToShow);
+    
+    // Validate ranges
+    if (self.visibleStartIndex < 0 || self.visibleEndIndex >= self.chartData.count) {
+        NSLog(@"❌ INVALID VIEWPORT: Indices out of bounds!");
+    }
+    if (self.visibleStartIndex >= self.visibleEndIndex) {
+        NSLog(@"❌ INVALID VIEWPORT: Start >= End!");
+    }
+}
+
+
+#pragma mark - Smart Symbol Processing - NUOVI METODI
+
+- (void)processSmartSymbolInput:(NSString *)input {
+    NSLog(@"📝 Processing smart symbol input: '%@'", input);
+    
+    // Parse i parametri dall'input
+    SmartSymbolParameters params = [self parseSmartSymbolInput:input];
+    
+    // Validate symbol
+    if (!params.symbol || params.symbol.length == 0) {
+        NSLog(@"❌ Invalid symbol in input");
+        return;
+    }
+    
+    // ✅ APPLY PARAMETERS: Precedenza sui default e UI
+    [self applySmartSymbolParameters:params];
+    
+    // Load symbol with new parameters
+    [self loadSymbol:params.symbol];
+    [self broadcastSymbolToChain:@[params.symbol]];
+    
+    // ✅ UPDATE UI: Riflette i parametri applicati
+    [self updateUIAfterSmartSymbolInput:params];
+    
+    NSLog(@"✅ Smart symbol processing completed for: %@", params.symbol);
+}
+
+- (SmartSymbolParameters)parseSmartSymbolInput:(NSString *)input {
+    SmartSymbolParameters params = {0};
+    
+    // Default values
+    params.timeframe = self.currentTimeframe;
+    params.barsToDownload = self.barsToDownload;
+    params.hasTimeframe = NO;
+    params.hasBarsToDownload = NO;
+    params.useDaysInsteadOfBars = NO;
+    params.daysToDownload = 0;
+    
+    // Split input by comma
+    NSArray<NSString *> *components = [input componentsSeparatedByString:@","];
+    
+    // ✅ COMPONENT 1: Symbol (required)
+    if (components.count >= 1) {
+        params.symbol = [[components[0] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] uppercaseString];
+    }
+    
+    // ✅ COMPONENT 2: Timeframe (optional)
+    if (components.count >= 2) {
+        NSString *timeframeStr = [components[1] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        ChartTimeframe parsedTimeframe = [self parseTimeframeString:timeframeStr];
+        if (parsedTimeframe != -1) {
+            params.timeframe = parsedTimeframe;
+            params.hasTimeframe = YES;
+            NSLog(@"📊 Parsed timeframe: %@ -> %ld", timeframeStr, (long)parsedTimeframe);
+        }
+    }
+    
+    // ✅ COMPONENT 3: Data to download (optional)
+    if (components.count >= 3) {
+        NSString *dataStr = [components[2] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        [self parseDataToDownloadString:dataStr intoParameters:&params];
+    }
+    
+    NSLog(@"📝 Parsed parameters - Symbol: %@, TF: %ld, Bars: %ld, Days: %ld (useDays: %@)",
+          params.symbol, (long)params.timeframe, (long)params.barsToDownload,
+          (long)params.daysToDownload, params.useDaysInsteadOfBars ? @"YES" : @"NO");
+    
+    return params;
+}
+
+- (ChartTimeframe)parseTimeframeString:(NSString *)timeframeStr {
+    if (!timeframeStr || timeframeStr.length == 0) return -1;
+    
+    NSString *tf = timeframeStr.lowercaseString;
+    
+    // ✅ SINGLE LETTER TIMEFRAMES (più intuitivi)
+    if (tf.length == 1) {
+        unichar c = [tf characterAtIndex:0];
+        switch (c) {
+            case 'd': return ChartTimeframeDaily;
+            case 'w': return ChartTimeframeWeekly;
+            case 'm': return ChartTimeframeMonthly;
+           // case 'q': return ChartTimeframeQuarterly;   // Se supportato
+           // case 'y': return ChartTimeframeYearly;      // Se supportato
+            default: break;
+        }
+    }
+    
+    // ✅ HOUR SUFFIX (es: 1h, 4h)
+    if ([tf hasSuffix:@"h"]) {
+        NSString *hourPart = [tf substringToIndex:tf.length - 1];
+        NSInteger hours = hourPart.integerValue;
+        switch (hours) {
+            case 1: return ChartTimeframe1Hour;
+            case 4: return ChartTimeframe4Hour;
+            default: return -1;
+        }
+    }
+    
+    // ✅ MINUTE SUFFIX (es: 1m, 5m, 15m, 30m)
+    if ([tf hasSuffix:@"m"] && ![tf isEqualToString:@"m"]) { // Evita conflitto con 'm' = monthly
+        NSString *minutePart = [tf substringToIndex:tf.length - 1];
+        NSInteger minutes = minutePart.integerValue;
+        switch (minutes) {
+            case 1: return ChartTimeframe1Min;
+            case 5: return ChartTimeframe5Min;
+            case 15: return ChartTimeframe15Min;
+            case 30: return ChartTimeframe30Min;
+            default: return -1;
+        }
+    }
+    
+    // ✅ NUMERIC TIMEFRAMES (solo numero = minuti)
+    if ([tf rangeOfCharacterFromSet:[[NSCharacterSet decimalDigitCharacterSet] invertedSet]].location == NSNotFound) {
+        NSInteger minutes = tf.integerValue;
+        switch (minutes) {
+            case 1: return ChartTimeframe1Min;
+            case 5: return ChartTimeframe5Min;
+            case 15: return ChartTimeframe15Min;
+            case 30: return ChartTimeframe30Min;
+            case 60: return ChartTimeframe1Hour;
+            case 240: return ChartTimeframe4Hour;
+            case 1440: return ChartTimeframeDaily;
+            default: return -1;
+        }
+    }
+    
+    // ✅ EXTENDED STRING TIMEFRAMES (per retrocompatibilità)
+    if ([tf isEqualToString:@"1min"] || [tf isEqualToString:@"min"]) return ChartTimeframe1Min;
+    if ([tf isEqualToString:@"5min"]) return ChartTimeframe5Min;
+    if ([tf isEqualToString:@"15min"]) return ChartTimeframe15Min;
+    if ([tf isEqualToString:@"30min"]) return ChartTimeframe30Min;
+    if ([tf isEqualToString:@"1hour"] || [tf isEqualToString:@"hour"]) return ChartTimeframe1Hour;
+    if ([tf isEqualToString:@"4hour"]) return ChartTimeframe4Hour;
+    if ([tf isEqualToString:@"daily"] || [tf isEqualToString:@"day"]) return ChartTimeframeDaily;
+    if ([tf isEqualToString:@"weekly"] || [tf isEqualToString:@"week"]) return ChartTimeframeWeekly;
+    if ([tf isEqualToString:@"monthly"] || [tf isEqualToString:@"month"]) return ChartTimeframeMonthly;
+    
+    return -1; // Invalid timeframe
+}
+
+- (void)parseDataToDownloadString:(NSString *)dataStr intoParameters:(SmartSymbolParameters *)params {
+    if (!dataStr || dataStr.length == 0) return;
+    
+    NSString *cleanStr = dataStr.lowercaseString;
+    
+    // ✅ CHECK FOR DAYS SUFFIX
+    if ([cleanStr hasSuffix:@"d"] || [cleanStr hasSuffix:@"days"]) {
+        params->useDaysInsteadOfBars = YES;
+        
+        // Extract number part
+        NSString *numberPart = cleanStr;
+        if ([cleanStr hasSuffix:@"days"]) {
+            numberPart = [cleanStr substringToIndex:cleanStr.length - 4];
+        } else if ([cleanStr hasSuffix:@"d"]) {
+            numberPart = [cleanStr substringToIndex:cleanStr.length - 1];
+        }
+        
+        params->daysToDownload = numberPart.integerValue;
+        
+        // ✅ CONVERT DAYS TO BARS based on timeframe
+        params->barsToDownload = [self convertDaysToBars:params->daysToDownload forTimeframe:params->timeframe];
+        params->hasBarsToDownload = YES;
+        
+        NSLog(@"📅 Parsed %ld days -> %ld bars for timeframe %ld",
+              (long)params->daysToDownload, (long)params->barsToDownload, (long)params->timeframe);
+    }
+    // ✅ PLAIN NUMBER (bars)
+    else {
+        NSInteger bars = cleanStr.integerValue;
+        if (bars > 0) {
+            params->barsToDownload = bars;
+            params->hasBarsToDownload = YES;
+            params->useDaysInsteadOfBars = NO;
+            
+            NSLog(@"📊 Parsed %ld bars", (long)bars);
+        }
+    }
+}
+
+- (NSInteger)convertDaysToBars:(NSInteger)days forTimeframe:(ChartTimeframe)timeframe {
+    if (days <= 0) return self.barsToDownload; // fallback
+    
+    // ✅ USE EXISTING TRADING HOURS LOGIC
+    NSInteger barsPerDay = [self barsPerDayForCurrentTimeframe];
+    NSInteger totalBars = days * barsPerDay;
+    
+    // ✅ REASONABLE LIMITS
+    totalBars = MAX(50, totalBars);     // Minimum 50 bars
+    totalBars = MIN(10000, totalBars);  // Maximum 10,000 bars
+    
+    NSLog(@"🔢 Converted %ld days to %ld bars (%ld bars/day for TF %ld)",
+          (long)days, (long)totalBars, (long)barsPerDay, (long)timeframe);
+    
+    return totalBars;
+}
+
+- (void)applySmartSymbolParameters:(SmartSymbolParameters)params {
+    // ✅ APPLY TIMEFRAME (precedenza su segmented control)
+    if (params.hasTimeframe) {
+        self.currentTimeframe = params.timeframe;
+        NSLog(@"⏰ Applied timeframe override: %ld", (long)params.timeframe);
+    }
+    
+    // ✅ APPLY BARS TO DOWNLOAD (precedenza su preferences)
+    if (params.hasBarsToDownload) {
+        self.barsToDownload = params.barsToDownload;
+        NSLog(@"📊 Applied bars override: %ld", (long)params.barsToDownload);
+    }
+    
+    // ✅ UPDATE CURRENT SYMBOL
+    self.currentSymbol = params.symbol;
+}
+
+- (void)updateUIAfterSmartSymbolInput:(SmartSymbolParameters)params {
+    // ✅ UPDATE SYMBOL TEXTFIELD (mostra solo simbolo pulito)
+    self.symbolTextField.stringValue = params.symbol;
+    
+    // ✅ UPDATE TIMEFRAME SEGMENTED CONTROL (riflette override)
+    if (params.hasTimeframe && self.timeframeSegmented.segmentCount > params.timeframe) {
+        self.timeframeSegmented.selectedSegment = params.timeframe;
+    }
+    
+    // ✅ OPTIONAL: Show feedback message
+    NSMutableArray *appliedParams = [NSMutableArray array];
+    if (params.hasTimeframe) {
+        [appliedParams addObject:[NSString stringWithFormat:@"TF: %@", [self timeframeDisplayName:params.timeframe]]];
+    }
+    if (params.hasBarsToDownload) {
+        if (params.useDaysInsteadOfBars) {
+            [appliedParams addObject:[NSString stringWithFormat:@"%ld days (%ld bars)", (long)params.daysToDownload, (long)params.barsToDownload]];
+        } else {
+            [appliedParams addObject:[NSString stringWithFormat:@"%ld bars", (long)params.barsToDownload]];
+        }
+    }
+    
+    if (appliedParams.count > 0) {
+        NSString *feedback = [NSString stringWithFormat:@"📝 %@ loaded with: %@",
+                              params.symbol, [appliedParams componentsJoinedByString:@", "]];
+        [self showChainFeedback:feedback];
+    }
+}
+
+- (NSString *)timeframeDisplayName:(ChartTimeframe)timeframe {
+    switch (timeframe) {
+        case ChartTimeframe1Min: return @"1m";
+        case ChartTimeframe5Min: return @"5m";
+        case ChartTimeframe15Min: return @"15m";
+        case ChartTimeframe30Min: return @"30m";
+        case ChartTimeframe1Hour: return @"1h";
+        case ChartTimeframe4Hour: return @"4h";
+        case ChartTimeframeDaily: return @"1D";
+        case ChartTimeframeWeekly: return @"1W";
+        case ChartTimeframeMonthly: return @"1M";
+        default: return @"Unknown";
+    }
+}
+
+- (void)updateWithHistoricalBars:(NSArray<HistoricalBarModel *> *)bars {
+    if (!bars || bars.count == 0) {
+        NSLog(@"❌ ChartWidget: updateWithHistoricalBars called with no data");
+        return;
+    }
+    
+    NSLog(@"🔬 ChartWidget: Updating with %lu microscope bars", (unsigned long)bars.count);
+    
+    // Popola direttamente i dati senza chiamare DataHub
+    self.chartData = bars;
+    
+    // Reset alla vista iniziale per mostrare tutti i dati microscopi
+    [self resetToInitialView];
+    
+    // Sincronizza tutti i pannelli con i nuovi dati
+    [self synchronizePanels];
+    
+    NSLog(@"✅ ChartWidget: Microscope data update completed");
+}
+
 
 @end

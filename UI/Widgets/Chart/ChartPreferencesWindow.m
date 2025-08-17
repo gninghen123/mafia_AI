@@ -74,7 +74,11 @@
     
     self.barsToDownloadField = [[NSTextField alloc] initWithFrame:NSMakeRect(150, 178, 100, 24)];
     self.barsToDownloadField.placeholderString = @"50-10000";
-    [self.barsToDownloadField setEnabled:YES];  // Enable the field
+    [self.barsToDownloadField setEnabled:YES];
+    
+    // ✅ FIX: Rimuovi formatter automatico e imposta formatter personalizzato
+    [self configureNumericTextField:self.barsToDownloadField];
+    
     [contentView addSubview:self.barsToDownloadField];
     
     NSTextField *barsToDownloadInfo = [self createLabel:@"(More bars = longer history)" frame:NSMakeRect(260, 180, 120, 20)];
@@ -88,7 +92,11 @@
     
     self.initialBarsToShowField = [[NSTextField alloc] initWithFrame:NSMakeRect(150, 138, 100, 24)];
     self.initialBarsToShowField.placeholderString = @"10-500";
-    [self.initialBarsToShowField setEnabled:YES];  // Enable the field
+    [self.initialBarsToShowField setEnabled:YES];
+    
+    // ✅ FIX: Rimuovi formatter automatico e imposta formatter personalizzato
+    [self configureNumericTextField:self.initialBarsToShowField];
+    
     [contentView addSubview:self.initialBarsToShowField];
     
     NSTextField *initialBarsInfo = [self createLabel:@"(Default zoom level)" frame:NSMakeRect(260, 140, 120, 20)];
@@ -108,7 +116,7 @@
     [self.saveButton setKeyEquivalent:@"\r"]; // Enter key
     [self.saveButton setTarget:self];
     [self.saveButton setAction:@selector(savePreferences:)];
-    [self.saveButton setEnabled:YES];  // Enable the button
+    [self.saveButton setEnabled:YES];
     [contentView addSubview:self.saveButton];
     
     self.cancelButton = [[NSButton alloc] initWithFrame:NSMakeRect(190, 40, 80, 32)];
@@ -117,7 +125,7 @@
     [self.cancelButton setKeyEquivalent:@"\033"]; // Escape key
     [self.cancelButton setTarget:self];
     [self.cancelButton setAction:@selector(cancelPreferences:)];
-    [self.cancelButton setEnabled:YES];  // Enable the button
+    [self.cancelButton setEnabled:YES];
     [contentView addSubview:self.cancelButton];
     
     NSLog(@"✅ Chart preferences controls created");
@@ -150,9 +158,9 @@
     BOOL includeAfterHours = (self.chartWidget.tradingHoursMode == ChartTradingHoursWithAfterHours);
     [self.includeAfterHoursSwitch setState:(includeAfterHours ? NSControlStateValueOn : NSControlStateValueOff)];
     
-    // Load bars settings
-    self.barsToDownloadField.integerValue = self.chartWidget.barsToDownload;
-    self.initialBarsToShowField.integerValue = self.chartWidget.initialBarsToShow;
+    // ✅ FIX: Usa stringValue per evitare formattazione automatica
+    self.barsToDownloadField.stringValue = [NSString stringWithFormat:@"%ld", (long)self.chartWidget.barsToDownload];
+    self.initialBarsToShowField.stringValue = [NSString stringWithFormat:@"%ld", (long)self.chartWidget.initialBarsToShow];
     
     NSLog(@"📊 Loaded preferences - After-Hours: %@, Bars: %ld/%ld",
           includeAfterHours ? @"YES" : @"NO",
@@ -168,15 +176,26 @@
 }
 
 - (IBAction)savePreferences:(id)sender {
-    // Validate inputs
-    NSInteger barsToDownload = self.barsToDownloadField.integerValue;
-    NSInteger initialBarsToShow = self.initialBarsToShowField.integerValue;
+    // ✅ FIX: Usa stringValue e converti manualmente per evitare problemi di parsing
+    NSString *barsToDownloadString = [self.barsToDownloadField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    NSString *initialBarsToShowString = [self.initialBarsToShowField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     
+    // Rimuovi eventuali spazi o caratteri non numerici
+    barsToDownloadString = [[barsToDownloadString componentsSeparatedByCharactersInSet:[[NSCharacterSet decimalDigitCharacterSet] invertedSet]] componentsJoinedByString:@""];
+    initialBarsToShowString = [[initialBarsToShowString componentsSeparatedByCharactersInSet:[[NSCharacterSet decimalDigitCharacterSet] invertedSet]] componentsJoinedByString:@""];
+    
+    NSInteger barsToDownload = [barsToDownloadString integerValue];
+    NSInteger initialBarsToShow = [initialBarsToShowString integerValue];
+    
+    NSLog(@"📊 Parsing preferences - Raw strings: '%@' -> %ld, '%@' -> %ld",
+          barsToDownloadString, (long)barsToDownload,
+          initialBarsToShowString, (long)initialBarsToShow);
+    
+    // Validate inputs
     if (barsToDownload < 50) {
         [self showAlert:@"Bars to download must be at least 50"];
         return;
     }
-    
     
     if (initialBarsToShow < 10) {
         [self showAlert:@"Initial bars to show must be at least 10"];
@@ -289,6 +308,26 @@
     alert.alertStyle = NSAlertStyleWarning;
     [alert addButtonWithTitle:@"OK"];
     [alert runModal];
+}
+#pragma mark - Helper Methods - NUOVO METODO
+
+// ✅ NUOVO: Configura TextField per numeri senza formatting automatico
+- (void)configureNumericTextField:(NSTextField *)textField {
+    // Rimuovi qualsiasi formatter esistente
+    textField.formatter = nil;
+    
+    // Crea un formatter personalizzato che accetta solo numeri interi
+    NSNumberFormatter *numberFormatter = [[NSNumberFormatter alloc] init];
+    numberFormatter.numberStyle = NSNumberFormatterNoStyle; // Nessuna formattazione
+    numberFormatter.allowsFloats = NO; // Solo numeri interi
+    numberFormatter.minimum = @(0); // Non permettere numeri negativi
+    numberFormatter.maximum = @(999999); // Limite massimo ragionevole
+    numberFormatter.usesGroupingSeparator = NO; // ✅ IMPORTANTE: No separatori migliaia
+    
+    // Applica il formatter
+    textField.formatter = numberFormatter;
+    
+    NSLog(@"🔧 Configured numeric text field without grouping separator");
 }
 
 @end

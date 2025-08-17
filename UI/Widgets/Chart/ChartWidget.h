@@ -32,7 +32,7 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 
 @interface ChartWidget : BaseWidget
 
-@property (nonatomic, assign) BOOL isMicroscopeMode;
+@property (nonatomic, assign) BOOL isStaticMode;
 
 #pragma mark - Trading Hours Preferences
 @property (nonatomic, assign) ChartTradingHours tradingHoursMode;
@@ -55,6 +55,7 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 @property (nonatomic, assign) BOOL isObjectsPanelVisible;
 @property (nonatomic, strong) NSButton *objectsVisibilityToggle;
 
+@property (nonatomic, strong) NSButton *staticModeToggle;
 
 #pragma mark - Data Properties
 @property (nonatomic, strong, readwrite) NSString *currentSymbol;
@@ -91,5 +92,10 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 - (NSInteger)getCurrentTimeframeInMinutes;
 
 - (void)updateWithHistoricalBars:(NSArray<HistoricalBarModel *> *)bars;
+
+
+- (void)setStaticMode:(BOOL)staticMode;
+- (void)toggleStaticMode:(id)sender;
+- (void)updateStaticModeUI;
 
 @end

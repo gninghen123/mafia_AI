@@ -2397,7 +2397,7 @@
    
     
     [microscopeChart setChainActive:NO withColor:nil];
-    microscopeChart.isMicroscopeMode = YES;
+    [microscopeChart setStaticMode:YES];
 
     
     microscopeChart.currentSymbol = self.chartWidget.currentSymbol;
@@ -2436,11 +2436,6 @@
                                                                                            title:windowTitle
                                                                                             size:microscopeSize];
     [microscopeChart.view setWantsLayer:YES];
-    microscopeChart.view.layer.backgroundColor = [[NSColor systemBlueColor] colorWithAlphaComponent:0.1].CGColor;
-    microscopeChart.view.layer.borderColor = [NSColor systemBlueColor].CGColor;
-    microscopeChart.view.layer.borderWidth = 2.0;
-    
-
     
     if (!microscopeWindow) {
         NSLog(@"❌ ChartPanelView: Failed to create microscope window via AppDelegate");

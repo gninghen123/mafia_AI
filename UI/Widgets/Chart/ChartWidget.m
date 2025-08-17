@@ -112,6 +112,18 @@ extern NSString *const DataHubDataLoadedNotification;
     self.symbolTextField.delegate = self;
     [self.contentView addSubview:self.symbolTextField];
     
+    // ✅ NEW: StaticMode toggle button
+       self.staticModeToggle = [[NSButton alloc] init];
+       self.staticModeToggle.title = @"📋";
+       self.staticModeToggle.bezelStyle = NSBezelStyleRounded;
+       self.staticModeToggle.state = NSControlStateValueOff;
+       self.staticModeToggle.target = self;
+       self.staticModeToggle.action = @selector(toggleStaticMode:);
+       self.staticModeToggle.toolTip = @"Toggle Static Mode (No Data Updates)";
+       self.staticModeToggle.wantsLayer = YES;
+       [self.contentView addSubview:self.staticModeToggle];
+    
+    
     // Objects visibility toggle (NUOVO)
     self.objectsVisibilityToggle = [[NSButton alloc] init];
     self.objectsVisibilityToggle.title = @"👁";
@@ -201,7 +213,8 @@ extern NSString *const DataHubDataLoadedNotification;
     self.zoomOutButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.zoomInButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.zoomAllButton.translatesAutoresizingMaskIntoConstraints = NO;
-    
+    self.staticModeToggle.translatesAutoresizingMaskIntoConstraints = NO;
+
     // Create constraint per split view (per animazione sidebar)
     self.splitViewLeadingConstraint = [self.panelsSplitView.leadingAnchor
                                       constraintEqualToAnchor:self.contentView.leadingAnchor
@@ -215,14 +228,21 @@ extern NSString *const DataHubDataLoadedNotification;
         [self.objectsPanelToggle.heightAnchor constraintEqualToConstant:21],
         
         [self.symbolTextField.centerYAnchor constraintEqualToAnchor:self.objectsPanelToggle.centerYAnchor],
-        [self.symbolTextField.leadingAnchor constraintEqualToAnchor:self.objectsPanelToggle.trailingAnchor constant:8],
-        [self.symbolTextField.widthAnchor constraintEqualToConstant:100],
-        [self.symbolTextField.heightAnchor constraintEqualToConstant:21],
-        
-        [self.objectsVisibilityToggle.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
-        [self.objectsVisibilityToggle.leadingAnchor constraintEqualToAnchor:self.symbolTextField.trailingAnchor constant:8],
-        [self.objectsVisibilityToggle.widthAnchor constraintEqualToConstant:32],
-        [self.objectsVisibilityToggle.heightAnchor constraintEqualToConstant:21],
+              [self.symbolTextField.leadingAnchor constraintEqualToAnchor:self.objectsPanelToggle.trailingAnchor constant:8],
+              [self.symbolTextField.widthAnchor constraintEqualToConstant:100],
+              [self.symbolTextField.heightAnchor constraintEqualToConstant:21],
+              
+              // 👉 Static mode toggle subito dopo symbolTextField
+              [self.staticModeToggle.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
+              [self.staticModeToggle.leadingAnchor constraintEqualToAnchor:self.symbolTextField.trailingAnchor constant:8],
+              [self.staticModeToggle.widthAnchor constraintEqualToConstant:32],
+              [self.staticModeToggle.heightAnchor constraintEqualToConstant:21],
+              
+              // Objects visibility toggle spostato a destra dello static toggle
+              [self.objectsVisibilityToggle.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
+              [self.objectsVisibilityToggle.leadingAnchor constraintEqualToAnchor:self.staticModeToggle.trailingAnchor constant:8],
+              [self.objectsVisibilityToggle.widthAnchor constraintEqualToConstant:32],
+              [self.objectsVisibilityToggle.heightAnchor constraintEqualToConstant:21],
         
         // Timeframe segments - COLLEGATO DIRETTAMENTE al visibility toggle
         [self.timeframeSegmented.leadingAnchor constraintEqualToAnchor:self.objectsVisibilityToggle.trailingAnchor constant:8],
@@ -498,8 +518,8 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 - (void)handleHistoricalDataUpdate:(NSNotification *)notification {
-    if (self.isMicroscopeMode) {
-            NSLog(@"🔬 Microscopio: Ignoring DataHub update (static data mode)");
+    if (self.isStaticMode) {
+            NSLog(@"StaticMode: Ignoring DataHub update (static data mode)");
             return;
         }
     NSDictionary *userInfo = notification.userInfo;
@@ -647,7 +667,7 @@ extern NSString *const DataHubDataLoadedNotification;
     NSLog(@"📊 ChartWidget: Loading %@ with %ld bars (timeframe: %ld, after-hours: %@)",
           symbol, (long)barsCount, (long)barTimeframe, needExtendedHours ? @"YES" : @"NO");
     
-    if (!self.isMicroscopeMode) {
+    if (!self.isStaticMode) {
         [[DataHub shared] getHistoricalBarsForSymbol:symbol
                                               timeframe:barTimeframe
                                                barCount:barsCount
@@ -801,9 +821,9 @@ extern NSString *const DataHubDataLoadedNotification;
     NSInteger barsToShow = totalBars;
     NSInteger startIndex = 0;
    
-    if (!self.isMicroscopeMode) {
-        NSInteger barsToShow = MIN(self.initialBarsToShow, totalBars);
-        NSInteger startIndex = MAX(0, totalBars - barsToShow);
+    if (!self.isStaticMode) {
+         barsToShow = MIN(self.initialBarsToShow, totalBars);
+         startIndex = MAX(0, totalBars - barsToShow);
     }
     // ✅ FIX: endIndex corretto (ultimo elemento valido)
     NSInteger endIndex = totalBars - 1;  // ❌ ERA: totalBars (fuori range)
@@ -1606,6 +1626,92 @@ extern NSString *const DataHubDataLoadedNotification;
     
     
     NSLog(@"✅ ChartWidget: Microscope data update completed");
+}
+
+
+#pragma mark - StaticMode Implementation (NUOVO)
+
+- (void)setStaticMode:(BOOL)staticMode {
+    if (_isStaticMode == staticMode) return;
+    
+    _isStaticMode = staticMode;
+    
+    NSLog(@"📋 ChartWidget: StaticMode %@ for symbol %@",
+          staticMode ? @"ENABLED" : @"DISABLED", self.currentSymbol ?: @"(none)");
+    
+    [self updateStaticModeUI];
+    
+    if (staticMode) {
+        [self showStaticModeNotification];
+    }
+}
+
+- (void)toggleStaticMode:(id)sender {
+    [self setStaticMode:!self.isStaticMode];
+}
+
+- (void)updateStaticModeUI {
+    // Update toggle button state
+    if (self.staticModeToggle) {
+        self.staticModeToggle.state = self.isStaticMode ? NSControlStateValueOn : NSControlStateValueOff;
+        
+        // Update button appearance
+        if (self.isStaticMode) {
+            self.staticModeToggle.layer.borderColor = [NSColor systemBlueColor].CGColor;
+            self.staticModeToggle.layer.borderWidth = 2.0;
+        } else {
+            self.staticModeToggle.layer.borderColor = [NSColor clearColor].CGColor;
+            self.staticModeToggle.layer.borderWidth = 0.0;
+        }
+    }
+    
+    // Update content view border (blue highlight like microscope)
+    if (self.isStaticMode) {
+        self.contentView.wantsLayer = YES;
+        self.contentView.layer.borderColor = [NSColor systemBlueColor].CGColor;
+        self.contentView.layer.borderWidth = 2.0;
+        self.contentView.layer.cornerRadius = 4.0;
+    } else {
+        self.contentView.layer.borderColor = [NSColor clearColor].CGColor;
+        self.contentView.layer.borderWidth = 0.0;
+    }
+}
+
+- (void)showStaticModeNotification {
+    // ✅ CHANGED: Updated notification message
+    // Trova il primo panel per mostrare il messaggio
+    ChartPanelView *targetPanel = self.chartPanels.firstObject;
+    if (!targetPanel) return;
+    
+    // Crea messaggio temporaneo
+    NSTextField *notificationLabel = [[NSTextField alloc] init];
+    notificationLabel.stringValue = @"📋 STATIC MODE - No Data Updates";
+    notificationLabel.font = [NSFont boldSystemFontOfSize:14];
+    notificationLabel.textColor = [NSColor systemBlueColor];
+    notificationLabel.backgroundColor = [[NSColor systemBlueColor] colorWithAlphaComponent:0.1];
+    notificationLabel.bordered = YES;
+    notificationLabel.bezeled = YES;
+    notificationLabel.editable = NO;
+    notificationLabel.selectable = NO;
+    notificationLabel.alignment = NSTextAlignmentCenter;
+    
+    // Posiziona al centro del panel
+    notificationLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [targetPanel addSubview:notificationLabel];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [notificationLabel.centerXAnchor constraintEqualToAnchor:targetPanel.centerXAnchor],
+        [notificationLabel.topAnchor constraintEqualToAnchor:targetPanel.topAnchor constant:10],
+        [notificationLabel.widthAnchor constraintEqualToConstant:280],
+        [notificationLabel.heightAnchor constraintEqualToConstant:30]
+    ]];
+    
+    // Rimuovi dopo 3 secondi
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [notificationLabel removeFromSuperview];
+    });
+    
+    NSLog(@"📋 Showed StaticMode notification to user");
 }
 
 

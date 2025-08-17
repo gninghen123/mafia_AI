@@ -4,9 +4,9 @@
 //
 
 #import <Cocoa/Cocoa.h>
-
 // Forward declarations
 @class BaseWidget;
+@class ChartWidget;
 @class FloatingWidgetWindow;
 @class WidgetTypeManager;
 
@@ -36,6 +36,14 @@
                                                     size:(NSSize)size;
 - (void)registerFloatingWindow:(FloatingWidgetWindow *)window;
 - (void)unregisterFloatingWindow:(FloatingWidgetWindow *)window;
+
+#pragma mark - Microscope Window Management (NEW)
+
+// Crea finestra microscopio specializzata per ChartWidget
+- (FloatingWidgetWindow *)createMicroscopeWindowWithChartWidget:(ChartWidget *)chartWidget
+                                                          title:(NSString *)title
+                                                           size:(NSSize)size;
+
 
 #pragma mark - Widget Creation Helper
 

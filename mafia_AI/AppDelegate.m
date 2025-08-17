@@ -405,6 +405,9 @@
        @"Seasonal Chart": [NSValue valueWithSize:NSMakeSize(800, 500)],
        @"Tick Chart": [NSValue valueWithSize:NSMakeSize(700, 500)],
        
+       // NUOVO: Dimensioni specifiche per finestre microscopio
+       @"Microscope Chart": [NSValue valueWithSize:NSMakeSize(800, 600)],
+       
        // List-based widgets - vertical orientation
        @"Watchlist": [NSValue valueWithSize:NSMakeSize(400, 600)],
        @"Alerts": [NSValue valueWithSize:NSMakeSize(450, 500)],
@@ -545,6 +548,35 @@
     }
     
     return YES;
+}
+
+
+#pragma mark - Microscope Window Management
+
+- (FloatingWidgetWindow *)createMicroscopeWindowWithChartWidget:(ChartWidget *)chartWidget
+                                                          title:(NSString *)title
+                                                           size:(NSSize)size {
+    
+    if (!chartWidget) {
+        NSLog(@"❌ AppDelegate: Cannot create microscope window - chartWidget is nil");
+        return nil;
+    }
+    
+    NSLog(@"🔬 AppDelegate: Creating microscope window: %@", title);
+    
+    // Crea la floating window utilizzando l'infrastruttura esistente
+    FloatingWidgetWindow *window = [[FloatingWidgetWindow alloc] initWithWidget:chartWidget
+                                                                           title:title
+                                                                            size:size
+                                                                     appDelegate:self];
+    
+    // Registra la finestra nell'array delle floating windows
+    [self registerFloatingWindow:window];
+    
+    NSLog(@"✅ AppDelegate: Created microscope window: %@ (total floating windows: %ld)",
+          title, (long)self.floatingWindows.count);
+    
+    return window;
 }
 
 

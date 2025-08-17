@@ -8,6 +8,7 @@
 #import "FloatingWidgetWindow.h"
 #import "BaseWidget.h"
 #import "AppDelegate.h"
+#import "ChartWidget.h"
 
 @interface FloatingWidgetWindow ()
 @property (nonatomic, strong) NSView *containerView;
@@ -63,22 +64,40 @@
     // Create container view
     self.containerView = [[NSView alloc] init];
     self.containerView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.contentView = self.containerView;
+    [self.contentView addSubview:self.containerView];
     
-    // Add widget to container
+    // Setup widget view
     if (self.containedWidget && self.containedWidget.view) {
+        self.containedWidget.view.translatesAutoresizingMaskIntoConstraints = NO;
         [self.containerView addSubview:self.containedWidget.view];
         
-        // Setup constraints for full coverage
-        self.containedWidget.view.translatesAutoresizingMaskIntoConstraints = NO;
+        // NUOVO: Configurazione speciale per ChartWidget microscopio
+        if ([self.containedWidget isKindOfClass:[ChartWidget class]]) {
+            ChartWidget *chartWidget = (ChartWidget *)self.containedWidget;
+            
+            // Assicurati che il ChartWidget sia configurato per floating window
+            NSLog(@"🔬 FloatingWidgetWindow: Configuring ChartWidget for microscope display");
+            
+            // Il ChartWidget potrebbe aver bisogno di setup aggiuntivo per floating window
+            // (questa parte può essere espansa in futuro se necessario)
+        }
+        
+        // Auto Layout constraints per riempire completamente la finestra
         [NSLayoutConstraint activateConstraints:@[
+            [self.containerView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor],
+            [self.containerView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
+            [self.containerView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
+            [self.containerView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor],
+            
             [self.containedWidget.view.topAnchor constraintEqualToAnchor:self.containerView.topAnchor],
             [self.containedWidget.view.leadingAnchor constraintEqualToAnchor:self.containerView.leadingAnchor],
             [self.containedWidget.view.trailingAnchor constraintEqualToAnchor:self.containerView.trailingAnchor],
             [self.containedWidget.view.bottomAnchor constraintEqualToAnchor:self.containerView.bottomAnchor]
         ]];
         
-        NSLog(@"✅ FloatingWidgetWindow: Widget view added and constrained");
+        NSLog(@"✅ FloatingWidgetWindow: Widget view setup complete for %@", NSStringFromClass([self.containedWidget class]));
+    } else {
+        NSLog(@"⚠️ FloatingWidgetWindow: No widget view to setup");
     }
 }
 
@@ -113,22 +132,27 @@
 #pragma mark - Window State Management
 
 - (void)saveWindowState {
-    NSString *key = [NSString stringWithFormat:@"FloatingWindow_%@_Frame", self.widgetType];
+    NSString *baseKey = self.isMicroscopeWindow ? @"MicroscopeWindow" : @"FloatingWindow";
+    NSString *key = [NSString stringWithFormat:@"%@_%@_Frame", baseKey, self.widgetType];
     NSString *frameString = NSStringFromRect(self.frame);
     [[NSUserDefaults standardUserDefaults] setObject:frameString forKey:key];
     
-    NSLog(@"💾 FloatingWidgetWindow: Saved state for %@: %@", self.widgetType, frameString);
+    NSLog(@"💾 FloatingWidgetWindow: Saved %@ state: %@",
+          self.isMicroscopeWindow ? @"microscope" : @"floating", frameString);
 }
 
+
 - (void)restoreWindowState {
-    NSString *key = [NSString stringWithFormat:@"FloatingWindow_%@_Frame", self.widgetType];
+    NSString *baseKey = self.isMicroscopeWindow ? @"MicroscopeWindow" : @"FloatingWindow";
+    NSString *key = [NSString stringWithFormat:@"%@_%@_Frame", baseKey, self.widgetType];
     NSString *frameString = [[NSUserDefaults standardUserDefaults] stringForKey:key];
     
     if (frameString) {
         NSRect frame = NSRectFromString(frameString);
         if (!NSIsEmptyRect(frame)) {
             [self setFrame:frame display:NO];
-            NSLog(@"🔄 FloatingWidgetWindow: Restored state for %@: %@", self.widgetType, frameString);
+            NSLog(@"🔄 FloatingWidgetWindow: Restored %@ state: %@",
+                  self.isMicroscopeWindow ? @"microscope" : @"floating", frameString);
         }
     }
 }
@@ -219,6 +243,10 @@
 
 - (void)dealloc {
     NSLog(@"♻️ FloatingWidgetWindow: Deallocating window for %@", self.widgetType);
+}
+
+- (BOOL)isMicroscopeWindow {
+    return [self.title hasPrefix:@"🔬"] && [self.containedWidget isKindOfClass:[ChartWidget class]];
 }
 
 @end

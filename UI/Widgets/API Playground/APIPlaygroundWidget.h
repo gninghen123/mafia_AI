@@ -29,10 +29,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSPopUpButton *periodTypePopup;
 @property (nonatomic, strong) NSTextField *frequencyField;
 @property (nonatomic, strong) NSPopUpButton *frequencyTypePopup;
-@property (nonatomic, strong) NSTextField *barCountField; 
+@property (nonatomic, strong) NSTextField *barCountField;
 
-// Data Source Selection
-@property (nonatomic, strong) NSSegmentedControl *dataSourceSegmented;
+// Method Selection - MODIFICATO: da NSSegmentedControl a NSPopUpButton
+@property (nonatomic, strong) NSPopUpButton *methodSelectorPopup;
 @property (nonatomic, strong) NSTextField *parametersLabel;
 
 // Action buttons
@@ -54,6 +54,10 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)executeHistoricalCall;
 - (void)clearResults;
 - (void)updateParametersLabel;
+
+// NUOVO: Metodi per gestione multi-metodo
+- (void)methodSelectionChanged:(NSPopUpButton *)sender;
+- (void)updateControlsVisibility;
 
 @end
 

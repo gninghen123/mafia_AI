@@ -7,14 +7,25 @@
 #import "SchwabDataSource.h"
 #import "DataHub.h"
 #import "RuntimeModels.h"
-#import "DataHub+MarketData.h" // Corretto l'import secondo il nuovo file
+#import "DataHub+MarketData.h"
+
+// NUOVO: Enum per la selezione del metodo API
+typedef NS_ENUM(NSInteger, APICallMethod) {
+    APICallMethodSchwabOriginal = 0,     // fetchPriceHistory (period/frequency)
+    APICallMethodSchwabDateRange = 1,    // fetchPriceHistoryWithDateRange
+    APICallMethodSchwabWithCount = 2,    // fetchHistoricalDataForSymbolWithCount
+    APICallMethodDataHub = 3             // DataHub call
+};
 
 @interface APIPlaygroundWidget () <NSTableViewDataSource, NSTableViewDelegate>
 
 @property (nonatomic, strong) SchwabDataSource *schwabDataSource;
 
-// **FIX**: Aggiungiamo i container come property per accedervi durante il setup dei constraints
-@property (nonatomic, strong) NSView *controlsContainer;
+// MODIFICATO: Da NSView a NSStackView per supportare la nuova struttura
+@property (nonatomic, strong) NSStackView *controlsContainer;
+
+// NUOVO: Proprietà per il selettore metodi
+@property (nonatomic, assign) APICallMethod selectedMethod;
 
 @end
 
@@ -26,6 +37,7 @@
     // Inizializzazione
     self.historicalData = [NSMutableArray array];
     self.schwabDataSource = [[SchwabDataSource alloc] init];
+    self.selectedMethod = APICallMethodSchwabWithCount; // Default al nuovo metodo
     
     [self setupTabView];
     [self setupHistoricalTab];
@@ -68,39 +80,47 @@
     [self applyMainLayoutConstraints];
     
     [self updateParametersLabel];
+    
+    // NUOVO: Aggiorna visibilità iniziale dei controlli
+    [self updateControlsVisibility];
 }
 
 - (void)setupControlsSection {
-    // Container per i controlli
-    self.controlsContainer = [[NSView alloc] init];
-    self.controlsContainer.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.historicalTabView addSubview:self.controlsContainer];
-    
-    // --- IL RESTO DEL CODICE DEI CONTROLLI RESTA INVARIATO ---
-    
+    // MANTENIAMO la struttura originale: tutti i controlli vanno direttamente in historicalTabView
     // Symbol field
     NSTextField *symbolLabel = [self createLabel:@"Symbol:"];
     self.symbolField = [self createTextField:@"AAPL"];
     
-    // Date pickers
+    // Date pickers - CONFIGURATI PER TIMEZONE US EASTERN
     NSTextField *startLabel = [self createLabel:@"Start Date:"];
     self.startDatePicker = [[NSDatePicker alloc] init];
     self.startDatePicker.datePickerStyle = NSDatePickerStyleTextFieldAndStepper;
     self.startDatePicker.datePickerElements = NSDatePickerElementFlagYearMonthDay | NSDatePickerElementFlagHourMinute;
+    
+    // NUOVO: Imposta timezone US Eastern per i DatePickers
+    NSTimeZone *easternTimeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
+    self.startDatePicker.timeZone = easternTimeZone;
+    
     NSCalendar *calendar = [NSCalendar currentCalendar];
+    calendar.timeZone = easternTimeZone; // IMPORTANTE: Anche il calendar deve usare Eastern Time
+    
     NSDate *startDefault = [calendar dateByAddingUnit:NSCalendarUnitMonth value:-1 toDate:[NSDate date] options:0];
     NSDateComponents *startComponents = [calendar components:NSCalendarUnitYear|NSCalendarUnitMonth|NSCalendarUnitDay fromDate:startDefault];
-    startComponents.hour = 9;
+    startComponents.hour = 9;    // 9:30 AM Eastern Time (apertura mercato US)
     startComponents.minute = 30;
+    startComponents.timeZone = easternTimeZone;
     self.startDatePicker.dateValue = [calendar dateFromComponents:startComponents];
     
     NSTextField *endLabel = [self createLabel:@"End Date:"];
     self.endDatePicker = [[NSDatePicker alloc] init];
     self.endDatePicker.datePickerStyle = NSDatePickerStyleTextFieldAndStepper;
     self.endDatePicker.datePickerElements = NSDatePickerElementFlagYearMonthDay | NSDatePickerElementFlagHourMinute;
+    self.endDatePicker.timeZone = easternTimeZone; // NUOVO: Eastern Time anche per end date
+    
     NSDateComponents *endComponents = [calendar components:NSCalendarUnitYear|NSCalendarUnitMonth|NSCalendarUnitDay fromDate:[NSDate date]];
-    endComponents.hour = 16;
+    endComponents.hour = 16;     // 4:00 PM Eastern Time (chiusura mercato US)
     endComponents.minute = 0;
+    endComponents.timeZone = easternTimeZone;
     self.endDatePicker.dateValue = [calendar dateFromComponents:endComponents];
     
     // Timeframe popup
@@ -114,7 +134,7 @@
     [self.extendedHoursCheckbox setButtonType:NSButtonTypeSwitch];
     self.extendedHoursCheckbox.title = @"Include Extended Hours";
     
-    // Period fields (per Schwab API)
+    // Period fields (per Schwab API originale)
     NSTextField *periodLabel = [self createLabel:@"Period:"];
     self.periodField = [self createTextField:@"1"];
     
@@ -122,7 +142,7 @@
     self.periodTypePopup = [[NSPopUpButton alloc] init];
     [self.periodTypePopup addItemsWithTitles:@[@"day", @"month", @"year", @"ytd"]];
     
-    // Frequency fields (per Schwab API)
+    // Frequency fields (per Schwab API originale)
     NSTextField *frequencyLabel = [self createLabel:@"Frequency:"];
     self.frequencyField = [self createTextField:@"1"];
     
@@ -135,17 +155,19 @@
     NSTextField *barCountLabel = [self createLabel:@"Bar Count:"];
     self.barCountField = [self createTextField:@"100"];
     self.barCountField.formatter = [[NSNumberFormatter alloc] init];
-   // ((NSNumberFormatter *)self.barCountField.formatter).numberStyle = NSNumberFormatterDecimalStyle;
+    ((NSNumberFormatter *)self.barCountField.formatter).numberStyle = NSNumberFormatterDecimalStyle;
     
-    // Data source selection
-    NSTextField *sourceLabel = [self createLabel:@"Data Source:"];
-    self.dataSourceSegmented = [[NSSegmentedControl alloc] init];
-    self.dataSourceSegmented.segmentCount = 2;
-    [self.dataSourceSegmented setLabel:@"Schwab API" forSegment:0];
-    [self.dataSourceSegmented setLabel:@"DataHub" forSegment:1];
-    self.dataSourceSegmented.selectedSegment = 0;
-    [self.dataSourceSegmented setTarget:self];
-    [self.dataSourceSegmented setAction:@selector(dataSourceChanged:)];
+    // NUOVO: Method selection invece di data source selection
+    NSTextField *methodLabel = [self createLabel:@"API Method:"];
+    self.methodSelectorPopup = [[NSPopUpButton alloc] init];
+    [self.methodSelectorPopup addItemWithTitle:@"Schwab API - Original (period/frequency)"];
+    [self.methodSelectorPopup addItemWithTitle:@"Schwab API - Date Range"];
+    [self.methodSelectorPopup addItemWithTitle:@"Schwab API - With Count"];
+    [self.methodSelectorPopup addItemWithTitle:@"DataHub"];
+    
+    [self.methodSelectorPopup selectItemAtIndex:APICallMethodSchwabWithCount]; // Default al nuovo metodo
+    [self.methodSelectorPopup setTarget:self];
+    [self.methodSelectorPopup setAction:@selector(methodSelectionChanged:)];
     
     // Parameters label
     self.parametersLabel = [self createLabel:@""];
@@ -160,31 +182,25 @@
     self.clearButton = [NSButton buttonWithTitle:@"Clear Results" target:self action:@selector(clearResults)];
     self.clearButton.bezelStyle = NSBezelStyleRounded;
     
-    // Layout con Stack Views
-    NSStackView *row1 = [self createHorizontalStack:@[symbolLabel, self.symbolField,barCountLabel, self.barCountField, startLabel, self.startDatePicker, endLabel, self.endDatePicker ]];
-    NSStackView *row2 = [self createHorizontalStack:@[timeframeLabel,self.timeframePopup,self.extendedHoursCheckbox, periodLabel, self.periodField]];
-    NSStackView *row3 = [self createHorizontalStack:@[periodTypeLabel, self.periodTypePopup, frequencyLabel, self.frequencyField, frequencyTypeLabel, self.frequencyTypePopup, sourceLabel, self.dataSourceSegmented]];
+    // Layout con Stack Views - MODIFICATO per includere il nuovo controllo
+    NSStackView *row1 = [self createHorizontalStack:@[symbolLabel, self.symbolField, barCountLabel, self.barCountField, startLabel, self.startDatePicker, endLabel, self.endDatePicker]];
+    NSStackView *row2 = [self createHorizontalStack:@[timeframeLabel, self.timeframePopup, self.extendedHoursCheckbox, periodLabel, self.periodField]];
+    NSStackView *row3 = [self createHorizontalStack:@[periodTypeLabel, self.periodTypePopup, frequencyLabel, self.frequencyField, frequencyTypeLabel, self.frequencyTypePopup, methodLabel, self.methodSelectorPopup]];
     NSStackView *row4 = [self createHorizontalStack:@[self.parametersLabel, [[NSView alloc] init], self.executeButton, self.clearButton]];
     
-    NSStackView *mainStack = [[NSStackView alloc] init];
-    mainStack.orientation = NSUserInterfaceLayoutOrientationVertical;
-    mainStack.spacing = 8;
+    // MODIFICATO: Creiamo il container per i controlli E lo aggiungiamo al historicalTabView
+    self.controlsContainer = [[NSStackView alloc] init];
+    self.controlsContainer.orientation = NSUserInterfaceLayoutOrientationVertical;
+    self.controlsContainer.spacing = 8;
+    self.controlsContainer.translatesAutoresizingMaskIntoConstraints = NO;
     
-    [mainStack addArrangedSubview:row1];
-    [mainStack addArrangedSubview:row2];
-    [mainStack addArrangedSubview:row3];
-    [mainStack addArrangedSubview:row4];
+    [self.controlsContainer addArrangedSubview:row1];
+    [self.controlsContainer addArrangedSubview:row2];
+    [self.controlsContainer addArrangedSubview:row3];
+    [self.controlsContainer addArrangedSubview:row4];
     
-    mainStack.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.controlsContainer addSubview:mainStack];
-    
-    // Constraints per il mainStack *dentro* al container
-    [NSLayoutConstraint activateConstraints:@[
-        [mainStack.topAnchor constraintEqualToAnchor:self.controlsContainer.topAnchor],
-        [mainStack.leadingAnchor constraintEqualToAnchor:self.controlsContainer.leadingAnchor],
-        [mainStack.trailingAnchor constraintEqualToAnchor:self.controlsContainer.trailingAnchor],
-        [mainStack.bottomAnchor constraintEqualToAnchor:self.controlsContainer.bottomAnchor]
-    ]];
+    // IMPORTANTE: Aggiungiamo il controlsContainer direttamente al historicalTabView
+    [self.historicalTabView addSubview:self.controlsContainer];
 }
 
 - (void)setupResultsTable {
@@ -227,18 +243,12 @@
     self.rawResponseTextView.textColor = [NSColor textColor];
     self.rawResponseTextView.backgroundColor = [NSColor textBackgroundColor];
     
-    // **FIX**: Questo aiuta la text view a ridimensionarsi correttamente
     self.rawResponseTextView.autoresizingMask = NSViewWidthSizable;
     
     self.textScrollView.documentView = self.rawResponseTextView;
 }
 
 - (void)applyMainLayoutConstraints {
-    // **NUOVA FUNZIONE PER I CONSTRAINTS PRINCIPALI**
-    // Questo è il fix cruciale. Creiamo una catena verticale di vincoli
-    // che definisce chiaramente la posizione e la dimensione di ogni elemento.
-    // Rimuoviamo tutte le altezze fisse per un layout flessibile.
-    
     CGFloat padding = 10.0;
     
     [NSLayoutConstraint activateConstraints:@[
@@ -246,8 +256,7 @@
         [self.controlsContainer.topAnchor constraintEqualToAnchor:self.historicalTabView.topAnchor constant:padding],
         [self.controlsContainer.leadingAnchor constraintEqualToAnchor:self.historicalTabView.leadingAnchor constant:padding],
         [self.controlsContainer.trailingAnchor constraintEqualToAnchor:self.historicalTabView.trailingAnchor constant:-padding],
-        // L'altezza è ora determinata dal suo contenuto, non è più fissa a 120.
-
+        
         // 2. Tabella Risultati (al centro)
         [self.tableScrollView.topAnchor constraintEqualToAnchor:self.controlsContainer.bottomAnchor constant:padding],
         [self.tableScrollView.leadingAnchor constraintEqualToAnchor:self.historicalTabView.leadingAnchor constant:padding],
@@ -260,12 +269,9 @@
         [self.textScrollView.bottomAnchor constraintEqualToAnchor:self.historicalTabView.bottomAnchor constant:-padding],
         
         // 4. Divisione dello spazio verticale tra tabella e area di testo
-        // Diamo alla tabella e all'area di testo la stessa altezza.
-        // Questo risolve l'ambiguità e permette al layout di essere flessibile.
         [self.tableScrollView.heightAnchor constraintEqualToAnchor:self.textScrollView.heightAnchor multiplier:1.0],
     ]];
 }
-
 
 #pragma mark - Helper Methods
 
@@ -299,35 +305,139 @@
     return stack;
 }
 
+#pragma mark - NUOVO: Gestione Selezione Metodo
+
+- (void)methodSelectionChanged:(NSPopUpButton *)sender {
+    self.selectedMethod = (APICallMethod)sender.indexOfSelectedItem;
+    [self updateControlsVisibility];
+    [self updateParametersLabel];
+}
+
+- (void)updateControlsVisibility {
+    BOOL isOriginalMethod = (self.selectedMethod == APICallMethodSchwabOriginal);
+    BOOL isDateRangeMethod = (self.selectedMethod == APICallMethodSchwabDateRange);
+    BOOL isCountMethod = (self.selectedMethod == APICallMethodSchwabWithCount);
+    BOOL isDataHub = (self.selectedMethod == APICallMethodDataHub);
+    
+    // Mostra/nascondi controlli specifici per metodo
+    
+    // Period/Frequency controls (solo per metodo originale)
+    self.periodField.hidden = !isOriginalMethod;
+    self.periodTypePopup.hidden = !isOriginalMethod;
+    self.frequencyField.hidden = !isOriginalMethod;
+    self.frequencyTypePopup.hidden = !isOriginalMethod;
+    
+    // Date range controls (per metodi date range e DataHub)
+    self.startDatePicker.hidden = !(isDateRangeMethod || isDataHub);
+    self.endDatePicker.hidden = !(isDateRangeMethod || isDataHub);
+    
+    // Bar count (per metodo count e DataHub)
+    self.barCountField.hidden = !(isCountMethod || isDataHub);
+    
+    // Timeframe (per tutti tranne originale)
+    self.timeframePopup.hidden = isOriginalMethod;
+    
+    // Extended hours (per tutti i metodi Schwab nuovi e DataHub)
+    self.extendedHoursCheckbox.hidden = isOriginalMethod;
+    
+    // Aggiorna anche le label associate - ora cerchiamo nelle arranged subviews del controlsContainer (che è una NSStackView)
+    if ([self.controlsContainer isKindOfClass:[NSStackView class]]) {
+        NSStackView *mainStack = (NSStackView *)self.controlsContainer;
+        for (NSView *rowView in mainStack.arrangedSubviews) {
+            if ([rowView isKindOfClass:[NSStackView class]]) {
+                NSStackView *rowStack = (NSStackView *)rowView;
+                for (NSView *control in rowStack.arrangedSubviews) {
+                    if ([control isKindOfClass:[NSTextField class]]) {
+                        NSTextField *label = (NSTextField *)control;
+                        
+                        // Nascondi label associate ai controlli nascosti
+                        if ([label.stringValue isEqualToString:@"Period:"] ||
+                            [label.stringValue isEqualToString:@"Period Type:"] ||
+                            [label.stringValue isEqualToString:@"Frequency:"] ||
+                            [label.stringValue isEqualToString:@"Frequency Type:"]) {
+                            label.hidden = !isOriginalMethod;
+                        }
+                        
+                        if ([label.stringValue isEqualToString:@"Start Date:"] ||
+                            [label.stringValue isEqualToString:@"End Date:"]) {
+                            label.hidden = !(isDateRangeMethod || isDataHub);
+                        }
+                        
+                        if ([label.stringValue isEqualToString:@"Bar Count:"]) {
+                            label.hidden = !(isCountMethod || isDataHub);
+                        }
+                        
+                        if ([label.stringValue isEqualToString:@"Timeframe:"]) {
+                            label.hidden = isOriginalMethod;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #pragma mark - Actions
 
 - (void)dataSourceChanged:(NSSegmentedControl *)sender {
+    // DEPRECATO: Mantenuto per compatibilità ma non più utilizzato
     [self updateParametersLabel];
 }
 
 - (void)updateParametersLabel {
     NSString *parametersText = @"";
     
-    if (self.dataSourceSegmented.selectedSegment == 0) {
-        // Schwab API
-        parametersText = [NSString stringWithFormat:@"Parameters for Schwab API: symbol=%@, periodType=%@, period=%@, frequencyType=%@, frequency=%@",
-                          self.symbolField.stringValue,
-                          [self.periodTypePopup titleOfSelectedItem],
-                          self.periodField.stringValue,
-                          [self.frequencyTypePopup titleOfSelectedItem],
-                          self.frequencyField.stringValue];
-    } else {
-        // DataHub
-        NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-        formatter.dateFormat = @"yyyy-MM-dd HH:mm";
-        
-        parametersText = [NSString stringWithFormat:@"Parameters for DataHub: symbol=%@, startDate=%@, endDate=%@, timeframe=%@, barCount=%@, extendedHours=%@",
-                          self.symbolField.stringValue,
-                          [formatter stringFromDate:self.startDatePicker.dateValue],
-                          [formatter stringFromDate:self.endDatePicker.dateValue],
-                          [self.timeframePopup titleOfSelectedItem],
-                          self.barCountField.stringValue ?: @"100",
-                          self.extendedHoursCheckbox.state == NSControlStateValueOn ? @"YES" : @"NO"];
+    switch (self.selectedMethod) {
+        case APICallMethodSchwabOriginal: {
+            parametersText = [NSString stringWithFormat:@"fetchPriceHistory: %@ | periodType: %@ | period: %@ | frequencyType: %@ | frequency: %@",
+                            self.symbolField.stringValue,
+                            [self.periodTypePopup titleOfSelectedItem],
+                            self.periodField.stringValue,
+                            [self.frequencyTypePopup titleOfSelectedItem],
+                            self.frequencyField.stringValue];
+            break;
+        }
+        case APICallMethodSchwabDateRange: {
+            NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+            formatter.dateStyle = NSDateFormatterShortStyle;
+            formatter.timeStyle = NSDateFormatterShortStyle;
+            
+            // NUOVO: Mostra date in Eastern Time nei parametri per chiarezza
+            formatter.timeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
+            
+            parametersText = [NSString stringWithFormat:@"fetchPriceHistoryWithDateRange: %@ | %@ to %@ (ET) | timeframe: %@ | extendedHours: %@",
+                            self.symbolField.stringValue,
+                            [formatter stringFromDate:self.startDatePicker.dateValue],
+                            [formatter stringFromDate:self.endDatePicker.dateValue],
+                            [self.timeframePopup titleOfSelectedItem],
+                            self.extendedHoursCheckbox.state == NSControlStateValueOn ? @"YES" : @"NO"];
+            break;
+        }
+        case APICallMethodSchwabWithCount: {
+            parametersText = [NSString stringWithFormat:@"fetchHistoricalDataForSymbolWithCount: %@ | timeframe: %@ | count: %@ | extendedHours: %@",
+                            self.symbolField.stringValue,
+                            [self.timeframePopup titleOfSelectedItem],
+                            self.barCountField.stringValue,
+                            self.extendedHoursCheckbox.state == NSControlStateValueOn ? @"YES" : @"NO"];
+            break;
+        }
+        case APICallMethodDataHub: {
+            NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+            formatter.dateStyle = NSDateFormatterShortStyle;
+            formatter.timeStyle = NSDateFormatterShortStyle;
+            
+            // NUOVO: Mostra date in Eastern Time anche per DataHub
+            formatter.timeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
+            
+            parametersText = [NSString stringWithFormat:@"DataHub call: %@ | %@ to %@ (ET) | timeframe: %@ | count: %@ | extendedHours: %@",
+                            self.symbolField.stringValue,
+                            [formatter stringFromDate:self.startDatePicker.dateValue],
+                            [formatter stringFromDate:self.endDatePicker.dateValue],
+                            [self.timeframePopup titleOfSelectedItem],
+                            self.barCountField.stringValue,
+                            self.extendedHoursCheckbox.state == NSControlStateValueOn ? @"YES" : @"NO"];
+            break;
+        }
     }
     
     self.parametersLabel.stringValue = parametersText;
@@ -340,15 +450,25 @@
     self.executeButton.enabled = NO;
     self.executeButton.title = @"Loading...";
     
-    if (self.dataSourceSegmented.selectedSegment == 0) {
-        [self executeSchwabAPICall];
-    } else {
-        [self executeDataHubCall];
+    switch (self.selectedMethod) {
+        case APICallMethodSchwabOriginal:
+            [self executeSchwabOriginalAPICall];
+            break;
+        case APICallMethodSchwabDateRange:
+            [self executeSchwabDateRangeAPICall];
+            break;
+        case APICallMethodSchwabWithCount:
+            [self executeSchwabWithCountAPICall];
+            break;
+        case APICallMethodDataHub:
+            [self executeDataHubCall];
+            break;
     }
 }
 
-- (void)executeSchwabAPICall {
-    // Chiamata diretta alla Schwab API bypassando DataHub
+#pragma mark - NUOVO: Metodi di Esecuzione API Separati
+
+- (void)executeSchwabOriginalAPICall {
     NSString *symbol = self.symbolField.stringValue;
     NSString *periodType = [self.periodTypePopup titleOfSelectedItem];
     NSInteger period = [self.periodField.stringValue integerValue];
@@ -367,8 +487,53 @@
     }];
 }
 
+- (void)executeSchwabDateRangeAPICall {
+    NSString *symbol = self.symbolField.stringValue;
+    NSDate *startDate = self.startDatePicker.dateValue;
+    NSDate *endDate = self.endDatePicker.dateValue;
+    BarTimeframe timeframe = [self selectedTimeframe];
+    BOOL needExtendedHours = self.extendedHoursCheckbox.state == NSControlStateValueOn;
+    
+    [self.schwabDataSource fetchPriceHistoryWithDateRange:symbol
+                                                startDate:startDate
+                                                  endDate:endDate
+                                                timeframe:timeframe
+                                    needExtendedHoursData:needExtendedHours
+                                        needPreviousClose:YES
+                                               completion:^(NSDictionary *priceHistory, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self handleSchwabResponse:priceHistory error:error];
+        });
+    }];
+}
+
+- (void)executeSchwabWithCountAPICall {
+    NSString *symbol = self.symbolField.stringValue;
+    BarTimeframe timeframe = [self selectedTimeframe];
+    NSInteger count = [self.barCountField.stringValue integerValue];
+    BOOL needExtendedHours = self.extendedHoursCheckbox.state == NSControlStateValueOn;
+    
+    [self.schwabDataSource fetchHistoricalDataForSymbolWithCount:symbol
+                                                       timeframe:timeframe
+                                                           count:count
+                                           needExtendedHoursData:needExtendedHours
+                                                needPreviousClose:YES
+                                                      completion:^(NSArray *bars, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            // Questo metodo restituisce NSArray invece di NSDictionary
+            if (error) {
+                [self handleSchwabResponse:nil error:error];
+            } else {
+                // Convertiamo l'array in formato compatibile per la visualizzazione
+                NSDictionary *mockResponse = @{@"candles": bars ?: @[]};
+                [self handleSchwabResponse:mockResponse error:nil];
+            }
+        });
+    }];
+}
+
 - (void)executeDataHubCall {
-    // Chiamata al DataHub
+    // Chiamata al DataHub (codice esistente invariato)
     NSString *symbol = self.symbolField.stringValue;
     BarTimeframe timeframe = [self selectedTimeframe];
     BOOL extendedHours = self.extendedHoursCheckbox.state == NSControlStateValueOn;
@@ -413,16 +578,16 @@
     } else {
         self.lastRawResponse = @"UNKNOWN ERROR: No response and no error";
     }
-    NSString *summary = [self generateSummaryText];
-    self.rawResponseTextView.string = [summary stringByAppendingString:self.lastRawResponse];
-    
-    self.rawResponseTextView.string = self.lastRawResponse;
     
     NSArray *errors = response[@"errors"];
     if (errors && [errors isKindOfClass:[NSArray class]] && errors.count > 0) {
         NSLog(@"Schwab API returned errors: %@", errors);
         [self.historicalData removeAllObjects];
         [self.resultsTableView reloadData];
+        
+        // AGGIUNTO: Genera summary anche per gli errori
+        NSString *summary = [self generateSummaryText];
+        self.rawResponseTextView.string = [summary stringByAppendingString:self.lastRawResponse];
         [self highlightErrorsInTextView];
         return;
     }
@@ -430,11 +595,19 @@
     if (error && !response) {
         [self.historicalData removeAllObjects];
         [self.resultsTableView reloadData];
+        
+        // AGGIUNTO: Genera summary anche per gli errori di rete
+        NSString *summary = [self generateSummaryText];
+        self.rawResponseTextView.string = [summary stringByAppendingString:self.lastRawResponse];
         return;
     }
     
-    [self parseSchwabHistoricalData:response];
+    [self parseSchwabHistoricalData:response];  // ← PRIMA: Parsing dei dati
     [self.resultsTableView reloadData];
+    
+    // AGGIUNTO: Genera summary DOPO il parsing dei dati
+    NSString *summary = [self generateSummaryText];
+    self.rawResponseTextView.string = [summary stringByAppendingString:self.lastRawResponse];
 }
 
 - (void)handleDataHubResponse:(NSArray<HistoricalBarModel *> *)bars {
@@ -444,6 +617,9 @@
     [self.historicalData removeAllObjects];
     NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
     formatter.dateFormat = @"HH:mm yyyy-MM-dd";
+    
+    // NUOVO: Imposta timezone US Eastern anche per DataHub per consistenza
+    formatter.timeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
     
     // Creiamo una rappresentazione JSON per la visualizzazione
     NSMutableArray *displayArray = [NSMutableArray array];
@@ -484,6 +660,10 @@
                 NSDate *date = [NSDate dateWithTimeIntervalSince1970:[datetime doubleValue] / 1000.0];
                 NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
                 formatter.dateFormat = @"HH:mm yyyy-MM-dd";
+                
+                // NUOVO: Imposta timezone US Eastern per mostrare l'orario corretto di Wall Street
+                formatter.timeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
+                
                 barData[@"timestamp"] = [formatter stringFromDate:date];
             }
             
@@ -503,7 +683,7 @@
     [self.resultsTableView reloadData];
     self.lastRawResponse = @"";
     
-    // **FIX**: Modo più sicuro per pulire la text view e i suoi attributi.
+    // Modo più sicuro per pulire la text view e i suoi attributi
     [self.rawResponseTextView.textStorage setAttributedString:[[NSAttributedString alloc] initWithString:@""]];
 }
 
@@ -591,7 +771,7 @@
     
     // Salva i valori dei controlli
     state[@"symbol"] = self.symbolField.stringValue;
-    state[@"selectedDataSource"] = @(self.dataSourceSegmented.selectedSegment);
+    state[@"selectedMethod"] = @(self.selectedMethod); // NUOVO: Salva il metodo selezionato
     state[@"selectedTimeframe"] = @([self.timeframePopup indexOfSelectedItem]);
     state[@"extendedHours"] = @(self.extendedHoursCheckbox.state == NSControlStateValueOn);
     state[@"barCount"] = self.barCountField.stringValue ?: @"100";
@@ -606,8 +786,10 @@
     if (state[@"symbol"]) {
         self.symbolField.stringValue = state[@"symbol"];
     }
-    if (state[@"selectedDataSource"]) {
-        self.dataSourceSegmented.selectedSegment = [state[@"selectedDataSource"] integerValue];
+    if (state[@"selectedMethod"]) {
+        self.selectedMethod = [state[@"selectedMethod"] integerValue];
+        [self.methodSelectorPopup selectItemAtIndex:self.selectedMethod]; // NUOVO: Ripristina il metodo
+        [self updateControlsVisibility]; // NUOVO: Aggiorna la visibilità dei controlli
     }
     if (state[@"selectedTimeframe"]) {
         [self.timeframePopup selectItemAtIndex:[state[@"selectedTimeframe"] integerValue]];
@@ -621,12 +803,17 @@
     
     [self updateParametersLabel];
 }
+
 - (NSString *)formattedDateStringFromDate:(NSDate *)date {
     if (!date) {
         return @"N/A";
     }
     NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
     formatter.dateFormat = @"HH:mm dd/MM/yyyy";
+    
+    // NUOVO: Usa Eastern Time per consistenza con il resto dell'app
+    formatter.timeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
+    
     return [formatter stringFromDate:date];
 }
 

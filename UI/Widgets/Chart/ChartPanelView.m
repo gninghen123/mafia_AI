@@ -5,6 +5,7 @@
 //  Individual chart panel for rendering specific indicators
 //
 
+#import "AppDelegate.h"
 #import "ChartPanelView.h"
 #import "ChartWidget.h"
 #import "ChartObjectRenderer.h"
@@ -16,6 +17,7 @@
 #import "AlertEditController.h"
 #import "dataHub.h"
 #import "datahub+marketdata.h"
+#import "FloatingWidgetWindow.h"
 
 @interface ChartPanelView ()
 
@@ -2388,18 +2390,22 @@
                            rangeType:(NSString *)rangeType
                            dateRange:(NSArray<NSDate *> *)dateRange {
     
-    // Crea floating window
-    NSRect windowFrame = NSMakeRect(100, 100, 800, 600);
-    NSWindow *microscopeWindow = [[NSWindow alloc] initWithContentRect:windowFrame
-                                                             styleMask:(NSWindowStyleMaskTitled |
-                                                                       NSWindowStyleMaskClosable |
-                                                                       NSWindowStyleMaskResizable)
-                                                               backing:NSBackingStoreBuffered
-                                                                 defer:NO];
+    // Crea ChartWidget per la finestra microscopio
+    ChartWidget *microscopeChart = [[ChartWidget alloc] initWithType:@"chart"
+                                                           panelType:PanelTypeCenter];
     
-    // Titolo finestra descrittivo
+    // Configura il ChartWidget con i dati microscopio
+    [microscopeChart loadSymbol:self.chartWidget.currentSymbol];
+    [microscopeChart setTimeframe:timeframe];
+    
+    // Popola direttamente con i dati ricevuti invece di ricaricare
+    [microscopeChart updateWithHistoricalBars:bars];
+    
+    // Genera titolo finestra descrittivo
     NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
     formatter.dateStyle = NSDateFormatterShortStyle;
+    // NUOVO: Usa Eastern Time per consistenza
+    formatter.timeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
     
     NSString *rangeDescription = [rangeType isEqualToString:@"single"] ? @"Barra Singola" :
                                 [rangeType isEqualToString:@"medium"] ? @"Zona Media" : @"Zona Estesa";
@@ -2411,35 +2417,32 @@
                            [formatter stringFromDate:dateRange[0]],
                            [formatter stringFromDate:dateRange[1]]];
     
-    microscopeWindow.title = windowTitle;
+    // NUOVO: Usa AppDelegate per creare la finestra invece di crearla direttamente
+    AppDelegate *appDelegate = (AppDelegate *)[NSApp delegate];
+    if (!appDelegate) {
+        NSLog(@"❌ ChartPanelView: Cannot get AppDelegate for microscope window");
+        return;
+    }
     
-    // Crea ChartWidget per la finestra microscopio
-    ChartWidget *microscopeChart = [[ChartWidget alloc] initWithType:@"chart"
-                                                           panelType:PanelTypeCenter];
+    // Ottieni dimensioni appropriate per finestra microscopio
+    NSSize microscopeSize = [appDelegate defaultSizeForWidgetType:@"Microscope Chart"];
     
-    // Setup constraint per riempire la finestra
-    microscopeChart.view.translatesAutoresizingMaskIntoConstraints = NO;
-    [microscopeWindow.contentView addSubview:microscopeChart.view];
+    // Crea finestra tramite AppDelegate (viene automaticamente registrata)
+    FloatingWidgetWindow *microscopeWindow = [appDelegate createMicroscopeWindowWithChartWidget:microscopeChart
+                                                                                           title:windowTitle
+                                                                                            size:microscopeSize];
     
-    [NSLayoutConstraint activateConstraints:@[
-        [microscopeChart.view.topAnchor constraintEqualToAnchor:microscopeWindow.contentView.topAnchor],
-        [microscopeChart.view.bottomAnchor constraintEqualToAnchor:microscopeWindow.contentView.bottomAnchor],
-        [microscopeChart.view.leadingAnchor constraintEqualToAnchor:microscopeWindow.contentView.leadingAnchor],
-        [microscopeChart.view.trailingAnchor constraintEqualToAnchor:microscopeWindow.contentView.trailingAnchor]
-    ]];
-    
-    // Configura il ChartWidget con i dati microscopio
-    [microscopeChart loadSymbol:self.chartWidget.currentSymbol];
-    [microscopeChart setTimeframe:timeframe];
-    
-    // 🔧 NUOVO: Popola direttamente con i dati ricevuti invece di ricaricare
-    [microscopeChart updateWithHistoricalBars:bars];
+    if (!microscopeWindow) {
+        NSLog(@"❌ ChartPanelView: Failed to create microscope window via AppDelegate");
+        return;
+    }
     
     // Mostra la finestra
     [microscopeWindow makeKeyAndOrderFront:nil];
     
-    NSLog(@"✅ Microscopio window opened with %lu bars", (unsigned long)bars.count);
+    NSLog(@"✅ ChartPanelView: Microscope window opened via AppDelegate with %lu bars", (unsigned long)bars.count);
 }
+
 
 - (void)showMicroscopeNoDataAlert {
     NSAlert *alert = [[NSAlert alloc] init];

@@ -89,5 +89,6 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 - (NSInteger)barsPerDayForCurrentTimeframe;
 - (NSInteger)getCurrentTimeframeInMinutes;
 
+- (void)updateWithHistoricalBars:(NSArray<HistoricalBarModel *> *)bars;
 
 @end

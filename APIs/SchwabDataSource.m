@@ -565,7 +565,6 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
         period = 1;
     }
     
-    // FIXED: Build URL with periodType and period parameters included
     NSString *urlString = [NSString stringWithFormat:@"%@/marketdata/v1/pricehistory?symbol=%@&periodType=%@&period=%ld&startDate=%lld&endDate=%lld&frequencyType=%@&frequency=%ld&needExtendedHoursData=%@&needPreviousClose=%@",
                           kSchwabAPIBaseURL,
                           symbol,
@@ -579,7 +578,7 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
                           needPreviousClose ? @"true" : @"false"];
     
     NSLog(@"📈 SchwabDataSource: Request URL: %@", urlString);
-    
+  
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
     [request setValue:[NSString stringWithFormat:@"Bearer %@", self.accessToken]
    forHTTPHeaderField:@"Authorization"];

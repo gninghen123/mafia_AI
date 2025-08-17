@@ -15,6 +15,7 @@
 #import "ChartAlertRenderer.h"
 #import "AlertEditController.h"
 #import "dataHub.h"
+#import "datahub+marketdata.h"
 
 @interface ChartPanelView ()
 
@@ -1986,6 +1987,43 @@
     
     NSLog(@"🚨 ChartPanelView (%@): Alert renderer setup completed", self.panelType);
 }
+#pragma mark - showGeneralContextMenuAtPoint - MODIFICA ESISTENTE
+
+- (void)showGeneralContextMenuAtPoint:(NSPoint)point withEvent:(NSEvent *)event {
+    NSMenu *contextMenu = [[NSMenu alloc] initWithTitle:@"Chart Context Menu"];
+    
+    // Only show alert creation if we have alert renderer and current symbol
+    if (self.alertRenderer && self.chartWidget.currentSymbol) {
+        // Convert point to price
+        double priceAtPoint = [self.alertRenderer triggerValueForScreenY:point.y];
+        NSString *formattedPrice = [NSString stringWithFormat:@"%.2f", priceAtPoint];
+        
+        // Menu item for creating alert
+        NSMenuItem *createAlertItem = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Create Alert at %@", formattedPrice]
+                                                                 action:@selector(createAlertAtMouseLocation:)
+                                                          keyEquivalent:@""];
+        createAlertItem.target = self;
+        createAlertItem.representedObject = @{@"price": @(priceAtPoint), @"point": [NSValue valueWithPoint:point]};
+        [contextMenu addItem:createAlertItem];
+        
+        [contextMenu addItem:[NSMenuItem separatorItem]];
+    }
+    
+    // 🔬 NUOVO: Microscopio Menu
+    if (self.chartData && self.chartData.count > 0 && self.chartWidget.currentSymbol) {
+        NSMenuItem *microscopeItem = [self createMicroscopeMenuItem:point];
+        if (microscopeItem) {
+            [contextMenu addItem:microscopeItem];
+            [contextMenu addItem:[NSMenuItem separatorItem]];
+        }
+    }
+    
+    // Other existing menu items could go here (chart settings, etc.)
+    
+    if (contextMenu.itemArray.count > 0) {
+        [NSMenu popUpContextMenu:contextMenu withEvent:event forView:self];
+    }
+}
 
 
 #pragma mark - Alert Context Menu
@@ -2023,32 +2061,7 @@
     [NSMenu popUpContextMenu:contextMenu withEvent:event forView:self];
 }
 
-- (void)showGeneralContextMenuAtPoint:(NSPoint)point withEvent:(NSEvent *)event {
-    NSMenu *contextMenu = [[NSMenu alloc] initWithTitle:@"Chart Context Menu"];
-    
-    // Only show alert creation if we have alert renderer and current symbol
-    if (self.alertRenderer && self.chartWidget.currentSymbol) {
-        // Convert point to price
-        double priceAtPoint = [self.alertRenderer triggerValueForScreenY:point.y];
-        NSString *formattedPrice = [NSString stringWithFormat:@"%.2f", priceAtPoint];
-        
-        // Menu item for creating alert
-        NSMenuItem *createAlertItem = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Create Alert at %@", formattedPrice]
-                                                                 action:@selector(createAlertAtMouseLocation:)
-                                                          keyEquivalent:@""];
-        createAlertItem.target = self;
-        createAlertItem.representedObject = @{@"price": @(priceAtPoint), @"point": [NSValue valueWithPoint:point]};
-        [contextMenu addItem:createAlertItem];
-        
-        [contextMenu addItem:[NSMenuItem separatorItem]];
-    }
-    
-    // Other menu items could go here (chart settings, etc.)
-    
-    if (contextMenu.itemArray.count > 0) {
-        [NSMenu popUpContextMenu:contextMenu withEvent:event forView:self];
-    }
-}
+
 
 #pragma mark - Alert Context Menu Actions
 
@@ -2150,4 +2163,307 @@
     
     NSLog(@"✅ ChartPanelView (%@): Stopped editing alert", self.panelType);
 }
+
+
+
+#pragma mark - Microscopio Implementation
+
+- (NSMenuItem *)createMicroscopeMenuItem:(NSPoint)point {
+    // Verifica che abbiamo dati e simbolo
+    if (!self.chartData || self.chartData.count == 0 || !self.chartWidget.currentSymbol) {
+        return nil;
+    }
+    
+    // Determina barra cliccata
+    NSInteger clickedBarIndex = [self barIndexForXCoordinate:point.x];
+    if (clickedBarIndex < 0 || clickedBarIndex >= self.chartData.count) {
+        return nil;
+    }
+    
+    // Verifica che il timeframe corrente supporti zoom intraday
+    ChartTimeframe currentTimeframe = self.chartWidget.currentTimeframe;
+    NSArray<NSNumber *> *availableTimeframes = [self getIntradayTimeframesForCurrentTimeframe:currentTimeframe];
+    
+    if (availableTimeframes.count == 0) {
+        return nil; // Nessun timeframe intraday disponibile
+    }
+    
+    // Crea menu principale Microscopio
+    NSMenuItem *microscopeItem = [[NSMenuItem alloc] initWithTitle:@"🔬 Microscopio"
+                                                           action:nil
+                                                    keyEquivalent:@""];
+    
+    NSMenu *microscopeSubmenu = [[NSMenu alloc] initWithTitle:@"Microscopio"];
+    
+    // Aggiungi opzioni range
+    NSArray *rangeOptions = @[
+        @{@"title": @"📊 Barra Singola", @"key": @"single"},
+        @{@"title": @"📈 Zona Media (-2 a +5)", @"key": @"medium"},
+        @{@"title": @"📊 Zona Estesa (-10 a +25)", @"key": @"extended"}
+    ];
+    
+    for (NSDictionary *rangeOption in rangeOptions) {
+        NSMenuItem *rangeItem = [[NSMenuItem alloc] initWithTitle:rangeOption[@"title"]
+                                                           action:nil
+                                                    keyEquivalent:@""];
+        
+        // Crea submenu timeframes per questo range
+        NSMenu *timeframeSubmenu = [[NSMenu alloc] initWithTitle:rangeOption[@"title"]];
+        
+        for (NSNumber *timeframeNum in availableTimeframes) {
+            ChartTimeframe timeframe = [timeframeNum intValue];
+            NSString *timeframeStr = [self timeframeToDisplayString:timeframe];
+            
+            NSMenuItem *timeframeItem = [[NSMenuItem alloc] initWithTitle:timeframeStr
+                                                                   action:@selector(openMicroscopeWithParameters:)
+                                                            keyEquivalent:@""];
+            timeframeItem.target = self;
+            timeframeItem.representedObject = @{
+                @"rangeType": rangeOption[@"key"],
+                @"timeframe": timeframeNum,
+                @"clickedBarIndex": @(clickedBarIndex),
+                @"clickPoint": [NSValue valueWithPoint:point]
+            };
+            
+            [timeframeSubmenu addItem:timeframeItem];
+        }
+        
+        rangeItem.submenu = timeframeSubmenu;
+        [microscopeSubmenu addItem:rangeItem];
+    }
+    
+    microscopeItem.submenu = microscopeSubmenu;
+    return microscopeItem;
+}
+
+- (NSArray<NSNumber *> *)getIntradayTimeframesForCurrentTimeframe:(ChartTimeframe)currentTimeframe {
+    NSMutableArray *availableTimeframes = [NSMutableArray array];
+    
+    // Solo se siamo su Daily o superiore, mostriamo intraday
+    if (currentTimeframe >= ChartTimeframeDaily) {
+        [availableTimeframes addObject:@(ChartTimeframe1Hour)];
+        [availableTimeframes addObject:@(ChartTimeframe30Min)];
+        [availableTimeframes addObject:@(ChartTimeframe15Min)];
+        [availableTimeframes addObject:@(ChartTimeframe5Min)];
+        [availableTimeframes addObject:@(ChartTimeframe1Min)];
+    }
+    // Se siamo su 4H, mostriamo timeframes inferiori
+    else if (currentTimeframe == ChartTimeframe4Hour) {
+        [availableTimeframes addObject:@(ChartTimeframe1Hour)];
+        [availableTimeframes addObject:@(ChartTimeframe30Min)];
+        [availableTimeframes addObject:@(ChartTimeframe15Min)];
+        [availableTimeframes addObject:@(ChartTimeframe5Min)];
+    }
+    // Se siamo su 1H, mostriamo solo minute timeframes
+    else if (currentTimeframe == ChartTimeframe1Hour) {
+        [availableTimeframes addObject:@(ChartTimeframe30Min)];
+        [availableTimeframes addObject:@(ChartTimeframe15Min)];
+        [availableTimeframes addObject:@(ChartTimeframe5Min)];
+        [availableTimeframes addObject:@(ChartTimeframe1Min)];
+    }
+    
+    return [availableTimeframes copy];
+}
+
+- (NSString *)timeframeToDisplayString:(ChartTimeframe)timeframe {
+    switch (timeframe) {
+        case ChartTimeframe1Min: return @"1 minuto";
+        case ChartTimeframe5Min: return @"5 minuti";
+        case ChartTimeframe15Min: return @"15 minuti";
+        case ChartTimeframe30Min: return @"30 minuti";
+        case ChartTimeframe1Hour: return @"1 ora";
+        case ChartTimeframe4Hour: return @"4 ore";
+        case ChartTimeframeDaily: return @"1 giorno";
+        case ChartTimeframeWeekly: return @"1 settimana";
+        case ChartTimeframeMonthly: return @"1 mese";
+        default: return @"Sconosciuto";
+    }
+}
+
+- (void)openMicroscopeWithParameters:(NSMenuItem *)menuItem {
+    NSDictionary *params = menuItem.representedObject;
+    NSString *rangeType = params[@"rangeType"];
+    ChartTimeframe targetTimeframe = [params[@"timeframe"] intValue];
+    NSInteger clickedBarIndex = [params[@"clickedBarIndex"] integerValue];
+    
+    NSLog(@"🔬 Opening Microscopio: range=%@, timeframe=%ld, barIndex=%ld",
+          rangeType, (long)targetTimeframe, (long)clickedBarIndex);
+    
+    // Calcola range di date
+    NSArray<NSDate *> *dateRange = [self calculateDateRangeForType:rangeType
+                                                   clickedBarIndex:clickedBarIndex];
+    if (!dateRange || dateRange.count != 2) {
+        NSLog(@"❌ Microscopio: Invalid date range calculated");
+        return;
+    }
+    
+    NSDate *startDate = dateRange[0];
+    NSDate *endDate = dateRange[1];
+    
+    NSLog(@"🔬 Microscopio date range: %@ to %@", startDate, endDate);
+    
+    // Verifica validità range
+    if ([startDate compare:endDate] != NSOrderedAscending) {
+        NSLog(@"❌ Microscopio: Invalid date range - start >= end");
+        return;
+    }
+    
+    // Converte timeframe per API DataHub
+    BarTimeframe apiTimeframe = [self chartTimeframeToBarTimeframe:targetTimeframe];
+    
+    // Chiamata DataHub per dati microscopi (API date range)
+    [[DataHub shared] getHistoricalBarsForSymbol:self.chartWidget.currentSymbol
+                                        timeframe:apiTimeframe
+                                        startDate:startDate
+                                          endDate:endDate
+                                needExtendedHours:NO
+                                       completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!isFresh) {
+                // Se i dati sono dalla cache, potrebbe non essere un errore
+                NSLog(@"⚠️ Microscopio: Using cached data or no fresh data available");
+            }
+            
+            if (!bars || bars.count == 0) {
+                NSLog(@"⚠️ Microscopio: No data returned for range");
+                [self showMicroscopeNoDataAlert];
+                return;
+            }
+            
+            NSLog(@"✅ Microscopio: Received %lu bars (fresh: %@)", (unsigned long)bars.count, isFresh ? @"YES" : @"NO");
+            [self openMicroscopeWindowWithBars:bars
+                                     timeframe:targetTimeframe
+                                     rangeType:rangeType
+                                     dateRange:dateRange];
+        });
+    }];
+}
+
+- (NSArray<NSDate *> *)calculateDateRangeForType:(NSString *)rangeType
+                                  clickedBarIndex:(NSInteger)clickedBarIndex {
+    
+    if (clickedBarIndex < 0 || clickedBarIndex >= self.chartData.count) {
+        return nil;
+    }
+    
+    NSInteger startIdx, endIdx;
+    
+    if ([rangeType isEqualToString:@"single"]) {
+        // Barra singola
+        startIdx = clickedBarIndex;
+        endIdx = clickedBarIndex;
+    }
+    else if ([rangeType isEqualToString:@"medium"]) {
+        // Zona media: -2 a +5
+        startIdx = MAX(0, clickedBarIndex - 2);
+        endIdx = MIN(self.chartData.count - 1, clickedBarIndex + 5);
+    }
+    else if ([rangeType isEqualToString:@"extended"]) {
+        // Zona estesa: -10 a +25
+        startIdx = MAX(0, clickedBarIndex - 10);
+        endIdx = MIN(self.chartData.count - 1, clickedBarIndex + 25);
+    }
+    else {
+        return nil;
+    }
+    
+    NSDate *startDate = self.chartData[startIdx].date;
+    NSDate *endDate = self.chartData[endIdx].date;
+    
+    // Per singola barra, estendi di qualche ora per garantire dati
+    if ([rangeType isEqualToString:@"single"]) {
+        startDate = [startDate dateByAddingTimeInterval:-3600]; // -1 ora
+        endDate = [endDate dateByAddingTimeInterval:86400]; // +1 giorno
+    }
+    else {
+        // Per range multipli, estendi leggermente per sicurezza
+        endDate = [endDate dateByAddingTimeInterval:86400]; // +1 giorno
+    }
+    
+    return @[startDate, endDate];
+}
+
+- (void)openMicroscopeWindowWithBars:(NSArray<HistoricalBarModel *> *)bars
+                           timeframe:(ChartTimeframe)timeframe
+                           rangeType:(NSString *)rangeType
+                           dateRange:(NSArray<NSDate *> *)dateRange {
+    
+    // Crea floating window
+    NSRect windowFrame = NSMakeRect(100, 100, 800, 600);
+    NSWindow *microscopeWindow = [[NSWindow alloc] initWithContentRect:windowFrame
+                                                             styleMask:(NSWindowStyleMaskTitled |
+                                                                       NSWindowStyleMaskClosable |
+                                                                       NSWindowStyleMaskResizable)
+                                                               backing:NSBackingStoreBuffered
+                                                                 defer:NO];
+    
+    // Titolo finestra descrittivo
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    formatter.dateStyle = NSDateFormatterShortStyle;
+    
+    NSString *rangeDescription = [rangeType isEqualToString:@"single"] ? @"Barra Singola" :
+                                [rangeType isEqualToString:@"medium"] ? @"Zona Media" : @"Zona Estesa";
+    
+    NSString *windowTitle = [NSString stringWithFormat:@"🔬 %@ - %@ (%@) - %@ a %@",
+                           self.chartWidget.currentSymbol,
+                           [self timeframeToDisplayString:timeframe],
+                           rangeDescription,
+                           [formatter stringFromDate:dateRange[0]],
+                           [formatter stringFromDate:dateRange[1]]];
+    
+    microscopeWindow.title = windowTitle;
+    
+    // Crea ChartWidget per la finestra microscopio
+    ChartWidget *microscopeChart = [[ChartWidget alloc] initWithType:@"chart"
+                                                           panelType:PanelTypeCenter];
+    
+    // Setup constraint per riempire la finestra
+    microscopeChart.view.translatesAutoresizingMaskIntoConstraints = NO;
+    [microscopeWindow.contentView addSubview:microscopeChart.view];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [microscopeChart.view.topAnchor constraintEqualToAnchor:microscopeWindow.contentView.topAnchor],
+        [microscopeChart.view.bottomAnchor constraintEqualToAnchor:microscopeWindow.contentView.bottomAnchor],
+        [microscopeChart.view.leadingAnchor constraintEqualToAnchor:microscopeWindow.contentView.leadingAnchor],
+        [microscopeChart.view.trailingAnchor constraintEqualToAnchor:microscopeWindow.contentView.trailingAnchor]
+    ]];
+    
+    // Configura il ChartWidget con i dati microscopio
+    [microscopeChart loadSymbol:self.chartWidget.currentSymbol];
+    [microscopeChart setTimeframe:timeframe];
+    
+    // 🔧 NUOVO: Popola direttamente con i dati ricevuti invece di ricaricare
+    [microscopeChart updateWithHistoricalBars:bars];
+    
+    // Mostra la finestra
+    [microscopeWindow makeKeyAndOrderFront:nil];
+    
+    NSLog(@"✅ Microscopio window opened with %lu bars", (unsigned long)bars.count);
+}
+
+- (void)showMicroscopeNoDataAlert {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Nessun Dato Disponibile";
+    alert.informativeText = @"Non sono disponibili dati per il timeframe selezionato nel range richiesto.";
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+}
+
+- (BarTimeframe)chartTimeframeToBarTimeframe:(ChartTimeframe)chartTimeframe {
+    switch (chartTimeframe) {
+        case ChartTimeframe1Min: return BarTimeframe1Min;
+        case ChartTimeframe5Min: return BarTimeframe5Min;
+        case ChartTimeframe15Min: return BarTimeframe15Min;
+        case ChartTimeframe30Min: return BarTimeframe30Min;
+        case ChartTimeframe1Hour: return BarTimeframe1Hour;
+        case ChartTimeframe4Hour: return BarTimeframe4Hour;
+        case ChartTimeframeDaily: return BarTimeframe1Day;
+        case ChartTimeframeWeekly: return BarTimeframe1Week;
+        case ChartTimeframeMonthly: return BarTimeframe1Month;
+        default: return BarTimeframe1Day;
+    }
+}
+
+
 @end

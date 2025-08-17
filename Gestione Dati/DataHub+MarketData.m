@@ -720,23 +720,178 @@
                           completion:completion];
 }
 
+
+
+// SOSTITUIRE IL METODO ESISTENTE con questa implementazione completa:
 - (void)getHistoricalBarsForSymbol:(NSString *)symbol
                          timeframe:(BarTimeframe)timeframe
                          startDate:(NSDate *)startDate
                            endDate:(NSDate *)endDate
                         completion:(void(^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion {
     
-    if (!symbol || !completion) return;
+    if (!symbol || !startDate || !endDate || !completion) {
+        NSLog(@"❌ DataHub: Invalid parameters for date range request");
+        if (completion) completion(@[], NO);
+        return;
+    }
     
-    // Calculate approximate bar count for caching
-    NSInteger estimatedCount = [self estimateBarCountForTimeframe:timeframe startDate:startDate endDate:endDate];
+    [self initializeMarketDataCaches];
     
-    [self getHistoricalBarsForSymbol:symbol
-                           timeframe:timeframe
-                            barCount:estimatedCount
-                          completion:completion];
+    // Valida date range
+    if ([startDate compare:endDate] != NSOrderedAscending) {
+        NSLog(@"❌ DataHub: Invalid date range - start date must be before end date");
+        if (completion) completion(@[], NO);
+        return;
+    }
+    
+    NSLog(@"🔬 DataHub: Date range request for %@ from %@ to %@ (timeframe: %ld)",
+          symbol, startDate, endDate, (long)timeframe);
+    
+    // Crea cache key specifico per date range
+    NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
+    dateFormatter.dateFormat = @"yyyyMMdd";
+    NSString *startDateStr = [dateFormatter stringFromDate:startDate];
+    NSString *endDateStr = [dateFormatter stringFromDate:endDate];
+    
+    NSString *cacheKey = [NSString stringWithFormat:@"historical_range_%@_%ld_%@_%@",
+                          symbol, (long)timeframe, startDateStr, endDateStr];
+    __block NSArray<HistoricalBarModel *> *resultBars = nil;
+    // 1. Controlla cache
+    @synchronized(self.historicalCache) {
+        NSArray<HistoricalBarModel *> *cachedBars = self.historicalCache[cacheKey];
+        if (cachedBars && ![self isCacheStale:cacheKey dataType:DataFreshnessTypeHistorical]) {
+            NSLog(@"✅ DataHub: Returning cached date range data (%lu bars)", (unsigned long)cachedBars.count);
+            completion(cachedBars, NO);
+            return;
+        }
+    }
+    
+    // 2. Fai richiesta diretta a DataManager per date range
+    [[DataManager sharedManager] requestHistoricalDataForSymbol:symbol
+                                                      timeframe:timeframe
+                                                      startDate:startDate
+                                                        endDate:endDate
+                                              needExtendedHours:NO  // Default per microscopio
+                                                     completion:^(NSArray<HistoricalBarModel *> *bars, NSError *error) {
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (error) {
+                NSLog(@"❌ DataHub: Date range request failed for %@: %@", symbol, error.localizedDescription);
+                completion(@[], NO);
+                return;
+            }
+            
+            resultBars = bars ?: @[];
+            
+            NSLog(@"✅ DataHub: Received %lu bars for date range %@ to %@",
+                  (unsigned long)bars.count, startDate, endDate);
+            
+            // 3. Salva in cache
+            @synchronized(self.historicalCache) {
+                self.historicalCache[cacheKey] = bars;
+                [self updateCacheTimestamp:cacheKey];
+            }
+            
+            // 4. Opzionalmente salva in Core Data per future lookup
+            if (bars.count > 0) {
+                [self saveHistoricalBarsModelToCoreData:bars symbol:symbol timeframe:timeframe];
+            }
+            
+            // 5. Broadcast update
+            [self broadcastHistoricalDataUpdate:bars forSymbol:symbol];
+            
+            // 6. Return fresh data
+            completion(bars, YES);
+        });
+    }];
 }
 
+// AGGIUNGERE ANCHE questo metodo helper per supportare needExtendedHours:
+- (void)getHistoricalBarsForSymbol:(NSString *)symbol
+                         timeframe:(BarTimeframe)timeframe
+                         startDate:(NSDate *)startDate
+                           endDate:(NSDate *)endDate
+                  needExtendedHours:(BOOL)needExtendedHours
+                        completion:(void(^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion {
+    
+    if (!symbol || !startDate || !endDate || !completion) {
+        NSLog(@"❌ DataHub: Invalid parameters for date range request with extended hours");
+        if (completion) completion(@[], NO);
+        return;
+    }
+    
+    [self initializeMarketDataCaches];
+    
+    // Valida date range
+    if ([startDate compare:endDate] != NSOrderedAscending) {
+        NSLog(@"❌ DataHub: Invalid date range - start date must be before end date");
+        if (completion) completion(@[], NO);
+        return;
+    }
+    __block NSArray<HistoricalBarModel *> *resultBars = nil;
+    
+    NSLog(@"🔬 DataHub: Date range request for %@ from %@ to %@ (timeframe: %ld, extended: %@)",
+          symbol, startDate, endDate, (long)timeframe, needExtendedHours ? @"YES" : @"NO");
+    
+    // Crea cache key che include flag extended hours
+    NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
+    dateFormatter.dateFormat = @"yyyyMMdd";
+    NSString *startDateStr = [dateFormatter stringFromDate:startDate];
+    NSString *endDateStr = [dateFormatter stringFromDate:endDate];
+    
+    NSString *cacheKey = [NSString stringWithFormat:@"historical_range_%@_%ld_%@_%@_%@",
+                          symbol, (long)timeframe, startDateStr, endDateStr,
+                          needExtendedHours ? @"ext" : @"reg"];
+    
+    // 1. Controlla cache
+    @synchronized(self.historicalCache) {
+            NSArray<HistoricalBarModel *> *cachedBars = self.historicalCache[cacheKey];
+            if (cachedBars && ![self isCacheStale:cacheKey dataType:DataFreshnessTypeHistorical]) {
+                NSLog(@"✅ DataHub: Returning cached date range data (%lu bars)", (unsigned long)cachedBars.count);
+                completion(cachedBars, NO);
+                return;
+            }
+        }
+    
+    // 2. Fai richiesta diretta a DataManager per date range
+    [[DataManager sharedManager] requestHistoricalDataForSymbol:symbol
+                                                      timeframe:timeframe
+                                                      startDate:startDate
+                                                        endDate:endDate
+                                              needExtendedHours:needExtendedHours
+                                                     completion:^(NSArray<HistoricalBarModel *> *bars, NSError *error) {
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (error) {
+                NSLog(@"❌ DataHub: Date range request failed for %@: %@", symbol, error.localizedDescription);
+                completion(@[], NO);
+                return;
+            }
+            
+            resultBars = bars ?: @[];
+            
+            NSLog(@"✅ DataHub: Received %lu bars for date range %@ to %@ (extended: %@)",
+                  (unsigned long)bars.count, startDate, endDate, needExtendedHours ? @"YES" : @"NO");
+            
+            // 3. Salva in cache
+            @synchronized(self.historicalCache) {
+                self.historicalCache[cacheKey] = bars;
+                [self updateCacheTimestamp:cacheKey];
+            }
+            
+            // 4. Opzionalmente salva in Core Data per future lookup
+            if (bars.count > 0) {
+                [self saveHistoricalDataToCoreData:bars symbol:symbol timeframe:timeframe needExtendedHours:needExtendedHours];
+            }
+            
+            // 5. Broadcast update
+            [self broadcastHistoricalDataUpdate:bars forSymbol:symbol];
+            
+            // 6. Return fresh data
+            completion(bars, YES);
+        });
+    }];
+}
 #pragma mark - Public API - Company Info
 
 - (void)getCompanyInfoForSymbol:(NSString *)symbol

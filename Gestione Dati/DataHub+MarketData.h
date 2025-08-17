@@ -105,7 +105,12 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)clearMarketListCache;
 - (NSDictionary *)getMarketListCacheStatistics;
 
-
+- (void)getHistoricalBarsForSymbol:(NSString *)symbol
+                         timeframe:(BarTimeframe)timeframe
+                         startDate:(NSDate *)startDate
+                           endDate:(NSDate *)endDate
+                  needExtendedHours:(BOOL)needExtendedHours
+                        completion:(void(^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion;
 @end
 
 NS_ASSUME_NONNULL_END

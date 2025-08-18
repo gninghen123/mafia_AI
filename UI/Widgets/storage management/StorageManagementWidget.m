@@ -51,7 +51,7 @@
         [container.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-8]
     ]];
     
-    // NUOVO: Create filter segmented control
+    // Create filter segmented control
     self.filterSegmentedControl = [[NSSegmentedControl alloc] init];
     [self.filterSegmentedControl setSegmentCount:3];
     [self.filterSegmentedControl setLabel:@"All" forSegment:0];
@@ -59,10 +59,10 @@
     [self.filterSegmentedControl setLabel:@"Snapshot" forSegment:2];
     [self.filterSegmentedControl setSelectedSegment:0];
     [self.filterSegmentedControl setTarget:self];
-    [self.filterSegmentedControl setAction:@selector(filterChanged:)];
+    [self.filterSegmentedControl setAction:@selector(filterTypeChanged:)];
     self.filterSegmentedControl.translatesAutoresizingMaskIntoConstraints = NO;
     
-    // Create status labels with updated labels
+    // Create status labels stack
     NSStackView *statusStack = [[NSStackView alloc] init];
     statusStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     statusStack.spacing = 16;
@@ -130,7 +130,7 @@
     [statusStack addArrangedSubview:errorLabel];
     [statusStack addArrangedSubview:self.errorStoragesLabel];
     
-    // Create buttons
+    // Create buttons stack
     NSStackView *buttonStack = [[NSStackView alloc] init];
     buttonStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     buttonStack.spacing = 8;
@@ -144,12 +144,12 @@
     [buttonStack addArrangedSubview:self.pauseAllButton];
     [buttonStack addArrangedSubview:self.updateAllButton];
     
-    // Create table view with UPDATED columns
+    // Create table view
     self.storageTableView = [[NSTableView alloc] init];
     self.storageTableView.headerView = nil;
     self.storageTableView.rowSizeStyle = NSTableViewRowSizeStyleDefault;
     
-    // Create table columns - UPDATED with Type column
+    // Create table columns
     NSTableColumn *symbolColumn = [[NSTableColumn alloc] initWithIdentifier:@"symbol"];
     symbolColumn.title = @"Symbol";
     symbolColumn.width = 80;
@@ -160,7 +160,6 @@
     timeframeColumn.width = 80;
     [self.storageTableView addTableColumn:timeframeColumn];
     
-    // NUOVO: Type column
     NSTableColumn *typeColumn = [[NSTableColumn alloc] initWithIdentifier:@"type"];
     typeColumn.title = @"Type";
     typeColumn.width = 80;
@@ -188,7 +187,7 @@
     scrollView.hasHorizontalScroller = YES;
     scrollView.translatesAutoresizingMaskIntoConstraints = NO;
     
-    // Create status label
+    // Create status labels
     self.statusLabel = [[NSTextField alloc] init];
     self.statusLabel.stringValue = @"Initializing...";
     self.statusLabel.editable = NO;
@@ -203,7 +202,7 @@
     self.nextUpdateLabel.backgroundColor = [NSColor clearColor];
     self.nextUpdateLabel.translatesAutoresizingMaskIntoConstraints = NO;
     
-    // Layout everything - UPDATED with filter control
+    // Add all subviews to container
     [container addSubview:self.filterSegmentedControl];
     [container addSubview:statusStack];
     [container addSubview:buttonStack];
@@ -211,6 +210,7 @@
     [container addSubview:self.statusLabel];
     [container addSubview:self.nextUpdateLabel];
     
+    // Setup constraints - CORRETTI
     [NSLayoutConstraint activateConstraints:@[
         // Filter control at top
         [self.filterSegmentedControl.topAnchor constraintEqualToAnchor:container.topAnchor],
@@ -251,44 +251,20 @@
     [self setupTableView];
 }
 
+- (void)setupTableView {
+    // Configure table view
+    [self.storageTableView setDataSource:self];
+    [self.storageTableView setDelegate:self];
+    
+    NSLog(@"📊 Storage management UI created successfully");
+}
+
+
 - (void)dealloc {
     [self stopAutoRefresh];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
-- (void)setupTableView {
-    // Configure table view columns
-    [self.storageTableView setDataSource:self];
-    [self.storageTableView setDelegate:self];
-    
-    // Setup columns
-    NSTableColumn *symbolColumn = [self.storageTableView tableColumnWithIdentifier:@"symbol"];
-    symbolColumn.title = @"Symbol";
-    symbolColumn.width = 80;
-    
-    NSTableColumn *timeframeColumn = [self.storageTableView tableColumnWithIdentifier:@"timeframe"];
-    timeframeColumn.title = @"Timeframe";
-    timeframeColumn.width = 80;
-    
-    NSTableColumn *rangeColumn = [self.storageTableView tableColumnWithIdentifier:@"range"];
-    rangeColumn.title = @"Range";
-    rangeColumn.width = 120;
-    
-    NSTableColumn *statusColumn = [self.storageTableView tableColumnWithIdentifier:@"status"];
-    statusColumn.title = @"Status";
-    statusColumn.width = 100;
-    
-    NSTableColumn *nextUpdateColumn = [self.storageTableView tableColumnWithIdentifier:@"nextUpdate"];
-    nextUpdateColumn.title = @"Next Update";
-    nextUpdateColumn.width = 120;
-    
-    NSTableColumn *actionsColumn = [self.storageTableView tableColumnWithIdentifier:@"actions"];
-    actionsColumn.title = @"Actions";
-    actionsColumn.width = 100;
-    
-    // Enable right-click context menu
-    [self.storageTableView setMenu:[self createContextMenu]];
-}
 
 - (void)setupNotificationObservers {
     NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
@@ -338,11 +314,25 @@
 - (void)updateStatusDisplay {
     StorageManager *manager = [StorageManager sharedManager];
     
-    // Update statistics labels
+    // Update statistics labels - usando solo le proprietà esistenti
     self.totalStoragesLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)manager.totalActiveStorages];
-    self.activeStoragesLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)(manager.totalActiveStorages - manager.pausedStorages)];
+    
+    // Calcolo storage continui vs snapshot per le label esistenti
+    NSInteger continuousCount = 0;
+    NSInteger snapshotCount = 0;
+    
+    // Conta i tipi di storage dall'array unificato
+    for (UnifiedStorageItem *item in self.storageItems) {
+        if (item.dataType == SavedChartDataTypeContinuous) {
+            continuousCount++;
+        } else if (item.dataType == SavedChartDataTypeSnapshot) {
+            snapshotCount++;
+        }
+    }
+    
+    self.continuousStoragesLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)continuousCount];
+    self.snapshotStoragesLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)snapshotCount];
     self.errorStoragesLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)manager.storagesWithErrors];
-    self.pausedStoragesLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)manager.pausedStorages];
     
     // Next update info
     ActiveStorageItem *nextItem = manager.nextStorageToUpdate;

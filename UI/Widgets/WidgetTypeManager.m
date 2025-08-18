@@ -16,6 +16,8 @@
 #import "SymbolDataBase/SymbolDataBaseWidget.h"
 #import "SeasonalChartWidget.h"
 #import "TickChartWidget.h"
+#import "StorageManagementWidget.h"
+
 
 @interface WidgetTypeManager ()
 @property (nonatomic, strong) NSDictionary<NSString *, NSArray<NSString *> *> *widgetCategories;
@@ -94,7 +96,9 @@
             @"Position Sizer",
             @"Market Clock",
             @"Performance Analytics",
-            @"API Playground"
+            @"API Playground",
+            @"Storage Management"    // <-- AGGIUNGI QUI
+
         ]
     };
     
@@ -120,6 +124,8 @@
       typeToClass[@"Market Depth"] = [ChartWidget class];
       typeToClass[@"Volume Profile"] = [ChartWidget class];
     typeToClass[@"Heatmap"] = [ChartWidget class];
+    typeToClass[@"Storage Management"] = [StorageManagementWidget class];
+
     // Map all other types to BaseWidget for now
     for (NSArray *types in self.widgetCategories.allValues) {
         for (NSString *type in types) {
@@ -151,6 +157,7 @@
         @"Trade History": @"clock",
         @"P&L Summary": @"dollarsign.circle",
         @"API Playground": @"briefcase",
+        @"Storage Management": @"externaldrive.fill",
         
         @"Technical Indicators": @"waveform.path.ecg",
         @"Scanner": @"magnifyingglass",

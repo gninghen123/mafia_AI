@@ -32,22 +32,22 @@ typedef NS_ENUM(NSInteger, StorageTableColumn) {
 
 #pragma mark - UI Components
 
-@property (nonatomic, weak) IBOutlet NSTableView *storageTableView;
-@property (nonatomic, weak) IBOutlet NSTextField *statusLabel;
-@property (nonatomic, weak) IBOutlet NSButton *pauseAllButton;
-@property (nonatomic, weak) IBOutlet NSButton *updateAllButton;
-@property (nonatomic, weak) IBOutlet NSButton *refreshButton;
+@property (nonatomic, strong) IBOutlet NSTableView *storageTableView;
+@property (nonatomic, strong) IBOutlet NSTextField *statusLabel;
+@property (nonatomic, strong) IBOutlet NSButton *pauseAllButton;
+@property (nonatomic, strong) IBOutlet NSButton *updateAllButton;
+@property (nonatomic, strong) IBOutlet NSButton *refreshButton;
 
 /// Filtro per tipo di storage
 @property (nonatomic, weak) IBOutlet NSSegmentedControl *filterSegmentedControl;
 
 #pragma mark - Statistics Display
 
-@property (nonatomic, weak) IBOutlet NSTextField *totalStoragesLabel;
-@property (nonatomic, weak) IBOutlet NSTextField *continuousStoragesLabel;
-@property (nonatomic, weak) IBOutlet NSTextField *snapshotStoragesLabel;
-@property (nonatomic, weak) IBOutlet NSTextField *errorStoragesLabel;
-@property (nonatomic, weak) IBOutlet NSTextField *nextUpdateLabel;
+@property (nonatomic, strong) IBOutlet NSTextField *totalStoragesLabel;
+@property (nonatomic, strong) IBOutlet NSTextField *continuousStoragesLabel;
+@property (nonatomic, strong) IBOutlet NSTextField *snapshotStoragesLabel;
+@property (nonatomic, strong) IBOutlet NSTextField *errorStoragesLabel;
+@property (nonatomic, strong) IBOutlet NSTextField *nextUpdateLabel;
 
 #pragma mark - Data Source
 

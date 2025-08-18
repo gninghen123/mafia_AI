@@ -22,6 +22,9 @@
 - (void)loadView {
     [super loadView];
     
+    // Initialize with default filter
+    _currentFilter = StorageFilterTypeAll;
+    
     NSLog(@"📊 StorageManagementWidget loaded");
 }
 
@@ -48,7 +51,18 @@
         [container.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-8]
     ]];
     
-    // Create status labels
+    // NUOVO: Create filter segmented control
+    self.filterSegmentedControl = [[NSSegmentedControl alloc] init];
+    [self.filterSegmentedControl setSegmentCount:3];
+    [self.filterSegmentedControl setLabel:@"All" forSegment:0];
+    [self.filterSegmentedControl setLabel:@"Continuous" forSegment:1];
+    [self.filterSegmentedControl setLabel:@"Snapshot" forSegment:2];
+    [self.filterSegmentedControl setSelectedSegment:0];
+    [self.filterSegmentedControl setTarget:self];
+    [self.filterSegmentedControl setAction:@selector(filterChanged:)];
+    self.filterSegmentedControl.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    // Create status labels with updated labels
     NSStackView *statusStack = [[NSStackView alloc] init];
     statusStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     statusStack.spacing = 16;
@@ -68,18 +82,31 @@
     self.totalStoragesLabel.bordered = NO;
     self.totalStoragesLabel.backgroundColor = [NSColor clearColor];
     
-    NSTextField *activeLabel = [[NSTextField alloc] init];
-    activeLabel.stringValue = @"Active:";
-    activeLabel.editable = NO;
-    activeLabel.bordered = NO;
-    activeLabel.backgroundColor = [NSColor clearColor];
-    activeLabel.font = [NSFont boldSystemFontOfSize:12];
+    NSTextField *continuousLabel = [[NSTextField alloc] init];
+    continuousLabel.stringValue = @"Continuous:";
+    continuousLabel.editable = NO;
+    continuousLabel.bordered = NO;
+    continuousLabel.backgroundColor = [NSColor clearColor];
+    continuousLabel.font = [NSFont boldSystemFontOfSize:12];
     
-    self.activeStoragesLabel = [[NSTextField alloc] init];
-    self.activeStoragesLabel.stringValue = @"0";
-    self.activeStoragesLabel.editable = NO;
-    self.activeStoragesLabel.bordered = NO;
-    self.activeStoragesLabel.backgroundColor = [NSColor clearColor];
+    self.continuousStoragesLabel = [[NSTextField alloc] init];
+    self.continuousStoragesLabel.stringValue = @"0";
+    self.continuousStoragesLabel.editable = NO;
+    self.continuousStoragesLabel.bordered = NO;
+    self.continuousStoragesLabel.backgroundColor = [NSColor clearColor];
+    
+    NSTextField *snapshotLabel = [[NSTextField alloc] init];
+    snapshotLabel.stringValue = @"Snapshot:";
+    snapshotLabel.editable = NO;
+    snapshotLabel.bordered = NO;
+    snapshotLabel.backgroundColor = [NSColor clearColor];
+    snapshotLabel.font = [NSFont boldSystemFontOfSize:12];
+    
+    self.snapshotStoragesLabel = [[NSTextField alloc] init];
+    self.snapshotStoragesLabel.stringValue = @"0";
+    self.snapshotStoragesLabel.editable = NO;
+    self.snapshotStoragesLabel.bordered = NO;
+    self.snapshotStoragesLabel.backgroundColor = [NSColor clearColor];
     
     NSTextField *errorLabel = [[NSTextField alloc] init];
     errorLabel.stringValue = @"Errors:";
@@ -94,27 +121,14 @@
     self.errorStoragesLabel.bordered = NO;
     self.errorStoragesLabel.backgroundColor = [NSColor clearColor];
     
-    NSTextField *pausedLabel = [[NSTextField alloc] init];
-    pausedLabel.stringValue = @"Paused:";
-    pausedLabel.editable = NO;
-    pausedLabel.bordered = NO;
-    pausedLabel.backgroundColor = [NSColor clearColor];
-    pausedLabel.font = [NSFont boldSystemFontOfSize:12];
-    
-    self.pausedStoragesLabel = [[NSTextField alloc] init];
-    self.pausedStoragesLabel.stringValue = @"0";
-    self.pausedStoragesLabel.editable = NO;
-    self.pausedStoragesLabel.bordered = NO;
-    self.pausedStoragesLabel.backgroundColor = [NSColor clearColor];
-    
     [statusStack addArrangedSubview:totalLabel];
     [statusStack addArrangedSubview:self.totalStoragesLabel];
-    [statusStack addArrangedSubview:activeLabel];
-    [statusStack addArrangedSubview:self.activeStoragesLabel];
+    [statusStack addArrangedSubview:continuousLabel];
+    [statusStack addArrangedSubview:self.continuousStoragesLabel];
+    [statusStack addArrangedSubview:snapshotLabel];
+    [statusStack addArrangedSubview:self.snapshotStoragesLabel];
     [statusStack addArrangedSubview:errorLabel];
     [statusStack addArrangedSubview:self.errorStoragesLabel];
-    [statusStack addArrangedSubview:pausedLabel];
-    [statusStack addArrangedSubview:self.pausedStoragesLabel];
     
     // Create buttons
     NSStackView *buttonStack = [[NSStackView alloc] init];
@@ -130,12 +144,12 @@
     [buttonStack addArrangedSubview:self.pauseAllButton];
     [buttonStack addArrangedSubview:self.updateAllButton];
     
-    // Create table view
+    // Create table view with UPDATED columns
     self.storageTableView = [[NSTableView alloc] init];
     self.storageTableView.headerView = nil;
     self.storageTableView.rowSizeStyle = NSTableViewRowSizeStyleDefault;
     
-    // Create table columns
+    // Create table columns - UPDATED with Type column
     NSTableColumn *symbolColumn = [[NSTableColumn alloc] initWithIdentifier:@"symbol"];
     symbolColumn.title = @"Symbol";
     symbolColumn.width = 80;
@@ -146,10 +160,26 @@
     timeframeColumn.width = 80;
     [self.storageTableView addTableColumn:timeframeColumn];
     
+    // NUOVO: Type column
+    NSTableColumn *typeColumn = [[NSTableColumn alloc] initWithIdentifier:@"type"];
+    typeColumn.title = @"Type";
+    typeColumn.width = 80;
+    [self.storageTableView addTableColumn:typeColumn];
+    
+    NSTableColumn *rangeColumn = [[NSTableColumn alloc] initWithIdentifier:@"range"];
+    rangeColumn.title = @"Range";
+    rangeColumn.width = 120;
+    [self.storageTableView addTableColumn:rangeColumn];
+    
     NSTableColumn *statusColumn = [[NSTableColumn alloc] initWithIdentifier:@"status"];
     statusColumn.title = @"Status";
     statusColumn.width = 100;
     [self.storageTableView addTableColumn:statusColumn];
+    
+    NSTableColumn *actionsColumn = [[NSTableColumn alloc] initWithIdentifier:@"actions"];
+    actionsColumn.title = @"Actions";
+    actionsColumn.width = 100;
+    [self.storageTableView addTableColumn:actionsColumn];
     
     // Wrap table in scroll view
     NSScrollView *scrollView = [[NSScrollView alloc] init];
@@ -173,7 +203,8 @@
     self.nextUpdateLabel.backgroundColor = [NSColor clearColor];
     self.nextUpdateLabel.translatesAutoresizingMaskIntoConstraints = NO;
     
-    // Layout everything
+    // Layout everything - UPDATED with filter control
+    [container addSubview:self.filterSegmentedControl];
     [container addSubview:statusStack];
     [container addSubview:buttonStack];
     [container addSubview:scrollView];
@@ -181,8 +212,14 @@
     [container addSubview:self.nextUpdateLabel];
     
     [NSLayoutConstraint activateConstraints:@[
-        // Status stack at top
-        [statusStack.topAnchor constraintEqualToAnchor:container.topAnchor],
+        // Filter control at top
+        [self.filterSegmentedControl.topAnchor constraintEqualToAnchor:container.topAnchor],
+        [self.filterSegmentedControl.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
+        [self.filterSegmentedControl.trailingAnchor constraintEqualToAnchor:container.trailingAnchor],
+        [self.filterSegmentedControl.heightAnchor constraintEqualToConstant:30],
+        
+        // Status stack below filter
+        [statusStack.topAnchor constraintEqualToAnchor:self.filterSegmentedControl.bottomAnchor constant:8],
         [statusStack.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
         [statusStack.trailingAnchor constraintEqualToAnchor:container.trailingAnchor],
         [statusStack.heightAnchor constraintEqualToConstant:30],
@@ -716,6 +753,7 @@
         [self refreshStorageList:nil];
     });
 }
+
 
 
 @end

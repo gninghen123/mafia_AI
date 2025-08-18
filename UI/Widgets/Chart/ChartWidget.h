@@ -98,4 +98,12 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 - (void)toggleStaticMode:(id)sender;
 - (void)updateStaticModeUI;
 
+#pragma mark - Chart Data Access (for SaveData extension)
+
+/// Get current chart data (accessor for private chartData property)
+/// @return Array of current historical bars, or nil if no data loaded
+- (NSArray<HistoricalBarModel *> * _Nullable)currentChartData;
+
+
+
 @end

@@ -18,6 +18,8 @@
 #import "dataHub.h"
 #import "datahub+marketdata.h"
 #import "FloatingWidgetWindow.h"
+#import "ChartWidget+SaveData.h"
+
 
 @interface ChartPanelView ()
 
@@ -1992,41 +1994,52 @@
 #pragma mark - showGeneralContextMenuAtPoint - MODIFICA ESISTENTE
 
 - (void)showGeneralContextMenuAtPoint:(NSPoint)point withEvent:(NSEvent *)event {
-    NSMenu *contextMenu = [[NSMenu alloc] initWithTitle:@"Chart Context Menu"];
+    NSMenu *contextMenu = [[NSMenu alloc] initWithTitle:@"Chart Context"];
     
-    // Only show alert creation if we have alert renderer and current symbol
-    if (self.alertRenderer && self.chartWidget.currentSymbol) {
-        // Convert point to price
-        double priceAtPoint = [self.alertRenderer triggerValueForScreenY:point.y];
-        NSString *formattedPrice = [NSString stringWithFormat:@"%.2f", priceAtPoint];
+    // Chart-specific actions
+    [contextMenu addItem:[NSMenuItem separatorItem]];
+    
+    // Save visible range as snapshot
+    NSMenuItem *saveSnapshotItem = [[NSMenuItem alloc] initWithTitle:@"📸 Save Visible Range as Snapshot..."
+                                                              action:@selector(contextMenuSaveSnapshot:)
+                                                       keyEquivalent:@""];
+    saveSnapshotItem.target = self;
+    [contextMenu addItem:saveSnapshotItem];
+    
+    // Save full data as continuous
+    NSMenuItem *saveContinuousItem = [[NSMenuItem alloc] initWithTitle:@"🔄 Save Full Data as Continuous..."
+                                                                action:@selector(contextMenuSaveContinuous:)
+                                                         keyEquivalent:@""];
+    saveContinuousItem.target = self;
+    [contextMenu addItem:saveContinuousItem];
+    
+    [contextMenu addItem:[NSMenuItem separatorItem]];
+    
+    // Load saved data
+    NSMenuItem *loadDataItem = [[NSMenuItem alloc] initWithTitle:@"📂 Load Saved Data..."
+                                                          action:@selector(contextMenuLoadData:)
+                                                   keyEquivalent:@""];
+    loadDataItem.target = self;
+    [contextMenu addItem:loadDataItem];
+    
+    // Alert creation
+    if (self.alertRenderer) {
+        [contextMenu addItem:[NSMenuItem separatorItem]];
         
-        // Menu item for creating alert
-        NSMenuItem *createAlertItem = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Create Alert at %@", formattedPrice]
-                                                                 action:@selector(createAlertAtMouseLocation:)
+        AlertModel *alertTemplate = [self.alertRenderer createAlertTemplateAtScreenPoint:point];
+        NSString *alertTitle = [NSString stringWithFormat:@"🚨 Create Alert at %.2f", alertTemplate.triggerValue];
+        
+        NSMenuItem *createAlertItem = [[NSMenuItem alloc] initWithTitle:alertTitle
+                                                                 action:@selector(contextMenuCreateAlert:)
                                                           keyEquivalent:@""];
         createAlertItem.target = self;
-        createAlertItem.representedObject = @{@"price": @(priceAtPoint), @"point": [NSValue valueWithPoint:point]};
+        createAlertItem.representedObject = alertTemplate;
         [contextMenu addItem:createAlertItem];
-        
-        [contextMenu addItem:[NSMenuItem separatorItem]];
     }
     
-    // 🔬 NUOVO: Microscopio Menu
-    if (self.chartData && self.chartData.count > 0 && self.chartWidget.currentSymbol) {
-        NSMenuItem *microscopeItem = [self createMicroscopeMenuItem:point];
-        if (microscopeItem) {
-            [contextMenu addItem:microscopeItem];
-            [contextMenu addItem:[NSMenuItem separatorItem]];
-        }
-    }
-    
-    // Other existing menu items could go here (chart settings, etc.)
-    
-    if (contextMenu.itemArray.count > 0) {
-        [NSMenu popUpContextMenu:contextMenu withEvent:event forView:self];
-    }
+    // Show the context menu
+    [NSMenu popUpContextMenu:contextMenu withEvent:event forView:self];
 }
-
 
 #pragma mark - Alert Context Menu
 
@@ -2471,6 +2484,36 @@
         case ChartTimeframeWeekly: return BarTimeframe1Week;
         case ChartTimeframeMonthly: return BarTimeframe1Month;
         default: return BarTimeframe1Day;
+    }
+}
+
+#pragma mark - Context Menu Actions
+
+- (IBAction)contextMenuSaveSnapshot:(id)sender {
+    if (self.chartWidget) {
+        [self.chartWidget saveVisibleRangeAsSnapshotInteractive];
+    }
+}
+
+- (IBAction)contextMenuSaveContinuous:(id)sender {
+    if (self.chartWidget) {
+        [self.chartWidget saveFullDataAsContinuousInteractive];
+    }
+}
+
+- (IBAction)contextMenuLoadData:(id)sender {
+    if (self.chartWidget) {
+        [self.chartWidget loadSavedDataInteractive];
+    }
+}
+
+- (IBAction)contextMenuCreateAlert:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    AlertModel *alertTemplate = menuItem.representedObject;
+    
+    if (alertTemplate && self.alertRenderer) {
+        [self startEditingAlertAtPoint:NSZeroPoint]; // Will use the template
+        NSLog(@"🚨 Creating alert at %.2f for %@", alertTemplate.triggerValue, alertTemplate.symbol);
     }
 }
 

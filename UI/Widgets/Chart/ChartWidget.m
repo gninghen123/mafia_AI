@@ -13,6 +13,7 @@
 #import "ChartObjectModels.h"
 #import "ChartObjectManagerWindow.h"
 #import "ChartWidget+ObjectsUI.h"
+#import "ChartWidget+SaveData.h"
 
 
 #pragma mark - Smart Symbol Input Parameters
@@ -384,6 +385,10 @@ extern NSString *const DataHubDataLoadedNotification;
     [self setupDefaultPanels];
     [self ensureRenderersAreSetup];
     
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
 }
 
 - (void)setupDefaultPanels {
@@ -939,6 +944,8 @@ extern NSString *const DataHubDataLoadedNotification;
                                                     keyEquivalent:@""];
     resetZoomItem.target = self;
     [menu addItem:resetZoomItem];
+    [self addSaveDataMenuItemsToMenu:menu];
+
 }
 
 - (NSArray<NSString *> *)selectedSymbols {
@@ -1712,6 +1719,12 @@ extern NSString *const DataHubDataLoadedNotification;
     });
     
     NSLog(@"📋 Showed StaticMode notification to user");
+}
+
+#pragma mark - Chart Data Access
+
+- (NSArray<HistoricalBarModel *> *)currentChartData {
+    return self.chartData;  // Direct access since we're in the main implementation
 }
 
 

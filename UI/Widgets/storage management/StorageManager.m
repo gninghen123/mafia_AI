@@ -16,12 +16,28 @@
 @implementation ActiveStorageItem
 @end
 
+#pragma mark - UnifiedStorageItem Implementation
+
+@implementation UnifiedStorageItem
+
+- (BOOL)isContinuous {
+    return self.dataType == SavedChartDataTypeContinuous;
+}
+
+- (BOOL)isSnapshot {
+    return self.dataType == SavedChartDataTypeSnapshot;
+}
+
+@end
+
 #pragma mark - StorageManager Implementation
 
 @interface StorageManager ()
 @property (nonatomic, strong) NSMutableArray<ActiveStorageItem *> *mutableActiveStorages;
 @property (nonatomic, strong) NSTimer *masterCheckTimer;
 @property (nonatomic, assign) BOOL isInitialized;
+@property (nonatomic, strong) NSArray<UnifiedStorageItem *> *cachedAllStorageItems;
+@property (nonatomic, strong) NSDate *lastFileSystemScan;
 @end
 
 @implementation StorageManager
@@ -329,11 +345,11 @@
     
     // Request new data via DataHub using the correct date range method
     [[DataHub shared] getHistoricalBarsForSymbol:storage.symbol
-                                               timeframe:storage.timeframe
-                                               startDate:fromDate
-                                                 endDate:toDate
-                                       needExtendedHours:storage.includesExtendedHours
-                                              completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
+                                       timeframe:storage.timeframe
+                                       startDate:fromDate
+                                         endDate:toDate
+                               needExtendedHours:storage.includesExtendedHours
+                                      completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
         
         if (!bars || bars.count == 0) {
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -527,12 +543,12 @@
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"🚨 Irreversible Data Gap Detected";
     alert.informativeText = [NSString stringWithFormat:
-        @"Continuous storage for %@ [%@] has a gap of %.0f days, which exceeds the API limit.\n\n"
-        @"Options:\n"
-        @"• Convert to Snapshot: Preserve existing data but stop automatic updates\n"
-        @"• Keep Trying: Continue attempting updates (may keep failing)\n"
-        @"• Delete: Remove this storage entirely",
-        storage.symbol, [storage timeframeDescription], daysSinceLastData];
+                             @"Continuous storage for %@ [%@] has a gap of %.0f days, which exceeds the API limit.\n\n"
+                             @"Options:\n"
+                             @"• Convert to Snapshot: Preserve existing data but stop automatic updates\n"
+                             @"• Keep Trying: Continue attempting updates (may keep failing)\n"
+                             @"• Delete: Remove this storage entirely",
+                             storage.symbol, [storage timeframeDescription], daysSinceLastData];
     
     alert.alertStyle = NSAlertStyleWarning;
     [alert addButtonWithTitle:@"Convert to Snapshot"];
@@ -600,7 +616,7 @@
     NSAlert *confirmAlert = [[NSAlert alloc] init];
     confirmAlert.messageText = @"⚠️ Confirm Storage Deletion";
     confirmAlert.informativeText = [NSString stringWithFormat:@"Are you sure you want to permanently delete the continuous storage for %@ [%@]?\n\nThis action cannot be undone.",
-                                   storageItem.savedData.symbol, [storageItem.savedData timeframeDescription]];
+                                    storageItem.savedData.symbol, [storageItem.savedData timeframeDescription]];
     confirmAlert.alertStyle = NSAlertStyleCritical;
     [confirmAlert addButtonWithTitle:@"Delete"];
     [confirmAlert addButtonWithTitle:@"Cancel"];
@@ -709,7 +725,124 @@
     }
 }
 
+#pragma mark - Unified Storage Management
+
+- (NSArray<UnifiedStorageItem *> *)allStorageItems {
+    [self refreshAllStorageItemsIfNeeded];
+    return self.cachedAllStorageItems ?: @[];
+}
+
+- (NSArray<UnifiedStorageItem *> *)continuousStorageItems {
+    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"dataType == %d", SavedChartDataTypeContinuous];
+    return [self.allStorageItems filteredArrayUsingPredicate:predicate];
+}
+
+- (NSArray<UnifiedStorageItem *> *)snapshotStorageItems {
+    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"dataType == %d", SavedChartDataTypeSnapshot];
+    return [self.allStorageItems filteredArrayUsingPredicate:predicate];
+}
+
+- (void)refreshAllStorageItems {
+    NSLog(@"🔄 Refreshing all storage items from filesystem...");
+    
+    NSMutableArray<UnifiedStorageItem *> *allItems = [NSMutableArray array];
+    
+    // 1. Aggiungi tutti i continuous storage (dal registry attivo)
+    for (ActiveStorageItem *activeItem in self.mutableActiveStorages) {
+        UnifiedStorageItem *unifiedItem = [[UnifiedStorageItem alloc] init];
+        unifiedItem.dataType = SavedChartDataTypeContinuous;
+        unifiedItem.savedData = activeItem.savedData;
+        unifiedItem.activeItem = activeItem;
+        unifiedItem.filePath = activeItem.filePath;
+        [allItems addObject:unifiedItem];
+    }
+    
+    // 2. Scan filesystem per tutti i file .chartdata
+    NSArray<NSString *> *allFiles = [ChartWidget availableSavedChartDataFiles];
+    
+    for (NSString *filePath in allFiles) {
+        // Controlla se è già nel registry come continuous
+        BOOL isAlreadyInRegistry = NO;
+        for (ActiveStorageItem *activeItem in self.mutableActiveStorages) {
+            if ([activeItem.filePath isEqualToString:filePath]) {
+                isAlreadyInRegistry = YES;
+                break;
+            }
+        }
+        
+        // Se non è nel registry, potrebbe essere snapshot o continuous non registrato
+        if (!isAlreadyInRegistry) {
+            SavedChartData *savedData = [SavedChartData loadFromFile:filePath];
+            if (savedData) {
+                UnifiedStorageItem *unifiedItem = [[UnifiedStorageItem alloc] init];
+                unifiedItem.dataType = savedData.dataType;
+                unifiedItem.savedData = savedData;
+                unifiedItem.activeItem = nil; // Snapshot o continuous non attivo
+                unifiedItem.filePath = filePath;
+                [allItems addObject:unifiedItem];
+                
+                // Se è continuous ma non registrato, auto-register
+                if (savedData.dataType == SavedChartDataTypeContinuous) {
+                    NSLog(@"📋 Found unregistered continuous storage, auto-registering: %@", filePath);
+                    [self registerContinuousStorage:filePath];
+                }
+            }
+        }
+    }
+    
+    // Ordina per data di creazione (più recenti prima)
+    [allItems sortUsingComparator:^NSComparisonResult(UnifiedStorageItem *obj1, UnifiedStorageItem *obj2) {
+        return [obj2.savedData.creationDate compare:obj1.savedData.creationDate];
+    }];
+    
+    self.cachedAllStorageItems = [allItems copy];
+    self.lastFileSystemScan = [NSDate date];
+    
+    NSLog(@"✅ Refreshed storage items: %ld total (%ld continuous, %ld snapshot)",
+          (long)allItems.count, (long)self.continuousStorageItems.count, (long)self.snapshotStorageItems.count);
+}
+
+- (void)refreshAllStorageItemsIfNeeded {
+    // Refresh se non mai fatto o se è passato più di 1 minuto dall'ultimo scan
+    if (!self.lastFileSystemScan ||
+        [[NSDate date] timeIntervalSinceDate:self.lastFileSystemScan] > 60.0) {
+        [self refreshAllStorageItems];
+    }
+}
+
+- (void)deleteStorageItem:(NSString *)filePath completion:(void(^)(BOOL success, NSError * _Nullable error))completion {
+    NSLog(@"🗑️ Deleting storage item: %@", filePath);
+    
+    // 1. Se è continuous, rimuovi dal registry
+    [self unregisterContinuousStorage:filePath];
+    
+    // 2. Elimina il file
+    NSError *error;
+    BOOL deleted = [[NSFileManager defaultManager] removeItemAtPath:filePath error:&error];
+    
+    if (deleted) {
+        NSLog(@"✅ Successfully deleted storage file: %@", filePath);
+        // Invalida cache per trigger refresh
+        self.cachedAllStorageItems = nil;
+        self.lastFileSystemScan = nil;
+    } else {
+        NSLog(@"❌ Failed to delete storage file: %@", error.localizedDescription);
+    }
+    
+    if (completion) {
+        completion(deleted, error);
+    }
+}
+
 #pragma mark - Statistics & Monitoring
+
+- (NSInteger)totalSnapshotStorages {
+    return self.snapshotStorageItems.count;
+}
+
+- (NSInteger)totalAllStorages {
+    return self.allStorageItems.count;
+}
 
 - (NSInteger)totalActiveStorages {
     return self.mutableActiveStorages.count;
@@ -781,6 +914,5 @@
     [self stopAllTimers];
     [self.masterCheckTimer invalidate];
 }
-
 
 @end

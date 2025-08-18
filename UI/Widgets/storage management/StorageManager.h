@@ -23,12 +23,42 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) BOOL isPaused;
 @end
 
+/// Rappresenta un item unificato (continuous + snapshot)
+@interface UnifiedStorageItem : NSObject
+@property (nonatomic, assign) SavedChartDataType dataType;
+@property (nonatomic, strong) SavedChartData *savedData;
+@property (nonatomic, strong, nullable) ActiveStorageItem *activeItem; // nil per snapshot
+@property (nonatomic, strong) NSString *filePath;
+@property (nonatomic, readonly) BOOL isContinuous;
+@property (nonatomic, readonly) BOOL isSnapshot;
+@end
+
 /// Gestisce tutti i continuous storage attivi con timer automatici
 @interface StorageManager : NSObject
 
 #pragma mark - Singleton
 
 + (instancetype)sharedManager;
+
+#pragma mark - Unified Storage Management (Continuous + Snapshot)
+
+/// Lista di tutti gli storage (continuous + snapshot) per il widget unificato
+@property (nonatomic, readonly) NSArray<UnifiedStorageItem *> *allStorageItems;
+
+/// Lista solo dei continuous storage come UnifiedStorageItem
+@property (nonatomic, readonly) NSArray<UnifiedStorageItem *> *continuousStorageItems;
+
+/// Lista solo degli snapshot come UnifiedStorageItem
+@property (nonatomic, readonly) NSArray<UnifiedStorageItem *> *snapshotStorageItems;
+
+/// Carica tutti i file di storage dal filesystem
+- (void)refreshAllStorageItems;
+
+/// Elimina un qualsiasi storage (continuous o snapshot)
+/// @param filePath Path del file da eliminare
+/// @param completion Completion con risultato
+- (void)deleteStorageItem:(NSString *)filePath
+               completion:(void(^)(BOOL success, NSError * _Nullable error))completion;
 
 #pragma mark - Registry Management
 
@@ -105,6 +135,12 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Numero totale di storage attivi
 @property (nonatomic, readonly) NSInteger totalActiveStorages;
+
+/// Numero totale di snapshot salvati
+@property (nonatomic, readonly) NSInteger totalSnapshotStorages;
+
+/// Numero totale di tutti gli storage (continuous + snapshot)
+@property (nonatomic, readonly) NSInteger totalAllStorages;
 
 /// Numero di storage con errori
 @property (nonatomic, readonly) NSInteger storagesWithErrors;

@@ -64,7 +64,7 @@
     
     // Create status labels stack
     NSStackView *statusStack = [[NSStackView alloc] init];
-    statusStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    statusStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;  // FIX: Complete the line
     statusStack.spacing = 16;
     statusStack.translatesAutoresizingMaskIntoConstraints = NO;
     
@@ -210,7 +210,7 @@
     [container addSubview:self.statusLabel];
     [container addSubview:self.nextUpdateLabel];
     
-    // Setup constraints - CORRETTI
+    // Setup constraints - TUTTI GLI ANCHOR DEVONO ESSERE COLLEGATI AD ALTRI ANCHOR
     [NSLayoutConstraint activateConstraints:@[
         // Filter control at top
         [self.filterSegmentedControl.topAnchor constraintEqualToAnchor:container.topAnchor],
@@ -250,7 +250,6 @@
     
     [self setupTableView];
 }
-
 - (void)setupTableView {
     // Configure table view
     [self.storageTableView setDataSource:self];

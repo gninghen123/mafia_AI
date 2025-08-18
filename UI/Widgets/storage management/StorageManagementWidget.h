@@ -39,7 +39,7 @@ typedef NS_ENUM(NSInteger, StorageTableColumn) {
 @property (nonatomic, strong) IBOutlet NSButton *refreshButton;
 
 /// Filtro per tipo di storage
-@property (nonatomic, weak) IBOutlet NSSegmentedControl *filterSegmentedControl;
+@property (nonatomic, strong) IBOutlet NSSegmentedControl *filterSegmentedControl;
 
 #pragma mark - Statistics Display
 

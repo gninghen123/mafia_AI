@@ -120,13 +120,6 @@ static NSString *const kChainSenderKey = @"sender";
         [self.mainStackView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [self.mainStackView.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
     ]];
-    
-    NSLog(@"✅ BaseWidget: Main stack view configured:");
-    NSLog(@"   - Orientation: Vertical");
-    NSLog(@"   - Distribution: Fill (content expands)");
-    NSLog(@"   - Spacing: 0 (no gaps)");
-    NSLog(@"   - Anchored to all view edges");
-    NSLog(@"   - Header will be fixed height, content will expand");
 }
 
 - (void)setupHeaderView {
@@ -1283,12 +1276,7 @@ static NSString *const kChainSenderKey = @"sender";
 
 #pragma mark - Standard Context Menu Implementation
 
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    
-    // Setup del context menu standard
-    [self setupStandardContextMenu];
-}
+
 
 - (void)setupStandardContextMenu {
     // Aggiungi gesture recognizer per right click

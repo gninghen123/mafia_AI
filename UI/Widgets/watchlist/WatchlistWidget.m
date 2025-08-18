@@ -54,6 +54,8 @@
     return self;
 }
 
+
+
 - (void)commonInit {
     // Initialize provider system
     self.providerManager = [WatchlistProviderManager sharedManager];
@@ -64,8 +66,6 @@
     
     // NEW: Initialize search and sorting
     self.searchText = @"";
-    self.sortType = WatchlistSortTypeNone;
-    self.sortAscending = NO; // Start with highest change% first
     self.pendingWidth = 0;
 
 }
@@ -77,6 +77,7 @@
     [self setupProviderUI];
     [self setupInitialProvider];
     [self startDataRefreshTimer];
+    [self setupStandardContextMenu];
 }
 
 - (void)viewWillAppear {
@@ -172,8 +173,7 @@
     self.tableView.headerView = [[NSTableHeaderView alloc] init];
     self.tableView.gridStyleMask = NSTableViewSolidHorizontalGridLineMask;
     
-    // ✅ NEW: Enable context menu
-    self.tableView.menu = [self createStandardContextMenu];
+
     
     // ✅ NEW: Enable double-click
     self.tableView.target = self;
@@ -249,35 +249,53 @@
         [self.tableView removeTableColumn:self.tableView.tableColumns.firstObject];
     }
     
-    // Start with symbol column only
     [self addSymbolColumn];
+    [self addChangeColumn];
+    [self addArrowColumn];
     [self updateLayoutForWidth:self.currentWidth];
 }
 
 - (void)addSymbolColumn {
     NSTableColumn *symbolColumn = [[NSTableColumn alloc] initWithIdentifier:@"symbol"];
-    // NEW: Add title for header with sorting indicator
-    symbolColumn.title = @"Symbol | Change%";
+    symbolColumn.title = @"Symbol";  // ← Titolo pulito, no "| Change%"
     symbolColumn.width = 80;
     symbolColumn.minWidth = 60;
     symbolColumn.resizingMask = NSTableColumnUserResizingMask;
+    
+    // ✅ AUTOMATIC: Sorting alfabetico per simboli
+    NSSortDescriptor *sortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"self"
+                                                                     ascending:YES];
+    symbolColumn.sortDescriptorPrototype = sortDescriptor;
+    
     [self.tableView addTableColumn:symbolColumn];
 }
 
 - (void)addChangeColumn {
     NSTableColumn *changeColumn = [[NSTableColumn alloc] initWithIdentifier:@"change"];
+    changeColumn.title = @"Change%";  // ← Titolo dedicato
     changeColumn.width = 60;
     changeColumn.minWidth = 50;
     changeColumn.resizingMask = NSTableColumnUserResizingMask;
+    
+    // ✅ AUTOMATIC: Sorting per change% (inizia con valori più alti)
+    NSSortDescriptor *sortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"changePercent"
+                                                                      ascending:NO
+                                                                       selector:@selector(compare:)];
+    changeColumn.sortDescriptorPrototype = sortDescriptor;
+    
     [self.tableView addTableColumn:changeColumn];
 }
 
 - (void)addArrowColumn {
     NSTableColumn *arrowColumn = [[NSTableColumn alloc] initWithIdentifier:@"arrow"];
+    arrowColumn.title = @"";  // No title
     arrowColumn.width = 20;
     arrowColumn.minWidth = 20;
     arrowColumn.maxWidth = 20;
     arrowColumn.resizingMask = NSTableColumnNoResizing;
+    
+    // ✅ NO SORTING: Non aggiungere sortDescriptorPrototype
+    
     [self.tableView addTableColumn:arrowColumn];
 }
 
@@ -304,78 +322,6 @@
     self.searchField.stringValue = @"";
     self.searchText = @"";
     [self searchTextChanged:self.searchField];
-}
-
-#pragma mark - NEW: Sorting Implementation (for Symbols)
-
-- (void)applySorting {
-    if (self.isApplyingSorting) return;
-    self.isApplyingSorting = YES;
-    
-    if (self.sortType == WatchlistSortTypeNone) {
-        // No sorting, use symbols as-is
-        self.displaySymbols = [self.symbols copy];
-    } else if (self.sortType == WatchlistSortTypeChangePercent) {
-        // Sort by change percentage
-        NSArray *sorted = [self.symbols sortedArrayUsingComparator:^NSComparisonResult(NSString *symbol1, NSString *symbol2) {
-            MarketQuoteModel *quote1 = self.quotesCache[symbol1];
-            MarketQuoteModel *quote2 = self.quotesCache[symbol2];
-            
-            double change1 = quote1.changePercent ? [quote1.changePercent doubleValue] : 0.0;
-            double change2 = quote2.changePercent ? [quote2.changePercent doubleValue] : 0.0;
-            
-            if (change1 < change2) return NSOrderedAscending;
-            if (change1 > change2) return NSOrderedDescending;
-            
-            // Secondary sort: alphabetical for ties
-            return [symbol1 compare:symbol2];
-        }];
-        
-        if (!self.sortAscending) {
-            sorted = [[sorted reverseObjectEnumerator] allObjects];
-        }
-        
-        self.displaySymbols = sorted;
-    }
-    
-    // Update header title to show current sort
-    [self updateHeaderTitle];
-    
-    // Reload table
-    [self.tableView reloadData];
-    
-    self.isApplyingSorting = NO;
-}
-
-- (void)updateHeaderTitle {
-    if (self.tableView.tableColumns.count == 0) return;
-    
-    NSTableColumn *symbolColumn = self.tableView.tableColumns.firstObject;
-    NSString *title = @"Symbol | Change%";
-    
-    if (self.sortType == WatchlistSortTypeChangePercent) {
-        NSString *arrow = self.sortAscending ? @"▲" : @"▼";
-        title = [NSString stringWithFormat:@"Symbol | Change% %@", arrow];
-    }
-    
-    symbolColumn.title = title;
-}
-
-- (void)toggleSortByChangePercent {
-    if (self.sortType == WatchlistSortTypeNone) {
-        // Start sorting: highest change% first
-        self.sortType = WatchlistSortTypeChangePercent;
-        self.sortAscending = NO;
-    } else if (self.sortType == WatchlistSortTypeChangePercent && !self.sortAscending) {
-        // Switch to lowest change% first
-        self.sortAscending = YES;
-    } else {
-        // Turn off sorting
-        self.sortType = WatchlistSortTypeNone;
-        self.sortAscending = NO;
-    }
-    
-    [self applySorting];
 }
 
 #pragma mark - Layout Management
@@ -456,8 +402,6 @@
         [self addArrowColumn];
     }
     
-    // Update header title after reconfiguring columns
-    [self updateHeaderTitle];
     
     // Reload to update display
     [self.tableView reloadData];
@@ -558,7 +502,6 @@
             }
             
             strongSelf.symbols = symbols;
-            [strongSelf applySorting];
             [strongSelf refreshQuotesForDisplaySymbols];
             
             // ✅ FIX 1: Start subscription for new symbols
@@ -574,11 +517,9 @@
         dispatch_async(dispatch_get_main_queue(), ^{
             [self.quotesCache addEntriesFromDictionary:quotes];
             
-            if (self.sortType == WatchlistSortTypeChangePercent) {
-                [self applySorting];
-            } else {
+         
                 [self.tableView reloadData];
-            }
+            
             
             self.lastQuoteUpdate = [NSDate timeIntervalSinceReferenceDate];
             
@@ -630,14 +571,7 @@
         // Update cache
         self.quotesCache[symbol] = quote;
         
-        // Re-apply sorting if needed (on main queue)
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (self.sortType == WatchlistSortTypeChangePercent) {
-                [self applySorting];
-            } else {
-                [self.tableView reloadData];
-            }
-        });
+      
         
         self.lastQuoteUpdate = [NSDate timeIntervalSinceReferenceDate];
     }
@@ -733,10 +667,7 @@
 }
 
 - (void)tableView:(NSTableView *)tableView didClickTableColumn:(NSTableColumn *)tableColumn {
-    // NEW: Handle header clicks for sorting
-    if ([tableColumn.identifier isEqualToString:@"symbol"]) {
-        [self toggleSortByChangePercent];
-    }
+    // NEW: Handle header clicks for sorti
 }
 
 
@@ -809,15 +740,6 @@
         [menu addItem:clearSearchItem];
     }
     
-    // 🔧 SEZIONE 4: SORTING OPTIONS
-    [menu addItem:[NSMenuItem separatorItem]];
-    NSString *sortTitle = (self.sortType == WatchlistSortTypeChangePercent) ?
-                         @"📈 Disable Sorting" : @"📈 Sort by Change %";
-    NSMenuItem *sortItem = [[NSMenuItem alloc] initWithTitle:sortTitle
-                                                      action:@selector(toggleSortByChangePercent)
-                                               keyEquivalent:@""];
-    sortItem.target = self;
-    [menu addItem:sortItem];
     
     // Empty menu fallback
     if (menu.itemArray.count == 0) {
@@ -941,10 +863,7 @@
     
     state[@"visibleColumns"] = @(self.visibleColumns);
     
-    // NEW: Persist sorting preferences
-    state[@"sortType"] = @(self.sortType);
-    state[@"sortAscending"] = @(self.sortAscending);
-    
+   
     // Note: Don't persist search text (session-only)
     
     return [state copy];
@@ -967,21 +886,7 @@
         [self reconfigureColumnsForCurrentWidth];
     }
     
-    // NEW: Restore sorting preferences
-    NSNumber *sortType = state[@"sortType"];
-    if (sortType) {
-        self.sortType = [sortType integerValue];
-    }
-    
-    NSNumber *sortAscending = state[@"sortAscending"];
-    if (sortAscending) {
-        self.sortAscending = [sortAscending boolValue];
-    }
-    
-    // Apply sorting if we have data
-    if (self.symbols.count > 0) {
-        [self applySorting];
-    }
+   
 }
 
 
@@ -1310,18 +1215,21 @@
 #pragma mark - NSTableViewDelegate Extensions (AGGIUNGI QUESTI METODI)
 
 - (void)tableViewSelectionDidChange:(NSNotification *)notification {
-    // ✅ FIX: Quando cambia la selezione, broadcast alla chain se attiva
-    if (self.chainActive) {
-        NSArray<NSString *> *selectedSymbols = [self selectedSymbols];
-        if (selectedSymbols.count > 0) {
-            [self broadcastUpdate:@{
-                @"action": @"setSymbols",
-                @"symbols": selectedSymbols
-            }];
-            
-            NSLog(@"🔗 WatchlistWidget: Broadcasted selection to chain: %@", selectedSymbols);
+    NSIndexSet *selection = self.tableView.selectedRowIndexes;
+        self.isPerformingMultiSelection = (selection.count > 1);
+        
+        // ✅ BROADCAST: Solo per selezione singola E chain attiva
+        if (self.chainActive && !self.isPerformingMultiSelection && selection.count == 1) {
+            NSArray<NSString *> *selectedSymbols = [self selectedSymbols];
+            if (selectedSymbols.count == 1) {
+                [self broadcastUpdate:@{
+                    @"action": @"setSymbols",
+                    @"symbols": selectedSymbols
+                }];
+                
+                NSLog(@"🔗 WatchlistWidget: Single selection broadcasted to chain: %@", selectedSymbols[0]);
+            }
         }
-    }
 }
 
 // ✅ NEW: Double-click support per invio immediato alla chain
@@ -1534,6 +1442,43 @@
         }
     }
 }
+#pragma mark - Native macOS Sorting Support
 
+- (void)tableView:(NSTableView *)tableView sortDescriptorsDidChange:(NSArray<NSSortDescriptor *> *)oldDescriptors {
+    NSLog(@"🔄 Sorting changed: %@", tableView.sortDescriptors);
+    
+    // Applica il sorting ai simboli usando i sort descriptors nativi
+    [self applySortDescriptors:tableView.sortDescriptors];
+}
+
+- (void)applySortDescriptors:(NSArray<NSSortDescriptor *> *)sortDescriptors {
+    if (sortDescriptors.count == 0) {
+        // No sorting - usa ordine originale
+        self.displaySymbols = [self.symbols copy];
+    } else {
+        // Crea array di "decorated objects" per il sorting
+        NSMutableArray *decoratedSymbols = [NSMutableArray array];
+        
+        for (NSString *symbol in self.symbols) {
+            MarketQuoteModel *quote = self.quotesCache[symbol];
+            
+            NSMutableDictionary *decorated = [NSMutableDictionary dictionary];
+            decorated[@"symbol"] = symbol;
+            decorated[@"self"] = symbol;  // Per sorting alfabetico
+            decorated[@"changePercent"] = quote.changePercent ?: @(0);  // Per sorting change%
+            
+            [decoratedSymbols addObject:decorated];
+        }
+        
+        // Applica sorting
+        NSArray *sortedDecorated = [decoratedSymbols sortedArrayUsingDescriptors:sortDescriptors];
+        
+        // Estrai solo i simboli
+        self.displaySymbols = [sortedDecorated valueForKey:@"symbol"];
+    }
+    
+    // Refresh table
+    [self.tableView reloadData];
+}
 
 @end

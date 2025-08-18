@@ -251,11 +251,38 @@
     [self setupTableView];
 }
 - (void)setupTableView {
-    // Configure table view
-    [self.storageTableView setDataSource:self];
-    [self.storageTableView setDelegate:self];
+        // Configure table view columns
+        [self.storageTableView setDataSource:self];
+        [self.storageTableView setDelegate:self];
+        
+        // Setup columns
+        NSTableColumn *symbolColumn = [self.storageTableView tableColumnWithIdentifier:@"symbol"];
+        symbolColumn.title = @"Symbol";
+        symbolColumn.width = 80;
+        
+        NSTableColumn *timeframeColumn = [self.storageTableView tableColumnWithIdentifier:@"timeframe"];
+        timeframeColumn.title = @"Timeframe";
+        timeframeColumn.width = 80;
+        
+        NSTableColumn *rangeColumn = [self.storageTableView tableColumnWithIdentifier:@"range"];
+        rangeColumn.title = @"Range";
+        rangeColumn.width = 120;
+        
+        NSTableColumn *statusColumn = [self.storageTableView tableColumnWithIdentifier:@"status"];
+        statusColumn.title = @"Status";
+        statusColumn.width = 100;
+        
+        NSTableColumn *nextUpdateColumn = [self.storageTableView tableColumnWithIdentifier:@"nextUpdate"];
+        nextUpdateColumn.title = @"Next Update";
+        nextUpdateColumn.width = 120;
+        
+        NSTableColumn *actionsColumn = [self.storageTableView tableColumnWithIdentifier:@"actions"];
+        actionsColumn.title = @"Actions";
+        actionsColumn.width = 100;
+        
+        // Enable right-click context menu
+        [self.storageTableView setMenu:[self createContextMenu]];
     
-    NSLog(@"📊 Storage management UI created successfully");
 }
 
 

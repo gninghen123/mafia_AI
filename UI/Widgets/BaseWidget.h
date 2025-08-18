@@ -70,6 +70,8 @@
 - (void)handleChainAction:(NSString *)action withData:(id)data fromWidget:(BaseWidget *)sender;
 
 
+- (void)setupStandardContextMenu;
+
 // Chain management - HELPER METHODS (NEW)
 - (void)sendSymbolToChain:(NSString *)symbol;
 - (void)sendSymbolsToChain:(NSArray<NSString *> *)symbols;

@@ -418,20 +418,91 @@
                            cacheKey:(NSString *)cacheKey
                          completion:(void (^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion {
     
+    // ============================================================================
+    // 🚀 STEP 1: VALIDAZIONI PRELIMINARI per decidere SMART vs FULL REQUEST
+    // ============================================================================
+    
     // Find last bar date in cache
     HistoricalBarModel *lastBar = [cachedBars lastObject];
+    HistoricalBarModel *firstBar = [cachedBars firstObject];
     NSDate *lastCacheDate = lastBar.date;
+    NSDate *firstCacheDate = firstBar.date;
     
-    if (!lastCacheDate) {
-        NSLog(@"❌ DataHub SMART: Invalid last cache date, performing full request");
+    if (!lastCacheDate || !firstCacheDate) {
+        NSLog(@"❌ DataHub SMART: Invalid cache dates, performing full request");
         [self performFullHistoricalRequest:symbol timeframe:timeframe barCount:barCount
                          needExtendedHours:needExtendedHours cacheKey:cacheKey completion:completion];
         return;
     }
     
+    // ============================================================================
+    // 🔍 VALIDAZIONE 1: EXTENDED HOURS COMPATIBILITY
+    // ============================================================================
+    
+    // Estrai flag extended dalla cache key esistente
+    BOOL cacheHasExtended = [cacheKey containsString:@"_ext"];
+    
+    if (needExtendedHours != cacheHasExtended) {
+        NSLog(@"🔄 DataHub SMART → FULL: Extended hours mismatch (cache: %@, requested: %@)",
+              cacheHasExtended ? @"extended" : @"regular",
+              needExtendedHours ? @"extended" : @"regular");
+        
+        [self performFullHistoricalRequest:symbol timeframe:timeframe barCount:barCount
+                         needExtendedHours:needExtendedHours cacheKey:cacheKey completion:completion];
+        return;
+    }
+    
+    // ============================================================================
+    // 🔍 VALIDAZIONE 2: RANGE COMPATIBILITY (barCount)
+    // ============================================================================
+    
+    NSInteger cachedBarCount = cachedBars.count;
+    
+    // Se richiediamo più barre di quelle in cache, dobbiamo verificare se possiamo estendere
+    if (barCount > cachedBarCount) {
+        NSLog(@"🔄 DataHub SMART → FULL: Requested bars (%ld) > cached bars (%ld)",
+              (long)barCount, (long)cachedBarCount);
+        
+        [self performFullHistoricalRequest:symbol timeframe:timeframe barCount:barCount
+                         needExtendedHours:needExtendedHours cacheKey:cacheKey completion:completion];
+        return;
+    }
+    
+    // ============================================================================
+    // 🔍 VALIDAZIONE 3: DATE RANGE COMPATIBILITY (per richieste con startDate)
+    // ============================================================================
+    
+    // Calcola il range temporale richiesto basandosi su barCount e timeframe
+    NSTimeInterval barIntervalSeconds = [self secondsPerBarForTimeframe:timeframe];
+    NSTimeInterval requestedRangeSeconds = barCount * barIntervalSeconds;
+    NSDate *requestedStartDate = [NSDate dateWithTimeIntervalSinceNow:-requestedRangeSeconds];
+    
+    // Verifica se il range richiesto va oltre i dati in cache
+    NSTimeInterval cacheRangeSeconds = [lastCacheDate timeIntervalSinceDate:firstCacheDate];
+    NSTimeInterval requestedRangeFromCache = [lastCacheDate timeIntervalSinceDate:requestedStartDate];
+    
+    // Se la richiesta va più indietro dei dati in cache, serve full request
+    if (requestedRangeFromCache > cacheRangeSeconds + (barIntervalSeconds * 10)) { // 10 bars di tolleranza
+        NSLog(@"🔄 DataHub SMART → FULL: Requested range extends beyond cache");
+        NSLog(@"   Cache range: %.1f hours, Requested range: %.1f hours",
+              cacheRangeSeconds / 3600.0, requestedRangeFromCache / 3600.0);
+        
+        [self performFullHistoricalRequest:symbol timeframe:timeframe barCount:barCount
+                         needExtendedHours:needExtendedHours cacheKey:cacheKey completion:completion];
+        return;
+    }
+    
+    // ============================================================================
+    // ✅ VALIDAZIONI SUPERATE: PROCEDI CON SMART UPDATE
+    // ============================================================================
+    
+    NSLog(@"✅ DataHub SMART: All validations passed, proceeding with smart update");
+    NSLog(@"   Extended: %@, Cache bars: %ld, Requested: %ld",
+          needExtendedHours ? @"YES" : @"NO", (long)cachedBarCount, (long)barCount);
+    
     // 🧠 SMART CALCULATION: GoBack period based on timeframe
     NSInteger goBackBars = [self getGoBackPeriodForTimeframe:timeframe];
-    NSTimeInterval goBackSeconds = goBackBars * [self secondsPerBarForTimeframe:timeframe];
+    NSTimeInterval goBackSeconds = goBackBars * barIntervalSeconds;
     
     // Smart date range: last cache date - goback to NOW
     NSDate *smartStartDate = [lastCacheDate dateByAddingTimeInterval:-goBackSeconds];
@@ -450,11 +521,13 @@
         
         if (error) {
             NSLog(@"❌ DataHub SMART: Smart update failed for %@: %@", symbol, error.localizedDescription);
-            return; // Original cache already returned, nothing more to do
+            completion(cachedBars, NO); // Return cached data as fallback
+            return;
         }
         
         if (!newBars || newBars.count == 0) {
-            NSLog(@"⚠️ DataHub SMART: No new bars received for %@", symbol);
+            NSLog(@"⚠️ DataHub SMART: No new bars received for %@, returning cached data", symbol);
+            completion(cachedBars, YES); // Cache is still valid
             return;
         }
         
@@ -472,11 +545,12 @@
         NSLog(@"✅ DataHub SMART: Updated cache for %@ (%lu total bars, %lu new)",
               symbol, (unsigned long)mergedBars.count, (unsigned long)newBars.count);
         
-        // Broadcast update and send fresh data (second callback)
+        // Broadcast update and send fresh data
         [self broadcastHistoricalDataUpdate:mergedBars forSymbol:symbol];
         completion(mergedBars, YES);
     }];
 }
+
 
 /**
  * 🧮 GOBACK PERIOD CALCULATION per timeframe
@@ -1970,6 +2044,44 @@
     NSLog(@"❌ Invalid cached quotes: %ld", (long)invalidCachedQuotes);
     
     NSLog(@"ARCHITECTURE COMPLIANCE VALIDATION COMPLETE\n");
+}
+
+// ============================================================================
+// 🛠️ HELPER METHOD: Validate Date Range Request Compatibility
+// ============================================================================
+/*
+ * Valida se una richiesta con date specifiche è compatibile con la cache esistente
+ * @param cachedBars Array di barre in cache
+ * @param requestedStartDate Data di inizio richiesta
+ * @param requestedEndDate Data di fine richiesta
+ * @return YES se compatibile (smart update), NO se serve full request
+ */
+- (BOOL)isDateRangeCompatibleWithCache:(NSArray<HistoricalBarModel *> *)cachedBars
+                    requestedStartDate:(NSDate *)requestedStartDate
+                      requestedEndDate:(NSDate *)requestedEndDate {
+    
+    if (!cachedBars || cachedBars.count == 0) return NO;
+    
+    HistoricalBarModel *firstCachedBar = [cachedBars firstObject];
+    HistoricalBarModel *lastCachedBar = [cachedBars lastObject];
+    
+    NSDate *cacheStartDate = firstCachedBar.date;
+    NSDate *cacheEndDate = lastCachedBar.date;
+    
+    if (!cacheStartDate || !cacheEndDate) return NO;
+    
+    // Verifica se il range richiesto è contenuto nel range in cache
+    BOOL startDateOK = [requestedStartDate compare:cacheStartDate] != NSOrderedAscending;
+    BOOL endDateOK = [requestedEndDate compare:cacheEndDate] != NSOrderedDescending;
+    
+    BOOL isCompatible = startDateOK && endDateOK;
+    
+    NSLog(@"🔍 Date Range Compatibility Check:");
+    NSLog(@"   Cache: %@ to %@", cacheStartDate, cacheEndDate);
+    NSLog(@"   Requested: %@ to %@", requestedStartDate, requestedEndDate);
+    NSLog(@"   Result: %@", isCompatible ? @"COMPATIBLE" : @"INCOMPATIBLE");
+    
+    return isCompatible;
 }
 
 @end

@@ -486,13 +486,13 @@
     
     [self.loadingIndicator startAnimation:nil];
     self.isLoadingProvider = YES;
-    
+
     __weak typeof(self) weakSelf = self;
     [self.currentProvider loadSymbolsWithCompletion:^(NSArray<NSString *> * _Nonnull symbols, NSError * _Nullable error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             __strong typeof(weakSelf) strongSelf = weakSelf;
             if (!strongSelf) return;
-            
+
             [strongSelf.loadingIndicator stopAnimation:nil];
             strongSelf.isLoadingProvider = NO;
             
@@ -502,10 +502,16 @@
             }
             
             strongSelf.symbols = symbols;
+            strongSelf.displaySymbols = [symbols copy];  // ← SEMPRE aggiorna
+
             [strongSelf refreshQuotesForDisplaySymbols];
-            
+
+            [strongSelf.tableView reloadData];
+
             // ✅ FIX 1: Start subscription for new symbols
             [strongSelf startDataRefreshTimer];
+           
+
         });
     }];
 }

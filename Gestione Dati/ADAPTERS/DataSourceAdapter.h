@@ -25,6 +25,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 // Converte dati order book da formato API
 - (NSDictionary *)standardizeOrderBookData:(id)rawData forSymbol:(NSString *)symbol;
+- (NSDictionary *)standardizeBatchQuotesData:(id)rawData forSymbols:(NSArray<NSString *> *)symbols;
+
 
 // TODO: Future - convert these to runtime models too
 - (id)standardizePositionData:(NSDictionary *)rawData;

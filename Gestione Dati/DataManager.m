@@ -128,56 +128,20 @@
     
     self.activeRequests[requestID] = requestInfo;
     
-    // Use SchwabDataSource directly for batch quotes (most efficient)
-    id<DataSource> schwabSource = [DataAdapterFactory adapterForDataSource:DataSourceTypeSchwab];
-    
-    if ([schwabSource respondsToSelector:@selector(fetchQuotesForSymbols:completion:)]) {
-        [schwabSource fetchQuotesForSymbols:symbols completion:^(NSDictionary *quotes, NSError *error) {
-            [self.activeRequests removeObjectForKey:requestID];
-            
-            if (completion) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    if (error) {
-                        NSLog(@"❌ DataManager: Batch quotes failed: %@", error.localizedDescription);
-                    } else {
-                        NSLog(@"✅ DataManager: Batch quotes succeeded, got %lu quotes", (unsigned long)quotes.count);
-                    }
-                    completion(quotes, error);
-                });
-            }
-        }];
-    } else {
-        // Fallback to individual calls if batch not supported
-        NSLog(@"⚠️ DataManager: Batch quotes not supported, falling back to individual calls");
-        
-        NSMutableDictionary *batchResult = [NSMutableDictionary dictionary];
-        __block NSInteger completedCount = 0;
-        __block NSError *lastError = nil;
-        
-        for (NSString *symbol in symbols) {
-            [self requestQuoteForSymbol:symbol completion:^(MarketData *quote, NSError *error) {
-                @synchronized(batchResult) {
-                    if (quote) {
-                        batchResult[symbol] = [quote toDictionary]; // Convert to dictionary format
-                    }
-                    if (error) {
-                        lastError = error;
-                    }
-                    
-                    completedCount++;
-                    if (completedCount == symbols.count) {
-                        [self.activeRequests removeObjectForKey:requestID];
-                        if (completion) {
-                            completion([batchResult copy], lastError);
-                        }
-                    }
-                }
-            }];
-        }
-    }
+    // ✅ CORRETTO: Usa DownloadManager invece di chiamare direttamente SchwabDataSource
+    [self.downloadManager executeRequest:DataRequestTypeBatchQuotes
+                              parameters:@{@"symbols": symbols}
+                              completion:^(id result, DataSourceType usedSource, NSError *error) {
+        [self handleBatchQuotesResponse:result
+                                  error:error
+                             forSymbols:symbols
+                              requestID:requestID
+                             completion:completion];
+    }];
     
     return requestID;
 }
+
 - (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
                                    timeframe:(BarTimeframe)timeframe
                                    startDate:(NSDate *)startDate
@@ -918,6 +882,64 @@
     }];
     
     return requestID;
+}
+
+#pragma mark - Response Handler for Batch Quotes
+
+- (void)handleBatchQuotesResponse:(id)result
+                            error:(NSError *)error
+                       forSymbols:(NSArray<NSString *> *)symbols
+                        requestID:(NSString *)requestID
+                       completion:(void (^)(NSDictionary *quotes, NSError *error))completion {
+    
+    [self.activeRequests removeObjectForKey:requestID];
+    
+    if (error) {
+        NSLog(@"❌ DataManager: Batch quotes failed: %@", error.localizedDescription);
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, error);
+            });
+        }
+        return;
+    }
+    
+    // Process batch quotes response through adapter
+    id<DataSourceAdapter> adapter = [self getAdapterForCurrentDataSource];
+    NSDictionary *processedQuotes = nil;
+    
+    if ([adapter respondsToSelector:@selector(standardizeBatchQuotesData:forSymbols:)]) {
+        processedQuotes = [adapter standardizeBatchQuotesData:result forSymbols:symbols];
+    } else {
+        // Fallback: assume result is already in correct format
+        processedQuotes = result;
+    }
+    
+    NSLog(@"✅ DataManager: Batch quotes processed successfully for %lu symbols", (unsigned long)symbols.count);
+    
+    if (completion) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(processedQuotes, nil);
+        });
+    }
+    
+    // Notify delegates if needed
+    [self notifyDelegatesOfBatchQuotesUpdate:processedQuotes forSymbols:symbols];
+}
+
+
+#pragma mark - Delegate Notification for Batch Quotes
+
+- (void)notifyDelegatesOfBatchQuotesUpdate:(NSDictionary *)quotes forSymbols:(NSArray<NSString *> *)symbols {
+    dispatch_async(self.delegateQueue, ^{
+        for (id<DataManagerDelegate> delegate in self.delegates) {
+            if ([delegate respondsToSelector:@selector(dataManager:didUpdateBatchQuotes:forSymbols:)]) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [delegate dataManager:self didUpdateBatchQuotes:quotes forSymbols:symbols];
+                });
+            }
+        }
+    });
 }
 
 @end

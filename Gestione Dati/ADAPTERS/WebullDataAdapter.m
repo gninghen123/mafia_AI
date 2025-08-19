@@ -73,6 +73,64 @@
     return [[MarketData alloc] initWithDictionary:standardData];
 }
 
+- (NSDictionary *)standardizeBatchQuotesData:(id)rawData forSymbols:(NSArray<NSString *> *)symbols {
+    if (!rawData) {
+        NSLog(@"❌ WebullAdapter: No raw data provided for batch quotes");
+        return @{};
+    }
+    
+    NSMutableDictionary *standardizedQuotes = [NSMutableDictionary dictionary];
+    
+    // Webull batch quotes format può essere simile a Schwab:
+    // 1. Dictionary con symbol come chiave
+    // 2. Array di oggetti quote
+    
+    if ([rawData isKindOfClass:[NSDictionary class]]) {
+        NSDictionary *quotesDict = (NSDictionary *)rawData;
+        
+        // Webull potrebbe avere un wrapper, controlla "data" o "results"
+        NSDictionary *actualData = quotesDict[@"data"] ?: quotesDict[@"results"] ?: quotesDict;
+        
+        for (NSString *symbol in symbols) {
+            id quoteData = actualData[symbol];
+            if (quoteData) {
+                MarketData *standardizedQuote = [self standardizeQuoteData:quoteData forSymbol:symbol];
+                if (standardizedQuote) {
+                    standardizedQuotes[symbol] = standardizedQuote;
+                }
+            } else {
+                NSLog(@"⚠️ WebullAdapter: No data found for symbol %@", symbol);
+            }
+        }
+        
+    } else if ([rawData isKindOfClass:[NSArray class]]) {
+        NSArray *quotesArray = (NSArray *)rawData;
+        
+        for (id quoteItem in quotesArray) {
+            if (![quoteItem isKindOfClass:[NSDictionary class]]) continue;
+            
+            NSDictionary *quoteData = (NSDictionary *)quoteItem;
+            NSString *symbol = quoteData[@"symbol"] ?: quoteData[@"ticker"];
+            
+            if (symbol && [symbols containsObject:symbol]) {
+                MarketData *standardizedQuote = [self standardizeQuoteData:quoteData forSymbol:symbol];
+                if (standardizedQuote) {
+                    standardizedQuotes[symbol] = standardizedQuote;
+                }
+            }
+        }
+        
+    } else {
+        NSLog(@"❌ WebullAdapter: Unexpected batch quotes format: %@", [rawData class]);
+        return @{};
+    }
+    
+    NSLog(@"✅ WebullAdapter: Standardized %lu/%lu batch quotes",
+          (unsigned long)standardizedQuotes.count, (unsigned long)symbols.count);
+    
+    return [standardizedQuotes copy];
+}
+
 - (NSArray<HistoricalBarModel *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol {
     NSMutableArray<HistoricalBarModel *> *bars = [NSMutableArray array];
     

@@ -304,5 +304,69 @@
     return nil;
 }
 
+- (NSDictionary *)standardizeBatchQuotesData:(id)rawData forSymbols:(NSArray<NSString *> *)symbols {
+    if (!rawData || ![rawData isKindOfClass:[NSDictionary class]]) {
+        NSLog(@"❌ OtherDataAdapter: Invalid raw data for batch quotes");
+        return @{};
+    }
+    
+    NSDictionary *rawQuotes = (NSDictionary *)rawData;
+    NSMutableDictionary *standardizedQuotes = [NSMutableDictionary dictionary];
+    
+    for (NSString *symbol in symbols) {
+        NSDictionary *yahooQuote = rawQuotes[symbol];
+        if (!yahooQuote || ![yahooQuote isKindOfClass:[NSDictionary class]]) {
+            NSLog(@"⚠️ OtherDataAdapter: No valid data for symbol %@", symbol);
+            continue;
+        }
+        
+        // Convert Yahoo Finance format to MarketData
+        MarketData *standardizedQuote = [self standardizeYahooQuoteData:yahooQuote forSymbol:symbol];
+        if (standardizedQuote) {
+            standardizedQuotes[symbol] = standardizedQuote;
+        }
+    }
+    
+    NSLog(@"✅ OtherDataAdapter: Standardized %lu/%lu Yahoo Finance quotes",
+          (unsigned long)standardizedQuotes.count, (unsigned long)symbols.count);
+    
+    return [standardizedQuotes copy];
+}
+
+#pragma mark - Yahoo Finance Data Conversion
+
+- (MarketData *)standardizeYahooQuoteData:(NSDictionary *)yahooData forSymbol:(NSString *)symbol {
+    if (!yahooData) return nil;
+    
+    NSMutableDictionary *standardData = [NSMutableDictionary dictionary];
+    
+    // Symbol
+    standardData[@"symbol"] = symbol;
+    
+    // Map Yahoo fields to standard fields
+    standardData[@"last"] = yahooData[@"last"];
+    standardData[@"bid"] = yahooData[@"bid"];
+    standardData[@"ask"] = yahooData[@"ask"];
+    standardData[@"open"] = yahooData[@"open"];
+    standardData[@"high"] = yahooData[@"high"];
+    standardData[@"low"] = yahooData[@"low"];
+    standardData[@"close"] = yahooData[@"last"]; // Yahoo uses "last" as current price
+    standardData[@"previousClose"] = yahooData[@"previousClose"];
+    standardData[@"volume"] = yahooData[@"volume"];
+    standardData[@"change"] = yahooData[@"change"];
+    standardData[@"changePercent"] = yahooData[@"changePercent"];
+    
+    // Timestamp
+    standardData[@"timestamp"] = yahooData[@"timestamp"] ?: [NSDate date];
+    
+    // Market status (simplified - assume open during market hours)
+    standardData[@"isMarketOpen"] = @YES;
+    
+    // Exchange info (Yahoo doesn't provide this easily)
+    standardData[@"exchange"] = @"Yahoo Finance";
+    
+    return [[MarketData alloc] initWithDictionary:standardData];
+}
+
 
 @end

@@ -90,6 +90,62 @@
     return [[MarketData alloc] initWithDictionary:standardData];
 }
 
+- (NSDictionary *)standardizeBatchQuotesData:(id)rawData forSymbols:(NSArray<NSString *> *)symbols {
+    if (!rawData) {
+        NSLog(@"❌ SchwabAdapter: No raw data provided for batch quotes");
+        return @{};
+    }
+    
+    NSMutableDictionary *standardizedQuotes = [NSMutableDictionary dictionary];
+    
+    // Schwab batch quotes format può essere:
+    // 1. Dictionary con symbol come chiave: {"AAPL": {...}, "MSFT": {...}}
+    // 2. Array di oggetti quote con symbol inside
+    
+    if ([rawData isKindOfClass:[NSDictionary class]]) {
+        NSDictionary *quotesDict = (NSDictionary *)rawData;
+        
+        for (NSString *symbol in symbols) {
+            id quoteData = quotesDict[symbol];
+            if (quoteData) {
+                MarketData *standardizedQuote = [self standardizeQuoteData:quoteData forSymbol:symbol];
+                if (standardizedQuote) {
+                    standardizedQuotes[symbol] = standardizedQuote;
+                }
+            } else {
+                NSLog(@"⚠️ SchwabAdapter: No data found for symbol %@", symbol);
+            }
+        }
+        
+    } else if ([rawData isKindOfClass:[NSArray class]]) {
+        NSArray *quotesArray = (NSArray *)rawData;
+        
+        for (id quoteItem in quotesArray) {
+            if (![quoteItem isKindOfClass:[NSDictionary class]]) continue;
+            
+            NSDictionary *quoteData = (NSDictionary *)quoteItem;
+            NSString *symbol = quoteData[@"symbol"];
+            
+            if (symbol && [symbols containsObject:symbol]) {
+                MarketData *standardizedQuote = [self standardizeQuoteData:quoteData forSymbol:symbol];
+                if (standardizedQuote) {
+                    standardizedQuotes[symbol] = standardizedQuote;
+                }
+            }
+        }
+        
+    } else {
+        NSLog(@"❌ SchwabAdapter: Unexpected batch quotes format: %@", [rawData class]);
+        return @{};
+    }
+    
+    NSLog(@"✅ SchwabAdapter: Standardized %lu/%lu batch quotes",
+          (unsigned long)standardizedQuotes.count, (unsigned long)symbols.count);
+    
+    return [standardizedQuotes copy];
+}
+
+
 - (NSArray<HistoricalBarModel *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol {
     if (!rawData) return @[];
     

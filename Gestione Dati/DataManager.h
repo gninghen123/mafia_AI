@@ -26,6 +26,7 @@
 
 // UPDATED: Now notifies with runtime HistoricalBarModel objects
 - (void)dataManager:(DataManager *)manager didUpdateHistoricalData:(NSArray<HistoricalBarModel *> *)bars forSymbol:(NSString *)symbol;
+- (void)dataManager:(DataManager *)manager didUpdateBatchQuotes:(NSDictionary *)quotes forSymbols:(NSArray<NSString *> *)symbols;
 
 - (void)dataManager:(DataManager *)manager didUpdateOrderBook:(NSArray<OrderBookEntry *> *)orderBook forSymbol:(NSString *)symbol;
 

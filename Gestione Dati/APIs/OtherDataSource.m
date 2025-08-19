@@ -67,7 +67,7 @@ static NSString *const kStockCatalystURL = @"https://www.thestockcatalyst.com/NY
     self = [super init];
     if (self) {
         _sourceType = DataSourceTypeOther;
-        _sourceName = @"Other APIs (Nasdaq/Finviz/Zacks)";
+        _sourceName = @"Other APIs (Yahoo/Nasdaq/Finviz/Zacks)"; // ✅ UPDATED: Include Yahoo
         _capabilities = DataSourceCapabilityQuotes |
                        DataSourceCapabilityNews |
                        DataSourceCapabilityFundamentals |
@@ -102,6 +102,241 @@ static NSString *const kStockCatalystURL = @"https://www.thestockcatalyst.com/NY
 - (void)disconnect {
     [self.session invalidateAndCancel];
     self.isConnected = NO;
+}
+
+
+#pragma mark - Yahoo Finance Quotes (FALLBACK)
+
+- (void)fetchQuoteForSymbol:(NSString *)symbol
+                 completion:(void (^)(id quote, NSError *error))completion {
+    
+    if (!symbol || symbol.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"OtherDataSource"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"No symbol provided"}];
+        if (completion) completion(nil, error);
+        return;
+    }
+    
+    NSLog(@"📊 OtherDataSource: Fetching single quote for %@ using Yahoo Finance", symbol);
+    
+    // Use batch quotes method with single symbol for consistency
+    [self fetchQuotesForSymbols:@[symbol] completion:^(NSDictionary *quotes, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+        } else {
+            // Return the single quote data
+            NSDictionary *singleQuote = quotes[symbol];
+            if (completion) completion(singleQuote, nil);
+        }
+    }];
+}
+
+- (void)fetchQuotesForSymbols:(NSArray<NSString *> *)symbols
+                   completion:(void (^)(NSDictionary *quotes, NSError *error))completion {
+    
+    if (!symbols || symbols.count == 0) {
+        NSError *error = [NSError errorWithDomain:@"OtherDataSource"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"No symbols provided"}];
+        if (completion) completion(@{}, error);
+        return;
+    }
+    
+    NSLog(@"📊 OtherDataSource: Fetching batch quotes for %lu symbols using Yahoo Finance", (unsigned long)symbols.count);
+    
+    // Yahoo Finance CSV API URL
+    // Format: http://finance.yahoo.com/d/quotes.csv?s=AAPL+MSFT+GOOG&f=snl1c1p2ohgvt1
+    // Fields: s=symbol, n=name, l1=last, c1=change, p2=change%, o=open, h=high, g=low, v=volume, t1=time
+    
+    NSString *symbolsString = [symbols componentsJoinedByString:@"+"];
+    NSString *fields = @"snl1c1p2ohgvt1ab"; // symbol,name,last,change,change%,open,high,low,volume,time,ask,bid
+    
+    NSString *urlString = [NSString stringWithFormat:@"http://finance.yahoo.com/d/quotes.csv?s=%@&f=%@",
+                          [symbolsString stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]],
+                          fields];
+    
+    NSURL *url = [NSURL URLWithString:urlString];
+    NSLog(@"📊 OtherDataSource: Yahoo URL: %@", urlString);
+    
+    NSURLRequest *request = [NSURLRequest requestWithURL:url
+                                             cachePolicy:NSURLRequestReloadIgnoringLocalCacheData
+                                         timeoutInterval:30.0];
+    
+    NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        
+        if (error) {
+            NSLog(@"❌ OtherDataSource: Yahoo Finance request failed: %@", error.localizedDescription);
+            if (completion) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(@{}, error);
+                });
+            }
+            return;
+        }
+        
+        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+        if (httpResponse.statusCode != 200) {
+            NSError *httpError = [NSError errorWithDomain:@"OtherDataSource"
+                                                     code:httpResponse.statusCode
+                                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Yahoo Finance HTTP error: %ld", (long)httpResponse.statusCode]}];
+            NSLog(@"❌ OtherDataSource: Yahoo Finance HTTP error %ld", (long)httpResponse.statusCode);
+            if (completion) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(@{}, httpError);
+                });
+            }
+            return;
+        }
+        
+        // Parse CSV response
+        NSString *csvString = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+        if (!csvString || csvString.length == 0) {
+            NSError *parseError = [NSError errorWithDomain:@"OtherDataSource"
+                                                      code:500
+                                                  userInfo:@{NSLocalizedDescriptionKey: @"Empty response from Yahoo Finance"}];
+            NSLog(@"❌ OtherDataSource: Empty CSV response from Yahoo Finance");
+            if (completion) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(@{}, parseError);
+                });
+            }
+            return;
+        }
+        
+        NSDictionary *quotesDict = [self parseYahooCSVResponse:csvString forSymbols:symbols];
+        
+        NSLog(@"✅ OtherDataSource: Successfully parsed %lu quotes from Yahoo Finance", (unsigned long)quotesDict.count);
+        
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(quotesDict, nil);
+            });
+        }
+    }];
+    
+    [task resume];
+}
+
+#pragma mark - Yahoo CSV Parser
+
+- (NSDictionary *)parseYahooCSVResponse:(NSString *)csvString forSymbols:(NSArray<NSString *> *)symbols {
+    NSMutableDictionary *quotes = [NSMutableDictionary dictionary];
+    
+    // Split CSV into lines
+    NSArray *lines = [csvString componentsSeparatedByString:@"\n"];
+    
+    for (NSString *line in lines) {
+        NSString *trimmedLine = [line stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (trimmedLine.length == 0) continue;
+        
+        // Parse CSV line (handle quoted fields)
+        NSArray *fields = [self parseCSVLine:trimmedLine];
+        if (fields.count < 12) {
+            NSLog(@"⚠️ OtherDataSource: Invalid CSV line (expected 12 fields, got %lu): %@", (unsigned long)fields.count, trimmedLine);
+            continue;
+        }
+        
+        // Field mapping for Yahoo CSV:
+        // 0=symbol, 1=name, 2=last, 3=change, 4=change%, 5=open, 6=high, 7=low, 8=volume, 9=time, 10=ask, 11=bid
+        
+        NSString *symbol = [self cleanCSVField:fields[0]];
+        if (!symbol || ![symbols containsObject:symbol]) {
+            continue;
+        }
+        
+        // Build quote dictionary
+        NSMutableDictionary *quote = [NSMutableDictionary dictionary];
+        quote[@"symbol"] = symbol;
+        quote[@"name"] = [self cleanCSVField:fields[1]];
+        quote[@"last"] = [self parseYahooNumber:fields[2]];
+        quote[@"change"] = [self parseYahooNumber:fields[3]];
+        quote[@"changePercent"] = [self parseYahooNumber:fields[4]];
+        quote[@"open"] = [self parseYahooNumber:fields[5]];
+        quote[@"high"] = [self parseYahooNumber:fields[6]];
+        quote[@"low"] = [self parseYahooNumber:fields[7]];
+        quote[@"volume"] = [self parseYahooNumber:fields[8]];
+        quote[@"time"] = [self cleanCSVField:fields[9]];
+        quote[@"ask"] = [self parseYahooNumber:fields[10]];
+        quote[@"bid"] = [self parseYahooNumber:fields[11]];
+        
+        // Add timestamp
+        quote[@"timestamp"] = [NSDate date];
+        
+        // Calculate previous close from last and change
+        NSNumber *last = quote[@"last"];
+        NSNumber *change = quote[@"change"];
+        if (last && change) {
+            double previousClose = [last doubleValue] - [change doubleValue];
+            quote[@"previousClose"] = @(previousClose);
+        }
+        
+        quotes[symbol] = [quote copy];
+    }
+    
+    return [quotes copy];
+}
+
+#pragma mark - CSV Parsing Helpers
+
+- (NSArray *)parseCSVLine:(NSString *)line {
+    NSMutableArray *fields = [NSMutableArray array];
+    NSMutableString *currentField = [NSMutableString string];
+    BOOL inQuotes = NO;
+    
+    for (NSInteger i = 0; i < line.length; i++) {
+        unichar c = [line characterAtIndex:i];
+        
+        if (c == '"') {
+            inQuotes = !inQuotes;
+        } else if (c == ',' && !inQuotes) {
+            [fields addObject:[currentField copy]];
+            [currentField setString:@""];
+        } else {
+            [currentField appendFormat:@"%c", c];
+        }
+    }
+    
+    // Add last field
+    [fields addObject:[currentField copy]];
+    
+    return [fields copy];
+}
+
+- (NSString *)cleanCSVField:(NSString *)field {
+    if (!field) return @"";
+    
+    // Remove quotes and trim whitespace
+    NSString *cleaned = [field stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    if ([cleaned hasPrefix:@"\""] && [cleaned hasSuffix:@"\""]) {
+        cleaned = [cleaned substringWithRange:NSMakeRange(1, cleaned.length - 2)];
+    }
+    
+    // Replace "N/A" with empty string
+    if ([cleaned isEqualToString:@"N/A"]) {
+        return @"";
+    }
+    
+    return cleaned;
+}
+
+- (NSNumber *)parseYahooNumber:(NSString *)field {
+    NSString *cleaned = [self cleanCSVField:field];
+    if (!cleaned || cleaned.length == 0) {
+        return @(0.0);
+    }
+    
+    // Remove percentage sign if present
+    if ([cleaned hasSuffix:@"%"]) {
+        cleaned = [cleaned substringToIndex:cleaned.length - 1];
+    }
+    
+    // Try to parse as number
+    NSNumberFormatter *formatter = [[NSNumberFormatter alloc] init];
+    formatter.numberStyle = NSNumberFormatterDecimalStyle;
+    NSNumber *number = [formatter numberFromString:cleaned];
+    
+    return number ?: @(0.0);
 }
 
 #pragma mark - Market List Dispatcher (DataSource Protocol)

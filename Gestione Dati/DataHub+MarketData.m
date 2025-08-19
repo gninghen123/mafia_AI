@@ -189,52 +189,70 @@
     
     // ✅ CORRECTED: Ask DataManager (not direct API)
     [[DataManager sharedManager] requestQuotesForSymbols:symbolsToFetch
-                                              completion:^(NSDictionary *rawQuotes, NSError *error) {
-        
-        if (error) {
-            NSLog(@"❌ Error fetching quotes from DataManager: %@", error);
-            // Return cached quotes even if DataManager failed
-            completion([cachedQuotes copy], NO);
-            return;
-        }
-        
-        // Merge cached and new quotes
-        NSMutableDictionary<NSString *, MarketQuoteModel *> *allQuotes = [cachedQuotes mutableCopy];
-        
-        // ✅ DataManager returns standardized data, no need for conversion
-        for (NSString *symbol in rawQuotes) {
-            id quoteData = rawQuotes[symbol];
-            MarketQuoteModel *runtimeQuote = nil;
-            
-            // Handle different possible return types from DataManager
-            if ([quoteData isKindOfClass:[MarketQuoteModel class]]) {
-                runtimeQuote = (MarketQuoteModel *)quoteData;
-            } else if ([quoteData isKindOfClass:[NSDictionary class]]) {
-                runtimeQuote = [MarketQuoteModel quoteFromDictionary:(NSDictionary *)quoteData];
-            }
-            
-            if (runtimeQuote) {
-                // Cache the quote
-                [self cacheQuote:runtimeQuote];
-                [self updateCacheTimestamp:symbol];
-                
-                // Save to Core Data in background
-                [self saveQuoteModelToCoreData:runtimeQuote];
-                
-                // Add to result
-                allQuotes[symbol] = runtimeQuote;
-                
-                NSLog(@"✅ Processed quote for %@", symbol);
-            }
-        }
-        
-        NSLog(@"✅ Retrieved %lu quotes (%lu cached, %lu fetched)",
-              (unsigned long)allQuotes.count,
-              (unsigned long)cachedQuotes.count,
-              (unsigned long)rawQuotes.count);
-        
-        completion([allQuotes copy], YES);
-    }];
+                                                 completion:^(NSDictionary *rawQuotes, NSError *error) {
+           
+           if (error) {
+               NSLog(@"❌ Error fetching quotes from DataManager: %@", error);
+               // Return cached quotes even if DataManager failed
+               completion([cachedQuotes copy], NO);
+               return;
+           }
+           
+           NSLog(@"📊 DataHub: DataManager returned %lu raw quotes", (unsigned long)rawQuotes.count);
+           
+           // Merge cached and new quotes
+           NSMutableDictionary<NSString *, MarketQuoteModel *> *allQuotes = [cachedQuotes mutableCopy];
+           
+           // ✅ FIXED: Proper handling of DataManager return types
+           for (NSString *symbol in rawQuotes) {
+               id quoteData = rawQuotes[symbol];
+               MarketQuoteModel *runtimeQuote = nil;
+               
+               NSLog(@"📊 DataHub: Processing quote for %@ - type: %@", symbol, NSStringFromClass([quoteData class]));
+               
+               // Handle different possible return types from DataManager
+               if ([quoteData isKindOfClass:[MarketQuoteModel class]]) {
+                   // Already a runtime model
+                   runtimeQuote = (MarketQuoteModel *)quoteData;
+                   NSLog(@"✅ DataHub: Quote for %@ is already MarketQuoteModel", symbol);
+                   
+               } else if ([quoteData isKindOfClass:[MarketData class]]) {
+                   // ✅ ADDED: Handle MarketData objects from DataManager
+                   MarketData *marketData = (MarketData *)quoteData;
+                   runtimeQuote = [MarketQuoteModel quoteFromMarketData:marketData];
+                   NSLog(@"✅ DataHub: Converted MarketData to MarketQuoteModel for %@", symbol);
+                   
+               } else if ([quoteData isKindOfClass:[NSDictionary class]]) {
+                   // Dictionary format
+                   runtimeQuote = [MarketQuoteModel quoteFromDictionary:(NSDictionary *)quoteData];
+                   NSLog(@"✅ DataHub: Converted Dictionary to MarketQuoteModel for %@", symbol);
+                   
+               } else {
+                   NSLog(@"❌ DataHub: Unknown quote data type for %@: %@", symbol, NSStringFromClass([quoteData class]));
+                   continue;
+               }
+               
+               if (runtimeQuote) {
+                   // Cache the quote
+                   [self cacheQuote:runtimeQuote];
+                   [self updateCacheTimestamp:symbol];
+                   
+                   // Save to Core Data in background
+                   [self saveQuoteModelToCoreData:runtimeQuote];
+                   
+                   // Add to result
+                   allQuotes[symbol] = runtimeQuote;
+                   NSLog(@"✅ DataHub: Successfully added quote for %@ to results", symbol);
+               } else {
+                   NSLog(@"❌ DataHub: Failed to create MarketQuoteModel for %@", symbol);
+               }
+           }
+           
+           NSLog(@"✅ DataHub: Final result - returning %lu quotes to widget", (unsigned long)allQuotes.count);
+           
+           // Return all quotes (cached + new)
+           completion([allQuotes copy], symbolsToFetch.count == 0);
+       }];
 }
 
 #pragma mark - Public API - Historical Data

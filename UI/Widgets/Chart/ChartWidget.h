@@ -49,6 +49,27 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 @property (nonatomic, strong) NSButton *zoomInButton;
 @property (nonatomic, strong) NSButton *zoomAllButton;
 // Objects UI
+@property (nonatomic, strong) NSSlider *dateRangeSlider;
+@property (nonatomic, strong) NSTextField *dateRangeLabel;
+
+// 🆕 NEW: Current date range in days (calculated from slider)
+@property (nonatomic, assign) NSInteger currentDateRangeDays;
+
+// 🆕 NEW: Default preferences for each timeframe group
+@property (nonatomic, assign) NSInteger defaultDaysFor1Min;        // 20
+@property (nonatomic, assign) NSInteger defaultDaysFor5Min;        // 40
+@property (nonatomic, assign) NSInteger defaultDaysForHourly;      // max available
+@property (nonatomic, assign) NSInteger defaultDaysForDaily;       // 180 (6 months)
+@property (nonatomic, assign) NSInteger defaultDaysForWeekly;      // 365 (1 year)
+@property (nonatomic, assign) NSInteger defaultDaysForMonthly;     // 1825 (5 years)
+
+// 🆕 NEW: Default visible bars for each timeframe group
+@property (nonatomic, assign) NSInteger defaultVisibleFor1Min;     // days to show initially
+@property (nonatomic, assign) NSInteger defaultVisibleFor5Min;
+@property (nonatomic, assign) NSInteger defaultVisibleForHourly;
+@property (nonatomic, assign) NSInteger defaultVisibleForDaily;
+@property (nonatomic, assign) NSInteger defaultVisibleForWeekly;
+@property (nonatomic, assign) NSInteger defaultVisibleForMonthly;
 @property (nonatomic, strong) NSButton *objectsPanelToggle;
 @property (nonatomic, strong) ObjectsPanel *objectsPanel;
 @property (nonatomic, strong) ChartObjectsManager *objectsManager;
@@ -72,6 +93,18 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 @property (nonatomic, assign) double yRangeMin;
 @property (nonatomic, assign) double yRangeMax;
 @property (nonatomic, assign) BOOL isYRangeOverridden;
+
+
+
+// 🆕 NEW: Methods for date range management
+- (void)updateDateRangeSliderForTimeframe:(ChartTimeframe)timeframe;
+- (void)dateRangeSliderChanged:(id)sender;
+- (NSInteger)getMinDaysForTimeframe:(ChartTimeframe)timeframe;
+- (NSInteger)getMaxDaysForTimeframe:(ChartTimeframe)timeframe;
+- (NSInteger)getDefaultDaysForTimeframe:(ChartTimeframe)timeframe;
+- (NSInteger)getDefaultVisibleDaysForTimeframe:(ChartTimeframe)timeframe;
+- (void)updateDateRangeLabel;
+- (NSString *)formatDaysToDisplayString:(NSInteger)days;
 
 #pragma mark - Public Methods
 - (void)loadSymbol:(NSString *)symbol;
@@ -105,5 +138,7 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 - (NSArray<HistoricalBarModel *> * _Nullable)currentChartData;
 
 -(void)resetToInitialView;
+- (void)loadDateRangeDefaults;
+- (void)saveDateRangeDefaults;
 
 @end

@@ -141,6 +141,24 @@ extern NSString *const DataHubDataLoadedNotification;
     self.timeframeSegmented.segmentCount = 8;
     [self.contentView addSubview:self.timeframeSegmented];
     
+    // 🆕 NEW: Date Range Slider
+       self.dateRangeSlider = [[NSSlider alloc] init];
+       self.dateRangeSlider.sliderType = NSSliderTypeLinear;
+       self.dateRangeSlider.target = self;
+       self.dateRangeSlider.action = @selector(dateRangeSliderChanged:);
+       self.dateRangeSlider.continuous = YES;
+       [self.contentView addSubview:self.dateRangeSlider];
+       
+       // 🆕 NEW: Date Range Label
+       self.dateRangeLabel = [[NSTextField alloc] init];
+       self.dateRangeLabel.editable = NO;
+       self.dateRangeLabel.bordered = NO;
+       self.dateRangeLabel.backgroundColor = [NSColor clearColor];
+       self.dateRangeLabel.font = [NSFont systemFontOfSize:11];
+       self.dateRangeLabel.alignment = NSTextAlignmentCenter;
+       self.dateRangeLabel.stringValue = @"6 months";
+       [self.contentView addSubview:self.dateRangeLabel];
+    
     // Template popup (mantieni)
     self.templatePopup = [[NSPopUpButton alloc] init];
     [self.contentView addSubview:self.templatePopup];
@@ -250,10 +268,22 @@ extern NSString *const DataHubDataLoadedNotification;
         [self.timeframeSegmented.leadingAnchor constraintEqualToAnchor:self.objectsVisibilityToggle.trailingAnchor constant:8],
         [self.timeframeSegmented.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
         
-        // Template popup - COLLEGATO DIRETTAMENTE al timeframe
-        [self.templatePopup.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
-        [self.templatePopup.leadingAnchor constraintEqualToAnchor:self.timeframeSegmented.trailingAnchor constant:8],
-        [self.templatePopup.widthAnchor constraintEqualToConstant:100],
+        [self.dateRangeSlider.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
+             [self.dateRangeSlider.leadingAnchor constraintEqualToAnchor:self.timeframeSegmented.trailingAnchor constant:8],
+             [self.dateRangeSlider.widthAnchor constraintEqualToConstant:150],
+             [self.dateRangeSlider.heightAnchor constraintEqualToConstant:21],
+             
+             // 🆕 NEW: Date Range Label - positioned right of slider
+             [self.dateRangeLabel.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
+             [self.dateRangeLabel.leadingAnchor constraintEqualToAnchor:self.dateRangeSlider.trailingAnchor constant:4],
+             [self.dateRangeLabel.widthAnchor constraintEqualToConstant:80],
+             [self.dateRangeLabel.heightAnchor constraintEqualToConstant:21],
+             
+             // Template popup - NOW connected to date range label instead of timeframe
+             [self.templatePopup.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
+             [self.templatePopup.leadingAnchor constraintEqualToAnchor:self.dateRangeLabel.trailingAnchor constant:8],
+             [self.templatePopup.widthAnchor constraintEqualToConstant:100],
+        
         
         // Preferences button - INVARIATO (all'estrema destra)
         [self.preferencesButton.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
@@ -300,6 +330,12 @@ extern NSString *const DataHubDataLoadedNotification;
     self.tradingHoursMode = ChartTradingHoursRegularOnly;
     self.barsToDownload = 1000;
     self.initialBarsToShow = 100;
+    // 🆕 NEW: Load default preferences for date ranges
+    [self loadDateRangeDefaults];
+    
+    // 🆕 NEW: Set initial date range for default timeframe (Daily)
+    self.currentDateRangeDays = [self getDefaultDaysForTimeframe:ChartTimeframeDaily];
+    
     
     self.chartPanels = [NSMutableArray array];
     self.objectsManager = [ChartObjectsManager managerForSymbol:self.currentSymbol];
@@ -347,6 +383,9 @@ extern NSString *const DataHubDataLoadedNotification;
     self.panSlider.target = self;
     self.panSlider.action = @selector(panSliderChanged:);
     
+    
+    [self updateDateRangeSliderForTimeframe:self.currentTimeframe];
+
     // Actions già collegati nei setup dei bottoni:
     // - zoomOutButton -> zoomOut:
     // - zoomInButton -> zoomIn:
@@ -576,10 +615,27 @@ extern NSString *const DataHubDataLoadedNotification;
     }
 }
 
-- (void)timeframeChanged:(NSSegmentedControl *)sender {
-    ChartTimeframe newTimeframe = (ChartTimeframe)sender.selectedSegment;
-    [self setTimeframe:newTimeframe];
+- (IBAction)timeframeChanged:(id)sender {
+    if (self.timeframeSegmented.selectedSegment >= 0) {
+        ChartTimeframe newTimeframe = (ChartTimeframe)self.timeframeSegmented.selectedSegment;
+        
+        if (newTimeframe != self.currentTimeframe) {
+            self.currentTimeframe = newTimeframe;
+            
+            // 🆕 NEW: Update date range slider for new timeframe
+            [self updateDateRangeSliderForTimeframe:newTimeframe];
+            
+            // Reload data if we have a symbol
+            if (self.currentSymbol && self.currentSymbol.length > 0) {
+                [self loadDataWithCurrentSettings];
+            }
+            
+            NSLog(@"📊 Timeframe changed to: %ld", (long)newTimeframe);
+        }
+    }
 }
+
+
 - (void)zoomIn:(NSButton *)sender {
     NSInteger currentRange = self.visibleEndIndex - self.visibleStartIndex;
     NSInteger newRange = MAX(10, currentRange / 1.5);
@@ -1716,12 +1772,28 @@ extern NSString *const DataHubDataLoadedNotification;
     if (params.hasTimeframe) {
         self.currentTimeframe = params.timeframe;
         NSLog(@"⏰ Applied timeframe: %ld", (long)params.timeframe);
+        
+        // 🆕 NEW: Update slider for new timeframe
+        [self updateDateRangeSliderForTimeframe:params.timeframe];
+    }
+    
+    // 🆕 NEW: Apply days if specified
+    if (params.hasDaysSpecified) {
+        // Clamp to valid range for current timeframe
+        NSInteger minDays = [self getMinDaysForTimeframe:self.currentTimeframe];
+        NSInteger maxDays = [self getMaxDaysForTimeframe:self.currentTimeframe];
+        NSInteger clampedDays = MAX(minDays, MIN(maxDays, params.daysToDownload));
+        
+        self.currentDateRangeDays = clampedDays;
+        self.dateRangeSlider.integerValue = clampedDays;
+        [self updateDateRangeLabel];
+        
+        NSLog(@"📅 Applied date range: %ld days (requested: %ld, clamped: %ld)",
+              (long)clampedDays, (long)params.daysToDownload, (long)clampedDays);
     }
     
     // Store current symbol
     self.currentSymbol = params.symbol;
-    
-    // Note: We don't store barsToDownload anymore since we use date ranges
 }
 
 - (void)updateUIAfterSmartSymbolInput:(SmartSymbolParameters)params {
@@ -1769,8 +1841,265 @@ extern NSString *const DataHubDataLoadedNotification;
     }
 }
 
-#pragma mark - Backward Compatibility
+#pragma mark - Date Range Management (🆕 NEW)
 
-// Mantieni il metodo loadSymbol esistente per compatibilità
+- (void)loadDateRangeDefaults {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    // Load download defaults (with fallbacks)
+    self.defaultDaysFor1Min = [defaults integerForKey:@"ChartWidget_DefaultDays1Min"];
+    if (self.defaultDaysFor1Min < 1) self.defaultDaysFor1Min = 20;
+    
+    self.defaultDaysFor5Min = [defaults integerForKey:@"ChartWidget_DefaultDays5Min"];
+    if (self.defaultDaysFor5Min < 1) self.defaultDaysFor5Min = 40;
+    
+    self.defaultDaysForHourly = [defaults integerForKey:@"ChartWidget_DefaultDaysHourly"];
+    if (self.defaultDaysForHourly < 1) self.defaultDaysForHourly = 999999; // max available
+    
+    self.defaultDaysForDaily = [defaults integerForKey:@"ChartWidget_DefaultDaysDaily"];
+    if (self.defaultDaysForDaily < 1) self.defaultDaysForDaily = 180; // 6 months
+    
+    self.defaultDaysForWeekly = [defaults integerForKey:@"ChartWidget_DefaultDaysWeekly"];
+    if (self.defaultDaysForWeekly < 1) self.defaultDaysForWeekly = 365; // 1 year
+    
+    self.defaultDaysForMonthly = [defaults integerForKey:@"ChartWidget_DefaultDaysMonthly"];
+    if (self.defaultDaysForMonthly < 1) self.defaultDaysForMonthly = 1825; // 5 years
+    
+    // Load visible defaults
+    self.defaultVisibleFor1Min = [defaults integerForKey:@"ChartWidget_DefaultVisible1Min"];
+    if (self.defaultVisibleFor1Min < 1) self.defaultVisibleFor1Min = 5; // 5 days visible
+    
+    self.defaultVisibleFor5Min = [defaults integerForKey:@"ChartWidget_DefaultVisible5Min"];
+    if (self.defaultVisibleFor5Min < 1) self.defaultVisibleFor5Min = 10; // 10 days visible
+    
+    self.defaultVisibleForHourly = [defaults integerForKey:@"ChartWidget_DefaultVisibleHourly"];
+    if (self.defaultVisibleForHourly < 1) self.defaultVisibleForHourly = 30; // 30 days visible
+    
+    self.defaultVisibleForDaily = [defaults integerForKey:@"ChartWidget_DefaultVisibleDaily"];
+    if (self.defaultVisibleForDaily < 1) self.defaultVisibleForDaily = 90; // 3 months visible
+    
+    self.defaultVisibleForWeekly = [defaults integerForKey:@"ChartWidget_DefaultVisibleWeekly"];
+    if (self.defaultVisibleForWeekly < 1) self.defaultVisibleForWeekly = 180; // 6 months visible
+    
+    self.defaultVisibleForMonthly = [defaults integerForKey:@"ChartWidget_DefaultVisibleMonthly"];
+    if (self.defaultVisibleForMonthly < 1) self.defaultVisibleForMonthly = 365; // 1 year visible
+    
+    NSLog(@"📂 Loaded date range defaults - 1m:%ld, 5m:%ld, hourly:%ld, daily:%ld, weekly:%ld, monthly:%ld",
+          (long)self.defaultDaysFor1Min, (long)self.defaultDaysFor5Min, (long)self.defaultDaysForHourly,
+          (long)self.defaultDaysForDaily, (long)self.defaultDaysForWeekly, (long)self.defaultDaysForMonthly);
+}
+
+- (void)saveDateRangeDefaults {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    // Save download defaults
+    [defaults setInteger:self.defaultDaysFor1Min forKey:@"ChartWidget_DefaultDays1Min"];
+    [defaults setInteger:self.defaultDaysFor5Min forKey:@"ChartWidget_DefaultDays5Min"];
+    [defaults setInteger:self.defaultDaysForHourly forKey:@"ChartWidget_DefaultDaysHourly"];
+    [defaults setInteger:self.defaultDaysForDaily forKey:@"ChartWidget_DefaultDaysDaily"];
+    [defaults setInteger:self.defaultDaysForWeekly forKey:@"ChartWidget_DefaultDaysWeekly"];
+    [defaults setInteger:self.defaultDaysForMonthly forKey:@"ChartWidget_DefaultDaysMonthly"];
+    
+    // Save visible defaults
+    [defaults setInteger:self.defaultVisibleFor1Min forKey:@"ChartWidget_DefaultVisible1Min"];
+    [defaults setInteger:self.defaultVisibleFor5Min forKey:@"ChartWidget_DefaultVisible5Min"];
+    [defaults setInteger:self.defaultVisibleForHourly forKey:@"ChartWidget_DefaultVisibleHourly"];
+    [defaults setInteger:self.defaultVisibleForDaily forKey:@"ChartWidget_DefaultVisibleDaily"];
+    [defaults setInteger:self.defaultVisibleForWeekly forKey:@"ChartWidget_DefaultVisibleWeekly"];
+    [defaults setInteger:self.defaultVisibleForMonthly forKey:@"ChartWidget_DefaultVisibleMonthly"];
+    
+    [defaults synchronize];
+    
+    NSLog(@"💾 Saved date range defaults to User Defaults");
+}
+
+- (NSInteger)getMinDaysForTimeframe:(ChartTimeframe)timeframe {
+    switch (timeframe) {
+        case ChartTimeframe1Min:
+        case ChartTimeframe5Min:
+        case ChartTimeframe15Min:
+        case ChartTimeframe30Min:
+        case ChartTimeframe1Hour:
+        case ChartTimeframe4Hour:
+            return 1; // Minimum 1 day for intraday
+            
+        case ChartTimeframeDaily:
+        case ChartTimeframeWeekly:
+        case ChartTimeframeMonthly:
+        default:
+            return 10; // Minimum 10 days for daily+
+    }
+}
+
+- (NSInteger)getMaxDaysForTimeframe:(ChartTimeframe)timeframe {
+    switch (timeframe) {
+        case ChartTimeframe1Min:
+            return 45; // ~1.5 months - Schwab API limit
+            
+        case ChartTimeframe5Min:
+        case ChartTimeframe15Min:
+        case ChartTimeframe30Min:
+        case ChartTimeframe1Hour:
+        case ChartTimeframe4Hour:
+            return 255; // ~8.5 months - Schwab API limit
+            
+        case ChartTimeframeDaily:
+        case ChartTimeframeWeekly:
+        case ChartTimeframeMonthly:
+        default:
+            return 3650; // ~10 years (practically unlimited)
+    }
+}
+
+- (NSInteger)getDefaultDaysForTimeframe:(ChartTimeframe)timeframe {
+    switch (timeframe) {
+        case ChartTimeframe1Min:
+            return self.defaultDaysFor1Min;
+            
+        case ChartTimeframe5Min:
+        case ChartTimeframe15Min:
+        case ChartTimeframe30Min:
+            return self.defaultDaysFor5Min;
+            
+        case ChartTimeframe1Hour:
+        case ChartTimeframe4Hour:
+            return self.defaultDaysForHourly;
+            
+        case ChartTimeframeDaily:
+            return self.defaultDaysForDaily;
+            
+        case ChartTimeframeWeekly:
+            return self.defaultDaysForWeekly;
+            
+        case ChartTimeframeMonthly:
+        default:
+            return self.defaultDaysForMonthly;
+    }
+}
+
+- (NSInteger)getDefaultVisibleDaysForTimeframe:(ChartTimeframe)timeframe {
+    switch (timeframe) {
+        case ChartTimeframe1Min:
+            return self.defaultVisibleFor1Min;
+            
+        case ChartTimeframe5Min:
+        case ChartTimeframe15Min:
+        case ChartTimeframe30Min:
+            return self.defaultVisibleFor5Min;
+            
+        case ChartTimeframe1Hour:
+        case ChartTimeframe4Hour:
+            return self.defaultVisibleForHourly;
+            
+        case ChartTimeframeDaily:
+            return self.defaultVisibleForDaily;
+            
+        case ChartTimeframeWeekly:
+            return self.defaultVisibleForWeekly;
+            
+        case ChartTimeframeMonthly:
+        default:
+            return self.defaultVisibleForMonthly;
+    }
+}
+
+- (void)updateDateRangeSliderForTimeframe:(ChartTimeframe)timeframe {
+    NSInteger minDays = [self getMinDaysForTimeframe:timeframe];
+    NSInteger maxDays = [self getMaxDaysForTimeframe:timeframe];
+    NSInteger defaultDays = [self getDefaultDaysForTimeframe:timeframe];
+    
+    // Clamp default to valid range
+    if (defaultDays < minDays) defaultDays = minDays;
+    if (defaultDays > maxDays) defaultDays = maxDays;
+    
+    // Update slider range
+    self.dateRangeSlider.minValue = minDays;
+    self.dateRangeSlider.maxValue = maxDays;
+    self.dateRangeSlider.integerValue = defaultDays;
+    
+    // Update current value
+    self.currentDateRangeDays = defaultDays;
+    
+    // Update label
+    [self updateDateRangeLabel];
+    
+    NSLog(@"📊 Updated date range slider for timeframe %ld: %ld-%ld days (default: %ld)",
+          (long)timeframe, (long)minDays, (long)maxDays, (long)defaultDays);
+}
+
+- (void)dateRangeSliderChanged:(id)sender {
+    self.currentDateRangeDays = self.dateRangeSlider.integerValue;
+    [self updateDateRangeLabel];
+    
+    // Reload data with new date range
+    if (self.currentSymbol && self.currentSymbol.length > 0) {
+        [self loadDataWithCurrentSettings];
+    }
+    
+    NSLog(@"📅 Date range slider changed to: %ld days", (long)self.currentDateRangeDays);
+}
+
+- (void)updateDateRangeLabel {
+    NSString *displayText = [self formatDaysToDisplayString:self.currentDateRangeDays];
+    self.dateRangeLabel.stringValue = displayText;
+}
+
+- (NSString *)formatDaysToDisplayString:(NSInteger)days {
+    if (days >= 3650) {
+        return @"max";
+    } else if (days >= 365) {
+        NSInteger years = days / 365;
+        if (years == 1) {
+            return @"1 year";
+        } else {
+            return [NSString stringWithFormat:@"%ld years", (long)years];
+        }
+    } else if (days >= 30) {
+        NSInteger months = days / 30;
+        if (months == 1) {
+            return @"1 month";
+        } else {
+            return [NSString stringWithFormat:@"%ld months", (long)months];
+        }
+    } else if (days >= 7) {
+        NSInteger weeks = days / 7;
+        if (weeks == 1) {
+            return @"1 week";
+        } else {
+            return [NSString stringWithFormat:@"%ld weeks", (long)weeks];
+        }
+    } else {
+        if (days == 1) {
+            return @"1 day";
+        } else {
+            return [NSString stringWithFormat:@"%ld days", (long)days];
+        }
+    }
+}
+
+- (void)loadDataWithCurrentSettings {
+    if (!self.currentSymbol || self.currentSymbol.length == 0) return;
+    
+    // Calculate date range from slider value
+    NSDate *endDate = [[NSDate date] dateByAddingTimeInterval:86400]; // Tomorrow
+    NSDate *startDate = [endDate dateByAddingTimeInterval:-(self.currentDateRangeDays * 86400)];
+    
+    // Create smart symbol parameters
+    SmartSymbolParameters params = {0};
+    params.symbol = self.currentSymbol;
+    params.timeframe = self.currentTimeframe;
+    params.daysToDownload = self.currentDateRangeDays;
+    params.startDate = startDate;
+    params.endDate = endDate;
+    params.hasTimeframe = YES;
+    params.hasDaysSpecified = YES;
+    
+    // Load data
+    [self loadSymbolWithDateRange:params];
+    
+    NSLog(@"🔄 Loading data with current settings - Symbol: %@, Days: %ld, Timeframe: %ld",
+          self.currentSymbol, (long)self.currentDateRangeDays, (long)self.currentTimeframe);
+}
+
 
 @end

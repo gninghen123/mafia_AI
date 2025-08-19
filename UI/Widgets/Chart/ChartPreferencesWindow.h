@@ -1,8 +1,6 @@
 //
-//  ChartPreferencesWindow.h
+//  ChartPreferencesWindow.h - ENHANCED for Date Range Defaults
 //  TradingApp
-//
-//  Chart widget preferences window
 //
 
 #import <Cocoa/Cocoa.h>
@@ -18,12 +16,29 @@ typedef NS_ENUM(NSInteger, ChartTradingHours) {
 
 @interface ChartPreferencesWindow : NSWindowController
 
-// UI Controls - CHANGED: Removed IBOutlet, made strong for programmatic creation
-@property (nonatomic, strong) NSButton *includeAfterHoursSwitch;  // Changed from popup to switch
-@property (nonatomic, strong) NSTextField *barsToDownloadField;
-@property (nonatomic, strong) NSTextField *initialBarsToShowField;
+// 🆕 NEW: Enhanced UI Controls for Date Range Defaults
+@property (nonatomic, strong) NSButton *includeAfterHoursSwitch;
+
+// 🆕 NEW: Download Range Defaults (grouped by timeframe)
+@property (nonatomic, strong) NSTextField *defaultDays1MinField;
+@property (nonatomic, strong) NSTextField *defaultDays5MinField;
+@property (nonatomic, strong) NSTextField *defaultDaysHourlyField;
+@property (nonatomic, strong) NSTextField *defaultDaysDailyField;
+@property (nonatomic, strong) NSTextField *defaultDaysWeeklyField;
+@property (nonatomic, strong) NSTextField *defaultDaysMonthlyField;
+
+// 🆕 NEW: Visible Range Defaults (grouped by timeframe)
+@property (nonatomic, strong) NSTextField *defaultVisible1MinField;
+@property (nonatomic, strong) NSTextField *defaultVisible5MinField;
+@property (nonatomic, strong) NSTextField *defaultVisibleHourlyField;
+@property (nonatomic, strong) NSTextField *defaultVisibleDailyField;
+@property (nonatomic, strong) NSTextField *defaultVisibleWeeklyField;
+@property (nonatomic, strong) NSTextField *defaultVisibleMonthlyField;
+
+// Buttons
 @property (nonatomic, strong) NSButton *saveButton;
 @property (nonatomic, strong) NSButton *cancelButton;
+@property (nonatomic, strong) NSButton *resetToDefaultsButton;
 
 // Reference to chart widget
 @property (nonatomic, weak) ChartWidget *chartWidget;
@@ -34,7 +49,8 @@ typedef NS_ENUM(NSInteger, ChartTradingHours) {
 // Actions
 - (IBAction)savePreferences:(id)sender;
 - (IBAction)cancelPreferences:(id)sender;
-- (IBAction)afterHoursSwitchChanged:(id)sender;  // Changed from tradingHoursChanged
+- (IBAction)resetToDefaults:(id)sender;
+- (IBAction)afterHoursSwitchChanged:(id)sender;
 
 // Window management
 - (void)showPreferencesWindow;

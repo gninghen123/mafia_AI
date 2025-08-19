@@ -22,12 +22,13 @@
 typedef struct {
     NSString *symbol;
     ChartTimeframe timeframe;
-    NSInteger barsToDownload;
+    NSInteger daysToDownload;       // Sempre in giorni
     BOOL hasTimeframe;
-    BOOL hasBarsToDownload;
-    BOOL useDaysInsteadOfBars;
-    NSInteger daysToDownload;
+    BOOL hasDaysSpecified;
+    NSDate *startDate;              // Calcolato dal parsing
+    NSDate *endDate;                // Sempre "domani" per includere oggi
 } SmartSymbolParameters;
+
 
 // Define constants locally instead of importing
 static NSString *const kWidgetChainUpdateNotification = @"WidgetChainUpdateNotification";
@@ -1265,11 +1266,23 @@ extern NSString *const DataHubDataLoadedNotification;
 - (NSInteger)barsPerDayForCurrentTimeframe {
     NSInteger timeframeMinutes = [self getCurrentTimeframeInMinutes];
     
+    // ✅ FIX: Gestione speciale per timeframe Daily+
+    if (self.currentTimeframe >= ChartTimeframeDaily) {
+        return 1; // 1 barra per giorno di trading
+    }
+    
     switch (self.tradingHoursMode) {
         case ChartTradingHoursRegularOnly:
-            return (6.5 * 60) / timeframeMinutes;  // 09:30-16:00
+            // Regular hours: 09:30-16:00 = 6.5 ore = 390 minuti
+            return 390 / timeframeMinutes;
+            
         case ChartTradingHoursWithAfterHours:
-            return (24 * 60) / timeframeMinutes;   // 00:00-24:00
+            // ✅ FIX: After-hours realistici
+            // Pre-market: 04:00-09:30 = 5.5 ore = 330 minuti
+            // Regular: 09:30-16:00 = 6.5 ore = 390 minuti
+            // After-hours: 16:00-20:00 = 4 ore = 240 minuti
+            // Totale: 15 ore = 900 minuti (non 24 ore!)
+            return 900 / timeframeMinutes;
     }
 }
 
@@ -1281,10 +1294,13 @@ extern NSString *const DataHubDataLoadedNotification;
         case ChartTimeframe30Min: return 30;
         case ChartTimeframe1Hour: return 60;
         case ChartTimeframe4Hour: return 240;
-        case ChartTimeframeDaily: return 1440;
-        case ChartTimeframeWeekly: return 10080;
-        case ChartTimeframeMonthly: return 43200;
-        default: return 1440;
+        
+        // ✅ FIX: Per Daily+ restituisci valori che hanno senso per i calcoli
+        case ChartTimeframeDaily: return 390;    // Trading minutes in a day
+        case ChartTimeframeWeekly: return 1950;  // Trading minutes in a week (5 * 390)
+        case ChartTimeframeMonthly: return 8190; // Trading minutes in a month (~21 * 390)
+        
+        default: return 390; // Default to daily trading minutes
     }
 }
 
@@ -1359,7 +1375,8 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 
-#pragma mark - Smart Symbol Processing - NUOVI METODI
+#pragma mark - Smart Symbol Processing - VERSIONE SEMPLIFICATA
+
 
 - (void)processSmartSymbolInput:(NSString *)input {
     NSLog(@"📝 Processing smart symbol input: '%@'", input);
@@ -1373,14 +1390,16 @@ extern NSString *const DataHubDataLoadedNotification;
         return;
     }
     
-    // ✅ APPLY PARAMETERS: Precedenza sui default e UI
+    // ✅ APPLY PARAMETERS
     [self applySmartSymbolParameters:params];
     
-    // Load symbol with new parameters
-    [self loadSymbol:params.symbol];
+    // ✅ NUOVO: Usa direttamente le date con DataHub
+    [self loadSymbolWithDateRange:params];
+    
+    // Broadcast to chain
     [self broadcastSymbolToChain:@[params.symbol]];
     
-    // ✅ UPDATE UI: Riflette i parametri applicati
+    // Update UI
     [self updateUIAfterSmartSymbolInput:params];
     
     NSLog(@"✅ Smart symbol processing completed for: %@", params.symbol);
@@ -1391,23 +1410,23 @@ extern NSString *const DataHubDataLoadedNotification;
     
     // Default values
     params.timeframe = self.currentTimeframe;
-    params.barsToDownload = self.barsToDownload;
+    params.daysToDownload = 20;  // Default 20 giorni
     params.hasTimeframe = NO;
-    params.hasBarsToDownload = NO;
-    params.useDaysInsteadOfBars = NO;
-    params.daysToDownload = 0;
+    params.hasDaysSpecified = NO;
     
     // Split input by comma
     NSArray<NSString *> *components = [input componentsSeparatedByString:@","];
     
     // ✅ COMPONENT 1: Symbol (required)
     if (components.count >= 1) {
-        params.symbol = [[components[0] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] uppercaseString];
+        params.symbol = [[components[0] stringByTrimmingCharactersInSet:
+                         [NSCharacterSet whitespaceAndNewlineCharacterSet]] uppercaseString];
     }
     
     // ✅ COMPONENT 2: Timeframe (optional)
     if (components.count >= 2) {
-        NSString *timeframeStr = [components[1] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        NSString *timeframeStr = [components[1] stringByTrimmingCharactersInSet:
+                                  [NSCharacterSet whitespaceAndNewlineCharacterSet]];
         ChartTimeframe parsedTimeframe = [self parseTimeframeString:timeframeStr];
         if (parsedTimeframe != -1) {
             params.timeframe = parsedTimeframe;
@@ -1416,15 +1435,25 @@ extern NSString *const DataHubDataLoadedNotification;
         }
     }
     
-    // ✅ COMPONENT 3: Data to download (optional)
+    // ✅ COMPONENT 3: Days to download (optional)
     if (components.count >= 3) {
-        NSString *dataStr = [components[2] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        [self parseDataToDownloadString:dataStr intoParameters:&params];
+        NSString *daysStr = [components[2] stringByTrimmingCharactersInSet:
+                            [NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        NSInteger days = [self parseDaysString:daysStr];
+        if (days > 0) {
+            params.daysToDownload = days;
+            params.hasDaysSpecified = YES;
+            NSLog(@"📅 Parsed days: %@ -> %ld days", daysStr, (long)days);
+        }
     }
     
-    NSLog(@"📝 Parsed parameters - Symbol: %@, TF: %ld, Bars: %ld, Days: %ld (useDays: %@)",
-          params.symbol, (long)params.timeframe, (long)params.barsToDownload,
-          (long)params.daysToDownload, params.useDaysInsteadOfBars ? @"YES" : @"NO");
+    // ✅ CALCOLA LE DATE (sempre usa date per semplicità)
+    params.endDate = [[NSDate date] dateByAddingTimeInterval:86400]; // Domani (include oggi)
+    params.startDate = [params.endDate dateByAddingTimeInterval:-(params.daysToDownload * 86400)];
+    
+    NSLog(@"📝 Parsed parameters - Symbol: %@, TF: %ld, Days: %ld, StartDate: %@, EndDate: %@",
+          params.symbol, (long)params.timeframe, (long)params.daysToDownload,
+          params.startDate, params.endDate);
     
     return params;
 }
@@ -1434,16 +1463,41 @@ extern NSString *const DataHubDataLoadedNotification;
     
     NSString *tf = timeframeStr.lowercaseString;
     
-    // ✅ SINGLE LETTER TIMEFRAMES (più intuitivi)
-    if (tf.length == 1) {
-        unichar c = [tf characterAtIndex:0];
-        switch (c) {
-            case 'd': return ChartTimeframeDaily;
-            case 'w': return ChartTimeframeWeekly;
-            case 'm': return ChartTimeframeMonthly;
-           // case 'q': return ChartTimeframeQuarterly;   // Se supportato
-           // case 'y': return ChartTimeframeYearly;      // Se supportato
-            default: break;
+    // ✅ NUMERIC FIRST - Se è solo numero, sono minuti
+    NSCharacterSet *nonDigits = [[NSCharacterSet decimalDigitCharacterSet] invertedSet];
+    if ([tf rangeOfCharacterFromSet:nonDigits].location == NSNotFound) {
+        NSInteger minutes = tf.integerValue;
+        switch (minutes) {
+            case 1: return ChartTimeframe1Min;
+            case 5: return ChartTimeframe5Min;
+            case 15: return ChartTimeframe15Min;
+            case 30: return ChartTimeframe30Min;
+            case 60: return ChartTimeframe1Hour;
+            case 240: return ChartTimeframe4Hour;
+            default:
+                NSLog(@"⚠️ Unsupported numeric timeframe: %ld minutes", (long)minutes);
+                return -1;
+        }
+    }
+    
+    // ✅ MINUTE SUFFIX (es: 5m, 5min)
+    if ([tf hasSuffix:@"m"] || [tf hasSuffix:@"min"]) {
+        NSString *numberPart = tf;
+        if ([tf hasSuffix:@"min"]) {
+            numberPart = [tf substringToIndex:tf.length - 3];
+        } else if ([tf hasSuffix:@"m"]) {
+            numberPart = [tf substringToIndex:tf.length - 1];
+        }
+        
+        NSInteger minutes = numberPart.integerValue;
+        switch (minutes) {
+            case 1: return ChartTimeframe1Min;
+            case 5: return ChartTimeframe5Min;
+            case 15: return ChartTimeframe15Min;
+            case 30: return ChartTimeframe30Min;
+            default:
+                NSLog(@"⚠️ Unsupported minute timeframe: %ldm", (long)minutes);
+                return -1;
         }
     }
     
@@ -1454,342 +1508,65 @@ extern NSString *const DataHubDataLoadedNotification;
         switch (hours) {
             case 1: return ChartTimeframe1Hour;
             case 4: return ChartTimeframe4Hour;
-            default: return -1;
+            default:
+                NSLog(@"⚠️ Unsupported hour timeframe: %ldh", (long)hours);
+                return -1;
         }
     }
     
-    // ✅ MINUTE SUFFIX (es: 1m, 5m, 15m, 30m)
-    if ([tf hasSuffix:@"m"] && ![tf isEqualToString:@"m"]) { // Evita conflitto con 'm' = monthly
-        NSString *minutePart = [tf substringToIndex:tf.length - 1];
-        NSInteger minutes = minutePart.integerValue;
-        switch (minutes) {
-            case 1: return ChartTimeframe1Min;
-            case 5: return ChartTimeframe5Min;
-            case 15: return ChartTimeframe15Min;
-            case 30: return ChartTimeframe30Min;
-            default: return -1;
-        }
-    }
+    // ✅ DAILY+ TIMEFRAMES (single letter or full word)
+    if ([tf isEqualToString:@"d"] || [tf isEqualToString:@"daily"]) return ChartTimeframeDaily;
+    if ([tf isEqualToString:@"w"] || [tf isEqualToString:@"weekly"]) return ChartTimeframeWeekly;
+    if ([tf isEqualToString:@"m"] || [tf isEqualToString:@"monthly"]) return ChartTimeframeMonthly;
     
-    // ✅ NUMERIC TIMEFRAMES (solo numero = minuti)
-    if ([tf rangeOfCharacterFromSet:[[NSCharacterSet decimalDigitCharacterSet] invertedSet]].location == NSNotFound) {
-        NSInteger minutes = tf.integerValue;
-        switch (minutes) {
-            case 1: return ChartTimeframe1Min;
-            case 5: return ChartTimeframe5Min;
-            case 15: return ChartTimeframe15Min;
-            case 30: return ChartTimeframe30Min;
-            case 60: return ChartTimeframe1Hour;
-            case 240: return ChartTimeframe4Hour;
-            case 1440: return ChartTimeframeDaily;
-            default: return -1;
-        }
-    }
-    
-    // ✅ EXTENDED STRING TIMEFRAMES (per retrocompatibilità)
-    if ([tf isEqualToString:@"1min"] || [tf isEqualToString:@"min"]) return ChartTimeframe1Min;
-    if ([tf isEqualToString:@"5min"]) return ChartTimeframe5Min;
-    if ([tf isEqualToString:@"15min"]) return ChartTimeframe15Min;
-    if ([tf isEqualToString:@"30min"]) return ChartTimeframe30Min;
-    if ([tf isEqualToString:@"1hour"] || [tf isEqualToString:@"hour"]) return ChartTimeframe1Hour;
-    if ([tf isEqualToString:@"4hour"]) return ChartTimeframe4Hour;
-    if ([tf isEqualToString:@"daily"] || [tf isEqualToString:@"day"]) return ChartTimeframeDaily;
-    if ([tf isEqualToString:@"weekly"] || [tf isEqualToString:@"week"]) return ChartTimeframeWeekly;
-    if ([tf isEqualToString:@"monthly"] || [tf isEqualToString:@"month"]) return ChartTimeframeMonthly;
-    
-    return -1; // Invalid timeframe
+    NSLog(@"⚠️ Unrecognized timeframe: %@", timeframeStr);
+    return -1;
 }
 
-- (void)parseDataToDownloadString:(NSString *)dataStr intoParameters:(SmartSymbolParameters *)params {
-    if (!dataStr || dataStr.length == 0) return;
+- (NSInteger)parseDaysString:(NSString *)daysStr {
+    if (!daysStr || daysStr.length == 0) return 0;
     
-    NSString *cleanStr = dataStr.lowercaseString;
+    NSString *cleanStr = daysStr.lowercaseString;
     
-    // ✅ CHECK FOR TIME PERIOD SUFFIXES
-    if ([cleanStr hasSuffix:@"d"] || [cleanStr hasSuffix:@"days"]) {
-        // EXISTING: Days handling
-        params->useDaysInsteadOfBars = YES;
-        
-        NSString *numberPart = cleanStr;
-        if ([cleanStr hasSuffix:@"days"]) {
-            numberPart = [cleanStr substringToIndex:cleanStr.length - 4];
-        } else if ([cleanStr hasSuffix:@"d"]) {
-            numberPart = [cleanStr substringToIndex:cleanStr.length - 1];
-        }
-        
-        params->daysToDownload = numberPart.integerValue;
-        params->barsToDownload = [self convertDaysToBars:params->daysToDownload forTimeframe:params->timeframe];
-        params->hasBarsToDownload = YES;
-        
-        NSLog(@"📅 Parsed %ld days -> %ld bars for timeframe %ld",
-              (long)params->daysToDownload, (long)params->barsToDownload, (long)params->timeframe);
-    }
-    // ✅ NEW: Weeks handling
-    else if ([cleanStr hasSuffix:@"w"] || [cleanStr hasSuffix:@"weeks"]) {
-        params->useDaysInsteadOfBars = YES;
-        
-        NSString *numberPart = cleanStr;
-        if ([cleanStr hasSuffix:@"weeks"]) {
-            numberPart = [cleanStr substringToIndex:cleanStr.length - 5];
-        } else if ([cleanStr hasSuffix:@"w"]) {
-            numberPart = [cleanStr substringToIndex:cleanStr.length - 1];
-        }
-        
+    // ✅ CHECK FOR SUFFIXES (w, m, q, y)
+    
+    // Weeks
+    if ([cleanStr hasSuffix:@"w"]) {
+        NSString *numberPart = [cleanStr substringToIndex:cleanStr.length - 1];
         NSInteger weeks = numberPart.integerValue;
-        params->daysToDownload = [self convertWeeksToDays:weeks];
-        params->barsToDownload = [self convertDaysToBars:params->daysToDownload forTimeframe:params->timeframe];
-        params->hasBarsToDownload = YES;
-        
-        NSLog(@"📅 Parsed %ld weeks -> %ld days -> %ld bars for timeframe %ld",
-              (long)weeks, (long)params->daysToDownload, (long)params->barsToDownload, (long)params->timeframe);
+        return weeks * 7;  // Semplice: 1 settimana = 7 giorni
     }
-    // ✅ NEW: Months handling
-    else if ([cleanStr hasSuffix:@"m"] || [cleanStr hasSuffix:@"months"]) {
-        // ⚠️ CONFLICT RESOLUTION: Check if it's really months, not minutes timeframe parsing
-        BOOL isMonthsSuffix = NO;
-        if ([cleanStr hasSuffix:@"months"]) {
-            isMonthsSuffix = YES;
-        } else if ([cleanStr hasSuffix:@"m"]) {
-            // Check if this is a pure number followed by 'm' (likely months for data download)
-            // vs timeframe parsing (like "15m" for 15 minutes)
-            NSString *numberPart = [cleanStr substringToIndex:cleanStr.length - 1];
-            NSInteger number = numberPart.integerValue;
-            // If it's a large number (>12), likely months. If small, could be minutes.
-            // But since we're in data download context, assume months
-            isMonthsSuffix = YES;
-        }
-        
-        if (isMonthsSuffix) {
-            params->useDaysInsteadOfBars = YES;
-            
-            NSString *numberPart = cleanStr;
-            if ([cleanStr hasSuffix:@"months"]) {
-                numberPart = [cleanStr substringToIndex:cleanStr.length - 6];
-            } else if ([cleanStr hasSuffix:@"m"]) {
-                numberPart = [cleanStr substringToIndex:cleanStr.length - 1];
-            }
-            
-            NSInteger months = numberPart.integerValue;
-            params->daysToDownload = [self convertMonthsToDays:months];
-            params->barsToDownload = [self convertDaysToBars:params->daysToDownload forTimeframe:params->timeframe];
-            params->hasBarsToDownload = YES;
-            
-            NSLog(@"📅 Parsed %ld months -> %ld days -> %ld bars for timeframe %ld",
-                  (long)months, (long)params->daysToDownload, (long)params->barsToDownload, (long)params->timeframe);
-        }
+    
+    // Months (nel componente 3, 'm' = sempre mesi)
+    if ([cleanStr hasSuffix:@"m"]) {
+        NSString *numberPart = [cleanStr substringToIndex:cleanStr.length - 1];
+        NSInteger months = numberPart.integerValue;
+        return months * 22;  // Approssimazione: 1 mese = 22 giorni trading
     }
-    // ✅ NEW: Quarters handling
-    else if ([cleanStr hasSuffix:@"q"] || [cleanStr hasSuffix:@"quarters"]) {
-        params->useDaysInsteadOfBars = YES;
-        
-        NSString *numberPart = cleanStr;
-        if ([cleanStr hasSuffix:@"quarters"]) {
-            numberPart = [cleanStr substringToIndex:cleanStr.length - 8];
-        } else if ([cleanStr hasSuffix:@"q"]) {
-            numberPart = [cleanStr substringToIndex:cleanStr.length - 1];
-        }
-        
+    
+    // Quarters
+    if ([cleanStr hasSuffix:@"q"]) {
+        NSString *numberPart = [cleanStr substringToIndex:cleanStr.length - 1];
         NSInteger quarters = numberPart.integerValue;
-        params->daysToDownload = [self convertQuartersToDays:quarters];
-        params->barsToDownload = [self convertDaysToBars:params->daysToDownload forTimeframe:params->timeframe];
-        params->hasBarsToDownload = YES;
-        
-        NSLog(@"📅 Parsed %ld quarters -> %ld days -> %ld bars for timeframe %ld",
-              (long)quarters, (long)params->daysToDownload, (long)params->barsToDownload, (long)params->timeframe);
+        return quarters * 66;  // 3 mesi * 22 giorni = 66 giorni trading
     }
-    // ✅ NEW: Years handling
-    else if ([cleanStr hasSuffix:@"y"] || [cleanStr hasSuffix:@"years"]) {
-        params->useDaysInsteadOfBars = YES;
-        
-        NSString *numberPart = cleanStr;
-        if ([cleanStr hasSuffix:@"years"]) {
-            numberPart = [cleanStr substringToIndex:cleanStr.length - 5];
-        } else if ([cleanStr hasSuffix:@"y"]) {
-            numberPart = [cleanStr substringToIndex:cleanStr.length - 1];
-        }
-        
+    
+    // Years
+    if ([cleanStr hasSuffix:@"y"]) {
+        NSString *numberPart = [cleanStr substringToIndex:cleanStr.length - 1];
         NSInteger years = numberPart.integerValue;
-        params->daysToDownload = [self convertYearsToDays:years];
-        params->barsToDownload = [self convertDaysToBars:params->daysToDownload forTimeframe:params->timeframe];
-        params->hasBarsToDownload = YES;
-        
-        NSLog(@"📅 Parsed %ld years -> %ld days -> %ld bars for timeframe %ld",
-              (long)years, (long)params->daysToDownload, (long)params->barsToDownload, (long)params->timeframe);
+        return years * 252;  // Standard trading days in a year
     }
-    // ✅ PLAIN NUMBER (bars)
-    else {
-        NSInteger bars = cleanStr.integerValue;
-        if (bars > 0) {
-            params->barsToDownload = bars;
-            params->hasBarsToDownload = YES;
-            params->useDaysInsteadOfBars = NO;
-            
-            NSLog(@"📊 Parsed %ld bars", (long)bars);
-        }
+    
+    // ✅ PLAIN NUMBER = giorni
+    NSInteger days = cleanStr.integerValue;
+    if (days > 0) {
+        return days;
     }
+    
+    return 0;
 }
 
-- (NSInteger)convertWeeksToDays:(NSInteger)weeks {
-    if (weeks <= 0) return 0;
-    
-    // 1 week = 7 calendar days
-    NSInteger days = weeks * 7;
-    
-    // ✅ NESSUN LIMITE: Solo validazione di base
-    if (days <= 0) {
-        days = 1; // Fallback se il calcolo fallisce
-    }
-    
-    NSLog(@"🔢 Converted %ld weeks to %ld days - NO LIMITS", (long)weeks, (long)days);
-    return days;
-}
-
-- (NSInteger)convertMonthsToDays:(NSInteger)months {
-    if (months <= 0) return 0;
-    
-    // 1 month = 30 days (simplification)
-    NSInteger days = months * 30;
-    
-    // ✅ NESSUN LIMITE: Solo validazione di base
-    if (days <= 0) {
-        days = 1; // Fallback se il calcolo fallisce
-    }
-    
-    NSLog(@"🔢 Converted %ld months to %ld days - NO LIMITS", (long)months, (long)days);
-    return days;
-}
-
-- (NSInteger)convertQuartersToDays:(NSInteger)quarters {
-    if (quarters <= 0) return 0;
-    
-    // 1 quarter = 90 days (3 months)
-    NSInteger days = quarters * 90;
-    
-    // ✅ NESSUN LIMITE: Solo validazione di base
-    if (days <= 0) {
-        days = 1; // Fallback se il calcolo fallisce
-    }
-    
-    NSLog(@"🔢 Converted %ld quarters to %ld days - NO LIMITS", (long)quarters, (long)days);
-    return days;
-}
-
-- (NSInteger)convertYearsToDays:(NSInteger)years {
-    if (years <= 0) return 0;
-    
-    // 1 year = 365 days
-    NSInteger days = years * 365;
-    
-    // ✅ NESSUN LIMITE: Solo validazione di base
-    if (days <= 0) {
-        days = 1; // Fallback se il calcolo fallisce
-    }
-    
-    NSLog(@"🔢 Converted %ld years to %ld days - NO LIMITS", (long)years, (long)days);
-    return days;
-}
-
-- (NSInteger)convertDaysToBars:(NSInteger)days forTimeframe:(ChartTimeframe)timeframe {
-    if (days <= 0) return self.barsToDownload; // fallback
-    
-    // ✅ USE EXISTING TRADING HOURS LOGIC
-    NSInteger barsPerDay = [self barsPerDayForCurrentTimeframe];
-    NSInteger totalBars = days * barsPerDay;
-    
-    // ✅ NESSUN LIMITE: Restituisci il calcolo puro senza limitazioni artificiali
-    // ❌ VECCHIO CODICE RIMOSSO:
-    // totalBars = MAX(50, totalBars);     // ← Forzava minimo 50 bars
-    // totalBars = MIN(10000, totalBars);  // ← Limitava a 10k bars
-    
-    // ✅ Solo validazione di base per evitare valori impossibili
-    if (totalBars <= 0) {
-        totalBars = 1; // Minimo 1 bar se il calcolo fallisce
-    }
-    
-    NSLog(@"🔢 Converted %ld days to %ld bars (%ld bars/day for TF %ld) - NO LIMITS",
-          (long)days, (long)totalBars, (long)barsPerDay, (long)timeframe);
-    
-    return totalBars;
-}
-
-- (void)applySmartSymbolParameters:(SmartSymbolParameters)params {
-    // ✅ APPLY TIMEFRAME (precedenza su segmented control)
-    if (params.hasTimeframe) {
-        self.currentTimeframe = params.timeframe;
-        NSLog(@"⏰ Applied timeframe override: %ld", (long)params.timeframe);
-    }
-    
-    // ✅ APPLY BARS TO DOWNLOAD (precedenza su preferences)
-    if (params.hasBarsToDownload) {
-        self.barsToDownload = params.barsToDownload;
-        NSLog(@"📊 Applied bars override: %ld", (long)params.barsToDownload);
-    }
-    
-    // ✅ UPDATE CURRENT SYMBOL
-    self.currentSymbol = params.symbol;
-}
-
-- (void)updateUIAfterSmartSymbolInput:(SmartSymbolParameters)params {
-    // ✅ UPDATE SYMBOL TEXTFIELD (mostra solo simbolo pulito)
-    self.symbolTextField.stringValue = params.symbol;
-    
-    // ✅ UPDATE TIMEFRAME SEGMENTED CONTROL (riflette override)
-    if (params.hasTimeframe && self.timeframeSegmented.segmentCount > params.timeframe) {
-        self.timeframeSegmented.selectedSegment = params.timeframe;
-    }
-    
-    // ✅ OPTIONAL: Show feedback message
-    NSMutableArray *appliedParams = [NSMutableArray array];
-    if (params.hasTimeframe) {
-        [appliedParams addObject:[NSString stringWithFormat:@"TF: %@", [self timeframeDisplayName:params.timeframe]]];
-    }
-    if (params.hasBarsToDownload) {
-        if (params.useDaysInsteadOfBars) {
-            [appliedParams addObject:[NSString stringWithFormat:@"%ld days (%ld bars)", (long)params.daysToDownload, (long)params.barsToDownload]];
-        } else {
-            [appliedParams addObject:[NSString stringWithFormat:@"%ld bars", (long)params.barsToDownload]];
-        }
-    }
-    
-    if (appliedParams.count > 0) {
-        NSString *feedback = [NSString stringWithFormat:@"📝 %@ loaded with: %@",
-                              params.symbol, [appliedParams componentsJoinedByString:@", "]];
-        [self showChainFeedback:feedback];
-    }
-}
-
-- (NSString *)timeframeDisplayName:(ChartTimeframe)timeframe {
-    switch (timeframe) {
-        case ChartTimeframe1Min: return @"1m";
-        case ChartTimeframe5Min: return @"5m";
-        case ChartTimeframe15Min: return @"15m";
-        case ChartTimeframe30Min: return @"30m";
-        case ChartTimeframe1Hour: return @"1h";
-        case ChartTimeframe4Hour: return @"4h";
-        case ChartTimeframeDaily: return @"1D";
-        case ChartTimeframeWeekly: return @"1W";
-        case ChartTimeframeMonthly: return @"1M";
-        default: return @"Unknown";
-    }
-}
-
-- (void)updateWithHistoricalBars:(NSArray<HistoricalBarModel *> *)bars {
-    if (!bars || bars.count == 0) {
-        NSLog(@"❌ ChartWidget: updateWithHistoricalBars called with no data");
-        return;
-    }
-    
-    NSLog(@"🔬 ChartWidget: Updating with %lu microscope bars", (unsigned long)bars.count);
-    
-    // Popola direttamente i dati senza chiamare DataHub
-    self.chartData = bars;
-    
-    // Reset alla vista iniziale per mostrare tutti i dati microscopi
-    [self resetToInitialView];
-    
-    
-    NSLog(@"✅ ChartWidget: Microscope data update completed");
-}
 
 
 #pragma mark - StaticMode Implementation (NUOVO)
@@ -1883,5 +1660,117 @@ extern NSString *const DataHubDataLoadedNotification;
     return self.chartData;  // Direct access since we're in the main implementation
 }
 
+#pragma mark - New Loading Method with Date Range
+
+- (void)loadSymbolWithDateRange:(SmartSymbolParameters)params {
+    // Convert ChartTimeframe to BarTimeframe
+    BarTimeframe barTimeframe = [self chartTimeframeToBarTimeframe:params.timeframe];
+    
+    // Determine if we need extended hours
+    BOOL needExtendedHours = (self.tradingHoursMode == ChartTradingHoursWithAfterHours);
+    
+    NSLog(@"📊 ChartWidget: Loading %@ from %@ to %@ (timeframe: %ld, after-hours: %@)",
+          params.symbol, params.startDate, params.endDate,
+          (long)barTimeframe, needExtendedHours ? @"YES" : @"NO");
+    
+    if (self.isStaticMode) {
+        NSLog(@"⚠️ Chart in static mode, skipping data load");
+        return;
+    }
+    
+    // ✅ USA IL METODO DataHub CON DATE DIRETTE!
+    [[DataHub shared] getHistoricalBarsForSymbol:params.symbol
+                                       timeframe:barTimeframe
+                                       startDate:params.startDate
+                                         endDate:params.endDate
+                              needExtendedHours:needExtendedHours
+                                     completion:^(NSArray<HistoricalBarModel *> *data, BOOL isFresh) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (!data || data.count == 0) {
+                NSLog(@"❌ ChartWidget: No data received for %@", params.symbol);
+                return;
+            }
+            
+            NSLog(@"✅ ChartWidget: Received %lu bars for %@ (%@)",
+                  (unsigned long)data.count, params.symbol, isFresh ? @"fresh" : @"cached");
+            
+            // Store the received data
+            self.chartData = data;
+            
+            // Update the barsToDownload to reflect actual bars received
+            self.barsToDownload = data.count;
+            
+            // Update panels with new data
+            [self updatePanelsWithData:data];
+            
+            // Update viewport to show recent data
+            [self resetToInitialView];
+        });
+    }];
+}
+
+#pragma mark - Helper Methods
+
+- (void)applySmartSymbolParameters:(SmartSymbolParameters)params {
+    // Apply timeframe if specified
+    if (params.hasTimeframe) {
+        self.currentTimeframe = params.timeframe;
+        NSLog(@"⏰ Applied timeframe: %ld", (long)params.timeframe);
+    }
+    
+    // Store current symbol
+    self.currentSymbol = params.symbol;
+    
+    // Note: We don't store barsToDownload anymore since we use date ranges
+}
+
+- (void)updateUIAfterSmartSymbolInput:(SmartSymbolParameters)params {
+    // Update symbol text field (show clean symbol only)
+    self.symbolTextField.stringValue = params.symbol;
+    
+    // Update timeframe segmented control if needed
+    if (params.hasTimeframe && self.timeframeSegmented.segmentCount > params.timeframe) {
+        self.timeframeSegmented.selectedSegment = params.timeframe;
+    }
+    
+    // Show feedback about what was applied
+    NSMutableArray *appliedParams = [NSMutableArray array];
+    
+    if (params.hasTimeframe) {
+        [appliedParams addObject:[NSString stringWithFormat:@"TF: %@",
+                                 [self timeframeDisplayName:params.timeframe]]];
+    }
+    
+    if (params.hasDaysSpecified) {
+        [appliedParams addObject:[NSString stringWithFormat:@"%ld days",
+                                 (long)params.daysToDownload]];
+    }
+    
+    if (appliedParams.count > 0) {
+        NSString *message = [NSString stringWithFormat:@"Applied: %@",
+                           [appliedParams componentsJoinedByString:@", "]];
+        NSLog(@"💬 %@", message);
+        // Potresti mostrare questo in una status bar o tooltip
+    }
+}
+
+- (NSString *)timeframeDisplayName:(ChartTimeframe)timeframe {
+    switch (timeframe) {
+        case ChartTimeframe1Min: return @"1min";
+        case ChartTimeframe5Min: return @"5min";
+        case ChartTimeframe15Min: return @"15min";
+        case ChartTimeframe30Min: return @"30min";
+        case ChartTimeframe1Hour: return @"1H";
+        case ChartTimeframe4Hour: return @"4H";
+        case ChartTimeframeDaily: return @"Daily";
+        case ChartTimeframeWeekly: return @"Weekly";
+        case ChartTimeframeMonthly: return @"Monthly";
+        default: return @"Unknown";
+    }
+}
+
+#pragma mark - Backward Compatibility
+
+// Mantieni il metodo loadSymbol esistente per compatibilità
 
 @end

@@ -1505,11 +1505,11 @@ extern NSString *const DataHubDataLoadedNotification;
     
     NSString *cleanStr = dataStr.lowercaseString;
     
-    // ✅ CHECK FOR DAYS SUFFIX
+    // ✅ CHECK FOR TIME PERIOD SUFFIXES
     if ([cleanStr hasSuffix:@"d"] || [cleanStr hasSuffix:@"days"]) {
+        // EXISTING: Days handling
         params->useDaysInsteadOfBars = YES;
         
-        // Extract number part
         NSString *numberPart = cleanStr;
         if ([cleanStr hasSuffix:@"days"]) {
             numberPart = [cleanStr substringToIndex:cleanStr.length - 4];
@@ -1518,13 +1518,103 @@ extern NSString *const DataHubDataLoadedNotification;
         }
         
         params->daysToDownload = numberPart.integerValue;
-        
-        // ✅ CONVERT DAYS TO BARS based on timeframe
         params->barsToDownload = [self convertDaysToBars:params->daysToDownload forTimeframe:params->timeframe];
         params->hasBarsToDownload = YES;
         
         NSLog(@"📅 Parsed %ld days -> %ld bars for timeframe %ld",
               (long)params->daysToDownload, (long)params->barsToDownload, (long)params->timeframe);
+    }
+    // ✅ NEW: Weeks handling
+    else if ([cleanStr hasSuffix:@"w"] || [cleanStr hasSuffix:@"weeks"]) {
+        params->useDaysInsteadOfBars = YES;
+        
+        NSString *numberPart = cleanStr;
+        if ([cleanStr hasSuffix:@"weeks"]) {
+            numberPart = [cleanStr substringToIndex:cleanStr.length - 5];
+        } else if ([cleanStr hasSuffix:@"w"]) {
+            numberPart = [cleanStr substringToIndex:cleanStr.length - 1];
+        }
+        
+        NSInteger weeks = numberPart.integerValue;
+        params->daysToDownload = [self convertWeeksToDays:weeks];
+        params->barsToDownload = [self convertDaysToBars:params->daysToDownload forTimeframe:params->timeframe];
+        params->hasBarsToDownload = YES;
+        
+        NSLog(@"📅 Parsed %ld weeks -> %ld days -> %ld bars for timeframe %ld",
+              (long)weeks, (long)params->daysToDownload, (long)params->barsToDownload, (long)params->timeframe);
+    }
+    // ✅ NEW: Months handling
+    else if ([cleanStr hasSuffix:@"m"] || [cleanStr hasSuffix:@"months"]) {
+        // ⚠️ CONFLICT RESOLUTION: Check if it's really months, not minutes timeframe parsing
+        BOOL isMonthsSuffix = NO;
+        if ([cleanStr hasSuffix:@"months"]) {
+            isMonthsSuffix = YES;
+        } else if ([cleanStr hasSuffix:@"m"]) {
+            // Check if this is a pure number followed by 'm' (likely months for data download)
+            // vs timeframe parsing (like "15m" for 15 minutes)
+            NSString *numberPart = [cleanStr substringToIndex:cleanStr.length - 1];
+            NSInteger number = numberPart.integerValue;
+            // If it's a large number (>12), likely months. If small, could be minutes.
+            // But since we're in data download context, assume months
+            isMonthsSuffix = YES;
+        }
+        
+        if (isMonthsSuffix) {
+            params->useDaysInsteadOfBars = YES;
+            
+            NSString *numberPart = cleanStr;
+            if ([cleanStr hasSuffix:@"months"]) {
+                numberPart = [cleanStr substringToIndex:cleanStr.length - 6];
+            } else if ([cleanStr hasSuffix:@"m"]) {
+                numberPart = [cleanStr substringToIndex:cleanStr.length - 1];
+            }
+            
+            NSInteger months = numberPart.integerValue;
+            params->daysToDownload = [self convertMonthsToDays:months];
+            params->barsToDownload = [self convertDaysToBars:params->daysToDownload forTimeframe:params->timeframe];
+            params->hasBarsToDownload = YES;
+            
+            NSLog(@"📅 Parsed %ld months -> %ld days -> %ld bars for timeframe %ld",
+                  (long)months, (long)params->daysToDownload, (long)params->barsToDownload, (long)params->timeframe);
+        }
+    }
+    // ✅ NEW: Quarters handling
+    else if ([cleanStr hasSuffix:@"q"] || [cleanStr hasSuffix:@"quarters"]) {
+        params->useDaysInsteadOfBars = YES;
+        
+        NSString *numberPart = cleanStr;
+        if ([cleanStr hasSuffix:@"quarters"]) {
+            numberPart = [cleanStr substringToIndex:cleanStr.length - 8];
+        } else if ([cleanStr hasSuffix:@"q"]) {
+            numberPart = [cleanStr substringToIndex:cleanStr.length - 1];
+        }
+        
+        NSInteger quarters = numberPart.integerValue;
+        params->daysToDownload = [self convertQuartersToDays:quarters];
+        params->barsToDownload = [self convertDaysToBars:params->daysToDownload forTimeframe:params->timeframe];
+        params->hasBarsToDownload = YES;
+        
+        NSLog(@"📅 Parsed %ld quarters -> %ld days -> %ld bars for timeframe %ld",
+              (long)quarters, (long)params->daysToDownload, (long)params->barsToDownload, (long)params->timeframe);
+    }
+    // ✅ NEW: Years handling
+    else if ([cleanStr hasSuffix:@"y"] || [cleanStr hasSuffix:@"years"]) {
+        params->useDaysInsteadOfBars = YES;
+        
+        NSString *numberPart = cleanStr;
+        if ([cleanStr hasSuffix:@"years"]) {
+            numberPart = [cleanStr substringToIndex:cleanStr.length - 5];
+        } else if ([cleanStr hasSuffix:@"y"]) {
+            numberPart = [cleanStr substringToIndex:cleanStr.length - 1];
+        }
+        
+        NSInteger years = numberPart.integerValue;
+        params->daysToDownload = [self convertYearsToDays:years];
+        params->barsToDownload = [self convertDaysToBars:params->daysToDownload forTimeframe:params->timeframe];
+        params->hasBarsToDownload = YES;
+        
+        NSLog(@"📅 Parsed %ld years -> %ld days -> %ld bars for timeframe %ld",
+              (long)years, (long)params->daysToDownload, (long)params->barsToDownload, (long)params->timeframe);
     }
     // ✅ PLAIN NUMBER (bars)
     else {
@@ -1539,6 +1629,66 @@ extern NSString *const DataHubDataLoadedNotification;
     }
 }
 
+- (NSInteger)convertWeeksToDays:(NSInteger)weeks {
+    if (weeks <= 0) return 0;
+    
+    // 1 week = 7 calendar days
+    NSInteger days = weeks * 7;
+    
+    // ✅ NESSUN LIMITE: Solo validazione di base
+    if (days <= 0) {
+        days = 1; // Fallback se il calcolo fallisce
+    }
+    
+    NSLog(@"🔢 Converted %ld weeks to %ld days - NO LIMITS", (long)weeks, (long)days);
+    return days;
+}
+
+- (NSInteger)convertMonthsToDays:(NSInteger)months {
+    if (months <= 0) return 0;
+    
+    // 1 month = 30 days (simplification)
+    NSInteger days = months * 30;
+    
+    // ✅ NESSUN LIMITE: Solo validazione di base
+    if (days <= 0) {
+        days = 1; // Fallback se il calcolo fallisce
+    }
+    
+    NSLog(@"🔢 Converted %ld months to %ld days - NO LIMITS", (long)months, (long)days);
+    return days;
+}
+
+- (NSInteger)convertQuartersToDays:(NSInteger)quarters {
+    if (quarters <= 0) return 0;
+    
+    // 1 quarter = 90 days (3 months)
+    NSInteger days = quarters * 90;
+    
+    // ✅ NESSUN LIMITE: Solo validazione di base
+    if (days <= 0) {
+        days = 1; // Fallback se il calcolo fallisce
+    }
+    
+    NSLog(@"🔢 Converted %ld quarters to %ld days - NO LIMITS", (long)quarters, (long)days);
+    return days;
+}
+
+- (NSInteger)convertYearsToDays:(NSInteger)years {
+    if (years <= 0) return 0;
+    
+    // 1 year = 365 days
+    NSInteger days = years * 365;
+    
+    // ✅ NESSUN LIMITE: Solo validazione di base
+    if (days <= 0) {
+        days = 1; // Fallback se il calcolo fallisce
+    }
+    
+    NSLog(@"🔢 Converted %ld years to %ld days - NO LIMITS", (long)years, (long)days);
+    return days;
+}
+
 - (NSInteger)convertDaysToBars:(NSInteger)days forTimeframe:(ChartTimeframe)timeframe {
     if (days <= 0) return self.barsToDownload; // fallback
     
@@ -1546,11 +1696,17 @@ extern NSString *const DataHubDataLoadedNotification;
     NSInteger barsPerDay = [self barsPerDayForCurrentTimeframe];
     NSInteger totalBars = days * barsPerDay;
     
-    // ✅ REASONABLE LIMITS
-    totalBars = MAX(50, totalBars);     // Minimum 50 bars
-    totalBars = MIN(10000, totalBars);  // Maximum 10,000 bars
+    // ✅ NESSUN LIMITE: Restituisci il calcolo puro senza limitazioni artificiali
+    // ❌ VECCHIO CODICE RIMOSSO:
+    // totalBars = MAX(50, totalBars);     // ← Forzava minimo 50 bars
+    // totalBars = MIN(10000, totalBars);  // ← Limitava a 10k bars
     
-    NSLog(@"🔢 Converted %ld days to %ld bars (%ld bars/day for TF %ld)",
+    // ✅ Solo validazione di base per evitare valori impossibili
+    if (totalBars <= 0) {
+        totalBars = 1; // Minimo 1 bar se il calcolo fallisce
+    }
+    
+    NSLog(@"🔢 Converted %ld days to %ld bars (%ld bars/day for TF %ld) - NO LIMITS",
           (long)days, (long)totalBars, (long)barsPerDay, (long)timeframe);
     
     return totalBars;

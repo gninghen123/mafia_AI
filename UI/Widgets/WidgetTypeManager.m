@@ -17,6 +17,7 @@
 #import "SeasonalChartWidget.h"
 #import "TickChartWidget.h"
 #import "StorageManagementWidget.h"
+#import "LegacyDataConverterWidget.h"
 
 
 @interface WidgetTypeManager ()
@@ -97,7 +98,8 @@
             @"Market Clock",
             @"Performance Analytics",
             @"API Playground",
-            @"Storage Management"    // <-- AGGIUNGI QUI
+            @"Storage Management",
+            @"LegacyDataConverter"
 
         ]
     };
@@ -125,7 +127,7 @@
       typeToClass[@"Volume Profile"] = [ChartWidget class];
     typeToClass[@"Heatmap"] = [ChartWidget class];
     typeToClass[@"Storage Management"] = [StorageManagementWidget class];
-
+    typeToClass[@"LegacyDataConverter"] = [LegacyDataConverterWidget class];
     // Map all other types to BaseWidget for now
     for (NSArray *types in self.widgetCategories.allValues) {
         for (NSString *type in types) {

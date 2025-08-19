@@ -284,6 +284,8 @@
         self.changeLabel.stringValue = @"+0.00%";
         self.changeLabel.textColor = self.textColor;
     }
+    [self setNeedsDisplay:YES];
+
 }
 
 #pragma mark - Chart Path Generation
@@ -513,7 +515,7 @@
         if (isBullish) {
             // Bullish candle: green border, white/hollow fill
             [self.positiveColor setStroke];
-            [[NSColor controlBackgroundColor] setFill];
+            [self.positiveColor setFill];
         } else {
             // Bearish candle: red border and fill
             [self.negativeColor setStroke];

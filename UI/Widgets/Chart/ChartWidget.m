@@ -791,7 +791,7 @@ extern NSString *const DataHubDataLoadedNotification;
     
     // ✅ FIX: Clamp indices ai valori validi dell'array
     startIndex = MAX(0, startIndex);
-    endIndex = MIN(self.chartData.count - 1, endIndex);  // ❌ ERA: self.chartData.count
+    endIndex = MIN(self.chartData.count , endIndex);  // ❌ ERA: self.chartData.count
     
     // ✅ VERIFICA: Ensure valid range
     if (startIndex >= endIndex) {
@@ -815,7 +815,7 @@ extern NSString *const DataHubDataLoadedNotification;
     if (!self.chartData || self.chartData.count == 0) return;
     
     // ✅ FIX: endIndex corretto
-    [self zoomToRange:0 endIndex:self.chartData.count - 1];  // ❌ ERA: self.chartData.count
+    [self zoomToRange:0 endIndex:self.chartData.count ];  // ❌ ERA: self.chartData.count
 }
 #pragma mark - Helper Methods
 
@@ -831,7 +831,7 @@ extern NSString *const DataHubDataLoadedNotification;
          startIndex = MAX(0, totalBars - barsToShow);
     }
     // ✅ FIX: endIndex corretto (ultimo elemento valido)
-    NSInteger endIndex = totalBars - 1;  // ❌ ERA: totalBars (fuori range)
+    NSInteger endIndex = totalBars;  // ❌ ERA: totalBars (fuori range)
     
     [self zoomToRange:startIndex endIndex:endIndex];
     

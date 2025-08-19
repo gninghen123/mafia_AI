@@ -499,7 +499,7 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
         }
         
         // Calcola date range dal count richiesto
-        NSDate *endDate = [NSDate date];
+        NSDate *endDate = [[NSDate date] dateByAddingTimeInterval:60*60*24];
         NSDate *startDate = [self calculateStartDateForTimeframe:timeframe
                                                            count:count
                                                         fromDate:endDate];

@@ -55,22 +55,6 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "16C9404E-CECE-48DC-BA2F-D987839533F7"
-            shouldBeEnabled = "Yes"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "UI/Widgets/Chart/ChartWidget.m"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "947"
-            endingLineNumber = "947"
-            landmarkName = "-appendWidgetSpecificItemsToMenu:"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
             uuid = "2B06A6B7-637E-44A9-B6B7-279C4C7E4839"
             shouldBeEnabled = "Yes"
             ignoreCount = "0"
@@ -81,6 +65,22 @@
             startingLineNumber = "2329"
             endingLineNumber = "2329"
             landmarkName = "-openMicroscopeWithParameters:"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "D0E24E79-55C5-4511-BBDC-9DCEE0D2EF91"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "Gestione Dati/DownloadManager.m"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "1921"
+            endingLineNumber = "1921"
+            landmarkName = "-handleHistoricalResponseWithAutoComplete:error:parameters:dataSource:sourceInfo:sources:sourceIndex:requestID:completion:"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

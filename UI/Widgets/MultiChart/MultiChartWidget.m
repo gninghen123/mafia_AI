@@ -243,6 +243,9 @@
     self.scrollView.translatesAutoresizingMaskIntoConstraints = NO;
     [self.contentView addSubview:self.scrollView];
     
+    //notifica resize
+    self.scrollView.postsFrameChangedNotifications = YES;
+
     // Charts container
     self.chartsContainer = [[NSView alloc] init];
     self.chartsContainer.translatesAutoresizingMaskIntoConstraints = NO;
@@ -273,7 +276,15 @@
            selector:@selector(historicalDataUpdated:)
                name:@"DataHubHistoricalDataUpdatedNotification"
              object:nil];
+    
+    // ✅ AGGIUNGI: Listen for view frame changes
+    [nc addObserver:self
+           selector:@selector(viewFrameDidChange:)
+               name:NSViewFrameDidChangeNotification
+             object:self.scrollView];
 }
+
+
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
@@ -1443,6 +1454,22 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
             }];
         });
     }];
+}
+
+#pragma mark - Layout Management
+
+- (void)optimizeLayoutForSize:(NSSize)size {
+    NSLog(@"📐 MultiChartWidget: Optimizing layout for size %.0fx%.0f", size.width, size.height);
+    [self layoutMiniCharts];
+}
+
+- (void)viewFrameDidChange:(NSNotification *)notification {
+    NSLog(@"📐 MultiChartWidget: ScrollView frame changed");
+    
+    // Usa dispatch per evitare problemi di constraint durante l'animazione
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self layoutMiniCharts];
+    });
 }
 
 

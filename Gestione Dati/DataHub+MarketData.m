@@ -524,7 +524,7 @@
     
     // Smart date range: last cache date - goback to NOW
     NSDate *smartStartDate = [lastCacheDate dateByAddingTimeInterval:-goBackSeconds];
-    NSDate *smartEndDate = [NSDate date];
+    NSDate *smartEndDate = [[NSDate date] dateByAddingTimeInterval:60*60*24];
     
     NSLog(@"🎯 DataHub SMART: Updating %@ from %@ to %@ (goback: %ld bars)",
           symbol, smartStartDate, smartEndDate, (long)goBackBars);

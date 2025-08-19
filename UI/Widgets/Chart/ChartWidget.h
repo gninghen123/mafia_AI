@@ -104,6 +104,6 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 /// @return Array of current historical bars, or nil if no data loaded
 - (NSArray<HistoricalBarModel *> * _Nullable)currentChartData;
 
-
+-(void)resetToInitialView;
 
 @end

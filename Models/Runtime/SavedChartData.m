@@ -7,10 +7,18 @@
 
 #import "SavedChartData.h"
 #import "ChartWidget.h"
+#import <compression.h>
+#import "ChartWidget+SaveData.h"
+
 
 // Forward declaration to access private properties
 @interface ChartWidget (SaveDataPrivate)
 - (NSArray<HistoricalBarModel *> *)chartData;
+
+@end
+
+@interface SavedChartData ()
+@property (nonatomic, assign) BOOL isCompressed;
 @end
 
 @implementation SavedChartData
@@ -250,20 +258,36 @@
     
     // Add metadata
     dict[@"barCount"] = @(self.barCount);
-    dict[@"version"] = @"1.0";
+    dict[@"version"] = @"2.0"; // 🎯 BUMP VERSION per indicare supporto compressione
+    dict[@"compressionFormat"] = @"LZFSE"; // Metadata per tracking
     
     return [dict copy];
 }
 
+
 + (instancetype)loadFromFile:(NSString *)filePath {
-    NSData *data = [NSData dataWithContentsOfFile:filePath];
-    if (!data) {
+    NSData *fileData = [NSData dataWithContentsOfFile:filePath];
+    if (!fileData) {
         NSLog(@"❌ Failed to load data from file: %@", filePath);
         return nil;
     }
     
+    NSLog(@"📂 Loading SavedChartData from: %@ (%.1f KB)",
+          [filePath lastPathComponent], fileData.length / 1024.0);
+    
+    // 🗜️ TRY TO DECOMPRESS (LZFSE format detection)
+    NSData *plistData = [self decompressData:fileData];
+    BOOL wasCompressed = (plistData != nil);
+    
+    if (!plistData) {
+        // Fallback: try as uncompressed data (backward compatibility)
+        NSLog(@"ℹ️ File not compressed, trying direct plist deserialization...");
+        plistData = fileData;
+    }
+    
+    // Deserialize plist
     NSError *error;
-    NSDictionary *dictionary = [NSPropertyListSerialization propertyListWithData:data
+    NSDictionary *dictionary = [NSPropertyListSerialization propertyListWithData:plistData
                                                                          options:NSPropertyListImmutable
                                                                           format:NULL
                                                                            error:&error];
@@ -272,32 +296,25 @@
         return nil;
     }
     
-    return [[self alloc] initWithDictionary:dictionary];
-}
-
-- (BOOL)saveToFile:(NSString *)filePath error:(NSError **)error {
-    NSDictionary *dictionary = [self toDictionary];
-    
-    NSData *plistData = [NSPropertyListSerialization dataWithPropertyList:dictionary
-                                                                    format:NSPropertyListBinaryFormat_v1_0
-                                                                   options:0
-                                                                     error:error];
-    if (!plistData) {
-        NSLog(@"❌ Failed to serialize SavedChartData to binary plist: %@", error ? (*error).localizedDescription : @"Unknown error");
-        return NO;
+    SavedChartData *savedData = [[self alloc] initWithDictionary:dictionary];
+    if (savedData) {
+        savedData.isCompressed = wasCompressed;
+        
+        if (wasCompressed) {
+            CGFloat compressionRatio = (CGFloat)fileData.length / (CGFloat)plistData.length;
+            NSLog(@"✅ Loaded compressed SavedChartData: %@ [%@] %ld bars",
+                  savedData.symbol, savedData.timeframeDescription, (long)savedData.barCount);
+            NSLog(@"   📦 Decompressed: %.1f KB → %.1f KB (%.1fx expansion)",
+                  fileData.length / 1024.0,
+                  plistData.length / 1024.0,
+                  1.0 / compressionRatio);
+        } else {
+            NSLog(@"✅ Loaded uncompressed SavedChartData: %@ [%@] %ld bars",
+                  savedData.symbol, savedData.timeframeDescription, (long)savedData.barCount);
+        }
     }
     
-    BOOL success = [plistData writeToFile:filePath atomically:YES];
-    if (success) {
-        NSLog(@"✅ SavedChartData saved to: %@", filePath);
-        NSLog(@"   Symbol: %@, Type: %@, Bars: %ld, Size: %.1f KB",
-              self.symbol, self.dataType == SavedChartDataTypeSnapshot ? @"SNAPSHOT" : @"CONTINUOUS",
-              (long)self.barCount, plistData.length / 1024.0);
-    } else {
-        NSLog(@"❌ Failed to write SavedChartData to file: %@", filePath);
-    }
-    
-    return success;
+    return savedData;
 }
 
 #pragma mark - Properties
@@ -327,10 +344,14 @@
 }
 
 - (NSInteger)estimatedFileSize {
-    // Rough estimate: 80 bytes per bar + overhead
-    return self.barCount * 80 + 1024;
+    // Base estimate: 80 bytes per bar + overhead
+    NSInteger uncompressedSize = self.barCount * 80 + 1024;
+    
+    // LZFSE typically achieves 60-80% compression on financial data
+    NSInteger compressedSize = uncompressedSize * 0.3; // Assume 70% compression
+    
+    return compressedSize;
 }
-
 #pragma mark - Helper Methods
 
 - (NSString *)suggestedFilename {
@@ -460,5 +481,157 @@
         default: return BarTimeframe1Day;
     }
 }
+
+#pragma mark - Compression Helpers
+
+- (NSData *)compressData:(NSData *)inputData error:(NSError **)error {
+    if (!inputData || inputData.length == 0) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"SavedChartData"
+                                         code:1004
+                                     userInfo:@{NSLocalizedDescriptionKey: @"No data to compress"}];
+        }
+        return nil;
+    }
+    
+    // Calculate buffer size (Apple recommends source size + 64KB for LZFSE)
+    size_t bufferSize = inputData.length + 65536;
+    void *compressedBuffer = malloc(bufferSize);
+    
+    if (!compressedBuffer) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"SavedChartData"
+                                         code:1005
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Failed to allocate compression buffer"}];
+        }
+        return nil;
+    }
+    
+    // Perform LZFSE compression
+    size_t compressedSize = compression_encode_buffer(compressedBuffer, bufferSize,
+                                                     inputData.bytes, inputData.length,
+                                                     NULL, COMPRESSION_LZFSE);
+    
+    if (compressedSize == 0) {
+        free(compressedBuffer);
+        if (error) {
+            *error = [NSError errorWithDomain:@"SavedChartData"
+                                         code:1006
+                                     userInfo:@{NSLocalizedDescriptionKey: @"LZFSE compression failed"}];
+        }
+        return nil;
+    }
+    
+    // Create NSData with compressed result
+    NSData *compressedData = [NSData dataWithBytes:compressedBuffer length:compressedSize];
+    free(compressedBuffer);
+    
+    return compressedData;
+}
+
++ (NSData *)decompressData:(NSData *)compressedData {
+    if (!compressedData || compressedData.length == 0) {
+        return nil;
+    }
+    
+    // Try to detect LZFSE magic bytes
+    const uint8_t *bytes = (const uint8_t *)compressedData.bytes;
+    if (compressedData.length < 4) {
+        return nil; // Too small to be LZFSE
+    }
+    
+    // Check for LZFSE magic bytes
+    BOOL isLZFSE = (bytes[0] == 'b' && bytes[1] == 'v' && bytes[2] == 'x' &&
+                   (bytes[3] == '-' || bytes[3] == '2'));
+    
+    if (!isLZFSE) {
+        return nil; // Not LZFSE compressed
+    }
+    
+    // Estimate decompressed size (start with 4x compressed size)
+    size_t estimatedSize = compressedData.length * 4;
+    size_t maxAttempts = 3;
+    
+    for (size_t attempt = 0; attempt < maxAttempts; attempt++) {
+        void *decompressedBuffer = malloc(estimatedSize);
+        if (!decompressedBuffer) {
+            return nil;
+        }
+        
+        size_t decompressedSize = compression_decode_buffer(decompressedBuffer, estimatedSize,
+                                                           compressedData.bytes, compressedData.length,
+                                                           NULL, COMPRESSION_LZFSE);
+        
+        if (decompressedSize > 0) {
+            // Success!
+            NSData *decompressedData = [NSData dataWithBytes:decompressedBuffer length:decompressedSize];
+            free(decompressedBuffer);
+            return decompressedData;
+        }
+        
+        free(decompressedBuffer);
+        
+        // If decompression failed, try with larger buffer
+        estimatedSize *= 2;
+        
+        if (estimatedSize > 100 * 1024 * 1024) { // Cap at 100MB
+            break;
+        }
+    }
+    
+    NSLog(@"❌ LZFSE decompression failed after %zu attempts", maxAttempts);
+    return nil;
+}
+
+
+- (BOOL)saveToFile:(NSString *)filePath error:(NSError **)error {
+    NSDictionary *dictionary = [self toDictionary];
+    
+    // Serialize to binary plist
+    NSData *plistData = [NSPropertyListSerialization dataWithPropertyList:dictionary
+                                                                    format:NSPropertyListBinaryFormat_v1_0
+                                                                   options:0
+                                                                     error:error];
+    if (!plistData) {
+        NSLog(@"❌ Failed to serialize SavedChartData to binary plist: %@", error ? (*error).localizedDescription : @"Unknown error");
+        return NO;
+    }
+    
+    // 🗜️ COMPRESS WITH LZFSE
+    NSData *compressedData = [self compressData:plistData error:error];
+    if (!compressedData) {
+        NSLog(@"❌ Failed to compress SavedChartData: %@", error ? (*error).localizedDescription : @"Compression failed");
+        return NO;
+    }
+    
+    // Write compressed data to file
+    BOOL success = [compressedData writeToFile:filePath atomically:YES];
+    
+    if (success) {
+        CGFloat compressionRatio = (CGFloat)compressedData.length / (CGFloat)plistData.length;
+        NSLog(@"✅ SavedChartData saved with LZFSE compression: %@", filePath);
+        NSLog(@"   Symbol: %@, Type: %@, Bars: %ld",
+              self.symbol,
+              self.dataType == SavedChartDataTypeSnapshot ? @"SNAPSHOT" : @"CONTINUOUS",
+              (long)self.barCount);
+        NSLog(@"   📦 Size: %.1f KB → %.1f KB (%.1f%% compression, %.1fx smaller)",
+              plistData.length / 1024.0,
+              compressedData.length / 1024.0,
+              (1.0 - compressionRatio) * 100.0,
+              1.0 / compressionRatio);
+    } else {
+        NSLog(@"❌ Failed to write compressed SavedChartData to file: %@", filePath);
+        if (error && !*error) {
+            *error = [NSError errorWithDomain:@"SavedChartData"
+                                         code:1003
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Failed to write compressed data to file"}];
+        }
+    }
+    
+    return success;
+}
+
+
+
 
 @end

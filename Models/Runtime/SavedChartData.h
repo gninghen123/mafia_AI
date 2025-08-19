@@ -140,6 +140,9 @@ typedef NS_ENUM(NSInteger, SavedChartDataType) {
 /// Calculate days until next API limit expiration
 - (NSInteger)daysUntilAPILimitExpiration;
 
+
++(void)convertMyFewFiles;
+
 @end
 
 NS_ASSUME_NONNULL_END

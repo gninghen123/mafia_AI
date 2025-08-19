@@ -28,37 +28,41 @@
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
     NSLog(@"AppDelegate: applicationDidFinishLaunching called");
-       
-       // ADD THESE LINES to fix window restoration crashes:
-       [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"NSQuitAlwaysKeepsWindows"];
-       [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"NSCloseAlwaysConfirmsChanges"];
-       
-       [DataHub shared];
-
+    
+    // ADD THESE LINES to fix window restoration crashes:
+    [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"NSQuitAlwaysKeepsWindows"];
+    [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"NSCloseAlwaysConfirmsChanges"];
+    
+    [DataHub shared];
+    
     [self registerDataSources];
     self.floatingWindows = [[NSMutableArray alloc] init];
-        self.widgetTypeManager = [WidgetTypeManager sharedManager];
-      NSLog(@"AppDelegate: Creating MainWindowController");
-      self.mainWindowController = [[MainWindowController alloc] init];
-      
-      NSLog(@"AppDelegate: Showing window");
-      [self.mainWindowController showWindow:self];
-      
-      [NSApp activateIgnoringOtherApps:YES];
-      
-      dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-          [self autoConnectToSchwab];
-      });
-      [self setupClaudeDataSource];
+    self.widgetTypeManager = [WidgetTypeManager sharedManager];
+    NSLog(@"AppDelegate: Creating MainWindowController");
+    self.mainWindowController = [[MainWindowController alloc] init];
+    
+    NSLog(@"AppDelegate: Showing window");
+    [self.mainWindowController showWindow:self];
+    
+    [NSApp activateIgnoringOtherApps:YES];
+    
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self autoConnectToSchwab];
+    });
+    [self setupClaudeDataSource];
     if (self.window) {
-            self.window.restorationClass = [self class];
-            self.window.identifier = @"MainWindow";
-            
-            NSLog(@"✅ AppDelegate: Main window configured with restoration ID");
-        } else {
-            NSLog(@"❌ AppDelegate: Main window outlet not connected!");
-        }
+        self.window.restorationClass = [self class];
+        self.window.identifier = @"MainWindow";
+        
+        NSLog(@"✅ AppDelegate: Main window configured with restoration ID");
+    } else {
+        NSLog(@"❌ AppDelegate: Main window outlet not connected!");
+    }
+    static dispatch_once_t onceToken;
 }
+
+
+
 
 - (void)registerDataSources {
     DownloadManager *downloadManager = [DownloadManager sharedManager];

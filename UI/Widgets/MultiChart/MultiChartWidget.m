@@ -46,7 +46,8 @@
     _scaleType = MiniChartScaleLinear;
     _maxBars = 100;
     _showVolume = YES;
-    _columnsCount = 3;
+    _gridRows = 2;
+      _gridColumns = 3;
     _symbols = @[];
     _symbolsString = @"";
     
@@ -80,13 +81,19 @@
     self.controlsView.translatesAutoresizingMaskIntoConstraints = NO;
     [self.contentView addSubview:self.controlsView];
     
-    // Symbols text field
     self.symbolsTextField = [[NSTextField alloc] init];
-    self.symbolsTextField.placeholderString = @"Enter symbols (AAPL, TSLA, MSFT...)";
-    self.symbolsTextField.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.symbolsTextField setTarget:self];
-    [self.symbolsTextField setAction:@selector(symbolsChanged:)];
-    [self.controlsView addSubview:self.symbolsTextField];
+       self.symbolsTextField.placeholderString = @"Enter symbols (AAPL, TSLA, MSFT...)";
+       self.symbolsTextField.translatesAutoresizingMaskIntoConstraints = NO;
+       [self.symbolsTextField setTarget:self];
+       [self.symbolsTextField setAction:@selector(symbolsChanged:)]; // ✅ NOTA: senza AutoSave
+       [self.controlsView addSubview:self.symbolsTextField];
+       
+       // ✅ NUOVO: Reset symbols button
+       self.resetSymbolsButton = [NSButton buttonWithTitle:@"×" target:self action:@selector(resetSymbolsClicked:)];
+       self.resetSymbolsButton.bezelStyle = NSBezelStyleCircular;
+       self.resetSymbolsButton.translatesAutoresizingMaskIntoConstraints = NO;
+       [self.controlsView addSubview:self.resetSymbolsButton];
+
     
     // Chart type popup
     self.chartTypePopup = [[NSPopUpButton alloc] init];
@@ -126,18 +133,21 @@
     self.volumeCheckbox.state = NSControlStateValueOn;
     self.volumeCheckbox.translatesAutoresizingMaskIntoConstraints = NO;
     [self.controlsView addSubview:self.volumeCheckbox];
-    
-    // Columns control
-    self.columnsControl = [[NSSegmentedControl alloc] init];
-    self.columnsControl.segmentCount = 5;
-    for (NSInteger i = 0; i < 5; i++) {
-        [self.columnsControl setLabel:[NSString stringWithFormat:@"%ld", i + 1] forSegment:i];
-    }
-    self.columnsControl.selectedSegment = 2; // Default to 3 columns
-    self.columnsControl.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.columnsControl setTarget:self];
-    [self.columnsControl setAction:@selector(columnsChanged:)];
-    [self.controlsView addSubview:self.columnsControl];
+    self.rowsField = [[NSTextField alloc] init];
+       self.rowsField.stringValue = @"2";
+       self.rowsField.translatesAutoresizingMaskIntoConstraints = NO;
+       [self.rowsField setTarget:self];
+       [self.rowsField setAction:@selector(gridSizeChanged:)];
+       [self.controlsView addSubview:self.rowsField];
+       
+       // ✅ NUOVO: Columns field
+       self.columnsField = [[NSTextField alloc] init];
+       self.columnsField.stringValue = @"3";
+       self.columnsField.translatesAutoresizingMaskIntoConstraints = NO;
+       [self.columnsField setTarget:self];
+       [self.columnsField setAction:@selector(gridSizeChanged:)];
+       [self.controlsView addSubview:self.columnsField];    // Columns control
+   
     
     // Refresh button
     self.refreshButton = [NSButton buttonWithTitle:@"Refresh" target:self action:@selector(refreshButtonClicked:)];
@@ -160,14 +170,19 @@
     
     // Symbols field
     [NSLayoutConstraint activateConstraints:@[
-        [self.symbolsTextField.leadingAnchor constraintEqualToAnchor:self.controlsView.leadingAnchor constant:spacing],
-        [self.symbolsTextField.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
-        [self.symbolsTextField.widthAnchor constraintEqualToConstant:200]
-    ]];
+           [self.symbolsTextField.leadingAnchor constraintEqualToAnchor:self.controlsView.leadingAnchor constant:spacing],
+           [self.symbolsTextField.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
+           [self.symbolsTextField.widthAnchor constraintEqualToConstant:180], // Ridotto da 200 per fare spazio al reset
+           
+           [self.resetSymbolsButton.leadingAnchor constraintEqualToAnchor:self.symbolsTextField.trailingAnchor constant:4],
+           [self.resetSymbolsButton.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
+           [self.resetSymbolsButton.widthAnchor constraintEqualToConstant:25],
+           [self.resetSymbolsButton.heightAnchor constraintEqualToConstant:25]
+       ]];
     
     // Chart type popup
     [NSLayoutConstraint activateConstraints:@[
-        [self.chartTypePopup.leadingAnchor constraintEqualToAnchor:self.symbolsTextField.trailingAnchor constant:spacing],
+        [self.chartTypePopup.leadingAnchor constraintEqualToAnchor:self.resetSymbolsButton.trailingAnchor constant:spacing],
         [self.chartTypePopup.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
         [self.chartTypePopup.widthAnchor constraintEqualToConstant:70]
     ]];
@@ -199,16 +214,21 @@
         [self.volumeCheckbox.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor]
     ]];
     
-    // Columns control
     [NSLayoutConstraint activateConstraints:@[
-        [self.columnsControl.leadingAnchor constraintEqualToAnchor:self.volumeCheckbox.trailingAnchor constant:spacing],
-        [self.columnsControl.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
-        [self.columnsControl.widthAnchor constraintEqualToConstant:100]
-    ]];
+            [self.rowsField.leadingAnchor constraintEqualToAnchor:self.volumeCheckbox.trailingAnchor constant:spacing],
+            [self.rowsField.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
+            [self.rowsField.widthAnchor constraintEqualToConstant:30]
+        ]];
+        
+        [NSLayoutConstraint activateConstraints:@[
+            [self.columnsField.leadingAnchor constraintEqualToAnchor:self.rowsField.trailingAnchor constant:4],
+            [self.columnsField.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
+            [self.columnsField.widthAnchor constraintEqualToConstant:30]
+        ]];
     
     // Refresh button
     [NSLayoutConstraint activateConstraints:@[
-        [self.refreshButton.leadingAnchor constraintEqualToAnchor:self.columnsControl.trailingAnchor constant:spacing],
+        [self.refreshButton.leadingAnchor constraintEqualToAnchor:self.rowsField.trailingAnchor constant:spacing],
         [self.refreshButton.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
         [self.refreshButton.trailingAnchor constraintLessThanOrEqualToAnchor:self.controlsView.trailingAnchor constant:-spacing]
     ]];
@@ -227,8 +247,8 @@
     self.chartsContainer = [[NSView alloc] init];
     self.chartsContainer.translatesAutoresizingMaskIntoConstraints = NO;
     self.scrollView.documentView = self.chartsContainer;
-    
-    // FIXED: Scroll view constraints - takes remaining space below controls
+    self.scrollView.verticalScrollElasticity = NSScrollElasticityAllowed;
+      self.scrollView.horizontalScrollElasticity = NSScrollElasticityAllowed;    // FIXED: Scroll view constraints - takes remaining space below controls
     [NSLayoutConstraint activateConstraints:@[
         [self.scrollView.topAnchor constraintEqualToAnchor:self.controlsView.bottomAnchor constant:8],
         [self.scrollView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
@@ -570,18 +590,35 @@
     [self.chartsContainer removeConstraints:self.chartConstraints];
     [self.chartConstraints removeAllObjects];
     
-    // Calculate layout
-    NSInteger rows = (self.miniCharts.count + self.columnsCount - 1) / self.columnsCount;
+    // ✅ NUOVO: Usa gridRows e gridColumns per calcolo responsivo
     CGFloat spacing = 10;
-    CGFloat chartWidth = (self.scrollView.bounds.size.width - (self.columnsCount + 1) * spacing) / self.columnsCount;
-    CGFloat chartHeight = 200; // Fixed height
+    CGSize containerSize = self.scrollView.bounds.size;
+    if (containerSize.width == 0 || containerSize.height == 0) {
+        containerSize = CGSizeMake(800, 600); // Fallback
+    }
     
-    // Layout each chart
+    // ✅ NUOVO: Calcolo dimensioni responsive
+    CGFloat availableWidth = containerSize.width - (self.gridColumns + 1) * spacing;
+    CGFloat availableHeight = containerSize.height - (self.gridRows + 1) * spacing;
+    
+    CGFloat chartWidth = availableWidth / self.gridColumns;
+    CGFloat chartHeight = availableHeight / self.gridRows;
+    
+    // Dimensioni minime ragionevoli
+    chartWidth = MAX(chartWidth, 100);
+    chartHeight = MAX(chartHeight, 80);
+    
+    // ✅ NUOVO: Layout griglia dall'alto verso il basso
     for (NSInteger i = 0; i < self.miniCharts.count; i++) {
         MiniChart *chart = self.miniCharts[i];
         
-        NSInteger row = i / self.columnsCount;
-        NSInteger col = i % self.columnsCount;
+        NSInteger row = i / self.gridColumns;
+        NSInteger col = i % self.gridColumns;
+        
+        // Se abbiamo più chart che celle nella griglia, continua sulla prossima riga
+        if (row >= self.gridRows) {
+            row = row % self.gridRows;
+        }
         
         CGFloat x = spacing + col * (chartWidth + spacing);
         CGFloat y = spacing + row * (chartHeight + spacing);
@@ -595,7 +632,7 @@
                                                                      multiplier:1.0
                                                                        constant:chartWidth]];
         
-        // Height constraint - FIXED: Proper height
+        // Height constraint
         [self.chartConstraints addObject:[NSLayoutConstraint constraintWithItem:chart
                                                                       attribute:NSLayoutAttributeHeight
                                                                       relatedBy:NSLayoutRelationEqual
@@ -623,30 +660,20 @@
                                                                        constant:y]];
     }
     
-    // Set container size - FIXED: Proper content size
-    CGFloat containerWidth = self.columnsCount * chartWidth + (self.columnsCount + 1) * spacing;
-    CGFloat containerHeight = rows * chartHeight + (rows + 1) * spacing;
-    
-    // Container size constraints
-    [self.chartConstraints addObject:[NSLayoutConstraint constraintWithItem:self.chartsContainer
-                                                                  attribute:NSLayoutAttributeWidth
-                                                                  relatedBy:NSLayoutRelationEqual
-                                                                     toItem:nil
-                                                                  attribute:NSLayoutAttributeNotAnAttribute
-                                                                 multiplier:1.0
-                                                                   constant:containerWidth]];
-    
-    [self.chartConstraints addObject:[NSLayoutConstraint constraintWithItem:self.chartsContainer
-                                                                  attribute:NSLayoutAttributeHeight
-                                                                  relatedBy:NSLayoutRelationEqual
-                                                                     toItem:nil
-                                                                  attribute:NSLayoutAttributeNotAnAttribute
-                                                                 multiplier:1.0
-                                                                   constant:containerHeight]];
-    
+    // Apply constraints
     [self.chartsContainer addConstraints:self.chartConstraints];
+    
+    // ✅ NUOVO: Aggiorna dimensione container per scroll dall'alto verso il basso
+    NSInteger totalRows = MAX(self.gridRows, (self.miniCharts.count + self.gridColumns - 1) / self.gridColumns);
+    CGFloat containerHeight = spacing + totalRows * (chartHeight + spacing);
+    CGFloat containerWidth = spacing + self.gridColumns * (chartWidth + spacing);
+    
+    // Set container size for scrolling
+    [self.chartsContainer setFrameSize:NSMakeSize(containerWidth, containerHeight)];
+    
+    // ✅ SCROLL TOP-DOWN: Scroll all'inizio
+    [self.chartsContainer scrollPoint:NSMakePoint(0, 0)];
 }
-
 
 - (void)setupChartContextMenu:(MiniChart *)chart {
     NSMenu *contextMenu = [[NSMenu alloc] init];
@@ -819,24 +846,7 @@
     });
 }
 
-#pragma mark - Layout Management
 
-- (void)setColumnsCount:(NSInteger)count animated:(BOOL)animated {
-    if (count < 1) count = 1;
-    if (count > 5) count = 5;
-    
-    _columnsCount = count;
-    self.columnsControl.selectedSegment = count - 1;
-    
-    if (animated) {
-        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-            context.duration = 0.3;
-            [self layoutMiniCharts];
-        }];
-    } else {
-        [self layoutMiniCharts];
-    }
-}
 
 #pragma mark - Actions
 
@@ -900,10 +910,7 @@
     }
 }
 
-- (void)columnsChanged:(id)sender {
-    NSInteger newColumns = self.columnsControl.selectedSegment + 1;
-    [self setColumnsCount:newColumns animated:YES];
-}
+
 
 - (void)refreshButtonClicked:(id)sender {
     self.refreshButton.enabled = NO;
@@ -1145,7 +1152,11 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     BOOL savedShowVolume = [defaults boolForKey:kMultiChartShowVolumeKey];
     NSInteger savedColumnsCount = [defaults integerForKey:kMultiChartColumnsCountKey];
     NSString *savedSymbols = [defaults stringForKey:kMultiChartSymbolsKey];
-    
+    NSInteger savedRows = [defaults integerForKey:@"MultiChart_GridRows"];
+      NSInteger savedColumns = [defaults integerForKey:@"MultiChart_GridColumns"];
+      
+      if (savedRows > 0) self.gridRows = savedRows;
+      if (savedColumns > 0) self.gridColumns = savedColumns;
     // Applica le impostazioni caricate con validazione
     
     // Chart Type (default: Line se non salvato)
@@ -1215,8 +1226,8 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     [defaults setInteger:self.maxBars forKey:kMultiChartMaxBarsKey];
     [defaults setBool:self.showVolume forKey:kMultiChartShowVolumeKey];
     [defaults setInteger:self.columnsCount forKey:kMultiChartColumnsCountKey];
-    [defaults setObject:self.symbolsString forKey:kMultiChartSymbolsKey];
-    
+    [defaults setInteger:self.gridRows forKey:@"MultiChart_GridRows"];
+      [defaults setInteger:self.gridColumns forKey:@"MultiChart_GridColumns"];
     // Forza la sincronizzazione immediata
     [defaults synchronize];
     
@@ -1253,15 +1264,14 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         self.volumeCheckbox.state = self.showVolume ? NSControlStateValueOn : NSControlStateValueOff;
     }
     
-    // Columns Control
-    if (self.columnsControl && self.columnsCount >= 1 && self.columnsCount <= 5) {
-        self.columnsControl.selectedSegment = self.columnsCount - 1;
-    }
     
-    // Symbols Text Field
-    if (self.symbolsTextField) {
-        self.symbolsTextField.stringValue = self.symbolsString ?: @"";
-    }
+    if (self.rowsField) {
+           self.rowsField.integerValue = self.gridRows;
+       }
+       if (self.columnsField) {
+           self.columnsField.integerValue = self.gridColumns;
+       }
+
     
     NSLog(@"MultiChartWidget: Updated UI from settings");
 }
@@ -1310,13 +1320,7 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     [self saveSettingsToUserDefaults];
 }
 
-- (void)columnsChangedWithAutoSave:(id)sender {
-    // Chiama il metodo originale
-    [self columnsChanged:sender];
-    
-    // Salva automaticamente
-    [self saveSettingsToUserDefaults];
-}
+
 
 - (void)symbolsChangedWithAutoSave:(id)sender {
     // Chiama il metodo originale
@@ -1371,14 +1375,22 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         self.volumeCheckbox.action = @selector(volumeCheckboxChangedWithAutoSave:);
     }
     
-    if (self.columnsControl) {
-        self.columnsControl.target = self;
-        self.columnsControl.action = @selector(columnsChangedWithAutoSave:);
-    }
+    
     
     if (self.symbolsTextField) {
         self.symbolsTextField.target = self;
-        self.symbolsTextField.action = @selector(symbolsChangedWithAutoSave:);
+        self.symbolsTextField.action = @selector(symbolsChanged:); // Senza auto-save
+    }
+
+    // ✅ AGGIUNGI collegamento grid fields:
+    if (self.rowsField) {
+        self.rowsField.target = self;
+        self.rowsField.action = @selector(gridSizeChanged:);
+    }
+
+    if (self.columnsField) {
+        self.columnsField.target = self;
+        self.columnsField.action = @selector(gridSizeChanged:);
     }
     
     NSLog(@"MultiChartWidget: Auto-save action methods connected");
@@ -1389,4 +1401,36 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     [self saveSettingsToUserDefaults];
     NSLog(@"MultiChartWidget: Final settings save on exit");
 }
+
+
+#pragma mark - ✅ NUOVI ACTION METHODS
+
+// ✅ NUOVO: Reset simboli (pulisce solo textfield)
+- (void)resetSymbolsClicked:(id)sender {
+    self.symbolsTextField.stringValue = @"";
+    // Non tocca i simboli esistenti nei miniChart
+    NSLog(@"MultiChartWidget: Symbols field reset");
+}
+
+- (void)resetSymbolsField {
+    self.symbolsTextField.stringValue = @"";
+}
+
+// ✅ NUOVO: Gestione cambio griglia
+- (void)gridSizeChanged:(id)sender {
+    NSInteger newRows = self.rowsField.integerValue;
+    NSInteger newColumns = self.columnsField.integerValue;
+    
+    if (newRows < 1) newRows = 1;
+    if (newColumns < 1) newColumns = 1;
+    
+    self.gridRows = newRows;
+    self.gridColumns = newColumns;
+    
+    // Ricalcola layout
+    [self layoutMiniCharts];
+    
+    NSLog(@"MultiChartWidget: Grid changed to %ldx%ld", (long)newRows, (long)newColumns);
+}
+
 @end

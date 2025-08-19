@@ -22,6 +22,13 @@
 @property (nonatomic, strong) NSArray<NSString *> *symbols;
 @property (nonatomic, copy) NSString *symbolsString;  // Simboli separati da virgola
 
+
+@property (nonatomic, strong) NSButton *resetSymbolsButton;      // NUOVO: Pulsante reset simboli
+@property (nonatomic, strong) NSTextField *rowsField;           // NUOVO: Campo per numero righe
+@property (nonatomic, strong) NSTextField *columnsField;       // NUOVO: Campo per numero colonne
+@property (nonatomic, assign) NSInteger gridRows;              // NUOVO: Numero di righe nella griglia
+@property (nonatomic, assign) NSInteger gridColumns;           // NUOVO: Numero di colonne nella griglia
+
 // UI Components - REMOVED readonly to allow internal assignment
 @property (nonatomic, strong) NSTextField *symbolsTextField;
 @property (nonatomic, strong) NSPopUpButton *chartTypePopup;
@@ -29,7 +36,6 @@
 @property (nonatomic, strong) NSPopUpButton *scaleTypePopup;
 @property (nonatomic, strong) NSTextField *maxBarsField;
 @property (nonatomic, strong) NSButton *volumeCheckbox;
-@property (nonatomic, strong) NSSegmentedControl *columnsControl;
 
 // Mini charts container - REMOVED readonly to allow internal assignment
 @property (nonatomic, strong) NSScrollView *scrollView;
@@ -45,6 +51,7 @@
 // Updates
 - (void)refreshAllCharts;
 - (void)refreshChartForSymbol:(NSString *)symbol;
+- (void)resetSymbolsField;                              // NUOVO: Reset simboli dal textfield
 
 // Layout
 - (void)setColumnsCount:(NSInteger)count animated:(BOOL)animated;

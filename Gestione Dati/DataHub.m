@@ -116,7 +116,8 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
         } else {
             self.mainContext = self.persistentContainer.viewContext;
             NSLog(@"Core Data stack loaded successfully");
-            
+            self.mainContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy;
+
             // ✅ NUOVO: Setup sistema archiviazione automatica
             [self setupAutomaticArchiving];
         }

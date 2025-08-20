@@ -305,7 +305,7 @@ extern NSString *const DataHubDataLoadedNotification;
         [self.objectsPanel.topAnchor constraintEqualToAnchor:self.panelsSplitView.topAnchor],
         [self.objectsPanel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
         [self.objectsPanel.bottomAnchor constraintEqualToAnchor:self.panelsSplitView.bottomAnchor],
-        [self.objectsPanel.widthAnchor constraintEqualToConstant:200], // Fixed width for objects panel
+        [self.objectsPanel.widthAnchor constraintEqualToConstant:150], // Fixed width for objects panel
         
         // Main split view for chart panels
         [self.panelsSplitView.topAnchor constraintEqualToAnchor:self.symbolTextField.bottomAnchor constant:8],
@@ -377,7 +377,7 @@ extern NSString *const DataHubDataLoadedNotification;
 
 
 - (void)setupChartDefaults {
-    self.currentSymbol = @"CRCL";
+    self.currentSymbol = @"";
     self.currentTimeframe = ChartTimeframeDaily;
     
     // NUOVO: Default preferences

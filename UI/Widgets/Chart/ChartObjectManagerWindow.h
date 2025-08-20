@@ -19,14 +19,23 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, weak) DataHub *dataHub;
 @property (nonatomic, strong) NSString *currentSymbol;
 
-// UI Components
+// UI Components - Existing
 @property (nonatomic, strong) NSOutlineView *layersOutlineView;
 @property (nonatomic, strong) NSTableView *objectsTableView;
 @property (nonatomic, strong) NSTextField *symbolLabel;
 
+// UI Components - NEW Layer Management Toolbar
+@property (nonatomic, strong) NSView *layerToolbar;
+@property (nonatomic, strong) NSButton *addLayerButton;
+@property (nonatomic, strong) NSButton *deleteLayerButton;
+@property (nonatomic, strong) NSButton *renameLayerButton;
+
 // Selected state
 @property (nonatomic, strong, nullable) ChartLayerModel *selectedLayer;
 @property (nonatomic, strong, nullable) ChartObjectModel *selectedObject;
+
+// Drag & Drop support
+@property (nonatomic, strong) ChartObjectModel *draggedObject;
 
 // Initialization
 - (instancetype)initWithObjectsManager:(ChartObjectsManager *)objectsManager

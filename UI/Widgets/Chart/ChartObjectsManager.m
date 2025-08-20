@@ -81,8 +81,13 @@
 #pragma mark - Object Management
 
 - (ChartObjectModel *)createObjectOfType:(ChartObjectType)type inLayer:(ChartLayerModel *)layer {
+    // ✅ NUOVO: Se non è specificato un layer, usa/crea layer automaticamente
     if (!layer) {
-        NSLog(@"❌ ChartObjectsManager: Cannot create object - no layer specified");
+        layer = [self ensureActiveLayerForObjectCreation];
+    }
+    
+    if (!layer) {
+        NSLog(@"❌ ChartObjectsManager: Cannot create object - failed to get/create layer");
         return nil;
     }
     
@@ -93,7 +98,8 @@
     ChartObjectModel *object = [ChartObjectModel objectWithType:type name:uniqueName];
     [layer addObject:object];
     
-    // ❌ RIMOSSO: [self saveToDataHub]; - Non salvare immediatamente!
+    // Set as active layer
+    self.activeLayer = layer;
     
     NSLog(@"✅ ChartObjectsManager: Created object '%@' in layer '%@' (not saved yet)", uniqueName, layer.name);
     return object;
@@ -368,5 +374,30 @@
     NSLog(@"💾 ChartObjectsManager: Manual save completed");
 }
 
+#pragma mark - Lazy Layer Creation
 
+- (ChartLayerModel *)ensureActiveLayerForObjectCreation {
+    // Se esiste già un layer attivo, usalo
+    if (self.activeLayer) {
+        NSLog(@"📋 ChartObjectsManager: Using existing active layer '%@'", self.activeLayer.name);
+        return self.activeLayer;
+    }
+    
+    // Se esistono layer ma nessuno è attivo, prendi il primo
+    if (self.layers.count > 0) {
+        self.activeLayer = self.layers.firstObject;
+        NSLog(@"📋 ChartObjectsManager: Set first layer '%@' as active", self.activeLayer.name);
+        return self.activeLayer;
+    }
+    
+    // ✅ LAZY CREATION: Se non esistono layer, crea "Default" automaticamente
+    NSLog(@"💡 ChartObjectsManager: No layers exist - creating default layer for object creation");
+    
+    ChartLayerModel *defaultLayer = [self createLayerWithName:@"Default"];
+    
+    // NON salvare ancora - sarà salvato quando l'oggetto viene completato
+    NSLog(@"✅ ChartObjectsManager: Created lazy layer '%@' (not saved yet)", defaultLayer.name);
+    
+    return defaultLayer;
+}
 @end

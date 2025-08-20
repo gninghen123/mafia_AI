@@ -1136,6 +1136,10 @@
         // ✅ OGGETTO GIÀ COMPLETO: Non aggiungere altri CP, finisci
         NSLog(@"✅ Object already complete, finishing creation");
         [self finishCreatingObject];
+        
+        // ✅ AGGIUNGI QUESTA CHIAMATA:
+        [self finalizeObjectCreation:self.objectsManager.activeLayer.objects.lastObject];
+        
         [self notifyObjectCreationCompleted];
         return;
     }
@@ -1146,7 +1150,7 @@
     if (needsMorePoints) {
         // Create next CP at current mouse position
         ControlPointModel *nextCP = [self controlPointFromScreenPoint:self.currentMousePosition
-                                                          indicatorRef:@"close"];
+                                                      indicatorRef:@"close"];
         if (nextCP) {
             [self.tempControlPoints addObject:nextCP];
             self.currentCPSelected = nextCP;
@@ -1160,6 +1164,10 @@
         // Object is complete
         NSLog(@"✅ Object creation completed in consolidate");
         [self finishCreatingObject];
+        
+        // ✅ AGGIUNGI QUESTA CHIAMATA:
+        [self finalizeObjectCreation:self.objectsManager.activeLayer.objects.lastObject];
+        
         [self notifyObjectCreationCompleted];
     }
 }
@@ -1203,7 +1211,23 @@
 }
 
 
-
+- (void)finalizeObjectCreation:(ChartObjectModel *)object {
+    if (!object) return;
+    
+    NSLog(@"💾 ChartObjectRenderer: Finalizing object creation for '%@'", object.name);
+    
+    // Salva tutto nel DataHub (incluso eventuale layer lazy-created)
+    [self.objectsManager saveToDataHub];
+    
+    // Notifica UI refresh
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"ChartObjectsChanged"
+                                                        object:self
+                                                      userInfo:@{@"symbol": self.objectsManager.currentSymbol ?: @""}];
+    
+    NSLog(@"✅ ChartObjectRenderer: Object creation finalized and saved");
+    NSLog(@"💾 SENDING NOTIFICATION for symbol: %@", self.objectsManager.currentSymbol);
+    NSLog(@"💾 Manager has %lu layers", (unsigned long)self.objectsManager.layers.count);
+}
 
 
 - (void)updateEditingHoverAtPoint:(NSPoint)screenPoint {

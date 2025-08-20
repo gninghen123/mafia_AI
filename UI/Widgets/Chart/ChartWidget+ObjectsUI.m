@@ -283,9 +283,6 @@ static const void *kSplitViewLeadingConstraintKey = &kSplitViewLeadingConstraint
     NSLog(@"🎨 ChartWidget: Activated object type %ld with lock: %@",
           (long)type, lockEnabled ? @"YES" : @"NO");
     
-    // Non creiamo più l'oggetto subito - solo settiamo lo stato
-    // Il ChartPanelView chiederà il tipo attivo tramite getActiveObjectType nel mouseDown
-    
     // Trova il panel principale
     ChartPanelView *mainPanel = [self findMainChartPanel];
     if (!mainPanel) {
@@ -297,9 +294,14 @@ static const void *kSplitViewLeadingConstraintKey = &kSplitViewLeadingConstraint
     if (!mainPanel.objectRenderer) {
         [mainPanel setupObjectsRendererWithManager:self.objectsManager];
     }
+    
+    // ✅ NUOVO: Lazy layer creation preparata per quando l'oggetto sarà creato
+    // Non creiamo il layer ora, ma prepariamo il sistema per crearlo al bisogno
+    
+    // Notifica il panel che può refresh (potrebbe aver creato layer)
     [panel refreshObjectManager];
 
-    NSLog(@"✅ ChartWidget: Ready for object creation type %ld", (long)type);
+    NSLog(@"✅ ChartWidget: Ready for object creation type %ld (lazy layer creation enabled)", (long)type);
 }
 
 - (void)objectsPanel:(id)panel didDeactivateObjectType:(ChartObjectType)type {

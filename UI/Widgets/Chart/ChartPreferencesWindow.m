@@ -32,7 +32,7 @@
 
 - (instancetype)initWithChartWidget:(ChartWidget *)chartWidget {
     // Create larger window to accommodate new controls
-    NSRect windowFrame = NSMakeRect(0, 0, 500, 480);
+    NSRect windowFrame = NSMakeRect(0, 0, 500, 600);
     NSWindow *window = [[NSWindow alloc] initWithContentRect:windowFrame
                                                    styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
                                                      backing:NSBackingStoreBuffered
@@ -90,7 +90,7 @@
     NSView *contentView = self.window.contentView;
     
     // Create scroll view for content (since we have many controls now)
-    NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 500, 480)];
+    NSScrollView *scrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 500, 600)];
     scrollView.hasVerticalScroller = YES;
     scrollView.autohidesScrollers = YES;
     [contentView addSubview:scrollView];

@@ -198,7 +198,8 @@
         @{@"title": @"Trailing Fibo", @"type": @(ChartObjectTypeTrailingFibo)},
         @{@"title": @"Trailing Between", @"type": @(ChartObjectTypeTrailingFiboBetween)},
         @{@"title": @"Channel", @"type": @(ChartObjectTypeChannel)},        // AGGIUNTO
-        @{@"title": @"Target", @"type": @(ChartObjectTypeTarget)},          // AGGIUNTO
+        @{@"title": @"Target", @"type": @(ChartObjectTypeTarget)},
+        @{@"title": @"Free Draw", @"type": @(ChartObjectTypeFreeDrawing)},  
         @{@"title": @"Circle", @"type": @(ChartObjectTypeCircle)}
     ];
     

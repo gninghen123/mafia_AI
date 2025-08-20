@@ -46,18 +46,11 @@ NS_ASSUME_NONNULL_BEGIN
                   needExtendedHours:(BOOL)needExtendedHours
                         completion:(void (^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion;
 
-// E ANCHE aggiornare il metodo esistente per backward compatibility:
-- (void)getHistoricalBarsForSymbol:(NSString *)symbol
-                         timeframe:(BarTimeframe)timeframe
-                          barCount:(NSInteger)barCount
-                        completion:(void (^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion;
-// Questo metodo dovrebbe internamente chiamare quello nuovo con needExtendedHours = NO
-
-// Get historical data for date range
 - (void)getHistoricalBarsForSymbol:(NSString *)symbol
                          timeframe:(BarTimeframe)timeframe
                          startDate:(NSDate *)startDate
                            endDate:(NSDate *)endDate
+                  needExtendedHours:(BOOL)needExtendedHours
                         completion:(void(^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion;
 
 #pragma mark - Company Information with Smart Caching
@@ -105,12 +98,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)clearMarketListCache;
 - (NSDictionary *)getMarketListCacheStatistics;
 
-- (void)getHistoricalBarsForSymbol:(NSString *)symbol
-                         timeframe:(BarTimeframe)timeframe
-                         startDate:(NSDate *)startDate
-                           endDate:(NSDate *)endDate
-                  needExtendedHours:(BOOL)needExtendedHours
-                        completion:(void(^)(NSArray<HistoricalBarModel *> *bars, BOOL isFresh))completion;
+
 @end
 
 NS_ASSUME_NONNULL_END

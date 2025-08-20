@@ -390,7 +390,7 @@ extern NSString *const DataHubDataLoadedNotification;
     // 🆕 NEW: Set initial date range for default timeframe (Daily)
     self.currentDateRangeDays = [self getDefaultDaysForTimeframe:ChartTimeframeDaily];
     
-    
+
     self.chartPanels = [NSMutableArray array];
     self.objectsManager = [ChartObjectsManager managerForSymbol:self.currentSymbol];
     
@@ -400,6 +400,8 @@ extern NSString *const DataHubDataLoadedNotification;
     self.yRangeMin = 0;
     self.yRangeMax = 0;
     self.isYRangeOverridden = NO;
+    [ChartPreferencesWindow loadDefaultPreferencesForChartWidget:self];
+
 }
 
 - (void)setupInitialUI {
@@ -899,7 +901,9 @@ extern NSString *const DataHubDataLoadedNotification;
 
 - (void)zoomToRange:(NSInteger)startIndex endIndex:(NSInteger)endIndex {
     if (!self.chartData || self.chartData.count == 0) return;
-    
+    if (self.visibleStartIndex == startIndex && self.visibleEndIndex == endIndex) {
+        return;
+    }
     // ✅ FIX: Clamp indices ai valori validi dell'array
     startIndex = MAX(0, startIndex);
     endIndex = MIN(self.chartData.count , endIndex);  // ❌ ERA: self.chartData.count
@@ -1358,7 +1362,7 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 - (void)preferencesDidChange:(BOOL)needsDataReload {
-    NSLog(@"⚙️ Chart preferences changed - Data reload needed: %@", needsDataReload ? @"YES" : @"NO");
+    /*NSLog(@"⚙️ Chart preferences changed - Data reload needed: %@", needsDataReload ? @"YES" : @"NO");
     
     if (needsDataReload) {
         // Ricarica dati con nuove impostazioni trading hours
@@ -1372,7 +1376,7 @@ extern NSString *const DataHubDataLoadedNotification;
         // Solo aggiornamenti UI senza ricarica dati
         if (self.chartData) {
                     [self updatePanelsWithData:self.chartData]; // ✅ CORREZIONE: usa updatePanelsWithData:
-                }    }
+                }    }*/
 }
 
 - (void)updateAllRenderersContext {
@@ -1531,11 +1535,10 @@ extern NSString *const DataHubDataLoadedNotification;
     SmartSymbolParameters params = {0};
     
     // Default values
-    params.timeframe = self.currentTimeframe;
-    params.daysToDownload = 20;  // Default 20 giorni
     params.hasTimeframe = NO;
     params.hasDaysSpecified = NO;
-    
+    params.timeframe = self.currentTimeframe;           // Dal timeframeSegmented
+    params.daysToDownload = self.currentDateRangeDays;  // Dal dateRangeSlider attuale
     // Split input by comma
     NSArray<NSString *> *components = [input componentsSeparatedByString:@","];
     

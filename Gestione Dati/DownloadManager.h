@@ -34,6 +34,7 @@ NS_ASSUME_NONNULL_BEGIN
                            timeframe:(BarTimeframe)timeframe
                            startDate:(NSDate *)startDate
                              endDate:(NSDate *)endDate
+                    needExtendedHours:(BOOL)needExtendedHours
                           completion:(void (^)(NSArray *bars, NSError *error))completion;
 
 - (void)fetchOrderBookForSymbol:(NSString *)symbol
@@ -108,7 +109,9 @@ NS_ASSUME_NONNULL_BEGIN
                            timeframe:(BarTimeframe)timeframe
                            startDate:(NSDate *)startDate
                              endDate:(NSDate *)endDate
+                    needExtendedHours:(BOOL)needExtendedHours
                           completion:(void (^)(NSArray *bars, NSError *error))completion;
+
 
 - (void)fetchOrderBookForSymbol:(NSString *)symbol
                           depth:(NSInteger)depth

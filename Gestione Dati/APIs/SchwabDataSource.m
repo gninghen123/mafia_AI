@@ -462,28 +462,7 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     }];
 }
 
-- (void)fetchHistoricalDataForSymbol:(NSString *)symbol
-                           timeframe:(BarTimeframe)timeframe
-                           startDate:(NSDate *)startDate
-                             endDate:(NSDate *)endDate
-                          completion:(void (^)(NSArray *bars, NSError *error))completion {
-    
-    // Usa il nuovo metodo con extended hours = NO di default
-    [self fetchPriceHistoryWithDateRange:symbol
-                               startDate:startDate
-                                 endDate:endDate
-                               timeframe:timeframe
-                   needExtendedHoursData:NO  // Default: NO extended hours
-                       needPreviousClose:YES // Default: YES previous close
-                              completion:^(NSDictionary *priceHistory, NSError *error) {
-        if (error) {
-            if (completion) completion(nil, error);
-        } else {
-            // Restituisce dati grezzi per SchwabDataAdapter
-            if (completion) completion(priceHistory, nil);
-        }
-    }];
-}
+
 
 - (void)fetchHistoricalDataForSymbol:(NSString *)symbol
                            timeframe:(BarTimeframe)timeframe
@@ -630,44 +609,6 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     
     [task resume];
 }
-- (void)fetchPriceHistory:(NSString *)symbol
-               periodType:(NSString *)periodType
-                   period:(NSInteger)period
-            frequencyType:(NSString *)frequencyType
-                frequency:(NSInteger)frequency
-               completion:(void (^)(NSDictionary *priceHistory, NSError *error))completion {
-    
-    NSString *urlString = [NSString stringWithFormat:@"%@/marketdata/v1/pricehistory?symbol=%@&periodType=%@&period=%ld&frequencyType=%@&frequency=%ld",
-                          kSchwabAPIBaseURL,
-                          symbol,
-                          periodType,
-                          (long)period,
-                          frequencyType,
-                          (long)frequency];
-    
-    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
-    [request setValue:[NSString stringWithFormat:@"Bearer %@", self.accessToken]
-   forHTTPHeaderField:@"Authorization"];
-    
-    NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
-                                                 completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        if (error) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (completion) completion(nil, error);
-            });
-            return;
-        }
-        
-        NSError *parseError;
-        NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
-        
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (completion) completion(json, parseError);
-        });
-    }];
-    
-    [task resume];
-}
 
 #pragma mark - Count-Based Historical Data (NEW)
 
@@ -706,6 +647,32 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
                 if (completion) completion(priceHistory, nil);
             }
         }];
+    }];
+}
+
+- (void)fetchHistoricalDataForSymbol:(NSString *)symbol
+                           timeframe:(BarTimeframe)timeframe
+                           startDate:(NSDate *)startDate
+                             endDate:(NSDate *)endDate
+                    needExtendedHours:(BOOL)needExtendedHours
+                          completion:(void (^)(NSArray *bars, NSError *error))completion {
+    
+    NSLog(@"📊 SchwabDataSource: Protocol method called with extended hours: %@", needExtendedHours ? @"YES" : @"NO");
+    
+    // Usa il metodo principale con extended hours support
+    [self fetchPriceHistoryWithDateRange:symbol
+                               startDate:startDate
+                                 endDate:endDate
+                               timeframe:timeframe
+                   needExtendedHoursData:needExtendedHours
+                       needPreviousClose:YES
+                              completion:^(NSDictionary *priceHistory, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+        } else {
+            // Restituisce dati grezzi per SchwabDataAdapter
+            if (completion) completion(priceHistory, nil);
+        }
     }];
 }
 

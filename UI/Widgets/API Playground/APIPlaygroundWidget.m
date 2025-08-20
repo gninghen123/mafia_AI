@@ -389,20 +389,31 @@ typedef NS_ENUM(NSInteger, APICallMethod) {
     
     switch (self.selectedMethod) {
         case APICallMethodSchwabOriginal: {
-            parametersText = [NSString stringWithFormat:@"fetchPriceHistory: %@ | periodType: %@ | period: %@ | frequencyType: %@ | frequency: %@",
+            // ✅ AGGIORNATO: Mostra che ora usa fetchPriceHistoryWithDateRange
+            NSString *periodType = [self.periodTypePopup titleOfSelectedItem];
+            NSInteger period = [self.periodField.stringValue integerValue];
+            NSString *frequencyType = [self.frequencyTypePopup titleOfSelectedItem];
+            NSInteger frequency = [self.frequencyField.stringValue integerValue];
+            
+            NSDate *endDate = [NSDate date];
+            NSDate *startDate = [self calculateStartDateForPeriodType:periodType period:period fromDate:endDate];
+            
+            NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+            formatter.dateStyle = NSDateFormatterShortStyle;
+            formatter.timeStyle = NSDateFormatterShortStyle;
+            formatter.timeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
+            
+            parametersText = [NSString stringWithFormat:@"fetchPriceHistoryWithDateRange (converted from original): %@ | %@ to %@ (ET) | %@/%ld | extendedHours: NO",
                             self.symbolField.stringValue,
-                            [self.periodTypePopup titleOfSelectedItem],
-                            self.periodField.stringValue,
-                            [self.frequencyTypePopup titleOfSelectedItem],
-                            self.frequencyField.stringValue];
+                            [formatter stringFromDate:startDate],
+                            [formatter stringFromDate:endDate],
+                            frequencyType, (long)frequency];
             break;
         }
         case APICallMethodSchwabDateRange: {
             NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
             formatter.dateStyle = NSDateFormatterShortStyle;
             formatter.timeStyle = NSDateFormatterShortStyle;
-            
-            // NUOVO: Mostra date in Eastern Time nei parametri per chiarezza
             formatter.timeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
             
             parametersText = [NSString stringWithFormat:@"fetchPriceHistoryWithDateRange: %@ | %@ to %@ (ET) | timeframe: %@ | extendedHours: %@",
@@ -425,8 +436,6 @@ typedef NS_ENUM(NSInteger, APICallMethod) {
             NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
             formatter.dateStyle = NSDateFormatterShortStyle;
             formatter.timeStyle = NSDateFormatterShortStyle;
-            
-            // NUOVO: Mostra date in Eastern Time anche per DataHub
             formatter.timeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
             
             parametersText = [NSString stringWithFormat:@"DataHub call: %@ | %@ to %@ (ET) | timeframe: %@ | count: %@ | extendedHours: %@",
@@ -442,6 +451,7 @@ typedef NS_ENUM(NSInteger, APICallMethod) {
     
     self.parametersLabel.stringValue = parametersText;
 }
+
 
 - (void)executeHistoricalCall {
     [self updateParametersLabel];
@@ -475,17 +485,84 @@ typedef NS_ENUM(NSInteger, APICallMethod) {
     NSString *frequencyType = [self.frequencyTypePopup titleOfSelectedItem];
     NSInteger frequency = [self.frequencyField.stringValue integerValue];
     
-    [self.schwabDataSource fetchPriceHistory:symbol
-                                  periodType:periodType
-                                      period:period
-                               frequencyType:frequencyType
-                                   frequency:frequency
-                                  completion:^(NSDictionary *priceHistory, NSError *error) {
+    // ✅ NUOVO: Converti period/periodType in date range
+    NSDate *endDate = [NSDate date];
+    NSDate *startDate = [self calculateStartDateForPeriodType:periodType period:period fromDate:endDate];
+    
+    // ✅ NUOVO: Converti frequencyType/frequency in BarTimeframe
+    BarTimeframe timeframe = [self barTimeframeFromFrequencyType:frequencyType frequency:frequency];
+    
+    NSLog(@"📊 APIPlaygroundWidget: Converting original method call - periodType: %@, period: %ld, frequencyType: %@, frequency: %ld",
+          periodType, (long)period, frequencyType, (long)frequency);
+    NSLog(@"📊 APIPlaygroundWidget: Converted to date range: %@ to %@, timeframe: %ld",
+          startDate, endDate, (long)timeframe);
+    
+    // ✅ USA IL NUOVO METODO: fetchPriceHistoryWithDateRange con needExtendedHours: NO
+    [self.schwabDataSource fetchPriceHistoryWithDateRange:symbol
+                                                startDate:startDate
+                                                  endDate:endDate
+                                                timeframe:timeframe
+                                    needExtendedHoursData:NO  // ✅ NO extended hours per "original" method
+                                        needPreviousClose:YES
+                                               completion:^(NSDictionary *priceHistory, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             [self handleSchwabResponse:priceHistory error:error];
         });
     }];
 }
+- (NSDate *)calculateStartDateForPeriodType:(NSString *)periodType period:(NSInteger)period fromDate:(NSDate *)endDate {
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDateComponents *components = [[NSDateComponents alloc] init];
+    
+    if ([periodType isEqualToString:@"day"]) {
+        components.day = -period;
+    } else if ([periodType isEqualToString:@"month"]) {
+        components.month = -period;
+    } else if ([periodType isEqualToString:@"year"]) {
+        components.year = -period;
+    } else if ([periodType isEqualToString:@"ytd"]) {
+        // Year to date - torna al 1 gennaio dell'anno corrente
+        NSDateComponents *yearComponents = [calendar components:NSCalendarUnitYear fromDate:endDate];
+        return [calendar dateFromComponents:yearComponents];
+    } else {
+        // Default: 1 anno
+        components.year = -1;
+    }
+    
+    return [calendar dateByAddingComponents:components toDate:endDate options:0];
+}
+
+// ✅ NUOVO: Converti frequencyType/frequency in BarTimeframe
+- (BarTimeframe)barTimeframeFromFrequencyType:(NSString *)frequencyType frequency:(NSInteger)frequency {
+    if ([frequencyType isEqualToString:@"minute"]) {
+        switch (frequency) {
+            case 1:
+                return BarTimeframe1Min;
+            case 5:
+                return BarTimeframe5Min;
+            case 15:
+                return BarTimeframe15Min;
+            case 30:
+                return BarTimeframe30Min;
+            case 60:
+                return BarTimeframe1Hour;
+            case 240:
+                return BarTimeframe4Hour;
+            default:
+                return BarTimeframe1Min;
+        }
+    } else if ([frequencyType isEqualToString:@"daily"]) {
+        return BarTimeframe1Day;
+    } else if ([frequencyType isEqualToString:@"weekly"]) {
+        return BarTimeframe1Week;
+    } else if ([frequencyType isEqualToString:@"monthly"]) {
+        return BarTimeframe1Month;
+    }
+    
+    // Default
+    return BarTimeframe1Day;
+}
+
 
 - (void)executeSchwabDateRangeAPICall {
     NSString *symbol = self.symbolField.stringValue;

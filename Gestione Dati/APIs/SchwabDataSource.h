@@ -37,14 +37,6 @@
 - (void)fetchMarketHours:(NSString *)market
               completion:(void (^)(NSDictionary *hours, NSError *error))completion;
 
-// ESISTENTE: Metodo originale
-- (void)fetchPriceHistory:(NSString *)symbol
-               periodType:(NSString *)periodType
-                   period:(NSInteger)period
-            frequencyType:(NSString *)frequencyType
-                frequency:(NSInteger)frequency
-               completion:(void (^)(NSDictionary *priceHistory, NSError *error))completion;
-
 // NUOVO: Metodo con date range + extended hours
 - (void)fetchPriceHistoryWithDateRange:(NSString *)symbol
                              startDate:(NSDate *)startDate

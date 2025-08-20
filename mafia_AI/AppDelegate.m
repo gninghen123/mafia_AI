@@ -27,6 +27,7 @@
 @implementation AppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
+
     NSLog(@"AppDelegate: applicationDidFinishLaunching called");
     
     // ADD THESE LINES to fix window restoration crashes:

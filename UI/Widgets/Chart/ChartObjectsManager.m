@@ -400,4 +400,41 @@
     
     return defaultLayer;
 }
+
+#pragma mark - Symbol Management (NEW)
+
+- (void)setCurrentSymbol:(NSString *)currentSymbol {
+    NSString *previousSymbol = _currentSymbol;
+    
+    // Evita lavoro inutile se è lo stesso symbol
+    if ([currentSymbol isEqualToString:previousSymbol]) {
+        return;
+    }
+    
+    NSLog(@"🔄 ChartObjectsManager: Changing symbol from '%@' to '%@'", previousSymbol ?: @"none", currentSymbol);
+    
+    // Aggiorna il symbol
+    _currentSymbol = currentSymbol ? currentSymbol : @"";
+    
+    // Clear stato precedente
+    [self clearSelection];
+    
+    // Clear layers precedenti
+    [self.layers removeAllObjects];
+    self.activeLayer = nil;
+    
+    // Carica dati per il nuovo symbol
+    [self loadFromDataHub];
+    
+    // Invalida renderer se esiste
+    if (self.coordinateRenderer) {
+        [self.coordinateRenderer invalidateObjectsLayer];
+        [self.coordinateRenderer invalidateEditingLayer];
+        NSLog(@"✅ ChartObjectsManager: Invalidated renderer for symbol change");
+    }
+    
+    NSLog(@"✅ ChartObjectsManager: Symbol change completed - loaded %lu layers for '%@'",
+          (unsigned long)self.layers.count, _currentSymbol);
+}
+
 @end

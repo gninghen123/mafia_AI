@@ -1295,15 +1295,25 @@
 - (void)finishCreatingObject {
     if (!self.isInCreationMode || self.tempControlPoints.count == 0) return;
     
-    // Create final object in active layer del MODEL
-    ChartLayerModel *activeLayer = self.objectsManager.activeLayer;
+    // ✅ CORREZIONE: Usa ensureActiveLayerForObjectCreation invece di creare layer direttamente
+    // Questo è il metodo corretto che gestisce la creazione lazy dei layer
+    ChartLayerModel *activeLayer = [self.objectsManager ensureActiveLayerForObjectCreation];
+    
     if (!activeLayer) {
-        activeLayer = [self.objectsManager createLayerWithName:@"Drawing"];
+        NSLog(@"❌ ChartObjectRenderer: Failed to ensure active layer");
+        [self cancelCreatingObject];
+        return;
     }
     
-    // ✅ Crea oggetto SENZA salvare
+    // ✅ Crea oggetto nel layer assicurato
     ChartObjectModel *finalObject = [self.objectsManager createObjectOfType:self.creationObjectType
                                                                      inLayer:activeLayer];
+    
+    if (!finalObject) {
+        NSLog(@"❌ ChartObjectRenderer: Failed to create object");
+        [self cancelCreatingObject];
+        return;
+    }
     
     // Copy control points from temp to final
     for (ControlPointModel *cp in self.tempControlPoints) {
@@ -1317,7 +1327,8 @@
     [self cancelCreatingObject];
     [self invalidateObjectsLayer];
     
-    NSLog(@"✅ Created and saved complete object '%@' in layer '%@'", finalObject.name, activeLayer.name);
+    NSLog(@"✅ Created and saved complete object '%@' in layer '%@'",
+          finalObject.name, activeLayer.name);
 }
 
 

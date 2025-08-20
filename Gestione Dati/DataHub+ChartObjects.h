@@ -89,6 +89,18 @@ NS_ASSUME_NONNULL_BEGIN
 /// @return Array of symbol strings that have chart objects
 - (NSArray<NSString *> *)getSymbolsWithChartObjects;
 
+
+#pragma mark - Temporary Cleanup Methods (DEBUG/DEVELOPMENT ONLY)
+
+/// ⚠️ METODO TEMPORANEO: Cancella TUTTI i chart objects e layers da TUTTI i symboli
+/// ⚠️ ATTENZIONE: Questo cancellerà PERMANENTEMENTE tutti gli oggetti di tutti i symboli!
+/// ⚠️ Usare solo per risolvere conflitti di struttura dati durante sviluppo
+- (void)clearAllChartObjectsAndLayers;
+
+/// ⚠️ METODO ALTERNATIVO: Cancella tutto per un singolo symbol specifico (più sicuro)
+/// @param symbol Il symbol da pulire completamente
+- (void)clearAllChartObjectsForSingleSymbol:(NSString *)symbol;
+
 @end
 
 NS_ASSUME_NONNULL_END

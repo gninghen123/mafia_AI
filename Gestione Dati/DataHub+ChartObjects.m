@@ -414,4 +414,116 @@
     return model;
 }
 
+#pragma mark - Temporary Cleanup Methods (DEBUG/DEVELOPMENT ONLY)
+
+/// ⚠️ METODO TEMPORANEO: Cancella TUTTI i chart objects e layers da TUTTI i symboli
+/// Usare solo per risolvere conflitti di struttura dati durante sviluppo
+- (void)clearAllChartObjectsAndLayers {
+    NSLog(@"🚨 DataHub: Starting COMPLETE chart objects cleanup (ALL SYMBOLS)");
+    
+    // Get all symbols that have chart objects
+    NSArray<NSString *> *symbolsWithObjects = [self getSymbolsWithChartObjects];
+    NSUInteger totalSymbols = symbolsWithObjects.count;
+    
+    NSLog(@"🎯 DataHub: Found %lu symbols with chart objects to clear", (unsigned long)totalSymbols);
+    
+    // Count total objects before deletion (for logging)
+    NSUInteger totalObjectsCount = 0;
+    NSUInteger totalLayersCount = 0;
+    
+    for (NSString *symbol in symbolsWithObjects) {
+        NSUInteger objectCount = [self getChartObjectsCountForSymbol:symbol];
+        NSArray<ChartLayerModel *> *layers = [self getChartLayersForSymbol:symbol];
+        
+        totalObjectsCount += objectCount;
+        totalLayersCount += layers.count;
+        
+        NSLog(@"  📊 %@: %lu objects in %lu layers", symbol, (unsigned long)objectCount, (unsigned long)layers.count);
+    }
+    
+    // Perform deletion using Core Data batch delete for efficiency
+    [self performBatchDeleteChartObjects];
+    [self performBatchDeleteChartLayers];
+    
+    // Force save context
+    [self saveContext];
+    
+    // Verify deletion
+    NSArray<NSString *> *remainingSymbols = [self getSymbolsWithChartObjects];
+    
+    NSLog(@"✅ DataHub: COMPLETE cleanup finished!");
+    NSLog(@"   📊 Deleted: %lu objects from %lu layers across %lu symbols",
+          (unsigned long)totalObjectsCount, (unsigned long)totalLayersCount, (unsigned long)totalSymbols);
+    NSLog(@"   🔍 Remaining symbols with objects: %lu", (unsigned long)remainingSymbols.count);
+    
+    if (remainingSymbols.count > 0) {
+        NSLog(@"⚠️ Warning: Some symbols still have objects: %@", remainingSymbols);
+    }
+    
+    // Post global notification for UI refresh
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"DataHubChartObjectsGlobalClear"
+                                                        object:self
+                                                      userInfo:@{@"deletedObjects": @(totalObjectsCount),
+                                                                @"deletedLayers": @(totalLayersCount),
+                                                                @"affectedSymbols": symbolsWithObjects}];
+}
+
+/// Helper method for batch deletion of chart objects
+- (void)performBatchDeleteChartObjects {
+    NSFetchRequest *deleteObjectsRequest = [NSFetchRequest fetchRequestWithEntityName:@"ChartObject"];
+    NSBatchDeleteRequest *batchDeleteObjects = [[NSBatchDeleteRequest alloc] initWithFetchRequest:deleteObjectsRequest];
+    batchDeleteObjects.resultType = NSBatchDeleteResultTypeCount;
+    
+    NSError *error;
+    NSBatchDeleteResult *result = [self.mainContext executeRequest:batchDeleteObjects error:&error];
+    
+    if (error) {
+        NSLog(@"❌ DataHub: Error batch deleting chart objects: %@", error);
+    } else {
+        NSLog(@"🗑️ DataHub: Batch deleted %@ chart objects", result.result);
+    }
+}
+
+/// Helper method for batch deletion of chart layers
+- (void)performBatchDeleteChartLayers {
+    NSFetchRequest *deleteLayersRequest = [NSFetchRequest fetchRequestWithEntityName:@"ChartLayer"];
+    NSBatchDeleteRequest *batchDeleteLayers = [[NSBatchDeleteRequest alloc] initWithFetchRequest:deleteLayersRequest];
+    batchDeleteLayers.resultType = NSBatchDeleteResultTypeCount;
+    
+    NSError *error;
+    NSBatchDeleteResult *result = [self.mainContext executeRequest:batchDeleteLayers error:&error];
+    
+    if (error) {
+        NSLog(@"❌ DataHub: Error batch deleting chart layers: %@", error);
+    } else {
+        NSLog(@"🗑️ DataHub: Batch deleted %@ chart layers", result.result);
+    }
+}
+
+/// ⚠️ METODO ALTERNATIVO: Cancella tutto per un singolo symbol (più sicuro)
+/// @param symbol Il symbol da pulire (nil per saltare)
+- (void)clearAllChartObjectsForSingleSymbol:(NSString *)symbol {
+    if (!symbol || symbol.length == 0) {
+        NSLog(@"⚠️ DataHub: Invalid symbol provided for cleanup");
+        return;
+    }
+    
+    NSLog(@"🧹 DataHub: Cleaning ALL chart objects for symbol: %@", symbol);
+    
+    NSUInteger objectCount = [self getChartObjectsCountForSymbol:symbol];
+    NSArray<ChartLayerModel *> *layers = [self getChartLayersForSymbol:symbol];
+    
+    NSLog(@"  📊 Found %lu objects in %lu layers to delete", (unsigned long)objectCount, (unsigned long)layers.count);
+    
+    // Use existing method
+    [self clearChartObjectsForSymbol:symbol];
+    
+    // Verify cleanup
+    NSUInteger remainingObjects = [self getChartObjectsCountForSymbol:symbol];
+    NSArray<ChartLayerModel *> *remainingLayers = [self getChartLayersForSymbol:symbol];
+    
+    NSLog(@"✅ DataHub: Symbol %@ cleanup complete", symbol);
+    NSLog(@"   🔍 Remaining: %lu objects in %lu layers", (unsigned long)remainingObjects, (unsigned long)remainingLayers.count);
+}
+
 @end

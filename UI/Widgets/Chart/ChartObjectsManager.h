@@ -33,6 +33,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (ChartLayerModel *)createLayerWithName:(NSString *)name;
 - (void)deleteLayer:(ChartLayerModel *)layer;
 - (void)moveLayer:(ChartLayerModel *)layer toIndex:(NSUInteger)index;
+- (ChartLayerModel *)ensureActiveLayerForObjectCreation;
 
 // Object management
 - (ChartObjectModel *)createObjectOfType:(ChartObjectType)type inLayer:(ChartLayerModel *)layer;

@@ -79,7 +79,8 @@ extern NSString *const DataHubDataLoadedNotification;
     for (NSView *subview in self.contentView.subviews) {
         [subview removeFromSuperview];
     }
-    
+    [self setupObjectsUI];
+
     // Setup UI programmatico seguendo il pattern degli altri widget
     [self setupUI];
     [self setupConstraints];
@@ -2188,46 +2189,26 @@ extern NSString *const DataHubDataLoadedNotification;
     NSLog(@"🔄 Loading data with current settings - Symbol: %@, Days: %ld, Timeframe: %ld",
           self.currentSymbol, (long)self.currentDateRangeDays, (long)self.currentTimeframe);
 }
+
 #pragma mark - Symbol Coordination (NEW)
 
-/**
- * Coordina il cambio symbol tra tutti i componenti del ChartWidget
- * Questo metodo va chiamato ogni volta che cambia il symbol corrente
- */
-- (void)coordinateSymbolChange:(NSString *)newSymbol {
-    if (!newSymbol || [newSymbol isEqualToString:self.currentSymbol]) {
-        return; // Nessun cambio necessario
+- (void)setCurrentSymbol:(NSString *)currentSymbol {
+    NSString *previousSymbol = _currentSymbol;
+    
+    // Evita lavoro inutile se è lo stesso symbol
+    if ([currentSymbol isEqualToString:previousSymbol]) {
+        return;
     }
     
-    NSString *oldSymbol = self.currentSymbol;
+    NSLog(@"🔄 ChartWidget: Symbol changing from '%@' to '%@'", previousSymbol ?: @"none", currentSymbol);
     
-    NSLog(@"🔄 ChartWidget: Coordinating symbol change from '%@' to '%@'", oldSymbol ?: @"none", newSymbol);
+    // Aggiorna il symbol
+    _currentSymbol = currentSymbol;
     
-    // 1. Aggiorna ObjectsManager per il nuovo symbol
+    // 1. Coordina ObjectsManager se esiste
     if (self.objectsManager) {
-        // Crea un nuovo manager per il nuovo symbol
-        ChartObjectsManager *newManager = [ChartObjectsManager managerForSymbol:newSymbol];
-        
-        // Carica i dati dal DataHub per il nuovo symbol
-        [newManager loadFromDataHub];
-        
-        // Sostituisci il manager corrente
-        self.objectsManager = newManager;
-        
-        // Aggiorna il panel principale se ha un objectRenderer
-        ChartPanelView *mainPanel = [self findMainChartPanel];
-        if (mainPanel && mainPanel.objectRenderer) {
-            // Aggiorna il manager nell'objectRenderer
-            mainPanel.objectRenderer.objectsManager = newManager;
-            newManager.coordinateRenderer = mainPanel.objectRenderer;
-            
-            // Invalida e ridisegna gli oggetti
-            [mainPanel.objectRenderer invalidateObjectsLayer];
-            [mainPanel.objectRenderer invalidateEditingLayer];
-        }
-        
-        NSLog(@"✅ ChartWidget: Updated ObjectsManager for symbol '%@' (%lu layers loaded)",
-              newSymbol, (unsigned long)newManager.layers.count);
+        self.objectsManager.currentSymbol = currentSymbol;
+        NSLog(@"✅ ChartWidget: Updated ObjectsManager for symbol '%@'", currentSymbol);
     }
     
     // 2. Refresh alerts per il nuovo symbol
@@ -2235,23 +2216,10 @@ extern NSString *const DataHubDataLoadedNotification;
     
     // 3. Aggiorna ObjectManagerWindow se aperta
     if (self.objectsPanel && self.objectsPanel.objectManagerWindow) {
-        [self.objectsPanel.objectManagerWindow updateForSymbol:newSymbol];
+        [self.objectsPanel.objectManagerWindow updateForSymbol:currentSymbol];
     }
     
-    NSLog(@"🎯 ChartWidget: Symbol coordination completed for '%@'", newSymbol);
-}
-
-/**
- * Override del setter currentSymbol per includere coordinamento automatico
- */
-- (void)setCurrentSymbol:(NSString *)currentSymbol {
-    NSString *previousSymbol = _currentSymbol;
-    _currentSymbol = currentSymbol;
-    
-    // Se è diverso dal precedente, coordina il cambio
-    if (![currentSymbol isEqualToString:previousSymbol]) {
-        [self coordinateSymbolChange:currentSymbol];
-    }
+    NSLog(@"✅ ChartWidget: Symbol coordination completed for '%@'", currentSymbol);
 }
 
 @end

@@ -14,7 +14,7 @@
 #import "ChartObjectManagerWindow.h"
 #import "ChartWidget+ObjectsUI.h"
 #import "ChartWidget+SaveData.h"
-
+#import "Quartz/Quartz.h"
 
 #pragma mark - Smart Symbol Input Parameters
 
@@ -218,108 +218,162 @@ extern NSString *const DataHubDataLoadedNotification;
     [self.contentView addSubview:self.zoomAllButton];
 }
 
+//
+// ChartWidget.m - FIXED setupConstraints method
+// Replace the existing setupConstraints method with this complete version
+
 - (void)setupConstraints {
-    // Disable autoresizing
+    // Set translatesAutoresizingMaskIntoConstraints = NO for all controls
     self.objectsPanelToggle.translatesAutoresizingMaskIntoConstraints = NO;
     self.symbolTextField.translatesAutoresizingMaskIntoConstraints = NO;
+    self.staticModeToggle.translatesAutoresizingMaskIntoConstraints = NO;
     self.objectsVisibilityToggle.translatesAutoresizingMaskIntoConstraints = NO;
     self.timeframeSegmented.translatesAutoresizingMaskIntoConstraints = NO;
-    // RIMUOVERE: self.barsCountTextField.translatesAutoresizingMaskIntoConstraints = NO;
+    self.dateRangeSlider.translatesAutoresizingMaskIntoConstraints = NO;
+    self.dateRangeLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.templatePopup.translatesAutoresizingMaskIntoConstraints = NO;
     self.preferencesButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.panelsSplitView.translatesAutoresizingMaskIntoConstraints = NO;
     self.objectsPanel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.panelsSplitView.translatesAutoresizingMaskIntoConstraints = NO;
     self.panSlider.translatesAutoresizingMaskIntoConstraints = NO;
     self.zoomOutButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.zoomInButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.zoomAllButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.staticModeToggle.translatesAutoresizingMaskIntoConstraints = NO;
-
-    // Create constraint per split view (per animazione sidebar)
+    
+    // Create the split view leading constraint that can be modified for objects panel
     self.splitViewLeadingConstraint = [self.panelsSplitView.leadingAnchor
                                       constraintEqualToAnchor:self.contentView.leadingAnchor
                                       constant:8];
     
     [NSLayoutConstraint activateConstraints:@[
-        // Top toolbar - AGGIORNATO senza barsCountTextField
+        // ===== TOP TOOLBAR ROW =====
+        
+        // Objects panel toggle (leftmost)
         [self.objectsPanelToggle.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:8],
         [self.objectsPanelToggle.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
         [self.objectsPanelToggle.widthAnchor constraintEqualToConstant:32],
         [self.objectsPanelToggle.heightAnchor constraintEqualToConstant:21],
         
+        // Symbol text field
         [self.symbolTextField.centerYAnchor constraintEqualToAnchor:self.objectsPanelToggle.centerYAnchor],
-              [self.symbolTextField.leadingAnchor constraintEqualToAnchor:self.objectsPanelToggle.trailingAnchor constant:8],
-              [self.symbolTextField.widthAnchor constraintEqualToConstant:100],
-              [self.symbolTextField.heightAnchor constraintEqualToConstant:21],
-              
-              // 👉 Static mode toggle subito dopo symbolTextField
-              [self.staticModeToggle.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
-              [self.staticModeToggle.leadingAnchor constraintEqualToAnchor:self.symbolTextField.trailingAnchor constant:8],
-              [self.staticModeToggle.widthAnchor constraintEqualToConstant:32],
-              [self.staticModeToggle.heightAnchor constraintEqualToConstant:21],
-              
-              // Objects visibility toggle spostato a destra dello static toggle
-              [self.objectsVisibilityToggle.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
-              [self.objectsVisibilityToggle.leadingAnchor constraintEqualToAnchor:self.staticModeToggle.trailingAnchor constant:8],
-              [self.objectsVisibilityToggle.widthAnchor constraintEqualToConstant:32],
-              [self.objectsVisibilityToggle.heightAnchor constraintEqualToConstant:21],
+        [self.symbolTextField.leadingAnchor constraintEqualToAnchor:self.objectsPanelToggle.trailingAnchor constant:8],
+        [self.symbolTextField.widthAnchor constraintEqualToConstant:100],
+        [self.symbolTextField.heightAnchor constraintEqualToConstant:21],
         
-        // Timeframe segments - COLLEGATO DIRETTAMENTE al visibility toggle
-        [self.timeframeSegmented.leadingAnchor constraintEqualToAnchor:self.objectsVisibilityToggle.trailingAnchor constant:8],
+        // Static mode toggle
+        [self.staticModeToggle.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
+        [self.staticModeToggle.leadingAnchor constraintEqualToAnchor:self.symbolTextField.trailingAnchor constant:8],
+        [self.staticModeToggle.widthAnchor constraintEqualToConstant:32],
+        [self.staticModeToggle.heightAnchor constraintEqualToConstant:21],
+        
+        // Objects visibility toggle
+        [self.objectsVisibilityToggle.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
+        [self.objectsVisibilityToggle.leadingAnchor constraintEqualToAnchor:self.staticModeToggle.trailingAnchor constant:8],
+        [self.objectsVisibilityToggle.widthAnchor constraintEqualToConstant:32],
+        [self.objectsVisibilityToggle.heightAnchor constraintEqualToConstant:21],
+        
+        // Timeframe segmented control
         [self.timeframeSegmented.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
+        [self.timeframeSegmented.leadingAnchor constraintEqualToAnchor:self.objectsVisibilityToggle.trailingAnchor constant:8],
         
+        // 🆕 NEW: Date Range Slider
         [self.dateRangeSlider.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
-             [self.dateRangeSlider.leadingAnchor constraintEqualToAnchor:self.timeframeSegmented.trailingAnchor constant:8],
-             [self.dateRangeSlider.widthAnchor constraintEqualToConstant:150],
-             [self.dateRangeSlider.heightAnchor constraintEqualToConstant:21],
-             
-             // 🆕 NEW: Date Range Label - positioned right of slider
-             [self.dateRangeLabel.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
-             [self.dateRangeLabel.leadingAnchor constraintEqualToAnchor:self.dateRangeSlider.trailingAnchor constant:4],
-             [self.dateRangeLabel.widthAnchor constraintEqualToConstant:80],
-             [self.dateRangeLabel.heightAnchor constraintEqualToConstant:21],
-             
-             // Template popup - NOW connected to date range label instead of timeframe
-             [self.templatePopup.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
-             [self.templatePopup.leadingAnchor constraintEqualToAnchor:self.dateRangeLabel.trailingAnchor constant:8],
-             [self.templatePopup.widthAnchor constraintEqualToConstant:100],
+        [self.dateRangeSlider.leadingAnchor constraintEqualToAnchor:self.timeframeSegmented.trailingAnchor constant:8],
+        [self.dateRangeSlider.widthAnchor constraintEqualToConstant:150],
+        [self.dateRangeSlider.heightAnchor constraintEqualToConstant:21],
         
+        // 🆕 NEW: Date Range Label
+        [self.dateRangeLabel.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
+        [self.dateRangeLabel.leadingAnchor constraintEqualToAnchor:self.dateRangeSlider.trailingAnchor constant:4],
+        [self.dateRangeLabel.widthAnchor constraintEqualToConstant:80],
+        [self.dateRangeLabel.heightAnchor constraintEqualToConstant:21],
         
-        // Preferences button - INVARIATO (all'estrema destra)
+        // Template popup - connected to date range label
+        [self.templatePopup.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
+        [self.templatePopup.leadingAnchor constraintEqualToAnchor:self.dateRangeLabel.trailingAnchor constant:8],
+        [self.templatePopup.widthAnchor constraintEqualToConstant:100],
+        
+        // Preferences button (rightmost)
         [self.preferencesButton.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
         [self.preferencesButton.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
         [self.preferencesButton.widthAnchor constraintEqualToConstant:30],
         [self.preferencesButton.heightAnchor constraintEqualToConstant:21],
         
-        // Objects panel e resto INVARIATO...
+        // ===== MAIN CONTENT AREA =====
+        
+        // Objects panel (sidebar)
         [self.objectsPanel.topAnchor constraintEqualToAnchor:self.panelsSplitView.topAnchor],
         [self.objectsPanel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
         [self.objectsPanel.bottomAnchor constraintEqualToAnchor:self.panelsSplitView.bottomAnchor],
+        [self.objectsPanel.widthAnchor constraintEqualToConstant:200], // Fixed width for objects panel
         
+        // Main split view for chart panels
         [self.panelsSplitView.topAnchor constraintEqualToAnchor:self.symbolTextField.bottomAnchor constant:8],
-        self.splitViewLeadingConstraint,
-        [self.panelsSplitView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-20],
+        self.splitViewLeadingConstraint, // This will be modified when objects panel is shown/hidden
+        [self.panelsSplitView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
         [self.panelsSplitView.bottomAnchor constraintEqualToAnchor:self.panSlider.topAnchor constant:-8],
         
-        // Bottom controls INVARIATI
-        [self.panSlider.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-6],
+        // ===== BOTTOM TOOLBAR ROW =====
+        
+        // Pan slider (takes most of the width)
+        [self.panSlider.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-8],
         [self.panSlider.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
         [self.panSlider.trailingAnchor constraintEqualToAnchor:self.zoomOutButton.leadingAnchor constant:-8],
+        [self.panSlider.heightAnchor constraintEqualToConstant:21],
         
+        // Zoom out button
         [self.zoomOutButton.centerYAnchor constraintEqualToAnchor:self.panSlider.centerYAnchor],
         [self.zoomOutButton.trailingAnchor constraintEqualToAnchor:self.zoomInButton.leadingAnchor constant:-4],
         [self.zoomOutButton.widthAnchor constraintEqualToConstant:30],
+        [self.zoomOutButton.heightAnchor constraintEqualToConstant:21],
         
+        // Zoom in button
         [self.zoomInButton.centerYAnchor constraintEqualToAnchor:self.panSlider.centerYAnchor],
         [self.zoomInButton.trailingAnchor constraintEqualToAnchor:self.zoomAllButton.leadingAnchor constant:-4],
         [self.zoomInButton.widthAnchor constraintEqualToConstant:30],
+        [self.zoomInButton.heightAnchor constraintEqualToConstant:21],
         
+        // Zoom all button (rightmost)
         [self.zoomAllButton.centerYAnchor constraintEqualToAnchor:self.panSlider.centerYAnchor],
         [self.zoomAllButton.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
-        [self.zoomAllButton.widthAnchor constraintEqualToConstant:50]
+        [self.zoomAllButton.widthAnchor constraintEqualToConstant:50],
+        [self.zoomAllButton.heightAnchor constraintEqualToConstant:21]
     ]];
+    
+    // Initially hide objects panel
+    self.objectsPanel.hidden = YES;
+    self.isObjectsPanelVisible = NO;
+    
+    NSLog(@"✅ Chart widget constraints setup completed with date range slider");
 }
 
+// 🆕 NEW: Method to update split view constraint when objects panel is toggled
+- (void)updateSplitViewConstraintForObjectsPanel:(BOOL)visible {
+    // Deactivate current constraint
+    self.splitViewLeadingConstraint.active = NO;
+    
+    if (visible) {
+        // Objects panel is visible - split view starts after objects panel
+        self.splitViewLeadingConstraint = [self.panelsSplitView.leadingAnchor
+                                          constraintEqualToAnchor:self.objectsPanel.trailingAnchor
+                                          constant:8];
+    } else {
+        // Objects panel is hidden - split view starts from left edge
+        self.splitViewLeadingConstraint = [self.panelsSplitView.leadingAnchor
+                                          constraintEqualToAnchor:self.contentView.leadingAnchor
+                                          constant:8];
+    }
+    
+    // Activate new constraint
+    self.splitViewLeadingConstraint.active = YES;
+    
+    // Animate the change
+    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+        context.duration = 0.3;
+        context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+        [self.contentView layoutSubtreeIfNeeded];
+    } completionHandler:nil];
+}
 
 
 - (void)setupChartDefaults {
@@ -1114,6 +1168,18 @@ extern NSString *const DataHubDataLoadedNotification;
 - (void)setObjectsVisible:(BOOL)visible {
     self.objectsVisibilityToggle.state = visible ? NSControlStateValueOn : NSControlStateValueOff;
     [self toggleAllObjectsVisibility:self.objectsVisibilityToggle];
+}
+
+- (void)toggleObjectsPanel:(id)sender {
+    self.isObjectsPanelVisible = !self.isObjectsPanelVisible;
+    
+    self.objectsPanel.hidden = !self.isObjectsPanelVisible;
+    self.objectsPanelToggle.state = self.isObjectsPanelVisible ? NSControlStateValueOn : NSControlStateValueOff;
+    
+    // Update the split view constraint
+    [self updateSplitViewConstraintForObjectsPanel:self.isObjectsPanelVisible];
+    
+    NSLog(@"📊 Objects panel %@", self.isObjectsPanelVisible ? @"shown" : @"hidden");
 }
 
 #pragma mark - Alert Management
@@ -2032,10 +2098,11 @@ extern NSString *const DataHubDataLoadedNotification;
     [self updateDateRangeLabel];
     
     // Reload data with new date range
+    /*
     if (self.currentSymbol && self.currentSymbol.length > 0) {
         [self loadDataWithCurrentSettings];
     }
-    
+    */
     NSLog(@"📅 Date range slider changed to: %ld days", (long)self.currentDateRangeDays);
 }
 

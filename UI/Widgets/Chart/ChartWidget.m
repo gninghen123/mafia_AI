@@ -40,6 +40,10 @@ extern NSString *const DataHubDataLoadedNotification;
 
 @interface ChartWidget () <NSTextFieldDelegate,ObjectsPanelDelegate>
 
+
+@property (nonatomic, assign) double lastSliderValue;
+@property (nonatomic, assign) BOOL isUpdatingSlider;
+
 // Internal data
 @property (nonatomic, strong) NSArray<HistoricalBarModel *> *chartData;
 
@@ -451,6 +455,8 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 - (void)ensureRenderersAreSetup {
+    if (self.renderersInitialized) return;  // ✅ Evita setup multipli
+    
     for (ChartPanelView *panel in self.chartPanels) {
         
         // ✅ SETUP OBJECTS RENDERER: SOLO per il pannello dei prezzi (security)
@@ -473,6 +479,7 @@ extern NSString *const DataHubDataLoadedNotification;
             NSLog(@"🚨 Setup alert renderer for panel %@", panel.panelType);
         }
     }
+    self.renderersInitialized = YES;
 }
 
 - (void)viewDidAppear{
@@ -488,9 +495,8 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 - (void)setupDefaultPanels {
-    
-    
-    
+    self.renderersInitialized = NO;  // Reset flag
+
     // Remove any existing panels
     [self.chartPanels removeAllObjects];
     
@@ -736,6 +742,8 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 - (void)panSliderChanged:(NSSlider *)sender {
+    if (self.isUpdatingSlider) return;  // ✅ Ignora se update programmatico
+
     if (!self.chartData || self.chartData.count == 0) return;
     
     NSInteger currentRange = self.visibleEndIndex - self.visibleStartIndex;
@@ -930,7 +938,7 @@ extern NSString *const DataHubDataLoadedNotification;
     if (!self.chartData || self.chartData.count == 0) return;
     
     // ✅ FIX: endIndex corretto
-    [self zoomToRange:0 endIndex:self.chartData.count ];  // ❌ ERA: self.chartData.count
+    [self zoomToRange:0 endIndex:self.chartData.count-1];
 }
 #pragma mark - Helper Methods
 
@@ -946,7 +954,7 @@ extern NSString *const DataHubDataLoadedNotification;
          startIndex = MAX(0, totalBars - barsToShow);
     }
     // ✅ FIX: endIndex corretto (ultimo elemento valido)
-    NSInteger endIndex = totalBars;  // ❌ ERA: totalBars (fuori range)
+    NSInteger endIndex = totalBars-1 ;
     
     [self zoomToRange:startIndex endIndex:endIndex];
     
@@ -960,6 +968,13 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 - (void)calculateYRange {
+    // Check cache validity
+       if (self.yRangeCacheValid &&
+           self.cachedStartIndex == self.visibleStartIndex &&
+           self.cachedEndIndex == self.visibleEndIndex &&
+           !self.isYRangeOverridden) {
+           return;  // Use cached values
+       }
     if (!self.isYRangeOverridden) {
         // Calculate Y range from visible data
         if (self.chartData && self.visibleStartIndex < self.visibleEndIndex) {
@@ -978,26 +993,29 @@ extern NSString *const DataHubDataLoadedNotification;
             self.yRangeMax = maxPrice + padding;
         }
     }
+    self.cachedStartIndex = self.visibleStartIndex;
+      self.cachedEndIndex = self.visibleEndIndex;
+      self.yRangeCacheValid = YES;
 }
 
 - (void)updatePanSlider {
     if (!self.chartData || self.chartData.count == 0) return;
     
-    // ✅ NUOVA LOGICA: Calcola la posizione basandosi sull'ESTREMO PIÙ RECENTE dei dati visibili
     NSInteger totalBars = self.chartData.count;
-    
-    // Percentuale della timeline raggiunta dall'estremo destro (più recente) della finestra visibile
     double recentDataPercentage = (double)self.visibleEndIndex / (totalBars - 1);
     recentDataPercentage = MAX(0.0, MIN(1.0, recentDataPercentage));
     
-    // Aggiorna slider senza triggerare l'action
-    id originalTarget = self.panSlider.target;
-    self.panSlider.target = nil;
-    [self.panSlider setDoubleValue:recentDataPercentage * 100.0];
-    self.panSlider.target = originalTarget;
+    double newValue = recentDataPercentage * 100.0;
     
-    NSLog(@"📅 Timeline slider updated: %.1f%% (most recent visible: bar %ld of %ld)",
-          recentDataPercentage * 100.0, (long)self.visibleEndIndex, (long)(totalBars - 1));
+    // ✅ Evita update se valore non cambiato
+    if (fabs(newValue - self.lastSliderValue) < 0.01) return;
+    
+    // ✅ Usa flag invece di rimuovere/riassegnare target
+    self.isUpdatingSlider = YES;
+    [self.panSlider setDoubleValue:newValue];
+    self.isUpdatingSlider = NO;
+    
+    self.lastSliderValue = newValue;
 }
 
 

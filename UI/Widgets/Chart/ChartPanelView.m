@@ -542,7 +542,7 @@
     CGFloat barSpacing = MAX(1, barWidth * 0.1);
     barWidth = barWidth - barSpacing;
     
-    for (NSInteger i = self.visibleStartIndex; i < self.visibleEndIndex && i < self.chartData.count; i++) {
+    for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
         HistoricalBarModel *bar = self.chartData[i];
         
         CGFloat x = CHART_MARGIN_LEFT + (i - self.visibleStartIndex) * (barWidth + barSpacing);
@@ -603,7 +603,7 @@
     double minValue = DBL_MAX;
     double maxValue = -DBL_MAX;
     
-    for (NSInteger i = self.visibleStartIndex; i < self.visibleEndIndex && i < self.chartData.count; i++) {
+    for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
         HistoricalBarModel *bar = self.chartData[i];
         
         if ([self.panelType isEqualToString:@"security"]) {
@@ -681,7 +681,7 @@
     
     // Find max volume in visible range for scaling
     double maxVolume = 0;
-    for (NSInteger i = self.visibleStartIndex; i < self.visibleEndIndex && i < self.chartData.count; i++) {
+    for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
         HistoricalBarModel *bar = self.chartData[i];
         maxVolume = MAX(maxVolume, bar.volume);
     }
@@ -698,7 +698,7 @@
     
     CGFloat chartHeight = self.bounds.size.height - 20; // 10px margin top/bottom
     
-    for (NSInteger i = self.visibleStartIndex; i < self.visibleEndIndex && i < self.chartData.count; i++) {
+    for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
         HistoricalBarModel *bar = self.chartData[i];
         
         // 🆕 FIX: Use CHART_MARGIN_LEFT instead of hardcoded 10

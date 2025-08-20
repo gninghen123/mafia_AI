@@ -33,6 +33,12 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 @interface ChartWidget : BaseWidget
 
 @property (nonatomic, assign) BOOL isStaticMode;
+@property (nonatomic, assign) BOOL renderersInitialized;
+
+@property (nonatomic, assign) BOOL yRangeCacheValid;
+@property (nonatomic, assign) NSInteger cachedStartIndex;
+@property (nonatomic, assign) NSInteger cachedEndIndex;
+
 
 #pragma mark - Trading Hours Preferences
 @property (nonatomic, assign) ChartTradingHours tradingHoursMode;

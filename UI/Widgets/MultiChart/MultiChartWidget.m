@@ -70,6 +70,9 @@
      [self setupControlsView];
      [self setupScrollView];
     [self initializeSettingsSystem];
+    
+    //intercetta notifiche di frame per il resize delle minichart
+    self.contentView.postsFrameChangedNotifications = YES;
 
 }
 
@@ -243,8 +246,7 @@
     self.scrollView.translatesAutoresizingMaskIntoConstraints = NO;
     [self.contentView addSubview:self.scrollView];
     
-    //notifica resize
-    self.scrollView.postsFrameChangedNotifications = YES;
+   
 
     // Charts container
     self.chartsContainer = [[NSView alloc] init];
@@ -281,7 +283,7 @@
     [nc addObserver:self
            selector:@selector(viewFrameDidChange:)
                name:NSViewFrameDidChangeNotification
-             object:self.scrollView];
+             object:self.contentView];
 }
 
 
@@ -352,6 +354,7 @@
         [[DataHub shared] getHistoricalBarsForSymbol:chart.symbol
                                            timeframe:[self convertToBarTimeframe:self.timeframe]
                                             barCount:self.maxBars
+                                   needExtendedHours:NO  // ← Aggiungi questo
                                           completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isLive) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 completedCount++;
@@ -395,6 +398,7 @@
             [[DataHub shared] getHistoricalBarsForSymbol:symbol
                                                timeframe:[self convertToBarTimeframe:self.timeframe]
                                                 barCount:self.maxBars
+                                       needExtendedHours:NO  // ← Aggiungi questo
                                               completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isLive) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     [miniChart setLoading:NO];
@@ -945,6 +949,7 @@
                 [[DataHub shared] getHistoricalBarsForSymbol:symbol
                                                    timeframe:[self convertToBarTimeframe:self.timeframe]
                                                     barCount:self.maxBars
+                                           needExtendedHours:NO  // ← Aggiungi questo
                                                   completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isLive) {
                     dispatch_async(dispatch_get_main_queue(), ^{
                         if (bars && bars.count > 0) {
@@ -1464,12 +1469,25 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
 }
 
 - (void)viewFrameDidChange:(NSNotification *)notification {
-    NSLog(@"📐 MultiChartWidget: ScrollView frame changed");
+    if (!self.symbols.count) {
+        return;
+    }
+    NSView *view = notification.object;
+    NSSize newSize = view.frame.size;
     
-    // Usa dispatch per evitare problemi di constraint durante l'animazione
-    dispatch_async(dispatch_get_main_queue(), ^{
-        [self layoutMiniCharts];
-    });
+    static NSSize lastSize = {0, 0}; // mantiene l'ultimo valore
+    
+    if (!NSEqualSizes(newSize, lastSize)) {
+        NSLog(@"📐 MultiChartWidget: Frame size changed from %@ to %@",
+              NSStringFromSize(lastSize), NSStringFromSize(newSize));
+        
+        lastSize = newSize;
+        
+        // Usa dispatch per sicurezza
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self layoutMiniCharts];
+        });
+    }
 }
 
 

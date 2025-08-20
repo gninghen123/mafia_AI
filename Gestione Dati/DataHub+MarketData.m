@@ -1716,14 +1716,6 @@
 - (void)prefetchDataForSymbols:(NSArray<NSString *> *)symbols {
     // Prefetch quotes
     [self getQuotesForSymbols:symbols completion:nil];
-    
-    // Prefetch recent historical data
-    for (NSString *symbol in symbols) {
-        [self getHistoricalBarsForSymbol:symbol
-                               timeframe:BarTimeframe1Day
-                                barCount:30
-                              completion:nil];
-    }
 }
 
 #pragma mark - Cache Management

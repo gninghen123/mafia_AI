@@ -106,7 +106,7 @@
 
 - (void)layout {
     [super layout];
-    
+   
     // Update all layer frames
     NSRect bounds = self.bounds;
     
@@ -1381,10 +1381,12 @@
         // Zoom to selection
         NSInteger startIdx = MIN(self.selectionStartIndex, self.selectionEndIndex);
         NSInteger endIdx = MAX(self.selectionStartIndex, self.selectionEndIndex);
-        
         if (endIdx > startIdx) {
-            [self.chartWidget zoomToRange:startIdx endIndex:endIdx];
+            if (endIdx-startIdx > 10) {
+                [self.chartWidget zoomToRange:startIdx endIndex:endIdx];
+            }
         }
+        
     }
     
     // Reset states

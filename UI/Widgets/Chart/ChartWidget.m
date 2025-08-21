@@ -15,6 +15,8 @@
 #import "ChartWidget+ObjectsUI.h"
 #import "ChartWidget+SaveData.h"
 #import "Quartz/Quartz.h"
+#import "SharedXCoordinateContext.h"  // ✅ AGGIUNTO: Import necessario nel .m
+
 
 #pragma mark - Smart Symbol Input Parameters
 

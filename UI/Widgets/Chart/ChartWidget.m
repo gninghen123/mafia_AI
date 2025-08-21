@@ -2193,15 +2193,10 @@ extern NSString *const DataHubDataLoadedNotification;
 #pragma mark - Symbol Coordination (NEW)
 
 - (void)setCurrentSymbol:(NSString *)currentSymbol {
-    NSString *previousSymbol = _currentSymbol;
-    
     // Evita lavoro inutile se è lo stesso symbol
-    if ([currentSymbol isEqualToString:previousSymbol]) {
+    if ([currentSymbol isEqualToString:_currentSymbol]) {
         return;
     }
-    
-    NSLog(@"🔄 ChartWidget: Symbol changing from '%@' to '%@'", previousSymbol ?: @"none", currentSymbol);
-    
     // Aggiorna il symbol
     _currentSymbol = currentSymbol;
     

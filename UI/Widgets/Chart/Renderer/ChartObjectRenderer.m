@@ -142,7 +142,9 @@ typedef NS_ENUM(NSUInteger, SnapType) {
     // X coordinate: trova la barra (usa metodo corretto)
     NSInteger barIndex = [self findBarIndexForDate:controlPoint.dateAnchor];
     if (barIndex != NSNotFound && barIndex >= 0) {
-        screenPoint.x = [self xCoordinateForBarIndex:barIndex];
+        // ✅ MODIFICA PRINCIPALE: Usa screenXForBarCenter invece di xCoordinateForBarIndex
+        // per posizionare gli oggetti al centro dello spazio assegnato alla barra
+        screenPoint.x = [self.coordinateContext screenXForBarCenter:barIndex];
         
         // ✅ NUOVO: Usa absoluteValue direttamente
         screenPoint.y = [self.coordinateContext screenYForValue:controlPoint.absoluteValue];
@@ -160,7 +162,6 @@ typedef NS_ENUM(NSUInteger, SnapType) {
     
     return screenPoint;
 }
-
 
 
 #pragma mark - Rendering
@@ -2156,20 +2157,25 @@ typedef NS_ENUM(NSUInteger, SnapType) {
 #pragma mark - Unified X Coordinate Calculation
 
 - (CGFloat)xCoordinateForBarIndex:(NSInteger)barIndex {
-    // ✅ DEPRECATED: Usa coordinate context unificato
-    return [self.coordinateContext screenXForBarIndex:barIndex];
+    // ✅ MODIFICA: Ora usa screenXForBarCenter per consistenza
+    return [self.coordinateContext screenXForBarCenter:barIndex];
 }
 
 - (NSInteger)barIndexForXCoordinate:(CGFloat)x {
-    // ✅ DEPRECATED: Usa coordinate context unificato
+    // ✅ INVARIATO: Usa coordinate context unificato (conversione inversa corretta)
     return [self.coordinateContext barIndexForScreenX:x];
 }
 
 - (CGFloat)xCoordinateForDate:(NSDate *)targetDate {
-    // ✅ DEPRECATED: Usa coordinate context unificato
+    // ✅ MODIFICA: Aggiornato per usare il centro anche per date estrapolate
+    NSInteger barIndex = [self findBarIndexForDate:targetDate];
+    if (barIndex != NSNotFound) {
+        return [self.coordinateContext screenXForBarCenter:barIndex];
+    }
+    
+    // Fallback per date completamente fuori dal dataset
     return [self.coordinateContext screenXForDate:targetDate];
 }
-
 // Aggiungi questi metodi a ChartObjectRenderer.m
 
 #pragma mark - NEW: Snap Implementation
@@ -2199,8 +2205,9 @@ typedef NS_ENUM(NSUInteger, SnapType) {
 // Logica originale senza snap (esatta come prima)
 - (ControlPointModel *)controlPointFromScreenPointWithoutSnap:(NSPoint)screenPoint
                                                   indicatorRef:(NSString *)indicatorRef {
-    // X coordinate conversion (usa metodo corretto)
-    NSInteger barIndex = [self barIndexForXCoordinate:screenPoint.x];
+    // X coordinate conversion: trova quale barra è più vicina al punto cliccato
+    // NOTA: Qui usiamo barIndexForScreenX che è corretto per conversione inversa
+    NSInteger barIndex = [self.coordinateContext barIndexForScreenX:screenPoint.x];
     if (barIndex < 0 || barIndex >= self.coordinateContext.chartData.count) {
         return nil;
     }
@@ -2212,6 +2219,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
     double absoluteValue = [self.coordinateContext valueForScreenY:screenPoint.y];
     return [ControlPointModel pointWithDate:dateAnchor absoluteValue:absoluteValue indicator:indicatorRef];
 }
+
 
 // NUOVA logica con snap ai valori OHLC
 - (ControlPointModel *)controlPointFromScreenPointWithSnap:(NSPoint)screenPoint

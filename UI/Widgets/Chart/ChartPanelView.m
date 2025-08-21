@@ -245,7 +245,13 @@
 
 - (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext {
     self.sharedXContext = sharedXContext; // Weak reference
-}
+    if (self.objectRenderer) {
+          self.objectRenderer.sharedXContext = sharedXContext;
+      }
+      
+      if (self.alertRenderer) {
+          self.alertRenderer.sharedXContext = sharedXContext;
+      }}
 
 - (void)setCrosshairPoint:(NSPoint)point visible:(BOOL)visible {
     self.crosshairPoint = point;

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23605" systemVersion="24G84" minimumToolsVersion="Automatic" sourceLanguage="Objective-C" userDefinedModelVersionIdentifier="">
+<model type="com.apple.IDECoreDataModeler.DataModel" documentVersion="1.0" lastSavedToolsVersion="23605" systemVersion="24G90" minimumToolsVersion="Automatic" sourceLanguage="Objective-C" userDefinedModelVersionIdentifier="">
     <entity name="Alert" representedClassName="Alert" syncable="YES">
         <attribute name="conditionString" optional="YES" attributeType="String"/>
         <attribute name="creationDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
@@ -44,6 +44,27 @@
         <fetchIndex name="byObjectID">
             <fetchIndexElement property="objectUUID" type="Binary" order="ascending"/>
         </fetchIndex>
+    </entity>
+    <entity name="ChartPattern" representedClassName="ChartPattern" syncable="YES">
+        <attribute name="additionalNotes" optional="YES" attributeType="String"/>
+        <attribute name="creationDate" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="patternID" attributeType="String"/>
+        <attribute name="patternType" attributeType="String"/>
+        <attribute name="savedDataReference" attributeType="String"/>
+        <fetchIndex name="byPatternID">
+            <fetchIndexElement property="patternID" type="Binary" order="ascending"/>
+        </fetchIndex>
+        <fetchIndex name="byPatternType">
+            <fetchIndexElement property="patternType" type="Binary" order="ascending"/>
+        </fetchIndex>
+        <fetchIndex name="bySavedDataRef">
+            <fetchIndexElement property="savedDataReference" type="Binary" order="ascending"/>
+        </fetchIndex>
+        <uniquenessConstraints>
+            <uniquenessConstraint>
+                <constraint value="patternID"/>
+            </uniquenessConstraint>
+        </uniquenessConstraints>
     </entity>
     <entity name="CompanyInfo" representedClassName="CompanyInfo" syncable="YES">
         <attribute name="ceo" optional="YES" attributeType="String"/>

@@ -394,7 +394,8 @@ extern NSString *const DataHubDataLoadedNotification;
     
     // 🆕 NEW: Set initial date range for default timeframe (Daily)
     self.currentDateRangeDays = [self getDefaultDaysForTimeframe:ChartTimeframeDaily];
-    
+    self.sharedXContext = [[SharedXCoordinateContext alloc] init];
+
 
     self.chartPanels = [NSMutableArray array];
     self.objectsManager = [ChartObjectsManager managerForSymbol:self.currentSymbol];
@@ -1021,13 +1022,35 @@ extern NSString *const DataHubDataLoadedNotification;
 
 
 - (void)synchronizePanels {
+    [self updateSharedXContext];
+
     for (ChartPanelView *panel in self.chartPanels) {
+        [panel updateSharedXContext:self.sharedXContext];
+
         [panel updateWithData:self.chartData
                    startIndex:self.visibleStartIndex
                      endIndex:self.visibleEndIndex
                     yRangeMin:self.yRangeMin
                     yRangeMax:self.yRangeMax];
     }
+}
+
+- (void)updateSharedXContext {
+    if (!self.sharedXContext) {
+        self.sharedXContext = [[SharedXCoordinateContext alloc] init];
+    }
+    
+    // Update X context properties
+    self.sharedXContext.chartData = self.chartData;
+    self.sharedXContext.visibleStartIndex = self.visibleStartIndex;
+    self.sharedXContext.visibleEndIndex = self.visibleEndIndex;
+    
+    // ✅ USA containerWidth del panelsSplitView (stessa larghezza per tutti i pannelli)
+    self.sharedXContext.containerWidth = self.panelsSplitView.bounds.size.width;
+    
+    // Trading context
+    self.sharedXContext.barsPerDay = [self barsPerDayForCurrentTimeframe];
+    self.sharedXContext.currentTimeframeMinutes = [self getCurrentTimeframeInMinutes];
 }
 
 - (BarTimeframe)chartTimeframeToBarTimeframe:(ChartTimeframe)chartTimeframe {

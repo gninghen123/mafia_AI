@@ -12,7 +12,8 @@
 #import "ChartAlertRenderer.h"
 #import "AlertEditController.h"
 #import "ChartObjectSettingsWindow.h"
-#import "ChartCoordinateContext.h"
+#import "SharedXCoordinateContext.h"
+#import "PanelYCoordinateContext.h"
 
 #pragma mark - Constants for Y-Axis Layout
 
@@ -30,6 +31,8 @@
 
 @property (nonatomic, strong) CALayer *yAxisLayer;
 
+@property (nonatomic, weak) SharedXCoordinateContext *sharedXContext;     // WEAK - shared
+@property (nonatomic, strong) PanelYCoordinateContext *panelYContext;
 
 @property (nonatomic, weak) ChartObjectSettingsWindow *objectSettingsWindow;
 
@@ -93,5 +96,7 @@
 - (void)startEditingObjectAtPoint:(NSPoint)point;
 - (void)stopEditingObject;
 
+
+- (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext;
 
 @end

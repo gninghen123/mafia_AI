@@ -11,12 +11,16 @@
 #import "ChartObjectRenderer.h"
 #import "CommonTypes.h"          // Per BarTimeframe enum
 #import "ChartPreferencesWindow.h"
+#import "SharedXCoordinateContext.h"
 
 
 @class ChartPanelView;
 @class HistoricalBarModel;       
 @class MarketQuoteModel;
 
+#define CHART_Y_AXIS_WIDTH 60
+#define CHART_MARGIN_LEFT 10
+#define CHART_MARGIN_RIGHT 10
 
 typedef NS_ENUM(NSInteger, ChartTimeframe) {
     ChartTimeframe1Min,
@@ -31,6 +35,8 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 };
 
 @interface ChartWidget : BaseWidget
+
+@property (nonatomic, strong) SharedXCoordinateContext *sharedXContext;
 
 @property (nonatomic, assign) BOOL isStaticMode;
 @property (nonatomic, assign) BOOL renderersInitialized;

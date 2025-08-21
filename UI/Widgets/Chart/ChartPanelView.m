@@ -192,7 +192,18 @@
     self.yRangeMin = yMin;
     self.yRangeMax = yMax;
     
-    // Update objects renderer coordinate context
+    // ✅ NUOVO: Aggiorna panel Y context (sempre presente)
+    if (!self.panelYContext) {
+        self.panelYContext = [[PanelYCoordinateContext alloc] init];
+        self.panelYContext.panelType = self.panelType;
+    }
+    
+    self.panelYContext.yRangeMin = yMin;
+    self.panelYContext.yRangeMax = yMax;
+    self.panelYContext.panelHeight = self.bounds.size.height;
+    self.panelYContext.currentSymbol = self.chartWidget.currentSymbol;
+    
+    // Update objects renderer coordinate context (solo se presente)
     if (self.objectRenderer) {
         NSRect chartBounds = NSMakeRect(0, 0,
                                       self.bounds.size.width - Y_AXIS_WIDTH,
@@ -205,7 +216,7 @@
                                               bounds:chartBounds];
     }
     
-    // Update alert renderer if available
+    // Update alert renderer (sempre presente)
     if (self.alertRenderer) {
         NSRect chartBounds = NSMakeRect(0, 0,
                                       self.bounds.size.width - Y_AXIS_WIDTH,
@@ -227,6 +238,12 @@
         NSLog(@"📊 Y-Axis invalidated: range [%.2f - %.2f]", yMin, yMax);
     }
 }
+
+
+- (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext {
+    self.sharedXContext = sharedXContext; // Weak reference
+}
+
 - (void)setCrosshairPoint:(NSPoint)point visible:(BOOL)visible {
     self.crosshairPoint = point;
     self.crosshairVisible = visible;
@@ -490,21 +507,18 @@
         return;
     }
     
-    // ✅ USA COORDINATE CONTEXT per calcoli unificati
-    BOOL hasCoordinateContext = (self.objectRenderer && self.objectRenderer.coordinateContext);
-    
     for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
         HistoricalBarModel *bar = self.chartData[i];
         
-        // ✅ COORDINATE X UNIFICATE
+        // ✅ COORDINATE X da SharedXCoordinateContext
         CGFloat x;
         CGFloat barWidth;
-        if (hasCoordinateContext) {
-            x = [self.objectRenderer.coordinateContext screenXForBarIndex:i];
-            barWidth = [self.objectRenderer.coordinateContext barWidth];
-            barWidth -= [self.objectRenderer.coordinateContext barSpacing]; // Remove spacing for actual bar
+        if (self.sharedXContext) {
+            x = [self.sharedXContext screenXForBarIndex:i];
+            barWidth = [self.sharedXContext barWidth];
+            barWidth -= [self.sharedXContext barSpacing]; // Remove spacing for actual bar
         } else {
-            // Fallback - stesso calcolo del context
+            // Fallback - stesso calcolo di prima
             NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
             CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
             CGFloat totalBarWidth = chartAreaWidth / visibleBars;
@@ -514,30 +528,39 @@
             x = CHART_MARGIN_LEFT + (i - self.visibleStartIndex) * totalBarWidth;
         }
         
-        // ✅ COORDINATE Y tramite coordinate context (già corretto)
-        CGFloat openY = [self yCoordinateForPrice:bar.open];
-        CGFloat closeY = [self yCoordinateForPrice:bar.close];
-        CGFloat highY = [self yCoordinateForPrice:bar.high];
-        CGFloat lowY = [self yCoordinateForPrice:bar.low];
+        // ✅ COORDINATE Y da PanelYCoordinateContext
+        CGFloat openY, closeY, highY, lowY;
+        if (self.panelYContext) {
+            openY = [self.panelYContext screenYForValue:bar.open];
+            closeY = [self.panelYContext screenYForValue:bar.close];
+            highY = [self.panelYContext screenYForValue:bar.high];
+            lowY = [self.panelYContext screenYForValue:bar.low];
+        } else {
+            // Fallback - usa metodi esistenti
+            openY = [self yCoordinateForPrice:bar.open];
+            closeY = [self yCoordinateForPrice:bar.close];
+            highY = [self yCoordinateForPrice:bar.high];
+            lowY = [self yCoordinateForPrice:bar.low];
+        }
         
         // Rest of candlestick drawing code remains the same...
         NSColor *bodyColor = (bar.close >= bar.open) ?
-                             [NSColor systemGreenColor] : [NSColor systemRedColor];
+                            [NSColor systemGreenColor] : [NSColor systemRedColor];
         
-        // Draw wick (high-low line)
+        // Draw high-low line
         [[NSColor labelColor] setStroke];
-        NSBezierPath *wickPath = [NSBezierPath bezierPath];
-        wickPath.lineWidth = 1.0;
-        [wickPath moveToPoint:NSMakePoint(x + barWidth/2, highY)];
-        [wickPath lineToPoint:NSMakePoint(x + barWidth/2, lowY)];
-        [wickPath stroke];
+        NSBezierPath *shadowPath = [NSBezierPath bezierPath];
+        shadowPath.lineWidth = 1.0;
+        [shadowPath moveToPoint:NSMakePoint(x + barWidth/2, highY)];
+        [shadowPath lineToPoint:NSMakePoint(x + barWidth/2, lowY)];
+        [shadowPath stroke];
         
-        // Draw body
+        // Draw body rectangle
         CGFloat bodyTop = MAX(openY, closeY);
         CGFloat bodyBottom = MIN(openY, closeY);
         CGFloat bodyHeight = bodyTop - bodyBottom;
         
-        if (bodyHeight < 1.0) bodyHeight = 1.0; // Minimum body size
+        if (bodyHeight < 1) bodyHeight = 1; // Minimum height for doji
         
         NSRect bodyRect = NSMakeRect(x, bodyBottom, barWidth, bodyHeight);
         [bodyColor setFill];
@@ -545,7 +568,7 @@
         [bodyPath fill];
     }
     
-    NSLog(@"🕯️ Candlesticks drawn with unified coordinates");
+    NSLog(@"📊 Candlesticks drawn with unified coordinates");
 }
 
 
@@ -659,29 +682,27 @@
     
     if (maxVolume == 0) return;
     
-    // ✅ USA COORDINATE UNIFICATE per calcoli X
-    BOOL hasCoordinateContext = (self.objectRenderer && self.objectRenderer.coordinateContext);
-    
     CGFloat chartHeight = self.bounds.size.height - 20; // 10px margin top/bottom
     
     for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
         HistoricalBarModel *bar = self.chartData[i];
         
-        // ✅ COORDINATE X UNIFICATE
+        // ✅ COORDINATE X da SharedXCoordinateContext
         CGFloat x;
         CGFloat barWidth;
-        if (hasCoordinateContext) {
-            x = [self.objectRenderer.coordinateContext screenXForBarIndex:i];
-            barWidth = [self.objectRenderer.coordinateContext barWidth];
-            barWidth -= [self.objectRenderer.coordinateContext barSpacing]; // Remove spacing for actual bar
+        if (self.sharedXContext) {
+            x = [self.sharedXContext screenXForBarIndex:i];
+            barWidth = [self.sharedXContext barWidth];
+            barWidth -= [self.sharedXContext barSpacing]; // Remove spacing for actual bar
         } else {
-            // Fallback - usa metodo helper unificato
-            x = [self xCoordinateForBarIndex:i];
+            // Fallback - stesso calcolo di prima
             NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
             CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
             CGFloat totalBarWidth = chartAreaWidth / visibleBars;
             CGFloat barSpacing = MAX(1, totalBarWidth * 0.1);
             barWidth = totalBarWidth - barSpacing;
+            
+            x = CHART_MARGIN_LEFT + (i - self.visibleStartIndex) * totalBarWidth;
         }
         
         // Volume height calculation
@@ -690,7 +711,7 @@
         
         // Color based on price direction (same as candlesticks)
         NSColor *barColor = (bar.close >= bar.open) ?
-                           [NSColor systemGreenColor] : [NSColor systemRedColor];
+                            [NSColor systemGreenColor] : [NSColor systemRedColor];
         
         NSRect volumeRect = NSMakeRect(x, y, barWidth, height);
         [barColor setFill];
@@ -1098,14 +1119,15 @@
 
 
 - (CGFloat)yCoordinateForPrice:(double)price {
-    if (self.objectRenderer && self.objectRenderer.coordinateContext) {
-        return [self.objectRenderer.coordinateContext screenYForValue:price];
+    if (self.panelYContext) {
+        return [self.panelYContext screenYForValue:price];
     }
     
-    if (self.yRangeMax == self.yRangeMin) return self.bounds.size.height / 2;
+    // Fallback (stesso codice di prima)
+    if (self.yRangeMax <= self.yRangeMin) return self.bounds.size.height / 2;
     
-    double normalizedPrice = (price - self.yRangeMin) / (self.yRangeMax - self.yRangeMin);
-    return CHART_MARGIN_LEFT + normalizedPrice * (self.bounds.size.height - 20);
+    double normalizedValue = (price - self.yRangeMin) / (self.yRangeMax - self.yRangeMin);
+    return CHART_MARGIN_LEFT + normalizedValue * (self.bounds.size.height - 20);
 }
 
 - (CGFloat)yCoordinateForValue:(double)value {
@@ -1123,10 +1145,11 @@
 }
 
 - (double)priceForYCoordinate:(CGFloat)y {
-    if (self.objectRenderer && self.objectRenderer.coordinateContext) {
-        return [self.objectRenderer.coordinateContext priceFromScreenY:y];
+    if (self.panelYContext) {
+        return [self.panelYContext valueForScreenY:y];
     }
     
+    // Fallback (stesso codice di prima)
     if (self.bounds.size.height <= 20) return self.yRangeMin;
     
     double normalizedY = (y - CHART_MARGIN_LEFT) / (self.bounds.size.height - 20);
@@ -1134,12 +1157,11 @@
 }
 
 - (NSInteger)barIndexForXCoordinate:(CGFloat)x {
-    // ✅ USA COORDINATE CONTEXT UNIFICATO se disponibile
-    if (self.objectRenderer && self.objectRenderer.coordinateContext) {
-        return [self.objectRenderer.coordinateContext barIndexForScreenX:x];
+    if (self.sharedXContext) {
+        return [self.sharedXContext barIndexForScreenX:x];
     }
     
-    // ✅ FALLBACK per compatibilità (stesso algoritmo del context)
+    // Fallback (stesso codice di prima)
     if (self.visibleStartIndex >= self.visibleEndIndex) return -1;
     
     NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
@@ -1149,17 +1171,15 @@
     NSInteger relativeIndex = (x - CHART_MARGIN_LEFT) / barWidth;
     NSInteger absoluteIndex = self.visibleStartIndex + relativeIndex;
     
-    return MAX(self.visibleStartIndex,
-              MIN(absoluteIndex, self.visibleEndIndex - 1));
+    return MAX(self.visibleStartIndex, MIN(absoluteIndex, self.visibleEndIndex - 1));
 }
 
 - (CGFloat)xCoordinateForBarIndex:(NSInteger)barIndex {
-    // ✅ USA COORDINATE CONTEXT UNIFICATO se disponibile
-    if (self.objectRenderer && self.objectRenderer.coordinateContext) {
-        return [self.objectRenderer.coordinateContext screenXForBarIndex:barIndex];
+    if (self.sharedXContext) {
+        return [self.sharedXContext screenXForBarIndex:barIndex];
     }
     
-    // ✅ FALLBACK per compatibilità
+    // Fallback (stesso codice di prima)
     if (self.visibleStartIndex >= self.visibleEndIndex) return CHART_MARGIN_LEFT;
     
     NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;

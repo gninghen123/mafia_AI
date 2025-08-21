@@ -293,8 +293,8 @@
     crosshair.lineWidth = 1.0;
     
     // ✅ COORDINATE UNIFICATE per chart area width
-    CGFloat chartAreaWidth = [self.objectRenderer.coordinateContext chartAreaWidth] + CHART_MARGIN_LEFT;
-    
+    CGFloat chartAreaWidth = [self.sharedXContext chartAreaWidth] + CHART_MARGIN_LEFT;
+
     // Vertical line (spans full height, but only in chart area)
     if (point.x <= chartAreaWidth) {
         [crosshair moveToPoint:NSMakePoint(point.x, 0)];
@@ -319,7 +319,7 @@
 
 - (NSPoint)clampCrosshairToChartArea:(NSPoint)rawPoint {
     // ✅ COORDINATE UNIFICATE SENZA FALLBACK
-    CGFloat effectiveChartWidth = CHART_MARGIN_LEFT + [self.objectRenderer.coordinateContext chartAreaWidth];
+    CGFloat effectiveChartWidth = CHART_MARGIN_LEFT + [self.sharedXContext chartAreaWidth];
     
     // Clamp X to chart area
     CGFloat clampedX = MAX(CHART_MARGIN_LEFT, MIN(rawPoint.x, effectiveChartWidth));
@@ -732,13 +732,13 @@
      
      // ✅ USA COORDINATE UNIFICATE per posizioni X
      CGFloat startX, endX;
-     BOOL hasCoordinateContext = (self.objectRenderer && self.objectRenderer.coordinateContext);
+    BOOL hasCoordinateContext = (self.objectRenderer && self.sharedXContext);
      
      if (hasCoordinateContext) {
-         startX = [self.objectRenderer.coordinateContext screenXForBarIndex:startIdx];
-         endX = [self.objectRenderer.coordinateContext screenXForBarIndex:endIdx];
+         startX = [self.sharedXContext screenXForBarIndex:startIdx];
+         endX = [self.sharedXContext screenXForBarIndex:endIdx];
          // Add barWidth to endX to include the full last bar
-         endX += [self.objectRenderer.coordinateContext barWidth];
+         endX += [self.sharedXContext barWidth];
      } else {
          // Fallback - usa metodi helper unificati
          startX = [self xCoordinateForBarIndex:startIdx];
@@ -2585,8 +2585,8 @@
     
     // ✅ USA COORDINATE CONTEXT per valore Y unificato
     double currentValue;
-    if (self.objectRenderer && self.objectRenderer.coordinateContext) {
-        currentValue = [self.objectRenderer.coordinateContext valueForScreenY:self.crosshairPoint.y];
+    if (self.objectRenderer && self.sharedXContext) {
+        currentValue = [self.panelYContext valueForScreenY:self.crosshairPoint.y];
     } else {
         // Fallback se coordinate context non disponibile
         currentValue = [self valueForYCoordinate:self.crosshairPoint.y];

@@ -129,6 +129,11 @@ NS_ASSUME_NONNULL_BEGIN
 /// @return Pre-configured AlertModel with price set
 - (AlertModel *)createAlertTemplateAtScreenPoint:(NSPoint)screenPoint;
 
+#pragma mark - Shared X Context Update
+
+/// Update shared X context reference
+/// @param sharedXContext Shared X coordinate context
+- (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext;
 @end
 
 NS_ASSUME_NONNULL_END

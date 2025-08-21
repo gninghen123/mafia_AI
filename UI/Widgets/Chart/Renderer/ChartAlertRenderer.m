@@ -175,6 +175,13 @@
     [self.alertsEditingLayer setNeedsDisplay];
 }
 
+
+#pragma mark - Shared X Context Update
+
+- (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext {
+    self.sharedXContext = sharedXContext; // Weak reference
+}
+
 #pragma mark - CALayerDelegate
 
 - (void)drawLayer:(CALayer *)layer inContext:(CGContextRef)ctx {
@@ -194,9 +201,9 @@
 
 - (void)drawAlert:(AlertModel *)alert {
     CGFloat y = [self screenYForTriggerValue:alert.triggerValue];
-    if (y < 0 || y > self.coordinateContext.panelBounds.size.height) return; // Out of visible range
+    if (y < 0 || y > self.panelYContext.panelHeight) return;
+    CGRect bounds = CGRectMake(0, 0, self.sharedXContext.containerWidth, self.panelYContext.panelHeight);
     
-    CGRect bounds = self.coordinateContext.panelBounds;
     
     // Draw horizontal line
     [self drawAlertLine:alert atY:y bounds:bounds];
@@ -207,8 +214,8 @@
 
 - (void)drawAlertWithDragStyle:(AlertModel *)alert {
     CGFloat y = [self screenYForTriggerValue:alert.triggerValue];
-    CGRect bounds = self.coordinateContext.panelBounds;
-    
+    CGRect bounds = CGRectMake(0, 0, self.sharedXContext.containerWidth, self.panelYContext.panelHeight);
+
     // Set drag preview style
     CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
     CGContextSaveGState(ctx);
@@ -311,7 +318,7 @@
         // Check Y proximity for horizontal line
         if (ABS(screenPoint.y - alertY) <= tolerance) {
             // Check if click is on label area (easier to grab)
-            CGFloat labelX = self.coordinateContext.panelBounds.size.width - 85;
+            CGFloat labelX = self.sharedXContext.containerWidth - 85;
             if (screenPoint.x >= labelX) {
                 return alert;
             }
@@ -415,12 +422,11 @@
 #pragma mark - Alert Creation Helper
 
 - (AlertModel *)createAlertTemplateAtScreenPoint:(NSPoint)screenPoint {
-    if (!self.coordinateContext.currentSymbol) return nil;
-    
+    if (!self.panelYContext.currentSymbol) return nil;
     double price = [self triggerValueForScreenY:screenPoint.y];
     
     AlertModel *template = [[AlertModel alloc] init];
-    template.symbol = self.coordinateContext.currentSymbol;
+    template.symbol = self.panelYContext.currentSymbol;
     template.triggerValue = price;
     template.conditionString = @"above"; // Default
     template.isActive = YES;

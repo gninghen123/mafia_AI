@@ -62,6 +62,43 @@ NS_ASSUME_NONNULL_BEGIN
 /// @return YES if all required parameters are set for conversions
 - (BOOL)isValidForConversion;
 
+
+#pragma mark - X Coordinate Conversion Methods (NEW)
+
+/// Convert bar index to screen X coordinate of BAR CENTER
+/// @param barIndex Index in chartData array
+/// @return X coordinate in pixels at CENTER of bar space
+- (CGFloat)screenXForBarCenter:(NSInteger)barIndex;
+
+
+/// Convert bar index to screen X coordinate using unified chart layout
+/// @param barIndex Index in chartData array
+/// @return X coordinate in pixels from left of panel (left edge of bar space)
+- (CGFloat)screenXForBarIndex:(NSInteger)barIndex;
+
+/// Convert screen X coordinate to bar index using unified chart layout
+/// @param screenX X coordinate in pixels from left of panel
+/// @return Bar index in chartData array, clamped to visible range
+- (NSInteger)barIndexForScreenX:(CGFloat)screenX;
+
+/// Convert date to screen X coordinate with extrapolation support
+/// @param date Target date to locate
+/// @return X coordinate in pixels, or -9999 if calculation failed
+- (CGFloat)screenXForDate:(NSDate *)date;
+
+/// Get chart area width (excluding Y-axis)
+/// @return Available width for chart content in pixels
+- (CGFloat)chartAreaWidth;
+
+/// Get bar width for current zoom level
+/// @return Width of each bar space in pixels (including spacing)
+- (CGFloat)barWidth;
+
+/// Get bar spacing for current zoom level
+/// @return Spacing between bars in pixels
+- (CGFloat)barSpacing;
+
+
 #pragma mark - Normalized Conversion Utilities
 
 /// Convert normalized Y coordinate (0.0-1.0) to indicator value

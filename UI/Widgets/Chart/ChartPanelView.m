@@ -273,33 +273,36 @@
     NSBezierPath *crosshair = [NSBezierPath bezierPath];
     crosshair.lineWidth = 1.0;
     
+    // ✅ COORDINATE UNIFICATE per chart area width
+    CGFloat chartAreaWidth = [self.objectRenderer.coordinateContext chartAreaWidth] + CHART_MARGIN_LEFT;
+    
     // Vertical line (spans full height, but only in chart area)
-    CGFloat chartAreaWidth = self.bounds.size.width - Y_AXIS_WIDTH;
-    if (point.x <= chartAreaWidth) { // Solo se dentro l'area chart
+    if (point.x <= chartAreaWidth) {
         [crosshair moveToPoint:NSMakePoint(point.x, 0)];
         [crosshair lineToPoint:NSMakePoint(point.x, self.bounds.size.height)];
     }
     
-    // 🔧 FIX: Horizontal line - FERMARSI al chart area, NON entrare nell'asse Y
+    // Horizontal line - stops at chart area edge
     [crosshair moveToPoint:NSMakePoint(CHART_MARGIN_LEFT, point.y)];
-    [crosshair lineToPoint:NSMakePoint(chartAreaWidth, point.y)]; // Stop at chart area edge
+    [crosshair lineToPoint:NSMakePoint(chartAreaWidth, point.y)];
     
     [crosshair stroke];
     
-    // 🆕 NEW: Price/Value bubble nell'asse Y
-    [self drawPriceBubbleAtCrosshair];
-    
-    // 🆕 NEW: Date/Time bubble in basso (solo se crosshair in chart area)
+    // Price/Value bubble nell'asse Y
+     [self drawPriceBubbleAtCrosshair];
+
+    // Date/Time bubble in basso (solo se crosshair in chart area)
     if (point.x <= chartAreaWidth) {
         [self drawDateBubbleAtCrosshair];
     }
 }
 
+
 - (NSPoint)clampCrosshairToChartArea:(NSPoint)rawPoint {
-    // ✅ NUOVO: Usa la larghezza effettiva con buffer
-    CGFloat effectiveChartWidth = CHART_MARGIN_LEFT + [self calculateChartAreaWidthWithDynamicBuffer];
+    // ✅ COORDINATE UNIFICATE SENZA FALLBACK
+    CGFloat effectiveChartWidth = CHART_MARGIN_LEFT + [self.objectRenderer.coordinateContext chartAreaWidth];
     
-    // Clamp X to chart area (considerando il buffer)
+    // Clamp X to chart area
     CGFloat clampedX = MAX(CHART_MARGIN_LEFT, MIN(rawPoint.x, effectiveChartWidth));
     
     // Y può essere ovunque nell'altezza
@@ -308,55 +311,6 @@
     return NSMakePoint(clampedX, clampedY);
 }
 
-// 2. 🆕 AGGIUNGERE: Price/Value bubble nell'asse Y
-
-- (void)drawPriceBubbleAtCrosshair {
-    if (!self.crosshairVisible) return;
-    
-    // Calcola il valore alla posizione Y del crosshair
-    double currentValue = [self valueForYCoordinate:self.crosshairPoint.y];
-    NSString *valueText = [self formatValueForDisplay:currentValue];
-    
-    // Font più grande e bold per effetto magnifier
-    NSDictionary *bubbleAttributes = @{
-        NSFontAttributeName: [NSFont boldSystemFontOfSize:13], // vs 11 per asse normale
-        NSForegroundColorAttributeName: [NSColor controlBackgroundColor]
-    };
-    
-    NSSize textSize = [valueText sizeWithAttributes:bubbleAttributes];
-    
-    // Posiziona nell'area dell'asse Y (lato destro)
-    CGFloat bubbleX = self.bounds.size.width - Y_AXIS_WIDTH + 8;
-    CGFloat bubbleY = self.crosshairPoint.y - textSize.height/2;
-    
-    // Clamp alla vista per evitare che esca dai bounds
-    bubbleY = MAX(5, MIN(bubbleY, self.bounds.size.height - textSize.height - 5));
-    
-    // Bubble background con colore accent
-    NSRect bubbleRect = NSMakeRect(bubbleX - 4, bubbleY - 3,
-                                  textSize.width + 8, textSize.height + 6);
-    
-    // Colore dinamico basato sul tipo di panel
-    NSColor *bubbleColor;
-    if ([self.panelType isEqualToString:@"volume"]) {
-        bubbleColor = [NSColor systemOrangeColor]; // Volume = arancione
-    } else {
-        bubbleColor = [NSColor systemBlueColor];   // Price = blu
-    }
-    
-    [bubbleColor setFill];
-    NSBezierPath *bubblePath = [NSBezierPath bezierPathWithRoundedRect:bubbleRect
-                                                              xRadius:4 yRadius:4];
-    [bubblePath fill];
-    
-    // Border sottile per definizione
-    [[NSColor controlBackgroundColor] setStroke];
-    bubblePath.lineWidth = 1.0;
-    [bubblePath stroke];
-    
-    // Disegna il testo del valore
-    [valueText drawAtPoint:NSMakePoint(bubbleX, bubbleY) withAttributes:bubbleAttributes];
-}
 
 // 3. 🆕 AGGIUNGERE: Date/Time bubble in basso
 
@@ -536,41 +490,62 @@
         return;
     }
     
-    NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
-    // Use chart area width (excluding Y-axis)
-    CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
-    CGFloat barWidth = chartAreaWidth / visibleBars;
-    CGFloat barSpacing = MAX(1, barWidth * 0.1);
-    barWidth = barWidth - barSpacing;
+    // ✅ USA COORDINATE CONTEXT per calcoli unificati
+    BOOL hasCoordinateContext = (self.objectRenderer && self.objectRenderer.coordinateContext);
     
     for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
         HistoricalBarModel *bar = self.chartData[i];
         
-        CGFloat x = CHART_MARGIN_LEFT + (i - self.visibleStartIndex) * (barWidth + barSpacing);
+        // ✅ COORDINATE X UNIFICATE
+        CGFloat x;
+        CGFloat barWidth;
+        if (hasCoordinateContext) {
+            x = [self.objectRenderer.coordinateContext screenXForBarIndex:i];
+            barWidth = [self.objectRenderer.coordinateContext barWidth];
+            barWidth -= [self.objectRenderer.coordinateContext barSpacing]; // Remove spacing for actual bar
+        } else {
+            // Fallback - stesso calcolo del context
+            NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
+            CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
+            CGFloat totalBarWidth = chartAreaWidth / visibleBars;
+            CGFloat barSpacing = MAX(1, totalBarWidth * 0.1);
+            barWidth = totalBarWidth - barSpacing;
+            
+            x = CHART_MARGIN_LEFT + (i - self.visibleStartIndex) * totalBarWidth;
+        }
+        
+        // ✅ COORDINATE Y tramite coordinate context (già corretto)
         CGFloat openY = [self yCoordinateForPrice:bar.open];
         CGFloat closeY = [self yCoordinateForPrice:bar.close];
         CGFloat highY = [self yCoordinateForPrice:bar.high];
         CGFloat lowY = [self yCoordinateForPrice:bar.low];
         
-        // Color based on direction
+        // Rest of candlestick drawing code remains the same...
         NSColor *bodyColor = (bar.close >= bar.open) ?
-                            [NSColor systemGreenColor] : [NSColor systemRedColor];
+                             [NSColor systemGreenColor] : [NSColor systemRedColor];
         
         // Draw wick (high-low line)
-        [bodyColor setStroke];
-        NSBezierPath *wick = [NSBezierPath bezierPath];
-        wick.lineWidth = 1.0;
-        [wick moveToPoint:NSMakePoint(x + barWidth/2, lowY)];
-        [wick lineToPoint:NSMakePoint(x + barWidth/2, highY)];
-        [wick stroke];
+        [[NSColor labelColor] setStroke];
+        NSBezierPath *wickPath = [NSBezierPath bezierPath];
+        wickPath.lineWidth = 1.0;
+        [wickPath moveToPoint:NSMakePoint(x + barWidth/2, highY)];
+        [wickPath lineToPoint:NSMakePoint(x + barWidth/2, lowY)];
+        [wickPath stroke];
         
-        // Draw body (open-close rectangle)
-        NSRect bodyRect = NSMakeRect(x, MIN(openY, closeY), barWidth, fabs(closeY - openY));
-        if (bodyRect.size.height < 1) bodyRect.size.height = 1; // Minimum height for doji
+        // Draw body
+        CGFloat bodyTop = MAX(openY, closeY);
+        CGFloat bodyBottom = MIN(openY, closeY);
+        CGFloat bodyHeight = bodyTop - bodyBottom;
         
+        if (bodyHeight < 1.0) bodyHeight = 1.0; // Minimum body size
+        
+        NSRect bodyRect = NSMakeRect(x, bodyBottom, barWidth, bodyHeight);
         [bodyColor setFill];
-        [[NSBezierPath bezierPathWithRect:bodyRect] fill];
+        NSBezierPath *bodyPath = [NSBezierPath bezierPathWithRect:bodyRect];
+        [bodyPath fill];
     }
+    
+    NSLog(@"🕯️ Candlesticks drawn with unified coordinates");
 }
 
 
@@ -684,26 +659,38 @@
     
     if (maxVolume == 0) return;
     
-    NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
-    
-    CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
-    CGFloat barWidth = chartAreaWidth / visibleBars;
-    CGFloat barSpacing = MAX(1, barWidth * 0.1);
-    barWidth = barWidth - barSpacing;
+    // ✅ USA COORDINATE UNIFICATE per calcoli X
+    BOOL hasCoordinateContext = (self.objectRenderer && self.objectRenderer.coordinateContext);
     
     CGFloat chartHeight = self.bounds.size.height - 20; // 10px margin top/bottom
     
     for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
         HistoricalBarModel *bar = self.chartData[i];
         
-        // 🆕 FIX: Use CHART_MARGIN_LEFT instead of hardcoded 10
-        CGFloat x = CHART_MARGIN_LEFT + (i - self.visibleStartIndex) * (barWidth + barSpacing);
+        // ✅ COORDINATE X UNIFICATE
+        CGFloat x;
+        CGFloat barWidth;
+        if (hasCoordinateContext) {
+            x = [self.objectRenderer.coordinateContext screenXForBarIndex:i];
+            barWidth = [self.objectRenderer.coordinateContext barWidth];
+            barWidth -= [self.objectRenderer.coordinateContext barSpacing]; // Remove spacing for actual bar
+        } else {
+            // Fallback - usa metodo helper unificato
+            x = [self xCoordinateForBarIndex:i];
+            NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
+            CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
+            CGFloat totalBarWidth = chartAreaWidth / visibleBars;
+            CGFloat barSpacing = MAX(1, totalBarWidth * 0.1);
+            barWidth = totalBarWidth - barSpacing;
+        }
+        
+        // Volume height calculation
         CGFloat height = (bar.volume / maxVolume) * chartHeight;
         CGFloat y = 10; // Start from bottom margin
         
-        // Color based on price direction
+        // Color based on price direction (same as candlesticks)
         NSColor *barColor = (bar.close >= bar.open) ?
-                            [NSColor systemGreenColor] : [NSColor systemRedColor];
+                           [NSColor systemGreenColor] : [NSColor systemRedColor];
         
         NSRect volumeRect = NSMakeRect(x, y, barWidth, height);
         [barColor setFill];
@@ -711,26 +698,36 @@
         [volumePath fill];
     }
     
-    NSLog(@"📊 Volume histogram drawn with chartAreaWidth: %.1f", chartAreaWidth);
+    NSLog(@"📊 Volume histogram drawn with unified coordinates");
 }
 
 
 - (void)drawChartPortionSelection {
     if (labs(self.selectionStartIndex - self.selectionEndIndex) == 0) return;
-    
-    NSInteger startIdx = MIN(self.selectionStartIndex, self.selectionEndIndex);
-    NSInteger endIdx = MAX(self.selectionStartIndex, self.selectionEndIndex);
-    
-    NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
-    CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
-    CGFloat barWidth = chartAreaWidth / visibleBars;
-
-    CGFloat startX = CHART_MARGIN_LEFT + (startIdx - self.visibleStartIndex) * barWidth;
-    CGFloat endX = CHART_MARGIN_LEFT + (endIdx - self.visibleStartIndex) * barWidth;
-    
-    // ✅ NUOVO: Calcola variazioni per determinare i colori
-    if (!self.chartData || startIdx >= self.chartData.count || endIdx >= self.chartData.count) return;
-    
+     
+     NSInteger startIdx = MIN(self.selectionStartIndex, self.selectionEndIndex);
+     NSInteger endIdx = MAX(self.selectionStartIndex, self.selectionEndIndex);
+     
+     // ✅ USA COORDINATE UNIFICATE per posizioni X
+     CGFloat startX, endX;
+     BOOL hasCoordinateContext = (self.objectRenderer && self.objectRenderer.coordinateContext);
+     
+     if (hasCoordinateContext) {
+         startX = [self.objectRenderer.coordinateContext screenXForBarIndex:startIdx];
+         endX = [self.objectRenderer.coordinateContext screenXForBarIndex:endIdx];
+         // Add barWidth to endX to include the full last bar
+         endX += [self.objectRenderer.coordinateContext barWidth];
+     } else {
+         // Fallback - usa metodi helper unificati
+         startX = [self xCoordinateForBarIndex:startIdx];
+         endX = [self xCoordinateForBarIndex:endIdx];
+         
+         NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
+         CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
+         CGFloat barWidth = chartAreaWidth / visibleBars;
+         endX += barWidth; // Include full last bar
+     }
+     
     HistoricalBarModel *startBar = self.chartData[startIdx];
     HistoricalBarModel *endBar = self.chartData[endIdx];
     double startValue = startBar.close;
@@ -1137,19 +1134,41 @@
 }
 
 - (NSInteger)barIndexForXCoordinate:(CGFloat)x {
+    // ✅ USA COORDINATE CONTEXT UNIFICATO se disponibile
+    if (self.objectRenderer && self.objectRenderer.coordinateContext) {
+        return [self.objectRenderer.coordinateContext barIndexForScreenX:x];
+    }
+    
+    // ✅ FALLBACK per compatibilità (stesso algoritmo del context)
     if (self.visibleStartIndex >= self.visibleEndIndex) return -1;
     
     NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
-    // Use chart area width (excluding Y-axis)
     CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
     CGFloat barWidth = chartAreaWidth / visibleBars;
     
     NSInteger relativeIndex = (x - CHART_MARGIN_LEFT) / barWidth;
     NSInteger absoluteIndex = self.visibleStartIndex + relativeIndex;
     
-    return MAX(self.visibleStartIndex, MIN(absoluteIndex, self.visibleEndIndex - 1));
+    return MAX(self.visibleStartIndex,
+              MIN(absoluteIndex, self.visibleEndIndex - 1));
 }
 
+- (CGFloat)xCoordinateForBarIndex:(NSInteger)barIndex {
+    // ✅ USA COORDINATE CONTEXT UNIFICATO se disponibile
+    if (self.objectRenderer && self.objectRenderer.coordinateContext) {
+        return [self.objectRenderer.coordinateContext screenXForBarIndex:barIndex];
+    }
+    
+    // ✅ FALLBACK per compatibilità
+    if (self.visibleStartIndex >= self.visibleEndIndex) return CHART_MARGIN_LEFT;
+    
+    NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
+    CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
+    CGFloat barWidth = chartAreaWidth / visibleBars;
+    
+    NSInteger relativeIndex = barIndex - self.visibleStartIndex;
+    return CHART_MARGIN_LEFT + (relativeIndex * barWidth);
+}
 
 #pragma mark - Mouse Events
 
@@ -2538,6 +2557,61 @@
           baseChartWidth, preliminaryBarWidth, dynamicRightBuffer, finalChartWidth);
     
     return finalChartWidth;
+}
+
+- (void)drawPriceBubbleAtCrosshair {
+    if (!self.crosshairVisible) return;
+    
+    // ✅ USA COORDINATE CONTEXT per valore Y unificato
+    double currentValue;
+    if (self.objectRenderer && self.objectRenderer.coordinateContext) {
+        currentValue = [self.objectRenderer.coordinateContext valueForScreenY:self.crosshairPoint.y];
+    } else {
+        // Fallback se coordinate context non disponibile
+        currentValue = [self valueForYCoordinate:self.crosshairPoint.y];
+    }
+    
+    NSString *valueText = [self formatValueForDisplay:currentValue];
+    
+    // Font più grande e bold per effetto magnifier
+    NSDictionary *bubbleAttributes = @{
+        NSFontAttributeName: [NSFont boldSystemFontOfSize:13], // vs 11 per asse normale
+        NSForegroundColorAttributeName: [NSColor controlBackgroundColor]
+    };
+    
+    NSSize textSize = [valueText sizeWithAttributes:bubbleAttributes];
+    
+    // Posiziona nell'area dell'asse Y (lato destro)
+    CGFloat bubbleX = self.bounds.size.width - Y_AXIS_WIDTH + 8;
+    CGFloat bubbleY = self.crosshairPoint.y - textSize.height/2;
+    
+    // Clamp alla vista per evitare che esca dai bounds
+    bubbleY = MAX(5, MIN(bubbleY, self.bounds.size.height - textSize.height - 5));
+    
+    // Bubble background con colore accent
+    NSRect bubbleRect = NSMakeRect(bubbleX - 4, bubbleY - 3,
+                                  textSize.width + 8, textSize.height + 6);
+    
+    // Colore dinamico basato sul tipo di panel
+    NSColor *bubbleColor;
+    if ([self.panelType isEqualToString:@"volume"]) {
+        bubbleColor = [NSColor systemOrangeColor]; // Volume = arancione
+    } else {
+        bubbleColor = [NSColor systemBlueColor];   // Price = blu
+    }
+    
+    [bubbleColor setFill];
+    NSBezierPath *bubblePath = [NSBezierPath bezierPathWithRoundedRect:bubbleRect
+                                                              xRadius:4 yRadius:4];
+    [bubblePath fill];
+    
+    // Border sottile per definizione
+    [[NSColor controlBackgroundColor] setStroke];
+    bubblePath.lineWidth = 1.0;
+    [bubblePath stroke];
+    
+    // Disegna il testo del valore
+    [valueText drawAtPoint:NSMakePoint(bubbleX, bubbleY) withAttributes:bubbleAttributes];
 }
 
 

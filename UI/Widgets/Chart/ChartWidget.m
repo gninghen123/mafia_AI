@@ -16,6 +16,7 @@
 #import "ChartWidget+SaveData.h"
 #import "Quartz/Quartz.h"
 #import "SharedXCoordinateContext.h"  // ✅ AGGIUNTO: Import necessario nel .m
+#import "ChartWidget+ImageExport.h"
 
 
 #pragma mark - Smart Symbol Input Parameters
@@ -1104,6 +1105,7 @@ extern NSString *const DataHubDataLoadedNotification;
     resetZoomItem.target = self;
     [menu addItem:resetZoomItem];
     [self addSaveDataMenuItemsToMenu:menu];
+    [self addImageExportMenuItemToMenu:menu];
 
 }
 

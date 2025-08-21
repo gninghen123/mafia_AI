@@ -72,6 +72,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// Add save data menu items to existing context menu
 - (void)addSaveDataMenuItemsToMenu:(NSMenu *)menu;
 
+
+- (NSString *)timeframeDisplayStringForTimeframe;
+
+
 @end
 
 NS_ASSUME_NONNULL_END

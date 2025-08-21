@@ -19,6 +19,7 @@
 #import "datahub+marketdata.h"
 #import "FloatingWidgetWindow.h"
 #import "ChartWidget+SaveData.h"
+#import "ChartWidget+ImageExport.h"
 
 
 @interface ChartPanelView ()
@@ -2094,6 +2095,16 @@
     loadDataItem.target = self;
     [contextMenu addItem:loadDataItem];
     
+    // 🆕 NUOVO: Crea Immagine - Delega al ChartWidget
+    [contextMenu addItem:[NSMenuItem separatorItem]];
+    
+    NSMenuItem *createImageItem = [[NSMenuItem alloc] initWithTitle:@"📸 Crea Immagine"
+                                                             action:@selector(contextMenuCreateChartImage:)
+                                                      keyEquivalent:@""];
+    createImageItem.target = self;
+    createImageItem.enabled = (self.chartWidget.currentSymbol != nil && self.chartWidget.chartPanels.count > 0);
+    [contextMenu addItem:createImageItem];
+    
     // Alert creation
     if (self.alertRenderer) {
         [contextMenu addItem:[NSMenuItem separatorItem]];
@@ -2111,6 +2122,24 @@
     
     // Show the context menu
     [NSMenu popUpContextMenu:contextMenu withEvent:event forView:self];
+    
+    NSLog(@"🎯 ChartPanelView: General context menu displayed");
+}
+
+- (IBAction)contextMenuCreateChartImage:(id)sender {
+    // Delega al ChartWidget per creare l'immagine
+    if (self.chartWidget && [self.chartWidget respondsToSelector:@selector(createChartImageInteractive)]) {
+        [self.chartWidget createChartImageInteractive];
+    } else {
+        NSLog(@"❌ ChartPanelView: ChartWidget non supporta createChartImageInteractive");
+        
+        // Fallback: mostra alert di errore
+        NSAlert *errorAlert = [[NSAlert alloc] init];
+        errorAlert.messageText = @"Feature Not Available";
+        errorAlert.informativeText = @"Chart image export is not available in this version.";
+        [errorAlert addButtonWithTitle:@"OK"];
+        [errorAlert runModal];
+    }
 }
 
 #pragma mark - Alert Context Menu

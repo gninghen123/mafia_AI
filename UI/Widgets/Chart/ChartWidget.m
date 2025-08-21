@@ -1107,6 +1107,13 @@ extern NSString *const DataHubDataLoadedNotification;
 #pragma mark - NSTextFieldDelegate
 
 - (void)controlTextDidEndEditing:(NSNotification *)notification {
+    NSDictionary *info = [notification userInfo];
+      NSNumber *movement = info[@"NSTextMovement"];
+    if (movement.intValue != NSReturnTextMovement) {
+        return;
+    }
+    
+    
     NSTextField *textField = [notification object];
     
     // Verifica se è il titleComboBox di BaseWidget

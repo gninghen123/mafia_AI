@@ -192,7 +192,11 @@
                                              selector:@selector(handleObjectsManagerDataLoaded:)
                                                  name:@"ChartObjectsManagerDataLoaded"
                                                object:nil];
-    
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(handleObjectsChanged:)
+                                                 name:@"ChartObjectsChanged"
+                                               object:nil];
+
     NSLog(@"✅ ObjectManagerWindow: Notification observers setup");
 }
 
@@ -902,6 +906,17 @@
     
     if (self.objectSettingsWindow) {
         [self.objectSettingsWindow close];
+    }
+}
+
+- (void)handleObjectsChanged:(NSNotification *)notification {
+    NSString *symbol = notification.userInfo[@"symbol"];
+    
+    if ([symbol isEqualToString:self.currentSymbol]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self refreshContent];
+            NSLog(@"🔄 ObjectManagerWindow: Refreshed from objects changed notification for %@", symbol);
+        });
     }
 }
 

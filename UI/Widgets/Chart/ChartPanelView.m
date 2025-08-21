@@ -296,10 +296,11 @@
 }
 
 - (NSPoint)clampCrosshairToChartArea:(NSPoint)rawPoint {
-    CGFloat chartAreaWidth = self.bounds.size.width - Y_AXIS_WIDTH;
+    // ✅ NUOVO: Usa la larghezza effettiva con buffer
+    CGFloat effectiveChartWidth = CHART_MARGIN_LEFT + [self calculateChartAreaWidthWithDynamicBuffer];
     
-    // Clamp X to chart area (non entrare nell'asse Y)
-    CGFloat clampedX = MAX(CHART_MARGIN_LEFT, MIN(rawPoint.x, chartAreaWidth));
+    // Clamp X to chart area (considerando il buffer)
+    CGFloat clampedX = MAX(CHART_MARGIN_LEFT, MIN(rawPoint.x, effectiveChartWidth));
     
     // Y può essere ovunque nell'altezza
     CGFloat clampedY = MAX(0, MIN(rawPoint.y, self.bounds.size.height));
@@ -537,7 +538,7 @@
     
     NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
     // Use chart area width (excluding Y-axis)
-    CGFloat chartAreaWidth = self.bounds.size.width - Y_AXIS_WIDTH - (2 * CHART_MARGIN_LEFT);
+    CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
     CGFloat barWidth = chartAreaWidth / visibleBars;
     CGFloat barSpacing = MAX(1, barWidth * 0.1);
     barWidth = barWidth - barSpacing;
@@ -572,11 +573,6 @@
     }
 }
 
-// 6. 🆕 NEW method: Y-Axis rendering
-
-
-
-// 7. 🆕 Helper methods for Y-Axis
 
 - (double)calculateOptimalTickStep:(double)range targetTicks:(NSInteger)targetTicks {
     if (range <= 0 || targetTicks <= 0) return 1.0;
@@ -690,8 +686,7 @@
     
     NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
     
-    // 🆕 FIX: Use chart area width (excluding Y-axis)
-    CGFloat chartAreaWidth = self.bounds.size.width - Y_AXIS_WIDTH - (2 * CHART_MARGIN_LEFT);
+    CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
     CGFloat barWidth = chartAreaWidth / visibleBars;
     CGFloat barSpacing = MAX(1, barWidth * 0.1);
     barWidth = barWidth - barSpacing;
@@ -727,7 +722,7 @@
     NSInteger endIdx = MAX(self.selectionStartIndex, self.selectionEndIndex);
     
     NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
-    CGFloat chartAreaWidth = self.bounds.size.width - Y_AXIS_WIDTH - (2 * CHART_MARGIN_LEFT);
+    CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
     CGFloat barWidth = chartAreaWidth / visibleBars;
 
     CGFloat startX = CHART_MARGIN_LEFT + (startIdx - self.visibleStartIndex) * barWidth;
@@ -1146,7 +1141,7 @@
     
     NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
     // Use chart area width (excluding Y-axis)
-    CGFloat chartAreaWidth = self.bounds.size.width - Y_AXIS_WIDTH - (2 * CHART_MARGIN_LEFT);
+    CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
     CGFloat barWidth = chartAreaWidth / visibleBars;
     
     NSInteger relativeIndex = (x - CHART_MARGIN_LEFT) / barWidth;
@@ -1214,8 +1209,8 @@
     }
     
     NSPoint locationInView = [self convertPoint:event.locationInWindow fromView:nil];
-    NSPoint clampedPoint = [self clampCrosshairToChartArea:locationInView]; // 🆕 FIX
-    
+   NSPoint clampedPoint = [self clampCrosshairToChartArea:locationInView]; // 🆕 FIX
+
     self.dragStartPoint = clampedPoint; // Use clamped
     self.isDragging = NO;
     
@@ -2517,6 +2512,32 @@
         [self startEditingAlertAtPoint:NSZeroPoint]; // Will use the template
         NSLog(@"🚨 Creating alert at %.2f for %@", alertTemplate.triggerValue, alertTemplate.symbol);
     }
+}
+
+- (CGFloat)calculateChartAreaWidthWithDynamicBuffer {
+    if (self.visibleStartIndex >= self.visibleEndIndex) {
+        return self.bounds.size.width - Y_AXIS_WIDTH - (2 * CHART_MARGIN_LEFT) - 20; // Fallback statico
+    }
+    
+    NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
+    
+    // Calcola larghezza base senza buffer
+    CGFloat baseChartWidth = self.bounds.size.width - Y_AXIS_WIDTH - (2 * CHART_MARGIN_LEFT);
+    CGFloat preliminaryBarWidth = baseChartWidth / visibleBars;
+    
+    // ✅ BUFFER DINAMICO: Proporzionale alla larghezza delle barre
+    // Più zoom stretto (barre larghe) = più buffer necessario
+    CGFloat dynamicRightBuffer = MAX(20.0, preliminaryBarWidth * 0.6); // Minimo 20px o 60% larghezza barra
+    
+    // Limita il buffer per evitare di sprecare troppo spazio con zoom molto largo
+    dynamicRightBuffer = MIN(dynamicRightBuffer, 100.0); // Massimo 100px
+    
+    CGFloat finalChartWidth = baseChartWidth - dynamicRightBuffer;
+    
+    NSLog(@"📐 Chart area: base=%.1f, barWidth=%.1f, buffer=%.1f, final=%.1f",
+          baseChartWidth, preliminaryBarWidth, dynamicRightBuffer, finalChartWidth);
+    
+    return finalChartWidth;
 }
 
 

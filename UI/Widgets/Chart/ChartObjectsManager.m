@@ -43,6 +43,8 @@
     }
     
     NSLog(@"✅ ChartObjectsManager: Created layer '%@' for symbol %@", name, self.currentSymbol);
+    [self notifyObjectsChanged];
+
     return layer;
 }
 
@@ -62,6 +64,8 @@
     }
     
     NSLog(@"🗑️ ChartObjectsManager: Deleted layer '%@'", layer.name);
+    [self notifyObjectsChanged];
+
 }
 
 - (void)moveLayer:(ChartLayerModel *)layer toIndex:(NSUInteger)index {
@@ -149,7 +153,8 @@
     
     // Set as active layer
     self.activeLayer = layer;
-    
+    [self notifyObjectsChanged];
+
     NSLog(@"✅ ChartObjectsManager: Created object '%@' in layer '%@' (not saved yet)", uniqueName, layer.name);
     return object;
 }
@@ -172,6 +177,8 @@
     
     // ✅ SALVA SUBITO per le delete (ok per operazioni distruttive)
     [self saveToDataHub];
+    [self notifyObjectsChanged];
+
     
     NSLog(@"🗑️ ChartObjectsManager: Deleted object '%@' and saved", object.name);
 }
@@ -191,6 +198,8 @@
     [targetLayer addObject:object];
     
     NSLog(@"🔄 ChartObjectsManager: Moved object '%@' to layer '%@'", object.name, targetLayer.name);
+    [self notifyObjectsChanged];
+
 }
 
 #pragma mark - Selection
@@ -475,6 +484,13 @@
     }
     
     NSLog(@"✅ ChartObjectsManager: Symbol change completed - loading data for '%@'", _currentSymbol);
+}
+
+- (void)notifyObjectsChanged {
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"ChartObjectsChanged"
+                                                        object:self
+                                                      userInfo:@{@"symbol": self.currentSymbol ?: @""}];
+    NSLog(@"📢 ChartObjectsManager: Objects changed notification posted for %@", self.currentSymbol);
 }
 
 @end

@@ -1,20 +1,18 @@
-
+//
 //  ChartObjectManagerWindow.m
 //  TradingApp
 //
-//  Implementation completa con Layer Management + Context Menu + Drag&Drop
+//  Implementation completa con outline view espanso + drag&drop + menu contestuale
 //
 
 #import "ChartObjectManagerWindow.h"
 #import "DataHub+ChartObjects.h"
+#import "ChartObjectSettingsWindow.h"
 #import <QuartzCore/QuartzCore.h>
 
 @interface ChartObjectManagerWindow ()
 @property (nonatomic, strong) NSView *contentContainer;
-@property (nonatomic, strong) NSTextField *layersHeaderLabel;
-@property (nonatomic, strong) NSTextField *objectsHeaderLabel;
 @property (nonatomic, strong) NSScrollView *layersScrollView;
-@property (nonatomic, strong) NSScrollView *objectsScrollView;
 @end
 
 @implementation ChartObjectManagerWindow
@@ -76,19 +74,8 @@
     // Symbol label + Layer toolbar (sulla stessa riga)
     [self setupSymbolAndLayerToolbar];
     
-    // Layers section header
-    self.layersHeaderLabel = [self createHeaderLabel:@"📁 Layers"];
-    [self.contentContainer addSubview:self.layersHeaderLabel];
-    
-    // Layers outline view
-    [self setupLayersOutlineView];
-    
-    // Objects section header
-    self.objectsHeaderLabel = [self createHeaderLabel:@"📋 Objects"];
-    [self.contentContainer addSubview:self.objectsHeaderLabel];
-    
-    // Objects table view
-    [self setupObjectsTableView];
+    // Outline view espanso a tutta la view (MODIFICATO)
+    [self setupExpandedOutlineView];
 }
 
 - (void)setupSymbolAndLayerToolbar {
@@ -136,19 +123,68 @@
     self.renameLayerButton.controlSize = NSControlSizeSmall;
     self.renameLayerButton.toolTip = @"Rename Selected Layer";
     [self.layerToolbar addSubview:self.renameLayerButton];
+}
+
+- (void)setupExpandedOutlineView {
+    // ✅ NUOVA IMPLEMENTAZIONE: Outline view espanso a tutta la view
+    self.layersOutlineView = [[NSOutlineView alloc] init];
+    self.layersOutlineView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.layersOutlineView.dataSource = self;
+    self.layersOutlineView.delegate = self;
+    self.layersOutlineView.headerView = nil;
+    self.layersOutlineView.allowsMultipleSelection = NO; // ✅ NO selection multipla
+    self.layersOutlineView.indentationPerLevel = 20;
+    self.layersOutlineView.intercellSpacing = NSMakeSize(0, 2);
     
-    // Layout toolbar buttons horizontally
+    // ✅ CORREZIONE: Configurazione context menu
+    // Il menu viene generato dinamicamente tramite menuForTableColumn:item:
+    // Ma dobbiamo assicurarci che il delegate method venga chiamato
+    
+    // ✅ Drag & Drop setup per oggetti tra layer
+    [self.layersOutlineView registerForDraggedTypes:@[@"ChartObjectDragType"]];
+    self.layersOutlineView.draggingDestinationFeedbackStyle = NSTableViewDraggingDestinationFeedbackStyleSourceList;
+    
+    // Add single column per layer + oggetti
+    NSTableColumn *itemColumn = [[NSTableColumn alloc] initWithIdentifier:@"ItemColumn"];
+    itemColumn.title = @"Layers & Objects";
+    itemColumn.width = 300;
+    [self.layersOutlineView addTableColumn:itemColumn];
+    
+    NSScrollView *scrollView = [[NSScrollView alloc] init];
+    scrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    scrollView.documentView = self.layersOutlineView;
+    scrollView.hasVerticalScroller = YES;
+    scrollView.hasHorizontalScroller = NO;
+    scrollView.borderType = NSBezelBorder;
+    [self.contentContainer addSubview:scrollView];
+    
+    self.layersScrollView = scrollView;
+}
+
+- (void)setupConstraints {
     [NSLayoutConstraint activateConstraints:@[
-        // Symbol label constraints
-        [self.symbolLabel.leadingAnchor constraintEqualToAnchor:self.contentContainer.leadingAnchor],
-        [self.symbolLabel.centerYAnchor constraintEqualToAnchor:self.layerToolbar.centerYAnchor],
+        // Container
+        [self.contentContainer.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:12],
+        [self.contentContainer.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:12],
+        [self.contentContainer.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-12],
+        [self.contentContainer.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-12],
         
-        // Toolbar container constraints
-        [self.layerToolbar.trailingAnchor constraintEqualToAnchor:self.contentContainer.trailingAnchor],
+        // Symbol label (top left)
+        [self.symbolLabel.topAnchor constraintEqualToAnchor:self.contentContainer.topAnchor],
+        [self.symbolLabel.leadingAnchor constraintEqualToAnchor:self.contentContainer.leadingAnchor],
+        
+        // Layer toolbar (top right)
         [self.layerToolbar.topAnchor constraintEqualToAnchor:self.contentContainer.topAnchor],
+        [self.layerToolbar.trailingAnchor constraintEqualToAnchor:self.contentContainer.trailingAnchor],
         [self.layerToolbar.heightAnchor constraintEqualToConstant:30],
         
-        // Buttons inside toolbar (right to left)
+        // ✅ NUOVA IMPLEMENTAZIONE: Outline view espanso occupa tutto lo spazio rimanente
+        [self.layersScrollView.topAnchor constraintEqualToAnchor:self.symbolLabel.bottomAnchor constant:12],
+        [self.layersScrollView.leadingAnchor constraintEqualToAnchor:self.contentContainer.leadingAnchor],
+        [self.layersScrollView.trailingAnchor constraintEqualToAnchor:self.contentContainer.trailingAnchor],
+        [self.layersScrollView.bottomAnchor constraintEqualToAnchor:self.contentContainer.bottomAnchor],
+        
+        // Layer toolbar buttons layout
         [self.renameLayerButton.trailingAnchor constraintEqualToAnchor:self.layerToolbar.trailingAnchor],
         [self.renameLayerButton.centerYAnchor constraintEqualToAnchor:self.layerToolbar.centerYAnchor],
         [self.renameLayerButton.widthAnchor constraintEqualToConstant:30],
@@ -166,269 +202,246 @@
     ]];
 }
 
-- (void)setupLayersOutlineView {
-    self.layersOutlineView = [[NSOutlineView alloc] init];
-    self.layersOutlineView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.layersOutlineView.dataSource = self;
-    self.layersOutlineView.delegate = self;
-    self.layersOutlineView.headerView = nil;
-    self.layersOutlineView.allowsMultipleSelection = NO;
-    self.layersOutlineView.indentationPerLevel = 16;
-    
-    // Drag & Drop setup
-    [self.layersOutlineView registerForDraggedTypes:@[@"ChartObjectDragType"]];
-    self.layersOutlineView.draggingDestinationFeedbackStyle = NSTableViewDraggingDestinationFeedbackStyleSourceList;
-    
-    // Add single column
-    NSTableColumn *layerColumn = [[NSTableColumn alloc] initWithIdentifier:@"LayerColumn"];
-    layerColumn.title = @"Layer";
-    layerColumn.width = 200;
-    [self.layersOutlineView addTableColumn:layerColumn];
-    
-    NSScrollView *layersScrollView = [[NSScrollView alloc] init];
-    layersScrollView.translatesAutoresizingMaskIntoConstraints = NO;
-    layersScrollView.documentView = self.layersOutlineView;
-    layersScrollView.hasVerticalScroller = YES;
-    layersScrollView.hasHorizontalScroller = NO;
-    layersScrollView.borderType = NSBezelBorder;
-    [self.contentContainer addSubview:layersScrollView];
-    
-    self.layersScrollView = layersScrollView;
-}
-
-- (void)setupObjectsTableView {
-    self.objectsTableView = [[NSTableView alloc] init];
-    self.objectsTableView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.objectsTableView.dataSource = self;
-    self.objectsTableView.delegate = self;
-    self.objectsTableView.allowsMultipleSelection = NO;
-    
-    // Drag & Drop setup
-    [self.objectsTableView setDraggingSourceOperationMask:NSDragOperationMove forLocal:YES];
-    
-    // Double-click setup
-    self.objectsTableView.target = self;
-    self.objectsTableView.doubleAction = @selector(editObjectDoubleClick:);
-    
-    // Add columns
-    NSTableColumn *nameColumn = [[NSTableColumn alloc] initWithIdentifier:@"NameColumn"];
-    nameColumn.title = @"Name";
-    nameColumn.width = 150;
-    [self.objectsTableView addTableColumn:nameColumn];
-    
-    NSTableColumn *typeColumn = [[NSTableColumn alloc] initWithIdentifier:@"TypeColumn"];
-    typeColumn.title = @"Type";
-    typeColumn.width = 100;
-    [self.objectsTableView addTableColumn:typeColumn];
-    
-    NSTableColumn *visibleColumn = [[NSTableColumn alloc] initWithIdentifier:@"VisibleColumn"];
-    visibleColumn.title = @"👁️";
-    visibleColumn.width = 30;
-    [self.objectsTableView addTableColumn:visibleColumn];
-    
-    NSScrollView *objectsScrollView = [[NSScrollView alloc] init];
-    objectsScrollView.translatesAutoresizingMaskIntoConstraints = NO;
-    objectsScrollView.documentView = self.objectsTableView;
-    objectsScrollView.hasVerticalScroller = YES;
-    objectsScrollView.hasHorizontalScroller = NO;
-    objectsScrollView.borderType = NSBezelBorder;
-    [self.contentContainer addSubview:objectsScrollView];
-    
-    self.objectsScrollView = objectsScrollView;
-}
-
-- (NSTextField *)createHeaderLabel:(NSString *)title {
-    NSTextField *label = [[NSTextField alloc] init];
-    label.translatesAutoresizingMaskIntoConstraints = NO;
-    label.stringValue = title;
-    label.font = [NSFont systemFontOfSize:12 weight:NSFontWeightSemibold];
-    label.textColor = [NSColor secondaryLabelColor];
-    label.editable = NO;
-    label.bordered = NO;
-    label.backgroundColor = [NSColor clearColor];
-    return label;
-}
-
-- (void)setupConstraints {
-    [NSLayoutConstraint activateConstraints:@[
-        // Container
-        [self.contentContainer.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:12],
-        [self.contentContainer.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:12],
-        [self.contentContainer.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-12],
-        [self.contentContainer.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-12],
-        
-        // Layers header (below symbol+toolbar)
-        [self.layersHeaderLabel.topAnchor constraintEqualToAnchor:self.layerToolbar.bottomAnchor constant:16],
-        [self.layersHeaderLabel.leadingAnchor constraintEqualToAnchor:self.contentContainer.leadingAnchor],
-        [self.layersHeaderLabel.trailingAnchor constraintEqualToAnchor:self.contentContainer.trailingAnchor],
-        
-        // Layers outline view
-        [self.layersScrollView.topAnchor constraintEqualToAnchor:self.layersHeaderLabel.bottomAnchor constant:4],
-        [self.layersScrollView.leadingAnchor constraintEqualToAnchor:self.contentContainer.leadingAnchor],
-        [self.layersScrollView.trailingAnchor constraintEqualToAnchor:self.contentContainer.trailingAnchor],
-        [self.layersScrollView.heightAnchor constraintEqualToConstant:150],
-        
-        // Objects header
-        [self.objectsHeaderLabel.topAnchor constraintEqualToAnchor:self.layersScrollView.bottomAnchor constant:16],
-        [self.objectsHeaderLabel.leadingAnchor constraintEqualToAnchor:self.contentContainer.leadingAnchor],
-        [self.objectsHeaderLabel.trailingAnchor constraintEqualToAnchor:self.contentContainer.trailingAnchor],
-        
-        // Objects table view
-        [self.objectsScrollView.topAnchor constraintEqualToAnchor:self.objectsHeaderLabel.bottomAnchor constant:4],
-        [self.objectsScrollView.leadingAnchor constraintEqualToAnchor:self.contentContainer.leadingAnchor],
-        [self.objectsScrollView.trailingAnchor constraintEqualToAnchor:self.contentContainer.trailingAnchor],
-        [self.objectsScrollView.bottomAnchor constraintEqualToAnchor:self.contentContainer.bottomAnchor]
-    ]];
-}
-
 #pragma mark - Data Loading
 
-- (void)loadInitialData {
-    NSLog(@"📥 ChartObjectManagerWindow: Loading initial data for symbol %@", self.currentSymbol);
+- (void)setupNotificationObservers {
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(handleDataHubUpdate:)
+                                                 name:@"DataHubChartObjectsUpdated"
+                                               object:nil];
     
-    // Carica i dati dal DataHub
+    // ✅ AGGIUNTA: Ascolta quando il ChartObjectsManager completa il load
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(handleObjectsManagerDataLoaded:)
+                                                 name:@"ChartObjectsManagerDataLoaded"
+                                               object:nil];
+    
+    NSLog(@"✅ ObjectManagerWindow: Notification observers setup");
+}
+
+- (void)loadInitialData {
+    if (!self.objectsManager || !self.currentSymbol) return;
+    
+    // Se non ci sono layer, assicura che ci sia un layer attivo
+    if (self.objectsManager.layers.count == 0) {
+        [self.objectsManager ensureActiveLayerForObjectCreation];
+    }
+    
+    // ✅ CORREZIONE: Trigghera il load asincrono - la notification arriverà quando finito
+    NSLog(@"📥 ObjectManagerWindow: Loading initial data for symbol %@", self.currentSymbol);
     [self.objectsManager loadFromDataHub];
     
-    // Aggiungi un delay per permettere il caricamento asincrono dal DataHub
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.1 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-        NSLog(@"📊 ChartObjectManagerWindow: Checking loaded data - found %lu layers", (unsigned long)self.objectsManager.layers.count);
+    // Non fare refreshContent qui - aspettiamo la notification!
+}
+
+- (void)handleDataHubUpdate:(NSNotification *)notification {
+    NSString *symbol = notification.userInfo[@"symbol"];
+    if ([symbol isEqualToString:self.currentSymbol]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self refreshContent];
+            NSLog(@"🔄 ObjectManagerWindow: Refreshed from DataHub notification for %@", symbol);
+        });
+    }
+}
+
+- (void)handleObjectsManagerDataLoaded:(NSNotification *)notification {
+    // ✅ NUOVO: Handler per quando il ChartObjectsManager finisce di caricare i dati
+    NSString *symbol = notification.userInfo[@"symbol"];
+    
+    if ([symbol isEqualToString:self.currentSymbol]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self refreshContent];
+            NSLog(@"🔄 ObjectManagerWindow: Refreshed from ObjectsManager load completion for %@", symbol);
+        });
+    } else {
+        NSLog(@"💡 ObjectManagerWindow: Ignoring load notification for different symbol: %@ (current: %@)",
+              symbol, self.currentSymbol);
+    }
+}
+
+#pragma mark - Public Methods
+
+- (void)refreshContent {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.layersOutlineView reloadData];
         
-        
-        // Refresh UI
-        [self refreshContent];
-        
-        // Log final state
-        NSLog(@"✅ ChartObjectManagerWindow: Initial data loaded - %lu layers total", (unsigned long)self.objectsManager.layers.count);
-        for (ChartLayerModel *layer in self.objectsManager.layers) {
-            NSLog(@"   📁 Layer '%@' with %lu objects", layer.name, (unsigned long)layer.objects.count);
+        // Espandi tutti i layer per mostrare gli oggetti
+        for (NSInteger i = 0; i < self.objectsManager.layers.count; i++) {
+            [self.layersOutlineView expandItem:self.objectsManager.layers[i]];
         }
+        
+        NSLog(@"🔄 ChartObjectManagerWindow: Content refreshed for %@", self.currentSymbol);
     });
 }
 
-
-- (void)addLayerAction:(NSButton *)sender {
-    NSLog(@"➕ Adding new layer");
+- (void)updateForSymbol:(NSString *)symbol {
+    if ([symbol isEqualToString:self.currentSymbol]) return;
     
-    // Generate unique layer name
-    NSString *baseName = @"Layer";
-    NSString *newLayerName = [self generateUniqueLayerName:baseName];
+    self.currentSymbol = symbol;
+    self.title = [NSString stringWithFormat:@"Chart Objects - %@", symbol];
+    self.symbolLabel.stringValue = [NSString stringWithFormat:@"Symbol: %@", symbol];
     
-    // Create new layer using manager method
-    ChartLayerModel *newLayer = [self.objectsManager createLayerWithName:newLayerName];
-    
-    // Save changes
-    [self.objectsManager saveToDataHub];
-    
-    // Refresh UI and select new layer
-    [self refreshContent];
-    
-    // Find and select the new layer
-    NSInteger newLayerIndex = [self.objectsManager.layers indexOfObject:newLayer];
-    if (newLayerIndex != NSNotFound) {
-        [self.layersOutlineView selectRowIndexes:[NSIndexSet indexSetWithIndex:newLayerIndex] byExtendingSelection:NO];
-    }
-    
-    NSLog(@"✅ Created layer '%@' at index %ld", newLayerName, (long)newLayerIndex);
-}
-
-- (void)deleteLayerAction:(NSButton *)sender {
-    NSInteger selectedRow = self.layersOutlineView.selectedRow;
-    if (selectedRow < 0 || selectedRow >= self.objectsManager.layers.count) {
-        NSLog(@"⚠️ No layer selected for deletion");
-        return;
-    }
-    
-    ChartLayerModel *selectedLayer = self.objectsManager.layers[selectedRow];
-    
-    // Confirm deletion if layer has objects
-    if (selectedLayer.objects.count > 0) {
-        NSAlert *alert = [[NSAlert alloc] init];
-        alert.messageText = @"Delete Layer";
-        alert.informativeText = [NSString stringWithFormat:@"Layer '%@' contains %lu objects. All objects will be deleted. This action cannot be undone.",
-                                selectedLayer.name, (unsigned long)selectedLayer.objects.count];
-        [alert addButtonWithTitle:@"Delete"];
-        [alert addButtonWithTitle:@"Cancel"];
-        alert.alertStyle = NSAlertStyleWarning;
-        
-        NSModalResponse response = [alert runModal];
-        if (response != NSAlertFirstButtonReturn) {
-            return; // User cancelled
-        }
-    }
-    
-    NSLog(@"🗑️ Deleting layer '%@' with %lu objects", selectedLayer.name, (unsigned long)selectedLayer.objects.count);
-    
-    // Remove layer using manager method
-    [self.objectsManager deleteLayer:selectedLayer];
-    [self.objectsManager saveToDataHub];
-    
-    // Clear selection and refresh
+    // Reset selection
     self.selectedLayer = nil;
     self.selectedObject = nil;
-    [self refreshContent];
     
-    NSLog(@"✅ Layer deleted successfully");
+    // ✅ CORREZIONE: NON fare refresh immediato - aspetta la notification!
+    // [self refreshContent]; ← RIMOSSO!
+    
+    // ✅ NUOVO: Trigghera il load asincrono - la notification arriverà quando finito
+    if (self.objectsManager) {
+        NSLog(@"📥 ObjectManagerWindow: Triggering async load for symbol %@", symbol);
+        [self.objectsManager loadFromDataHub];
+    }
+    
+    NSLog(@"🔄 ObjectManagerWindow: Updated for symbol %@ (waiting for data...)", symbol);
 }
 
-- (void)renameLayerAction:(NSButton *)sender {
+#pragma mark - NSOutlineViewDataSource (Struttura gerarchica layer → oggetti)
+
+- (NSInteger)outlineView:(NSOutlineView *)outlineView numberOfChildrenOfItem:(nullable id)item {
+    if (item == nil) {
+        // Root level - return layers count
+        return self.objectsManager.layers.count;
+    }
+    
+    if ([item isKindOfClass:[ChartLayerModel class]]) {
+        // Layer level - return objects count in this layer
+        ChartLayerModel *layer = (ChartLayerModel *)item;
+        return layer.objects.count;
+    }
+    
+    return 0;
+}
+
+- (id)outlineView:(NSOutlineView *)outlineView child:(NSInteger)index ofItem:(nullable id)item {
+    if (item == nil) {
+        // Root level - return layer
+        return self.objectsManager.layers[index];
+    }
+    
+    if ([item isKindOfClass:[ChartLayerModel class]]) {
+        // Layer level - return object
+        ChartLayerModel *layer = (ChartLayerModel *)item;
+        return layer.objects[index];
+    }
+    
+    return nil;
+}
+
+- (BOOL)outlineView:(NSOutlineView *)outlineView isItemExpandable:(id)item {
+    if ([item isKindOfClass:[ChartLayerModel class]]) {
+        ChartLayerModel *layer = (ChartLayerModel *)item;
+        return layer.objects.count > 0;
+    }
+    return NO;
+}
+
+#pragma mark - NSOutlineViewDelegate (Cell rendering con icone)
+
+- (NSView *)outlineView:(NSOutlineView *)outlineView viewForTableColumn:(NSTableColumn *)tableColumn item:(id)item {
+    
+    NSTableCellView *cellView = [outlineView makeViewWithIdentifier:@"ItemCell" owner:self];
+    if (!cellView) {
+        cellView = [[NSTableCellView alloc] init];
+        cellView.identifier = @"ItemCell";
+        
+        // Text field
+        NSTextField *textField = [[NSTextField alloc] init];
+        textField.translatesAutoresizingMaskIntoConstraints = NO;
+        textField.bordered = NO;
+        textField.backgroundColor = [NSColor clearColor];
+        textField.editable = NO;
+        textField.font = [NSFont systemFontOfSize:13];
+        [cellView addSubview:textField];
+        cellView.textField = textField;
+        
+        // Image view per icone
+        NSImageView *imageView = [[NSImageView alloc] init];
+        imageView.translatesAutoresizingMaskIntoConstraints = NO;
+        imageView.imageScaling = NSImageScaleProportionallyUpOrDown;
+        [cellView addSubview:imageView];
+        cellView.imageView = imageView;
+        
+        // Constraints
+        [NSLayoutConstraint activateConstraints:@[
+            [imageView.leadingAnchor constraintEqualToAnchor:cellView.leadingAnchor constant:4],
+            [imageView.centerYAnchor constraintEqualToAnchor:cellView.centerYAnchor],
+            [imageView.widthAnchor constraintEqualToConstant:16],
+            [imageView.heightAnchor constraintEqualToConstant:16],
+            
+            [textField.leadingAnchor constraintEqualToAnchor:imageView.trailingAnchor constant:6],
+            [textField.trailingAnchor constraintEqualToAnchor:cellView.trailingAnchor constant:-4],
+            [textField.centerYAnchor constraintEqualToAnchor:cellView.centerYAnchor]
+        ]];
+    }
+    
+    if ([item isKindOfClass:[ChartLayerModel class]]) {
+        // ✅ LAYER CELL
+        ChartLayerModel *layer = (ChartLayerModel *)item;
+        
+        cellView.textField.stringValue = layer.name;
+        cellView.textField.font = [NSFont boldSystemFontOfSize:13];
+        cellView.textField.textColor = layer.isVisible ? [NSColor labelColor] : [NSColor secondaryLabelColor];
+        
+        // ✅ ICONA LAYER: Cartella con indicatore visibilità
+        NSString *iconName = layer.isVisible ? @"📁" : @"📂";
+        cellView.imageView.image = [self createEmojiImageWithText:iconName];
+        
+    } else if ([item isKindOfClass:[ChartObjectModel class]]) {
+        // ✅ OBJECT CELL
+        ChartObjectModel *object = (ChartObjectModel *)item;
+        
+        cellView.textField.stringValue = object.name;
+        cellView.textField.font = [NSFont systemFontOfSize:12];
+        
+        // ✅ VISIBILITÀ: Controlla layer parent + oggetto
+        ChartLayerModel *parentLayer = [self layerContainingObject:object];
+        BOOL effectivelyVisible = parentLayer.isVisible && object.isVisible;
+        cellView.textField.textColor = effectivelyVisible ? [NSColor labelColor] : [NSColor tertiaryLabelColor];
+        
+        // ✅ ICONA OGGETTO: Per tipo con SF Symbols
+        cellView.imageView.image = [self iconImageForObjectType:object.type];
+    }
+    
+    return cellView;
+}
+
+- (void)outlineViewSelectionDidChange:(NSNotification *)notification {
     NSInteger selectedRow = self.layersOutlineView.selectedRow;
-    if (selectedRow < 0 || selectedRow >= self.objectsManager.layers.count) {
-        NSLog(@"⚠️ No layer selected for renaming");
+    if (selectedRow < 0) {
+        self.selectedLayer = nil;
+        self.selectedObject = nil;
         return;
     }
     
-    ChartLayerModel *selectedLayer = self.objectsManager.layers[selectedRow];
+    id selectedItem = [self.layersOutlineView itemAtRow:selectedRow];
     
-    // Show rename dialog
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Rename Layer";
-    alert.informativeText = @"Enter new name for the layer:";
-    
-    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 300, 24)];
-    input.stringValue = selectedLayer.name;
-    input.font = [NSFont systemFontOfSize:12];
-    alert.accessoryView = input;
-    
-    [alert addButtonWithTitle:@"Rename"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    [input becomeFirstResponder];
-    
-    NSModalResponse response = [alert runModal];
-    if (response == NSAlertFirstButtonReturn) {
-        NSString *newName = [input.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        
-        if (newName.length > 0 && ![newName isEqualToString:selectedLayer.name]) {
-            // Check for duplicate names
-            if ([self isLayerNameUnique:newName excludingLayer:selectedLayer]) {
-                NSLog(@"✏️ Renaming layer '%@' to '%@'", selectedLayer.name, newName);
-                
-                selectedLayer.name = newName;
-                selectedLayer.lastModified = [NSDate date];
-                [self.objectsManager saveToDataHub];
-                [self refreshContent];
-                
-                NSLog(@"✅ Layer renamed successfully");
-            } else {
-                NSAlert *errorAlert = [[NSAlert alloc] init];
-                errorAlert.messageText = @"Duplicate Name";
-                errorAlert.informativeText = @"A layer with this name already exists.";
-                [errorAlert addButtonWithTitle:@"OK"];
-                [errorAlert runModal];
-            }
-        }
+    if ([selectedItem isKindOfClass:[ChartLayerModel class]]) {
+        self.selectedLayer = (ChartLayerModel *)selectedItem;
+        self.selectedObject = nil;
+        NSLog(@"🎯 Selected layer: %@", self.selectedLayer.name);
+    } else if ([selectedItem isKindOfClass:[ChartObjectModel class]]) {
+        self.selectedObject = (ChartObjectModel *)selectedItem;
+        self.selectedLayer = [self layerContainingObject:self.selectedObject];
+        NSLog(@"🎯 Selected object: %@ in layer: %@", self.selectedObject.name, self.selectedLayer.name);
     }
 }
 
 #pragma mark - Context Menu Implementation
 
 - (NSMenu *)outlineView:(NSOutlineView *)outlineView menuForTableColumn:(NSTableColumn *)tableColumn item:(id)item {
+    NSLog(@"🖱️ Context menu requested for item: %@", item);
+    
     if ([item isKindOfClass:[ChartLayerModel class]]) {
+        NSLog(@"🖱️ Creating context menu for layer: %@", ((ChartLayerModel *)item).name);
         return [self contextMenuForLayer:(ChartLayerModel *)item];
     } else if ([item isKindOfClass:[ChartObjectModel class]]) {
+        NSLog(@"🖱️ Creating context menu for object: %@", ((ChartObjectModel *)item).name);
         return [self contextMenuForObject:(ChartObjectModel *)item];
     }
     
+    NSLog(@"🖱️ Creating context menu for empty area");
     // Context menu for empty area
     return [self contextMenuForEmptyArea];
 }
@@ -482,7 +495,7 @@
     
     NSMenuItem *item;
     
-    // Edit Object
+    // ✅ RIUSO ChartObjectSettingsWindow per edit
     item = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"Edit '%@'...", object.name]
                                       action:@selector(editObjectFromContext:) keyEquivalent:@""];
     item.target = self;
@@ -536,6 +549,75 @@
 
 #pragma mark - Context Menu Actions
 
+- (void)editObjectFromContext:(NSMenuItem *)menuItem {
+    ChartObjectModel *object = menuItem.representedObject;
+    
+    // ✅ RIUSO del pannello ChartObjectSettingsWindow (come da richiesta)
+    if (self.objectSettingsWindow) {
+        [self.objectSettingsWindow close];
+    }
+    
+    self.objectSettingsWindow = [[ChartObjectSettingsWindow alloc]
+                                initWithObject:object
+                                objectsManager:self.objectsManager];
+    
+    if (self.objectSettingsWindow) {
+        [self.objectSettingsWindow makeKeyAndOrderFront:nil];
+        NSLog(@"🎨 Opened settings window for object '%@'", object.name);
+    } else {
+        NSLog(@"❌ Failed to create settings window for object '%@'", object.name);
+    }
+}
+
+- (void)duplicateObjectFromContext:(NSMenuItem *)menuItem {
+    ChartObjectModel *object = menuItem.representedObject;
+    ChartLayerModel *layer = [self layerContainingObject:object];
+    
+    if (layer) {
+        ChartObjectModel *duplicate = [object copy];
+        duplicate.name = [self generateUniqueObjectName:[NSString stringWithFormat:@"%@ Copy", object.name] inLayer:layer];
+        
+        // ✅ CORRETTO: Aggiungi direttamente al layer
+        [layer addObject:duplicate];
+        [self.objectsManager saveToDataHub];
+        [self refreshContent];
+        
+        NSLog(@"📋 Duplicated object '%@' as '%@'", object.name, duplicate.name);
+    }
+}
+
+- (void)deleteObjectFromContext:(NSMenuItem *)menuItem {
+    ChartObjectModel *object = menuItem.representedObject;
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Delete Object";
+    alert.informativeText = [NSString stringWithFormat:@"Are you sure you want to delete '%@'?", object.name];
+    alert.alertStyle = NSAlertStyleWarning;
+    [alert addButtonWithTitle:@"Delete"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSModalResponse response = [alert runModal];
+    if (response == NSAlertFirstButtonReturn) {
+        [self.objectsManager deleteObject:object];
+        [self.objectsManager saveToDataHub];
+        [self refreshContent];
+        
+        NSLog(@"🗑️ Deleted object '%@'", object.name);
+    }
+}
+
+- (void)moveObjectToLayerFromContext:(NSMenuItem *)menuItem {
+    NSDictionary *info = menuItem.representedObject;
+    ChartObjectModel *object = info[@"object"];
+    ChartLayerModel *targetLayer = info[@"layer"];
+    
+    [self.objectsManager moveObject:object toLayer:targetLayer];
+    [self.objectsManager saveToDataHub];
+    [self refreshContent];
+    
+    NSLog(@"📁 Moved object '%@' to layer '%@'", object.name, targetLayer.name);
+}
+
 - (void)renameLayerFromContext:(NSMenuItem *)menuItem {
     ChartLayerModel *layer = menuItem.representedObject;
     
@@ -563,6 +645,66 @@
     NSLog(@"✅ Layer duplicated as '%@'", duplicateLayer.name);
 }
 
+#pragma mark - Right-Click Setup
+
+- (void)setupRightClickHandling {
+    // ✅ AGGIUNTA: Gestione manuale del right-click per NSOutlineView
+    // Alcuni NSOutlineView non chiamano menuForTableColumn automaticamente
+    
+    // Aggiungi gesture recognizer per right-click
+    NSClickGestureRecognizer *rightClickGesture = [[NSClickGestureRecognizer alloc]
+                                                  initWithTarget:self
+                                                  action:@selector(handleRightClick:)];
+    rightClickGesture.buttonMask = 0x2; // Right mouse button
+    [self.layersOutlineView addGestureRecognizer:rightClickGesture];
+    
+    NSLog(@"✅ Right-click gesture recognizer added to outline view");
+}
+
+- (void)handleRightClick:(NSClickGestureRecognizer *)gesture {
+    if (gesture.state != NSGestureRecognizerStateEnded) return;
+    
+    NSPoint clickPoint = [gesture locationInView:self.layersOutlineView];
+    NSInteger clickedRow = [self.layersOutlineView rowAtPoint:clickPoint];
+    
+    NSLog(@"🖱️ Right-click detected at point (%.1f, %.1f), row: %ld",
+          clickPoint.x, clickPoint.y, (long)clickedRow);
+    
+    id clickedItem = nil;
+    if (clickedRow >= 0) {
+        clickedItem = [self.layersOutlineView itemAtRow:clickedRow];
+        
+        // Seleziona il row se non è già selezionato
+        if (self.layersOutlineView.selectedRow != clickedRow) {
+            [self.layersOutlineView selectRowIndexes:[NSIndexSet indexSetWithIndex:clickedRow]
+                               byExtendingSelection:NO];
+        }
+    }
+    
+    // Crea il menu appropriato
+    NSMenu *contextMenu = [self contextMenuForItem:clickedItem];
+    if (contextMenu) {
+        // Mostra il menu al punto del click
+        [NSMenu popUpContextMenu:contextMenu
+                       withEvent:[NSApp currentEvent]
+                         forView:self.layersOutlineView];
+        
+        NSLog(@"✅ Context menu displayed with %ld items", (long)contextMenu.itemArray.count);
+    } else {
+        NSLog(@"⚠️ No context menu created for item: %@", clickedItem);
+    }
+}
+
+- (NSMenu *)contextMenuForItem:(id)item {
+    if ([item isKindOfClass:[ChartLayerModel class]]) {
+        return [self contextMenuForLayer:(ChartLayerModel *)item];
+    } else if ([item isKindOfClass:[ChartObjectModel class]]) {
+        return [self contextMenuForObject:(ChartObjectModel *)item];
+    } else {
+        return [self contextMenuForEmptyArea];
+    }
+}
+
 - (void)toggleLayerFromContext:(NSMenuItem *)menuItem {
     ChartLayerModel *layer = menuItem.representedObject;
     [self toggleLayerVisibility:layer];
@@ -579,499 +721,287 @@
     }
 }
 
-- (void)editObjectFromContext:(NSMenuItem *)menuItem {
-    ChartObjectModel *selectedObject = menuItem.representedObject;
-    [self editObjectDoubleClick:selectedObject];
-}
-
-- (void)duplicateObjectFromContext:(NSMenuItem *)menuItem {
-    ChartObjectModel *selectedObject = menuItem.representedObject;
-    [self duplicateObject:selectedObject];
-}
-
-- (void)deleteObjectFromContext:(NSMenuItem *)menuItem {
-    ChartObjectModel *selectedObject = menuItem.representedObject;
-    [self deleteObject:selectedObject];
-}
-
-- (void)moveObjectToLayerFromContext:(NSMenuItem *)menuItem {
-    NSDictionary *info = menuItem.representedObject;
-    ChartObjectModel *selectedObject = info[@"object"];
-    ChartLayerModel *targetLayer = info[@"layer"];
-    
-    [self.objectsManager moveObject:selectedObject toLayer:targetLayer];
-    [self.objectsManager saveToDataHub];
-    [self refreshContent];
-    
-    NSLog(@"📁 Moved object '%@' to layer '%@'", selectedObject.name, targetLayer.name);
-}
-
 #pragma mark - Drag & Drop Implementation
 
-// TableView Drag Source (Objects)
-- (BOOL)tableView:(NSTableView *)tableView writeRowsWithIndexes:(NSIndexSet *)rowIndexes toPasteboard:(NSPasteboard *)pboard {
-    if (tableView == self.objectsTableView && self.selectedLayer) {
-        NSUInteger objectIndex = [rowIndexes firstIndex];
-        if (objectIndex < self.selectedLayer.objects.count) {
-            self.draggedObject = self.selectedLayer.objects[objectIndex];
+- (BOOL)outlineView:(NSOutlineView *)outlineView writeItems:(NSArray *)items toPasteboard:(NSPasteboard *)pasteboard {
+    // ✅ DRAG SOURCE: Solo per oggetti (non layer)
+    if (items.count == 1) {
+        id item = items[0];
+        if ([item isKindOfClass:[ChartObjectModel class]]) {
+            self.draggedObject = (ChartObjectModel *)item;
             
-            [pboard declareTypes:@[@"ChartObjectDragType"] owner:self];
-            [pboard setString:self.draggedObject.objectID forType:@"ChartObjectDragType"];
+            [pasteboard declareTypes:@[@"ChartObjectDragType"] owner:self];
+            [pasteboard setString:self.draggedObject.objectID forType:@"ChartObjectDragType"];
             
-            NSLog(@"🫴 Started dragging object '%@'", self.draggedObject.name);
+            NSLog(@"🎯 Started dragging object '%@'", self.draggedObject.name);
             return YES;
         }
     }
     return NO;
 }
 
-// OutlineView Drop Target (Layers)
-- (NSDragOperation)outlineView:(NSOutlineView *)outlineView validateDrop:(id<NSDraggingInfo>)info proposedItem:(id)item proposedChildIndex:(NSInteger)index {
-    if (outlineView == self.layersOutlineView) {
-        NSPasteboard *pboard = [info draggingPasteboard];
-        if ([pboard availableTypeFromArray:@[@"ChartObjectDragType"]]) {
-            
-            // Only allow drop on layers, not objects
-            if ([item isKindOfClass:[ChartLayerModel class]]) {
-                [outlineView setDropItem:item dropChildIndex:NSOutlineViewDropOnItemIndex];
-                return NSDragOperationMove;
-            }
-        }
+- (NSDragOperation)outlineView:(NSOutlineView *)outlineView
+                  validateDrop:(id<NSDraggingInfo>)info
+                  proposedItem:(id)item
+            proposedChildIndex:(NSInteger)index {
+    
+    // ✅ DROP TARGET: Solo su layer (non su oggetti)
+    if ([item isKindOfClass:[ChartLayerModel class]]) {
+        return NSDragOperationMove;
     }
+    
+    // Se item è nil, siamo nel root level - non permettere drop
     return NSDragOperationNone;
 }
 
-- (BOOL)outlineView:(NSOutlineView *)outlineView acceptDrop:(id<NSDraggingInfo>)info item:(id)item childIndex:(NSInteger)index {
-    if (outlineView == self.layersOutlineView && [item isKindOfClass:[ChartLayerModel class]]) {
-        ChartLayerModel *targetLayer = (ChartLayerModel *)item;
-        
-        if (self.draggedObject) {
-            NSLog(@"🎯 Dropping object '%@' onto layer '%@'", self.draggedObject.name, targetLayer.name);
-            
-            [self.objectsManager moveObject:self.draggedObject toLayer:targetLayer];
-            [self.objectsManager saveToDataHub];
-            [self refreshContent];
-            
-            // Select the target layer to show the moved object
-            NSInteger targetLayerIndex = [self.objectsManager.layers indexOfObject:targetLayer];
-            if (targetLayerIndex != NSNotFound) {
-                [self.layersOutlineView selectRowIndexes:[NSIndexSet indexSetWithIndex:targetLayerIndex] byExtendingSelection:NO];
-            }
-            
-            self.draggedObject = nil;
-            NSLog(@"✅ Object moved successfully");
-            return YES;
-        }
-    }
-    return NO;
-}
-
-#pragma mark - Object Operations
-
-- (void)editObjectDoubleClick:(id)sender {
-    ChartObjectModel *objectToEdit = nil;
+- (BOOL)outlineView:(NSOutlineView *)outlineView
+         acceptDrop:(id<NSDraggingInfo>)info
+               item:(id)item
+         childIndex:(NSInteger)index {
     
-    if ([sender isKindOfClass:[ChartObjectModel class]]) {
-        // Called from context menu with object as sender
-        objectToEdit = (ChartObjectModel *)sender;
-    } else if (self.selectedObject) {
-        // Called from double-click with selected object
-        objectToEdit = self.selectedObject;
+    if (!self.draggedObject || ![item isKindOfClass:[ChartLayerModel class]]) {
+        return NO;
     }
     
-    if (objectToEdit) {
-        NSLog(@"✏️ Opening settings for object '%@'", objectToEdit.name);
-        // TODO: Open ChartObjectSettingsWindow for the object
-        // [self.objectSettingsWindow showSettingsForObject:objectToEdit];
-    }
-}
-
-- (void)duplicateObject:(ChartObjectModel *)objectToEdit {
-    // Find the layer containing this object
-    ChartLayerModel *containingLayer = nil;
-    for (ChartLayerModel *layer in self.objectsManager.layers) {
-        if ([layer.objects containsObject:objectToEdit]) {
-            containingLayer = layer;
-            break;
-        }
-    }
+    ChartLayerModel *targetLayer = (ChartLayerModel *)item;
     
-    if (containingLayer) {
-        ChartObjectModel *duplicate = [objectToEdit copy];
-        duplicate.name = [NSString stringWithFormat:@"%@ Copy", objectToEdit.name];
-        
-        // Offset position slightly for visibility
-        for (ControlPointModel *cp in duplicate.controlPoints) {
-            cp.dateAnchor = [cp.dateAnchor dateByAddingTimeInterval:86400]; // +1 day
-            cp.absoluteValue *= 1.02; // +2%
-        }
-        
-        [containingLayer addObject:duplicate];
-        [self.objectsManager saveToDataHub];
-        [self refreshContent];
-        
-        NSLog(@"📋 Duplicated object '%@' in layer '%@'", objectToEdit.name, containingLayer.name);
-    }
-}
-
-- (void)deleteObject:(ChartObjectModel *)objectToEdit {
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Delete Object";
-    alert.informativeText = [NSString stringWithFormat:@"Are you sure you want to delete '%@'?", objectToEdit.name];
-    [alert addButtonWithTitle:@"Delete"];
-    [alert addButtonWithTitle:@"Cancel"];
-    alert.alertStyle = NSAlertStyleWarning;
-    
-    NSModalResponse response = [alert runModal];
-    if (response == NSAlertFirstButtonReturn) {
-        [self.objectsManager deleteObject:objectToEdit];
-        [self.objectsManager saveToDataHub];
-        [self refreshContent];
-        
-        NSLog(@"🗑️ Deleted object '%@'", objectToEdit.name);
-    }
-}
-
-#pragma mark - Helper Methods
-
-- (NSString *)generateUniqueLayerName:(NSString *)baseName {
-    NSMutableSet *existingNames = [NSMutableSet set];
-    for (ChartLayerModel *layer in self.objectsManager.layers) {
-        [existingNames addObject:layer.name];
-    }
-    
-    NSString *candidateName = baseName;
-    NSInteger counter = 1;
-    
-    while ([existingNames containsObject:candidateName]) {
-        candidateName = [NSString stringWithFormat:@"%@ %ld", baseName, (long)counter];
-        counter++;
-    }
-    
-    return candidateName;
-}
-
-- (BOOL)isLayerNameUnique:(NSString *)name excludingLayer:(ChartLayerModel *)excludeLayer {
-    for (ChartLayerModel *layer in self.objectsManager.layers) {
-        if (layer != excludeLayer && [layer.name isEqualToString:name]) {
-            return NO;
-        }
-    }
-    return YES;
-}
-
-#pragma mark - Public Methods
-
-- (void)refreshContent {
-    NSLog(@"🔄 ChartObjectManagerWindow: Refreshing content - %lu layers available", (unsigned long)self.objectsManager.layers.count);
-    
-    [self.layersOutlineView reloadData];
-    [self.objectsTableView reloadData];
-    [self expandAllLayers];
-    
-    // Debug: Log current data state
-    for (ChartLayerModel *layer in self.objectsManager.layers) {
-        NSLog(@"   📁 Layer '%@' (%@) with %lu objects",
-              layer.name,
-              layer.isVisible ? @"visible" : @"hidden",
-              (unsigned long)layer.objects.count);
-    }
-    NSLog(@"📢 Current window symbol: %@", self.currentSymbol);
-    NSLog(@"📢 Manager has %lu layers", (unsigned long)self.objectsManager.layers.count);
-    NSLog(@"✅ ChartObjectManagerWindow: Content refresh completed");
-}
-
-- (void)updateForSymbol:(NSString *)symbol {
-    NSLog(@"🔄 ChartObjectManagerWindow: Updating for symbol %@", symbol);
-    
-    self.currentSymbol = symbol;
-    self.title = [NSString stringWithFormat:@"Chart Objects - %@", symbol];
-    self.symbolLabel.stringValue = [NSString stringWithFormat:@"Symbol: %@", symbol];
-    
-    // Update objects manager for new symbol
-    self.objectsManager = [ChartObjectsManager managerForSymbol:symbol];
-    
-    // Reload data for new symbol
-    [self loadInitialData];
-    
-    NSLog(@"✅ ChartObjectManagerWindow: Updated for symbol %@", symbol);
-}
-
-- (void)expandAllLayers {
-    for (NSInteger i = 0; i < [self.layersOutlineView numberOfRows]; i++) {
-        id item = [self.layersOutlineView itemAtRow:i];
-        if ([item isKindOfClass:[ChartLayerModel class]]) {
-            [self.layersOutlineView expandItem:item];
-        }
-    }
-}
-
-- (void)toggleLayerVisibility:(ChartLayerModel *)layer {
-    if (!layer) return;
-    
-    // Toggle visibility
-    layer.isVisible = !layer.isVisible;
-    layer.lastModified = [NSDate date];
-    
-    // Save to DataHub
+    // ✅ ESEGUI SPOSTAMENTO
+    [self.objectsManager moveObject:self.draggedObject toLayer:targetLayer];
     [self.objectsManager saveToDataHub];
+    
+    // Reset drag state
+    self.draggedObject = nil;
     
     // Refresh UI
     [self refreshContent];
     
-    // Notify chart for re-render
+    // Espandi il layer target per mostrare l'oggetto
+    [self.layersOutlineView expandItem:targetLayer];
+    
+    NSLog(@"✅ Dropped object into layer '%@'", targetLayer.name);
+    return YES;
+}
+
+#pragma mark - Layer Management Actions
+
+- (IBAction)addLayerAction:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"New Layer";
+    alert.informativeText = @"Enter name for the new layer:";
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"Create"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.stringValue = @"Layer";
+    alert.accessoryView = input;
+    
+    NSModalResponse response = [alert runModal];
+    if (response == NSAlertFirstButtonReturn) {
+        NSString *layerName = input.stringValue.length > 0 ? input.stringValue : @"Layer";
+        NSString *uniqueName = [self generateUniqueLayerName:layerName];
+        
+        ChartLayerModel *newLayer = [[ChartLayerModel alloc] init];
+        newLayer.name = uniqueName;
+        newLayer.isVisible = YES;
+        newLayer.orderIndex = (NSInteger)self.objectsManager.layers.count;
+        
+        [self.objectsManager.layers addObject:newLayer];
+        [self.objectsManager saveToDataHub];
+        [self refreshContent];
+        
+        NSLog(@"✅ Created new layer '%@'", uniqueName);
+    }
+}
+
+- (IBAction)deleteLayerAction:(id)sender {
+    if (!self.selectedLayer) {
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"No Layer Selected";
+        alert.informativeText = @"Please select a layer to delete.";
+        [alert addButtonWithTitle:@"OK"];
+        [alert runModal];
+        return;
+    }
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Delete Layer";
+    alert.informativeText = [NSString stringWithFormat:@"Are you sure you want to delete layer '%@' and all its objects?", self.selectedLayer.name];
+    alert.alertStyle = NSAlertStyleWarning;
+    [alert addButtonWithTitle:@"Delete"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSModalResponse response = [alert runModal];
+    if (response == NSAlertFirstButtonReturn) {
+        [self.objectsManager.layers removeObject:self.selectedLayer];
+        [self.objectsManager saveToDataHub];
+        
+        self.selectedLayer = nil;
+        self.selectedObject = nil;
+        
+        [self refreshContent];
+        
+        NSLog(@"🗑️ Deleted layer");
+    }
+}
+
+- (IBAction)renameLayerAction:(id)sender {
+    if (!self.selectedLayer) {
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"No Layer Selected";
+        alert.informativeText = @"Please select a layer to rename.";
+        [alert addButtonWithTitle:@"OK"];
+        [alert runModal];
+        return;
+    }
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Rename Layer";
+    alert.informativeText = @"Enter new name for the layer:";
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"Rename"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.stringValue = self.selectedLayer.name;
+    alert.accessoryView = input;
+    
+    NSModalResponse response = [alert runModal];
+    if (response == NSAlertFirstButtonReturn) {
+        NSString *newName = input.stringValue.length > 0 ? input.stringValue : self.selectedLayer.name;
+        NSString *uniqueName = [self generateUniqueLayerName:newName];
+        
+        self.selectedLayer.name = uniqueName;
+        [self.objectsManager saveToDataHub];
+        [self refreshContent];
+        
+        NSLog(@"✏️ Renamed layer to '%@'", uniqueName);
+    }
+}
+
+- (void)toggleLayerVisibility:(ChartLayerModel *)layer {
+    layer.isVisible = !layer.isVisible;
+    [self.objectsManager saveToDataHub];
+    [self refreshContent];
+    
+    // ✅ NOTIFICA IL CHART PER RE-RENDER (logica visibilità corretta)
     [[NSNotificationCenter defaultCenter] postNotificationName:@"ChartObjectsVisibilityChanged"
-                                                        object:self
+                                                        object:self.objectsManager
                                                       userInfo:@{@"symbol": self.currentSymbol ?: @""}];
     
     NSLog(@"🎯 Layer '%@' visibility: %@ - Chart notified for re-render",
           layer.name, layer.isVisible ? @"VISIBLE" : @"HIDDEN");
 }
 
-#pragma mark - NSOutlineViewDataSource (Layers)
+#pragma mark - Helper Methods
 
-- (NSInteger)outlineView:(NSOutlineView *)outlineView numberOfChildrenOfItem:(nullable id)item {
-    if (item == nil) {
-        // Root level - return layers count
-        NSInteger layersCount = self.objectsManager.layers.count;
-        NSLog(@"📊 OutlineView: Root level requested - returning %ld layers", (long)layersCount);
-        return layersCount;
+- (ChartLayerModel *)layerContainingObject:(ChartObjectModel *)object {
+    for (ChartLayerModel *layer in self.objectsManager.layers) {
+        if ([layer.objects containsObject:object]) {
+            return layer;
+        }
     }
-    
-    if ([item isKindOfClass:[ChartLayerModel class]]) {
-        // Layer level - return objects count in this layer
-        ChartLayerModel *layer = (ChartLayerModel *)item;
-        NSInteger objectsCount = layer.objects.count;
-        NSLog(@"📊 OutlineView: Layer '%@' requested - returning %ld objects", layer.name, (long)objectsCount);
-        return objectsCount;
-    }
-    
-    NSLog(@"📊 OutlineView: Unknown item type requested");
-    return 0;
-}
-
-- (id)outlineView:(NSOutlineView *)outlineView child:(NSInteger)index ofItem:(nullable id)item {
-    if (item == nil) {
-        // Root level - return layer
-        return self.objectsManager.layers[index];
-    }
-    
-    if ([item isKindOfClass:[ChartLayerModel class]]) {
-        // Layer level - return object
-        ChartLayerModel *layer = (ChartLayerModel *)item;
-        return layer.objects[index];
-    }
-    
     return nil;
 }
 
-- (BOOL)outlineView:(NSOutlineView *)outlineView isItemExpandable:(id)item {
-    if ([item isKindOfClass:[ChartLayerModel class]]) {
-        ChartLayerModel *layer = (ChartLayerModel *)item;
-        return layer.objects.count > 0;
+- (NSString *)generateUniqueLayerName:(NSString *)baseName {
+    NSString *uniqueName = baseName;
+    NSInteger counter = 1;
+    
+    while ([self layerNameExists:uniqueName]) {
+        uniqueName = [NSString stringWithFormat:@"%@ %ld", baseName, (long)counter];
+        counter++;
+    }
+    
+    return uniqueName;
+}
+
+- (BOOL)layerNameExists:(NSString *)name {
+    for (ChartLayerModel *layer in self.objectsManager.layers) {
+        if ([layer.name isEqualToString:name]) {
+            return YES;
+        }
     }
     return NO;
 }
 
-#pragma mark - NSOutlineViewDelegate (Layers)
+- (NSString *)generateUniqueObjectName:(NSString *)baseName inLayer:(ChartLayerModel *)layer {
+    NSString *uniqueName = baseName;
+    NSInteger counter = 1;
+    
+    while ([self objectNameExists:uniqueName inLayer:layer]) {
+        uniqueName = [NSString stringWithFormat:@"%@ %ld", baseName, (long)counter];
+        counter++;
+    }
+    
+    return uniqueName;
+}
 
-- (NSView *)outlineView:(NSOutlineView *)outlineView viewForTableColumn:(NSTableColumn *)tableColumn item:(id)item {
-    
-    NSTableCellView *cellView = [outlineView makeViewWithIdentifier:tableColumn.identifier owner:self];
-    
-    if (!cellView) {
-        cellView = [[NSTableCellView alloc] init];
-        cellView.identifier = tableColumn.identifier;
-        
-        // Clickable button for visibility toggle (only for layers)
-        if ([item isKindOfClass:[ChartLayerModel class]]) {
-            // Create button for layer visibility toggle
-            NSButton *visibilityButton = [NSButton buttonWithTitle:@"👁️"
-                                                            target:self
-                                                            action:@selector(toggleLayerVisibilityAction:)];
-            visibilityButton.translatesAutoresizingMaskIntoConstraints = NO;
-            visibilityButton.bezelStyle = NSBezelStyleRounded;
-            visibilityButton.buttonType = NSButtonTypeMomentaryPushIn;
-            visibilityButton.controlSize = NSControlSizeSmall;
-            visibilityButton.font = [NSFont systemFontOfSize:11];
-            [cellView addSubview:visibilityButton];
-            
-            // TextField for layer name
-            NSTextField *textField = [[NSTextField alloc] init];
-            textField.translatesAutoresizingMaskIntoConstraints = NO;
-            textField.editable = NO;
-            textField.bordered = NO;
-            textField.backgroundColor = [NSColor clearColor];
-            textField.font = [NSFont systemFontOfSize:12];
-            [cellView addSubview:textField];
-            cellView.textField = textField;
-            
-            // Layout constraints
-            [NSLayoutConstraint activateConstraints:@[
-                [visibilityButton.leadingAnchor constraintEqualToAnchor:cellView.leadingAnchor constant:4],
-                [visibilityButton.centerYAnchor constraintEqualToAnchor:cellView.centerYAnchor],
-                [visibilityButton.widthAnchor constraintEqualToConstant:20],
-                
-                [textField.leadingAnchor constraintEqualToAnchor:visibilityButton.trailingAnchor constant:4],
-                [textField.trailingAnchor constraintEqualToAnchor:cellView.trailingAnchor constant:-4],
-                [textField.centerYAnchor constraintEqualToAnchor:cellView.centerYAnchor]
-            ]];
-        } else {
-            // For objects, just create a text field
-            NSTextField *textField = [[NSTextField alloc] init];
-            textField.translatesAutoresizingMaskIntoConstraints = NO;
-            textField.editable = NO;
-            textField.bordered = NO;
-            textField.backgroundColor = [NSColor clearColor];
-            textField.font = [NSFont systemFontOfSize:12];
-            [cellView addSubview:textField];
-            cellView.textField = textField;
-            
-            [NSLayoutConstraint activateConstraints:@[
-                [textField.leadingAnchor constraintEqualToAnchor:cellView.leadingAnchor constant:4],
-                [textField.trailingAnchor constraintEqualToAnchor:cellView.trailingAnchor constant:-4],
-                [textField.centerYAnchor constraintEqualToAnchor:cellView.centerYAnchor]
-            ]];
+- (BOOL)objectNameExists:(NSString *)name inLayer:(ChartLayerModel *)layer {
+    for (ChartObjectModel *object in layer.objects) {
+        if ([object.name isEqualToString:name]) {
+            return YES;
         }
     }
-    
-    if ([item isKindOfClass:[ChartLayerModel class]]) {
-        ChartLayerModel *layer = (ChartLayerModel *)item;
-        
-        // Update visibility button
-        NSButton *visibilityButton = nil;
-        for (NSView *subview in cellView.subviews) {
-            if ([subview isKindOfClass:[NSButton class]]) {
-                visibilityButton = (NSButton *)subview;
-                break;
-            }
-        }
-        
-        if (visibilityButton) {
-            visibilityButton.title = layer.isVisible ? @"👁️" : @"🚫";
-        }
-        
-        // Update text
-        cellView.textField.stringValue = [NSString stringWithFormat:@"%@ (%lu objects)",
-                                         layer.name, (unsigned long)layer.objects.count];
-        
-    } else if ([item isKindOfClass:[ChartObjectModel class]]) {
-        ChartObjectModel *object = (ChartObjectModel *)item;
-        NSString *visibilityIcon = object.isVisible ? @"👁️" : @"🚫";
-        NSString *typeIcon = [self iconForObjectType:object.type];
-        
-        // Objects: Only info display (no toggle)
-        cellView.textField.stringValue = [NSString stringWithFormat:@"  %@ %@ %@",
-                                         visibilityIcon, typeIcon, object.name];
-        cellView.textField.textColor = object.isVisible ? [NSColor labelColor] : [NSColor secondaryLabelColor];
-    }
-    
-    return cellView;
+    return NO;
 }
 
-- (void)outlineViewSelectionDidChange:(NSNotification *)notification {
-    NSInteger selectedRow = self.layersOutlineView.selectedRow;
-    if (selectedRow >= 0) {
-        id selectedItem = [self.layersOutlineView itemAtRow:selectedRow];
-        
-        if ([selectedItem isKindOfClass:[ChartLayerModel class]]) {
-            self.selectedLayer = (ChartLayerModel *)selectedItem;
-            self.selectedObject = nil;
-            [self.objectsTableView reloadData];
-            
-            NSLog(@"🎯 Selected layer: %@", self.selectedLayer.name);
-        } else if ([selectedItem isKindOfClass:[ChartObjectModel class]]) {
-            self.selectedObject = (ChartObjectModel *)selectedItem;
-            
-            NSLog(@"🎯 Selected object: %@", self.selectedObject.name);
-        }
-    }
+#pragma mark - Icon Creation Methods
+
+- (NSImage *)createEmojiImageWithText:(NSString *)emoji {
+    NSFont *font = [NSFont systemFontOfSize:14];
+    NSDictionary *attributes = @{NSFontAttributeName: font};
+    NSSize textSize = [emoji sizeWithAttributes:attributes];
+    
+    NSSize imageSize = NSMakeSize(16, 16);
+    NSImage *image = [[NSImage alloc] initWithSize:imageSize];
+    
+    [image lockFocus];
+    NSPoint drawPoint = NSMakePoint((imageSize.width - textSize.width) / 2,
+                                   (imageSize.height - textSize.height) / 2);
+    [emoji drawAtPoint:drawPoint withAttributes:attributes];
+    [image unlockFocus];
+    
+    return image;
 }
 
-#pragma mark - NSTableViewDataSource (Objects)
-
-- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
-    NSInteger objectsCount = self.selectedLayer ? self.selectedLayer.objects.count : 0;
-    NSLog(@"📊 TableView: Objects count requested - returning %ld objects for layer '%@'",
-          (long)objectsCount, self.selectedLayer.name ?: @"none");
-    return objectsCount;
-}
-
-- (id)tableView:(NSTableView *)tableView objectValueForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
-    if (!self.selectedLayer || row >= self.selectedLayer.objects.count) return nil;
+- (NSImage *)iconImageForObjectType:(ChartObjectType)type {
+    // ✅ ICONE SEMPLICI LINEARI COME RICHIESTO
+    NSString *symbolName = [self sfSymbolNameForObjectType:type];
+    NSImage *image = [NSImage imageWithSystemSymbolName:symbolName accessibilityDescription:@"Object Type"];
     
-    ChartObjectModel *object = self.selectedLayer.objects[row];
-    
-    if ([tableColumn.identifier isEqualToString:@"NameColumn"]) {
-        return object.name;
-    } else if ([tableColumn.identifier isEqualToString:@"TypeColumn"]) {
-        return [self nameForObjectType:object.type];
-    } else if ([tableColumn.identifier isEqualToString:@"VisibleColumn"]) {
-        BOOL effectivelyVisible = self.selectedLayer.isVisible && object.isVisible;
-        return effectivelyVisible ? @"👁️" : @"🚫";
+    if (image) {
+        // ✅ STILE: Monocromatico semplice
+        NSImage *tintedImage = [image copy];
+        tintedImage.template = YES;
+        return tintedImage;
     }
     
-    return nil;
+    // Fallback emoji se SF Symbol non disponibile
+    NSString *emoji = [self emojiForObjectType:type];
+    return [self createEmojiImageWithText:emoji];
 }
 
-#pragma mark - NSTableViewDelegate (Objects)
-
-- (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
-    NSTableCellView *cellView = [tableView makeViewWithIdentifier:tableColumn.identifier owner:self];
-    
-    if (!cellView) {
-        cellView = [[NSTableCellView alloc] init];
-        cellView.identifier = tableColumn.identifier;
-        
-        NSTextField *textField = [[NSTextField alloc] init];
-        textField.translatesAutoresizingMaskIntoConstraints = NO;
-        textField.editable = NO;
-        textField.bordered = NO;
-        textField.backgroundColor = [NSColor clearColor];
-        textField.font = [NSFont systemFontOfSize:12];
-        [cellView addSubview:textField];
-        cellView.textField = textField;
-        
-        [NSLayoutConstraint activateConstraints:@[
-            [textField.leadingAnchor constraintEqualToAnchor:cellView.leadingAnchor constant:4],
-            [textField.trailingAnchor constraintEqualToAnchor:cellView.trailingAnchor constant:-4],
-            [textField.centerYAnchor constraintEqualToAnchor:cellView.centerYAnchor]
-        ]];
-    }
-    
-    if (!self.selectedLayer || row >= self.selectedLayer.objects.count) return cellView;
-    
-    ChartObjectModel *object = self.selectedLayer.objects[row];
-    
-    if ([tableColumn.identifier isEqualToString:@"NameColumn"]) {
-        cellView.textField.stringValue = object.name;
-        cellView.textField.textColor = object.isVisible ? [NSColor labelColor] : [NSColor secondaryLabelColor];
-        
-    } else if ([tableColumn.identifier isEqualToString:@"TypeColumn"]) {
-        cellView.textField.stringValue = [self nameForObjectType:object.type];
-        cellView.textField.textColor = object.isVisible ? [NSColor labelColor] : [NSColor secondaryLabelColor];
-        
-    } else if ([tableColumn.identifier isEqualToString:@"VisibleColumn"]) {
-        // Info: Show state but no toggle
-        BOOL effectivelyVisible = self.selectedLayer.isVisible && object.isVisible;
-        cellView.textField.stringValue = effectivelyVisible ? @"👁️" : @"🚫";
-        cellView.textField.textColor = effectivelyVisible ? [NSColor labelColor] : [NSColor secondaryLabelColor];
-    }
-    
-    return cellView;
-}
-
-- (void)tableViewSelectionDidChange:(NSNotification *)notification {
-    NSInteger selectedRow = self.objectsTableView.selectedRow;
-    if (selectedRow >= 0 && self.selectedLayer && selectedRow < self.selectedLayer.objects.count) {
-        self.selectedObject = self.selectedLayer.objects[selectedRow];
-        NSLog(@"🎯 Selected object from table: %@", self.selectedObject.name);
+- (NSString *)sfSymbolNameForObjectType:(ChartObjectType)type {
+    // ✅ SF SYMBOLS SEMPLICI E LINEARI
+    switch (type) {
+        case ChartObjectTypeHorizontalLine: return @"minus";
+        case ChartObjectTypeTrendline: return @"line.diagonal";
+        case ChartObjectTypeFibonacci: return @"chart.line.uptrend.xyaxis";
+        case ChartObjectTypeTrailingFibo: return @"waveform.path";
+        case ChartObjectTypeTrailingFiboBetween: return @"waveform.path.ecg";
+        case ChartObjectTypeTarget: return @"target";
+        case ChartObjectTypeRectangle: return @"rectangle";
+        case ChartObjectTypeCircle: return @"circle";
+        case ChartObjectTypeChannel: return @"rectangle.portrait.and.arrow.right";
+        case ChartObjectTypeFreeDrawing: return @"pencil";
+        case ChartObjectTypeOval: return @"oval";
+        default: return @"questionmark";
     }
 }
 
-#pragma mark - Helper Methods for Icons and Names
-
-- (NSString *)iconForObjectType:(ChartObjectType)type {
+- (NSString *)emojiForObjectType:(ChartObjectType)type {
+    // ✅ FALLBACK EMOJI (se SF Symbol non funziona)
     switch (type) {
         case ChartObjectTypeHorizontalLine: return @"📏";
         case ChartObjectTypeTrendline: return @"📈";
@@ -1083,125 +1013,19 @@
         case ChartObjectTypeCircle: return @"⭕";
         case ChartObjectTypeChannel: return @"📡";
         case ChartObjectTypeFreeDrawing: return @"✏️";
+        case ChartObjectTypeOval: return @"🥚";
         default: return @"❓";
     }
 }
 
-- (NSString *)nameForObjectType:(ChartObjectType)type {
-    switch (type) {
-        case ChartObjectTypeHorizontalLine: return @"Horizontal Line";
-        case ChartObjectTypeTrendline: return @"Trend Line";
-        case ChartObjectTypeFibonacci: return @"Fibonacci";
-        case ChartObjectTypeTrailingFibo: return @"Trailing Fibo";
-        case ChartObjectTypeTrailingFiboBetween: return @"Trailing Between";
-        case ChartObjectTypeTarget: return @"Target";
-        case ChartObjectTypeRectangle: return @"Rectangle";
-        case ChartObjectTypeCircle: return @"Circle";
-        case ChartObjectTypeChannel: return @"Channel";
-        case ChartObjectTypeFreeDrawing: return @"Free Drawing";
-        default: return @"Unknown";
-    }
-}
-
-#pragma mark - Layer Visibility Toggle Actions
-
-- (void)toggleLayerVisibilityAction:(NSButton *)sender {
-    // Find the layer from row index of the cell
-    NSInteger row = [self.layersOutlineView rowForView:sender];
-    if (row >= 0) {
-        id item = [self.layersOutlineView itemAtRow:row];
-        if ([item isKindOfClass:[ChartLayerModel class]]) {
-            ChartLayerModel *layer = (ChartLayerModel *)item;
-            NSLog(@"🎯 Toggle layer visibility: %@", layer.name);
-            [self toggleLayerVisibility:layer];
-        }
-    }
-}
-
-#pragma mark - Notification Observers
-
-- (void)setupNotificationObservers {
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(chartObjectsChanged:)
-                                                 name:@"ChartObjectsChanged"
-                                               object:nil];
-}
-
-- (void)chartObjectsChanged:(NSNotification *)notification {
-    NSString *notificationSymbol = notification.userInfo[@"symbol"];
-    if ([notificationSymbol isEqualToString:self.currentSymbol]) {
-        NSLog(@"🔄 ChartObjectManagerWindow: Objects changed for current symbol, refreshing");
-        
-        // Refresh con delay per permettere save completo
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.1 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-            [self refreshContent];
-            NSLog(@"📢 RECEIVED NOTIFICATION for symbol: %@", notificationSymbol);
-            NSLog(@"📢 Current window symbol: %@", self.currentSymbol);
-            NSLog(@"📢 Manager has %lu layers", (unsigned long)self.objectsManager.layers.count);
-        });
-    }
-}
 #pragma mark - Cleanup
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
-    NSLog(@"🧹 ChartObjectManagerWindow: Cleaned up observers");
+    
+    if (self.objectSettingsWindow) {
+        [self.objectSettingsWindow close];
+    }
 }
 
 @end
-
-// ============================================================================
-// RIEPILOGO IMPLEMENTAZIONE COMPLETA
-// ============================================================================
-
-/*
-✅ FUNZIONALITÀ IMPLEMENTATE:
-
-🎯 LAYER MANAGEMENT TOOLBAR:
-   - Add Layer (+): Crea nuovo layer con nome auto-generato ("Layer 1", "Layer 2", etc.)
-   - Delete Layer (🗑️): Rimuove layer e tutti i suoi oggetti (con conferma se contiene oggetti)
-   - Rename Layer (✏️): Rinomina layer con dialog di input e controllo duplicati
-
-🎯 CONTEXT MENU SYSTEM:
-   - Right-click su Layer: New, Rename, Duplicate, Toggle Visibility, Delete
-   - Right-click su Object: Edit, Duplicate, Delete, Move to Layer (submenu dinamico)
-   - Right-click su area vuota: New Layer
-
-🎯 DRAG & DROP:
-   - Drag oggetto da Objects table → Drop su Layer nel Layers outline
-   - Visual feedback durante drag operation
-   - Automatic refresh e selezione layer target dopo drop
-
-🎯 DOUBLE-CLICK INTERACTION:
-   - Double-click su oggetto → Apre settings window (preparato per integrazione)
-
-🎯 UI IMPROVEMENTS:
-   - Symbol label + Layer toolbar sulla stessa riga (usa spazio vuoto disponibile)
-   - Layout constraints ottimizzati per il nuovo design
-   - Notification system per sync con chart rendering
-
-🎯 DATA MANAGEMENT:
-   - Auto-save dopo ogni operazione tramite ChartObjectsManager
-   - Unique name generation per layers con controllo duplicati
-   - Proper object lifecycle management
-   - Integration con DataHub per persistenza
-
-🎯 ARCHITETTURA:
-   - Tutte le operazioni passano attraverso ChartObjectsManager API corrette
-   - Notification system per sync UI ↔ Chart rendering
-   - Context menu dinamici con stato layer/object corrente
-   - Drag & drop con feedback visivo e data integrity
-   - Memory management con proper cleanup in dealloc
-
-🎯 CORREZIONI APPLICATE:
-   - Uso delle API corrette: createLayerWithName: e deleteLayer:
-   - Nomi variabili univoci per evitare conflitti (objectToEdit vs object)
-   - Properties aggiunte al header file
-   - Gestione errori e edge cases
-
-PRONTO PER INTEGRAZIONE:
-- Il codice compila senza errori
-- Tutte le funzionalità core sono implementate
-- Sistema di notification per sync con chart rendering
-- Preparato per integrazione con ChartObjectSettingsWindow
-*/

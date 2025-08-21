@@ -36,7 +36,7 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 
 @interface ChartWidget : BaseWidget
 
-@property (nonatomic, strong) SharedXCoordinateContext *sharedXContext;
+@property (nonatomic, strong) SharedXCoordinateContext * sharedXContext;
 
 @property (nonatomic, assign) BOOL isStaticMode;
 @property (nonatomic, assign) BOOL renderersInitialized;

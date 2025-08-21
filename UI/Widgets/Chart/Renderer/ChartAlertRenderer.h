@@ -8,7 +8,9 @@
 #import <Foundation/Foundation.h>
 #import <Cocoa/Cocoa.h>
 #import "RuntimeModels.h"
-#import "ChartCoordinateContext.h"
+#import "SharedXCoordinateContext.h"
+#import "PanelYCoordinateContext.h"
+
 
 @class ChartPanelView;
 @class HistoricalBarModel;
@@ -21,7 +23,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 // Context and dependencies
 @property (nonatomic, weak) ChartPanelView *panelView;
-@property (nonatomic, strong) ChartCoordinateContext *coordinateContext;
+
+
+@property (nonatomic, weak) SharedXCoordinateContext *sharedXContext;      // WEAK - shared
+@property (nonatomic, strong) PanelYCoordinateContext *panelYContext;       // STRONG - owned
 
 // Rendering layers (will be added to ChartPanelView)
 @property (nonatomic, strong) CALayer *alertsLayer;        // Static alerts

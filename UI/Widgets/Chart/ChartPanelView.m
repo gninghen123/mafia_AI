@@ -112,14 +112,14 @@
     
     // Chart content area (reduced width for Y-axis)
     NSRect chartContentBounds = NSMakeRect(0, 0,
-                                         bounds.size.width - Y_AXIS_WIDTH,
+                                         bounds.size.width - CHART_Y_AXIS_WIDTH,
                                          bounds.size.height);
     self.chartContentLayer.frame = chartContentBounds;
     self.chartPortionSelectionLayer.frame = chartContentBounds;
     
     // Y-Axis area (right side)
-    NSRect yAxisBounds = NSMakeRect(bounds.size.width - Y_AXIS_WIDTH, 0,
-                                   Y_AXIS_WIDTH, bounds.size.height);
+    NSRect yAxisBounds = NSMakeRect(bounds.size.width - CHART_Y_AXIS_WIDTH, 0,
+                                   CHART_Y_AXIS_WIDTH, bounds.size.height);
     self.yAxisLayer.frame = yAxisBounds;
     
     // Crosshair spans full width
@@ -206,7 +206,7 @@
     // Update objects renderer coordinate context (solo se presente)
     if (self.objectRenderer) {
         NSRect chartBounds = NSMakeRect(0, 0,
-                                      self.bounds.size.width - Y_AXIS_WIDTH,
+                                      self.bounds.size.width - CHART_Y_AXIS_WIDTH,
                                       self.bounds.size.height);
         [self.objectRenderer updateCoordinateContext:data
                                           startIndex:startIndex
@@ -219,7 +219,7 @@
     // Update alert renderer (sempre presente)
     if (self.alertRenderer) {
         NSRect chartBounds = NSMakeRect(0, 0,
-                                      self.bounds.size.width - Y_AXIS_WIDTH,
+                                      self.bounds.size.width - CHART_Y_AXIS_WIDTH,
                                       self.bounds.size.height);
         [self.alertRenderer updateCoordinateContext:data
                                          startIndex:startIndex
@@ -228,6 +228,8 @@
                                           yRangeMax:yMax
                                              bounds:chartBounds
                                       currentSymbol:self.chartWidget.currentSymbol];
+        [self.alertRenderer updateSharedXContext:self.sharedXContext];
+
     }
     
     [self invalidateChartContent];
@@ -335,7 +337,7 @@
     if (!self.crosshairVisible || !self.chartData || self.chartData.count == 0) return;
     
     // 🆕 FIX: Only show if crosshair is in chart area
-    CGFloat chartAreaWidth = self.bounds.size.width - Y_AXIS_WIDTH;
+    CGFloat chartAreaWidth = self.bounds.size.width - CHART_Y_AXIS_WIDTH;
     if (self.crosshairPoint.x > chartAreaWidth) return;
     
     // Trova l'indice della barra sotto il crosshair
@@ -427,7 +429,7 @@
     
     // Y-Axis background
     [[NSColor controlBackgroundColor] setFill];
-    NSRect axisBounds = NSMakeRect(0, 0, Y_AXIS_WIDTH, self.bounds.size.height);
+    NSRect axisBounds = NSMakeRect(0, 0, CHART_Y_AXIS_WIDTH, self.bounds.size.height);
     [[NSBezierPath bezierPathWithRect:axisBounds] fill];
     
     // Y-Axis border (left edge)
@@ -543,9 +545,8 @@
             lowY = [self yCoordinateForPrice:bar.low];
         }
         
-        // Rest of candlestick drawing code remains the same...
         NSColor *bodyColor = (bar.close >= bar.open) ?
-                            [NSColor systemGreenColor] : [NSColor systemRedColor];
+        [NSColor systemGreenColor] : [NSColor systemRedColor];
         
         // Draw high-low line
         [[NSColor labelColor] setStroke];
@@ -711,7 +712,7 @@
         
         // Color based on price direction (same as candlesticks)
         NSColor *barColor = (bar.close >= bar.open) ?
-                            [NSColor systemGreenColor] : [NSColor systemRedColor];
+        [NSColor systemGreenColor] : [NSColor systemRedColor];
         
         NSRect volumeRect = NSMakeRect(x, y, barWidth, height);
         [barColor setFill];
@@ -1009,7 +1010,7 @@
     CGFloat boxHeight = totalHeight + (padding * 2);
     
     // ✅ NUOVO: Position box intelligently (avoid chart edges)
-    CGFloat chartAreaWidth = self.bounds.size.width - Y_AXIS_WIDTH;
+    CGFloat chartAreaWidth = self.bounds.size.width - CHART_Y_AXIS_WIDTH;
     CGFloat boxX = 20; // Fixed left position
     CGFloat boxY = self.bounds.size.height - boxHeight - 20; // Fixed top position
     
@@ -2555,13 +2556,13 @@
 
 - (CGFloat)calculateChartAreaWidthWithDynamicBuffer {
     if (self.visibleStartIndex >= self.visibleEndIndex) {
-        return self.bounds.size.width - Y_AXIS_WIDTH - (2 * CHART_MARGIN_LEFT) - 20; // Fallback statico
+        return self.bounds.size.width - CHART_Y_AXIS_WIDTH - (2 * CHART_MARGIN_LEFT) - 20; // Fallback statico
     }
     
     NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
     
     // Calcola larghezza base senza buffer
-    CGFloat baseChartWidth = self.bounds.size.width - Y_AXIS_WIDTH - (2 * CHART_MARGIN_LEFT);
+    CGFloat baseChartWidth = self.bounds.size.width - CHART_Y_AXIS_WIDTH - (2 * CHART_MARGIN_LEFT);
     CGFloat preliminaryBarWidth = baseChartWidth / visibleBars;
     
     // ✅ BUFFER DINAMICO: Proporzionale alla larghezza delle barre
@@ -2602,7 +2603,7 @@
     NSSize textSize = [valueText sizeWithAttributes:bubbleAttributes];
     
     // Posiziona nell'area dell'asse Y (lato destro)
-    CGFloat bubbleX = self.bounds.size.width - Y_AXIS_WIDTH + 8;
+    CGFloat bubbleX = self.bounds.size.width - CHART_Y_AXIS_WIDTH + 8;
     CGFloat bubbleY = self.crosshairPoint.y - textSize.height/2;
     
     // Clamp alla vista per evitare che esca dai bounds

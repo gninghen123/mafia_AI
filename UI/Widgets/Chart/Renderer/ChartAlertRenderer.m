@@ -28,7 +28,7 @@
     self = [super init];
     if (self) {
         _panelView = panelView;
-        _coordinateContext = [[ChartCoordinateContext alloc] init];
+        _panelYContext = [[PanelYCoordinateContext alloc] init];
         _alerts = @[];
         
         [self setupLayersInPanelView];
@@ -94,13 +94,14 @@
                          bounds:(CGRect)bounds
                   currentSymbol:(NSString *)symbol {
     
-    self.coordinateContext.chartData = chartData;
-    self.coordinateContext.visibleStartIndex = startIndex;
-    self.coordinateContext.visibleEndIndex = endIndex;
-    self.coordinateContext.yRangeMin = yMin;
-    self.coordinateContext.yRangeMax = yMax;
-    self.coordinateContext.panelBounds = bounds;
-    self.coordinateContext.currentSymbol = symbol;
+    // ✅ NUOVO: Aggiorna panel Y context
+    self.panelYContext.yRangeMin = yMin;
+    self.panelYContext.yRangeMax = yMax;
+    self.panelYContext.panelHeight = bounds.size.height;
+    self.panelYContext.currentSymbol = symbol;
+    
+    // ✅ NUOVO: Shared X context viene passato dal panel view separatamente
+    // (Il panelView lo aggiorna tramite updateSharedXContext)
     
     [self updateLayerFrames];
     
@@ -118,8 +119,8 @@
 #pragma mark - Data Management
 
 - (void)refreshAlerts {
-    if (self.coordinateContext.currentSymbol) {
-        [self loadAlertsForSymbol:self.coordinateContext.currentSymbol];
+    if (self.panelYContext.currentSymbol) {
+        [self loadAlertsForSymbol:self.panelYContext.currentSymbol];
     }
 }
 
@@ -144,7 +145,7 @@
 #pragma mark - Rendering
 
 - (void)renderAllAlerts {
-    if (!self.coordinateContext.chartData || self.alerts.count == 0) {
+    if (!self.sharedXContext || !self.panelYContext || self.alerts.count == 0) {
         return;
     }
     
@@ -326,12 +327,11 @@
 #pragma mark - Coordinate Conversion
 
 - (CGFloat)screenYForTriggerValue:(double)triggerValue {
-    return [self.coordinateContext screenYForValue:triggerValue];
+    return [self.panelYContext screenYForValue:triggerValue];
 }
 
-
 - (double)triggerValueForScreenY:(CGFloat)screenY {
-    return [self.coordinateContext valueForScreenY:screenY];
+    return [self.panelYContext valueForScreenY:screenY];
 }
 
 #pragma mark - Alert Drag Operations

@@ -14,13 +14,8 @@
 #import "ChartObjectSettingsWindow.h"
 #import "SharedXCoordinateContext.h"
 #import "PanelYCoordinateContext.h"
-
-#pragma mark - Constants for Y-Axis Layout
-
-#define CHART_MARGIN_LEFT 10
-#define CHART_MARGIN_RIGHT 10
-#define Y_AXIS_WIDTH 60
-#define CHART_MARGIN_RIGHT_WITH_AXIS (CHART_MARGIN_RIGHT + Y_AXIS_WIDTH)
+#pragma mark - Import ChartWidget for constants
+#import "ChartWidget.h"  // Per accedere a CHART_Y_AXIS_WIDTH, CHART_MARGIN_LEFT, CHART_MARGIN_RIGHT
 
 @class ChartAlertRenderer;
 @class ChartWidget;

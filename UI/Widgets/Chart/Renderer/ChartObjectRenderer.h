@@ -9,7 +9,6 @@
 #import <Cocoa/Cocoa.h>
 #import "ChartObjectModels.h"
 #import "ChartObjectsManager.h"
-#import "ChartCoordinateContext.h"
 
 
 @class ChartPanelView;
@@ -24,7 +23,6 @@ NS_ASSUME_NONNULL_BEGIN
 // Context and dependencies
 @property (nonatomic, weak) ChartPanelView *panelView;
 @property (nonatomic, strong) ChartObjectsManager *objectsManager;
-@property (nonatomic, strong) ChartCoordinateContext *coordinateContext;
 
 // Rendering layers (will be added to ChartPanelView)
 @property (nonatomic, strong) CALayer *objectsLayer;        // Static objects

@@ -1,10 +1,8 @@
 // SharedXCoordinateContext.h
 #import <Foundation/Foundation.h>
 #import <Cocoa/Cocoa.h>
-
-extern const CGFloat CHART_Y_AXIS_WIDTH;
-extern const CGFloat CHART_MARGIN_LEFT;
-extern const CGFloat CHART_MARGIN_RIGHT;
+// Import ChartWidget for constant definitions
+#import "ChartWidget.h"
 
 @class HistoricalBarModel;
 

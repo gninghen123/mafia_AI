@@ -20,6 +20,7 @@
 #import "FloatingWidgetWindow.h"
 #import "ChartWidget+SaveData.h"
 #import "ChartWidget+ImageExport.h"
+#import "ChartWidget+Patterns.h"
 
 
 @interface ChartPanelView ()
@@ -2100,7 +2101,28 @@
                                                    keyEquivalent:@""];
     loadDataItem.target = self;
     [contextMenu addItem:loadDataItem];
-    
+    [contextMenu addItem:[NSMenuItem separatorItem]];
+       
+       // Create Pattern Label
+       NSMenuItem *createPatternItem = [[NSMenuItem alloc] initWithTitle:@"📋 Create Pattern Label..."
+                                                                  action:@selector(contextMenuCreatePatternLabel:)
+                                                           keyEquivalent:@""];
+       createPatternItem.target = self;
+       [contextMenu addItem:createPatternItem];
+       
+       // Load Pattern
+       NSMenuItem *loadPatternItem = [[NSMenuItem alloc] initWithTitle:@"📂 Load Pattern..."
+                                                                action:@selector(contextMenuLoadPattern:)
+                                                         keyEquivalent:@""];
+       loadPatternItem.target = self;
+       [contextMenu addItem:loadPatternItem];
+       
+       // Manage Patterns
+       NSMenuItem *managePatternsItem = [[NSMenuItem alloc] initWithTitle:@"⚙️ Manage Patterns..."
+                                                                   action:@selector(contextMenuManagePatterns:)
+                                                            keyEquivalent:@""];
+       managePatternsItem.target = self;
+       [contextMenu addItem:managePatternsItem];
     // 🆕 NUOVO: Crea Immagine - Delega al ChartWidget
     [contextMenu addItem:[NSMenuItem separatorItem]];
     
@@ -2704,6 +2726,24 @@
     // Disegna il testo del valore
     [valueText drawAtPoint:NSMakePoint(bubbleX, bubbleY) withAttributes:bubbleAttributes];
 }
+#pragma mark - Pattern Context Menu Actions
 
+- (IBAction)contextMenuCreatePatternLabel:(id)sender {
+    if (self.chartWidget) {
+        [self.chartWidget createPatternLabelInteractive];
+    }
+}
+
+- (IBAction)contextMenuLoadPattern:(id)sender {
+    if (self.chartWidget) {
+        [self.chartWidget showPatternLibraryInteractive];
+    }
+}
+
+- (IBAction)contextMenuManagePatterns:(id)sender {
+    if (self.chartWidget) {
+        [self.chartWidget showPatternManagementWindow];
+    }
+}
 
 @end

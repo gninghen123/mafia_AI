@@ -73,7 +73,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)addSaveDataMenuItemsToMenu:(NSMenu *)menu;
 
 
-- (NSString *)timeframeDisplayStringForTimeframe;
+- (NSString *)timeframeDisplayStringForTimeframe:(ChartTimeframe)timeframe;
 
 
 @end

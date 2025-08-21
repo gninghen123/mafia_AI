@@ -1087,7 +1087,7 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 #pragma mark - Menu Support
-
+/*menu sta nel chartpanelview
 - (void)appendWidgetSpecificItemsToMenu:(NSMenu *)menu {
     // Add chart-specific menu items
     NSMenuItem *separator = [NSMenuItem separatorItem];
@@ -1107,7 +1107,7 @@ extern NSString *const DataHubDataLoadedNotification;
     [self addSaveDataMenuItemsToMenu:menu];
     [self addImageExportMenuItemToMenu:menu];
 
-}
+}*/
 
 - (NSArray<NSString *> *)selectedSymbols {
     // ChartWidget doesn't have selection, return current symbol if any

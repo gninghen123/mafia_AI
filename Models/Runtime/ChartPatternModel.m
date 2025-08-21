@@ -109,7 +109,7 @@
     
     // Build file path from savedDataReference UUID
     NSString *directory = [ChartWidget savedChartDataDirectory];
-    NSString *filename = [NSString stringWithFormat:@"%@.plist", self.savedDataReference];
+    NSString *filename = [NSString stringWithFormat:@"%@.chartdata", self.savedDataReference];
     NSString *filePath = [directory stringByAppendingPathComponent:filename];
     
     SavedChartData *savedData = [SavedChartData loadFromFile:filePath];
@@ -140,7 +140,7 @@
     
     // Build file path and check if file exists
     NSString *directory = [ChartWidget savedChartDataDirectory];
-    NSString *filename = [NSString stringWithFormat:@"%@.plist", self.savedDataReference];
+    NSString *filename = [NSString stringWithFormat:@"%@.chartdata", self.savedDataReference];
     NSString *filePath = [directory stringByAppendingPathComponent:filename];
     
     return [[NSFileManager defaultManager] fileExistsAtPath:filePath];

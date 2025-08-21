@@ -13,6 +13,10 @@
 // UserDefaults key for storing user-added pattern types
 static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
 
+@interface DataHub (ChartPatternsPrivate)
+- (BOOL)isStringLikelyUUID:(NSString *)string;
+@end
+
 @implementation DataHub (ChartPatterns)
 
 #pragma mark - CRUD Operations
@@ -290,7 +294,7 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
     
     // Build file path and check if file exists
     NSString *directory = [ChartWidget savedChartDataDirectory];
-    NSString *filename = [NSString stringWithFormat:@"%@.plist", savedDataRef];
+    NSString *filename = [NSString stringWithFormat:@"%@.chartdata", savedDataRef];
     NSString *filePath = [directory stringByAppendingPathComponent:filename];
     
     return [[NSFileManager defaultManager] fileExistsAtPath:filePath];
@@ -317,11 +321,15 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
     NSArray<NSString *> *allFiles = [ChartWidget availableSavedChartDataFiles];
     NSMutableArray<NSString *> *allSavedDataIDs = [NSMutableArray array];
     
-    // Extract UUIDs from filenames (assuming format: UUID.plist)
+    // Extract UUIDs from filenames (assuming format: UUID.chartdata)
     for (NSString *filePath in allFiles) {
         NSString *filename = filePath.lastPathComponent;
         NSString *uuid = [filename stringByDeletingPathExtension];
-        [allSavedDataIDs addObject:uuid];
+        
+        // Only add if it looks like a UUID (not descriptive filename)
+        if ([self isStringLikelyUUID:uuid]) {
+            [allSavedDataIDs addObject:uuid];
+        }
     }
     
     // Get all referenced SavedChartData IDs from patterns
@@ -441,6 +449,17 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
     };
     
     return [[ChartPatternModel alloc] initWithDictionary:dict];
+}
+
+- (BOOL)isStringLikelyUUID:(NSString *)string {
+    if (!string || string.length != 36) {
+        return NO;
+    }
+    
+    // Check if it contains only hex chars and hyphens in UUID format
+    NSString *uuidPattern = @"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$";
+    NSPredicate *uuidTest = [NSPredicate predicateWithFormat:@"SELF MATCHES %@", uuidPattern];
+    return [uuidTest evaluateWithObject:string];
 }
 
 @end

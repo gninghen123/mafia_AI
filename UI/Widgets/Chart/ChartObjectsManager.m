@@ -1,5 +1,5 @@
 //
-//  ChartObjectsManager.m
+//  ChartObjectsManager.m - UPDATED with Name Management Methods
 //  mafia_AI
 //
 //  Created by fabio gattone on 08/08/25.
@@ -8,7 +8,7 @@
 #import "ChartObjectsManager.h"
 #import "DataHub.h"
 #import "DataHub+ChartObjects.h"
-#import "ChartObjectRenderer.h"  // ✅ AGGIUNGERE QUESTA RIGA
+#import "ChartObjectRenderer.h"
 
 @implementation ChartObjectsManager
 
@@ -33,7 +33,7 @@
 - (ChartLayerModel *)createLayerWithName:(NSString *)name {
     ChartLayerModel *layer = [ChartLayerModel layerWithName:name];
     layer.orderIndex = self.layers.count;
-    layer.creationDate = [NSDate date];  // ✅ AGGIUNGI QUESTA RIGA
+    layer.creationDate = [NSDate date];
 
     [self.layers addObject:layer];
     
@@ -78,10 +78,59 @@
     NSLog(@"🔄 ChartObjectsManager: Moved layer '%@' to index %lu", layer.name, (unsigned long)index);
 }
 
+#pragma mark - ✅ NUOVO: Name Management Methods (spostati dalla UI)
+
+- (NSString *)generateUniqueLayerName:(NSString *)baseName {
+    NSString *uniqueName = baseName;
+    NSInteger counter = 1;
+    
+    while ([self layerNameExists:uniqueName]) {
+        uniqueName = [NSString stringWithFormat:@"%@ %ld", baseName, (long)counter];
+        counter++;
+    }
+    
+    NSLog(@"🏷️ ChartObjectsManager: Generated unique layer name '%@' from base '%@'", uniqueName, baseName);
+    return uniqueName;
+}
+
+- (BOOL)layerNameExists:(NSString *)name {
+    for (ChartLayerModel *layer in self.layers) {
+        if ([layer.name isEqualToString:name]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+- (NSString *)generateUniqueObjectName:(NSString *)baseName inLayer:(ChartLayerModel *)layer {
+    NSString *uniqueName = baseName;
+    NSInteger counter = 1;
+    
+    while ([self objectNameExists:uniqueName inLayer:layer]) {
+        uniqueName = [NSString stringWithFormat:@"%@ %ld", baseName, (long)counter];
+        counter++;
+    }
+    
+    NSLog(@"🏷️ ChartObjectsManager: Generated unique object name '%@' from base '%@' in layer '%@'",
+          uniqueName, baseName, layer.name);
+    return uniqueName;
+}
+
+- (BOOL)objectNameExists:(NSString *)name inLayer:(ChartLayerModel *)layer {
+    if (!layer) return NO;
+    
+    for (ChartObjectModel *object in layer.objects) {
+        if ([object.name isEqualToString:name]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
 #pragma mark - Object Management
 
 - (ChartObjectModel *)createObjectOfType:(ChartObjectType)type inLayer:(ChartLayerModel *)layer {
-    // ✅ NUOVO: Se non è specificato un layer, usa/crea layer automaticamente
+    // ✅ CORREZIONE: Se non è specificato un layer, usa/crea layer automaticamente
     if (!layer) {
         layer = [self ensureActiveLayerForObjectCreation];
     }
@@ -91,9 +140,9 @@
         return nil;
     }
     
-    // Generate unique name
+    // ✅ CORREZIONE: Usa il nuovo metodo per nomi unici
     NSString *baseName = [self defaultNameForObjectType:type];
-    NSString *uniqueName = [self generateUniqueNameWithBase:baseName inLayer:layer];
+    NSString *uniqueName = [self generateUniqueObjectName:baseName inLayer:layer];
     
     ChartObjectModel *object = [ChartObjectModel objectWithType:type name:uniqueName];
     [layer addObject:object];
@@ -220,7 +269,6 @@
     return nil;
 }
 
-
 - (nullable ControlPointModel *)controlPointAtPoint:(NSPoint)point tolerance:(CGFloat)tolerance {
     // Check selected object first
     if (self.selectedObject) {
@@ -249,7 +297,6 @@
 
 #pragma mark - Persistence
 
-
 - (void)loadFromDataHub {
     NSLog(@"📥 ChartObjectsManager: Starting load for symbol %@", self.currentSymbol);
     
@@ -270,6 +317,11 @@
             for (ChartLayerModel *layer in layers) {
                 NSLog(@"📋 Loaded layer '%@' with %lu objects", layer.name, (unsigned long)layer.objects.count);
             }
+            
+            // ✅ AGGIUNTO: Posta notification quando load completato
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"ChartObjectsManagerDataLoaded"
+                                                                object:self
+                                                              userInfo:@{@"symbol": self.currentSymbol ?: @""}];
             
             NSLog(@"✅ ChartObjectsManager: Load completed for symbol %@", self.currentSymbol);
         });
@@ -322,28 +374,16 @@
     }
 }
 
+// ✅ DEPRECATED: Manteniamo per backward compatibility ma usiamo il nuovo metodo
 - (NSString *)generateUniqueNameWithBase:(NSString *)baseName inLayer:(ChartLayerModel *)layer {
-    NSString *uniqueName = baseName;
-    NSInteger counter = 1;
-    
-    while ([self nameExistsInLayer:uniqueName layer:layer]) {
-        uniqueName = [NSString stringWithFormat:@"%@ %ld", baseName, (long)counter];
-        counter++;
-    }
-    
-    return uniqueName;
+    NSLog(@"⚠️ ChartObjectsManager: Using deprecated generateUniqueNameWithBase:inLayer: - use generateUniqueObjectName:inLayer: instead");
+    return [self generateUniqueObjectName:baseName inLayer:layer];
 }
 
 - (BOOL)nameExistsInLayer:(NSString *)name layer:(ChartLayerModel *)layer {
-    for (ChartObjectModel *object in layer.objects) {
-        if ([object.name isEqualToString:name]) {
-            return YES;
-        }
-    }
-    return NO;
+    NSLog(@"⚠️ ChartObjectsManager: Using deprecated nameExistsInLayer:layer: - use objectNameExists:inLayer: instead");
+    return [self objectNameExists:name inLayer:layer];
 }
-
-
 
 - (void)clearAllObjects {
     // Clear all objects from all layers
@@ -368,13 +408,12 @@
                                                       userInfo:@{@"symbol": self.currentSymbol}];
 }
 
-
 - (void)saveChanges {
     [self saveToDataHub];
     NSLog(@"💾 ChartObjectsManager: Manual save completed");
 }
 
-#pragma mark - Lazy Layer Creation
+#pragma mark - ✅ CORREZIONE: Lazy Layer Creation con nome unico
 
 - (ChartLayerModel *)ensureActiveLayerForObjectCreation {
     // Se esiste già un layer attivo, usalo
@@ -390,10 +429,12 @@
         return self.activeLayer;
     }
     
-    // ✅ LAZY CREATION: Se non esistono layer, crea "Default" automaticamente
+    // ✅ LAZY CREATION: Se non esistono layer, crea "Default" automaticamente con nome unico
     NSLog(@"💡 ChartObjectsManager: No layers exist - creating default layer for object creation");
     
-    ChartLayerModel *defaultLayer = [self createLayerWithName:@"Default"];
+    // ✅ CORREZIONE: Usa generateUniqueLayerName invece di nome fisso!
+    NSString *uniqueName = [self generateUniqueLayerName:@"Default"];
+    ChartLayerModel *defaultLayer = [self createLayerWithName:uniqueName];
     
     // NON salvare ancora - sarà salvato quando l'oggetto viene completato
     NSLog(@"✅ ChartObjectsManager: Created lazy layer '%@' (not saved yet)", defaultLayer.name);
@@ -401,7 +442,7 @@
     return defaultLayer;
 }
 
-#pragma mark - Symbol Management (NEW)
+#pragma mark - Symbol Management
 
 - (void)setCurrentSymbol:(NSString *)currentSymbol {
     NSString *previousSymbol = _currentSymbol;
@@ -433,8 +474,7 @@
         NSLog(@"✅ ChartObjectsManager: Invalidated renderer for symbol change");
     }
     
-    NSLog(@"✅ ChartObjectsManager: Symbol change completed - loaded %lu layers for '%@'",
-          (unsigned long)self.layers.count, _currentSymbol);
+    NSLog(@"✅ ChartObjectsManager: Symbol change completed - loading data for '%@'", _currentSymbol);
 }
 
 @end

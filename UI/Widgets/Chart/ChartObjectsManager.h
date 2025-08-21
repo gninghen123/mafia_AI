@@ -19,7 +19,6 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSMutableArray<ChartLayerModel *> *layers;
 @property (nonatomic, weak, nullable) ChartLayerModel *activeLayer;
 
-
 @property (nonatomic, weak, nullable) ChartObjectRenderer *coordinateRenderer;
 // Selection state
 @property (nonatomic, strong, nullable) ChartObjectModel *selectedObject;
@@ -53,14 +52,18 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)loadFromDataHub;
 - (void)saveToDataHub;
 
-// Private helpers
+// ✅ AGGIUNTO: Name Management Methods (spostati dalla UI)
+- (NSString *)generateUniqueLayerName:(NSString *)baseName;
+- (BOOL)layerNameExists:(NSString *)name;
+- (NSString *)generateUniqueObjectName:(NSString *)baseName inLayer:(ChartLayerModel *)layer;
+- (BOOL)objectNameExists:(NSString *)name inLayer:(ChartLayerModel *)layer;
+
+// Private helpers (kept for backward compatibility)
 - (NSString *)defaultNameForObjectType:(ChartObjectType)type;
-- (NSString *)generateUniqueNameWithBase:(NSString *)baseName inLayer:(ChartLayerModel *)layer;
+- (NSString *)generateUniqueNameWithBase:(NSString *)baseName inLayer:(ChartLayerModel *)layer; // ✅ DEPRECATED: Use generateUniqueObjectName:inLayer:
 
 - (void)clearAllObjects;
-
 - (void)saveChanges; // Per save manuali quando necessario
-
 
 @end
 

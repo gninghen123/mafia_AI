@@ -509,30 +509,50 @@
         return;
     }
     
+    // ✅ OTTIMIZZAZIONE: Pre-calcola valori costanti fuori dal loop
+    CGFloat barWidth;
+    BOOL useSharedXContext = (self.sharedXContext != nil);
+    BOOL usePanelYContext = (self.panelYContext != nil);
+    
+    if (useSharedXContext) {
+        barWidth = [self.sharedXContext barWidth];
+        barWidth -= [self.sharedXContext barSpacing]; // Remove spacing for actual bar
+    } else {
+        // Fallback calculation
+        NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
+        CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
+        CGFloat totalBarWidth = chartAreaWidth / visibleBars;
+        CGFloat barSpacing = MAX(1, totalBarWidth * 0.1);
+        barWidth = totalBarWidth - barSpacing;
+    }
+    
+    // ✅ OTTIMIZZAZIONE: Pre-alloca colori e paths
+    NSColor *greenColor = [NSColor systemGreenColor];
+    NSColor *redColor = [NSColor systemRedColor];
+    NSColor *strokeColor = [NSColor labelColor];
+    CGFloat halfBarWidth = barWidth / 2.0;
+    
+    NSBezierPath *shadowPath = [NSBezierPath bezierPath];
+    NSBezierPath *bodyPath = [NSBezierPath bezierPath];
+    shadowPath.lineWidth = 1.0;
+    
     for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
         HistoricalBarModel *bar = self.chartData[i];
         
-        // ✅ COORDINATE X da SharedXCoordinateContext
+        // ✅ COORDINATE X - calcola solo x (barWidth è già calcolato)
         CGFloat x;
-        CGFloat barWidth;
-        if (self.sharedXContext) {
+        if (useSharedXContext) {
             x = [self.sharedXContext screenXForBarIndex:i];
-            barWidth = [self.sharedXContext barWidth];
-            barWidth -= [self.sharedXContext barSpacing]; // Remove spacing for actual bar
         } else {
-            // Fallback - stesso calcolo di prima
             NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
             CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
             CGFloat totalBarWidth = chartAreaWidth / visibleBars;
-            CGFloat barSpacing = MAX(1, totalBarWidth * 0.1);
-            barWidth = totalBarWidth - barSpacing;
-            
             x = CHART_MARGIN_LEFT + (i - self.visibleStartIndex) * totalBarWidth;
         }
         
-        // ✅ COORDINATE Y da PanelYCoordinateContext
+        // ✅ COORDINATE Y - usa context appropriati
         CGFloat openY, closeY, highY, lowY;
-        if (self.panelYContext) {
+        if (usePanelYContext) {
             openY = [self.panelYContext screenYForValue:bar.open];
             closeY = [self.panelYContext screenYForValue:bar.close];
             highY = [self.panelYContext screenYForValue:bar.high];
@@ -545,15 +565,14 @@
             lowY = [self yCoordinateForPrice:bar.low];
         }
         
-        NSColor *bodyColor = (bar.close >= bar.open) ?
-        [NSColor systemGreenColor] : [NSColor systemRedColor];
+        NSColor *bodyColor = (bar.close >= bar.open) ? greenColor : redColor;
+        CGFloat centerX = x + halfBarWidth;
         
         // Draw high-low line
-        [[NSColor labelColor] setStroke];
-        NSBezierPath *shadowPath = [NSBezierPath bezierPath];
-        shadowPath.lineWidth = 1.0;
-        [shadowPath moveToPoint:NSMakePoint(x + barWidth/2, highY)];
-        [shadowPath lineToPoint:NSMakePoint(x + barWidth/2, lowY)];
+        [strokeColor setStroke];
+        [shadowPath removeAllPoints];
+        [shadowPath moveToPoint:NSMakePoint(centerX, highY)];
+        [shadowPath lineToPoint:NSMakePoint(centerX, lowY)];
         [shadowPath stroke];
         
         // Draw body rectangle
@@ -565,7 +584,8 @@
         
         NSRect bodyRect = NSMakeRect(x, bodyBottom, barWidth, bodyHeight);
         [bodyColor setFill];
-        NSBezierPath *bodyPath = [NSBezierPath bezierPathWithRect:bodyRect];
+        [bodyPath removeAllPoints];
+        [bodyPath appendBezierPathWithRect:bodyRect];
         [bodyPath fill];
     }
     
@@ -670,57 +690,72 @@
 }
 
 - (void)drawVolumeHistogram {
-    if (self.visibleStartIndex >= self.visibleEndIndex || self.visibleEndIndex > self.chartData.count) {
-        return;
-    }
-    
-    // Find max volume in visible range for scaling
-    double maxVolume = 0;
-    for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
-        HistoricalBarModel *bar = self.chartData[i];
-        maxVolume = MAX(maxVolume, bar.volume);
-    }
-    
-    if (maxVolume == 0) return;
-    
-    CGFloat chartHeight = self.bounds.size.height - 20; // 10px margin top/bottom
-    
-    for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
-        HistoricalBarModel *bar = self.chartData[i];
-        
-        // ✅ COORDINATE X da SharedXCoordinateContext
-        CGFloat x;
-        CGFloat barWidth;
-        if (self.sharedXContext) {
-            x = [self.sharedXContext screenXForBarIndex:i];
-            barWidth = [self.sharedXContext barWidth];
-            barWidth -= [self.sharedXContext barSpacing]; // Remove spacing for actual bar
-        } else {
-            // Fallback - stesso calcolo di prima
-            NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
-            CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
-            CGFloat totalBarWidth = chartAreaWidth / visibleBars;
-            CGFloat barSpacing = MAX(1, totalBarWidth * 0.1);
-            barWidth = totalBarWidth - barSpacing;
-            
-            x = CHART_MARGIN_LEFT + (i - self.visibleStartIndex) * totalBarWidth;
-        }
-        
-        // Volume height calculation
-        CGFloat height = (bar.volume / maxVolume) * chartHeight;
-        CGFloat y = 10; // Start from bottom margin
-        
-        // Color based on price direction (same as candlesticks)
-        NSColor *barColor = (bar.close >= bar.open) ?
-        [NSColor systemGreenColor] : [NSColor systemRedColor];
-        
-        NSRect volumeRect = NSMakeRect(x, y, barWidth, height);
-        [barColor setFill];
-        NSBezierPath *volumePath = [NSBezierPath bezierPathWithRect:volumeRect];
-        [volumePath fill];
-    }
-    
-    NSLog(@"📊 Volume histogram drawn with unified coordinates");
+   if (self.visibleStartIndex >= self.visibleEndIndex || self.visibleEndIndex > self.chartData.count) {
+       return;
+   }
+   
+   // ✅ OTTIMIZZAZIONE: Find max volume in visible range for scaling
+   double maxVolume = 0;
+   for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
+       HistoricalBarModel *bar = self.chartData[i];
+       maxVolume = MAX(maxVolume, bar.volume);
+   }
+   
+   if (maxVolume == 0) return;
+   
+   // ✅ OTTIMIZZAZIONE: Pre-calcola valori costanti fuori dal loop
+   CGFloat chartHeight = self.bounds.size.height - 20; // 10px margin top/bottom
+   CGFloat bottomY = 10; // Start from bottom margin
+   double volumeScale = chartHeight / maxVolume; // Pre-calcola il fattore di scala
+   
+   CGFloat barWidth;
+   BOOL useSharedXContext = (self.sharedXContext != nil);
+   
+   if (useSharedXContext) {
+       barWidth = [self.sharedXContext barWidth];
+       barWidth -= [self.sharedXContext barSpacing]; // Remove spacing for actual bar
+   } else {
+       // Fallback calculation
+       NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
+       CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
+       CGFloat totalBarWidth = chartAreaWidth / visibleBars;
+       CGFloat barSpacing = MAX(1, totalBarWidth * 0.1);
+       barWidth = totalBarWidth - barSpacing;
+   }
+   
+   // ✅ OTTIMIZZAZIONE: Pre-alloca colori e path
+   NSColor *greenColor = [NSColor systemGreenColor];
+   NSColor *redColor = [NSColor systemRedColor];
+   NSBezierPath *volumePath = [NSBezierPath bezierPath];
+   
+   for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
+       HistoricalBarModel *bar = self.chartData[i];
+       
+       // ✅ COORDINATE X - calcola solo x (barWidth è già calcolato)
+       CGFloat x;
+       if (useSharedXContext) {
+           x = [self.sharedXContext screenXForBarIndex:i];
+       } else {
+           NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
+           CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
+           CGFloat totalBarWidth = chartAreaWidth / visibleBars;
+           x = CHART_MARGIN_LEFT + (i - self.visibleStartIndex) * totalBarWidth;
+       }
+       
+       // ✅ OTTIMIZZAZIONE: Volume height calculation (usa fattore pre-calcolato)
+       CGFloat height = bar.volume * volumeScale;
+       
+       // Color based on price direction
+       NSColor *barColor = (bar.close >= bar.open) ? greenColor : redColor;
+       
+       NSRect volumeRect = NSMakeRect(x, bottomY, barWidth, height);
+       [barColor setFill];
+       [volumePath removeAllPoints];
+       [volumePath appendBezierPathWithRect:volumeRect];
+       [volumePath fill];
+   }
+   
+   NSLog(@"📊 Volume histogram drawn with unified coordinates");
 }
 
 

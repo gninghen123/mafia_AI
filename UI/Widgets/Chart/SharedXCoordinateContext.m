@@ -23,11 +23,11 @@
         return 0.0;
     }
     
-    NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
-    if (visibleBars <= 0) return CHART_MARGIN_LEFT;
+    
+    if (self.visibleBars <= 0) return CHART_MARGIN_LEFT;
     
     CGFloat chartWidth = [self chartAreaWidth];  // ✅ USA IL METODO
-    CGFloat totalBarWidth = chartWidth / visibleBars;
+    CGFloat totalBarWidth = chartWidth / self.visibleBars;
     NSInteger relativeIndex = barIndex - self.visibleStartIndex;
     
     return CHART_MARGIN_LEFT + (relativeIndex * totalBarWidth);
@@ -38,11 +38,11 @@
         return 0;
     }
     
-    NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
-    if (visibleBars <= 0) return self.visibleStartIndex;
+    
+    if (self.visibleBars <= 0) return self.visibleStartIndex;
     
     CGFloat chartWidth = [self chartAreaWidth];
-    CGFloat totalBarWidth = chartWidth / visibleBars;
+    CGFloat totalBarWidth = chartWidth / self.visibleBars;
     
     NSInteger relativeIndex = (screenX - CHART_MARGIN_LEFT) / totalBarWidth;
     NSInteger absoluteIndex = self.visibleStartIndex + relativeIndex;
@@ -85,10 +85,10 @@
 }
 
 - (CGFloat)barWidth {
-    NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
-    if (visibleBars <= 0) return 0.0;
     
-    return [self chartAreaWidth] / visibleBars;
+    if (self.visibleBars <= 0) return 0.0;
+    
+    return [self chartAreaWidth] / self.visibleBars;
 }
 
 - (CGFloat)barSpacing {
@@ -101,4 +101,9 @@
             self.visibleEndIndex > self.visibleStartIndex &&
             self.chartData.count > 0);
 }
+
+- (NSInteger)visibleBars{
+    return self.visibleEndIndex - self.visibleStartIndex + 1;
+}
+
 @end

@@ -9,6 +9,9 @@
 #import "ChartPanelView.h"
 #import "RuntimeModels.h"
 #import "ChartWidget.h"
+#import "SharedXCoordinateContext.h"
+#import "PanelYCoordinateContext.h"
+
 
 typedef NS_ENUM(NSUInteger, SnapType) {
     SnapTypeNone = 0,
@@ -40,8 +43,9 @@ typedef NS_ENUM(NSUInteger, SnapType) {
     if (self) {
         _panelView = panelView;
         _objectsManager = objectsManager;
-        _coordinateContext = [[ChartCoordinateContext alloc] init];
-        _tempControlPoints = [NSMutableArray array];
+        _sharedXContext = panelView.sharedXContext;  // WEAK reference to shared context
+                _panelYContext = [[PanelYCoordinateContext alloc] init]; // Own Y context
+                        _tempControlPoints = [NSMutableArray array];
         objectsManager.coordinateRenderer = self;
 
         [self setupLayersInPanelView];
@@ -102,59 +106,44 @@ typedef NS_ENUM(NSUInteger, SnapType) {
                       yRangeMax:(double)yMax
                          bounds:(CGRect)bounds {
     
-    BOOL contextChanged = ![self.coordinateContext.chartData isEqualToArray:chartData] ||
-                         self.coordinateContext.visibleStartIndex != startIndex ||
-                         self.coordinateContext.visibleEndIndex != endIndex ||
-                         self.coordinateContext.yRangeMin != yMin ||
-                         self.coordinateContext.yRangeMax != yMax ||
-                         !CGRectEqualToRect(self.coordinateContext.panelBounds, bounds);
+    // ✅ NUOVO: Update panel Y context (local)
+    self.panelYContext.yRangeMin = yMin;
+    self.panelYContext.yRangeMax = yMax;
+    self.panelYContext.panelHeight = bounds.size.height;
+    self.panelYContext.panelType = self.panelView.panelType;
     
-    if (contextChanged) {
-        self.coordinateContext.chartData = chartData;
-        self.coordinateContext.visibleStartIndex = startIndex;
-        self.coordinateContext.visibleEndIndex = endIndex;
-        self.coordinateContext.yRangeMin = yMin;
-        self.coordinateContext.yRangeMax = yMax;
-        self.coordinateContext.panelBounds = bounds;
-        
-        // NUOVO: Aggiorna trading hours context
-        ChartWidget *chartWidget = self.panelView.chartWidget;
-        if (chartWidget) {
-            self.coordinateContext.barsPerDay = [chartWidget barsPerDayForCurrentTimeframe];
-            self.coordinateContext.currentTimeframeMinutes = [chartWidget getCurrentTimeframeInMinutes];
-        }
-        
-        [self updateLayerFrames];
-        [self invalidateObjectsLayer];
-        
-        NSLog(@"🔄 ChartObjectRenderer: Coordinate context updated - BarsPerDay: %ld",
-              (long)self.coordinateContext.barsPerDay);
-    }
+    // ✅ NOTE: SharedXContext viene aggiornato dal panelView separatamente
+    // Non lo aggiorniamo qui perché è condiviso tra tutti i panels
+    
+    [self updateLayerFrames];
+    
+    NSLog(@"🔄 ChartObjectRenderer: Coordinate contexts updated - Y Range: %.2f-%.2f, Height: %.0f",
+          yMin, yMax, bounds.size.height);
 }
 
+
 - (NSPoint)screenPointFromControlPoint:(ControlPointModel *)controlPoint {
-    if (!controlPoint || !self.coordinateContext.chartData) {
+    if (!controlPoint || !self.sharedXContext || !self.panelYContext) {
         return NSMakePoint(-9999, -9999);
     }
     
     NSPoint screenPoint = NSZeroPoint;
     
-    // X coordinate: trova la barra (usa metodo corretto)
+    // ✅ CORRECTED: Find barIndex from dateAnchor (ControlPointModel doesn't have barIndex property)
     NSInteger barIndex = [self findBarIndexForDate:controlPoint.dateAnchor];
     if (barIndex != NSNotFound && barIndex >= 0) {
-        // ✅ MODIFICA PRINCIPALE: Usa screenXForBarCenter invece di xCoordinateForBarIndex
-        // per posizionare gli oggetti al centro dello spazio assegnato alla barra
-        screenPoint.x = [self.coordinateContext screenXForBarCenter:barIndex];
+        // Posizionamento su barra esistente - usa SharedXContext per posizionare al centro
+        screenPoint.x = [self.sharedXContext screenXForBarCenter:barIndex];
         
-        // ✅ NUOVO: Usa absoluteValue direttamente
-        screenPoint.y = [self.coordinateContext screenYForValue:controlPoint.absoluteValue];
+        // ✅ UPDATED: Use PanelYCoordinateContext
+        screenPoint.y = [self.panelYContext screenYForValue:controlPoint.absoluteValue];
         
     } else {
         // Estrapolazione per date fuori dal dataset
-        screenPoint.x = [self xCoordinateForDate:controlPoint.dateAnchor];
+        screenPoint.x = [self.sharedXContext screenXForDate:controlPoint.dateAnchor];
         // Se la coordinata X è valida ma non abbiamo la barra, usiamo comunque absoluteValue
         if (screenPoint.x > -9999) {
-            screenPoint.y = [self.coordinateContext screenYForValue:controlPoint.absoluteValue];
+            screenPoint.y = [self.panelYContext screenYForValue:controlPoint.absoluteValue];
         } else {
             return NSMakePoint(-9999, -9999);
         }
@@ -189,7 +178,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
 #pragma mark - Drawing Implementation
 
 - (void)drawAllObjectsInContext:(CGContextRef)ctx {
-    if (!self.objectsManager || !self.coordinateContext.chartData) {
+    if (!self.objectsManager || !self.sharedXContext.chartData) {
         return;
     }
     
@@ -403,8 +392,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
     // ✅ Create and style path
     NSBezierPath *path = [NSBezierPath bezierPath];
     [path moveToPoint:NSMakePoint(0, screenPoint.y)];
-    [path lineToPoint:NSMakePoint(self.coordinateContext.panelBounds.size.width, screenPoint.y)];
-    
+    [path lineToPoint:NSMakePoint(self.panelView.bounds.size.width, screenPoint.y)];
     // ✅ Apply path-specific style and stroke
     [self strokePath:path withStyle:object.style];
 }
@@ -443,7 +431,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
         NSPoint point = pointValue.pointValue;
         
         // Only draw if point is reasonably close to viewport
-        if (point.x >= -50 && point.x <= self.coordinateContext.panelBounds.size.width + 50) {
+        if (point.x >= -50 && point.x <= self.panelView.bounds.size.width + 50) {
             NSRect cpRect = NSMakeRect(point.x - 3, point.y - 3, 6, 6);
             NSBezierPath *cpPath = [NSBezierPath bezierPathWithOvalInRect:cpRect];
             [cpPath fill];
@@ -458,7 +446,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
                             extendLeft:(BOOL)extendLeft
                            extendRight:(BOOL)extendRight {
     
-    CGRect viewport = self.coordinateContext.panelBounds;
+    CGRect viewport = self.panelView.bounds;
     
     if (!extendLeft && !extendRight) {
         // No extension - just use the original points
@@ -521,7 +509,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
         // Single point - draw horizontal line
         NSBezierPath *path = [NSBezierPath bezierPath];
         [path moveToPoint:NSMakePoint(0, startPoint.y)];
-        [path lineToPoint:NSMakePoint(self.coordinateContext.panelBounds.size.width, startPoint.y)];
+        [path lineToPoint:NSMakePoint(self.panelView.bounds.size.width, startPoint.y)];
         [self strokePath:path withStyle:object.style];
     } else {
         // Full fibonacci with levels
@@ -540,7 +528,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
     NSArray *fibRatios = @[@0.0, @0.236, @0.382, @0.5, @0.618, @0.786, @1.0, @1.272, @1.414, @1.618, @2.618, @4.236];
     NSArray *fibLabels = @[@"0%", @"23.6%", @"38.2%", @"50%", @"61.8%", @"78.6%", @"100%", @"127.2%", @"141.4%", @"161.8%", @"261.8%", @"423.6%"];
     
-    CGFloat panelWidth = self.coordinateContext.panelBounds.size.width;
+    CGFloat panelWidth = self.panelView.bounds.size.width;
     
     for (NSUInteger i = 0; i < fibRatios.count; i++) {
         CGFloat ratio = [fibRatios[i] doubleValue];
@@ -561,7 +549,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
         CGFloat fibY = [self yCoordinateForPrice:fibPrice];
         
         // Skip levels outside visible range
-        if (fibY < -20 || fibY > self.coordinateContext.panelBounds.size.height + 20) continue;
+        if (fibY < -20 || fibY > self.panelView.bounds.size.height + 20) continue;
         
         // ✅ STILE DIVERSO per livelli chiave vs extensions
         NSBezierPath *levelPath = [NSBezierPath bezierPath];
@@ -680,11 +668,11 @@ typedef NS_ENUM(NSUInteger, SnapType) {
 
 
 - (CGFloat)priceFromScreenY:(CGFloat)screenY {
-    return [self.coordinateContext valueForScreenY:screenY];
+    return [self.panelYContext valueForScreenY:screenY];
 }
 
 - (CGFloat)yCoordinateForPrice:(double)price {
-    return [self.coordinateContext screenYForValue:price];
+    return [self.panelYContext screenYForValue:price];
 }
 
 - (void)drawRectangle:(ChartObjectModel *)object {
@@ -798,7 +786,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
         CGFloat dx = point2.x - point1.x;
         CGFloat dy = point2.y - point1.y;
         
-        CGFloat panelWidth = self.coordinateContext.panelBounds.size.width;
+        CGFloat panelWidth = self.panelView.bounds.size.width;
         CGFloat lineLength = sqrt(dx*dx + dy*dy);
         CGFloat extensionFactor = panelWidth / lineLength * 2;
         
@@ -868,11 +856,11 @@ typedef NS_ENUM(NSUInteger, SnapType) {
                
                NSBezierPath *path = [NSBezierPath bezierPath];
                [path moveToPoint:NSMakePoint(0, screenPoint.y)];
-               [path lineToPoint:NSMakePoint(self.coordinateContext.panelBounds.size.width, screenPoint.y)];
+               [path lineToPoint:NSMakePoint(self.panelView.bounds.size.width, screenPoint.y)];
                [self strokePath:path withStyle:object.style];
                
                // ✅ CORRETTO: Usa metodo semplice invece di drawTargetLabel obsoleto
-               CGFloat targetPrice = [self.coordinateContext valueForScreenY:screenPoint.y];
+               CGFloat targetPrice = [self.panelYContext valueForScreenY:screenPoint.y];
                NSString *labelText = [NSString stringWithFormat:@"Target: %.2f", targetPrice];
                [self drawSimpleTargetLabel:labelText atPoint:NSMakePoint(10, screenPoint.y) color:object.style.color];
            }
@@ -900,7 +888,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
     double rrr = fabs(targetPercent) / fabs(stopLossPercent);
     
     // ✅ DISEGNA zone evidenziate (solo da CP1 in poi)
-    CGFloat panelWidth = self.coordinateContext.panelBounds.size.width;
+    CGFloat panelWidth = self.panelView.bounds.size.width;
     
     // Zona Loss (tra buy e stop) - rossa traslucida, solo da CP1 verso destra
     CGFloat lossTop = MIN(buyPoint.y, stopPoint.y);
@@ -1531,7 +1519,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
     NSMutableArray<NSDictionary *> *segments = [NSMutableArray array];
     
     // Ottieni dati storici dal coordinateContext
-    NSArray<HistoricalBarModel *> *data = self.coordinateContext.chartData;
+    NSArray<HistoricalBarModel *> *data = self.sharedXContext.chartData;
     if (data.count == 0 || object.controlPoints.count == 0) {
         NSLog(@"⚠️ TrailingFibo: No data or control points available");
         return @[];
@@ -1545,7 +1533,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
     // ✅ TRAILING BETWEEN: Gestione del secondo control point
     ControlPointModel *endCP = nil;
     NSDate *cp2Date = nil;
-    CGFloat maxSegmentX = self.coordinateContext.panelBounds.size.width; // Default: bordo destro
+    CGFloat maxSegmentX = self.panelView.bounds.size.width; // Default: bordo destro
     
     if (object.type == ChartObjectTypeTrailingFiboBetween && object.controlPoints.count >= 2) {
         endCP = object.controlPoints[1];
@@ -1641,7 +1629,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
     // 6️⃣ Ultimo tratto
     if (maxPrice > minPrice) {
         // ✅ TRAILING BETWEEN: Usa maxSegmentX invece del bordo destro
-        CGFloat finalEndX = cp2Date ? maxSegmentX : self.coordinateContext.panelBounds.size.width;
+        CGFloat finalEndX = cp2Date ? maxSegmentX : self.panelView.bounds.size.width;
         
         [self addTrailingFiboSegments:segments
                                 fromX:lastX
@@ -1740,7 +1728,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
  * Trova l'indice nei dati storici corrispondente a una data
  */
 - (NSInteger)findDataIndexForDate:(NSDate *)targetDate {
-    NSArray<HistoricalBarModel *> *data = self.coordinateContext.chartData;
+    NSArray<HistoricalBarModel *> *data = self.sharedXContext.chartData;
     
     for (NSInteger i = 0; i < data.count; i++) {
         if ([data[i].date compare:targetDate] != NSOrderedAscending) {
@@ -1773,26 +1761,13 @@ typedef NS_ENUM(NSUInteger, SnapType) {
  * Ottieni coordinata X dello schermo per un indice di dati
  */
 - (CGFloat)xCoordinateForDataIndex:(NSInteger)index {
-    if (!self.coordinateContext || !self.coordinateContext.chartData) return 0;
-    
-    NSArray<HistoricalBarModel *> *data = self.coordinateContext.chartData;
-    if (index < 0 || index >= data.count) return 0;
-    
-    // Usa il sistema di coordinate esistente del context
-    CGRect bounds = self.coordinateContext.panelBounds;
-    NSInteger visibleStart = self.coordinateContext.visibleStartIndex;
-    NSInteger visibleEnd = self.coordinateContext.visibleEndIndex;
-    
-    if (index < visibleStart || index > visibleEnd) {
-        // Index fuori viewport - calcola posizione teorica
-        CGFloat barsPerPixel = (CGFloat)(visibleEnd - visibleStart) / bounds.size.width;
-        CGFloat offsetFromStart = index - visibleStart;
-        return offsetFromStart / barsPerPixel;
-    }
-    
-    // Index nel viewport visibile
-    CGFloat barWidth = bounds.size.width / (CGFloat)(visibleEnd - visibleStart + 1);
-    return (index - visibleStart) * barWidth + barWidth / 2.0;
+   if (!self.sharedXContext || !self.sharedXContext.chartData) return 0;
+   
+   NSArray<HistoricalBarModel *> *data = self.sharedXContext.chartData;
+   if (index < 0 || index >= data.count) return 0;
+   
+   // Usa il sistema di coordinate esistente del SharedXContext
+   return [self.sharedXContext screenXForBarCenter:index];
 }
 
 - (double)priceFromControlPoint:(ControlPointModel *)controlPoint {
@@ -1832,7 +1807,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
         CGFloat y = [self yCoordinateForPrice:levelPrice];
         
         // Salta livelli fuori dal viewport
-        CGRect bounds = self.coordinateContext.panelBounds;
+        CGRect bounds = self.panelView.bounds;
         if (y < -10 || y > bounds.size.height + 10) {
             continue;
         }
@@ -1928,7 +1903,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
     if (startIndex == NSNotFound) return peaks;
     
     // Find end index (or use last available data)
-    NSInteger endIndex = self.coordinateContext.chartData.count - 1;
+    NSInteger endIndex = self.sharedXContext.chartData.count - 1;
     if (endDate) {
         NSInteger boundedEndIndex = [self findBarIndexForDate:endDate];
         if (boundedEndIndex != NSNotFound && boundedEndIndex < endIndex) {
@@ -1943,7 +1918,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
     BOOL waitingForConfirmation = NO;
     
     // Get starting value
-    HistoricalBarModel *startBar = self.coordinateContext.chartData[startIndex];
+    HistoricalBarModel *startBar = self.sharedXContext.chartData[startIndex];
     if (searchForHighs) {
         currentExtreme = confirmedExtreme = startBar.high;
     } else {
@@ -1951,8 +1926,8 @@ typedef NS_ENUM(NSUInteger, SnapType) {
     }
     
     // Scan through bars looking for confirmed peaks
-    for (NSInteger i = startIndex + 1; i <= endIndex && i < self.coordinateContext.chartData.count; i++) {
-        HistoricalBarModel *bar = self.coordinateContext.chartData[i];
+    for (NSInteger i = startIndex + 1; i <= endIndex && i < self.sharedXContext.chartData.count; i++) {
+        HistoricalBarModel *bar = self.sharedXContext.chartData[i];
         
         if (searchForHighs) {
             // Looking for highs
@@ -2070,8 +2045,8 @@ typedef NS_ENUM(NSUInteger, SnapType) {
     return [fibLevels copy];
 }
 - (NSInteger)findBarIndexForDate:(NSDate *)date {
-    for (NSInteger i = 0; i < self.coordinateContext.chartData.count; i++) {
-        HistoricalBarModel *bar = self.coordinateContext.chartData[i];
+    for (NSInteger i = 0; i < self.sharedXContext.chartData.count; i++) {
+        HistoricalBarModel *bar = self.sharedXContext.chartData[i];
         if ([bar.date isEqualToDate:date] || [bar.date compare:date] == NSOrderedDescending) {
             return i;
         }
@@ -2080,7 +2055,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
 }
 
 - (HistoricalBarModel *)findBarForDate:(NSDate *)date {
-    for (HistoricalBarModel *bar in self.coordinateContext.chartData) {
+    for (HistoricalBarModel *bar in self.sharedXContext.chartData) {
         if ([bar.date isEqualToDate:date]) {
             return bar;
         }
@@ -2090,7 +2065,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
     HistoricalBarModel *closestBar = nil;
     NSTimeInterval smallestDiff = CGFLOAT_MAX;
     
-    for (HistoricalBarModel *bar in self.coordinateContext.chartData) {
+    for (HistoricalBarModel *bar in self.sharedXContext.chartData) {
         NSTimeInterval diff = fabs([bar.date timeIntervalSinceDate:date]);
         if (diff < smallestDiff) {
             smallestDiff = diff;
@@ -2158,23 +2133,23 @@ typedef NS_ENUM(NSUInteger, SnapType) {
 
 - (CGFloat)xCoordinateForBarIndex:(NSInteger)barIndex {
     // ✅ MODIFICA: Ora usa screenXForBarCenter per consistenza
-    return [self.coordinateContext screenXForBarCenter:barIndex];
+    return [self.sharedXContext screenXForBarCenter:barIndex];
 }
 
 - (NSInteger)barIndexForXCoordinate:(CGFloat)x {
     // ✅ INVARIATO: Usa coordinate context unificato (conversione inversa corretta)
-    return [self.coordinateContext barIndexForScreenX:x];
+    return [self.sharedXContext barIndexForScreenX:x];
 }
 
 - (CGFloat)xCoordinateForDate:(NSDate *)targetDate {
     // ✅ MODIFICA: Aggiornato per usare il centro anche per date estrapolate
     NSInteger barIndex = [self findBarIndexForDate:targetDate];
     if (barIndex != NSNotFound) {
-        return [self.coordinateContext screenXForBarCenter:barIndex];
+        return [self.sharedXContext screenXForBarCenter:barIndex];
     }
     
     // Fallback per date completamente fuori dal dataset
-    return [self.coordinateContext screenXForDate:targetDate];
+    return [self.sharedXContext screenXForDate:targetDate];
 }
 // Aggiungi questi metodi a ChartObjectRenderer.m
 
@@ -2184,7 +2159,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
 // Sostituisci il metodo controlPointFromScreenPoint:indicatorRef: esistente
 - (ControlPointModel *)controlPointFromScreenPoint:(NSPoint)screenPoint
                                        indicatorRef:(NSString *)indicatorRef {
-    if (!self.coordinateContext.chartData) {
+    if (!self.sharedXContext.chartData) {
         return nil;
     }
     
@@ -2207,16 +2182,16 @@ typedef NS_ENUM(NSUInteger, SnapType) {
                                                   indicatorRef:(NSString *)indicatorRef {
     // X coordinate conversion: trova quale barra è più vicina al punto cliccato
     // NOTA: Qui usiamo barIndexForScreenX che è corretto per conversione inversa
-    NSInteger barIndex = [self.coordinateContext barIndexForScreenX:screenPoint.x];
-    if (barIndex < 0 || barIndex >= self.coordinateContext.chartData.count) {
+    NSInteger barIndex = [self.sharedXContext barIndexForScreenX:screenPoint.x];
+    if (barIndex < 0 || barIndex >= self.sharedXContext.chartData.count) {
         return nil;
     }
     
-    HistoricalBarModel *targetBar = self.coordinateContext.chartData[barIndex];
+    HistoricalBarModel *targetBar = self.sharedXContext.chartData[barIndex];
     NSDate *dateAnchor = targetBar.date;
     
     // Y coordinate → valore assoluto diretto (NESSUNO SNAP)
-    double absoluteValue = [self.coordinateContext valueForScreenY:screenPoint.y];
+    double absoluteValue = [self.panelYContext valueForScreenY:screenPoint.y];
     return [ControlPointModel pointWithDate:dateAnchor absoluteValue:absoluteValue indicator:indicatorRef];
 }
 
@@ -2228,15 +2203,15 @@ typedef NS_ENUM(NSUInteger, SnapType) {
     
     // 1. Trova candela target
     NSInteger barIndex = [self barIndexForXCoordinate:screenPoint.x];
-    if (barIndex < 0 || barIndex >= self.coordinateContext.chartData.count) {
+    if (barIndex < 0 || barIndex >= self.sharedXContext.chartData.count) {
         return nil;
     }
     
-    HistoricalBarModel *targetBar = self.coordinateContext.chartData[barIndex];
+    HistoricalBarModel *targetBar = self.sharedXContext.chartData[barIndex];
     NSDate *dateAnchor = targetBar.date;
     
     // 2. Converti Y in prezzo senza snap
-    double requestedPrice = [self.coordinateContext valueForScreenY:screenPoint.y];
+    double requestedPrice = [self.panelYContext valueForScreenY:screenPoint.y];
     
     // 3. Determina tipo di snap basato su zoom e chart type
     SnapType snapType = [self determineSnapTypeForCurrentContext];
@@ -2263,10 +2238,10 @@ typedef NS_ENUM(NSUInteger, SnapType) {
 
 - (SnapType)determineSnapTypeForCurrentContext {
     // Calcola larghezza visibile di una candela in pixel
-    NSInteger visibleBars = self.coordinateContext.visibleEndIndex - self.coordinateContext.visibleStartIndex;
+    NSInteger visibleBars = self.sharedXContext.visibleEndIndex - self.sharedXContext.visibleStartIndex;
     if (visibleBars <= 0) return SnapTypeNone;
     
-    CGFloat barWidth = (self.coordinateContext.panelBounds.size.width - 20) / visibleBars;
+    CGFloat barWidth = (self.panelView.bounds.size.width - 20) / visibleBars;
     
     // Verifica se è un chart lineare (usa currentSymbol per determinare tipo di indicator)
     // Per ora assumiamo che sia sempre OHLC, ma potremmo espandere questa logica
@@ -2368,18 +2343,18 @@ typedef NS_ENUM(NSUInteger, SnapType) {
                          tolerancePrice:(double)tolerancePrice {
     
     // Trova l'indice della candela source
-    NSInteger sourceIndex = [self.coordinateContext.chartData indexOfObject:sourceBar];
+    NSInteger sourceIndex = [self.sharedXContext.chartData indexOfObject:sourceBar];
     if (sourceIndex == NSNotFound) return;
     
     // Cerca nelle 3 candele precedenti e successive
     NSInteger searchRange = 3;
     NSInteger startIndex = MAX(0, sourceIndex - searchRange);
-    NSInteger endIndex = MIN(self.coordinateContext.chartData.count - 1, sourceIndex + searchRange);
+    NSInteger endIndex = MIN(self.sharedXContext.chartData.count - 1, sourceIndex + searchRange);
     
     for (NSInteger i = startIndex; i <= endIndex; i++) {
         if (i == sourceIndex) continue; // Skip source bar
         
-        HistoricalBarModel *nearbyBar = self.coordinateContext.chartData[i];
+        HistoricalBarModel *nearbyBar = self.sharedXContext.chartData[i];
         
         switch (snapType) {
             case SnapTypeOHLC:
@@ -2409,8 +2384,8 @@ typedef NS_ENUM(NSUInteger, SnapType) {
 
 - (double)pixelToleranceToPriceTolerance:(CGFloat)pixels {
     // Converti pixel in unità di prezzo basandosi sul range Y corrente
-    double yRange = self.coordinateContext.yRangeMax - self.coordinateContext.yRangeMin;
-    CGFloat panelHeight = self.coordinateContext.panelBounds.size.height;
+    double yRange = self.panelYContext.yRangeMax - self.panelYContext.yRangeMin;
+    CGFloat panelHeight = self.panelView.bounds.size.height;
     
     if (panelHeight <= 0) return 0.01; // Fallback
     

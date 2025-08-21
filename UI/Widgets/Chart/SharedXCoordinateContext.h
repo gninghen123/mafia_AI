@@ -30,6 +30,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (CGFloat)chartAreaWidth;
 - (CGFloat)barWidth;
 - (CGFloat)barSpacing;
+- (NSInteger)visibleBars;
 
 #pragma mark - Validation
 - (BOOL)isValidForConversion;

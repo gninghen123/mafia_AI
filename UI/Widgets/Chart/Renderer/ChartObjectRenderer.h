@@ -11,6 +11,9 @@
 #import "ChartObjectsManager.h"
 
 
+@class SharedXCoordinateContext;
+@class PanelYCoordinateContext;
+
 @class ChartPanelView;
 @class HistoricalBarModel;
 
@@ -37,6 +40,9 @@ NS_ASSUME_NONNULL_BEGIN
 // NEW: Unified CP state management
 @property (nonatomic, strong, nullable) ControlPointModel *currentCPSelected;
 
+@property (nonatomic, weak) SharedXCoordinateContext *sharedXContext;      // WEAK - shared
+@property (nonatomic, strong) PanelYCoordinateContext *panelYContext;
+
 // Initialization
 - (instancetype)initWithPanelView:(ChartPanelView *)panelView
                    objectsManager:(ChartObjectsManager *)objectsManager;
@@ -55,7 +61,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (ControlPointModel *)controlPointFromScreenPoint:(NSPoint)screenPoint
                                        indicatorRef:(NSString *)indicatorRef;
 
-/// Update coordinate context (called when viewport changes)
+/// ✅ UPDATED: Update coordinate contexts (split X and Y)
 /// @param chartData Current chart data
 /// @param startIndex Visible start index
 /// @param endIndex Visible end index

@@ -10,7 +10,12 @@
 #import "RuntimeModels.h"
 #import "ChartWidget.h"
 
-
+typedef NS_ENUM(NSUInteger, SnapType) {
+    SnapTypeNone = 0,
+    SnapTypeOHLC,      // Snap a Open/High/Low/Close
+    SnapTypeHL,        // Solo High/Low (zoom molto ampio)
+    SnapTypeClose      // Solo Close (chart lineare)
+};
 
 #pragma mark - Chart Object Renderer Implementation
 
@@ -154,27 +159,6 @@
     }
     
     return screenPoint;
-}
-
-
-- (ControlPointModel *)controlPointFromScreenPoint:(NSPoint)screenPoint
-                                       indicatorRef:(NSString *)indicatorRef {
-    if (!self.coordinateContext.chartData) {
-        return nil;
-    }
-    
-    // X coordinate conversion (usa metodo corretto)
-    NSInteger barIndex = [self barIndexForXCoordinate:screenPoint.x];
-    if (barIndex < 0 || barIndex >= self.coordinateContext.chartData.count) {
-        return nil;
-    }
-    
-    HistoricalBarModel *targetBar = self.coordinateContext.chartData[barIndex];
-    NSDate *dateAnchor = targetBar.date;
-    
-    // ✅ NUOVO: Y coordinate → valore assoluto diretto
-    double absoluteValue = [self.coordinateContext valueForScreenY:screenPoint.y];
-    return [ControlPointModel pointWithDate:dateAnchor absoluteValue:absoluteValue indicator:indicatorRef];
 }
 
 
@@ -1251,26 +1235,7 @@
     }
 }
 
-- (void)updateCurrentCPCoordinates:(NSPoint)screenPoint {
-    if (!self.currentCPSelected) return;
-    
-    ControlPointModel *newCP = [self controlPointFromScreenPoint:screenPoint
-                                                     indicatorRef:self.currentCPSelected.indicatorRef];
-    if (!newCP) return;
-    
-    // ✅ CAMBIAMENTO: Aggiorna absoluteValue invece di valuePercent
-    self.currentCPSelected.dateAnchor = newCP.dateAnchor;
-    self.currentCPSelected.absoluteValue = newCP.absoluteValue;
-    
-    // Resto invariato
-    if (self.isInCreationMode) {
-        [self createEditingObjectFromTempCPs];
-    }
-    
-    [self invalidateEditingLayer];
-    
-    NSLog(@"🎯 Updated currentCP coordinates: %.2f (absolute)", self.currentCPSelected.absoluteValue);
-}
+
 
 - (void)selectControlPointForEditing:(ControlPointModel *)controlPoint {
     // Clear previous selection
@@ -2263,6 +2228,268 @@
     // Posizione relativa al primo indice visibile
     CGFloat firstBarX = [self xCoordinateForBarIndex:self.coordinateContext.visibleStartIndex];
     return firstBarX - (totalBars * barWidth);
+}
+
+// Aggiungi questi metodi a ChartObjectRenderer.m
+
+#pragma mark - NEW: Snap Implementation
+
+
+// Sostituisci il metodo controlPointFromScreenPoint:indicatorRef: esistente
+- (ControlPointModel *)controlPointFromScreenPoint:(NSPoint)screenPoint
+                                       indicatorRef:(NSString *)indicatorRef {
+    if (!self.coordinateContext.chartData) {
+        return nil;
+    }
+    
+    // 🧲 SNAP: Controlla se snap è attivo
+    CGFloat snapIntensity = [[NSUserDefaults standardUserDefaults] floatForKey:@"ChartSnapIntensity"];
+    
+    if (snapIntensity == 0.0) {
+        // ✅ SNAP DISATTIVATO: usa logica originale (esatta)
+        return [self controlPointFromScreenPointWithoutSnap:screenPoint indicatorRef:indicatorRef];
+    } else {
+        // 🧲 SNAP ATTIVATO: usa logica snap
+        return [self controlPointFromScreenPointWithSnap:screenPoint
+                                             indicatorRef:indicatorRef
+                                            snapIntensity:snapIntensity];
+    }
+}
+
+// Logica originale senza snap (esatta come prima)
+- (ControlPointModel *)controlPointFromScreenPointWithoutSnap:(NSPoint)screenPoint
+                                                  indicatorRef:(NSString *)indicatorRef {
+    // X coordinate conversion (usa metodo corretto)
+    NSInteger barIndex = [self barIndexForXCoordinate:screenPoint.x];
+    if (barIndex < 0 || barIndex >= self.coordinateContext.chartData.count) {
+        return nil;
+    }
+    
+    HistoricalBarModel *targetBar = self.coordinateContext.chartData[barIndex];
+    NSDate *dateAnchor = targetBar.date;
+    
+    // Y coordinate → valore assoluto diretto (NESSUNO SNAP)
+    double absoluteValue = [self.coordinateContext valueForScreenY:screenPoint.y];
+    return [ControlPointModel pointWithDate:dateAnchor absoluteValue:absoluteValue indicator:indicatorRef];
+}
+
+// NUOVA logica con snap ai valori OHLC
+- (ControlPointModel *)controlPointFromScreenPointWithSnap:(NSPoint)screenPoint
+                                               indicatorRef:(NSString *)indicatorRef
+                                              snapIntensity:(CGFloat)snapIntensity {
+    
+    // 1. Trova candela target
+    NSInteger barIndex = [self barIndexForXCoordinate:screenPoint.x];
+    if (barIndex < 0 || barIndex >= self.coordinateContext.chartData.count) {
+        return nil;
+    }
+    
+    HistoricalBarModel *targetBar = self.coordinateContext.chartData[barIndex];
+    NSDate *dateAnchor = targetBar.date;
+    
+    // 2. Converti Y in prezzo senza snap
+    double requestedPrice = [self.coordinateContext valueForScreenY:screenPoint.y];
+    
+    // 3. Determina tipo di snap basato su zoom e chart type
+    SnapType snapType = [self determineSnapTypeForCurrentContext];
+    
+    // 4. Se snap type è None, ritorna valore esatto
+    if (snapType == SnapTypeNone) {
+        return [ControlPointModel pointWithDate:dateAnchor absoluteValue:requestedPrice indicator:indicatorRef];
+    }
+    
+    // 5. Calcola tolleranza snap basata su intensità
+    CGFloat snapTolerance = [self calculateSnapToleranceForIntensity:snapIntensity];
+    
+    // 6. Trova il miglior valore snap nella candela
+    double snappedValue = [self findBestSnapValue:requestedPrice
+                                          fromBar:targetBar
+                                         snapType:snapType
+                                        tolerance:snapTolerance];
+    
+    NSLog(@"🧲 SNAP: requested=%.4f, snapped=%.4f, type=%ld, tolerance=%.1f",
+          requestedPrice, snappedValue, (long)snapType, snapTolerance);
+    
+    return [ControlPointModel pointWithDate:dateAnchor absoluteValue:snappedValue indicator:indicatorRef];
+}
+
+- (SnapType)determineSnapTypeForCurrentContext {
+    // Calcola larghezza visibile di una candela in pixel
+    NSInteger visibleBars = self.coordinateContext.visibleEndIndex - self.coordinateContext.visibleStartIndex;
+    if (visibleBars <= 0) return SnapTypeNone;
+    
+    CGFloat barWidth = (self.coordinateContext.panelBounds.size.width - 20) / visibleBars;
+    
+    // Verifica se è un chart lineare (usa currentSymbol per determinare tipo di indicator)
+    // Per ora assumiamo che sia sempre OHLC, ma potremmo espandere questa logica
+    BOOL isLinearChart = NO; // TODO: Implementare controllo tipo chart
+    
+    if (isLinearChart) {
+        return SnapTypeClose;
+    } else if (barWidth < 6.0) {
+        // Zoom molto compatto: snap solo a High/Low (come nel vecchio codice)
+        return SnapTypeHL;
+    } else {
+        // Zoom normale: snap a tutti i valori OHLC
+        return SnapTypeOHLC;
+    }
+}
+
+- (CGFloat)calculateSnapToleranceForIntensity:(CGFloat)intensity {
+    // Intensità 0-10 → tolleranza in pixel
+    // Intensità alta = tolleranza molto più ampia (snap super aggressivo)
+    CGFloat maxTolerancePixels = 80.0; // AUMENTATO: Tolleranza massima molto ampia
+    CGFloat minTolerancePixels = 5.0;  // Minima tolleranza
+    
+    // Scala NON-LINEARE per rendere intensità 8-10 molto aggressive
+    CGFloat normalizedIntensity = intensity / 10.0;
+    
+    // Usa una curva quadratica per amplificare le intensità alte
+    CGFloat curvedIntensity = normalizedIntensity * normalizedIntensity;
+    
+    CGFloat tolerance = minTolerancePixels + (curvedIntensity * (maxTolerancePixels - minTolerancePixels));
+    
+    NSLog(@"🧲 SNAP TOLERANCE: intensity=%.0f → tolerance=%.1fpx (curved=%.2f)",
+          intensity, tolerance, curvedIntensity);
+    
+    return tolerance;
+}
+
+- (double)findBestSnapValue:(double)requestedPrice
+                    fromBar:(HistoricalBarModel *)bar
+                   snapType:(SnapType)snapType
+                  tolerance:(CGFloat)tolerancePixels {
+    
+    // Array di valori candidati per snap
+    NSMutableArray<NSNumber *> *candidates = [NSMutableArray array];
+    
+    switch (snapType) {
+        case SnapTypeOHLC:
+            [candidates addObject:@(bar.open)];
+            [candidates addObject:@(bar.high)];
+            [candidates addObject:@(bar.low)];
+            [candidates addObject:@(bar.close)];
+            break;
+            
+        case SnapTypeHL:
+            [candidates addObject:@(bar.high)];
+            [candidates addObject:@(bar.low)];
+            break;
+            
+        case SnapTypeClose:
+            [candidates addObject:@(bar.close)];
+            break;
+            
+        case SnapTypeNone:
+        default:
+            return requestedPrice; // No snap
+    }
+    
+    // Converti tolleranza da pixel a unità di prezzo
+    double tolerancePrice = [self pixelToleranceToPriceTolerance:tolerancePixels];
+    
+    // 🧲 NUOVO: Per intensità alte, espandi la ricerca alle candele vicine
+    if (tolerancePixels > 40.0) { // Intensità ~7-10
+        [self addNearbyBarsToSnapCandidates:candidates
+                                 sourceBar:bar
+                                  snapType:snapType
+                             tolerancePrice:tolerancePrice];
+    }
+    
+    // Trova il candidato più vicino dentro la tolleranza
+    double bestValue = requestedPrice;
+    double smallestDelta = tolerancePrice + 1; // Inizia fuori tolleranza
+    
+    for (NSNumber *candidate in candidates) {
+        double candidateValue = candidate.doubleValue;
+        double delta = fabs(requestedPrice - candidateValue);
+        
+        if (delta < smallestDelta && delta <= tolerancePrice) {
+            bestValue = candidateValue;
+            smallestDelta = delta;
+        }
+    }
+    
+    return bestValue;
+}
+
+// NUOVO: Aggiunge candele vicine per snap super-aggressivo
+- (void)addNearbyBarsToSnapCandidates:(NSMutableArray<NSNumber *> *)candidates
+                             sourceBar:(HistoricalBarModel *)sourceBar
+                              snapType:(SnapType)snapType
+                         tolerancePrice:(double)tolerancePrice {
+    
+    // Trova l'indice della candela source
+    NSInteger sourceIndex = [self.coordinateContext.chartData indexOfObject:sourceBar];
+    if (sourceIndex == NSNotFound) return;
+    
+    // Cerca nelle 3 candele precedenti e successive
+    NSInteger searchRange = 3;
+    NSInteger startIndex = MAX(0, sourceIndex - searchRange);
+    NSInteger endIndex = MIN(self.coordinateContext.chartData.count - 1, sourceIndex + searchRange);
+    
+    for (NSInteger i = startIndex; i <= endIndex; i++) {
+        if (i == sourceIndex) continue; // Skip source bar
+        
+        HistoricalBarModel *nearbyBar = self.coordinateContext.chartData[i];
+        
+        switch (snapType) {
+            case SnapTypeOHLC:
+                [candidates addObject:@(nearbyBar.open)];
+                [candidates addObject:@(nearbyBar.high)];
+                [candidates addObject:@(nearbyBar.low)];
+                [candidates addObject:@(nearbyBar.close)];
+                break;
+                
+            case SnapTypeHL:
+                [candidates addObject:@(nearbyBar.high)];
+                [candidates addObject:@(nearbyBar.low)];
+                break;
+                
+            case SnapTypeClose:
+                [candidates addObject:@(nearbyBar.close)];
+                break;
+                
+            default:
+                break;
+        }
+    }
+    
+    NSLog(@"🧲 EXPANDED SEARCH: Added %lu nearby bars for super-aggressive snap",
+          (unsigned long)(endIndex - startIndex));
+}
+
+- (double)pixelToleranceToPriceTolerance:(CGFloat)pixels {
+    // Converti pixel in unità di prezzo basandosi sul range Y corrente
+    double yRange = self.coordinateContext.yRangeMax - self.coordinateContext.yRangeMin;
+    CGFloat panelHeight = self.coordinateContext.panelBounds.size.height;
+    
+    if (panelHeight <= 0) return 0.01; // Fallback
+    
+    return (pixels / panelHeight) * yRange;
+}
+
+// Aggiorna anche updateCurrentCPCoordinates per usare snap
+- (void)updateCurrentCPCoordinates:(NSPoint)screenPoint {
+    if (!self.currentCPSelected) return;
+    
+    // 🧲 USA IL NUOVO METODO CON SNAP
+    ControlPointModel *newCP = [self controlPointFromScreenPoint:screenPoint
+                                                     indicatorRef:self.currentCPSelected.indicatorRef];
+    if (!newCP) return;
+    
+    // Aggiorna absoluteValue con snap applicato
+    self.currentCPSelected.dateAnchor = newCP.dateAnchor;
+    self.currentCPSelected.absoluteValue = newCP.absoluteValue;
+    
+    // Resto invariato
+    if (self.isInCreationMode) {
+        [self createEditingObjectFromTempCPs];
+    }
+    
+    [self invalidateEditingLayer];
+    
+    NSLog(@"🎯 Updated currentCP coordinates: %.4f (with snap)", self.currentCPSelected.absoluteValue);
 }
 
 

@@ -79,97 +79,164 @@
 
 - (void)setupLayout {
     // Title label
-    NSTextField *titleLabel = [[NSTextField alloc] init];
+    NSTextField *titleLabel = [NSTextField labelWithString:@"Drawing Tools"];
     titleLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    titleLabel.stringValue = @"Drawing Tools";
-    titleLabel.font = [NSFont systemFontOfSize:13 weight:NSFontWeightSemibold];
-    titleLabel.textColor = [NSColor secondaryLabelColor];
+    titleLabel.font = [NSFont boldSystemFontOfSize:12];
     titleLabel.alignment = NSTextAlignmentCenter;
-    titleLabel.editable = NO;
-    titleLabel.bordered = NO;
-    titleLabel.backgroundColor = [NSColor clearColor];
     
     [self addSubview:titleLabel];
     
-    // RIGA DI CONTROLLI: Lock e Clear All affiancati
+    // Controls row
     NSView *controlsRow = [[NSView alloc] init];
     controlsRow.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.backgroundView addSubview:controlsRow];
+    [self addSubview:controlsRow];
     
-    // Lock button
+    // Objects visible toggle
+    NSButton *visibilityToggle = [NSButton buttonWithTitle:@"👁️"
+                                                    target:self
+                                                    action:@selector(toggleObjectsVisibility:)];
+    visibilityToggle.translatesAutoresizingMaskIntoConstraints = NO;
+    visibilityToggle.bezelStyle = NSBezelStyleRounded;
+    visibilityToggle.buttonType = NSButtonTypePushOnPushOff;
+    visibilityToggle.state = NSControlStateValueOn;
+    visibilityToggle.font = [NSFont systemFontOfSize:12];
+    visibilityToggle.toolTip = @"Show/Hide all objects";
+    [controlsRow addSubview:visibilityToggle];
+    
+    // Lock mode toggle
     self.lockCreationToggle = [NSButton buttonWithTitle:@"🔒 Lock"
-                                                   target:self
-                                                   action:@selector(toggleLockMode:)];
+                                                 target:self
+                                                 action:@selector(toggleLockMode:)];
     self.lockCreationToggle.translatesAutoresizingMaskIntoConstraints = NO;
     self.lockCreationToggle.bezelStyle = NSBezelStyleRounded;
     self.lockCreationToggle.buttonType = NSButtonTypePushOnPushOff;
-    self.lockCreationToggle.controlSize = NSControlSizeSmall;
     self.lockCreationToggle.font = [NSFont systemFontOfSize:10];
+    self.lockCreationToggle.toolTip = @"Lock creation mode - stays active after placing object";
     [controlsRow addSubview:self.lockCreationToggle];
     
-    // Clear All button
-    NSButton *clearAllButton = [NSButton buttonWithTitle:@"🗑️ Clear"
-                                                   target:self
-                                                   action:@selector(clearAllObjects:)];
+    // Clear all button
+    NSButton *clearAllButton = [NSButton buttonWithTitle:@"Clear All"
+                                                  target:self
+                                                  action:@selector(clearAllObjects:)];
     clearAllButton.translatesAutoresizingMaskIntoConstraints = NO;
     clearAllButton.bezelStyle = NSBezelStyleRounded;
-    clearAllButton.controlSize = NSControlSizeSmall;
     clearAllButton.font = [NSFont systemFontOfSize:10];
-    clearAllButton.contentTintColor = [NSColor systemRedColor];
+    clearAllButton.toolTip = @"Delete all objects";
     [controlsRow addSubview:clearAllButton];
     
-    // Main stack view for object buttons
+    // NEW: Snap controls row
+    NSView *snapRow = [[NSView alloc] init];
+    snapRow.translatesAutoresizingMaskIntoConstraints = NO;
+    [self addSubview:snapRow];
+    
+    // Snap icon (magnete)
+    self.snapIconLabel = [NSTextField labelWithString:@"🧲"];
+    self.snapIconLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.snapIconLabel.font = [NSFont systemFontOfSize:14];
+    self.snapIconLabel.toolTip = @"Snap to OHLC values";
+    [snapRow addSubview:self.snapIconLabel];
+    
+    // Snap intensity slider (0-10)
+    self.snapIntensitySlider = [[NSSlider alloc] init];
+    self.snapIntensitySlider.translatesAutoresizingMaskIntoConstraints = NO;
+    self.snapIntensitySlider.sliderType = NSSliderTypeLinear;
+    self.snapIntensitySlider.minValue = 0.0;
+    self.snapIntensitySlider.maxValue = 10.0;
+    self.snapIntensitySlider.numberOfTickMarks = 11; // 0, 1, 2, ..., 10
+    self.snapIntensitySlider.allowsTickMarkValuesOnly = YES;
+    self.snapIntensitySlider.tickMarkPosition = NSTickMarkPositionBelow;
+    
+    // Load from UserDefaults
+    CGFloat savedIntensity = [[NSUserDefaults standardUserDefaults] floatForKey:@"ChartSnapIntensity"];
+    self.snapIntensitySlider.doubleValue = savedIntensity;
+    
+    self.snapIntensitySlider.target = self;
+    self.snapIntensitySlider.action = @selector(snapIntensityChanged:);
+    self.snapIntensitySlider.toolTip = @"Snap intensity: 0=off, 10=strong";
+    [snapRow addSubview:self.snapIntensitySlider];
+    
+    // Snap value label
+    self.snapValueLabel = [NSTextField labelWithString:[NSString stringWithFormat:@"%.0f", savedIntensity]];
+    self.snapValueLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.snapValueLabel.font = [NSFont monospacedDigitSystemFontOfSize:10 weight:NSFontWeightRegular];
+    self.snapValueLabel.alignment = NSTextAlignmentCenter;
+    [snapRow addSubview:self.snapValueLabel];
+    
+    // Buttons stack view
     self.buttonsStackView = [[NSStackView alloc] init];
     self.buttonsStackView.translatesAutoresizingMaskIntoConstraints = NO;
     self.buttonsStackView.orientation = NSUserInterfaceLayoutOrientationVertical;
-    self.buttonsStackView.spacing = 6;
-    self.buttonsStackView.alignment = NSLayoutAttributeCenterX;
-    [self.backgroundView addSubview:self.buttonsStackView];
-        
+    self.buttonsStackView.alignment = NSLayoutAttributeLeading;
+    self.buttonsStackView.spacing = 4;
+    
+    [self addSubview:self.buttonsStackView];
+    
     // Separator line
     self.separatorView = [[NSView alloc] init];
     self.separatorView.translatesAutoresizingMaskIntoConstraints = NO;
     self.separatorView.wantsLayer = YES;
     self.separatorView.layer.backgroundColor = [NSColor separatorColor].CGColor;
-    [self.backgroundView addSubview:self.separatorView];
+    [self addSubview:self.separatorView];
     
     // Object Manager button
-    self.objectManagerButton = [NSButton buttonWithTitle:@"⚙️ Manage Objects"
-                                                   target:self
-                                                   action:@selector(showObjectManager:)];
+    self.objectManagerButton = [NSButton buttonWithTitle:@"📊 Object Manager..."
+                                                  target:self
+                                                  action:@selector(showObjectManager:)];
     self.objectManagerButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.objectManagerButton.bezelStyle = NSBezelStyleRounded;
-    self.objectManagerButton.controlSize = NSControlSizeSmall;
     self.objectManagerButton.font = [NSFont systemFontOfSize:11];
-    [self.backgroundView addSubview:self.objectManagerButton];
+    [self addSubview:self.objectManagerButton];
     
-    // CONSTRAINTS AGGIORNATE - NON PIÙ SOVRAPPOSTE
+    // Setup constraints
     [NSLayoutConstraint activateConstraints:@[
         // Title
         [titleLabel.topAnchor constraintEqualToAnchor:self.topAnchor constant:12],
         [titleLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
         [titleLabel.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
         
-        // Controls row (Lock + Clear All)
+        // Controls row
         [controlsRow.topAnchor constraintEqualToAnchor:titleLabel.bottomAnchor constant:8],
         [controlsRow.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
         [controlsRow.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
-        [controlsRow.heightAnchor constraintEqualToConstant:24],
+        [controlsRow.heightAnchor constraintEqualToConstant:22],
         
-        // Lock button (metà sinistra)
-        [self.lockCreationToggle.leadingAnchor constraintEqualToAnchor:controlsRow.leadingAnchor],
+        // Controls within row
+        [visibilityToggle.leadingAnchor constraintEqualToAnchor:controlsRow.leadingAnchor],
+        [visibilityToggle.centerYAnchor constraintEqualToAnchor:controlsRow.centerYAnchor],
+        [visibilityToggle.widthAnchor constraintEqualToConstant:30],
+        [visibilityToggle.heightAnchor constraintEqualToConstant:20],
+        
+        [self.lockCreationToggle.leadingAnchor constraintEqualToAnchor:visibilityToggle.trailingAnchor constant:4],
         [self.lockCreationToggle.centerYAnchor constraintEqualToAnchor:controlsRow.centerYAnchor],
-        [self.lockCreationToggle.widthAnchor constraintEqualToConstant:75],
+        [self.lockCreationToggle.widthAnchor constraintEqualToConstant:55],
         [self.lockCreationToggle.heightAnchor constraintEqualToConstant:20],
         
-        // Clear All button (metà destra)
         [clearAllButton.trailingAnchor constraintEqualToAnchor:controlsRow.trailingAnchor],
         [clearAllButton.centerYAnchor constraintEqualToAnchor:controlsRow.centerYAnchor],
         [clearAllButton.widthAnchor constraintEqualToConstant:75],
         [clearAllButton.heightAnchor constraintEqualToConstant:20],
         
-        // Buttons stack
-        [self.buttonsStackView.topAnchor constraintEqualToAnchor:controlsRow.bottomAnchor constant:12],
+        // NEW: Snap row
+        [snapRow.topAnchor constraintEqualToAnchor:controlsRow.bottomAnchor constant:8],
+        [snapRow.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
+        [snapRow.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
+        [snapRow.heightAnchor constraintEqualToConstant:22],
+        
+        // Snap controls within row
+        [self.snapIconLabel.leadingAnchor constraintEqualToAnchor:snapRow.leadingAnchor],
+        [self.snapIconLabel.centerYAnchor constraintEqualToAnchor:snapRow.centerYAnchor],
+        [self.snapIconLabel.widthAnchor constraintEqualToConstant:20],
+        
+        [self.snapIntensitySlider.leadingAnchor constraintEqualToAnchor:self.snapIconLabel.trailingAnchor constant:4],
+        [self.snapIntensitySlider.centerYAnchor constraintEqualToAnchor:snapRow.centerYAnchor],
+        [self.snapIntensitySlider.trailingAnchor constraintEqualToAnchor:self.snapValueLabel.leadingAnchor constant:-4],
+        
+        [self.snapValueLabel.trailingAnchor constraintEqualToAnchor:snapRow.trailingAnchor],
+        [self.snapValueLabel.centerYAnchor constraintEqualToAnchor:snapRow.centerYAnchor],
+        [self.snapValueLabel.widthAnchor constraintEqualToConstant:20],
+        
+        // Buttons stack (updated constraint)
+        [self.buttonsStackView.topAnchor constraintEqualToAnchor:snapRow.bottomAnchor constant:12],
         [self.buttonsStackView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
         [self.buttonsStackView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
         
@@ -199,7 +266,7 @@
         @{@"title": @"Trailing Between", @"type": @(ChartObjectTypeTrailingFiboBetween)},
         @{@"title": @"Channel", @"type": @(ChartObjectTypeChannel)},        // AGGIUNTO
         @{@"title": @"Target", @"type": @(ChartObjectTypeTarget)},
-        @{@"title": @"Free Draw", @"type": @(ChartObjectTypeFreeDrawing)},  
+        @{@"title": @"Free Draw", @"type": @(ChartObjectTypeFreeDrawing)},
         @{@"title": @"Circle", @"type": @(ChartObjectTypeCircle)}
     ];
     
@@ -252,8 +319,8 @@
         
         if ([self.delegate respondsToSelector:@selector(objectsPanel:didActivateObjectType:withLockMode:)]) {
             [self.delegate objectsPanel:self
-                   didActivateObjectType:objectType
-                            withLockMode:self.isLockModeEnabled];
+                  didActivateObjectType:objectType
+                           withLockMode:self.isLockModeEnabled];
         }
         
         NSLog(@"🔘 ObjectsPanel: Activated %@ (Lock: %@)",
@@ -262,7 +329,7 @@
         // Button pressed OUT - deactivate
         [self clearActiveButton];
         
-      
+        
         NSLog(@"⭕ ObjectsPanel: Deactivated drawing mode");
     }
     
@@ -296,9 +363,9 @@
     if (!self.objectManagerWindow) {
         // Crea la finestra manager
         self.objectManagerWindow = [[ChartObjectManagerWindow alloc]
-                                   initWithObjectsManager:objectsManager
-                                                  dataHub:dataHub
-                                                   symbol:currentSymbol];
+                                    initWithObjectsManager:objectsManager
+                                    dataHub:dataHub
+                                    symbol:currentSymbol];
         
         // Configura posizionamento finestra intelligente
         [self positionManagerWindow];
@@ -548,6 +615,58 @@
         [self.objectManagerWindow close];
         self.objectManagerWindow = nil;
     }
+}
+
+#pragma mark - NEW: Snap Actions
+
+- (void)snapIntensityChanged:(NSSlider *)sender {
+    CGFloat intensity = sender.doubleValue;
+    
+    // Update label con feedback più descrittivo
+    if (intensity == 0) {
+        self.snapValueLabel.stringValue = @"OFF";
+        self.snapValueLabel.textColor = [NSColor secondaryLabelColor];
+    } else if (intensity <= 3) {
+        self.snapValueLabel.stringValue = [NSString stringWithFormat:@"%.0f", intensity];
+        self.snapValueLabel.textColor = [NSColor systemGreenColor];
+    } else if (intensity <= 7) {
+        self.snapValueLabel.stringValue = [NSString stringWithFormat:@"%.0f", intensity];
+        self.snapValueLabel.textColor = [NSColor systemOrangeColor];
+    } else {
+        self.snapValueLabel.stringValue = [NSString stringWithFormat:@"%.0f", intensity];
+        self.snapValueLabel.textColor = [NSColor systemRedColor]; // Super aggressivo
+    }
+    
+    // Save to UserDefaults
+    [[NSUserDefaults standardUserDefaults] setFloat:intensity forKey:@"ChartSnapIntensity"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    
+    // Update icon appearance based on intensity
+    if (intensity == 0) {
+        self.snapIconLabel.stringValue = @"🚫"; // No snap
+        self.snapIconLabel.toolTip = @"Snap disabled";
+    } else if (intensity <= 5) {
+        self.snapIconLabel.stringValue = @"🧲"; // Normal snap
+        self.snapIconLabel.toolTip = [NSString stringWithFormat:@"Normal snap: %.0f", intensity];
+    } else {
+        self.snapIconLabel.stringValue = @"⚡"; // Super aggressive snap
+        self.snapIconLabel.toolTip = [NSString stringWithFormat:@"Super aggressive snap: %.0f", intensity];
+    }
+    
+    NSLog(@"🧲 ObjectsPanel: Snap intensity changed to %.0f (%@)",
+          intensity, intensity > 7 ? @"SUPER AGGRESSIVE" : intensity > 0 ? @"ACTIVE" : @"OFF");
+}
+
+#pragma mark - NEW: Snap Public Methods
+
+- (CGFloat)getSnapIntensity {
+    return self.snapIntensitySlider.doubleValue;
+}
+
+- (void)setSnapIntensity:(CGFloat)intensity {
+    intensity = MAX(0.0, MIN(10.0, intensity)); // Clamp 0-10
+    self.snapIntensitySlider.doubleValue = intensity;
+    [self snapIntensityChanged:self.snapIntensitySlider];
 }
 
 @end

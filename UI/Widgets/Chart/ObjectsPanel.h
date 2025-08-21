@@ -53,6 +53,11 @@ NS_ASSUME_NONNULL_BEGIN
 // NEW: Lock toggle
 @property (nonatomic, strong) NSButton *lockCreationToggle;
 
+// NEW: Snap controls
+@property (nonatomic, strong) NSSlider *snapIntensitySlider;
+@property (nonatomic, strong) NSTextField *snapIconLabel;
+@property (nonatomic, strong) NSTextField *snapValueLabel;
+
 #pragma mark - Configuration
 @property (nonatomic, weak, nullable) id<ObjectsPanelDelegate> delegate;
 @property (nonatomic, assign) BOOL isVisible;
@@ -95,9 +100,10 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)updateManagerForSymbol:(NSString *)symbol;
 - (void)refreshObjectManager;
 
+// NEW: Snap methods
+- (CGFloat)getSnapIntensity;
+- (void)setSnapIntensity:(CGFloat)intensity;
+
 @end
-
-
-
 
 NS_ASSUME_NONNULL_END

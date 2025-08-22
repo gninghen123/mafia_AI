@@ -78,9 +78,8 @@
 // Data update
 - (void)updateWithData:(NSArray<HistoricalBarModel *> *)data
             startIndex:(NSInteger)startIndex
-              endIndex:(NSInteger)endIndex
-             yRangeMin:(double)yMin
-             yRangeMax:(double)yMax;
+              endIndex:(NSInteger)endIndex;
+
 
 // Rendering
 - (void)setCrosshairPoint:(NSPoint)point visible:(BOOL)visible;
@@ -96,5 +95,27 @@
 - (double)calculateOptimalTickStep:(double)range targetTicks:(NSInteger)targetTicks;
 
 - (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext;
+
+
+
+// ============================================================
+// NUOVI METODI: Gestione Y Range autonoma
+// ============================================================
+
+/// Calcola automaticamente il range Y in base al panelType e ai dati visibili
+- (void)calculateOwnYRange;
+
+/// Calcola Y range per pannello security (prezzi OHLC)
+- (void)calculateSecurityYRange:(NSInteger)startIdx endIndex:(NSInteger)endIdx;
+
+/// Calcola Y range per pannello volume (0 - maxVolume)
+- (void)calculateVolumeYRange:(NSInteger)startIdx endIndex:(NSInteger)endIdx;
+
+/// Esegue pan verticale locale (solo security panel)
+- (void)panVerticallyWithDelta:(CGFloat)deltaY;
+
+/// Reset del pan verticale ai valori originali
+- (void)resetYRangeOverride;
+
 
 @end

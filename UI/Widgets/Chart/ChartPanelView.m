@@ -48,7 +48,9 @@
 @property (nonatomic, assign) BOOL isInObjectEditingMode;
 @property (nonatomic, assign) ChartObjectType currentCreationObjectType;
 
-
+@property (nonatomic, assign) BOOL isYRangeOverridden;
+@property (nonatomic, assign) double originalYRangeMin;
+@property (nonatomic, assign) double originalYRangeMax;
 @end
 
 @implementation ChartPanelView
@@ -202,69 +204,52 @@
 
 - (void)updateWithData:(NSArray<HistoricalBarModel *> *)data
             startIndex:(NSInteger)startIndex
-              endIndex:(NSInteger)endIndex
-             yRangeMin:(double)yMin
-             yRangeMax:(double)yMax {
-    
-    // Check if Y range changed
-    BOOL yRangeChanged = (self.yRangeMin != yMin || self.yRangeMax != yMax);
+              endIndex:(NSInteger)endIndex {
     
     // Update data properties
     self.chartData = data;
     self.visibleStartIndex = startIndex;
     self.visibleEndIndex = endIndex;
-    self.yRangeMin = yMin;
-    self.yRangeMax = yMax;
     
-    // ✅ NUOVO: Aggiorna panel Y context (sempre presente)
+    // ✅ NUOVO: Calcola il proprio Y range
+    [self calculateOwnYRange];
+    
+    // ✅ NUOVO: Aggiorna panel Y context con i valori calcolati
     if (!self.panelYContext) {
         self.panelYContext = [[PanelYCoordinateContext alloc] init];
         self.panelYContext.panelType = self.panelType;
     }
     
-    self.panelYContext.yRangeMin = yMin;
-    self.panelYContext.yRangeMax = yMax;
+    self.panelYContext.yRangeMin = self.yRangeMin;
+    self.panelYContext.yRangeMax = self.yRangeMax;
     self.panelYContext.panelHeight = self.bounds.size.height;
-    self.panelYContext.currentSymbol = self.chartWidget.currentSymbol;
     
-    // Update objects renderer coordinate context (solo se presente)
+    // Update object renderer if present
     if (self.objectRenderer) {
-        NSRect chartBounds = NSMakeRect(0, 0,
-                                      self.bounds.size.width - CHART_Y_AXIS_WIDTH,
-                                      self.bounds.size.height);
         [self.objectRenderer updateCoordinateContext:data
                                           startIndex:startIndex
                                             endIndex:endIndex
-                                           yRangeMin:yMin
-                                           yRangeMax:yMax
-                                              bounds:chartBounds];
+                                           yRangeMin:self.yRangeMin
+                                           yRangeMax:self.yRangeMax
+                                              bounds:self.bounds];
     }
     
-    // Update alert renderer (sempre presente)
+    // Update alert renderer if present
     if (self.alertRenderer) {
-        NSRect chartBounds = NSMakeRect(0, 0,
-                                      self.bounds.size.width - CHART_Y_AXIS_WIDTH,
-                                      self.bounds.size.height);
         [self.alertRenderer updateCoordinateContext:data
                                          startIndex:startIndex
                                            endIndex:endIndex
-                                          yRangeMin:yMin
-                                          yRangeMax:yMax
-                                             bounds:chartBounds
+                                          yRangeMin:self.yRangeMin
+                                          yRangeMax:self.yRangeMax
+                                             bounds:self.bounds
                                       currentSymbol:self.chartWidget.currentSymbol];
         [self.alertRenderer updateSharedXContext:self.sharedXContext];
 
     }
     
     [self invalidateChartContent];
-    
-    // Invalidate Y-Axis only if range changed (performance optimization)
-    if (yRangeChanged) {
-        [self invalidateYAxis];
-        NSLog(@"📊 Y-Axis invalidated: range [%.2f - %.2f]", yMin, yMax);
-    }
+    [self invalidateYAxis];
 }
-
 
 - (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext {
     self.sharedXContext = sharedXContext; // Weak reference
@@ -488,7 +473,6 @@
     // ✅ Draw ticks and labels
     for (NSNumber *valueNum in tickValues) {
         double value = valueNum.doubleValue;
-        
         // ✅ USA panelYContext
         CGFloat yPosition = [self.panelYContext screenYForValue:value];
         
@@ -502,8 +486,8 @@
         [tickPath lineToPoint:NSMakePoint(8, yPosition)];
         [tickPath stroke];
         
-        // Format label - SEMPLIFICATO
-        NSString *labelText = [NSString stringWithFormat:@"%.3f", value];
+       
+        NSString *labelText = [self formatNumericValueForDisplay:value];
         NSSize textSize = [labelText sizeWithAttributes:textAttributes];
         
         NSPoint textPoint = NSMakePoint(12, yPosition - textSize.height/2);
@@ -571,7 +555,7 @@
         [tickPath stroke];
         
         // Disegna etichetta
-        NSString *label = [self formatValueForDisplay:value];
+        NSString *label = [self formatNumericValueForDisplay:value];
         NSRect labelRect = NSMakeRect(8, yPos - 8, CHART_Y_AXIS_WIDTH - 12, 16);
         [label drawInRect:labelRect withAttributes:textAttributes];
     }
@@ -734,36 +718,62 @@
 }
 
 
-- (NSString *)formatValueForDisplay:(double)value {
-    if ([self.panelType isEqualToString:@"volume"]) {
-        return [self formatVolumeForDisplay:value];
-    } else {
-        return [self formatPriceForDisplay:value];
-    }
-}
-
 - (NSString *)formatVolumeForDisplay:(double)volume {
     if (volume >= 1000000000) {
-        // Billions
-        return [NSString stringWithFormat:@"%.1fB", volume / 1000000000.0];
+        // Miliardi: 1.00B
+        return [NSString stringWithFormat:@"%.2fB", volume / 1000000000.0];
     } else if (volume >= 1000000) {
-        // Millions
-        return [NSString stringWithFormat:@"%.1fM", volume / 1000000.0];
+        // Milioni: 1.00M
+        return [NSString stringWithFormat:@"%.2fM", volume / 1000000.0];
     } else if (volume >= 1000) {
-        // Thousands
-        return [NSString stringWithFormat:@"%.0fK", volume / 1000.0];
+        // Migliaia: 1.00K
+        return [NSString stringWithFormat:@"%.2fK", volume / 1000.0];
+    } else if (volume >= 1.0) {
+        // Da 1 a 999: 2 decimali
+        return [NSString stringWithFormat:@"%.2f", volume];
     } else {
-        return [NSString stringWithFormat:@"%.0f", volume];
+        // < 1: 4 decimali
+        return [NSString stringWithFormat:@"%.4f", volume];
     }
 }
 
-
+// ✅ AGGIORNA: Formattazione prezzi con nuova logica
 - (NSString *)formatPriceForDisplay:(double)price {
-    // Smart formatting: <$1 = 4 decimals, >=$1 = 2 decimals
-    if (price < 1.0) {
-        return [NSString stringWithFormat:@"%.4f", price];
-    } else {
+    if (price >= 1000000000) {
+        // Miliardi: 1.00B
+        return [NSString stringWithFormat:@"%.2fB", price / 1000000000.0];
+    } else if (price >= 1000000) {
+        // Milioni: 1.00M
+        return [NSString stringWithFormat:@"%.2fM", price / 1000000.0];
+    } else if (price >= 1000) {
+        // Migliaia: 1.00K
+        return [NSString stringWithFormat:@"%.2fK", price / 1000.0];
+    } else if (price >= 1.0) {
+        // Da 1 a 999: 2 decimali
         return [NSString stringWithFormat:@"%.2f", price];
+    } else {
+        // < 1: 4 decimali
+        return [NSString stringWithFormat:@"%.4f", price];
+    }
+}
+
+// ✅ NUOVO: Metodo helper per formattazione generica (se serve altrove)
+- (NSString *)formatNumericValueForDisplay:(double)value {
+    if (value >= 1000000000) {
+        // Miliardi: 1.00B
+        return [NSString stringWithFormat:@"%.2fB", value / 1000000000.0];
+    } else if (value >= 1000000) {
+        // Milioni: 1.00M
+        return [NSString stringWithFormat:@"%.2fM", value / 1000000.0];
+    } else if (value >= 1000) {
+        // Migliaia: 1.00K
+        return [NSString stringWithFormat:@"%.2fK", value / 1000.0];
+    } else if (value >= 1.0) {
+        // Da 1 a 999: 2 decimali
+        return [NSString stringWithFormat:@"%.2f", value];
+    } else {
+        // < 1: 4 decimali
+        return [NSString stringWithFormat:@"%.4f", value];
     }
 }
 
@@ -782,34 +792,49 @@
     CGFloat barWidth = [self.sharedXContext barWidth];
     barWidth -= [self.sharedXContext barSpacing];
     
-    NSColor *volumeColor = [[NSColor systemBlueColor] colorWithAlphaComponent:0.6];
-    [volumeColor setFill];
+    // ✅ NUOVO: Prepara i colori per volume
+    NSColor *positiveVolumeColor = [[NSColor systemGreenColor] colorWithAlphaComponent:0.6];
+    NSColor *negativeVolumeColor = [[NSColor systemRedColor] colorWithAlphaComponent:0.6];
+    NSColor *neutralVolumeColor = [[NSColor systemGrayColor] colorWithAlphaComponent:0.6];
     
-    NSBezierPath *volumePath = [NSBezierPath bezierPath];
-    
+    // ✅ NUOVO: Disegna volume per volume con colore appropriato
     for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
         HistoricalBarModel *bar = self.chartData[i];
         
         // ✅ COORDINATE X - SOLO sharedXContext
         CGFloat x = [self.sharedXContext screenXForBarIndex:i];
         
-        // ✅ COORDINATE Y - SOLO panelYContext
-        // Per volume: base = yRangeMin (0), top = volume value
-        CGFloat baseY = [self.panelYContext screenYForValue:self.yRangeMin];  // Base del volume
-        CGFloat topY = [self.panelYContext screenYForValue:bar.volume];       // Altezza del volume
+        // ✅ COORDINATE Y - USA panelYContext
+        CGFloat baseY = [self.panelYContext screenYForValue:0.0];           // Base sempre a 0
+        CGFloat topY = [self.panelYContext screenYForValue:bar.volume];     // Top al valore del volume
         
         // ✅ FIX: Volume rectangle orientamento corretto
         CGFloat rectTop = MIN(baseY, topY);     // Y più piccolo = più in alto
         CGFloat rectHeight = ABS(baseY - topY); // Altezza sempre positiva
         
+        // ✅ NUOVO: Determina colore in base a close vs close precedente
+        NSColor *volumeColor = neutralVolumeColor; // Default neutro
+        
+        if (i > 0 && i > self.visibleStartIndex) {
+            HistoricalBarModel *previousBar = self.chartData[i - 1];
+            
+            if (bar.close > previousBar.close) {
+                volumeColor = positiveVolumeColor; // Verde se close > close precedente
+            } else if (bar.close < previousBar.close) {
+                volumeColor = negativeVolumeColor; // Rosso se close < close precedente
+            }
+            // Se close == previousClose rimane neutro (grigio)
+        }
+        
+        // ✅ DISEGNA il rettangolo del volume con il colore appropriato
+        [volumeColor setFill];
         NSRect volumeRect = NSMakeRect(x, rectTop, barWidth, rectHeight);
-        [volumePath appendBezierPathWithRect:volumeRect];
+        NSBezierPath *volumePath = [NSBezierPath bezierPathWithRect:volumeRect];
+        [volumePath fill];
     }
     
-    [volumePath fill];
-    NSLog(@"📊 Volume histogram drawn with coordinate contexts only");
+    NSLog(@"📊 Volume histogram drawn with colored bars based on price movement");
 }
-
 
 
 - (void)drawChartPortionSelection {
@@ -1695,11 +1720,11 @@
 
 
 - (void)handlePanWithDeltaX:(CGFloat)deltaX deltaY:(CGFloat)deltaY {
-    // Horizontal pan
+    // Horizontal pan (rimane invariato - comunica con ChartWidget)
     if (fabs(deltaX) > 1) {
         NSInteger visibleBars = self.chartWidget.visibleEndIndex - self.chartWidget.visibleStartIndex;
         CGFloat barWidth = (self.bounds.size.width - 20) / visibleBars;
-        NSInteger barDelta = -deltaX / barWidth; // Negative for natural scrolling
+        NSInteger barDelta = -deltaX / barWidth;
         
         NSInteger newStartIndex = self.chartWidget.visibleStartIndex + barDelta;
         NSInteger newEndIndex = self.chartWidget.visibleEndIndex + barDelta;
@@ -1716,20 +1741,11 @@
         [self.chartWidget zoomToRange:newStartIndex endIndex:newEndIndex];
     }
     
-    // Vertical pan (only for security panel, adjusts Y range temporarily)
+    // ✅ NUOVO: Vertical pan LOCALE (solo per security panel)
     if (fabs(deltaY) > 1 && [self.panelType isEqualToString:@"security"]) {
-        double yRange = self.yRangeMax - self.yRangeMin;
-        double yDelta = (deltaY / self.bounds.size.height) * yRange;
-        
-        // Override Y range temporarily
-        self.chartWidget.yRangeMin -= yDelta;
-        self.chartWidget.yRangeMax -= yDelta;
-        self.chartWidget.isYRangeOverridden = YES;
-        
-        [self.chartWidget synchronizePanels];
+        [self panVerticallyWithDelta:deltaY];
     }
 }
-
 #pragma mark - Cleanup
 
 - (void)dealloc {
@@ -2694,6 +2710,8 @@
     return finalChartWidth;
 }
 
+
+
 - (void)drawPriceBubbleAtCrosshair {
     if (!self.crosshairVisible) return;
     
@@ -2703,7 +2721,7 @@
         currentValue = [self.panelYContext valueForScreenY:self.crosshairPoint.y];
     }
     
-    NSString *valueText = [self formatValueForDisplay:currentValue];
+    NSString *valueText = [self formatNumericValueForDisplay:currentValue];
     
     // Font più grande e bold per effetto magnifier
     NSDictionary *bubbleAttributes = @{
@@ -2789,5 +2807,123 @@
         [self.chartWidget performSelector:@selector(panelDidChangeLogScale:) withObject:self];
     }
 }
+
+
+#pragma mark yrange calculation
+
+
+- (void)calculateOwnYRange {
+    if (!self.chartData || self.chartData.count == 0) {
+        self.yRangeMin = 0;
+        self.yRangeMax = 100;
+        return;
+    }
+    
+    NSInteger startIdx = MAX(0, self.visibleStartIndex);
+    NSInteger endIdx = MIN(self.visibleEndIndex, self.chartData.count - 1);
+    
+    if ([self.panelType isEqualToString:@"security"]) {
+        // ✅ SECURITY PANEL: Calcola min/max dei prezzi OHLC
+        [self calculateSecurityYRange:startIdx endIndex:endIdx];
+        
+    } else if ([self.panelType isEqualToString:@"volume"]) {
+        // ✅ VOLUME PANEL: Da 0 al massimo volume
+        [self calculateVolumeYRange:startIdx endIndex:endIdx];
+        
+    } else if ([self.panelType isEqualToString:@"rsi"]) {
+        // ✅ RSI PANEL: Da 0 a 100
+        self.yRangeMin = 0;
+        self.yRangeMax = 100;
+        
+    } else {
+        // ✅ DEFAULT: Range generico
+        self.yRangeMin = 0;
+        self.yRangeMax = 100;
+    }
+    
+    NSLog(@"📊 %@ panel calculated Y-range: [%.2f - %.2f]", self.panelType, self.yRangeMin, self.yRangeMax);
+}
+
+- (void)calculateSecurityYRange:(NSInteger)startIdx endIndex:(NSInteger)endIdx {
+    double minPrice = CGFLOAT_MAX;
+    double maxPrice = CGFLOAT_MIN;
+    
+    for (NSInteger i = startIdx; i <= endIdx; i++) {
+        HistoricalBarModel *bar = self.chartData[i];
+        
+        minPrice = MIN(minPrice, bar.low);
+        maxPrice = MAX(maxPrice, bar.high);
+    }
+    
+    // Aggiungi padding (5% per dati normali, 2% per penny stocks)
+    double paddingPercent = (maxPrice > 5.0) ? 0.05 : 0.02;
+    double range = maxPrice - minPrice;
+    double padding = range * paddingPercent;
+    
+    self.yRangeMin = minPrice - padding;
+    self.yRangeMax = maxPrice + padding;
+}
+
+- (void)calculateVolumeYRange:(NSInteger)startIdx endIndex:(NSInteger)endIdx {
+    double maxVolume = 0;
+    
+    for (NSInteger i = startIdx; i <= endIdx; i++) {
+        HistoricalBarModel *bar = self.chartData[i];
+        maxVolume = MAX(maxVolume, bar.volume);
+    }
+    
+    // Volume sempre da 0, con padding del 10% in alto
+    self.yRangeMin = 0;
+    self.yRangeMax = maxVolume * 1.1;
+}
+
+#pragma mark  vertical pan
+
+- (void)panVerticallyWithDelta:(CGFloat)deltaY {
+    // Salva range originale se non già fatto
+    if (!self.isYRangeOverridden) {
+        self.originalYRangeMin = self.yRangeMin;
+        self.originalYRangeMax = self.yRangeMax;
+        self.isYRangeOverridden = YES;
+    }
+    
+    // Calcola spostamento
+    double yRange = self.yRangeMax - self.yRangeMin;
+    double yDelta = (deltaY / self.bounds.size.height) * yRange;
+    
+    // Applica pan
+    self.yRangeMin -= yDelta;
+    self.yRangeMax -= yDelta;
+    
+    // Aggiorna context
+    self.panelYContext.yRangeMin = self.yRangeMin;
+    self.panelYContext.yRangeMax = self.yRangeMax;
+    
+    // Redraw solo questo pannello
+    [self invalidateChartContent];
+    [self invalidateYAxis];
+    
+    NSLog(@"📊 %@ panel Y-pan: [%.2f - %.2f] (override: %@)",
+          self.panelType, self.yRangeMin, self.yRangeMax, self.isYRangeOverridden ? @"YES" : @"NO");
+}
+
+- (void)resetYRangeOverride {
+    if (!self.isYRangeOverridden) return;
+    
+    self.yRangeMin = self.originalYRangeMin;
+    self.yRangeMax = self.originalYRangeMax;
+    self.isYRangeOverridden = NO;
+    
+    // Aggiorna context
+    self.panelYContext.yRangeMin = self.yRangeMin;
+    self.panelYContext.yRangeMax = self.yRangeMax;
+    
+    [self invalidateChartContent];
+    [self invalidateYAxis];
+    
+    NSLog(@"🔄 %@ panel Y-range reset to original: [%.2f - %.2f]",
+          self.panelType, self.yRangeMin, self.yRangeMax);
+}
+
 
 @end

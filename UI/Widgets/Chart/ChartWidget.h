@@ -102,9 +102,7 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 #pragma mark - Viewport State (for ChartPanelView access)
 @property (nonatomic, assign, readwrite) NSInteger visibleStartIndex;
 @property (nonatomic, assign, readwrite) NSInteger visibleEndIndex;
-@property (nonatomic, assign) double yRangeMin;
-@property (nonatomic, assign) double yRangeMax;
-@property (nonatomic, assign) BOOL isYRangeOverridden;
+
 
 
 

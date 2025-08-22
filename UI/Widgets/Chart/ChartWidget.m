@@ -406,9 +406,7 @@ extern NSString *const DataHubDataLoadedNotification;
     // Reset viewport state
     self.visibleStartIndex = 0;
     self.visibleEndIndex = 0;
-    self.yRangeMin = 0;
-    self.yRangeMax = 0;
-    self.isYRangeOverridden = NO;
+   
     [ChartPreferencesWindow loadDefaultPreferencesForChartWidget:self];
 
 }
@@ -968,40 +966,9 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 - (void)updateViewport {
-    [self calculateYRange];
     [self updatePanSlider];
 }
 
-- (void)calculateYRange {
-    // Check cache validity
-       if (self.yRangeCacheValid &&
-           self.cachedStartIndex == self.visibleStartIndex &&
-           self.cachedEndIndex == self.visibleEndIndex &&
-           !self.isYRangeOverridden) {
-           return;  // Use cached values
-       }
-    if (!self.isYRangeOverridden) {
-        // Calculate Y range from visible data
-        if (self.chartData && self.visibleStartIndex < self.visibleEndIndex) {
-            double minPrice = DBL_MAX;
-            double maxPrice = -DBL_MAX;
-            
-            for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
-                HistoricalBarModel *bar = self.chartData[i];
-                minPrice = MIN(minPrice, bar.low);
-                maxPrice = MAX(maxPrice, bar.high);
-            }
-            
-            // Add 5% padding
-            double padding = (maxPrice - minPrice) * 0.05;
-            self.yRangeMin = minPrice - padding;
-            self.yRangeMax = maxPrice + padding;
-        }
-    }
-    self.cachedStartIndex = self.visibleStartIndex;
-      self.cachedEndIndex = self.visibleEndIndex;
-      self.yRangeCacheValid = YES;
-}
 
 - (void)updatePanSlider {
     if (!self.chartData || self.chartData.count == 0) return;
@@ -1030,14 +997,12 @@ extern NSString *const DataHubDataLoadedNotification;
     for (ChartPanelView *panel in self.chartPanels) {
         [panel updateSharedXContext:self.sharedXContext];
 
+        // ✅ NUOVO: Passa solo dati e range X - ogni pannello calcola il proprio Y
         [panel updateWithData:self.chartData
                    startIndex:self.visibleStartIndex
-                     endIndex:self.visibleEndIndex
-                    yRangeMin:self.yRangeMin
-                    yRangeMax:self.yRangeMax];
+                     endIndex:self.visibleEndIndex];
     }
 }
-
 - (void)updateSharedXContext {
     if (!self.sharedXContext) {
         self.sharedXContext = [[SharedXCoordinateContext alloc] init];
@@ -1364,44 +1329,12 @@ extern NSString *const DataHubDataLoadedNotification;
           (long)dataCount, (long)self.visibleStartIndex, (long)self.visibleEndIndex,
           (long)(self.visibleEndIndex - self.visibleStartIndex + 1));
     
-    // Calculate Y range if not overridden
-    if (!self.isYRangeOverridden) {
-        double minPrice = CGFLOAT_MAX;
-        double maxPrice = CGFLOAT_MIN;
-        
-        // ✅ FIX: Ensure we don't exceed array bounds
-        NSInteger endIndex = MIN(self.visibleEndIndex, dataCount - 1);
-        
-        // Find min/max in visible range
-        for (NSInteger i = self.visibleStartIndex; i <= endIndex; i++) {
-            HistoricalBarModel *bar = data[i];
-            minPrice = MIN(minPrice, bar.low);
-            maxPrice = MAX(maxPrice, bar.high);
-        }
-        
-        // Add 5% padding
-        double range = maxPrice - minPrice;
-        double padding = range * 0.05;
-        
-        self.yRangeMin = minPrice - padding;
-        self.yRangeMax = maxPrice + padding;
-        
-        // Ensure non-zero range
-        if (self.yRangeMax <= self.yRangeMin) {
-            self.yRangeMin = minPrice - 1.0;
-            self.yRangeMax = maxPrice + 1.0;
-        }
-        
-        NSLog(@"📊 Y-Range calculated: %.2f - %.2f (padding: %.2f)",
-              self.yRangeMin, self.yRangeMax, padding);
-    }
-    
+
     // Update all panels with new data and viewport
-    [self updateViewport];
     [self synchronizePanels];
+       [self updatePanSlider];
     
-    NSLog(@"✅ Chart data updated successfully - %ld bars loaded, viewport: [%ld-%ld]",
-          (long)dataCount, (long)self.visibleStartIndex, (long)self.visibleEndIndex);
+ 
 }
 
 // ============================================================
@@ -1506,7 +1439,6 @@ extern NSString *const DataHubDataLoadedNotification;
     state[@"initialBarsToShow"] = @(self.initialBarsToShow);
     state[@"visibleStartIndex"] = @(self.visibleStartIndex);
     state[@"visibleEndIndex"] = @(self.visibleEndIndex);
-    state[@"isYRangeOverridden"] = @(self.isYRangeOverridden);
 
     return state;
 }
@@ -1540,7 +1472,6 @@ extern NSString *const DataHubDataLoadedNotification;
         self.initialBarsToShow = initialBarsToShow.integerValue;
     }
 
-    self.isYRangeOverridden = [state[@"isYRangeOverridden"] boolValue];
 }
 
 - (void)logViewportState {
@@ -1548,7 +1479,6 @@ extern NSString *const DataHubDataLoadedNotification;
     NSLog(@"   - Data count: %ld", (long)self.chartData.count);
     NSLog(@"   - Visible range: [%ld-%ld]", (long)self.visibleStartIndex, (long)self.visibleEndIndex);
     NSLog(@"   - Visible bars: %ld", (long)(self.visibleEndIndex - self.visibleStartIndex + 1));
-    NSLog(@"   - Y range: %.2f - %.2f", self.yRangeMin, self.yRangeMax);
     NSLog(@"   - Initial bars to show: %ld", (long)self.initialBarsToShow);
     
     // Validate ranges

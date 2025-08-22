@@ -47,6 +47,8 @@ static NSString * const kDateColumn = @"Date";
     [self setupUI];
     [self setupConstraints];
     [self refreshPatternData];
+    [self setupStandardContextMenu];
+
 }
 
 #pragma mark - UI Setup
@@ -379,43 +381,9 @@ static NSString * const kDateColumn = @"Date";
     self.deleteTypeButton.enabled = hasTypeSelected;
 }
 
-- (NSMenu *)tableView:(NSTableView *)tableView menuForEvent:(NSEvent *)event {
-    NSPoint point = [tableView convertPoint:event.locationInWindow fromView:nil];
-    NSInteger row = [tableView rowAtPoint:point];
-    
-    if (row >= 0 && row < self.filteredPatterns.count) {
-        [tableView selectRowIndexes:[NSIndexSet indexSetWithIndex:row] byExtendingSelection:NO];
-        return [self createContextMenuForPattern:self.filteredPatterns[row]];
-    }
-    
-    return nil;
-}
 
-- (NSMenu *)createContextMenuForPattern:(ChartPatternModel *)pattern {
-    NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Pattern Actions"];
-    
-    NSMenuItem *loadItem = [[NSMenuItem alloc] initWithTitle:@"Load in Chart"
-                                                      action:@selector(loadSelectedPatternToChain)
-                                               keyEquivalent:@""];
-    loadItem.target = self;
-    [menu addItem:loadItem];
-    
-    [menu addItem:[NSMenuItem separatorItem]];
-    
-    NSMenuItem *detailsItem = [[NSMenuItem alloc] initWithTitle:@"Show Details..."
-                                                         action:@selector(showPatternDetailsDialog)
-                                                  keyEquivalent:@""];
-    detailsItem.target = self;
-    [menu addItem:detailsItem];
-    
-    NSMenuItem *deleteItem = [[NSMenuItem alloc] initWithTitle:@"Delete Pattern..."
-                                                        action:@selector(deleteSelectedPatternWithConfirmation)
-                                                 keyEquivalent:@""];
-    deleteItem.target = self;
-    [menu addItem:deleteItem];
-    
-    return menu;
-}
+
+
 
 - (void)tableViewDoubleClicked:(id)sender {
     if (self.patternsTableView.selectedRow != -1) {
@@ -664,6 +632,32 @@ static NSString * const kDateColumn = @"Date";
 
 - (IBAction)refreshButtonClicked:(id)sender {
     [self refreshPatternData];
+}
+#pragma mark - BaseWidget Context Menu Support
+
+- (void)appendWidgetSpecificItemsToMenu:(NSMenu *)menu {
+    // Solo se c'è una selezione valida
+    NSInteger selectedRow = self.patternsTableView.selectedRow;
+    if (selectedRow == -1 || selectedRow >= self.filteredPatterns.count) return;
+    
+    // Pattern-specific actions
+    NSMenuItem *loadItem = [[NSMenuItem alloc] initWithTitle:@"📊 Load Pattern in Chart"
+                                                      action:@selector(loadSelectedPatternToChain)
+                                               keyEquivalent:@""];
+    loadItem.target = self;
+    [menu addItem:loadItem];
+    
+    NSMenuItem *detailsItem = [[NSMenuItem alloc] initWithTitle:@"ℹ️ Show Pattern Details..."
+                                                         action:@selector(showPatternDetailsDialog)
+                                                  keyEquivalent:@""];
+    detailsItem.target = self;
+    [menu addItem:detailsItem];
+    
+    NSMenuItem *deleteItem = [[NSMenuItem alloc] initWithTitle:@"🗑️ Delete Pattern..."
+                                                        action:@selector(deleteSelectedPatternWithConfirmation)
+                                                 keyEquivalent:@""];
+    deleteItem.target = self;
+    [menu addItem:deleteItem];
 }
 
 @end

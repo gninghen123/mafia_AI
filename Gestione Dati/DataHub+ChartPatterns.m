@@ -74,7 +74,7 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
     
     // Create Core Data entity
     ChartPattern *coreDataEntity = [NSEntityDescription insertNewObjectForEntityForName:@"ChartPattern"
-                                                                 inManagedObjectContext:self.managedObjectContext];
+                                                                 inManagedObjectContext:self.mainContext];
     
     if (!coreDataEntity) {
         NSLog(@"❌ DataHub: Failed to create ChartPattern Core Data entity");
@@ -94,9 +94,9 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
     
     // Save to persistent store
     NSError *error;
-    if (![self.managedObjectContext save:&error]) {
+    if (![self.mainContext save:&error]) {
         NSLog(@"❌ DataHub: Failed to save ChartPattern to Core Data: %@", error.localizedDescription);
-        [self.managedObjectContext deleteObject:coreDataEntity];
+        [self.mainContext deleteObject:coreDataEntity];
         return nil;
     }
     
@@ -642,11 +642,6 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
                                            savedDataReference:coreDataPattern.savedDataReference
                                                patternStartDate:coreDataPattern.patternStartDate
                                                  patternEndDate:coreDataPattern.patternEndDate
-                                                       notes:coreDataPattern.additionalNotes];
-    } else {
-        // Legacy format - use old initializer (will auto-fill dates from SavedChartData)
-        model = [[ChartPatternModel alloc] initWithPatternType:coreDataPattern.patternType
-                                          savedDataReference:coreDataPattern.savedDataReference
                                                        notes:coreDataPattern.additionalNotes];
     }
     

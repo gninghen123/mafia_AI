@@ -357,9 +357,6 @@
         [NSPredicate predicateWithFormat:@"self ENDSWITH '.chartdata'"]];
     
     NSLog(@"🔍 ChartPatternManager: Searching for compatible SavedChartData among %ld files", (long)chartDataFiles.count);
-    NSLog(@"   Target: %@ [%@] %@ extended:%@ range:%@ to %@",
-          symbol, [self stringForTimeframe:timeframe], includesExtendedHours ? @"WITH" : @"WITHOUT",
-          includesExtendedHours ? @"YES" : @"NO", patternStartDate, patternEndDate);
     
     // Cerca match in ordine di preferenza
     for (NSString *filename in chartDataFiles) {

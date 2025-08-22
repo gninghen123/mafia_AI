@@ -157,6 +157,23 @@ NS_ASSUME_NONNULL_BEGIN
 /// @param completion Completion block with migration results
 - (void)migratePatternDateRangesWithCompletion:(void(^)(NSInteger migratedCount, NSError * _Nullable error))completion;
 
+
+
+/// Get detailed analytics about SavedChartData sharing efficiency
+- (NSDictionary<NSString *, id> *)getSavedChartDataSharingAnalytics;
+
+/// Log SavedChartData sharing statistics to console
+- (void)logSavedChartDataSharingStatistics;
+
+/// Analyze storage optimization potential
+- (NSDictionary<NSString *, NSNumber *> *)analyzeSavedChartDataStorageOptimization;
+
+/// Log storage optimization analysis
+- (void)logSavedChartDataStorageOptimizationAnalysis;
+
+/// Find SavedChartData files that could be merged
+- (NSArray<NSDictionary *> *)findMergeableSavedChartDataFiles;
+
 @end
 
 NS_ASSUME_NONNULL_END

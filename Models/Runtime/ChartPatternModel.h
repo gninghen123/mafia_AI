@@ -1,8 +1,10 @@
+// ============================================================================
+// ChartPatternModel.h - VERSIONE PULITA
+// ============================================================================
+
 //
-//  ChartPatternModel.h
+//  ChartPatternModel.h - CLEANED VERSION
 //  TradingApp
-//
-//  Runtime Model per Chart Patterns - Thread-safe, UI-ready
 //
 
 #import <Foundation/Foundation.h>
@@ -31,7 +33,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// Optional user notes
 @property (nonatomic, strong, nullable) NSString *additionalNotes;
 
-#pragma mark - ✅ NEW: Pattern Time Range Properties
+#pragma mark - Pattern Time Range Properties
 
 /// Start date of the pattern within the SavedChartData
 @property (nonatomic, strong) NSDate *patternStartDate;
@@ -43,12 +45,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Symbol from connected SavedChartData (readonly)
 @property (nonatomic, readonly, nullable) NSString *symbol;
-
-/// Start date from connected SavedChartData (readonly) - DEPRECATED: Use patternStartDate instead
-@property (nonatomic, readonly, nullable) NSDate *startDate DEPRECATED_MSG_ATTRIBUTE("Use patternStartDate instead");
-
-/// End date from connected SavedChartData (readonly) - DEPRECATED: Use patternEndDate instead
-@property (nonatomic, readonly, nullable) NSDate *endDate DEPRECATED_MSG_ATTRIBUTE("Use patternEndDate instead");
 
 /// Timeframe from connected SavedChartData (readonly)
 @property (nonatomic, readonly) BarTimeframe timeframe;
@@ -82,14 +78,6 @@ NS_ASSUME_NONNULL_BEGIN
                         patternEndDate:(NSDate *)endDate
                               notes:(nullable NSString *)notes;
 
-/// Initialize with core properties (legacy - sets pattern dates to full SavedChartData range)
-/// @param patternType The pattern type
-/// @param savedDataReference UUID reference to SavedChartData
-/// @param notes Optional user notes
-- (instancetype)initWithPatternType:(NSString *)patternType
-                 savedDataReference:(NSString *)savedDataReference
-                              notes:(nullable NSString *)notes;
-
 /// Initialize from dictionary (for loading from Core Data)
 /// @param dictionary Dictionary from Core Data
 - (instancetype)initWithDictionary:(NSDictionary *)dictionary;
@@ -119,11 +107,6 @@ NS_ASSUME_NONNULL_BEGIN
            patternStartDate:(NSDate *)startDate
              patternEndDate:(NSDate *)endDate
                     notes:(nullable NSString *)notes;
-
-/// Update pattern type and notes (legacy - keeps existing date range)
-/// @param patternType New pattern type
-/// @param notes New notes
-- (void)updatePatternType:(NSString *)patternType notes:(nullable NSString *)notes;
 
 /// Validate that the referenced SavedChartData exists
 /// @return YES if SavedChartData file exists on disk

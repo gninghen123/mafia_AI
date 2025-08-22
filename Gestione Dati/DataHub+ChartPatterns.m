@@ -24,84 +24,86 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
 
 #pragma mark - CRUD Operations
 
+/// Create pattern with specific date range
+/// @param patternType The pattern type string
+/// @param savedDataReference UUID reference to SavedChartData file
+/// @param patternStartDate Start date of the pattern within the SavedChartData
+/// @param patternEndDate End date of the pattern within the SavedChartData
+/// @param notes Optional user notes
+/// @return Created ChartPatternModel or nil if failed
 - (nullable ChartPatternModel *)createPatternWithType:(NSString *)patternType
-                                   savedDataReference:(NSString *)savedDataRef
-                                       patternStartDate:(NSDate *)startDate
-                                         patternEndDate:(NSDate *)endDate
+                                   savedDataReference:(NSString *)savedDataReference
+                                       patternStartDate:(NSDate *)patternStartDate
+                                         patternEndDate:(NSDate *)patternEndDate
                                                 notes:(nullable NSString *)notes {
     
-    // Validation
-    if (![self isValidPatternType:patternType]) {
-        NSLog(@"❌ DataHub: Invalid pattern type: %@", patternType);
+    if (!patternType || !savedDataReference || !patternStartDate || !patternEndDate) {
+        NSLog(@"❌ DataHub: Invalid parameters for pattern creation with date range");
         return nil;
     }
     
-    if (![self savedDataExistsForReference:savedDataRef]) {
-        NSLog(@"❌ DataHub: SavedChartData not found for reference: %@", savedDataRef);
+    // Validate date range
+    if ([patternStartDate compare:patternEndDate] != NSOrderedAscending) {
+        NSLog(@"❌ DataHub: Invalid date range - start date must be before end date");
         return nil;
     }
     
-    if (![self validatePatternDateRange:startDate endDate:endDate forSavedDataReference:savedDataRef]) {
-        NSLog(@"❌ DataHub: Invalid pattern date range for savedDataRef: %@", savedDataRef);
+    // Create runtime model with date range
+    ChartPatternModel *runtimeModel = [[ChartPatternModel alloc] initWithPatternType:patternType
+                                                                  savedDataReference:savedDataReference
+                                                                      patternStartDate:patternStartDate
+                                                                        patternEndDate:patternEndDate
+                                                                                notes:notes];
+    
+    if (!runtimeModel) {
+        NSLog(@"❌ DataHub: Failed to create runtime ChartPatternModel");
+        return nil;
+    }
+    
+    // Validate SavedChartData reference exists
+    if (![runtimeModel validateSavedDataReference]) {
+        NSLog(@"❌ DataHub: SavedChartData reference %@ does not exist", savedDataReference);
+        return nil;
+    }
+    
+    // Validate pattern date range is within SavedChartData bounds
+    if (![runtimeModel validatePatternDateRange]) {
+        NSLog(@"❌ DataHub: Pattern date range is outside SavedChartData bounds");
         return nil;
     }
     
     // Create Core Data entity
-    ChartPattern *coreDataPattern = [NSEntityDescription insertNewObjectForEntityForName:@"ChartPattern"
-                                                                  inManagedObjectContext:self.mainContext];
-    coreDataPattern.patternID = [[NSUUID UUID] UUIDString];
-    coreDataPattern.patternType = patternType;
-    coreDataPattern.savedDataReference = savedDataRef;
-    coreDataPattern.creationDate = [NSDate date];
-    coreDataPattern.additionalNotes = notes;
+    ChartPattern *coreDataEntity = [NSEntityDescription insertNewObjectForEntityForName:@"ChartPattern"
+                                                                 inManagedObjectContext:self.managedObjectContext];
     
-    // Set pattern date range
-    coreDataPattern.patternStartDate = startDate;
-    coreDataPattern.patternEndDate = endDate;
-    
-    // Save to Core Data
-    [self saveContext];
-    
-    // Convert to Runtime Model
-    ChartPatternModel *patternModel = [self patternModelFromCoreData:coreDataPattern];
-    
-    // Add pattern type to known types if new
-    [self addPatternType:patternType];
-    
-    NSLog(@"✅ DataHub: Created pattern %@ [%@] with savedDataRef %@ and date range %@ to %@",
-          patternType, patternModel.patternID, savedDataRef, startDate, endDate);
-    
-    // Post notification
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"DataHubChartPatternCreated"
-                                                        object:self
-                                                      userInfo:@{@"pattern": patternModel}];
-    
-    return patternModel;
-}
-
-- (nullable ChartPatternModel *)createPatternWithType:(NSString *)patternType
-                                   savedDataReference:(NSString *)savedDataRef
-                                                notes:(nullable NSString *)notes {
-    
-    // Load SavedChartData to get full date range
-    NSString *directory = [ChartWidget savedChartDataDirectory];
-    NSString *filename = [NSString stringWithFormat:@"%@.chartdata", savedDataRef];
-    NSString *filePath = [directory stringByAppendingPathComponent:filename];
-    SavedChartData *savedData = [SavedChartData loadFromFile:filePath];
-    
-    if (!savedData) {
-        NSLog(@"❌ DataHub: Cannot load SavedChartData for reference: %@", savedDataRef);
+    if (!coreDataEntity) {
+        NSLog(@"❌ DataHub: Failed to create ChartPattern Core Data entity");
         return nil;
     }
     
-    NSDate *startDate = savedData.startDate ?: [NSDate date];
-    NSDate *endDate = savedData.endDate ?: [NSDate date];
+    // Set Core Data properties from runtime model
+    coreDataEntity.patternID = runtimeModel.patternID;
+    coreDataEntity.patternType = runtimeModel.patternType;
+    coreDataEntity.savedDataReference = runtimeModel.savedDataReference;
+    coreDataEntity.creationDate = runtimeModel.creationDate;
+    coreDataEntity.additionalNotes = runtimeModel.additionalNotes;
     
-    return [self createPatternWithType:patternType
-                    savedDataReference:savedDataRef
-                        patternStartDate:startDate
-                          patternEndDate:endDate
-                               notes:notes];
+    // ✅ NUOVO: Set pattern date range in Core Data
+    coreDataEntity.patternStartDate = runtimeModel.patternStartDate;
+    coreDataEntity.patternEndDate = runtimeModel.patternEndDate;
+    
+    // Save to persistent store
+    NSError *error;
+    if (![self.managedObjectContext save:&error]) {
+        NSLog(@"❌ DataHub: Failed to save ChartPattern to Core Data: %@", error.localizedDescription);
+        [self.managedObjectContext deleteObject:coreDataEntity];
+        return nil;
+    }
+    
+    NSLog(@"✅ DataHub: Created pattern '%@' [%@] with date range %@ to %@",
+          patternType, runtimeModel.patternID, patternStartDate, patternEndDate);
+    
+    return runtimeModel;
 }
 
 - (NSArray<ChartPatternModel *> *)getAllPatterns {
@@ -684,6 +686,257 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
            ([[string substringWithRange:range2] isEqualToString:@"-"]) &&
            ([[string substringWithRange:range3] isEqualToString:@"-"]) &&
            ([[string substringWithRange:range4] isEqualToString:@"-"]);
+}
+
+#pragma mark - SavedChartData Usage Analytics
+
+/// Get detailed analytics about SavedChartData sharing efficiency
+- (NSDictionary<NSString *, id> *)getSavedChartDataSharingAnalytics {
+    NSMutableDictionary *analytics = [NSMutableDictionary dictionary];
+    
+    // Get all patterns
+    NSArray<ChartPatternModel *> *allPatterns = [self getAllPatterns];
+    analytics[@"totalPatterns"] = @(allPatterns.count);
+    
+    if (allPatterns.count == 0) {
+        analytics[@"efficiency"] = @"No patterns created yet";
+        return [analytics copy];
+    }
+    
+    // Group patterns by SavedChartData reference
+    NSMutableDictionary<NSString *, NSMutableArray<ChartPatternModel *> *> *patternsByReference =
+        [NSMutableDictionary dictionary];
+    
+    for (ChartPatternModel *pattern in allPatterns) {
+        NSString *ref = pattern.savedDataReference;
+        if (!patternsByReference[ref]) {
+            patternsByReference[ref] = [NSMutableArray array];
+        }
+        [patternsByReference[ref] addObject:pattern];
+    }
+    
+    analytics[@"uniqueSavedChartDataReferences"] = @(patternsByReference.count);
+    
+    // Calculate sharing statistics
+    NSInteger sharedReferences = 0;
+    NSInteger totalSharedPatterns = 0;
+    NSInteger maxPatternsPerReference = 0;
+    
+    for (NSString *ref in patternsByReference) {
+        NSInteger patternCount = patternsByReference[ref].count;
+        maxPatternsPerReference = MAX(maxPatternsPerReference, patternCount);
+        
+        if (patternCount > 1) {
+            sharedReferences++;
+            totalSharedPatterns += patternCount;
+        }
+    }
+    
+    analytics[@"sharedSavedChartDataReferences"] = @(sharedReferences);
+    analytics[@"totalPatternsUsingSharedData"] = @(totalSharedPatterns);
+    analytics[@"maxPatternsPerSavedChartData"] = @(maxPatternsPerReference);
+    
+    // Calculate efficiency metrics
+    double sharingEfficiency = (double)allPatterns.count / (double)patternsByReference.count;
+    analytics[@"averagePatternsPerSavedChartData"] = @(sharingEfficiency);
+    
+    double storageEfficiency = 1.0 - ((double)patternsByReference.count / (double)allPatterns.count);
+    analytics[@"storageEfficiencyPercent"] = @(storageEfficiency * 100.0);
+    
+    // Top shared SavedChartData
+    NSArray<NSString *> *sortedRefs = [patternsByReference.allKeys sortedArrayUsingComparator:^NSComparisonResult(NSString *ref1, NSString *ref2) {
+        NSInteger count1 = patternsByReference[ref1].count;
+        NSInteger count2 = patternsByReference[ref2].count;
+        return [@(count2) compare:@(count1)]; // Descending order
+    }];
+    
+    NSMutableArray *topShared = [NSMutableArray array];
+    for (NSInteger i = 0; i < MIN(5, sortedRefs.count); i++) {
+        NSString *ref = sortedRefs[i];
+        NSArray<ChartPatternModel *> *patterns = patternsByReference[ref];
+        if (patterns.count > 1) {
+            ChartPatternModel *firstPattern = patterns.firstObject;
+            [topShared addObject:@{
+                @"savedChartDataReference": ref,
+                @"patternCount": @(patterns.count),
+                @"symbol": firstPattern.symbol ?: @"Unknown",
+                @"timeframe": @(firstPattern.timeframe)
+            }];
+        }
+    }
+    analytics[@"topSharedSavedChartData"] = topShared;
+    
+    return [analytics copy];
+}
+
+/// Log SavedChartData sharing statistics to console
+- (void)logSavedChartDataSharingStatistics {
+    NSDictionary *analytics = [self getSavedChartDataSharingAnalytics];
+    
+    NSLog(@"\n📊 SAVEDCHARTDATA SHARING ANALYTICS");
+    NSLog(@"=====================================");
+    NSLog(@"Total Patterns: %@", analytics[@"totalPatterns"]);
+    NSLog(@"Unique SavedChartData Files: %@", analytics[@"uniqueSavedChartDataReferences"]);
+    NSLog(@"Average Patterns per File: %.2f", [analytics[@"averagePatternsPerSavedChartData"] doubleValue]);
+    NSLog(@"Storage Efficiency: %.1f%%", [analytics[@"storageEfficiencyPercent"] doubleValue]);
+    NSLog(@"Shared Files: %@", analytics[@"sharedSavedChartDataReferences"]);
+    NSLog(@"Patterns Using Shared Data: %@", analytics[@"totalPatternsUsingSharedData"]);
+    NSLog(@"Max Patterns per File: %@", analytics[@"maxPatternsPerSavedChartData"]);
+    
+    NSArray *topShared = analytics[@"topSharedSavedChartData"];
+    if (topShared.count > 0) {
+        NSLog(@"\n🏆 TOP SHARED SAVEDCHARTDATA:");
+        for (NSDictionary *shared in topShared) {
+            NSLog(@"  • %@ patterns for %@ [timeframe:%@] (ref: %@)",
+                  shared[@"patternCount"], shared[@"symbol"], shared[@"timeframe"],
+                  [shared[@"savedChartDataReference"] substringToIndex:8]);
+        }
+    }
+    NSLog(@"=====================================\n");
+}
+
+/// Analyze storage optimization potential
+- (NSDictionary<NSString *, NSNumber *> *)analyzeSavedChartDataStorageOptimization {
+    NSMutableDictionary *analysis = [NSMutableDictionary dictionary];
+    
+    // Current state
+    NSDictionary *sharingAnalytics = [self getSavedChartDataSharingAnalytics];
+    NSInteger currentFiles = [sharingAnalytics[@"uniqueSavedChartDataReferences"] integerValue];
+    NSInteger totalPatterns = [sharingAnalytics[@"totalPatterns"] integerValue];
+    
+    analysis[@"currentSavedChartDataFiles"] = @(currentFiles);
+    analysis[@"totalPatterns"] = @(totalPatterns);
+    analysis[@"currentStorageEfficiency"] = sharingAnalytics[@"storageEfficiencyPercent"];
+    
+    // Theoretical optimal (1 file per symbol+timeframe+hours combination)
+    NSMutableSet<NSString *> *uniqueCombinations = [NSMutableSet set];
+    NSArray<ChartPatternModel *> *allPatterns = [self getAllPatterns];
+    
+    for (ChartPatternModel *pattern in allPatterns) {
+        SavedChartData *savedData = [pattern loadConnectedSavedData];
+        if (savedData) {
+            NSString *combination = [NSString stringWithFormat:@"%@_%ld_%@",
+                                   savedData.symbol.uppercaseString,
+                                   (long)savedData.timeframe,
+                                   savedData.includesExtendedHours ? @"EXT" : @"REG"];
+            [uniqueCombinations addObject:combination];
+        }
+    }
+    
+    NSInteger optimalFiles = uniqueCombinations.count;
+    analysis[@"theoreticalOptimalFiles"] = @(optimalFiles);
+    
+    if (currentFiles > 0) {
+        double potentialReduction = ((double)(currentFiles - optimalFiles) / (double)currentFiles) * 100.0;
+        analysis[@"potentialStorageReductionPercent"] = @(potentialReduction);
+        
+        double optimalEfficiency = totalPatterns > 0 ? ((double)totalPatterns / (double)optimalFiles) : 0;
+        analysis[@"theoreticalOptimalEfficiency"] = @(optimalEfficiency);
+    }
+    
+    // Find mergeable files
+    NSArray *mergeableGroups = [self findMergeableSavedChartDataFiles];
+    analysis[@"mergeableGroups"] = @(mergeableGroups.count);
+    
+    NSInteger filesToMerge = 0;
+    for (NSDictionary *group in mergeableGroups) {
+        NSArray *files = group[@"files"];
+        filesToMerge += files.count;
+    }
+    analysis[@"filesToMerge"] = @(filesToMerge);
+    
+    return [analysis copy];
+}
+
+/// Log storage optimization analysis
+- (void)logSavedChartDataStorageOptimizationAnalysis {
+    NSDictionary *analysis = [self analyzeSavedChartDataStorageOptimization];
+    
+    NSLog(@"\n💾 SAVEDCHARTDATA STORAGE OPTIMIZATION ANALYSIS");
+    NSLog(@"================================================");
+    NSLog(@"Current Files: %@", analysis[@"currentSavedChartDataFiles"]);
+    NSLog(@"Theoretical Optimal: %@", analysis[@"theoreticalOptimalFiles"]);
+    NSLog(@"Current Efficiency: %.1f%%", [analysis[@"currentStorageEfficiency"] doubleValue]);
+    NSLog(@"Theoretical Max Efficiency: %.1f patterns per file", [analysis[@"theoreticalOptimalEfficiency"] doubleValue]);
+    NSLog(@"Potential Storage Reduction: %.1f%%", [analysis[@"potentialStorageReductionPercent"] doubleValue]);
+    NSLog(@"Mergeable Groups: %@", analysis[@"mergeableGroups"]);
+    NSLog(@"Files That Could Be Merged: %@", analysis[@"filesToMerge"]);
+    NSLog(@"================================================\n");
+}
+
+/// Find SavedChartData files that could be merged (same symbol, timeframe, extended hours, overlapping dates)
+- (NSArray<NSDictionary *> *)findMergeableSavedChartDataFiles {
+    NSMutableArray *mergeableGroups = [NSMutableArray array];
+    
+    // Get all SavedChartData files
+    NSString *directory = [ChartWidget savedChartDataDirectory];
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSError *error;
+    NSArray<NSString *> *files = [fileManager contentsOfDirectoryAtPath:directory error:&error];
+    
+    if (!files) {
+        NSLog(@"⚠️ Cannot read SavedChartData directory: %@", error.localizedDescription);
+        return @[];
+    }
+    
+    NSArray<NSString *> *chartDataFiles = [files filteredArrayUsingPredicate:
+        [NSPredicate predicateWithFormat:@"self ENDSWITH '.chartdata'"]];
+    
+    NSMutableArray<SavedChartData *> *allSavedData = [NSMutableArray array];
+    
+    // Load all SavedChartData
+    for (NSString *filename in chartDataFiles) {
+        NSString *filePath = [directory stringByAppendingPathComponent:filename];
+        SavedChartData *savedData = [SavedChartData loadFromFile:filePath];
+        if (savedData && savedData.isDataValid) {
+            [allSavedData addObject:savedData];
+        }
+    }
+    
+    // Group by symbol + timeframe + extended hours
+    NSMutableDictionary<NSString *, NSMutableArray<SavedChartData *> *> *groups = [NSMutableDictionary dictionary];
+    
+    for (SavedChartData *savedData in allSavedData) {
+        NSString *groupKey = [NSString stringWithFormat:@"%@_%ld_%@",
+                             savedData.symbol.uppercaseString,
+                             (long)savedData.timeframe,
+                             savedData.includesExtendedHours ? @"EXT" : @"REG"];
+        
+        if (!groups[groupKey]) {
+            groups[groupKey] = [NSMutableArray array];
+        }
+        [groups[groupKey] addObject:savedData];
+    }
+    
+    // Find groups with multiple files that could be merged
+    for (NSString *groupKey in groups) {
+        NSArray<SavedChartData *> *groupFiles = groups[groupKey];
+        if (groupFiles.count > 1) {
+            // Check for overlapping or adjacent date ranges
+            NSMutableArray *mergeable = [NSMutableArray array];
+            for (SavedChartData *savedData in groupFiles) {
+                [mergeable addObject:@{
+                    @"chartID": savedData.chartID,
+                    @"symbol": savedData.symbol,
+                    @"timeframe": @(savedData.timeframe),
+                    @"includesExtendedHours": @(savedData.includesExtendedHours),
+                    @"startDate": savedData.startDate,
+                    @"endDate": savedData.endDate,
+                    @"barCount": @(savedData.barCount)
+                }];
+            }
+            
+            if (mergeable.count > 1) {
+                [mergeableGroups addObject:@{
+                    @"groupKey": groupKey,
+                    @"files": mergeable
+                }];
+            }
+        }
+    }
+    
+    NSLog(@"🔍 Found %ld groups of mergeable SavedChartData files", (long)mergeableGroups.count);
+    return [mergeableGroups copy];
 }
 
 @end

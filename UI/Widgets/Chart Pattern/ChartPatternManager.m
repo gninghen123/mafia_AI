@@ -51,84 +51,84 @@
         return nil;
     }
     
-    // Create SavedChartData as snapshot
-    SavedChartData *savedData = [[SavedChartData alloc] initSnapshotWithChartWidget:chartWidget notes:notes];
-    if (!savedData.isDataValid) {
-        NSLog(@"❌ ChartPatternManager: Failed to create valid SavedChartData");
+    // 🆕 NUOVO: Calcola le date del pattern dal range visibile
+    NSDate *patternStartDate = nil;
+    NSDate *patternEndDate = nil;
+    
+    NSInteger visibleStartIndex = chartWidget.visibleStartIndex;
+    NSInteger visibleEndIndex = chartWidget.visibleEndIndex;
+    
+    if (visibleStartIndex >= 0 && visibleStartIndex < chartData.count &&
+        visibleEndIndex >= 0 && visibleEndIndex < chartData.count &&
+        visibleStartIndex <= visibleEndIndex) {
+        
+        patternStartDate = chartData[visibleStartIndex].date;
+        patternEndDate = chartData[visibleEndIndex].date;
+    } else {
+        NSLog(@"❌ ChartPatternManager: Invalid visible range for pattern creation");
         return nil;
     }
     
-    // Save to file with chartID as filename (for pattern linking)
-    NSString *directory = [ChartWidget savedChartDataDirectory];
-    NSError *error;
-    if (![ChartWidget ensureSavedChartDataDirectoryExists:&error]) {
-        NSLog(@"❌ ChartPatternManager: Failed to ensure directory exists: %@", error);
-        return nil;
+    // 🆕 NUOVO: Cerca SavedChartData esistente compatibile
+    BOOL includesExtendedHours = (chartWidget.tradingHoursMode == ChartTradingHoursWithAfterHours);
+    NSString *existingDataReference = [self findExistingSavedChartDataReferenceForSymbol:chartWidget.currentSymbol
+                                                                               timeframe:chartWidget.currentTimeframe
+                                                                     includesExtendedHours:includesExtendedHours
+                                                                        patternStartDate:patternStartDate
+                                                                          patternEndDate:patternEndDate];
+    
+    NSString *savedDataReference = nil;
+    
+    if (existingDataReference) {
+        // ✅ RIUSA SavedChartData esistente
+        savedDataReference = existingDataReference;
+        NSLog(@"♻️ ChartPatternManager: Reusing existing SavedChartData %@", savedDataReference);
+        
+    } else {
+        // ❌ CREA nuovo SavedChartData
+        SavedChartData *savedData = [[SavedChartData alloc] initSnapshotWithChartWidget:chartWidget notes:notes];
+        if (!savedData.isDataValid) {
+            NSLog(@"❌ ChartPatternManager: Failed to create valid SavedChartData");
+            return nil;
+        }
+        
+        // Save to file with chartID as filename
+        NSString *directory = [ChartWidget savedChartDataDirectory];
+        NSError *error;
+        if (![ChartWidget ensureSavedChartDataDirectoryExists:&error]) {
+            NSLog(@"❌ ChartPatternManager: Failed to ensure directory exists: %@", error);
+            return nil;
+        }
+        
+        NSString *filename = [NSString stringWithFormat:@"%@.chartdata", savedData.chartID];
+        NSString *filePath = [directory stringByAppendingPathComponent:filename];
+        
+        if (![savedData saveToFile:filePath error:&error]) {
+            NSLog(@"❌ ChartPatternManager: Failed to save SavedChartData: %@", error);
+            return nil;
+        }
+        
+        savedDataReference = savedData.chartID;
+        NSLog(@"🆕 ChartPatternManager: Created new SavedChartData %@", savedDataReference);
     }
     
-    // Use chartID as filename for pattern linking
-    NSString *filename = [NSString stringWithFormat:@"%@.chartdata", savedData.chartID];
-    NSString *filePath = [directory stringByAppendingPathComponent:filename];
-    
-    if (![savedData saveToFile:filePath error:&error]) {
-        NSLog(@"❌ ChartPatternManager: Failed to save SavedChartData: %@", error);
-        return nil;
-    }
-    
-    // Create pattern in DataHub
+    // Create pattern in DataHub con date specifiche del pattern
     DataHub *dataHub = [DataHub shared];
     ChartPatternModel *pattern = [dataHub createPatternWithType:patternType
-                                             savedDataReference:savedData.chartID
+                                             savedDataReference:savedDataReference
+                                                 patternStartDate:patternStartDate
+                                                   patternEndDate:patternEndDate
                                                           notes:notes];
     
     if (pattern) {
-        NSLog(@"✅ ChartPatternManager: Created pattern '%@' for %@ with %ld bars",
-              patternType, chartWidget.currentSymbol, (long)savedData.barCount);
+        NSLog(@"✅ ChartPatternManager: Created pattern '%@' for %@ with range %@ to %@",
+              patternType, chartWidget.currentSymbol, patternStartDate, patternEndDate);
+        NSLog(@"   Using SavedChartData: %@ (%@)",
+              savedDataReference, existingDataReference ? @"REUSED" : @"NEW");
     }
     
     return pattern;
 }
-
-- (BOOL)loadPatternIntoChartWidget:(ChartPatternModel *)pattern
-                       chartWidget:(ChartWidget *)chartWidget {
-    
-    if (!pattern || !chartWidget) {
-        NSLog(@"❌ ChartPatternManager: Invalid parameters for pattern loading");
-        return NO;
-    }
-    
-    // Load SavedChartData
-    SavedChartData *savedData = [self loadSavedDataForPattern:pattern];
-    if (!savedData) {
-        NSLog(@"❌ ChartPatternManager: Failed to load SavedChartData for pattern %@", pattern.patternID);
-        return NO;
-    }
-    
-    // Load into chart widget using existing method
-    NSString *directory = [ChartWidget savedChartDataDirectory];
-    NSString *filename = [NSString stringWithFormat:@"%@.chartdata", pattern.savedDataReference];
-    NSString *filePath = [directory stringByAppendingPathComponent:filename];
-    
-    __block BOOL success = NO;
-    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-    
-    [chartWidget loadSavedDataFromFile:filePath completion:^(BOOL loadSuccess, NSError *error) {
-        success = loadSuccess;
-        if (!success) {
-            NSLog(@"❌ ChartPatternManager: Failed to load pattern into chart: %@", error);
-        }
-        dispatch_semaphore_signal(semaphore);
-    }];
-    
-    dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
-    
-    if (success) {
-        NSLog(@"✅ ChartPatternManager: Loaded pattern '%@' into chart", pattern.patternType);
-    }
-    
-    return success;
-}
-
 #pragma mark - File Operations
 
 - (nullable SavedChartData *)loadSavedDataForPattern:(ChartPatternModel *)pattern {
@@ -321,5 +321,211 @@
         if (completion) completion(nil, YES);
     }
 }
+#pragma mark - SavedChartData Optimization (NUOVO)
+
+/// Cerca un SavedChartData esistente compatibile per il pattern
+/// @param symbol Simbolo del pattern
+/// @param timeframe Timeframe del pattern
+/// @param includesExtendedHours Trading hours mode
+/// @param patternStartDate Data di inizio del pattern
+/// @param patternEndDate Data di fine del pattern
+/// @return Riferimento UUID del SavedChartData esistente o nil se non trovato
+- (nullable NSString *)findExistingSavedChartDataReferenceForSymbol:(NSString *)symbol
+                                                         timeframe:(BarTimeframe)timeframe
+                                               includesExtendedHours:(BOOL)includesExtendedHours
+                                                    patternStartDate:(NSDate *)patternStartDate
+                                                      patternEndDate:(NSDate *)patternEndDate {
+    
+    if (!symbol || !patternStartDate || !patternEndDate) {
+        NSLog(@"❌ ChartPatternManager: Invalid parameters for SavedChartData search");
+        return nil;
+    }
+    
+    // Ottieni directory dei SavedChartData
+    NSString *directory = [ChartWidget savedChartDataDirectory];
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    
+    NSError *error;
+    NSArray<NSString *> *files = [fileManager contentsOfDirectoryAtPath:directory error:&error];
+    if (!files) {
+        NSLog(@"⚠️ ChartPatternManager: Cannot read SavedChartData directory: %@", error.localizedDescription);
+        return nil;
+    }
+    
+    // Filtra solo i file .chartdata
+    NSArray<NSString *> *chartDataFiles = [files filteredArrayUsingPredicate:
+        [NSPredicate predicateWithFormat:@"self ENDSWITH '.chartdata'"]];
+    
+    NSLog(@"🔍 ChartPatternManager: Searching for compatible SavedChartData among %ld files", (long)chartDataFiles.count);
+    NSLog(@"   Target: %@ [%@] %@ extended:%@ range:%@ to %@",
+          symbol, [self stringForTimeframe:timeframe], includesExtendedHours ? @"WITH" : @"WITHOUT",
+          includesExtendedHours ? @"YES" : @"NO", patternStartDate, patternEndDate);
+    
+    // Cerca match in ordine di preferenza
+    for (NSString *filename in chartDataFiles) {
+        NSString *filePath = [directory stringByAppendingPathComponent:filename];
+        SavedChartData *candidateData = [SavedChartData loadFromFile:filePath];
+        
+        if (!candidateData || !candidateData.isDataValid) {
+            continue; // Skip file corrotti
+        }
+        
+        // Verifica match dei parametri base
+        if (![self doesSavedChartData:candidateData
+                            matchSymbol:symbol
+                              timeframe:timeframe
+                    includesExtendedHours:includesExtendedHours]) {
+            continue;
+        }
+        
+        // Verifica copertura date range
+        SavedChartDataCoverage coverage = [self checkDateCoverage:candidateData
+                                                    patternStartDate:patternStartDate
+                                                      patternEndDate:patternEndDate];
+        
+        switch (coverage) {
+            case SavedChartDataCoverageFullMatch:
+                NSLog(@"✅ ChartPatternManager: PERFECT MATCH found - %@", candidateData.chartID);
+                return candidateData.chartID;
+                
+            case SavedChartDataCoverageCanExtend:
+                NSLog(@"🔄 ChartPatternManager: EXTENDABLE MATCH found - %@", candidateData.chartID);
+                // Prova ad estendere il SavedChartData esistente
+                if ([self extendSavedChartData:candidateData
+                                toPatternStartDate:patternStartDate
+                                    patternEndDate:patternEndDate]) {
+                    return candidateData.chartID;
+                }
+                break;
+                
+            case SavedChartDataCoverageNoMatch:
+                // Continua a cercare
+                break;
+        }
+    }
+    
+    NSLog(@"❌ ChartPatternManager: No compatible SavedChartData found - will create new one");
+    return nil;
+}
+
+typedef NS_ENUM(NSInteger, SavedChartDataCoverage) {
+    SavedChartDataCoverageFullMatch,    // Le date del pattern sono completamente coperte
+    SavedChartDataCoverageCanExtend,    // Il range può essere esteso per coprire il pattern
+    SavedChartDataCoverageNoMatch       // Incompatibile
+};
+
+/// Verifica se SavedChartData copre il range di date del pattern
+- (SavedChartDataCoverage)checkDateCoverage:(SavedChartData *)savedData
+                           patternStartDate:(NSDate *)patternStartDate
+                             patternEndDate:(NSDate *)patternEndDate {
+    
+    // FULL MATCH: SavedChartData contiene completamente il pattern
+    if ([savedData.startDate compare:patternStartDate] != NSOrderedDescending &&
+        [savedData.endDate compare:patternEndDate] != NSOrderedAscending) {
+        return SavedChartDataCoverageFullMatch;
+    }
+    
+    // CAN EXTEND: C'è overlap e possiamo estendere
+    BOOL hasOverlap = ([savedData.startDate compare:patternEndDate] != NSOrderedDescending &&
+                      [savedData.endDate compare:patternStartDate] != NSOrderedAscending);
+    
+    if (hasOverlap) {
+        // Controlla se l'estensione è ragionevole (massimo 2x il range originale)
+        NSTimeInterval originalRange = [savedData.endDate timeIntervalSinceDate:savedData.startDate];
+        NSTimeInterval newStartGap = [savedData.startDate timeIntervalSinceDate:patternStartDate];
+        NSTimeInterval newEndGap = [patternEndDate timeIntervalSinceDate:savedData.endDate];
+        NSTimeInterval totalExtension = MAX(0, newStartGap) + MAX(0, newEndGap);
+        
+        if (totalExtension <= originalRange) { // Estensione ragionevole
+            return SavedChartDataCoverageCanExtend;
+        }
+    }
+    
+    return SavedChartDataCoverageNoMatch;
+}
+
+/// Verifica match dei parametri base (symbol, timeframe, extended hours)
+- (BOOL)doesSavedChartData:(SavedChartData *)savedData
+               matchSymbol:(NSString *)symbol
+                 timeframe:(BarTimeframe)timeframe
+       includesExtendedHours:(BOOL)includesExtendedHours {
+    
+    return ([savedData.symbol.uppercaseString isEqualToString:symbol.uppercaseString] &&
+            savedData.timeframe == timeframe &&
+            savedData.includesExtendedHours == includesExtendedHours);
+}
+
+/// Estende un SavedChartData esistente per coprire le date del pattern
+- (BOOL)extendSavedChartData:(SavedChartData *)savedData
+           toPatternStartDate:(NSDate *)patternStartDate
+               patternEndDate:(NSDate *)patternEndDate {
+    
+    NSLog(@"🔄 ChartPatternManager: Attempting to extend SavedChartData %@", savedData.chartID);
+    NSLog(@"   Current range: %@ to %@", savedData.startDate, savedData.endDate);
+    NSLog(@"   Needed range: %@ to %@", patternStartDate, patternEndDate);
+    
+    // TODO: IMPLEMENTAZIONE ESTENSIONE
+    // Questa è una funzionalità complessa che richiede:
+    // 1. Download di dati aggiuntivi dal DataHub
+    // 2. Merge con dati esistenti
+    // 3. Aggiornamento del file SavedChartData
+    // 4. Validazione della consistenza
+    
+    // PER ORA: Return NO per forzare creazione di nuovo SavedChartData
+    NSLog(@"⚠️ ChartPatternManager: SavedChartData extension not yet implemented - will create new");
+    return NO;
+}
+
+#pragma mark - Statistics and Monitoring (NUOVO)
+
+/// Ottieni statistiche di utilizzo SavedChartData
+- (NSDictionary<NSString *, NSNumber *> *)getSavedChartDataUsageStatistics {
+    NSMutableDictionary *stats = [NSMutableDictionary dictionary];
+    
+    // Conta SavedChartData files
+    NSString *directory = [ChartWidget savedChartDataDirectory];
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSArray<NSString *> *files = [fileManager contentsOfDirectoryAtPath:directory error:nil];
+    NSArray<NSString *> *chartDataFiles = [files filteredArrayUsingPredicate:
+        [NSPredicate predicateWithFormat:@"self ENDSWITH '.chartdata'"]];
+    
+    stats[@"totalSavedChartDataFiles"] = @(chartDataFiles.count);
+    
+    // Conta patterns totali
+    DataHub *dataHub = [DataHub shared];
+    NSArray<ChartPatternModel *> *allPatterns = [dataHub getAllPatterns];
+    stats[@"totalPatterns"] = @(allPatterns.count);
+    
+    // Calcola ratio efficienza
+    if (chartDataFiles.count > 0) {
+        double efficiency = (double)allPatterns.count / (double)chartDataFiles.count;
+        stats[@"patternsPerSavedChartData"] = @(efficiency);
+    } else {
+        stats[@"patternsPerSavedChartData"] = @(0);
+    }
+    
+    // Trova SavedChartData riutilizzati (più pattern che fanno riferimento allo stesso file)
+    NSMutableDictionary<NSString *, NSNumber *> *referenceCount = [NSMutableDictionary dictionary];
+    for (ChartPatternModel *pattern in allPatterns) {
+        NSString *ref = pattern.savedDataReference;
+        referenceCount[ref] = @([referenceCount[ref] integerValue] + 1);
+    }
+    
+    NSInteger reusedFiles = 0;
+    NSInteger totalReuses = 0;
+    for (NSString *ref in referenceCount) {
+        NSInteger count = [referenceCount[ref] integerValue];
+        if (count > 1) {
+            reusedFiles++;
+            totalReuses += count;
+        }
+    }
+    
+    stats[@"reusedSavedChartDataFiles"] = @(reusedFiles);
+    stats[@"totalReuseInstances"] = @(totalReuses);
+    
+    return [stats copy];
+}
+
 
 @end

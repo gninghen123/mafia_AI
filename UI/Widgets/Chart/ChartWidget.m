@@ -17,7 +17,7 @@
 #import "Quartz/Quartz.h"
 #import "SharedXCoordinateContext.h"  // ✅ AGGIUNTO: Import necessario nel .m
 #import "ChartWidget+ImageExport.h"
-
+#import "chartpatternmanager.h"
 
 #pragma mark - Smart Symbol Input Parameters
 
@@ -1254,7 +1254,14 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 #pragma mark - Chain Notifications
-
+- (void)handleChainAction:(NSString *)action withData:(id)data fromWidget:(BaseWidget *)sender {
+    if ([action isEqualToString:@"loadChartPattern"]) {
+        [self loadChartPatternFromChainData:data fromWidget:sender];
+    } else {
+        // ✅ IMPORTANTE: Chiama super per gestire altre azioni future
+        [super handleChainAction:action withData:data fromWidget:sender];
+    }
+}
 
 
 - (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
@@ -2250,5 +2257,172 @@ extern NSString *const DataHubDataLoadedNotification;
     
     NSLog(@"✅ ChartWidget: Symbol coordination completed for '%@'", currentSymbol);
 }
+
+
+#pragma mark - Chart Pattern Loading (NUOVO)
+
+- (void)loadChartPatternFromChainData:(NSDictionary *)data fromWidget:(BaseWidget *)sender {
+    // Validazione dati in ingresso
+    if (!data || ![data isKindOfClass:[NSDictionary class]]) {
+        NSLog(@"❌ ChartWidget: Invalid chart pattern data received from %@", NSStringFromClass([sender class]));
+        return;
+    }
+    
+    // Estrazione dati del pattern
+    NSString *patternID = data[@"patternID"];
+    NSString *symbol = data[@"symbol"];
+    NSString *savedDataReference = data[@"savedDataReference"];
+    NSDate *patternStartDate = data[@"patternStartDate"];
+    NSDate *patternEndDate = data[@"patternEndDate"];
+    NSNumber *timeframeNumber = data[@"timeframe"];
+    NSString *patternType = data[@"patternType"];
+    
+    // Validazione dati essenziali
+    if (!patternID || !savedDataReference || !symbol) {
+        NSLog(@"❌ ChartWidget: Missing essential pattern data - patternID:%@ savedDataRef:%@ symbol:%@",
+              patternID, savedDataReference, symbol);
+        return;
+    }
+    
+    NSLog(@"🔗 ChartWidget: Loading chart pattern '%@' (%@) from %@",
+          patternType ?: @"Unknown", symbol, NSStringFromClass([sender class]));
+    
+    // Carica SavedChartData utilizzando ChartPatternManager
+    ChartPatternManager *patternManager = [ChartPatternManager shared];
+    NSString *directory = [ChartWidget savedChartDataDirectory];
+    NSString *filename = [NSString stringWithFormat:@"%@.chartdata", savedDataReference];
+    NSString *filePath = [directory stringByAppendingPathComponent:filename];
+    
+    SavedChartData *savedData = [SavedChartData loadFromFile:filePath];
+    if (!savedData || !savedData.isDataValid) {
+        NSLog(@"❌ ChartWidget: Failed to load SavedChartData for pattern %@", patternID);
+        [self showChartPatternLoadError:@"Could not load chart data for this pattern"];
+        return;
+    }
+    
+    // ✅ CARICA I DATI NEL CHART WIDGET
+    [self loadChartPatternWithSavedData:savedData
+                        patternStartDate:patternStartDate
+                          patternEndDate:patternEndDate
+                             patternType:patternType
+                              fromSender:sender];
+}
+
+- (void)loadChartPatternWithSavedData:(SavedChartData *)savedData
+                      patternStartDate:(NSDate *)patternStartDate
+                        patternEndDate:(NSDate *)patternEndDate
+                           patternType:(NSString *)patternType
+                            fromSender:(BaseWidget *)sender {
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // 1️⃣ ATTIVA STATIC MODE per prevenire reload automatico
+        self.isStaticMode = YES;
+        [self updateStaticModeUI];
+        
+        // 2️⃣ AGGIORNA SIMBOLO E TIMEFRAME
+        self.currentSymbol = savedData.symbol;
+        self.currentTimeframe = savedData.timeframe;
+        
+        // Update UI controls
+        if (self.symbolTextField) {
+            self.symbolTextField.stringValue = savedData.symbol;
+        }
+        if (self.timeframeSegmented) {
+            self.timeframeSegmented.selectedSegment = savedData.timeframe;
+        }
+        
+        // 3️⃣ CARICA I DATI STORICI
+        [self updateWithHistoricalBars:savedData.historicalBars];
+        
+        // 4️⃣ IMPOSTA RANGE VISIBILE SULLE DATE DEL PATTERN
+        if (patternStartDate && patternEndDate) {
+            [self setVisibleRangeToPatternDates:patternStartDate
+                                        endDate:patternEndDate
+                                      chartData:savedData.historicalBars];
+        }
+        
+        // 5️⃣ FEEDBACK ALL'UTENTE
+        NSString *senderType = NSStringFromClass([sender class]);
+        NSString *feedbackMessage = [NSString stringWithFormat:@"📊 Loaded %@ pattern (%@)",
+                                    patternType ?: @"Chart Pattern", savedData.symbol];
+        [self showChainFeedback:feedbackMessage];
+        
+        NSLog(@"✅ ChartWidget: Successfully loaded chart pattern '%@' for %@ from %@",
+              patternType, savedData.symbol, senderType);
+    });
+}
+
+- (void)setVisibleRangeToPatternDates:(NSDate *)startDate
+                              endDate:(NSDate *)endDate
+                            chartData:(NSArray<HistoricalBarModel *> *)chartData {
+    
+    if (!startDate || !endDate || !chartData || chartData.count == 0) {
+        NSLog(@"⚠️ ChartWidget: Cannot set pattern range - invalid parameters");
+        return;
+    }
+    
+    // Trova gli indici corrispondenti alle date del pattern
+    NSInteger startIndex = -1, endIndex = -1;
+    
+    for (NSInteger i = 0; i < chartData.count; i++) {
+        HistoricalBarModel *bar = chartData[i];
+        
+        // Trova primo bar >= startDate
+        if (startIndex == -1 && [bar.date compare:startDate] != NSOrderedAscending) {
+            startIndex = i;
+        }
+        
+        // Trova ultimo bar <= endDate
+        if ([bar.date compare:endDate] != NSOrderedDescending) {
+            endIndex = i;
+        }
+    }
+    
+    // Validazione indici trovati
+    if (startIndex == -1 || endIndex == -1 || startIndex > endIndex) {
+        NSLog(@"⚠️ ChartWidget: Pattern dates outside chart data range - using full range");
+        return;
+    }
+    
+    // Aggiungi padding per migliore visualizzazione (10% su ogni lato)
+    NSInteger totalBars = chartData.count;
+    NSInteger patternBars = endIndex - startIndex + 1;
+    NSInteger padding = MAX(1, patternBars / 10);
+    
+    NSInteger paddedStartIndex = MAX(0, startIndex - padding);
+    NSInteger paddedEndIndex = MIN(totalBars - 1, endIndex + padding);
+    
+    // Applica il range visibile
+    self.visibleStartIndex = paddedStartIndex;
+    self.visibleEndIndex = paddedEndIndex;
+    
+    NSLog(@"📊 ChartWidget: Set visible range to pattern dates - bars [%ld-%ld] with padding (pattern: [%ld-%ld])",
+          (long)paddedStartIndex, (long)paddedEndIndex, (long)startIndex, (long)endIndex);
+    
+    // Aggiorna viewport e sincronizza panel
+    [self updateViewport];
+    [self synchronizePanels];
+}
+
+#pragma mark - Error Handling (NUOVO)
+
+- (void)showChartPatternLoadError:(NSString *)errorMessage {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"Chart Pattern Load Error";
+        alert.informativeText = errorMessage ?: @"An unknown error occurred while loading the chart pattern.";
+        alert.alertStyle = NSAlertStyleWarning;
+        [alert addButtonWithTitle:@"OK"];
+        
+        // Mostra l'alert sulla finestra del chart widget se disponibile
+        if (self.view.window) {
+            [alert beginSheetModalForWindow:self.view.window completionHandler:nil];
+        } else {
+            [alert runModal];
+        }
+    });
+}
+
+
 
 @end

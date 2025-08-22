@@ -373,15 +373,54 @@ static NSString * const kDateColumn = @"Date";
 #pragma mark - NSTableViewDelegate
 
 - (void)tableViewSelectionDidChange:(NSNotification *)notification {
-    // Update button states based on selection
+    // ✅ ESISTENTE: Update button states based on selection
     BOOL hasSelection = self.patternsTableView.selectedRow != -1;
     BOOL hasTypeSelected = self.selectedFilterType != nil;
     
     self.renameTypeButton.enabled = hasTypeSelected;
     self.deleteTypeButton.enabled = hasTypeSelected;
+    
+    // 🆕 NUOVO: Send selected pattern to chain if active
+    if (hasSelection && self.chainActive) {
+        NSInteger selectedRow = self.patternsTableView.selectedRow;
+        if (selectedRow < self.filteredPatterns.count) {
+            ChartPatternModel *pattern = self.filteredPatterns[selectedRow];
+            [self sendChartPatternToChain:pattern];
+        }
+    }
 }
 
-
+- (void)sendChartPatternToChain:(ChartPatternModel *)pattern {
+    if (!pattern || !self.chainActive) {
+        NSLog(@"🔗 ChartPatternLibraryWidget: Cannot send pattern - pattern:%@ chainActive:%@",
+              pattern ? @"YES" : @"NO", self.chainActive ? @"YES" : @"NO");
+        return;
+    }
+    
+    // Prepara i dati del pattern per la notifica chain
+    NSDictionary *patternData = @{
+        @"patternID": pattern.patternID,
+        @"symbol": pattern.symbol ?: @"UNKNOWN",
+        @"savedDataReference": pattern.savedDataReference,
+        @"patternStartDate": pattern.patternStartDate,
+        @"patternEndDate": pattern.patternEndDate,
+        @"timeframe": @(pattern.timeframe),
+        @"patternType": pattern.patternType
+    };
+    
+    // Invia via chain system
+    [self sendChainAction:@"loadChartPattern" withData:patternData];
+    
+    // Log per debugging
+    NSLog(@"🔗 ChartPatternLibraryWidget: Sent pattern '%@' (%@) to %@ chain",
+          pattern.patternType,
+          pattern.symbol,
+          [self nameForChainColor:self.chainColor]);
+    
+    // Feedback visivo
+    NSString *feedbackMessage = [NSString stringWithFormat:@"📊 Sent %@ pattern to chain", pattern.patternType];
+    [self showChainFeedback:feedbackMessage];
+}
 
 
 
@@ -427,23 +466,28 @@ static NSString * const kDateColumn = @"Date";
     return pattern.symbol ? @[pattern.symbol] : @[];
 }
 
+// ✅ OVERRIDE: Fornisce tutti i simboli visibili nella tabella
 - (NSArray<NSString *> *)contextualSymbols {
-    NSMutableArray<NSString *> *symbols = [NSMutableArray array];
+    NSMutableSet *symbolsSet = [NSMutableSet set];
+    
     for (ChartPatternModel *pattern in self.filteredPatterns) {
         if (pattern.symbol) {
-            [symbols addObject:pattern.symbol];
+            [symbolsSet addObject:pattern.symbol];
         }
     }
-    return [symbols copy];
+    
+    return [symbolsSet.allObjects sortedArrayUsingSelector:@selector(compare:)];
 }
 
+// ✅ OVERRIDE: Titolo context menu dinamico
 - (NSString *)contextMenuTitle {
     NSInteger selectedRow = self.patternsTableView.selectedRow;
-    if (selectedRow != -1 && selectedRow < self.filteredPatterns.count) {
-        ChartPatternModel *pattern = self.filteredPatterns[selectedRow];
-        return [NSString stringWithFormat:@"Pattern: %@", pattern.patternType];
+    if (selectedRow == -1 || selectedRow >= self.filteredPatterns.count) {
+        return @"Pattern Library";
     }
-    return @"Pattern Library";
+    
+    ChartPatternModel *pattern = self.filteredPatterns[selectedRow];
+    return [NSString stringWithFormat:@"%@ (%@)", pattern.patternType, pattern.symbol ?: @"Unknown"];
 }
 
 #pragma mark - Pattern Type Management
@@ -602,11 +646,51 @@ static NSString * const kDateColumn = @"Date";
     
     ChartPatternModel *pattern = self.filteredPatterns[selectedRow];
     
+    // 🆕 ENHANCED: Informazioni più dettagliate
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    formatter.dateStyle = NSDateFormatterMediumStyle;
+    formatter.timeStyle = NSDateFormatterShortStyle;
+    
+    NSString *detailsText = [NSString stringWithFormat:@""
+        "Pattern Type: %@\n"
+        "Symbol: %@\n"
+        "Timeframe: %@\n"
+        "Pattern Range: %@ to %@\n"
+        "Pattern Bars: %ld\n"
+        "Total Bars: %ld\n"
+        "Created: %@\n"
+        "Pattern ID: %@\n"
+        "%@%@",
+        pattern.patternType,
+        pattern.symbol ?: @"Unknown",
+        [self timeframeStringForBarTimeframe:pattern.timeframe],
+        [formatter stringFromDate:pattern.patternStartDate],
+        [formatter stringFromDate:pattern.patternEndDate],
+        (long)pattern.patternBarCount,
+        (long)pattern.totalBarCount,
+        [formatter stringFromDate:pattern.creationDate],
+        pattern.patternID,
+        pattern.additionalNotes ? @"\nNotes: " : @"",
+        pattern.additionalNotes ?: @""
+    ];
+    
     NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Pattern Details";
-    alert.informativeText = pattern.displayInfo;
+    alert.messageText = [NSString stringWithFormat:@"Pattern Details: %@", pattern.patternType];
+    alert.informativeText = detailsText;
     [alert addButtonWithTitle:@"OK"];
-    [alert runModal];
+    
+    // 🆕 NUOVO: Opzione per inviare alla chain
+    if (self.chainActive) {
+        NSString *chainColorName = [self nameForChainColor:self.chainColor];
+        [alert addButtonWithTitle:[NSString stringWithFormat:@"Send to %@ Chain", chainColorName]];
+    }
+    
+    NSModalResponse response = [alert runModal];
+    
+    // Se ha scelto di inviare alla chain
+    if (response == NSAlertSecondButtonReturn && self.chainActive) {
+        [self sendChartPatternToChain:pattern];
+    }
 }
 
 #pragma mark - Action Methods
@@ -640,24 +724,47 @@ static NSString * const kDateColumn = @"Date";
     NSInteger selectedRow = self.patternsTableView.selectedRow;
     if (selectedRow == -1 || selectedRow >= self.filteredPatterns.count) return;
     
-    // Pattern-specific actions
-    NSMenuItem *loadItem = [[NSMenuItem alloc] initWithTitle:@"📊 Load Pattern in Chart"
-                                                      action:@selector(loadSelectedPatternToChain)
-                                               keyEquivalent:@""];
-    loadItem.target = self;
-    [menu addItem:loadItem];
+    ChartPatternModel *pattern = self.filteredPatterns[selectedRow];
     
-    NSMenuItem *detailsItem = [[NSMenuItem alloc] initWithTitle:@"ℹ️ Show Pattern Details..."
-                                                         action:@selector(showPatternDetailsDialog)
-                                                  keyEquivalent:@""];
+    // Separator prima delle azioni pattern
+    [menu addItem:[NSMenuItem separatorItem]];
+    
+    // 📊 Send Pattern to Chain (se chain attiva)
+    if (self.chainActive) {
+        NSString *chainColorName = [self nameForChainColor:self.chainColor];
+        NSMenuItem *sendPatternItem = [[NSMenuItem alloc]
+            initWithTitle:[NSString stringWithFormat:@"📊 Send Pattern to %@ Chain", chainColorName]
+                   action:@selector(contextMenuSendPatternToChain:)
+            keyEquivalent:@""];
+        sendPatternItem.target = self;
+        sendPatternItem.representedObject = pattern;
+        [menu addItem:sendPatternItem];
+    }
+    
+    // ℹ️ Pattern Details
+    NSMenuItem *detailsItem = [[NSMenuItem alloc]
+        initWithTitle:@"ℹ️ Show Pattern Details..."
+               action:@selector(showPatternDetailsDialog)
+        keyEquivalent:@""];
     detailsItem.target = self;
     [menu addItem:detailsItem];
     
-    NSMenuItem *deleteItem = [[NSMenuItem alloc] initWithTitle:@"🗑️ Delete Pattern..."
-                                                        action:@selector(deleteSelectedPatternWithConfirmation)
-                                                 keyEquivalent:@""];
+    // 🗑️ Delete Pattern
+    NSMenuItem *deleteItem = [[NSMenuItem alloc]
+        initWithTitle:@"🗑️ Delete Pattern..."
+               action:@selector(deleteSelectedPatternWithConfirmation)
+        keyEquivalent:@""];
     deleteItem.target = self;
     [menu addItem:deleteItem];
+}
+
+- (IBAction)contextMenuSendPatternToChain:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    ChartPatternModel *pattern = menuItem.representedObject;
+    
+    if (pattern) {
+        [self sendChartPatternToChain:pattern];
+    }
 }
 
 @end

@@ -15,6 +15,13 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, nullable) NSString *currentSymbol; // For alerts
 @property (nonatomic, strong, nullable) NSString *panelType; // "security", "volume", etc.
 @property (nonatomic, assign) BOOL useLogScale;  // 🆕 NEW: Scala logaritmica per asse Y
+#pragma mark - Performance Cache
+@property (nonatomic, assign) double cachedLinearRange;     // yRangeMax - yRangeMin
+@property (nonatomic, assign) double cachedLogMin;          // log(yRangeMin)
+@property (nonatomic, assign) double cachedLogMax;          // log(yRangeMax)
+@property (nonatomic, assign) double cachedLogRangeInv;     // 1.0 / (logMax - logMin)
+@property (nonatomic, assign) CGFloat cachedUsableHeight;   // panelHeight - 20.0
+@property (nonatomic, assign) BOOL cacheValid;              // Flag per validità cache
 
 #pragma mark - Y Coordinate Conversion Methods
 - (CGFloat)screenYForValue:(double)value;

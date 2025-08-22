@@ -7,6 +7,8 @@
 
 #import "BaseWidget.h"
 #import "ChartPatternModel.h"
+#import "SavedChartData.h"         // ✅ Import completo invece di forward declaration
+#import "ChartWidget+SaveData.h"   // ✅ Import per accedere ai metodi di classe
 
 @class ChartPatternManager;
 
@@ -29,7 +31,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSView *toolbarView;
 
 /// Action buttons
-@property (nonatomic, strong) NSButton *newTypeButton;
+@property (nonatomic, strong) NSButton *createTypeButton;    // ✅ CORRETTO: era newTypeButton (violava Cocoa naming)
 @property (nonatomic, strong) NSButton *renameTypeButton;
 @property (nonatomic, strong) NSButton *deleteTypeButton;
 @property (nonatomic, strong) NSButton *refreshButton;
@@ -88,7 +90,7 @@ NS_ASSUME_NONNULL_BEGIN
 #pragma mark - Action Methods
 
 - (IBAction)patternTypeFilterChanged:(id)sender;
-- (IBAction)newTypeButtonClicked:(id)sender;
+- (IBAction)createTypeButtonClicked:(id)sender;    // ✅ CORRETTO: era newTypeButtonClicked
 - (IBAction)renameTypeButtonClicked:(id)sender;
 - (IBAction)deleteTypeButtonClicked:(id)sender;
 - (IBAction)refreshButtonClicked:(id)sender;

@@ -9,6 +9,10 @@
 #import "ChartPatternManager.h"
 #import "DataHub.h"
 #import "DataHub+ChartPatterns.h"
+// ✅ AGGIUNTI: Import necessari per risolvere gli errori
+#import "SavedChartData.h"
+#import "ChartWidget.h"
+#import "ChartWidget+SaveData.h"
 
 // Table columns
 static NSString * const kPatternTypeColumn = @"PatternType";
@@ -60,13 +64,13 @@ static NSString * const kDateColumn = @"Date";
     self.patternTypeFilter.action = @selector(patternTypeFilterChanged:);
     [self.toolbarView addSubview:self.patternTypeFilter];
     
-    // Action buttons
-    self.newTypeButton = [self createToolbarButtonWithTitle:@"+ Type" action:@selector(newTypeButtonClicked:)];
+    // Action buttons - ✅ CORRETTO: createTypeButton invece di newTypeButton
+    self.createTypeButton = [self createToolbarButtonWithTitle:@"+ Type" action:@selector(createTypeButtonClicked:)];
     self.renameTypeButton = [self createToolbarButtonWithTitle:@"Rename" action:@selector(renameTypeButtonClicked:)];
     self.deleteTypeButton = [self createToolbarButtonWithTitle:@"Delete" action:@selector(deleteTypeButtonClicked:)];
     self.refreshButton = [self createToolbarButtonWithTitle:@"Refresh" action:@selector(refreshButtonClicked:)];
     
-    [self.toolbarView addSubview:self.newTypeButton];
+    [self.toolbarView addSubview:self.createTypeButton];  // ✅ CORRETTO
     [self.toolbarView addSubview:self.renameTypeButton];
     [self.toolbarView addSubview:self.deleteTypeButton];
     [self.toolbarView addSubview:self.refreshButton];
@@ -156,12 +160,12 @@ static NSString * const kDateColumn = @"Date";
         [self.patternTypeFilter.centerYAnchor constraintEqualToAnchor:self.toolbarView.centerYAnchor],
         [self.patternTypeFilter.widthAnchor constraintEqualToConstant:120],
         
-        // Buttons
-        [self.newTypeButton.leadingAnchor constraintEqualToAnchor:self.patternTypeFilter.trailingAnchor constant:10],
-        [self.newTypeButton.centerYAnchor constraintEqualToAnchor:self.toolbarView.centerYAnchor],
-        [self.newTypeButton.widthAnchor constraintEqualToConstant:60],
+        // Buttons - ✅ CORRETTO: createTypeButton invece di newTypeButton
+        [self.createTypeButton.leadingAnchor constraintEqualToAnchor:self.patternTypeFilter.trailingAnchor constant:10],
+        [self.createTypeButton.centerYAnchor constraintEqualToAnchor:self.toolbarView.centerYAnchor],
+        [self.createTypeButton.widthAnchor constraintEqualToConstant:60],
         
-        [self.renameTypeButton.leadingAnchor constraintEqualToAnchor:self.newTypeButton.trailingAnchor constant:5],
+        [self.renameTypeButton.leadingAnchor constraintEqualToAnchor:self.createTypeButton.trailingAnchor constant:5],
         [self.renameTypeButton.centerYAnchor constraintEqualToAnchor:self.toolbarView.centerYAnchor],
         [self.renameTypeButton.widthAnchor constraintEqualToConstant:60],
         
@@ -214,8 +218,8 @@ static NSString * const kDateColumn = @"Date";
     [self.patternTypeFilter addItemWithTitle:@"All Types"];
     
     // Add pattern types
-    for (NSString *patternType in self.patternTypes) {
-        [self.patternTypeFilter addItemWithTitle:patternType];
+    for (NSString *type in self.patternTypes) {
+        [self.patternTypeFilter addItemWithTitle:type];
     }
     
     // Select current filter
@@ -229,18 +233,11 @@ static NSString * const kDateColumn = @"Date";
 - (void)filterPatternsByType:(nullable NSString *)patternType {
     self.selectedFilterType = patternType;
     
-    if (!patternType) {
-        // Show all patterns
-        self.filteredPatterns = self.allPatterns;
+    if (patternType) {
+        NSPredicate *predicate = [NSPredicate predicateWithFormat:@"patternType == %@", patternType];
+        self.filteredPatterns = [self.allPatterns filteredArrayUsingPredicate:predicate];
     } else {
-        // Filter by type
-        NSMutableArray *filtered = [NSMutableArray array];
-        for (ChartPatternModel *pattern in self.allPatterns) {
-            if ([pattern.patternType isEqualToString:patternType]) {
-                [filtered addObject:pattern];
-            }
-        }
-        self.filteredPatterns = [filtered copy];
+        self.filteredPatterns = self.allPatterns;
     }
     
     [self.patternsTableView reloadData];
@@ -248,15 +245,14 @@ static NSString * const kDateColumn = @"Date";
 }
 
 - (void)updateInfoLabel {
-    NSString *info;
+    NSString *infoText;
     if (self.selectedFilterType) {
-        info = [NSString stringWithFormat:@"%ld patterns (%@)",
-                (long)self.filteredPatterns.count, self.selectedFilterType];
+        infoText = [NSString stringWithFormat:@"%ld patterns (%@)",
+                   (long)self.filteredPatterns.count, self.selectedFilterType];
     } else {
-        info = [NSString stringWithFormat:@"%ld patterns total",
-                (long)self.filteredPatterns.count];
+        infoText = [NSString stringWithFormat:@"%ld patterns total", (long)self.filteredPatterns.count];
     }
-    self.infoLabel.stringValue = info;
+    self.infoLabel.stringValue = infoText;
 }
 
 #pragma mark - NSTableViewDataSource
@@ -265,7 +261,7 @@ static NSString * const kDateColumn = @"Date";
     return self.filteredPatterns.count;
 }
 
-- (nullable id)tableView:(NSTableView *)tableView objectValueForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
+- (id)tableView:(NSTableView *)tableView objectValueForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
     if (row >= self.filteredPatterns.count) return nil;
     
     ChartPatternModel *pattern = self.filteredPatterns[row];
@@ -274,6 +270,7 @@ static NSString * const kDateColumn = @"Date";
     if ([identifier isEqualToString:kPatternTypeColumn]) {
         return pattern.patternType;
     } else if ([identifier isEqualToString:kSymbolColumn]) {
+        // ✅ CORRETTO: Ora pattern.symbol è accessibile grazie all'import di SavedChartData.h
         return pattern.symbol ?: @"N/A";
     } else if ([identifier isEqualToString:kBarsColumn]) {
         return @(pattern.barCount);
@@ -360,7 +357,7 @@ static NSString * const kDateColumn = @"Date";
         return;
     }
     
-    // Send to chain with symbol
+    // ✅ CORRETTO: Ora savedData.symbol è accessibile grazie all'import
     NSArray<NSString *> *symbols = @[savedData.symbol];
     [self sendSymbolsToChainWithColor:symbols color:[NSColor systemBlueColor]];
     
@@ -524,6 +521,7 @@ static NSString * const kDateColumn = @"Date";
     if (deleteChartData) {
         SavedChartData *savedData = [pattern loadConnectedSavedData];
         if (savedData) {
+            // ✅ CORRETTO: Ora [ChartWidget savedChartDataDirectory] è accessibile
             NSString *directory = [ChartWidget savedChartDataDirectory];
             NSString *filename = [NSString stringWithFormat:@"%@.chartdata", pattern.savedDataReference];
             NSString *filePath = [directory stringByAppendingPathComponent:filename];
@@ -568,7 +566,8 @@ static NSString * const kDateColumn = @"Date";
     [self filterPatternsByType:filterType];
 }
 
-- (IBAction)newTypeButtonClicked:(id)sender {
+// ✅ CORRETTO: createTypeButtonClicked invece di newTypeButtonClicked
+- (IBAction)createTypeButtonClicked:(id)sender {
     [self showCreatePatternTypeDialog];
 }
 

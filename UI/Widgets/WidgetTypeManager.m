@@ -18,6 +18,7 @@
 #import "TickChartWidget.h"
 #import "StorageManagementWidget.h"
 #import "LegacyDataConverterWidget.h"
+#import "ChartPatternLibraryWidget.h"  // ✅ AGGIUNTO: Import per ChartPatternLibraryWidget
 
 
 @interface WidgetTypeManager ()
@@ -50,7 +51,7 @@
     self.widgetCategories = @{
         @"Charts": @[
             @"Chart Widget",
-            @"MultiChart Widget",  
+            @"MultiChart Widget",
             @"Candlestick Chart",
             @"Line Chart",
             @"Bar Chart",
@@ -75,7 +76,8 @@
             @"Alerts",
             @"Strategy Tester",
             @"Correlation Matrix",
-            @"Options Chain"
+            @"Options Chain",
+            @"Pattern Chart Library"  // ✅ AGGIUNTO: ChartPatternLibrary nella categoria Analysis
         ],
         @"Information": @[
             @"Quote",
@@ -120,14 +122,16 @@
     typeToClass[@"Tick Chart"] = [TickChartWidget class];
     typeToClass[@"API Playground"] = [APIPlaygroundWidget class];
     typeToClass[@"Chart Widget"] = [ChartWidget class];
-      typeToClass[@"Candlestick Chart"] = [ChartWidget class];
-      typeToClass[@"Line Chart"] = [ChartWidget class];
-      typeToClass[@"Bar Chart"] = [ChartWidget class];
-      typeToClass[@"Market Depth"] = [ChartWidget class];
-      typeToClass[@"Volume Profile"] = [ChartWidget class];
+    typeToClass[@"Candlestick Chart"] = [ChartWidget class];
+    typeToClass[@"Line Chart"] = [ChartWidget class];
+    typeToClass[@"Bar Chart"] = [ChartWidget class];
+    typeToClass[@"Market Depth"] = [ChartWidget class];
+    typeToClass[@"Volume Profile"] = [ChartWidget class];
     typeToClass[@"Heatmap"] = [ChartWidget class];
     typeToClass[@"Storage Management"] = [StorageManagementWidget class];
     typeToClass[@"LegacyDataConverter"] = [LegacyDataConverterWidget class];
+    typeToClass[@"Pattern Chart Library"] = [ChartPatternLibraryWidget class];  // ✅ AGGIUNTO: Mapping per ChartPatternLibraryWidget
+    
     // Map all other types to BaseWidget for now
     for (NSArray *types in self.widgetCategories.allValues) {
         for (NSString *type in types) {
@@ -160,6 +164,7 @@
         @"P&L Summary": @"dollarsign.circle",
         @"API Playground": @"briefcase",
         @"Storage Management": @"externaldrive.fill",
+        @"Pattern Chart Library": @"square.grid.3x3.bottomleft.fill",  // ✅ AGGIUNTO: Icona per ChartPatternLibrary
         
         @"Technical Indicators": @"waveform.path.ecg",
         @"Scanner": @"magnifyingglass",
@@ -169,59 +174,33 @@
         @"Options Chain": @"list.bullet.indent",
         
         @"General Market": @"list.bullet.rectangle",
-        @"Quote": @"dollarsign.circle",
-        @"Watchlist": @"star.fill",
+        @"Quote": @"textformat.123",
+        @"Watchlist": @"list.bullet.rectangle",
         @"News Feed": @"newspaper",
         @"Economic Calendar": @"calendar",
-        @"Market Overview": @"globe",
+        @"Market Overview": @"chart.line.uptrend.xyaxis",
         @"Symbol Info": @"info.circle",
-        @"Time & Sales": @"list.dash",
+        @"Time & Sales": @"clock",
         
-        @"Calculator": @"plus.slash.minus",
+        @"Connection Status": @"wifi",
+        @"Calculator": @"plusminus",
         @"Notes": @"note.text",
         @"Risk Manager": @"shield",
         @"Position Sizer": @"ruler",
-        @"Market Clock": @"clock.fill",
-        @"Performance Analytics": @"chart.pie",
-        @"Connection Status": @"network"
+        @"Market Clock": @"clock",
+        @"Performance Analytics": @"chart.bar.xaxis",
+        @"LegacyDataConverter": @"arrow.up.arrow.down.circle"
     };
 }
 
 #pragma mark - Public Methods
 
-- (NSString *)correctNameForType:(NSString *)type {
-    // Cerca il nome corretto (case-sensitive) per il tipo fornito
-    NSArray *availableTypes = [self availableWidgetTypes];
-    
-    // Prima prova una corrispondenza esatta
-    if ([availableTypes containsObject:type]) {
-        return type;
-    }
-    
-    // Poi prova una corrispondenza case-insensitive
-    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"SELF ==[cd] %@", type];
-    NSArray *matches = [availableTypes filteredArrayUsingPredicate:predicate];
-    
-    if (matches.count > 0) {
-        return matches[0]; // Restituisce la prima corrispondenza con la giusta capitalizzazione
-    }
-    
-    // Se non trovato, restituisce il tipo originale
-    return type;
-}
-
-- (Class)classForWidgetType:(NSString *)type {
-    // Questo è un alias per widgetClassForType: per mantenere compatibilità
-    return [self widgetClassForType:type];
-}
 - (NSArray<NSString *> *)availableWidgetTypes {
-    NSMutableArray *allTypes = [NSMutableArray array];
-    for (NSArray *types in self.widgetCategories.allValues) {
-        [allTypes addObjectsFromArray:types];
+    NSMutableArray *types = [NSMutableArray array];
+    for (NSArray *categoryTypes in self.widgetCategories.allValues) {
+        [types addObjectsFromArray:categoryTypes];
     }
-    NSArray *sortedTypes = [allTypes sortedArrayUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
-    
-    return sortedTypes;
+    return [types copy];
 }
 
 - (NSArray<NSString *> *)widgetTypesForCategory:(NSString *)category {
@@ -233,13 +212,28 @@
 }
 
 - (Class)widgetClassForType:(NSString *)type {
-    Class widgetClass = self.widgetTypeToClass[type] ?: [BaseWidget class];
-    NSLog(@"widgetClassForType '%@' returning: %@", type, widgetClass);
-    return widgetClass;
+    Class widgetClass = self.widgetTypeToClass[type];
+    return widgetClass ?: [BaseWidget class];
 }
 
 - (NSString *)iconNameForWidgetType:(NSString *)type {
-    return self.widgetTypeToIcon[type] ?: @"square.dashed";
+    return self.widgetTypeToIcon[type] ?: @"questionmark.square";
+}
+
+// FIX: Aggiunti metodi mancanti utilizzati in BaseWidget.m
+- (NSString *)correctNameForType:(NSString *)type {
+    // Return the type as is if it exists in our categories
+    for (NSArray *types in self.widgetCategories.allValues) {
+        if ([types containsObject:type]) {
+            return type;
+        }
+    }
+    // If not found, return the original type
+    return type;
+}
+
+- (Class)classForWidgetType:(NSString *)type {
+    return [self widgetClassForType:type];
 }
 
 @end

@@ -2,7 +2,7 @@
 //  ChartPattern+CoreDataProperties.h
 //  mafia_AI
 //
-//  Created by fabio gattone on 21/08/25.
+//  Created by fabio gattone on 22/08/25.
 //
 //
 
@@ -18,6 +18,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nullable, nonatomic, copy) NSString *additionalNotes;
 @property (nullable, nonatomic, copy) NSDate *creationDate;
 @property (nullable, nonatomic, copy) NSString *patternID;
+@property (nullable, nonatomic, copy) NSDate *patternStartDate;
+@property (nullable, nonatomic, copy) NSDate *patternEndDate;
 @property (nullable, nonatomic, copy) NSString *patternType;
 @property (nullable, nonatomic, copy) NSString *savedDataReference;
 

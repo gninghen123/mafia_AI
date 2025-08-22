@@ -31,22 +31,33 @@ NS_ASSUME_NONNULL_BEGIN
 /// Optional user notes
 @property (nonatomic, strong, nullable) NSString *additionalNotes;
 
+#pragma mark - ✅ NEW: Pattern Time Range Properties
+
+/// Start date of the pattern within the SavedChartData
+@property (nonatomic, strong) NSDate *patternStartDate;
+
+/// End date of the pattern within the SavedChartData
+@property (nonatomic, strong) NSDate *patternEndDate;
+
 #pragma mark - Derived Properties (Readonly)
 
 /// Symbol from connected SavedChartData (readonly)
 @property (nonatomic, readonly, nullable) NSString *symbol;
 
-/// Start date from connected SavedChartData (readonly)
-@property (nonatomic, readonly, nullable) NSDate *startDate;
+/// Start date from connected SavedChartData (readonly) - DEPRECATED: Use patternStartDate instead
+@property (nonatomic, readonly, nullable) NSDate *startDate DEPRECATED_MSG_ATTRIBUTE("Use patternStartDate instead");
 
-/// End date from connected SavedChartData (readonly)
-@property (nonatomic, readonly, nullable) NSDate *endDate;
+/// End date from connected SavedChartData (readonly) - DEPRECATED: Use patternEndDate instead
+@property (nonatomic, readonly, nullable) NSDate *endDate DEPRECATED_MSG_ATTRIBUTE("Use patternEndDate instead");
 
 /// Timeframe from connected SavedChartData (readonly)
 @property (nonatomic, readonly) BarTimeframe timeframe;
 
-/// Bar count from connected SavedChartData (readonly)
-@property (nonatomic, readonly) NSInteger barCount;
+/// Bar count for the pattern time range (readonly)
+@property (nonatomic, readonly) NSInteger patternBarCount;
+
+/// Bar count from connected SavedChartData (readonly) - Full dataset
+@property (nonatomic, readonly) NSInteger totalBarCount;
 
 /// Human readable pattern display info
 @property (nonatomic, readonly) NSString *displayInfo;
@@ -54,9 +65,24 @@ NS_ASSUME_NONNULL_BEGIN
 /// Whether the connected SavedChartData exists on disk
 @property (nonatomic, readonly) BOOL hasValidSavedData;
 
+/// Whether the pattern date range is valid (startDate < endDate and within SavedChartData range)
+@property (nonatomic, readonly) BOOL hasValidDateRange;
+
 #pragma mark - Initialization
 
-/// Initialize with core properties
+/// Initialize with core properties and pattern date range
+/// @param patternType The pattern type
+/// @param savedDataReference UUID reference to SavedChartData
+/// @param startDate Start date of the pattern
+/// @param endDate End date of the pattern
+/// @param notes Optional user notes
+- (instancetype)initWithPatternType:(NSString *)patternType
+                 savedDataReference:(NSString *)savedDataReference
+                      patternStartDate:(NSDate *)startDate
+                        patternEndDate:(NSDate *)endDate
+                              notes:(nullable NSString *)notes;
+
+/// Initialize with core properties (legacy - sets pattern dates to full SavedChartData range)
 /// @param patternType The pattern type
 /// @param savedDataReference UUID reference to SavedChartData
 /// @param notes Optional user notes
@@ -74,7 +100,27 @@ NS_ASSUME_NONNULL_BEGIN
 /// @return SavedChartData object or nil if file doesn't exist
 - (nullable SavedChartData *)loadConnectedSavedData;
 
-/// Update pattern type and notes
+/// Get bars for the pattern time range only
+/// @return Array of HistoricalBarModel objects within pattern date range
+- (nullable NSArray *)getPatternBars;
+
+/// Get start and end indices for the pattern within the SavedChartData
+/// @param startIndex Output parameter for start index
+/// @param endIndex Output parameter for end index
+/// @return YES if valid indices found, NO if pattern dates are outside SavedChartData range
+- (BOOL)getPatternIndicesWithStartIndex:(NSInteger *)startIndex endIndex:(NSInteger *)endIndex;
+
+/// Update pattern type, date range and notes
+/// @param patternType New pattern type
+/// @param startDate New start date
+/// @param endDate New end date
+/// @param notes New notes
+- (void)updatePatternType:(NSString *)patternType
+           patternStartDate:(NSDate *)startDate
+             patternEndDate:(NSDate *)endDate
+                    notes:(nullable NSString *)notes;
+
+/// Update pattern type and notes (legacy - keeps existing date range)
 /// @param patternType New pattern type
 /// @param notes New notes
 - (void)updatePatternType:(NSString *)patternType notes:(nullable NSString *)notes;
@@ -82,6 +128,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// Validate that the referenced SavedChartData exists
 /// @return YES if SavedChartData file exists on disk
 - (BOOL)validateSavedDataReference;
+
+/// Validate that pattern date range is within SavedChartData bounds
+/// @return YES if pattern dates are valid and within SavedChartData range
+- (BOOL)validatePatternDateRange;
 
 #pragma mark - Serialization
 

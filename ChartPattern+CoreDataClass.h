@@ -2,7 +2,7 @@
 //  ChartPattern+CoreDataClass.h
 //  mafia_AI
 //
-//  Created by fabio gattone on 21/08/25.
+//  Created by fabio gattone on 22/08/25.
 //
 //
 

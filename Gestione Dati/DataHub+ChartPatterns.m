@@ -9,12 +9,15 @@
 #import "DataHub+Private.h"
 #import "ChartPattern+CoreDataClass.h"
 #import "ChartWidget+SaveData.h"
+#import "SavedChartData.h"
 
 // UserDefaults key for storing user-added pattern types
 static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
 
 @interface DataHub (ChartPatternsPrivate)
 - (BOOL)isStringLikelyUUID:(NSString *)string;
+- (ChartPatternModel *)patternModelFromCoreData:(ChartPattern *)coreDataPattern;
+- (void)updateCoreDataPattern:(ChartPattern *)coreDataPattern fromModel:(ChartPatternModel *)model;
 @end
 
 @implementation DataHub (ChartPatterns)
@@ -23,6 +26,8 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
 
 - (nullable ChartPatternModel *)createPatternWithType:(NSString *)patternType
                                    savedDataReference:(NSString *)savedDataRef
+                                       patternStartDate:(NSDate *)startDate
+                                         patternEndDate:(NSDate *)endDate
                                                 notes:(nullable NSString *)notes {
     
     // Validation
@@ -36,6 +41,11 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
         return nil;
     }
     
+    if (![self validatePatternDateRange:startDate endDate:endDate forSavedDataReference:savedDataRef]) {
+        NSLog(@"❌ DataHub: Invalid pattern date range for savedDataRef: %@", savedDataRef);
+        return nil;
+    }
+    
     // Create Core Data entity
     ChartPattern *coreDataPattern = [NSEntityDescription insertNewObjectForEntityForName:@"ChartPattern"
                                                                   inManagedObjectContext:self.mainContext];
@@ -44,6 +54,10 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
     coreDataPattern.savedDataReference = savedDataRef;
     coreDataPattern.creationDate = [NSDate date];
     coreDataPattern.additionalNotes = notes;
+    
+    // Set pattern date range
+    coreDataPattern.patternStartDate = startDate;
+    coreDataPattern.patternEndDate = endDate;
     
     // Save to Core Data
     [self saveContext];
@@ -54,8 +68,8 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
     // Add pattern type to known types if new
     [self addPatternType:patternType];
     
-    NSLog(@"✅ DataHub: Created pattern %@ [%@] with savedDataRef %@",
-          patternType, patternModel.patternID, savedDataRef);
+    NSLog(@"✅ DataHub: Created pattern %@ [%@] with savedDataRef %@ and date range %@ to %@",
+          patternType, patternModel.patternID, savedDataRef, startDate, endDate);
     
     // Post notification
     [[NSNotificationCenter defaultCenter] postNotificationName:@"DataHubChartPatternCreated"
@@ -63,6 +77,31 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
                                                       userInfo:@{@"pattern": patternModel}];
     
     return patternModel;
+}
+
+- (nullable ChartPatternModel *)createPatternWithType:(NSString *)patternType
+                                   savedDataReference:(NSString *)savedDataRef
+                                                notes:(nullable NSString *)notes {
+    
+    // Load SavedChartData to get full date range
+    NSString *directory = [ChartWidget savedChartDataDirectory];
+    NSString *filename = [NSString stringWithFormat:@"%@.chartdata", savedDataRef];
+    NSString *filePath = [directory stringByAppendingPathComponent:filename];
+    SavedChartData *savedData = [SavedChartData loadFromFile:filePath];
+    
+    if (!savedData) {
+        NSLog(@"❌ DataHub: Cannot load SavedChartData for reference: %@", savedDataRef);
+        return nil;
+    }
+    
+    NSDate *startDate = savedData.startDate ?: [NSDate date];
+    NSDate *endDate = savedData.endDate ?: [NSDate date];
+    
+    return [self createPatternWithType:patternType
+                    savedDataReference:savedDataRef
+                        patternStartDate:startDate
+                          patternEndDate:endDate
+                               notes:notes];
 }
 
 - (NSArray<ChartPatternModel *> *)getAllPatterns {
@@ -123,6 +162,32 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
     return [symbolPatterns copy];
 }
 
+- (NSArray<ChartPatternModel *> *)getPatternsForSymbol:(NSString *)symbol
+                                             startDate:(NSDate *)startDate
+                                               endDate:(NSDate *)endDate {
+    
+    NSArray<ChartPatternModel *> *symbolPatterns = [self getPatternsForSymbol:symbol];
+    NSMutableArray<ChartPatternModel *> *filteredPatterns = [NSMutableArray array];
+    
+    for (ChartPatternModel *pattern in symbolPatterns) {
+        // Check if pattern overlaps with requested date range
+        BOOL overlaps = NO;
+        
+        if (pattern.patternStartDate && pattern.patternEndDate) {
+            // Pattern has specific date range - check for overlap
+            BOOL startsBeforeEnd = [pattern.patternStartDate compare:endDate] != NSOrderedDescending;
+            BOOL endsAfterStart = [pattern.patternEndDate compare:startDate] != NSOrderedAscending;
+            overlaps = startsBeforeEnd && endsAfterStart;
+        }
+        
+        if (overlaps) {
+            [filteredPatterns addObject:pattern];
+        }
+    }
+    
+    return [filteredPatterns copy];
+}
+
 - (nullable ChartPatternModel *)getPatternWithID:(NSString *)patternID {
     NSFetchRequest *request = [ChartPattern fetchRequest];
     request.predicate = [NSPredicate predicateWithFormat:@"patternID == %@", patternID];
@@ -157,8 +222,7 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
     }
     
     ChartPattern *coreDataPattern = results.firstObject;
-    coreDataPattern.patternType = pattern.patternType;
-    coreDataPattern.additionalNotes = pattern.additionalNotes;
+    [self updateCoreDataPattern:coreDataPattern fromModel:pattern];
     
     [self saveContext];
     
@@ -251,7 +315,16 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
     return @[
         @"IUESEI",
         @"PD model",
-        @"Catapulta"
+        @"Catapulta",
+        @"Head & Shoulders",
+        @"Cup & Handle",
+        @"Breakout",
+        @"Flag",
+        @"Pennant",
+        @"Triangle",
+        @"Double Top",
+        @"Double Bottom",
+        @"Support/Resistance"
     ];
 }
 
@@ -300,6 +373,49 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
     return [[NSFileManager defaultManager] fileExistsAtPath:filePath];
 }
 
+- (BOOL)validatePatternDateRange:(NSDate *)startDate
+                         endDate:(NSDate *)endDate
+              forSavedDataReference:(NSString *)savedDataRef {
+    
+    if (!startDate || !endDate) {
+        NSLog(@"❌ DataHub: Missing pattern dates");
+        return NO;
+    }
+    
+    // Check that start < end
+    if ([startDate compare:endDate] != NSOrderedAscending) {
+        NSLog(@"❌ DataHub: Pattern start date must be before end date");
+        return NO;
+    }
+    
+    // Load SavedChartData to check bounds
+    NSString *directory = [ChartWidget savedChartDataDirectory];
+    NSString *filename = [NSString stringWithFormat:@"%@.chartdata", savedDataRef];
+    NSString *filePath = [directory stringByAppendingPathComponent:filename];
+    SavedChartData *savedData = [SavedChartData loadFromFile:filePath];
+    
+    if (!savedData) {
+        NSLog(@"❌ DataHub: Cannot load SavedChartData for validation");
+        return NO;
+    }
+    
+    // Check that pattern dates are within SavedChartData range
+    BOOL startInRange = [startDate compare:savedData.startDate] != NSOrderedAscending &&
+                       [startDate compare:savedData.endDate] != NSOrderedDescending;
+    
+    BOOL endInRange = [endDate compare:savedData.startDate] != NSOrderedAscending &&
+                     [endDate compare:savedData.endDate] != NSOrderedDescending;
+    
+    if (!startInRange || !endInRange) {
+        NSLog(@"❌ DataHub: Pattern dates outside SavedChartData range");
+        NSLog(@"   Pattern range: %@ to %@", startDate, endDate);
+        NSLog(@"   Data range: %@ to %@", savedData.startDate, savedData.endDate);
+        return NO;
+    }
+    
+    return YES;
+}
+
 #pragma mark - Cleanup Operations
 
 - (NSArray<ChartPatternModel *> *)findOrphanedPatterns {
@@ -316,48 +432,47 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
     return [orphanedPatterns copy];
 }
 
+- (NSArray<ChartPatternModel *> *)findPatternsWithInvalidDateRanges {
+    NSArray<ChartPatternModel *> *allPatterns = [self getAllPatterns];
+    NSMutableArray<ChartPatternModel *> *invalidPatterns = [NSMutableArray array];
+    
+    for (ChartPatternModel *pattern in allPatterns) {
+        if (!pattern.hasValidDateRange) {
+            [invalidPatterns addObject:pattern];
+        }
+    }
+    
+    NSLog(@"🔍 DataHub: Found %lu patterns with invalid date ranges", (unsigned long)invalidPatterns.count);
+    return [invalidPatterns copy];
+}
+
 - (NSArray<NSString *> *)findOrphanedSavedData {
     // Get all SavedChartData files
     NSArray<NSString *> *allFiles = [ChartWidget availableSavedChartDataFiles];
     NSMutableArray<NSString *> *allSavedDataIDs = [NSMutableArray array];
     
-    // Extract UUIDs from filenames (assuming format: UUID.chartdata)
+    // Extract UUIDs from filenames
     for (NSString *filePath in allFiles) {
         NSString *filename = filePath.lastPathComponent;
         NSString *uuid = [filename stringByDeletingPathExtension];
-        
-        // Only add if it looks like a UUID (not descriptive filename)
         if ([self isStringLikelyUUID:uuid]) {
             [allSavedDataIDs addObject:uuid];
         }
     }
     
     // Get all referenced SavedChartData IDs from patterns
-    NSFetchRequest *request = [ChartPattern fetchRequest];
-    request.resultType = NSDictionaryResultType;
-    request.propertiesToFetch = @[@"savedDataReference"];
-    
-    NSError *error = nil;
-    NSArray *results = [self.mainContext executeFetchRequest:request error:&error];
-    
-    if (error) {
-        NSLog(@"❌ DataHub: Error fetching pattern references: %@", error);
-        return @[];
-    }
-    
+    NSArray<ChartPatternModel *> *allPatterns = [self getAllPatterns];
     NSMutableSet<NSString *> *referencedIDs = [NSMutableSet set];
-    for (NSDictionary *result in results) {
-        NSString *reference = result[@"savedDataReference"];
-        if (reference) {
-            [referencedIDs addObject:reference];
-        }
+    
+    for (ChartPatternModel *pattern in allPatterns) {
+        [referencedIDs addObject:pattern.savedDataReference];
     }
     
-    // Find orphaned IDs
+    // Find orphaned (unreferenced) IDs
     NSMutableArray<NSString *> *orphanedIDs = [NSMutableArray array];
-    for (NSString *savedDataID in allSavedDataIDs) {
-        if (![referencedIDs containsObject:savedDataID]) {
-            [orphanedIDs addObject:savedDataID];
+    for (NSString *uuid in allSavedDataIDs) {
+        if (![referencedIDs containsObject:uuid]) {
+            [orphanedIDs addObject:uuid];
         }
     }
     
@@ -365,50 +480,46 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
     return [orphanedIDs copy];
 }
 
+- (void)cleanupOrphanedPatternsWithCompletion:(void(^)(NSInteger deletedCount, NSError * _Nullable error))completion {
+    NSArray<ChartPatternModel *> *orphanedPatterns = [self findOrphanedPatterns];
+    
+    NSInteger deletedCount = 0;
+    NSError *error = nil;
+    
+    for (ChartPatternModel *pattern in orphanedPatterns) {
+        if ([self deletePatternWithID:pattern.patternID]) {
+            deletedCount++;
+        }
+    }
+    
+    NSLog(@"🧹 DataHub: Cleaned up %ld orphaned patterns", (long)deletedCount);
+    
+    if (completion) {
+        completion(deletedCount, error);
+    }
+}
+
+// ✅ AGGIUNTO: Metodo con signature richiesta dal ChartPatternManager
 - (void)cleanupOrphanedPatterns:(NSArray<ChartPatternModel *> *)orphanedPatterns
                      completion:(void(^)(NSInteger deletedCount, NSError * _Nullable error))completion {
     
-    if (orphanedPatterns.count == 0) {
-        completion(0, nil);
-        return;
+    NSInteger deletedCount = 0;
+    NSError *error = nil;
+    
+    for (ChartPatternModel *pattern in orphanedPatterns) {
+        if ([self deletePatternWithID:pattern.patternID]) {
+            deletedCount++;
+        }
     }
     
-    // Show alert for user confirmation
-    dispatch_async(dispatch_get_main_queue(), ^{
-        NSAlert *alert = [[NSAlert alloc] init];
-        alert.messageText = @"Cleanup Orphaned Patterns";
-        alert.informativeText = [NSString stringWithFormat:@"Found %lu patterns with missing SavedChartData files. Do you want to delete these patterns?", (unsigned long)orphanedPatterns.count];
-        [alert addButtonWithTitle:@"Delete"];
-        [alert addButtonWithTitle:@"Cancel"];
-        alert.alertStyle = NSAlertStyleWarning;
-        
-        NSModalResponse response = [alert runModal];
-        
-        if (response == NSAlertFirstButtonReturn) {
-            // User confirmed deletion
-            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-                NSInteger deletedCount = 0;
-                NSError *deleteError = nil;
-                
-                for (ChartPatternModel *pattern in orphanedPatterns) {
-                    if ([self deletePatternWithID:pattern.patternID]) {
-                        deletedCount++;
-                    }
-                }
-                
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(deletedCount, deleteError);
-                });
-            });
-        } else {
-            // User cancelled
-            completion(0, nil);
-        }
-    });
+    NSLog(@"🧹 DataHub: Cleaned up %ld specified orphaned patterns", (long)deletedCount);
+    
+    if (completion) {
+        completion(deletedCount, error);
+    }
 }
 
-#pragma mark - Statistics
-
+// ✅ AGGIUNTO: Metodo getPatternStatistics richiesto dal ChartPatternManager
 - (NSDictionary<NSString *, NSNumber *> *)getPatternStatistics {
     NSArray<ChartPatternModel *> *allPatterns = [self getAllPatterns];
     NSMutableDictionary<NSString *, NSNumber *> *stats = [NSMutableDictionary dictionary];
@@ -422,6 +533,7 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
     return [stats copy];
 }
 
+// ✅ AGGIUNTO: Metodo getTotalPatternCount richiesto dal ChartPatternManager
 - (NSInteger)getTotalPatternCount {
     NSFetchRequest *request = [ChartPattern fetchRequest];
     request.resultType = NSCountResultType;
@@ -437,18 +549,124 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
     return [results.firstObject integerValue];
 }
 
-#pragma mark - Private Helpers
+- (void)fixInvalidPatternDateRangesWithCompletion:(void(^)(NSInteger fixedCount, NSError * _Nullable error))completion {
+    NSArray<ChartPatternModel *> *invalidPatterns = [self findPatternsWithInvalidDateRanges];
+    
+    NSInteger fixedCount = 0;
+    NSError *error = nil;
+    
+    for (ChartPatternModel *pattern in invalidPatterns) {
+        // Load SavedChartData to get valid date range
+        SavedChartData *savedData = [pattern loadConnectedSavedData];
+        if (savedData && savedData.startDate && savedData.endDate) {
+            // Update pattern with full SavedChartData range
+            [pattern updatePatternType:pattern.patternType
+                        patternStartDate:savedData.startDate
+                          patternEndDate:savedData.endDate
+                               notes:pattern.additionalNotes];
+            
+            if ([self updatePattern:pattern]) {
+                fixedCount++;
+            }
+        }
+    }
+    
+    NSLog(@"🔧 DataHub: Fixed %ld patterns with invalid date ranges", (long)fixedCount);
+    
+    if (completion) {
+        completion(fixedCount, error);
+    }
+}
+
+#pragma mark - Migration Support
+
+- (void)migratePatternDateRangesWithCompletion:(void(^)(NSInteger migratedCount, NSError * _Nullable error))completion {
+    // Get all patterns from Core Data directly to check for missing date ranges
+    NSFetchRequest *request = [ChartPattern fetchRequest];
+    request.predicate = [NSPredicate predicateWithFormat:@"patternStartDate == nil OR patternEndDate == nil"];
+    
+    NSError *error = nil;
+    NSArray<ChartPattern *> *patternsToMigrate = [self.mainContext executeFetchRequest:request error:&error];
+    
+    if (error) {
+        NSLog(@"❌ DataHub: Error fetching patterns for migration: %@", error);
+        if (completion) {
+            completion(0, error);
+        }
+        return;
+    }
+    
+    NSInteger migratedCount = 0;
+    
+    for (ChartPattern *pattern in patternsToMigrate) {
+        // Load SavedChartData to get date range
+        NSString *directory = [ChartWidget savedChartDataDirectory];
+        NSString *filename = [NSString stringWithFormat:@"%@.chartdata", pattern.savedDataReference];
+        NSString *filePath = [directory stringByAppendingPathComponent:filename];
+        SavedChartData *savedData = [SavedChartData loadFromFile:filePath];
+        
+        if (savedData && savedData.startDate && savedData.endDate) {
+            // Set pattern dates to full SavedChartData range
+            pattern.patternStartDate = savedData.startDate;
+            pattern.patternEndDate = savedData.endDate;
+            migratedCount++;
+            
+            NSLog(@"📈 DataHub: Migrated pattern %@ with date range %@ to %@",
+                  pattern.patternID, savedData.startDate, savedData.endDate);
+        }
+    }
+    
+    if (migratedCount > 0) {
+        [self saveContext];
+    }
+    
+    NSLog(@"🔄 DataHub: Migrated %ld patterns to new date range format", (long)migratedCount);
+    
+    if (completion) {
+        completion(migratedCount, nil);
+    }
+}
+
+#pragma mark - Private Helper Methods
 
 - (ChartPatternModel *)patternModelFromCoreData:(ChartPattern *)coreDataPattern {
-    NSDictionary *dict = @{
-        @"patternID": coreDataPattern.patternID ?: @"",
-        @"patternType": coreDataPattern.patternType ?: @"",
-        @"savedDataReference": coreDataPattern.savedDataReference ?: @"",
-        @"creationDate": coreDataPattern.creationDate ?: [NSDate date],
-        @"additionalNotes": coreDataPattern.additionalNotes ?: @""
-    };
+    if (!coreDataPattern) return nil;
     
-    return [[ChartPatternModel alloc] initWithDictionary:dict];
+    ChartPatternModel *model;
+    
+    // Check if pattern has date range (new format)
+    if (coreDataPattern.patternStartDate && coreDataPattern.patternEndDate) {
+        model = [[ChartPatternModel alloc] initWithPatternType:coreDataPattern.patternType
+                                           savedDataReference:coreDataPattern.savedDataReference
+                                               patternStartDate:coreDataPattern.patternStartDate
+                                                 patternEndDate:coreDataPattern.patternEndDate
+                                                       notes:coreDataPattern.additionalNotes];
+    } else {
+        // Legacy format - use old initializer (will auto-fill dates from SavedChartData)
+        model = [[ChartPatternModel alloc] initWithPatternType:coreDataPattern.patternType
+                                          savedDataReference:coreDataPattern.savedDataReference
+                                                       notes:coreDataPattern.additionalNotes];
+    }
+    
+    // Set the immutable properties from Core Data
+    if (model) {
+        // Use setValue:forKey: to set readonly properties
+        [model setValue:coreDataPattern.patternID forKey:@"patternID"];
+        [model setValue:coreDataPattern.creationDate forKey:@"creationDate"];
+    }
+    
+    return model;
+}
+
+- (void)updateCoreDataPattern:(ChartPattern *)coreDataPattern fromModel:(ChartPatternModel *)model {
+    coreDataPattern.patternType = model.patternType;
+    coreDataPattern.additionalNotes = model.additionalNotes;
+    
+    // Update pattern date range
+    coreDataPattern.patternStartDate = model.patternStartDate;
+    coreDataPattern.patternEndDate = model.patternEndDate;
+    
+    // Note: We don't update patternID, savedDataReference, or creationDate as these are immutable
 }
 
 - (BOOL)isStringLikelyUUID:(NSString *)string {
@@ -456,10 +674,16 @@ static NSString * const kUserPatternTypesKey = @"UserAddedPatternTypes";
         return NO;
     }
     
-    // Check if it contains only hex chars and hyphens in UUID format
-    NSString *uuidPattern = @"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$";
-    NSPredicate *uuidTest = [NSPredicate predicateWithFormat:@"SELF MATCHES %@", uuidPattern];
-    return [uuidTest evaluateWithObject:string];
+    // Basic UUID format check: 8-4-4-4-12
+    NSRange range1 = NSMakeRange(8, 1);
+    NSRange range2 = NSMakeRange(13, 1);
+    NSRange range3 = NSMakeRange(18, 1);
+    NSRange range4 = NSMakeRange(23, 1);
+    
+    return ([[string substringWithRange:range1] isEqualToString:@"-"]) &&
+           ([[string substringWithRange:range2] isEqualToString:@"-"]) &&
+           ([[string substringWithRange:range3] isEqualToString:@"-"]) &&
+           ([[string substringWithRange:range4] isEqualToString:@"-"]);
 }
 
 @end

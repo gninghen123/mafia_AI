@@ -48,7 +48,9 @@
     <entity name="ChartPattern" representedClassName="ChartPattern" syncable="YES">
         <attribute name="additionalNotes" optional="YES" attributeType="String"/>
         <attribute name="creationDate" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="patternEndDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="patternID" attributeType="String"/>
+        <attribute name="patternStartDate" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="patternType" attributeType="String"/>
         <attribute name="savedDataReference" attributeType="String"/>
         <fetchIndex name="byPatternID">

@@ -9,14 +9,14 @@
 #import "ChartPatternManager.h"
 #import "DataHub.h"
 #import "DataHub+ChartPatterns.h"
-// ✅ AGGIUNTI: Import necessari per risolvere gli errori
 #import "SavedChartData.h"
 #import "ChartWidget.h"
 #import "ChartWidget+SaveData.h"
 
-// Table columns
+// Table columns - ✅ AGGIUNTA colonna Timeframe
 static NSString * const kPatternTypeColumn = @"PatternType";
 static NSString * const kSymbolColumn = @"Symbol";
+static NSString * const kTimeframeColumn = @"Timeframe";  // ✅ NUOVO
 static NSString * const kBarsColumn = @"Bars";
 static NSString * const kDateColumn = @"Date";
 
@@ -70,7 +70,7 @@ static NSString * const kDateColumn = @"Date";
     self.deleteTypeButton = [self createToolbarButtonWithTitle:@"Delete" action:@selector(deleteTypeButtonClicked:)];
     self.refreshButton = [self createToolbarButtonWithTitle:@"Refresh" action:@selector(refreshButtonClicked:)];
     
-    [self.toolbarView addSubview:self.createTypeButton];  // ✅ CORRETTO
+    [self.toolbarView addSubview:self.createTypeButton];
     [self.toolbarView addSubview:self.renameTypeButton];
     [self.toolbarView addSubview:self.deleteTypeButton];
     [self.toolbarView addSubview:self.refreshButton];
@@ -93,6 +93,11 @@ static NSString * const kDateColumn = @"Date";
     self.patternsTableView.allowsMultipleSelection = NO;
     self.patternsTableView.target = self;
     self.patternsTableView.doubleAction = @selector(tableViewDoubleClicked:);
+    
+    // ✅ AGGIUNTO: Abilita l'ordinamento nativo di macOS
+    self.patternsTableView.allowsColumnReordering = YES;
+    self.patternsTableView.allowsColumnResizing = YES;
+    self.patternsTableView.usesAlternatingRowBackgroundColors = YES;
     
     // Create table columns
     [self setupTableColumns];
@@ -123,6 +128,13 @@ static NSString * const kDateColumn = @"Date";
     typeColumn.title = @"Pattern Type";
     typeColumn.width = 120;
     typeColumn.minWidth = 80;
+    
+    // ✅ AGGIUNTO: Abilita ordinamento per Pattern Type
+    NSSortDescriptor *typeSortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"patternType"
+                                                                          ascending:YES
+                                                                           selector:@selector(localizedCaseInsensitiveCompare:)];
+    typeColumn.sortDescriptorPrototype = typeSortDescriptor;
+    
     [self.patternsTableView addTableColumn:typeColumn];
     
     // Symbol column
@@ -130,13 +142,39 @@ static NSString * const kDateColumn = @"Date";
     symbolColumn.title = @"Symbol";
     symbolColumn.width = 80;
     symbolColumn.minWidth = 60;
+    
+    // ✅ AGGIUNTO: Abilita ordinamento per Symbol
+    NSSortDescriptor *symbolSortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"symbol"
+                                                                            ascending:YES
+                                                                             selector:@selector(localizedCaseInsensitiveCompare:)];
+    symbolColumn.sortDescriptorPrototype = symbolSortDescriptor;
+    
     [self.patternsTableView addTableColumn:symbolColumn];
+    
+    // ✅ NUOVA COLONNA: Timeframe
+    NSTableColumn *timeframeColumn = [[NSTableColumn alloc] initWithIdentifier:kTimeframeColumn];
+    timeframeColumn.title = @"Timeframe";
+    timeframeColumn.width = 80;
+    timeframeColumn.minWidth = 60;
+    
+    // ✅ AGGIUNTO: Abilita ordinamento per Timeframe
+    NSSortDescriptor *timeframeSortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"timeframe"
+                                                                               ascending:YES];
+    timeframeColumn.sortDescriptorPrototype = timeframeSortDescriptor;
+    
+    [self.patternsTableView addTableColumn:timeframeColumn];
     
     // Bars column
     NSTableColumn *barsColumn = [[NSTableColumn alloc] initWithIdentifier:kBarsColumn];
     barsColumn.title = @"Bars";
     barsColumn.width = 60;
     barsColumn.minWidth = 50;
+    
+    // ✅ AGGIUNTO: Abilita ordinamento per Bars
+    NSSortDescriptor *barsSortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"barCount"
+                                                                          ascending:NO];  // Decrescente per default
+    barsColumn.sortDescriptorPrototype = barsSortDescriptor;
+    
     [self.patternsTableView addTableColumn:barsColumn];
     
     // Date column
@@ -144,7 +182,16 @@ static NSString * const kDateColumn = @"Date";
     dateColumn.title = @"Created";
     dateColumn.width = 100;
     dateColumn.minWidth = 80;
+    
+    // ✅ AGGIUNTO: Abilita ordinamento per Date
+    NSSortDescriptor *dateSortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"creationDate"
+                                                                          ascending:NO];  // Più recenti prima
+    dateColumn.sortDescriptorPrototype = dateSortDescriptor;
+    
     [self.patternsTableView addTableColumn:dateColumn];
+    
+    // ✅ AGGIUNTO: Imposta ordinamento di default (per data, più recenti prima)
+    self.patternsTableView.sortDescriptors = @[dateSortDescriptor];
 }
 
 - (void)setupConstraints {
@@ -160,7 +207,7 @@ static NSString * const kDateColumn = @"Date";
         [self.patternTypeFilter.centerYAnchor constraintEqualToAnchor:self.toolbarView.centerYAnchor],
         [self.patternTypeFilter.widthAnchor constraintEqualToConstant:120],
         
-        // Buttons - ✅ CORRETTO: createTypeButton invece di newTypeButton
+        // Buttons
         [self.createTypeButton.leadingAnchor constraintEqualToAnchor:self.patternTypeFilter.trailingAnchor constant:10],
         [self.createTypeButton.centerYAnchor constraintEqualToAnchor:self.toolbarView.centerYAnchor],
         [self.createTypeButton.widthAnchor constraintEqualToConstant:60],
@@ -240,8 +287,35 @@ static NSString * const kDateColumn = @"Date";
         self.filteredPatterns = self.allPatterns;
     }
     
+    // ✅ AGGIUNTO: Applica l'ordinamento corrente dopo il filtro
+    [self applySortToFilteredPatterns];
+    
     [self.patternsTableView reloadData];
     [self updateInfoLabel];
+}
+
+// ✅ NUOVO METODO: Applica l'ordinamento corrente ai pattern filtrati
+- (void)applySortToFilteredPatterns {
+    NSArray<NSSortDescriptor *> *sortDescriptors = self.patternsTableView.sortDescriptors;
+    if (sortDescriptors.count > 0) {
+        self.filteredPatterns = [self.filteredPatterns sortedArrayUsingDescriptors:sortDescriptors];
+    }
+}
+
+// ✅ NUOVO METODO: Helper per convertire timeframe in stringa leggibile
+- (NSString *)timeframeStringForBarTimeframe:(BarTimeframe)timeframe {
+    switch (timeframe) {
+        case BarTimeframe1Min:    return @"1m";
+        case BarTimeframe5Min:    return @"5m";
+        case BarTimeframe15Min:   return @"15m";
+        case BarTimeframe30Min:   return @"30m";
+        case BarTimeframe1Hour:   return @"1h";
+        case BarTimeframe4Hour:   return @"4h";
+        case BarTimeframe1Day:    return @"1D";
+        case BarTimeframe1Week:   return @"1W";
+        case BarTimeframe1Month:  return @"1M";
+        default:                  return @"Unknown";
+    }
 }
 
 - (void)updateInfoLabel {
@@ -270,10 +344,12 @@ static NSString * const kDateColumn = @"Date";
     if ([identifier isEqualToString:kPatternTypeColumn]) {
         return pattern.patternType;
     } else if ([identifier isEqualToString:kSymbolColumn]) {
-        // ✅ CORRETTO: Ora pattern.symbol è accessibile grazie all'import di SavedChartData.h
         return pattern.symbol ?: @"N/A";
+    } else if ([identifier isEqualToString:kTimeframeColumn]) {
+        // ✅ NUOVA COLONNA: Mostra timeframe leggibile
+        return [self timeframeStringForBarTimeframe:pattern.timeframe];
     } else if ([identifier isEqualToString:kBarsColumn]) {
-        return @(pattern.barCount);
+        return @(pattern.patternBarCount);  // ✅ CORRETTO: usa patternBarCount invece di barCount
     } else if ([identifier isEqualToString:kDateColumn]) {
         NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
         formatter.dateStyle = NSDateFormatterShortStyle;
@@ -281,6 +357,15 @@ static NSString * const kDateColumn = @"Date";
     }
     
     return nil;
+}
+
+// ✅ AGGIUNTO: Supporto per l'ordinamento nativo di macOS
+- (void)tableView:(NSTableView *)tableView sortDescriptorsDidChange:(NSArray<NSSortDescriptor *> *)oldDescriptors {
+    // Applica i nuovi sort descriptors ai pattern filtrati
+    self.filteredPatterns = [self.filteredPatterns sortedArrayUsingDescriptors:tableView.sortDescriptors];
+    [tableView reloadData];
+    
+    NSLog(@"📊 Applied sorting: %@", [tableView.sortDescriptors componentsJoinedByString:@", "]);
 }
 
 #pragma mark - NSTableViewDelegate
@@ -357,9 +442,8 @@ static NSString * const kDateColumn = @"Date";
         return;
     }
     
-    // ✅ CORRETTO: Ora savedData.symbol è accessibile grazie all'import
     NSArray<NSString *> *symbols = @[savedData.symbol];
-    [self sendSymbolsToChainWithColor:symbols color:[NSColor systemBlueColor]];
+    [self sendSymbolsToChain:symbols];
     
     NSLog(@"📋 ChartPatternLibraryWidget: Sent pattern '%@' (%@) to chain",
           pattern.patternType, savedData.symbol);
@@ -521,7 +605,6 @@ static NSString * const kDateColumn = @"Date";
     if (deleteChartData) {
         SavedChartData *savedData = [pattern loadConnectedSavedData];
         if (savedData) {
-            // ✅ CORRETTO: Ora [ChartWidget savedChartDataDirectory] è accessibile
             NSString *directory = [ChartWidget savedChartDataDirectory];
             NSString *filename = [NSString stringWithFormat:@"%@.chartdata", pattern.savedDataReference];
             NSString *filePath = [directory stringByAppendingPathComponent:filename];

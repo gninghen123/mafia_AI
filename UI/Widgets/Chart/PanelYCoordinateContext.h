@@ -14,6 +14,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) CGFloat panelHeight;
 @property (nonatomic, strong, nullable) NSString *currentSymbol; // For alerts
 @property (nonatomic, strong, nullable) NSString *panelType; // "security", "volume", etc.
+@property (nonatomic, assign) BOOL useLogScale;  // 🆕 NEW: Scala logaritmica per asse Y
 
 #pragma mark - Y Coordinate Conversion Methods
 - (CGFloat)screenYForValue:(double)value;

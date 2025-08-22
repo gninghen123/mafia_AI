@@ -36,6 +36,7 @@
 // Panel configuration
 @property (nonatomic, strong) NSString *panelType; // "security", "volume", etc.
 @property (nonatomic, weak) ChartWidget *chartWidget;
+@property (nonatomic, strong) NSButton *logScaleCheckbox;  // 🆕 NEW: Checkbox per scala logaritmica
 
 // Data
 @property (nonatomic, strong) NSArray<HistoricalBarModel *> *chartData;
@@ -91,6 +92,8 @@
 - (void)startEditingObjectAtPoint:(NSPoint)point;
 - (void)stopEditingObject;
 
+- (void)drawYAxisContent;
+- (double)calculateOptimalTickStep:(double)range targetTicks:(NSInteger)targetTicks;
 
 - (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext;
 

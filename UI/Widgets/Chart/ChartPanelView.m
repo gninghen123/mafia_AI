@@ -26,8 +26,7 @@
 @interface ChartPanelView ()
 
 
-- (void)drawYAxisContent;
-- (double)calculateOptimalTickStep:(double)range targetTicks:(NSInteger)targetTicks;
+
 
 
 @property (nonatomic, assign) BOOL isInAlertDragMode;
@@ -61,7 +60,8 @@
     if (self) {
         _panelType = type;
         [self setupPanel];
-        
+        [self setupLogScaleCheckbox];  // 🆕 NEW: Aggiungi questa linea
+
     }
     return self;
 }
@@ -77,6 +77,28 @@
     [self setupMouseTracking];
 }
 
+- (void)setupLogScaleCheckbox {
+    // 📊 Log scale checkbox nell'angolo superiore destro dell'asse Y
+    self.logScaleCheckbox = [[NSButton alloc] init];
+    self.logScaleCheckbox.buttonType = NSButtonTypeSwitch;
+    self.logScaleCheckbox.title = @"Log";
+    self.logScaleCheckbox.font = [NSFont systemFontOfSize:9];
+    self.logScaleCheckbox.target = self;
+    self.logScaleCheckbox.action = @selector(logScaleToggled:);
+    self.logScaleCheckbox.translatesAutoresizingMaskIntoConstraints = NO;
+    self.logScaleCheckbox.state = NSControlStateValueOff; // Default lineare
+    [self addSubview:self.logScaleCheckbox];
+    
+    // 📍 Posizionamento nell'angolo superiore destro dell'asse Y
+    [NSLayoutConstraint activateConstraints:@[
+        [self.logScaleCheckbox.topAnchor constraintEqualToAnchor:self.topAnchor constant:4],
+        [self.logScaleCheckbox.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-4],
+        [self.logScaleCheckbox.widthAnchor constraintEqualToConstant:40],
+        [self.logScaleCheckbox.heightAnchor constraintEqualToConstant:16]
+    ]];
+    
+    NSLog(@"🔘 Setup log scale checkbox for panel: %@", self.panelType);
+}
 
 - (void)setupPerformanceLayers {
     // Chart content layer (static - redraws only when data changes)
@@ -435,6 +457,12 @@
 - (void)drawYAxisContent {
     if (self.yRangeMax == self.yRangeMin) return;
     
+    // ✅ VERIFICA COORDINATORE Y
+    if (!self.panelYContext) {
+        NSLog(@"⚠️ drawYAxisContent: Missing panelYContext - skipping draw");
+        return;
+    }
+    
     // Y-Axis background
     [[NSColor controlBackgroundColor] setFill];
     NSRect axisBounds = NSMakeRect(0, 0, CHART_Y_AXIS_WIDTH, self.bounds.size.height);
@@ -448,13 +476,8 @@
     [borderPath lineToPoint:NSMakePoint(0, self.bounds.size.height)];
     [borderPath stroke];
     
-    // Calculate tick values
-    double valueRange = self.yRangeMax - self.yRangeMin;
-    NSInteger tickCount = 8;
-    double tickStep = [self calculateOptimalTickStep:valueRange targetTicks:tickCount];
-    
-    // Start from first tick above yRangeMin
-    double firstTick = ceil(self.yRangeMin / tickStep) * tickStep;
+    // ✅ TICK VALUES SEMPLIFICATI - SOLO LINEARE PER DEBUG
+    NSArray<NSNumber *> *tickValues = [self generateLinearScaleTickValues];
     
     // Text attributes for labels
     NSDictionary *textAttributes = @{
@@ -462,9 +485,12 @@
         NSForegroundColorAttributeName: [NSColor secondaryLabelColor]
     };
     
-    // Draw ticks and labels
-    for (double value = firstTick; value <= self.yRangeMax; value += tickStep) {
-        CGFloat yPosition = [self yCoordinateForValue:value];
+    // ✅ Draw ticks and labels
+    for (NSNumber *valueNum in tickValues) {
+        double value = valueNum.doubleValue;
+        
+        // ✅ USA panelYContext
+        CGFloat yPosition = [self.panelYContext screenYForValue:value];
         
         if (yPosition < 0 || yPosition > self.bounds.size.height) continue;
         
@@ -476,14 +502,81 @@
         [tickPath lineToPoint:NSMakePoint(8, yPosition)];
         [tickPath stroke];
         
-        // Format label based on panel type
-        NSString *labelText = [self formatValueForDisplay:value];
+        // Format label - SEMPLIFICATO
+        NSString *labelText = [NSString stringWithFormat:@"%.3f", value];
         NSSize textSize = [labelText sizeWithAttributes:textAttributes];
         
         NSPoint textPoint = NSMakePoint(12, yPosition - textSize.height/2);
         [labelText drawAtPoint:textPoint withAttributes:textAttributes];
     }
 }
+- (NSArray<NSNumber *> *)generateLogScaleTickValues {
+    NSMutableArray *values = [NSMutableArray array];
+    
+    // Trova la prima potenza di 10 nel range
+    double logMin = log10(self.yRangeMin);
+    double logMax = log10(self.yRangeMax);
+    
+    NSInteger startDecade = (NSInteger)floor(logMin);
+    NSInteger endDecade = (NSInteger)ceil(logMax);
+    
+    // Genera valori: 1, 2, 5, 10, 20, 50, 100, etc.
+    for (NSInteger decade = startDecade; decade <= endDecade; decade++) {
+        double base = pow(10, decade);
+        NSArray *multipliers = @[@1, @2, @5];
+        
+        for (NSNumber *mult in multipliers) {
+            double value = base * mult.doubleValue;
+            if (value >= self.yRangeMin && value <= self.yRangeMax) {
+                [values addObject:@(value)];
+            }
+        }
+    }
+    
+    return values;
+}
+
+- (NSArray<NSNumber *> *)generateLinearScaleTickValues {
+    NSMutableArray *values = [NSMutableArray array];
+    
+    // Genera 8 tick lineari semplici
+    NSInteger tickCount = 8;
+    double step = (self.yRangeMax - self.yRangeMin) / (tickCount - 1);
+    
+    for (NSInteger i = 0; i < tickCount; i++) {
+        double value = self.yRangeMin + (i * step);
+        [values addObject:@(value)];
+    }
+    
+    return values;
+}
+
+- (void)drawYAxisTicksWithValues:(NSArray<NSNumber *> *)tickValues {
+    NSDictionary *textAttributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:10],
+        NSForegroundColorAttributeName: [NSColor labelColor]
+    };
+    
+    for (NSNumber *valueNum in tickValues) {
+        double value = valueNum.doubleValue;
+        
+        // ✅ USA PanelYCoordinateContext per calcolare Y (rispetta log scale)
+        CGFloat yPos = [self.panelYContext screenYForValue:value];
+        
+        // Disegna tick mark
+        [[NSColor separatorColor] setStroke];
+        NSBezierPath *tickPath = [NSBezierPath bezierPath];
+        [tickPath moveToPoint:NSMakePoint(0, yPos)];
+        [tickPath lineToPoint:NSMakePoint(5, yPos)];
+        [tickPath stroke];
+        
+        // Disegna etichetta
+        NSString *label = [self formatValueForDisplay:value];
+        NSRect labelRect = NSMakeRect(8, yPos - 8, CHART_Y_AXIS_WIDTH - 12, 16);
+        [label drawInRect:labelRect withAttributes:textAttributes];
+    }
+}
+
 
 - (void)drawChartPortionSelectionContent {
     if (!self.isInChartPortionSelectionMode) return;
@@ -517,24 +610,17 @@
         return;
     }
     
-    // ✅ OTTIMIZZAZIONE: Pre-calcola valori costanti fuori dal loop
-    CGFloat barWidth;
-    BOOL useSharedXContext = (self.sharedXContext != nil);
-    BOOL usePanelYContext = (self.panelYContext != nil);
-    
-    if (useSharedXContext) {
-        barWidth = [self.sharedXContext barWidth];
-        barWidth -= [self.sharedXContext barSpacing]; // Remove spacing for actual bar
-    } else {
-        // Fallback calculation
-        NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
-        CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
-        CGFloat totalBarWidth = chartAreaWidth / visibleBars;
-        CGFloat barSpacing = MAX(1, totalBarWidth * 0.1);
-        barWidth = totalBarWidth - barSpacing;
+    // ✅ VERIFICA COORDINATORI
+    if (!self.sharedXContext || !self.panelYContext) {
+        NSLog(@"⚠️ drawCandlesticks: Missing coordinate contexts - skipping draw");
+        return;
     }
     
-    // ✅ OTTIMIZZAZIONE: Pre-alloca colori e paths
+    // ✅ Calcola barWidth dal coordinator X
+    CGFloat barWidth = [self.sharedXContext barWidth];
+    barWidth -= [self.sharedXContext barSpacing];
+    
+    // ✅ Pre-alloca colori e paths
     NSColor *greenColor = [NSColor systemGreenColor];
     NSColor *redColor = [NSColor systemRedColor];
     NSColor *strokeColor = [NSColor labelColor];
@@ -547,46 +633,30 @@
     for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
         HistoricalBarModel *bar = self.chartData[i];
         
-        // ✅ COORDINATE X - calcola solo x (barWidth è già calcolato)
-        CGFloat x;
-        if (useSharedXContext) {
-            x = [self.sharedXContext screenXForBarIndex:i];
-        } else {
-            NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
-            CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
-            CGFloat totalBarWidth = chartAreaWidth / visibleBars;
-            x = CHART_MARGIN_LEFT + (i - self.visibleStartIndex) * totalBarWidth;
-        }
+        // ✅ COORDINATE X - SOLO sharedXContext
+        CGFloat x = [self.sharedXContext screenXForBarIndex:i];
         
-        // ✅ COORDINATE Y - usa context appropriati
-        CGFloat openY, closeY, highY, lowY;
-        if (usePanelYContext) {
-            openY = [self.panelYContext screenYForValue:bar.open];
-            closeY = [self.panelYContext screenYForValue:bar.close];
-            highY = [self.panelYContext screenYForValue:bar.high];
-            lowY = [self.panelYContext screenYForValue:bar.low];
-        } else {
-            // Fallback - usa metodi esistenti
-            openY = [self yCoordinateForPrice:bar.open];
-            closeY = [self yCoordinateForPrice:bar.close];
-            highY = [self yCoordinateForPrice:bar.high];
-            lowY = [self yCoordinateForPrice:bar.low];
-        }
+        // ✅ COORDINATE Y - SOLO panelYContext
+        CGFloat openY = [self.panelYContext screenYForValue:bar.open];
+        CGFloat closeY = [self.panelYContext screenYForValue:bar.close];
+        CGFloat highY = [self.panelYContext screenYForValue:bar.high];
+        CGFloat lowY = [self.panelYContext screenYForValue:bar.low];
         
         NSColor *bodyColor = (bar.close >= bar.open) ? greenColor : redColor;
         CGFloat centerX = x + halfBarWidth;
         
-        // Draw high-low line
+        // ✅ Draw high-low line (wick) - ORIGINALE
         [strokeColor setStroke];
         [shadowPath removeAllPoints];
         [shadowPath moveToPoint:NSMakePoint(centerX, highY)];
         [shadowPath lineToPoint:NSMakePoint(centerX, lowY)];
         [shadowPath stroke];
         
-        // Draw body rectangle
-        CGFloat bodyTop = MAX(openY, closeY);
-        CGFloat bodyBottom = MIN(openY, closeY);
-        CGFloat bodyHeight = bodyTop - bodyBottom;
+        // ✅ TORNA ALLA LOGICA ORIGINALE per body rectangle
+        // Se PanelYContext è corretto: prezzi alti = Y grandi, prezzi bassi = Y piccole
+        CGFloat bodyTop = MAX(openY, closeY);        // ORIGINALE
+        CGFloat bodyBottom = MIN(openY, closeY);     // ORIGINALE
+        CGFloat bodyHeight = bodyTop - bodyBottom;   // ORIGINALE
         
         if (bodyHeight < 1) bodyHeight = 1; // Minimum height for doji
         
@@ -597,7 +667,7 @@
         [bodyPath fill];
     }
     
-    NSLog(@"📊 Candlesticks drawn with unified coordinates");
+    NSLog(@"📊 Candlesticks drawn with original logic");
 }
 
 
@@ -698,73 +768,48 @@
 }
 
 - (void)drawVolumeHistogram {
-   if (self.visibleStartIndex >= self.visibleEndIndex || self.visibleEndIndex > self.chartData.count) {
-       return;
-   }
-   
-   // ✅ OTTIMIZZAZIONE: Find max volume in visible range for scaling
-   double maxVolume = 0;
-   for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
-       HistoricalBarModel *bar = self.chartData[i];
-       maxVolume = MAX(maxVolume, bar.volume);
-   }
-   
-   if (maxVolume == 0) return;
-   
-   // ✅ OTTIMIZZAZIONE: Pre-calcola valori costanti fuori dal loop
-   CGFloat chartHeight = self.bounds.size.height - 20; // 10px margin top/bottom
-   CGFloat bottomY = 10; // Start from bottom margin
-   double volumeScale = chartHeight / maxVolume; // Pre-calcola il fattore di scala
-   
-   CGFloat barWidth;
-   BOOL useSharedXContext = (self.sharedXContext != nil);
-   
-   if (useSharedXContext) {
-       barWidth = [self.sharedXContext barWidth];
-       barWidth -= [self.sharedXContext barSpacing]; // Remove spacing for actual bar
-   } else {
-       // Fallback calculation
-       NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
-       CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
-       CGFloat totalBarWidth = chartAreaWidth / visibleBars;
-       CGFloat barSpacing = MAX(1, totalBarWidth * 0.1);
-       barWidth = totalBarWidth - barSpacing;
-   }
-   
-   // ✅ OTTIMIZZAZIONE: Pre-alloca colori e path
-   NSColor *greenColor = [NSColor systemGreenColor];
-   NSColor *redColor = [NSColor systemRedColor];
-   NSBezierPath *volumePath = [NSBezierPath bezierPath];
-   
-   for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
-       HistoricalBarModel *bar = self.chartData[i];
-       
-       // ✅ COORDINATE X - calcola solo x (barWidth è già calcolato)
-       CGFloat x;
-       if (useSharedXContext) {
-           x = [self.sharedXContext screenXForBarIndex:i];
-       } else {
-           NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
-           CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
-           CGFloat totalBarWidth = chartAreaWidth / visibleBars;
-           x = CHART_MARGIN_LEFT + (i - self.visibleStartIndex) * totalBarWidth;
-       }
-       
-       // ✅ OTTIMIZZAZIONE: Volume height calculation (usa fattore pre-calcolato)
-       CGFloat height = bar.volume * volumeScale;
-       
-       // Color based on price direction
-       NSColor *barColor = (bar.close >= bar.open) ? greenColor : redColor;
-       
-       NSRect volumeRect = NSMakeRect(x, bottomY, barWidth, height);
-       [barColor setFill];
-       [volumePath removeAllPoints];
-       [volumePath appendBezierPathWithRect:volumeRect];
-       [volumePath fill];
-   }
-   
-   NSLog(@"📊 Volume histogram drawn with unified coordinates");
+    if (self.visibleStartIndex >= self.visibleEndIndex || self.visibleEndIndex > self.chartData.count) {
+        return;
+    }
+    
+    // ✅ VERIFICA COORDINATORI
+    if (!self.sharedXContext || !self.panelYContext) {
+        NSLog(@"⚠️ drawVolumeHistogram: Missing coordinate contexts - skipping draw");
+        return;
+    }
+    
+    // ✅ Calcola barWidth dal coordinator X
+    CGFloat barWidth = [self.sharedXContext barWidth];
+    barWidth -= [self.sharedXContext barSpacing];
+    
+    NSColor *volumeColor = [[NSColor systemBlueColor] colorWithAlphaComponent:0.6];
+    [volumeColor setFill];
+    
+    NSBezierPath *volumePath = [NSBezierPath bezierPath];
+    
+    for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
+        HistoricalBarModel *bar = self.chartData[i];
+        
+        // ✅ COORDINATE X - SOLO sharedXContext
+        CGFloat x = [self.sharedXContext screenXForBarIndex:i];
+        
+        // ✅ COORDINATE Y - SOLO panelYContext
+        // Per volume: base = yRangeMin (0), top = volume value
+        CGFloat baseY = [self.panelYContext screenYForValue:self.yRangeMin];  // Base del volume
+        CGFloat topY = [self.panelYContext screenYForValue:bar.volume];       // Altezza del volume
+        
+        // ✅ FIX: Volume rectangle orientamento corretto
+        CGFloat rectTop = MIN(baseY, topY);     // Y più piccolo = più in alto
+        CGFloat rectHeight = ABS(baseY - topY); // Altezza sempre positiva
+        
+        NSRect volumeRect = NSMakeRect(x, rectTop, barWidth, rectHeight);
+        [volumePath appendBezierPathWithRect:volumeRect];
+    }
+    
+    [volumePath fill];
+    NSLog(@"📊 Volume histogram drawn with coordinate contexts only");
 }
+
 
 
 - (void)drawChartPortionSelection {
@@ -777,21 +822,12 @@
      CGFloat startX, endX;
     BOOL hasCoordinateContext = (self.objectRenderer && self.sharedXContext);
      
-     if (hasCoordinateContext) {
+    
          startX = [self.sharedXContext screenXForBarIndex:startIdx];
          endX = [self.sharedXContext screenXForBarIndex:endIdx];
          // Add barWidth to endX to include the full last bar
          endX += [self.sharedXContext barWidth];
-     } else {
-         // Fallback - usa metodi helper unificati
-         startX = [self xCoordinateForBarIndex:startIdx];
-         endX = [self xCoordinateForBarIndex:endIdx];
-         
-         NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex;
-         CGFloat chartAreaWidth = [self calculateChartAreaWidthWithDynamicBuffer];
-         CGFloat barWidth = chartAreaWidth / visibleBars;
-         endX += barWidth; // Include full last bar
-     }
+   
      
     HistoricalBarModel *startBar = self.chartData[startIdx];
     HistoricalBarModel *endBar = self.chartData[endIdx];
@@ -1172,20 +1208,6 @@
     
     double normalizedValue = (price - self.yRangeMin) / (self.yRangeMax - self.yRangeMin);
     return CHART_MARGIN_LEFT + normalizedValue * (self.bounds.size.height - 20);
-}
-
-- (CGFloat)yCoordinateForValue:(double)value {
-    if (self.yRangeMax == self.yRangeMin) return self.bounds.size.height / 2;
-    
-    double normalizedValue = (value - self.yRangeMin) / (self.yRangeMax - self.yRangeMin);
-    return CHART_MARGIN_LEFT + normalizedValue * (self.bounds.size.height - 20);
-}
-
-- (double)valueForYCoordinate:(CGFloat)y {
-    if (self.bounds.size.height <= 20) return self.yRangeMin;
-    
-    double normalizedY = (y - CHART_MARGIN_LEFT) / (self.bounds.size.height - 20);
-    return self.yRangeMin + normalizedY * (self.yRangeMax - self.yRangeMin);
 }
 
 - (double)priceForYCoordinate:(CGFloat)y {
@@ -2679,9 +2701,6 @@
     double currentValue;
     if (self.objectRenderer && self.sharedXContext) {
         currentValue = [self.panelYContext valueForScreenY:self.crosshairPoint.y];
-    } else {
-        // Fallback se coordinate context non disponibile
-        currentValue = [self valueForYCoordinate:self.crosshairPoint.y];
     }
     
     NSString *valueText = [self formatValueForDisplay:currentValue];
@@ -2743,6 +2762,31 @@
 - (IBAction)contextMenuManagePatterns:(id)sender {
     if (self.chartWidget) {
         [self.chartWidget showPatternManagementWindow];
+    }
+}
+
+- (IBAction)logScaleToggled:(id)sender {
+    NSButton *checkbox = (NSButton *)sender;
+    BOOL useLogScale = (checkbox.state == NSControlStateValueOn);
+    
+    NSLog(@"🔢 Panel %@ - Log scale %@", self.panelType, useLogScale ? @"ENABLED" : @"DISABLED");
+    
+    // ✅ Applica al PanelYCoordinateContext di questo pannello
+    if (self.panelYContext) {
+        self.panelYContext.useLogScale = useLogScale;
+    }
+    
+    // ✅ Invalida e ridisegna per applicare la nuova scala
+    [self setNeedsDisplay:YES];
+    
+    // ✅ Aggiorna anche tutti i layer per riflettere i nuovi calcoli
+    [self.chartContentLayer setNeedsDisplay];
+    [self.yAxisLayer setNeedsDisplay];
+    [self.crosshairLayer setNeedsDisplay];
+    
+    // ✅ Notifica il ChartWidget del cambiamento (per eventuali coordinazioni future)
+    if (self.chartWidget && [self.chartWidget respondsToSelector:@selector(panelDidChangeLogScale:)]) {
+        [self.chartWidget performSelector:@selector(panelDidChangeLogScale:) withObject:self];
     }
 }
 

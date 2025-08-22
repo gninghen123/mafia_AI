@@ -2424,5 +2424,24 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 
+- (void)updateWithHistoricalBars:(NSArray<HistoricalBarModel *> *)bars {
+    if (!bars || bars.count == 0) {
+        NSLog(@"⚠️ ChartWidget: updateWithHistoricalBars called with no data");
+        return;
+    }
+    
+    // Aggiorna i dati del chart
+    self.chartData = bars;
+    
+  
+    
+    // Imposta il viewport iniziale
+    [self updateViewport];
+    
+    // Sincronizza tutti i panel
+    [self synchronizePanels];
+    
+    NSLog(@"✅ ChartWidget: Updated with %ld historical bars", (long)bars.count);
+}
 
 @end

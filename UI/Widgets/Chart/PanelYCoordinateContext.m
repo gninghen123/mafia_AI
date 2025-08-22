@@ -5,36 +5,58 @@
 @implementation PanelYCoordinateContext
 
 #pragma mark - Primary Y ↔ Value Conversion Methods
-
+// Sostituire completamente il metodo screenYForValue: in PanelYCoordinateContext.m
+// Corrected code for macOS's Y-axis
 - (CGFloat)screenYForValue:(double)value {
     if (![self isValidForConversion]) {
         return 0.0;
     }
-    
+
     double range = self.yRangeMax - self.yRangeMin;
     if (range <= 0.0) {
         return 0.0;
     }
+
+    CGFloat usableHeight = self.panelHeight - 20.0; // top/bottom margins
+    double normalizedValue;
+
+    if (self.useLogScale && value > 0 && self.yRangeMin > 0 && self.yRangeMax > 0) {
+        double logMin = log(self.yRangeMin);
+        double logMax = log(self.yRangeMax);
+        double logValue = log(value);
+        normalizedValue = (logValue - logMin) / (logMax - logMin);
+    } else {
+        normalizedValue = (value - self.yRangeMin) / range;
+    }
+
+    normalizedValue = fmax(0.0, fmin(1.0, normalizedValue));
     
-    CGFloat usableHeight = self.panelHeight - 20.0; // 10px margin top/bottom
-    double normalizedValue = (value - self.yRangeMin) / range;
-    
-    // Financial chart standard: top = high value, bottom = low value
-    CGFloat screenY = 10.0 + (normalizedValue * usableHeight);
-    return screenY;
+    // Y-axis increases upwards.
+    // The lowest value should be at the bottom (y=10.0), and the highest at the top (y=panelHeight-10.0).
+    return 10.0 + (normalizedValue * usableHeight);
 }
 
+// Corrected code for macOS's Y-axis
 - (double)valueForScreenY:(CGFloat)screenY {
     if (![self isValidForConversion]) {
         return 0.0;
     }
-    
+
     CGFloat usableHeight = self.panelHeight - 20.0;
-    CGFloat normalizedY = (screenY - 10.0) / usableHeight;
-    normalizedY = MAX(0.0, MIN(1.0, normalizedY));
     
-    double range = self.yRangeMax - self.yRangeMin;
-    return self.yRangeMin + (normalizedY * range);
+    // Normalize the screen Y position. The lowest point (y=10.0) is 0.0, the highest point is 1.0.
+    double normalizedY = (screenY - 10.0) / usableHeight;
+    normalizedY = fmax(0.0, fmin(1.0, normalizedY));
+
+    if (self.useLogScale && self.yRangeMin > 0 && self.yRangeMax > 0) {
+        double logMin = log(self.yRangeMin);
+        double logMax = log(self.yRangeMax);
+        double logValue = logMin + (normalizedY * (logMax - logMin));
+        return exp(logValue);
+    } else {
+        double range = self.yRangeMax - self.yRangeMin;
+        return self.yRangeMin + (normalizedY * range);
+    }
 }
 
 - (double)valueForNormalizedY:(double)normalizedY {

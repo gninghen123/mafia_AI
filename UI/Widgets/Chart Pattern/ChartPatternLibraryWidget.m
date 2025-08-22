@@ -541,7 +541,10 @@ static NSString * const kDateColumn = @"Date";
             NSArray<ChartPatternModel *> *patternsToUpdate = [dataHub getPatternsOfType:self.selectedFilterType];
             
             for (ChartPatternModel *pattern in patternsToUpdate) {
-                [pattern updatePatternType:newName notes:pattern.additionalNotes];
+                [pattern updatePatternType:newName
+                        patternStartDate:pattern.patternStartDate
+                          patternEndDate:pattern.patternEndDate
+                                     notes:pattern.additionalNotes];
                 [dataHub updatePattern:pattern];
             }
             

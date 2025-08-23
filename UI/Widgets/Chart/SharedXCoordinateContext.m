@@ -54,30 +54,101 @@
     if (!targetDate || !self.chartData || self.chartData.count == 0) {
         return -9999;
     }
-    
-    // Search for existing bar in data
+
+    // --- 1) Ricerca veloce nel range visibile ---
+    for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
+        HistoricalBarModel *bar = self.chartData[i];
+        if ([bar.date compare:targetDate] != NSOrderedAscending) {
+            return [self screenXForBarIndex:i];
+        }
+    }
+
+    // --- 2) Ricerca completa nel dataset ---
     for (NSInteger i = 0; i < self.chartData.count; i++) {
         HistoricalBarModel *bar = self.chartData[i];
         if ([bar.date compare:targetDate] != NSOrderedAscending) {
             return [self screenXForBarIndex:i];
         }
     }
-    
-    // Extrapolation for dates before dataset
+
+    // --- 3) Inferenza fuori dal dataset ---
     NSDate *firstDate = self.chartData.firstObject.date;
-    NSTimeInterval daysDiff = [firstDate timeIntervalSinceDate:targetDate] / 86400;
-    
-    NSInteger weeks = daysDiff / 7;
-    daysDiff = daysDiff - (weeks * 2); // Remove weekends
-    
-    NSInteger barsPerDay = self.barsPerDay > 0 ? self.barsPerDay : 26;
-    CGFloat totalBars = daysDiff * barsPerDay;
-    
-    CGFloat totalBarWidth = [self barWidth];
-    CGFloat firstBarX = [self screenXForBarIndex:self.visibleStartIndex];
-    
-    return firstBarX - (totalBars * totalBarWidth);
+    NSDate *lastDate  = self.chartData.lastObject.date;
+    CGFloat barWidth  = [self barWidth];
+
+    NSInteger barSizeSeconds = self.currentTimeframeMinutes * 60;
+    NSInteger barsPerDay     = self.barsPerDay;
+
+    if ([targetDate compare:firstDate] == NSOrderedAscending) {
+        double barsDiff = [self tradableBarsBetweenDate:targetDate andDate:firstDate
+                                             barSize:barSizeSeconds
+                                          barsPerDay:barsPerDay];
+        CGFloat firstBarX = [self screenXForBarIndex:0];
+        return firstBarX - (barsDiff * barWidth);
+    }
+
+    if ([targetDate compare:lastDate] == NSOrderedDescending) {
+        double barsDiff = [self tradableBarsBetweenDate:lastDate andDate:targetDate
+                                             barSize:barSizeSeconds
+                                          barsPerDay:barsPerDay];
+        CGFloat lastBarX = [self screenXForBarIndex:self.chartData.count - 1];
+        return lastBarX + (barsDiff * barWidth);
+    }
+
+    return -9999;
 }
+
+
+- (double)tradableBarsBetweenDate:(NSDate *)start
+                          andDate:(NSDate *)end
+                           barSize:(NSInteger)barSizeSeconds
+                        barsPerDay:(NSInteger)barsPerDay {
+
+    if ([end compare:start] != NSOrderedDescending) return 0;
+
+    double totalBars = 0;
+    NSCalendar *cal = [NSCalendar calendarWithIdentifier:NSCalendarIdentifierGregorian];
+    [cal setTimeZone:[NSTimeZone timeZoneWithName:@"America/New_York"]];
+
+    NSDate *current = start;
+    while ([current compare:end] == NSOrderedAscending) {
+        // giorno corrente
+        NSDateComponents *comp = [cal components:NSCalendarUnitYear|NSCalendarUnitMonth|NSCalendarUnitDay fromDate:current];
+
+        NSDate *dayStart, *dayEnd;
+        if (self.includesExtendedHours) {
+            comp.hour = 4; comp.minute = 0; comp.second = 0;
+            dayStart = [cal dateFromComponents:comp];
+            comp.hour = 20; comp.minute = 0; comp.second = 0;
+            dayEnd   = [cal dateFromComponents:comp];
+        } else {
+            comp.hour = 9; comp.minute = 30; comp.second = 0;
+            dayStart = [cal dateFromComponents:comp];
+            comp.hour = 16; comp.minute = 0; comp.second = 0;
+            dayEnd   = [cal dateFromComponents:comp];
+        }
+
+        // skip weekend
+        NSInteger weekday = [cal component:NSCalendarUnitWeekday fromDate:dayStart]; // 1 = domenica
+        if (weekday == 1 || weekday == 7) {
+            current = [cal dateByAddingUnit:NSCalendarUnitDay value:1 toDate:current options:0];
+            continue;
+        }
+
+        NSDate *intervalStart = MAX(current, dayStart);
+        NSDate *intervalEnd   = MIN(end, dayEnd);
+
+        if ([intervalEnd compare:intervalStart] == NSOrderedDescending) {
+            NSTimeInterval tradableSeconds = [intervalEnd timeIntervalSinceDate:intervalStart];
+            totalBars += tradableSeconds / barSizeSeconds;
+        }
+
+        current = [cal dateByAddingUnit:NSCalendarUnitDay value:1 toDate:dayStart options:0];
+    }
+
+    return totalBars;
+}
+
 
 - (CGFloat)chartAreaWidth {
     // ✅ Chart area excludes Y-axis on the right (using centralized constants)
@@ -105,5 +176,6 @@
 - (NSInteger)visibleBars{
     return self.visibleEndIndex - self.visibleStartIndex + 1;
 }
+
 
 @end

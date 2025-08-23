@@ -1019,6 +1019,7 @@ extern NSString *const DataHubDataLoadedNotification;
     // Trading context
     self.sharedXContext.barsPerDay = [self barsPerDayForCurrentTimeframe];
     self.sharedXContext.currentTimeframeMinutes = [self getCurrentTimeframeInMinutes];
+    self.sharedXContext.includesExtendedHours = self.tradingHoursMode;
 }
 
 - (BarTimeframe)chartTimeframeToBarTimeframe:(ChartTimeframe)chartTimeframe {

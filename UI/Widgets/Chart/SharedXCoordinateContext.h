@@ -21,6 +21,7 @@ NS_ASSUME_NONNULL_BEGIN
 #pragma mark - Trading Context (for X-axis calculations)
 @property (nonatomic, assign) NSInteger barsPerDay;
 @property (nonatomic, assign) NSInteger currentTimeframeMinutes;
+@property (nonatomic, assign) NSInteger includesExtendedHours;
 
 #pragma mark - X Coordinate Conversion Methods
 - (CGFloat)screenXForBarCenter:(NSInteger)barIndex;

@@ -6,7 +6,7 @@
 //  Extends existing RuntimeModels.h with trading-specific models
 //
 
-#import <Foundation/Foundation.h>
+#import <Cocoa/Cocoa.h>
 #import "RuntimeModels.h"
 
 NS_ASSUME_NONNULL_BEGIN

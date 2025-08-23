@@ -6,7 +6,8 @@
 //
 
 #import "DataHub+Portfolio.h"
-#import "DataManager.h"
+#import "DataManager+Portfolio.h"  // ✅ AGGIUNTO IMPORT
+#import "DataHub+MarketData.h"     // ✅ AGGIUNTO IMPORT per subscribeToQuoteUpdatesForSymbol
 #import "SchwabDataSource.h"
 #import "DataHub+Private.h"
 
@@ -320,48 +321,188 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
 #pragma mark - Helper Methods (Private Implementation)
 
 - (AccountModel *)convertRawAccountToModel:(NSDictionary *)rawAccount {
-    // Implementation depends on broker API format
+    if (!rawAccount || ![rawAccount isKindOfClass:[NSDictionary class]]) {
+        return nil;
+    }
+    
     AccountModel *account = [[AccountModel alloc] init];
-    // TODO: Implement conversion based on Schwab API format
+    
+    // Map common fields from Schwab API response
+    account.accountId = rawAccount[@"accountNumber"] ?: rawAccount[@"accountId"] ?: @"";
+    account.accountType = rawAccount[@"type"] ?: rawAccount[@"accountType"] ?: @"UNKNOWN";
+    account.brokerName = @"SCHWAB"; // Default to Schwab for now
+    account.displayName = [NSString stringWithFormat:@"SCHWAB-%@", [account.accountId substringFromIndex:MAX(0, (NSInteger)account.accountId.length - 4)]];
+    account.isConnected = YES; // If we got data, assume connected
+    account.isPrimary = NO; // Will be set elsewhere
+    account.lastUpdated = [NSDate date];
+    
+    NSLog(@"🔄 Converted raw account to AccountModel: %@", account.displayName);
+    
     return account;
 }
 
 - (PortfolioSummaryModel *)convertRawPortfolioSummaryToModel:(NSDictionary *)rawSummary {
-    // Implementation depends on broker API format
+    if (!rawSummary || ![rawSummary isKindOfClass:[NSDictionary class]]) {
+        return nil;
+    }
+    
     PortfolioSummaryModel *summary = [[PortfolioSummaryModel alloc] init];
-    // TODO: Implement conversion based on Schwab API format
+    
+    // Map Schwab API fields to our model
+    summary.accountId = rawSummary[@"accountNumber"] ?: rawSummary[@"accountId"] ?: @"";
+    summary.brokerName = @"SCHWAB";
+    
+    // Extract portfolio values
+    NSDictionary *balances = rawSummary[@"currentBalances"] ?: rawSummary[@"balances"] ?: rawSummary;
+    
+    summary.totalValue = [balances[@"liquidationValue"] doubleValue] ?: [balances[@"totalValue"] doubleValue];
+    summary.dayPL = [balances[@"dayPL"] doubleValue] ?: 0.0;
+    summary.dayPLPercent = [balances[@"dayPLPercent"] doubleValue] ?: 0.0;
+    summary.buyingPower = [balances[@"buyingPower"] doubleValue] ?: [balances[@"availableFunds"] doubleValue];
+    summary.cashBalance = [balances[@"cashBalance"] doubleValue] ?: [balances[@"moneyMarketFund"] doubleValue];
+    summary.marginUsed = [balances[@"marginUsed"] doubleValue] ?: 0.0;
+    summary.dayTradesLeft = [balances[@"dayTradesLeft"] integerValue] ?: 3; // Default PDT limit
+    summary.lastUpdated = [NSDate date];
+    
+    NSLog(@"🔄 Converted raw portfolio summary - Total: $%.0f, Day P&L: $%.0f",
+          summary.totalValue, summary.dayPL);
+    
     return summary;
 }
 
 - (AdvancedPositionModel *)convertRawPositionToModel:(NSDictionary *)rawPosition {
-    // Implementation depends on broker API format
+    if (!rawPosition || ![rawPosition isKindOfClass:[NSDictionary class]]) {
+        return nil;
+    }
+    
     AdvancedPositionModel *position = [[AdvancedPositionModel alloc] init];
-    // TODO: Implement conversion based on Schwab API format
+    
+    // Extract instrument info
+    NSDictionary *instrument = rawPosition[@"instrument"] ?: @{};
+    position.symbol = instrument[@"symbol"] ?: rawPosition[@"symbol"] ?: @"";
+    position.accountId = rawPosition[@"accountNumber"] ?: rawPosition[@"accountId"] ?: @"";
+    
+    // Position quantities and costs
+    position.quantity = [rawPosition[@"longQuantity"] doubleValue] - [rawPosition[@"shortQuantity"] doubleValue];
+    position.avgCost = [rawPosition[@"averagePrice"] doubleValue] ?: [rawPosition[@"averageCost"] doubleValue];
+    
+    // Market data (will be updated real-time)
+    position.currentPrice = [rawPosition[@"marketValue"] doubleValue] / MAX(1, ABS(position.quantity));
+    position.marketValue = [rawPosition[@"marketValue"] doubleValue];
+    
+    // P&L calculations
+    double totalCost = position.quantity * position.avgCost;
+    position.unrealizedPL = position.marketValue - totalCost;
+    if (totalCost != 0) {
+        position.unrealizedPLPercent = (position.unrealizedPL / totalCost) * 100.0;
+    }
+    
+    position.priceLastUpdated = [NSDate date];
+    
+    NSLog(@"🔄 Converted raw position - %@ %.0f shares @ $%.2f",
+          position.symbol, position.quantity, position.avgCost);
+    
     return position;
 }
 
 - (AdvancedOrderModel *)convertRawOrderToModel:(NSDictionary *)rawOrder {
-    // Implementation depends on broker API format
+    if (!rawOrder || ![rawOrder isKindOfClass:[NSDictionary class]]) {
+        return nil;
+    }
+    
     AdvancedOrderModel *order = [[AdvancedOrderModel alloc] init];
-    // TODO: Implement conversion based on Schwab API format
+    
+    // Basic order info
+    order.orderId = rawOrder[@"orderId"] ?: rawOrder[@"orderNumber"] ?: @"";
+    order.accountId = rawOrder[@"accountNumber"] ?: rawOrder[@"accountId"] ?: @"";
+    order.status = rawOrder[@"status"] ?: @"UNKNOWN";
+    order.orderType = rawOrder[@"orderType"] ?: @"UNKNOWN";
+    order.timeInForce = rawOrder[@"duration"] ?: rawOrder[@"timeInForce"] ?: @"DAY";
+    
+    // Extract order leg info (Schwab uses orderLegCollection)
+    NSArray *orderLegs = rawOrder[@"orderLegCollection"] ?: @[];
+    if (orderLegs.count > 0) {
+        NSDictionary *firstLeg = orderLegs[0];
+        NSDictionary *instrument = firstLeg[@"instrument"] ?: @{};
+        
+        order.symbol = instrument[@"symbol"] ?: @"";
+        order.side = firstLeg[@"instruction"] ?: @"";
+        order.quantity = [firstLeg[@"quantity"] doubleValue];
+        order.filledQuantity = [rawOrder[@"filledQuantity"] doubleValue];
+    }
+    
+    // Prices
+    order.price = [rawOrder[@"price"] doubleValue];
+    order.stopPrice = [rawOrder[@"stopPrice"] doubleValue];
+    order.avgFillPrice = [rawOrder[@"avgFillPrice"] doubleValue];
+    
+    // Dates
+    NSString *enteredTime = rawOrder[@"enteredTime"];
+    if (enteredTime) {
+        // Parse ISO date string
+        NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+        formatter.dateFormat = @"yyyy-MM-dd'T'HH:mm:ss.SSSZ";
+        order.createdDate = [formatter dateFromString:enteredTime] ?: [NSDate date];
+    } else {
+        order.createdDate = [NSDate date];
+    }
+    
+    order.updatedDate = [NSDate date];
+    
+    NSLog(@"🔄 Converted raw order - %@ %@ %.0f %@ @ $%.2f",
+          order.side, order.symbol, order.quantity, order.orderType, order.price);
+    
     return order;
 }
 
 // Cache management methods
-- (void)cachePortfolioSummary:(PortfolioSummaryModel *)summary forKey:(NSString *)key { /* TODO */ }
-- (void)cachePositions:(NSArray *)positions forKey:(NSString *)key { /* TODO */ }
-- (void)cacheOrders:(NSArray *)orders forKey:(NSString *)key { /* TODO */ }
-- (PortfolioSummaryModel *)getCachedPortfolioSummary:(NSString *)key { return nil; /* TODO */ }
-- (NSArray *)getCachedPositions:(NSString *)key { return nil; /* TODO */ }
-- (NSArray *)getCachedOrders:(NSString *)key { return nil; /* TODO */ }
-- (BOOL)isCacheFresh:(NSString *)key withTTL:(NSTimeInterval)ttl { return NO; /* TODO */ }
+- (void)cachePortfolioSummary:(PortfolioSummaryModel *)summary forKey:(NSString *)key {
+    // TODO: Implement portfolio summary caching
+    NSLog(@"📝 TODO: Cache portfolio summary for key %@", key);
+}
+
+- (void)cachePositions:(NSArray *)positions forKey:(NSString *)key {
+    // TODO: Implement positions caching
+    NSLog(@"📝 TODO: Cache %lu positions for key %@", (unsigned long)[positions count], key);
+}
+
+- (void)cacheOrders:(NSArray *)orders forKey:(NSString *)key {
+    // TODO: Implement orders caching
+    NSLog(@"📝 TODO: Cache %lu orders for key %@", (unsigned long)[orders count], key);
+}
+
+- (PortfolioSummaryModel *)getCachedPortfolioSummary:(NSString *)key {
+    // TODO: Implement portfolio summary cache retrieval
+    NSLog(@"📝 TODO: Get cached portfolio summary for key %@", key);
+    return nil;
+}
+
+- (NSArray *)getCachedPositions:(NSString *)key {
+    // TODO: Implement positions cache retrieval
+    NSLog(@"📝 TODO: Get cached positions for key %@", key);
+    return nil;
+}
+
+- (NSArray *)getCachedOrders:(NSString *)key {
+    // TODO: Implement orders cache retrieval
+    NSLog(@"📝 TODO: Get cached orders for key %@", key);
+    return nil;
+}
+
+- (BOOL)isCacheFresh:(NSString *)key withTTL:(NSTimeInterval)ttl {
+    // TODO: Implement cache freshness check
+    NSLog(@"📝 TODO: Check cache freshness for key %@ with TTL %.0fs", key, ttl);
+    return NO;
+}
 
 - (void)startPortfolioPollingForAccount:(NSString *)accountId {
     // TODO: Implement portfolio-specific polling timers
+    NSLog(@"📝 TODO: Start portfolio polling for account %@", accountId);
 }
 
 - (void)stopPortfolioPollingForCurrentAccount {
     // TODO: Stop existing timers
+    NSLog(@"📝 TODO: Stop portfolio polling for current account");
 }
 
 @end

@@ -36,6 +36,9 @@ typedef NS_ENUM(NSInteger, StopLossMode) {
 
 @interface OrderEntryViewController : NSViewController
 
+@property (nonatomic, strong, nullable) MarketQuoteModel *currentQuote;  // CAMBIARE da TradingQuoteModel
+
+
 #pragma mark - Account Context
 @property (nonatomic, strong, nullable) AccountModel *selectedAccount;
 
@@ -110,8 +113,6 @@ typedef NS_ENUM(NSInteger, StopLossMode) {
 @property (nonatomic, strong) IBOutlet NSButton *submitOrderButton;         // Submit order
 @property (nonatomic, strong) IBOutlet NSButton *resetFormButton;           // Reset to defaults
 
-#pragma mark - Current Market Data
-@property (nonatomic, strong, nullable) TradingQuoteModel *currentQuote;
 
 #pragma mark - Current Portfolio Data (for calculations)
 @property (nonatomic, strong, nullable) PortfolioSummaryModel *currentPortfolio;

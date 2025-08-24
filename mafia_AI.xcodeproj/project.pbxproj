@@ -19,6 +19,7 @@
 		95519E202E4DBC95007686FA /* ChartObject+CoreDataClass.m in Sources */ = {isa = PBXBuildFile; fileRef = 95519E1D2E4DBC95007686FA /* ChartObject+CoreDataClass.m */; };
 		95519E212E4DBC95007686FA /* ChartObject+CoreDataProperties.m in Sources */ = {isa = PBXBuildFile; fileRef = 95519E1F2E4DBC95007686FA /* ChartObject+CoreDataProperties.m */; };
 		9560C4042E3BC337003FCF67 /* Watchlist+CoreDataClass.m in Sources */ = {isa = PBXBuildFile; fileRef = 9560C3EE2E3BC337003FCF67 /* Watchlist+CoreDataClass.m */; };
+		958DF9D12E5B57F200720709 /* clientportal in Resources */ = {isa = PBXBuildFile; fileRef = 958DF9D02E5B57F200720709 /* clientportal */; };
 		95A040E62E4313800026FB2D /* Alert+CoreDataClass.m in Sources */ = {isa = PBXBuildFile; fileRef = 95A040C32E4313800026FB2D /* Alert+CoreDataClass.m */; };
 		95A040E82E4313800026FB2D /* CompanyInfo+CoreDataClass.m in Sources */ = {isa = PBXBuildFile; fileRef = 95A040C72E4313800026FB2D /* CompanyInfo+CoreDataClass.m */; };
 		95A040EA2E4313800026FB2D /* HistoricalBar+CoreDataClass.m in Sources */ = {isa = PBXBuildFile; fileRef = 95A040CB2E4313800026FB2D /* HistoricalBar+CoreDataClass.m */; };
@@ -87,6 +88,7 @@
 		95519E1F2E4DBC95007686FA /* ChartObject+CoreDataProperties.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "ChartObject+CoreDataProperties.m"; sourceTree = "<group>"; };
 		9560C3ED2E3BC337003FCF67 /* Watchlist+CoreDataClass.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Watchlist+CoreDataClass.h"; sourceTree = "<group>"; };
 		9560C3EE2E3BC337003FCF67 /* Watchlist+CoreDataClass.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "Watchlist+CoreDataClass.m"; sourceTree = "<group>"; };
+		958DF9D02E5B57F200720709 /* clientportal */ = {isa = PBXFileReference; lastKnownFileType = folder; path = clientportal; sourceTree = "<group>"; };
 		95A040C22E4313800026FB2D /* Alert+CoreDataClass.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Alert+CoreDataClass.h"; sourceTree = "<group>"; };
 		95A040C32E4313800026FB2D /* Alert+CoreDataClass.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = "Alert+CoreDataClass.m"; sourceTree = "<group>"; };
 		95A040C62E4313800026FB2D /* CompanyInfo+CoreDataClass.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "CompanyInfo+CoreDataClass.h"; sourceTree = "<group>"; };
@@ -148,6 +150,11 @@
 			path = mafia_AIUITests;
 			sourceTree = "<group>";
 		};
+		958DF9482E5B57C500720709 /* clientportal */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = clientportal;
+			sourceTree = "<group>";
+		};
 		959A4B4E2E3A1E6000D83EB1 /* Models */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Models;
@@ -198,6 +205,8 @@
 		954D2FF72E28514A00C7DC88 = {
 			isa = PBXGroup;
 			children = (
+				958DF9482E5B57C500720709 /* clientportal */,
+				958DF9D02E5B57F200720709 /* clientportal */,
 				95BC3CD22E586F5C00E82D43 /* ChartPattern+CoreDataClass.h */,
 				95BC3CD32E586F5C00E82D43 /* ChartPattern+CoreDataClass.m */,
 				95BC3CD42E586F5C00E82D43 /* ChartPattern+CoreDataProperties.h */,
@@ -303,6 +312,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				954D30022E28514A00C7DC88 /* mafia_AI */,
+				958DF9482E5B57C500720709 /* clientportal */,
 				959A4B4E2E3A1E6000D83EB1 /* Models */,
 				95F1AD752E2E4EE100D96BDD /* datamodels */,
 				95F1AD762E2E517E00D96BDD /* UI */,
@@ -330,6 +340,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				954D30152E28514B00C7DC88 /* mafia_AITests */,
+				958DF9482E5B57C500720709 /* clientportal */,
 			);
 			name = mafia_AITests;
 			packageProductDependencies = (
@@ -353,6 +364,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				954D301F2E28514C00C7DC88 /* mafia_AIUITests */,
+				958DF9482E5B57C500720709 /* clientportal */,
 			);
 			name = mafia_AIUITests;
 			packageProductDependencies = (
@@ -409,6 +421,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				958DF9D12E5B57F200720709 /* clientportal in Resources */,
 				954D30DD2E28531C00C7DC88 /* PROJECT_ARCHITECTURE.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

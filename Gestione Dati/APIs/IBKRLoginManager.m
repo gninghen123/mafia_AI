@@ -69,6 +69,12 @@
 #pragma mark - Client Portal Launch
 
 - (void)launchClientPortalWithCompletion:(void (^)(BOOL success, NSError *error))completion {
+    
+    NSString *runScriptPath = [self.clientPortalPath stringByAppendingPathComponent:@"bin/run.sh"];
+      [[NSFileManager defaultManager] setAttributes:@{NSFilePosixPermissions: @0755}
+                                       ofItemAtPath:runScriptPath
+                                              error:nil];
+    
     if (self.clientPortalTask && self.clientPortalTask.isRunning) {
         completion(YES, nil);
         return;
@@ -76,6 +82,22 @@
     
     NSString *runScript = [self.clientPortalPath stringByAppendingPathComponent:@"bin/run.sh"];
     NSString *configFile = [self.clientPortalPath stringByAppendingPathComponent:@"root/conf.yaml"];
+    
+    NSString *tempDir = NSTemporaryDirectory();
+    NSString *tempConfigFile = [tempDir stringByAppendingPathComponent:@"ibkr-conf.yaml"];
+
+    NSString *configContent = @"listenPort: 5001\n"
+                              "listenSsl: true\n"
+                              "paper: false\n";
+
+    [configContent writeToFile:tempConfigFile
+                    atomically:YES
+                      encoding:NSUTF8StringEncoding
+                         error:nil];
+
+    NSLog(@"Created temp config: %@", tempConfigFile);
+
+    self.clientPortalTask.arguments = @[@"./run.sh", tempConfigFile];
     
     if (![[NSFileManager defaultManager] fileExistsAtPath:runScript]) {
         NSError *error = [NSError errorWithDomain:@"IBKRLoginManager" code:1002
@@ -86,9 +108,11 @@
     
     // Create task
     self.clientPortalTask = [[NSTask alloc] init];
-    self.clientPortalTask.launchPath = runScript;
-    self.clientPortalTask.arguments = @[configFile];
-    self.clientPortalTask.currentDirectoryPath = [self.clientPortalPath stringByAppendingPathComponent:@"bin"];
+    self.clientPortalTask.launchPath = @"/bin/bash";
+    NSString *absoluteRunScript = runScript;
+    NSString *absoluteConfigFile = configFile;
+    self.clientPortalTask.arguments = @[absoluteRunScript, absoluteConfigFile];
+    self.clientPortalTask.currentDirectoryPath = self.clientPortalPath;
     
     // Monitor output for startup confirmation
     NSPipe *outputPipe = [NSPipe pipe];
@@ -154,7 +178,7 @@
         
         if (response == NSAlertFirstButtonReturn) {
             // Open browser and wait for auth
-            [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"https://localhost:5000"]];
+            [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:@"https://localhost:5001"]];
             [self waitForAuthenticationWithCompletion:completion];
         } else if (response == NSAlertSecondButtonReturn) {
             // Just wait for auth without opening browser
@@ -203,7 +227,7 @@
 #pragma mark - Status Checking
 
 - (void)checkClientPortalStatus:(void (^)(BOOL running, BOOL authenticated))completion {
-    NSURL *url = [NSURL URLWithString:@"https://localhost:5000/v1/api/iserver/auth/status"];
+    NSURL *url = [NSURL URLWithString:@"https://localhost:5001/v1/api/iserver/auth/status"];
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
     request.HTTPMethod = @"POST";
     request.timeoutInterval = 5.0;
@@ -238,25 +262,21 @@
 }
 
 #pragma mark - Auto-Discovery
-
 - (void)findClientPortalInstallation {
-    NSArray *searchPaths = @[
-        [@"~/Downloads/clientportal.gw" stringByExpandingTildeInPath],
-        [@"~/Applications/clientportal.gw" stringByExpandingTildeInPath],
-        [@"/Applications/clientportal.gw" stringByExpandingTildeInPath],
-    ];
+    // Get path from app bundle
+    NSString *bundlePath = [[NSBundle mainBundle] resourcePath];
+    NSString *clientPortalPath = [bundlePath stringByAppendingPathComponent:@"clientportal"];
     
-    for (NSString *path in searchPaths) {
-        NSString *runScript = [path stringByAppendingPathComponent:@"bin/run.sh"];
-        if ([[NSFileManager defaultManager] fileExistsAtPath:runScript]) {
-            self.clientPortalPath = path;
-            NSLog(@"📍 Auto-found Client Portal: %@", path);
-            return;
-        }
+    NSString *runScript = [clientPortalPath stringByAppendingPathComponent:@"bin/run.sh"];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:runScript]) {
+        self.clientPortalPath = clientPortalPath;
+        NSLog(@"📍 Found bundled Client Portal: %@", clientPortalPath);
+        return;
     }
     
-    NSLog(@"⚠️ Client Portal not found automatically. Set clientPortalPath manually if needed.");
+    NSLog(@"❌ Bundled Client Portal not found");
 }
+
 
 - (void)dealloc {
     if (self.authCheckTimer) {

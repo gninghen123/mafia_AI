@@ -20,8 +20,8 @@ static NSInteger const kDefaultClientId = 1;
 static NSTimeInterval const kRequestTimeout = 30.0;
 
 // IBKR Client Portal API Base URLs
-static NSString *const kIBKRClientPortalBaseURL = @"https://localhost:5000/v1/api";
-static NSString *const kIBKRPaperBaseURL = @"https://localhost:5000/v1/api";  // Paper trading
+static NSString *const kIBKRClientPortalBaseURL = @"https://localhost:5001/v1/api";
+static NSString *const kIBKRPaperBaseURL = @"https://localhost:5001/v1/api";  // Paper trading
 
 // API Endpoints
 static NSString *const kIBKRAuthStatusEndpoint = @"/iserver/auth/status";

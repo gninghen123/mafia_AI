@@ -52,7 +52,7 @@ typedef NS_ENUM(NSInteger, IBKRConnectionStatus) {
 /// Current connection status
 @property (nonatomic, readonly) IBKRConnectionStatus connectionStatus;
 
-/// Connection parameters (read-only)
+/// Connection parameters (read-only publicly, but can be set internally)
 @property (nonatomic, readonly) NSString *host;
 @property (nonatomic, readonly) NSInteger port;
 @property (nonatomic, readonly) NSInteger clientId;

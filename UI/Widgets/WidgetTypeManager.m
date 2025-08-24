@@ -20,6 +20,7 @@
 #import "LegacyDataConverterWidget.h"
 #import "ChartPatternLibraryWidget.h"  // ✅ AGGIUNTO: Import per ChartPatternLibraryWidget
 #import "PortfolioWidget.h"  // ✅ NUOVO: Import per PortfolioWidget
+#import "IBKRTestWidget.h"
 
 
 @interface WidgetTypeManager ()
@@ -104,7 +105,9 @@
             @"Performance Analytics",
             @"API Playground",
             @"Storage Management",
-            @"LegacyDataConverter"
+            @"LegacyDataConverter",
+            @"IBKR Test Widget"  // NUOVO
+
 
         ]
     };
@@ -135,7 +138,8 @@
     typeToClass[@"LegacyDataConverter"] = [LegacyDataConverterWidget class];
     typeToClass[@"Pattern Chart Library"] = [ChartPatternLibraryWidget class];
     typeToClass[@"Portfolio"] = [PortfolioWidget class];
-    
+    typeToClass[ @"IBKR Test Widget"]= [IBKRTestWidget class];
+
     // Map all other types to BaseWidget for now
     for (NSArray *types in self.widgetCategories.allValues) {
         for (NSString *type in types) {
@@ -170,6 +174,7 @@
         @"Storage Management": @"externaldrive.fill",
         @"Pattern Chart Library": @"square.grid.3x3.bottomleft.fill",  // ✅ AGGIUNTO: Icona per ChartPatternLibrary
         @"Portfolio": @"briefcase.fill",  // ✅ NUOVO: Icona per Portfolio Widget
+        @"IBKR Test Widget": @"testtube.2",
 
         @"Technical Indicators": @"waveform.path.ecg",
         @"Scanner": @"magnifyingglass",

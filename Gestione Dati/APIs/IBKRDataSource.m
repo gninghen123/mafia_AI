@@ -17,20 +17,22 @@ static NSInteger const kDefaultClientId = 1;
 // Request timeout
 static NSTimeInterval const kRequestTimeout = 30.0;
 
-@interface IBKRDataSource ()
+@interface IBKRDataSource () {
+    // Private instance variables for readonly properties
+    NSString *_host;
+    NSInteger _port;
+    NSInteger _clientId;
+    IBKRConnectionType _connectionType;
+}
 
-// Connection properties
-@property (nonatomic, strong) NSString *host;
-@property (nonatomic, assign) NSInteger port;
-@property (nonatomic, assign) NSInteger clientId;
-@property (nonatomic, assign) IBKRConnectionType connectionType;
-@property (nonatomic, assign) IBKRConnectionStatus connectionStatus;
-
-// Protocol properties (DataSource conformance)
+// Protocol properties (DataSource conformance) - internal readwrite
 @property (nonatomic, readwrite) DataSourceType sourceType;
 @property (nonatomic, readwrite) DataSourceCapabilities capabilities;
 @property (nonatomic, readwrite) NSString *sourceName;
 @property (nonatomic, readwrite) BOOL isConnected;
+
+// Connection properties - internal readwrite
+@property (nonatomic, readwrite) IBKRConnectionStatus connectionStatus;
 
 // Internal components
 @property (nonatomic, strong) NSURLSession *session;
@@ -41,9 +43,6 @@ static NSTimeInterval const kRequestTimeout = 30.0;
 // Request management
 @property (nonatomic, assign) NSInteger nextRequestId;
 
-// Configuration
-@property (nonatomic, assign) BOOL debugLogging;
-
 @end
 
 @implementation IBKRDataSource
@@ -52,6 +51,24 @@ static NSTimeInterval const kRequestTimeout = 30.0;
 @synthesize capabilities = _capabilities;
 @synthesize sourceName = _sourceName;
 @synthesize isConnected = _isConnected;
+
+#pragma mark - Property Getters for Readonly Properties
+
+- (NSString *)host {
+    return _host;
+}
+
+- (NSInteger)port {
+    return _port;
+}
+
+- (NSInteger)clientId {
+    return _clientId;
+}
+
+- (IBKRConnectionType)connectionType {
+    return _connectionType;
+}
 
 #pragma mark - Initialization
 
@@ -68,7 +85,7 @@ static NSTimeInterval const kRequestTimeout = 30.0;
               connectionType:(IBKRConnectionType)connectionType {
     self = [super init];
     if (self) {
-        // Connection configuration
+        // Connection configuration - use private ivars
         _host = host.copy;
         _port = port;
         _clientId = clientId;
@@ -121,7 +138,7 @@ static NSTimeInterval const kRequestTimeout = 30.0;
         
         // TODO: Implement actual connection to TWS/IB Gateway
         // For now, simulate success if TWS ports are reasonable
-        BOOL connectionSuccess = (self.port == 7497 || self.port == 4002) && [self.host isEqualToString:@"127.0.0.1"];
+        BOOL connectionSuccess = (_port == 7497 || _port == 4002) && [_host isEqualToString:@"127.0.0.1"];
         
         if (connectionSuccess) {
             self.connectionStatus = IBKRConnectionStatusConnected;
@@ -137,7 +154,7 @@ static NSTimeInterval const kRequestTimeout = 30.0;
             self->_isConnected = NO;
             NSError *error = [NSError errorWithDomain:@"IBKRDataSource"
                                                  code:1001
-                                             userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Failed to connect to IBKR at %@:%ld", self.host, (long)self.port]}];
+                                             userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Failed to connect to IBKR at %@:%ld", _host, (long)_port]}];
             self.lastConnectionError = error;
             [self logDebug:@"Failed to connect to IBKR: %@", error.localizedDescription];
         }
@@ -393,7 +410,7 @@ static NSTimeInterval const kRequestTimeout = 30.0;
 #pragma mark - Internal Methods
 
 - (NSInteger)nextRequestId {
-    return self.nextRequestId++;
+    return ++_nextRequestId;  // ✅ CORRECT - increments the ivar, not the property
 }
 
 - (void)startConnectionMonitoring {
@@ -434,10 +451,10 @@ static NSTimeInterval const kRequestTimeout = 30.0;
 
 - (NSDictionary *)connectionStatistics {
     return @{
-        @"host": self.host,
-        @"port": @(self.port),
-        @"clientId": @(self.clientId),
-        @"connectionType": @(self.connectionType),
+        @"host": _host,
+        @"port": @(_port),
+        @"clientId": @(_clientId),
+        @"connectionType": @(_connectionType),
         @"connectionStatus": @(self.connectionStatus),
         @"isConnected": @(self.isConnected),
         @"pendingRequests": @(self.pendingRequests.count)

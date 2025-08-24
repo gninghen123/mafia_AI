@@ -18,26 +18,30 @@
     
     // Map IBKR quote fields to MarketData
     marketData.symbol = symbol;
-    marketData.last = [rawData[@"last"] doubleValue];
-    marketData.bid = [rawData[@"bid"] doubleValue];
-    marketData.ask = [rawData[@"ask"] doubleValue];
-    marketData.volume = [rawData[@"volume"] longLongValue];
-    marketData.open = [rawData[@"open"] doubleValue];
-    marketData.high = [rawData[@"high"] doubleValue];
-    marketData.low = [rawData[@"low"] doubleValue];
-    marketData.previousClose = [rawData[@"close"] doubleValue];
+    marketData.last = @([rawData[@"last"] doubleValue]);
+    marketData.bid = @([rawData[@"bid"] doubleValue]);
+    marketData.ask = @([rawData[@"ask"] doubleValue]);
+    marketData.volume = @([rawData[@"volume"] longLongValue]);
+    marketData.open = @([rawData[@"open"] doubleValue]);
+    marketData.high = @([rawData[@"high"] doubleValue]);
+    marketData.low = @([rawData[@"low"] doubleValue]);
+    marketData.previousClose = @([rawData[@"close"] doubleValue]);
     
     // Calculate change and change percent
-    if (marketData.previousClose > 0) {
-        marketData.change = marketData.last - marketData.previousClose;
-        marketData.changePercent = (marketData.change / marketData.previousClose) * 100.0;
+    double lastPrice = [marketData.last doubleValue];
+    double previousClose = [marketData.previousClose doubleValue];
+    if (previousClose > 0) {
+        double change = lastPrice - previousClose;
+        double changePercent = (change / previousClose) * 100.0;
+        marketData.change = @(change);
+        marketData.changePercent = @(changePercent);
     }
     
     // Set timestamp
-    marketData.marketTime = rawData[@"timestamp"] ?: [NSDate date];
+    marketData.timestamp = rawData[@"timestamp"] ?: [NSDate date];
     
     NSLog(@"✅ IBKRAdapter: Standardized quote for %@ - Last: %.2f, Bid: %.2f, Ask: %.2f",
-          symbol, marketData.last, marketData.bid, marketData.ask);
+          symbol, lastPrice, [marketData.bid doubleValue], [marketData.ask doubleValue]);
     
     return marketData;
 }

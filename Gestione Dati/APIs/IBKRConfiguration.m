@@ -1,4 +1,3 @@
-
 //
 //  IBKRConfiguration.m
 //  TradingApp
@@ -51,12 +50,8 @@ static NSInteger const kDefaultClientId = 1;
     self.connectionType = IBKRConnectionTypeTWS;
     self.clientId = kDefaultClientId;
     
-    NSLog(@"🏭 IBKRConfiguration: Created IBKRDataSource with configuration: %@", [self connectionURLString]);
-    
-    return dataSource;
+    NSLog(@"📋 IBKRConfiguration: Loaded TWS preset (%@:%ld)", self.host, (long)self.port);
 }
-
-
 
 - (void)loadGatewayPreset {
     self.host = kDefaultHost;
@@ -193,4 +188,9 @@ static NSInteger const kDefaultClientId = 1;
     
     dataSource.debugLogging = self.debugLoggingEnabled;
     
-    NSLog(@"
+    NSLog(@"🏭 IBKRConfiguration: Created IBKRDataSource with configuration: %@", [self connectionURLString]);
+    
+    return dataSource;
+}
+
+@end

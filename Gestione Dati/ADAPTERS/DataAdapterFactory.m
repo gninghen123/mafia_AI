@@ -5,6 +5,8 @@
 #import "SchwabDataAdapter.h"
 #import "WebullDataAdapter.h"
 #import "OtherDataAdapter.h"
+#import "IBKRAdapter.h"
+#import "CommonTypes.h"
 
 @implementation DataAdapterFactory
 
@@ -13,19 +15,22 @@
         case DataSourceTypeSchwab:
             return [[SchwabDataAdapter alloc] init];
             
+        case DataSourceTypeIBKR:
+            return [[IBKRAdapter alloc] init];
+            
         case DataSourceTypeWebull:
             return [[WebullDataAdapter alloc] init];
             
-        case DataSourceTypeOther:  // NUOVO: OtherDataSource adapter
+        case DataSourceTypeOther:
             return [[OtherDataAdapter alloc] init];
+    
             
+        case DataSourceTypeYahoo:
         case DataSourceTypeCustom:
-            // Keep for any actual custom implementations
-            return [[WebullDataAdapter alloc] init]; // Fallback for now
-            
         default:
-            NSLog(@"Warning: No adapter for data source type %ld", (long)sourceType);
-            return nil;
+            // Fallback to OtherDataAdapter for unsupported types
+            NSLog(@"⚠️ DataAdapterFactory: No specific adapter for source type %ld, using OtherDataAdapter", (long)sourceType);
+            return [[OtherDataAdapter alloc] init];
     }
 }
 

@@ -19,6 +19,9 @@
 #import "QuoteWidget.h"
 #import "ConnectionStatusWidget.h"
 #import "APIPlaygroundWidget.h"
+#import "ibkrdatasource.h"
+#import "ibkrconfiguration.h"
+
 
 @interface AppDelegate ()
 @property (nonatomic, strong) MainWindowController *mainWindowController;
@@ -49,6 +52,8 @@
     
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [self autoConnectToSchwab];
+        [self autoConnectToIBKRWithPreferences];
+
     });
     [self setupClaudeDataSource];
     if (self.window) {
@@ -73,6 +78,11 @@
     [downloadManager registerDataSource:schwabSource
                                 withType:DataSourceTypeSchwab
                                 priority:1];
+    IBKRConfiguration *ibkrConfig = [IBKRConfiguration sharedConfiguration];
+       IBKRDataSource *ibkrSource = [ibkrConfig createDataSource];
+       [downloadManager registerDataSource:ibkrSource
+                                   withType:DataSourceTypeIBKR
+                                   priority:2];
     
     // Registra Webull data source (priorità 50 - media)
     WebullDataSource *webullSource = [[WebullDataSource alloc] init];
@@ -584,5 +594,115 @@
     return window;
 }
 
+#pragma mark - ibkr
 
+- (void)autoConnectToIBKRWithPreferences {
+    // Controlla se l'utente ha abilitato la connessione automatica a IBKR
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL autoConnectEnabled = [defaults boolForKey:@"AutoConnectIBKR"];
+    
+    if (!autoConnectEnabled) {
+        NSLog(@"IBKR Auto-connect disabled by user");
+        return;
+    }
+    
+    [self autoConnectToIBKR];
+}
+
+- (void)autoConnectToIBKR {
+    NSLog(@"AppDelegate: Attempting auto-connection to IBKR...");
+    
+    DownloadManager *downloadManager = [DownloadManager sharedManager];
+    
+    // Controlla se IBKR è già connesso
+    if ([downloadManager isDataSourceConnected:DataSourceTypeIBKR]) {
+        NSLog(@"AppDelegate: IBKR already connected");
+        return;
+    }
+    
+    // Tenta connessione automatica
+    [downloadManager connectDataSource:DataSourceTypeIBKR completion:^(BOOL success, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (success) {
+                NSLog(@"AppDelegate: IBKR auto-connection successful");
+                [self showIBKRConnectionAlert:YES message:@"Successfully connected to Interactive Brokers TWS/Gateway"];
+            } else {
+                NSLog(@"AppDelegate: IBKR auto-connection failed: %@", error.localizedDescription);
+                
+                // Non mostrare errore per connessioni automatiche fallite
+                // L'utente può comunque connettersi manualmente se necessario
+                
+                // Optional: Schedule retry after a delay
+                [self scheduleIBKRRetry];
+            }
+        });
+    }];
+}
+
+- (void)scheduleIBKRRetry {
+    // Retry connection after 30 seconds if TWS/Gateway might be starting up
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(30.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        BOOL autoRetryEnabled = [defaults boolForKey:@"AutoRetryIBKR"];
+        
+        if (autoRetryEnabled) {
+            NSLog(@"AppDelegate: Retrying IBKR connection...");
+            [self autoConnectToIBKR];
+        }
+    });
+}
+
+- (void)showIBKRConnectionAlert:(BOOL)success message:(NSString *)message {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = success ? @"IBKR Connection Successful" : @"IBKR Connection Failed";
+    alert.informativeText = message;
+    alert.alertStyle = success ? NSAlertStyleInformational : NSAlertStyleWarning;
+    
+    // Add action button for failed connections
+    if (!success) {
+        [alert addButtonWithTitle:@"Retry"];
+        [alert addButtonWithTitle:@"Cancel"];
+    } else {
+        [alert addButtonWithTitle:@"OK"];
+    }
+    
+    // Show as sheet if main window is available
+    if (self.mainWindowController.window) {
+        [alert beginSheetModalForWindow:self.mainWindowController.window
+                      completionHandler:^(NSModalResponse returnCode) {
+                          if (!success && returnCode == NSAlertFirstButtonReturn) {
+                              // User clicked Retry
+                              [self autoConnectToIBKR];
+                          }
+                      }];
+        
+        // Auto-close success alerts after 3 seconds
+        if (success) {
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [self.mainWindowController.window endSheet:alert.window];
+            });
+        }
+    } else {
+        // Fallback to modal if no main window
+        [alert runModal];
+    }
+}
+
+// Optional: Method to test IBKR connection manually
+- (void)testIBKRConnection {
+    DownloadManager *downloadManager = [DownloadManager sharedManager];
+    
+    [downloadManager connectDataSource:DataSourceTypeIBKR completion:^(BOOL success, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSString *message;
+            if (success) {
+                message = @"Interactive Brokers connection test successful.\nTWS/Gateway is running and accessible.";
+            } else {
+                message = [NSString stringWithFormat:@"Interactive Brokers connection test failed.\n\nError: %@\n\nPlease ensure:\n• TWS or IB Gateway is running\n• API connections are enabled\n• Correct host/port configuration", error.localizedDescription];
+            }
+            
+            [self showIBKRConnectionAlert:success message:message];
+        });
+    }];
+}
 @end

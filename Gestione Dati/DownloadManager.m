@@ -746,7 +746,40 @@
         // External data sources - only OtherDataSource
         return sourceType == DataSourceTypeOther;
     }
-    
+    if (sourceType == DataSourceTypeIBKR) {
+          switch (requestType) {
+              case DataRequestTypeQuote:
+              case DataRequestTypeBatchQuotes:
+                  return (capabilities & DataSourceCapabilityQuotes) != 0;
+                  
+              case DataRequestTypeHistoricalBars:
+                  return (capabilities & DataSourceCapabilityHistorical) != 0;
+                  
+              case DataRequestTypeOrderBook:
+                  return (capabilities & DataSourceCapabilityOrderBook) != 0;
+                  
+              case DataRequestTypePositions:
+              case DataRequestTypeOrders:
+              case DataRequestTypeAccountInfo:
+                  return (capabilities & DataSourceCapabilityAccounts) != 0;
+                  
+              case DataRequestTypeOptionChain:
+                  return (capabilities & DataSourceCapabilityOptions) != 0;
+                  
+              case DataRequestTypeTimeSales:
+                  return (capabilities & DataSourceCapabilityTimeSales) != 0;
+                  
+              // IBKR doesn't support these request types
+              case DataRequestTypeNews:
+              case DataRequestTypeFundamentals:
+              case DataRequestTypeNewsSummary:
+              case DataRequestTypeTextSummary:
+              case DataRequestTypeAIAnalysis:
+                  return NO;
+                  
+              default:
+                  return NO;
+          }
     // Existing request types with capability checks
     switch (requestType) {
         case DataRequestTypeQuote:

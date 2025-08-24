@@ -2716,10 +2716,8 @@
     if (!self.crosshairVisible) return;
     
     // ✅ USA COORDINATE CONTEXT per valore Y unificato
-    double currentValue;
-    if (self.objectRenderer && self.sharedXContext) {
-        currentValue = [self.panelYContext valueForScreenY:self.crosshairPoint.y];
-    }
+    double currentValue = [self.panelYContext valueForScreenY:self.crosshairPoint.y];
+    
     
     NSString *valueText = [self formatNumericValueForDisplay:currentValue];
     
@@ -2743,12 +2741,8 @@
                                   textSize.width + 8, textSize.height + 6);
     
     // Colore dinamico basato sul tipo di panel
-    NSColor *bubbleColor;
-    if ([self.panelType isEqualToString:@"volume"]) {
-        bubbleColor = [NSColor systemOrangeColor]; // Volume = arancione
-    } else {
-        bubbleColor = [NSColor systemBlueColor];   // Price = blu
-    }
+    NSColor *bubbleColor = [NSColor systemBlueColor];   // Price = blu
+    
     
     [bubbleColor setFill];
     NSBezierPath *bubblePath = [NSBezierPath bezierPathWithRoundedRect:bubbleRect

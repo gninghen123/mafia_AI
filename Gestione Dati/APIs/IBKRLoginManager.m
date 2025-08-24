@@ -69,52 +69,42 @@
 #pragma mark - Client Portal Launch
 
 - (void)launchClientPortalWithCompletion:(void (^)(BOOL success, NSError *error))completion {
+    // Percorsi relativi come da terminale
+    NSString *relativeRunScript = @"bin/run.sh";
+    NSString *relativeConfigFile = @"root/conf.yaml";
     
-    NSString *runScriptPath = [self.clientPortalPath stringByAppendingPathComponent:@"bin/run.sh"];
-      [[NSFileManager defaultManager] setAttributes:@{NSFilePosixPermissions: @0755}
-                                       ofItemAtPath:runScriptPath
-                                              error:nil];
-    
-    if (self.clientPortalTask && self.clientPortalTask.isRunning) {
-        completion(YES, nil);
-        return;
-    }
-    
-    NSString *runScript = [self.clientPortalPath stringByAppendingPathComponent:@"bin/run.sh"];
-    NSString *configFile = [self.clientPortalPath stringByAppendingPathComponent:@"root/conf.yaml"];
-    
-    NSString *tempDir = NSTemporaryDirectory();
-    NSString *tempConfigFile = [tempDir stringByAppendingPathComponent:@"ibkr-conf.yaml"];
-
-    NSString *configContent = @"listenPort: 5001\n"
-                              "listenSsl: true\n"
-                              "paper: false\n";
-
-    [configContent writeToFile:tempConfigFile
-                    atomically:YES
-                      encoding:NSUTF8StringEncoding
-                         error:nil];
-
-    NSLog(@"Created temp config: %@", tempConfigFile);
-
-    self.clientPortalTask.arguments = @[@"./run.sh", tempConfigFile];
-    
-    if (![[NSFileManager defaultManager] fileExistsAtPath:runScript]) {
+    // Verifica che run.sh esista
+    NSString *runScriptPath = [self.clientPortalPath stringByAppendingPathComponent:relativeRunScript];
+    if (![[NSFileManager defaultManager] fileExistsAtPath:runScriptPath]) {
         NSError *error = [NSError errorWithDomain:@"IBKRLoginManager" code:1002
                                          userInfo:@{NSLocalizedDescriptionKey: @"Client Portal run.sh not found"}];
         completion(NO, error);
         return;
     }
     
-    // Create task
+    // Rendi eseguibile lo script
+    [[NSFileManager defaultManager] setAttributes:@{NSFilePosixPermissions: @0755}
+                                     ofItemAtPath:runScriptPath
+                                            error:nil];
+    
+    // Evita doppio avvio
+    if (self.clientPortalTask && self.clientPortalTask.isRunning) {
+        completion(YES, nil);
+        return;
+    }
+    
+    // Crea il task con percorsi relativi
     self.clientPortalTask = [[NSTask alloc] init];
     self.clientPortalTask.launchPath = @"/bin/bash";
-    NSString *absoluteRunScript = runScript;
-    NSString *absoluteConfigFile = configFile;
-    self.clientPortalTask.arguments = @[absoluteRunScript, absoluteConfigFile];
     self.clientPortalTask.currentDirectoryPath = self.clientPortalPath;
+    self.clientPortalTask.arguments = @[relativeRunScript, relativeConfigFile];
     
-    // Monitor output for startup confirmation
+    // ✅ qui setti l’ambiente
+    NSMutableDictionary *env = [NSMutableDictionary dictionaryWithDictionary:[[NSProcessInfo processInfo] environment]];
+    env[@"VERTX_CACHE_DIR"] = NSTemporaryDirectory();
+    self.clientPortalTask.environment = env;
+    
+    // Monitor output
     NSPipe *outputPipe = [NSPipe pipe];
     self.clientPortalTask.standardOutput = outputPipe;
     
@@ -139,7 +129,7 @@
         }
     }];
     
-    // Launch with error handling
+    // Avvio con gestione errori
     @try {
         [self.clientPortalTask launch];
         NSLog(@"🚀 Auto-launching Client Portal...");
@@ -160,6 +150,7 @@
         completion(NO, error);
     }
 }
+
 
 #pragma mark - Authentication Flow
 

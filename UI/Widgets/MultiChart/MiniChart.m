@@ -98,7 +98,7 @@
     self.symbolLabel.editable = NO;
     self.symbolLabel.bordered = NO;
     self.symbolLabel.backgroundColor = [NSColor clearColor];
-    self.symbolLabel.font = [NSFont boldSystemFontOfSize:14];
+    self.symbolLabel.font = [NSFont boldSystemFontOfSize:18];
     self.symbolLabel.textColor = self.textColor;
     self.symbolLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [self addSubview:self.symbolLabel];
@@ -108,7 +108,7 @@
     self.priceLabel.editable = NO;
     self.priceLabel.bordered = NO;
     self.priceLabel.backgroundColor = [NSColor clearColor];
-    self.priceLabel.font = [NSFont systemFontOfSize:12];
+    self.priceLabel.font = [NSFont systemFontOfSize:14];
     self.priceLabel.textColor = self.textColor;
     self.priceLabel.alignment = NSTextAlignmentRight;
     self.priceLabel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -119,7 +119,7 @@
     self.changeLabel.editable = NO;
     self.changeLabel.bordered = NO;
     self.changeLabel.backgroundColor = [NSColor clearColor];
-    self.changeLabel.font = [NSFont systemFontOfSize:10];
+    self.changeLabel.font = [NSFont systemFontOfSize:14];
     self.changeLabel.textColor = self.textColor;
     self.changeLabel.alignment = NSTextAlignmentRight;
     self.changeLabel.translatesAutoresizingMaskIntoConstraints = NO;

@@ -8,6 +8,7 @@
 #import "PortfolioWidget.h"
 #import "DataHub+Portfolio.h"
 #import "OrderEntryViewController.h"
+#import "DataHub+MarketData.h"  // ✅ NUOVO: Necessario per i metodi di subscription
 
 @interface PortfolioWidget ()
 
@@ -234,8 +235,8 @@
     NSTabViewItem *newOrderTab = [[NSTabViewItem alloc] init];
     newOrderTab.label = @"New Order";
     newOrderTab.identifier = @(PortfolioTabNewOrder);
-    self.newOrderContainer = [[NSView alloc] init];
-    newOrderTab.view = self.newOrderContainer;
+    self.orderEntryContainer = [[NSView alloc] init];
+    newOrderTab.view = self.orderEntryContainer;
     [self.mainTabView addTabViewItem:newOrderTab];
     
     // Set delegate
@@ -456,18 +457,17 @@
     
     // Add as child view controller
     [self addChildViewController:self.orderEntryViewController];
-    [self.newOrderContainer addSubview:self.orderEntryViewController.view];
+    [self.orderEntryContainer addSubview:self.orderEntryViewController.view];
     
     // Fill container
     self.orderEntryViewController.view.translatesAutoresizingMaskIntoConstraints = NO;
     [NSLayoutConstraint activateConstraints:@[
-        [self.orderEntryViewController.view.leadingAnchor constraintEqualToAnchor:self.newOrderContainer.leadingAnchor],
-        [self.orderEntryViewController.view.trailingAnchor constraintEqualToAnchor:self.newOrderContainer.trailingAnchor],
-        [self.orderEntryViewController.view.topAnchor constraintEqualToAnchor:self.newOrderContainer.topAnchor],
-        [self.orderEntryViewController.view.bottomAnchor constraintEqualToAnchor:self.newOrderContainer.bottomAnchor]
+        [self.orderEntryViewController.view.leadingAnchor constraintEqualToAnchor:self.orderEntryContainer.leadingAnchor],
+        [self.orderEntryViewController.view.trailingAnchor constraintEqualToAnchor:self.orderEntryContainer.trailingAnchor],
+        [self.orderEntryViewController.view.topAnchor constraintEqualToAnchor:self.orderEntryContainer.topAnchor],
+        [self.orderEntryViewController.view.bottomAnchor constraintEqualToAnchor:self.orderEntryContainer.bottomAnchor]
     ]];
     
-    [self.orderEntryViewController didMoveToParentViewController:self];
 }
 
 - (void)setupLayoutConstraints {
@@ -527,7 +527,7 @@
     // Quote updates for position prices
     [nc addObserver:self
            selector:@selector(handleQuoteUpdate:)
-               name:DataHubQuoteUpdatedNotification
+               name:@"DataHubQuoteUpdatedNotification"  // ✅ CORRETTO - usa stringa invece di constante
              object:nil];
 }
 
@@ -537,7 +537,7 @@
     self.isLoadingAccounts = YES;
     [self updateConnectionStatus];
     
-    [[DataHub sharedDataHub] getAvailableAccountsWithCompletion:^(NSArray<AccountModel *> *accounts, NSError *error) {
+    [[DataHub shared] getAvailableAccountsWithCompletion:^(NSArray<AccountModel *> *accounts, NSError *error) {
         self.isLoadingAccounts = NO;
         
         if (error) {
@@ -600,7 +600,7 @@
     self.orderEntryViewController.selectedAccount = account;
     
     // Switch data subscriptions
-    [[DataHub sharedDataHub] switchPortfolioSubscriptionToAccount:account.accountId];
+    [[DataHub shared] switchPortfolioSubscriptionToAccount:account.accountId];
     
     // Load data for new account
     [self loadPortfolioDataForCurrentAccount];
@@ -634,7 +634,7 @@
     self.isLoadingPortfolioData = YES;
     
     // Load portfolio summary
-    [[DataHub sharedDataHub] getPortfolioSummaryForAccount:accountId completion:^(PortfolioSummaryModel *summary, BOOL isFresh) {
+    [[DataHub shared] getPortfolioSummaryForAccount:accountId completion:^(PortfolioSummaryModel *summary, BOOL isFresh) {
         self.portfolioSummary = summary;
         [self updatePortfolioSummaryDisplay];
         
@@ -659,7 +659,7 @@
     NSString *accountId = self.selectedAccount.accountId;
     self.isLoadingPositions = YES;
     
-    [[DataHub sharedDataHub] getPositionsForAccount:accountId completion:^(NSArray<AdvancedPositionModel *> *positions, BOOL isFresh) {
+    [[DataHub shared] getPositionsForAccount:accountId completion:^(NSArray<AdvancedPositionModel *> *positions, BOOL isFresh) {
         self.isLoadingPositions = NO;
         self.positions = positions ?: @[];
         
@@ -677,7 +677,7 @@
     NSString *accountId = self.selectedAccount.accountId;
     self.isLoadingOrders = YES;
     
-    [[DataHub sharedDataHub] getOrdersForAccount:accountId withStatus:self.currentOrderStatusFilter completion:^(NSArray<AdvancedOrderModel *> *orders, BOOL isFresh) {
+    [[DataHub shared] getOrdersForAccount:accountId withStatus:self.currentOrderStatusFilter completion:^(NSArray<AdvancedOrderModel *> *orders, BOOL isFresh) {
         self.isLoadingOrders = NO;
         self.orders = orders ?: @[];
         
@@ -708,15 +708,15 @@
     
     for (AdvancedPositionModel *position in self.positions) {
         if ([position.symbol isEqualToString:quote.symbol]) {
-            // Update prices
-            position.currentPrice = quote.lastPrice;
-            position.bidPrice = quote.bid;
-            position.askPrice = quote.ask;
-            position.dayHigh = quote.high;
-            position.dayLow = quote.low;
-            position.dayOpen = quote.open;
-            position.previousClose = quote.previousClose;
-            position.volume = quote.volume;
+            // ✅ CORREZIONE: Accesso corretto alle proprietà NSNumber
+            position.currentPrice = quote.last.doubleValue; // ✅ CORRETTO: usa .last invece di .lastPrice
+            position.bidPrice = quote.bid ? quote.bid.doubleValue : 0.0; // ✅ CORRETTO: .doubleValue
+            position.askPrice = quote.ask ? quote.ask.doubleValue : 0.0; // ✅ CORRETTO: .doubleValue
+            position.dayHigh = quote.high ? quote.high.doubleValue : 0.0; // ✅ CORRETTO: .doubleValue
+            position.dayLow = quote.low ? quote.low.doubleValue : 0.0; // ✅ CORRETTO: .doubleValue
+            position.dayOpen = quote.open ? quote.open.doubleValue : 0.0; // ✅ CORRETTO: .doubleValue
+            position.previousClose = quote.previousClose ? quote.previousClose.doubleValue : 0.0; // ✅ CORRETTO: .doubleValue
+            position.volume = quote.volume ? quote.volume.integerValue : 0; // ✅ CORRETTO: .integerValue
             position.priceLastUpdated = [NSDate date];
             
             // Recalculate derived values
@@ -736,7 +736,6 @@
         [self recalculatePortfolioTotals];
     }
 }
-
 - (void)recalculatePortfolioTotals {
     if (!self.portfolioSummary) return;
     
@@ -781,7 +780,7 @@
     
     NSLog(@"🔄 PortfolioWidget: Force refreshing account %@", self.selectedAccount.accountId);
     
-    [[DataHub sharedDataHub] forceRefreshPortfolioForAccount:self.selectedAccount.accountId completion:^(BOOL success, NSError *error) {
+    [[DataHub shared] forceRefreshPortfolioForAccount:self.selectedAccount.accountId completion:^(BOOL success, NSError *error) {
         if (success) {
             [self loadPortfolioDataForCurrentAccount];
         } else {
@@ -873,17 +872,30 @@
 - (void)subscribeToPositionPrices {
     // Clear existing subscriptions
     for (NSString *symbol in self.subscribedSymbols) {
-        [[DataHub sharedDataHub] unsubscribeFromQuoteUpdatesForSymbol:symbol];
+        // ✅ CORREZIONE: Usa DataHub shared e nome metodo corretto
+        [[DataHub shared] unsubscribeFromQuoteUpdatesForSymbol:symbol];
     }
     [self.subscribedSymbols removeAllObjects];
     
     // Subscribe to current position symbols
     for (AdvancedPositionModel *position in self.positions) {
-        [[DataHub sharedDataHub] subscribeToQuoteUpdatesForSymbol:position.symbol];
+        // ✅ CORREZIONE: Usa DataHub shared e nome metodo corretto
+        [[DataHub shared] subscribeToQuoteUpdatesForSymbol:position.symbol];
         [self.subscribedSymbols addObject:position.symbol];
     }
     
     NSLog(@"📡 PortfolioWidget: Subscribed to %lu symbols for real-time prices", (unsigned long)self.subscribedSymbols.count);
+}
+
+- (void)unsubscribeFromCurrentAccountUpdates {
+    // Unsubscribe from all symbols
+    for (NSString *symbol in self.subscribedSymbols) {
+        // ✅ CORREZIONE: Usa DataHub shared
+        [[DataHub shared] unsubscribeFromQuoteUpdatesForSymbol:symbol];
+    }
+    [self.subscribedSymbols removeAllObjects];
+    
+    NSLog(@"📡 PortfolioWidget: Unsubscribed from all quote updates");
 }
 
 #pragma mark - Polling Management
@@ -927,7 +939,7 @@
 - (void)refreshPortfolioSummary {
     if (!self.selectedAccount) return;
     
-    [[DataHub sharedDataHub] getPortfolioSummaryForAccount:self.selectedAccount.accountId completion:^(PortfolioSummaryModel *summary, BOOL isFresh) {
+    [[DataHub shared] getPortfolioSummaryForAccount:self.selectedAccount.accountId completion:^(PortfolioSummaryModel *summary, BOOL isFresh) {
         self.portfolioSummary = summary;
         [self updatePortfolioSummaryDisplay];
     }];
@@ -976,67 +988,113 @@
 #pragma mark - NSTableViewDelegate
 
 - (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
-    if (tableView == self.positionsTableView) {
-        return [self positionsTableView:tableView viewForTableColumn:tableColumn row:row];
-    } else if (tableView == self.ordersTableView) {
+    if (tableView == self.ordersTableView) {
+        // ✅ CORREZIONE: Gestione corretta per orders table
         return [self ordersTableView:tableView viewForTableColumn:tableColumn row:row];
+    } else if (tableView == self.positionsTableView) {
+        // Gestione positions table
+        return [self positionsTableView:tableView viewForTableColumn:tableColumn row:row];
     }
+    
     return nil;
 }
-
 - (NSView *)positionsTableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
     if (row >= self.positions.count) return nil;
     
     AdvancedPositionModel *position = self.positions[row];
     NSString *identifier = tableColumn.identifier;
     
+    // Create table cell view
     NSTableCellView *cellView = [tableView makeViewWithIdentifier:identifier owner:self];
     if (!cellView) {
         cellView = [[NSTableCellView alloc] init];
         cellView.identifier = identifier;
         
         NSTextField *textField = [[NSTextField alloc] init];
-        textField.translatesAutoresizingMaskIntoConstraints = NO;
-        textField.backgroundColor = [NSColor clearColor];
-        textField.bordered = NO;
+        textField.bezeled = NO;
         textField.editable = NO;
-        textField.font = [NSFont systemFontOfSize:12];
-        
+        textField.backgroundColor = [NSColor clearColor];
         [cellView addSubview:textField];
         cellView.textField = textField;
-        
-        [NSLayoutConstraint activateConstraints:@[
-            [textField.leadingAnchor constraintEqualToAnchor:cellView.leadingAnchor constant:4],
-            [textField.trailingAnchor constraintEqualToAnchor:cellView.trailingAnchor constant:-4],
-            [textField.centerYAnchor constraintEqualToAnchor:cellView.centerYAnchor]
-        ]];
     }
     
     // Set cell content based on column
     if ([identifier isEqualToString:@"symbol"]) {
-        cellView.textField.stringValue = position.symbol;
-        cellView.textField.font = [NSFont systemFontOfSize:12 weight:NSFontWeightMedium];
-    } else if ([identifier isEqualToString:@"type"]) {
-        cellView.textField.stringValue = order.orderType;
-    } else if ([identifier isEqualToString:@"side"]) {
-        cellView.textField.stringValue = order.side;
-        cellView.textField.textColor = [order.side hasPrefix:@"BUY"] ? [NSColor systemGreenColor] : [NSColor systemRedColor];
+        cellView.textField.stringValue = position.symbol ?: @"";
     } else if ([identifier isEqualToString:@"quantity"]) {
-        cellView.textField.stringValue = [order formattedQuantity];
+        cellView.textField.stringValue = [NSString stringWithFormat:@"%.0f", position.quantity];
+    } else if ([identifier isEqualToString:@"avgCost"]) {
+        cellView.textField.stringValue = [NSString stringWithFormat:@"$%.2f", position.avgCost];
+    } else if ([identifier isEqualToString:@"currentPrice"]) {
+        cellView.textField.stringValue = [NSString stringWithFormat:@"$%.2f", position.currentPrice];
+    } else if ([identifier isEqualToString:@"marketValue"]) {
+        cellView.textField.stringValue = [self formatCurrency:position.marketValue];
+    } else if ([identifier isEqualToString:@"unrealizedPL"]) {
+        cellView.textField.stringValue = [self formatCurrency:position.unrealizedPL];
+        cellView.textField.textColor = [self colorForPLValue:position.unrealizedPL];
+    } else if ([identifier isEqualToString:@"unrealizedPLPercent"]) {
+        cellView.textField.stringValue = [NSString stringWithFormat:@"%.2f%%", position.unrealizedPLPercent];
+        cellView.textField.textColor = [self colorForPLValue:position.unrealizedPL];
+    }
+    
+    return cellView;
+}
+
+- (NSView *)ordersTableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
+    if (row >= self.orders.count) return nil;
+    
+    AdvancedOrderModel *order = self.orders[row]; // ✅ CORRETTO: definisci order correttamente
+    NSString *identifier = tableColumn.identifier;
+    
+    // Create table cell view
+    NSTableCellView *cellView = [tableView makeViewWithIdentifier:identifier owner:self];
+    if (!cellView) {
+        cellView = [[NSTableCellView alloc] init];
+        cellView.identifier = identifier;
+        
+        NSTextField *textField = [[NSTextField alloc] init];
+        textField.bezeled = NO;
+        textField.editable = NO;
+        textField.backgroundColor = [NSColor clearColor];
+        [cellView addSubview:textField];
+        cellView.textField = textField;
+    }
+    
+    // Set cell content based on column
+    if ([identifier isEqualToString:@"orderId"]) {
+        cellView.textField.stringValue = order.orderId ?: @"";
+    } else if ([identifier isEqualToString:@"symbol"]) {
+        cellView.textField.stringValue = order.symbol ?: @"";
+    } else if ([identifier isEqualToString:@"type"]) {
+        cellView.textField.stringValue = order.orderType ?: @"";
+    } else if ([identifier isEqualToString:@"side"]) {
+        cellView.textField.stringValue = order.side ?: @"";
+    } else if ([identifier isEqualToString:@"quantity"]) {
+        cellView.textField.stringValue = [NSString stringWithFormat:@"%.0f", order.quantity];
     } else if ([identifier isEqualToString:@"price"]) {
-        cellView.textField.stringValue = [order formattedPrice];
-    } else if ([identifier isEqualToString:@"status"]) {
-        cellView.textField.stringValue = [order formattedStatus];
-        cellView.textField.textColor = [order statusColor];
-    } else if ([identifier isEqualToString:@"createdTime"]) {
-        cellView.textField.stringValue = [order formattedCreatedDate];
-        cellView.textField.font = [NSFont systemFontOfSize:11];
-    } else if ([identifier isEqualToString:@"actions"]) {
-        // TODO: Add action buttons (cancel, modify, etc.)
-        if ([order isActive]) {
-            cellView.textField.stringValue = @"🗑";
+        if (order.price > 0) {
+            cellView.textField.stringValue = [NSString stringWithFormat:@"$%.2f", order.price];
         } else {
-            cellView.textField.stringValue = @"";
+            cellView.textField.stringValue = @"MARKET";
+        }
+    } else if ([identifier isEqualToString:@"status"]) {
+        cellView.textField.stringValue = order.status ?: @"";
+        
+        // Color code status
+        if ([order.status isEqualToString:@"FILLED"]) {
+            cellView.textField.textColor = [NSColor systemGreenColor];
+        } else if ([order.status isEqualToString:@"CANCELLED"] || [order.status isEqualToString:@"REJECTED"]) {
+            cellView.textField.textColor = [NSColor systemRedColor];
+        } else {
+            cellView.textField.textColor = [NSColor labelColor];
+        }
+    } else if ([identifier isEqualToString:@"createdTime"]) {
+        if (order.createdDate) {
+            NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+            formatter.dateFormat = @"MM/dd HH:mm";
+            cellView.textField.stringValue = [formatter stringFromDate:order.createdDate];
+        } else {
+            cellView.textField.stringValue = @"--";
         }
     }
     
@@ -1163,7 +1221,7 @@
     NSString *accountId = self.selectedAccount.accountId;
     
     for (AdvancedOrderModel *order in orders) {
-        [[DataHub sharedDataHub] cancelOrder:order.orderId
+        [[DataHub shared] cancelOrder:order.orderId
                                   forAccount:accountId
                                   completion:^(BOOL success, NSError *error) {
             if (success) {

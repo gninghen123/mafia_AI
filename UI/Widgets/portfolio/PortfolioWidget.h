@@ -105,7 +105,7 @@ typedef NS_ENUM(NSInteger, OrderTableColumn) {
 
 #pragma mark - UI Components - New Order Tab
 
-@property (nonatomic, strong) IBOutlet NSView *newOrderContainer;
+@property (nonatomic, strong) IBOutlet NSView *orderEntryContainer;  // ✅ RINOMINATO da newOrderContainer
 // New Order content will be loaded as separate view controller
 
 #pragma mark - Polling Management

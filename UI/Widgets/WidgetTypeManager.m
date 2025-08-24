@@ -19,6 +19,7 @@
 #import "StorageManagementWidget.h"
 #import "LegacyDataConverterWidget.h"
 #import "ChartPatternLibraryWidget.h"  // ✅ AGGIUNTO: Import per ChartPatternLibraryWidget
+#import "PortfolioWidget.h"  // ✅ NUOVO: Import per PortfolioWidget
 
 
 @interface WidgetTypeManager ()
@@ -67,7 +68,9 @@
             @"Positions",
             @"Open Orders",
             @"Trade History",
-            @"P&L Summary"
+            @"P&L Summary",
+            @"Portfolio"     // ✅ NUOVO: Aggiunto nella categoria Trading
+
         ],
         @"Analysis": @[
             @"Technical Indicators",
@@ -130,7 +133,8 @@
     typeToClass[@"Heatmap"] = [ChartWidget class];
     typeToClass[@"Storage Management"] = [StorageManagementWidget class];
     typeToClass[@"LegacyDataConverter"] = [LegacyDataConverterWidget class];
-    typeToClass[@"Pattern Chart Library"] = [ChartPatternLibraryWidget class];  // ✅ AGGIUNTO: Mapping per ChartPatternLibraryWidget
+    typeToClass[@"Pattern Chart Library"] = [ChartPatternLibraryWidget class];
+    typeToClass[@"Portfolio"] = [PortfolioWidget class];
     
     // Map all other types to BaseWidget for now
     for (NSArray *types in self.widgetCategories.allValues) {
@@ -165,7 +169,8 @@
         @"API Playground": @"briefcase",
         @"Storage Management": @"externaldrive.fill",
         @"Pattern Chart Library": @"square.grid.3x3.bottomleft.fill",  // ✅ AGGIUNTO: Icona per ChartPatternLibrary
-        
+        @"Portfolio": @"briefcase.fill",  // ✅ NUOVO: Icona per Portfolio Widget
+
         @"Technical Indicators": @"waveform.path.ecg",
         @"Scanner": @"magnifyingglass",
         @"Alerts": @"bell",

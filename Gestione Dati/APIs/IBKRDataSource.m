@@ -7,6 +7,8 @@
 #import "MarketData.h"
 #import "HistoricalBar+CoreDataClass.h"
 #import "CommonTypes.h"
+#import "IBKRLoginManager.h"
+
 
 // Default connection parameters
 static NSString *const kDefaultHost = @"127.0.0.1";
@@ -143,63 +145,45 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
 #pragma mark - DataSource Protocol Implementation
 
 - (void)connectWithCompletion:(nullable void (^)(BOOL success, NSError * _Nullable error))completion {
-    [self logDebug:@"Attempting connection to IBKR Client Portal..."];
+    [self logDebug:@"Attempting connection to IBKR..."];
     
     self.connectionStatus = IBKRConnectionStatusConnecting;
     
-    // First check if Client Portal is running
-    [self checkClientPortalStatus:^(BOOL isRunning, NSError *error) {
-        if (!isRunning) {
-            self.connectionStatus = IBKRConnectionStatusError;
-            self->_isConnected = NO;
+    // Use the login manager to ensure Client Portal is ready
+    IBKRLoginManager *loginManager = [IBKRLoginManager sharedManager];
+    
+    [loginManager ensureClientPortalReadyWithCompletion:^(BOOL ready, NSError *error) {
+        if (ready) {
+            // Client Portal is running and authenticated - proceed with connection
+            self.connectionStatus = IBKRConnectionStatusAuthenticated;
+            self->_isConnected = YES;
+            self.lastConnectionError = nil;
             
-            NSError *connectionError = [NSError errorWithDomain:@"IBKRDataSource"
-                                                           code:1001
-                                                       userInfo:@{NSLocalizedDescriptionKey: @"IBKR Client Portal is not running. Please start Client Portal Web API on localhost:5000"}];
-            self.lastConnectionError = connectionError;
+            [self logDebug:@"✅ Connected to IBKR successfully"];
+            [self startConnectionMonitoring];
             
             if (completion) {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(NO, connectionError);
+                    completion(YES, nil);
                 });
             }
-            return;
-        }
-        
-        // Check authentication status
-        [self checkAuthenticationStatus:^(BOOL isAuthenticated, NSError *authError) {
-            if (isAuthenticated) {
-                self.connectionStatus = IBKRConnectionStatusAuthenticated;
-                self->_isConnected = YES;
-                self.lastConnectionError = nil;
-                [self logDebug:@"Connected and authenticated to IBKR successfully"];
-                
-                // Start keepalive
-                [self startConnectionMonitoring];
-                
-                if (completion) {
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        completion(YES, nil);
-                    });
-                }
-            } else {
-                self.connectionStatus = IBKRConnectionStatusError;
-                self->_isConnected = NO;
-                
-                NSError *error = authError ?: [NSError errorWithDomain:@"IBKRDataSource"
-                                                                  code:1002
-                                                              userInfo:@{NSLocalizedDescriptionKey: @"IBKR authentication failed. Please login to Client Portal"}];
-                self.lastConnectionError = error;
-                
-                if (completion) {
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        completion(NO, error);
-                    });
-                }
+        } else {
+            // Connection failed
+            self.connectionStatus = IBKRConnectionStatusError;
+            self->_isConnected = NO;
+            self.lastConnectionError = error;
+            
+            [self logDebug:@"❌ IBKR connection failed: %@", error.localizedDescription];
+            
+            if (completion) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(NO, error);
+                });
             }
-        }];
+        }
     }];
 }
+
 
 - (void)disconnect {
     [self logDebug:@"Disconnecting from IBKR..."];

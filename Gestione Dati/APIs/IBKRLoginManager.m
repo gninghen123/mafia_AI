@@ -69,88 +69,111 @@
 #pragma mark - Client Portal Launch
 
 - (void)launchClientPortalWithCompletion:(void (^)(BOOL success, NSError *error))completion {
-    // Percorsi relativi come da terminale
-    NSString *relativeRunScript = @"bin/run.sh";
-    NSString *relativeConfigFile = @"root/conf.yaml";
-    
-    // Verifica che run.sh esista
-    NSString *runScriptPath = [self.clientPortalPath stringByAppendingPathComponent:relativeRunScript];
-    if (![[NSFileManager defaultManager] fileExistsAtPath:runScriptPath]) {
-        NSError *error = [NSError errorWithDomain:@"IBKRLoginManager" code:1002
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Client Portal run.sh not found"}];
-        completion(NO, error);
-        return;
-    }
-    
-    // Rendi eseguibile lo script
-    [[NSFileManager defaultManager] setAttributes:@{NSFilePosixPermissions: @0755}
-                                     ofItemAtPath:runScriptPath
-                                            error:nil];
-    
-    // Evita doppio avvio
-    if (self.clientPortalTask && self.clientPortalTask.isRunning) {
-        completion(YES, nil);
-        return;
-    }
-    
-    // Crea il task con percorsi relativi
-    self.clientPortalTask = [[NSTask alloc] init];
-    self.clientPortalTask.launchPath = @"/bin/bash";
-    self.clientPortalTask.currentDirectoryPath = self.clientPortalPath;
-    self.clientPortalTask.arguments = @[relativeRunScript, relativeConfigFile];
-    
-    // ✅ qui setti l’ambiente
-    NSMutableDictionary *env = [NSMutableDictionary dictionaryWithDictionary:[[NSProcessInfo processInfo] environment]];
-    env[@"VERTX_CACHE_DIR"] = NSTemporaryDirectory();
-    self.clientPortalTask.environment = env;
-    
-    // Monitor output
-    NSPipe *outputPipe = [NSPipe pipe];
-    self.clientPortalTask.standardOutput = outputPipe;
-    
-    __block BOOL startupDetected = NO;
-    __block BOOL completionCalled = NO;
-    
-    [[outputPipe fileHandleForReading] setReadabilityHandler:^(NSFileHandle *handle) {
-        NSData *data = [handle availableData];
-        if (data.length > 0) {
-            NSString *output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-            NSLog(@"[Client Portal] %@", output);
-            
-            if ([output containsString:@"Open https://localhost"] && !startupDetected) {
-                startupDetected = YES;
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    if (!completionCalled) {
-                        completionCalled = YES;
-                        completion(YES, nil);
-                    }
-                });
-            }
-        }
-    }];
-    
-    // Avvio con gestione errori
-    @try {
-        [self.clientPortalTask launch];
-        NSLog(@"🚀 Auto-launching Client Portal...");
-        
-        // Timeout fallback
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(15.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            if (!completionCalled) {
-                completionCalled = YES;
-                NSError *error = [NSError errorWithDomain:@"IBKRLoginManager" code:1003
-                                                 userInfo:@{NSLocalizedDescriptionKey: @"Client Portal startup timeout"}];
-                completion(NO, error);
-            }
-        });
-        
-    } @catch (NSException *exception) {
-        NSError *error = [NSError errorWithDomain:@"IBKRLoginManager" code:1004
-                                         userInfo:@{NSLocalizedDescriptionKey: exception.reason}];
-        completion(NO, error);
-    }
+   // Percorsi relativi come da terminale
+   NSString *relativeRunScript = @"bin/run.sh";
+   NSString *relativeConfigFile = @"root/conf.yaml";
+   
+   // Verifica che run.sh esista
+   NSString *runScriptPath = [self.clientPortalPath stringByAppendingPathComponent:relativeRunScript];
+   if (![[NSFileManager defaultManager] fileExistsAtPath:runScriptPath]) {
+       NSError *error = [NSError errorWithDomain:@"IBKRLoginManager" code:1002
+                                        userInfo:@{NSLocalizedDescriptionKey: @"Client Portal run.sh not found"}];
+       completion(NO, error);
+       return;
+   }
+   
+   // Evita doppio avvio
+   if (self.clientPortalTask && self.clientPortalTask.isRunning) {
+       completion(YES, nil);
+       return;
+   }
+   
+   // Crea directory temporanea scrivibile
+   NSString *tempDir = NSTemporaryDirectory();
+   NSString *javaTmpDir = [tempDir stringByAppendingPathComponent:@"java-tmp"];
+   NSString *workingDir = [javaTmpDir stringByAppendingPathComponent:@"workspace"];
+   
+   [[NSFileManager defaultManager] createDirectoryAtPath:workingDir
+                             withIntermediateDirectories:YES
+                                              attributes:nil
+                                                   error:nil];
+   
+   // Copia tutti i contenuti necessari dal bundle
+   NSArray *itemsToCopy = @[@"root", @"dist", @"build", @"bin"];
+   for (NSString *item in itemsToCopy) {
+       NSString *sourcePath = [self.clientPortalPath stringByAppendingPathComponent:item];
+       NSString *destPath = [workingDir stringByAppendingPathComponent:item];
+       
+       if ([[NSFileManager defaultManager] fileExistsAtPath:sourcePath]) {
+           [[NSFileManager defaultManager] copyItemAtPath:sourcePath
+                                                   toPath:destPath
+                                                    error:nil];
+       }
+   }
+   
+   // Rendi eseguibile run.sh nella nuova location
+   NSString *newRunScript = [workingDir stringByAppendingPathComponent:@"bin/run.sh"];
+   [[NSFileManager defaultManager] setAttributes:@{NSFilePosixPermissions: @0755}
+                                    ofItemAtPath:newRunScript
+                                           error:nil];
+   
+   // Crea il task
+   self.clientPortalTask = [[NSTask alloc] init];
+   self.clientPortalTask.launchPath = @"/bin/bash";
+   self.clientPortalTask.currentDirectoryPath = workingDir;
+   self.clientPortalTask.arguments = @[relativeRunScript, relativeConfigFile];
+   
+   // Environment base (senza variabili Java che non funzionano)
+   NSMutableDictionary *env = [NSMutableDictionary dictionaryWithDictionary:[[NSProcessInfo processInfo] environment]];
+   env[@"VERTX_CACHE_DIR"] = javaTmpDir;
+   self.clientPortalTask.environment = env;
+   
+   // Monitor output
+   NSPipe *outputPipe = [NSPipe pipe];
+   self.clientPortalTask.standardOutput = outputPipe;
+   
+   __block BOOL startupDetected = NO;
+   __block BOOL completionCalled = NO;
+   
+   [[outputPipe fileHandleForReading] setReadabilityHandler:^(NSFileHandle *handle) {
+       NSData *data = [handle availableData];
+       if (data.length > 0) {
+           NSString *output = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+           NSLog(@"[Client Portal] %@", output);
+           
+           if ([output containsString:@"Open https://localhost"] && !startupDetected) {
+               startupDetected = YES;
+               dispatch_async(dispatch_get_main_queue(), ^{
+                   if (!completionCalled) {
+                       completionCalled = YES;
+                       completion(YES, nil);
+                   }
+               });
+           }
+       }
+   }];
+   
+   // Avvio con gestione errori
+   @try {
+       [self.clientPortalTask launch];
+       NSLog(@"Auto-launching Client Portal...");
+       
+       // Timeout fallback
+       dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(15.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+           if (!completionCalled) {
+               completionCalled = YES;
+               NSError *error = [NSError errorWithDomain:@"IBKRLoginManager" code:1003
+                                                userInfo:@{NSLocalizedDescriptionKey: @"Client Portal startup timeout"}];
+               completion(NO, error);
+           }
+       });
+       
+   } @catch (NSException *exception) {
+       NSError *error = [NSError errorWithDomain:@"IBKRLoginManager" code:1004
+                                        userInfo:@{NSLocalizedDescriptionKey: exception.reason}];
+       completion(NO, error);
+   }
 }
-
 
 #pragma mark - Authentication Flow
 

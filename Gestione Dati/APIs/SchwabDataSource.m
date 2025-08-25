@@ -77,7 +77,8 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
         _requestQueue.maxConcurrentOperationCount = 5;
         
         // Load tokens from keychain
-        [self loadTokensFromKeychain];
+        //[self loadTokensFromKeychain];
+        [self loadTokensFromUserDefaults];
     }
     return self;
 }
@@ -98,6 +99,49 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
         self.callbackURL = @"https://127.0.0.1";
     }
 }
+
+- (void)clearTokensFromUserDefaults {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    [defaults removeObjectForKey:@"Schwab_AccessToken"];
+    [defaults removeObjectForKey:@"Schwab_RefreshToken"];
+    [defaults removeObjectForKey:@"Schwab_TokenExpiry"];
+    
+    [defaults synchronize];
+    NSLog(@"Schwab tokens cleared from UserDefaults");
+}
+
+- (void)saveTokensToUserDefaults {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    if (self.accessToken) {
+        [defaults setObject:self.accessToken forKey:@"Schwab_AccessToken"];
+    }
+    
+    if (self.refreshToken) {
+        [defaults setObject:self.refreshToken forKey:@"Schwab_RefreshToken"];
+    }
+    
+    if (self.tokenExpiry) {
+        [defaults setObject:self.tokenExpiry forKey:@"Schwab_TokenExpiry"];
+    }
+    
+    [defaults synchronize];
+    NSLog(@"Schwab tokens saved to UserDefaults");
+}
+
+- (void)loadTokensFromUserDefaults {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    self.accessToken = [defaults stringForKey:@"Schwab_AccessToken"];
+    self.refreshToken = [defaults stringForKey:@"Schwab_RefreshToken"];
+    self.tokenExpiry = [defaults objectForKey:@"Schwab_TokenExpiry"];
+    
+    if (self.accessToken) {
+        NSLog(@"Schwab tokens loaded from UserDefaults");
+    }
+}
+
 
 #pragma mark - DataSourceProtocol Required
 
@@ -137,9 +181,7 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
 - (void)connectWithCompletion:(void (^)(BOOL success, NSError *error))completion {
     NSLog(@"SchwabDataSource: connectWithCompletion called");
     
-    // Check if we already have valid tokens from keychain
-    [self loadTokensFromKeychain];
-    
+    [self loadTokensFromUserDefaults];
     // Check if we have a valid token
     if ([self hasValidToken]) {
         NSLog(@"SchwabDataSource: Already have valid token, marking as connected");
@@ -183,7 +225,8 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     self.accessToken = nil;
     self.refreshToken = nil;
     self.tokenExpiry = nil;
-    [self clearTokensFromKeychain];
+    [self clearTokensFromUserDefaults];
+    
 }
 
 #pragma mark - OAuth2 Authentication
@@ -269,7 +312,7 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
         NSInteger expiresIn = [json[@"expires_in"] integerValue];
         self.tokenExpiry = [NSDate dateWithTimeIntervalSinceNow:expiresIn];
         
-        [self saveTokensToKeychain];
+        [self saveTokensToUserDefaults];
         self.connected = YES;
         
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -339,7 +382,8 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
         NSInteger expiresIn = [json[@"expires_in"] integerValue];
         self.tokenExpiry = [NSDate dateWithTimeIntervalSinceNow:expiresIn];
         
-        [self saveTokensToKeychain];
+        [self saveTokensToUserDefaults];
+        
         
         dispatch_async(dispatch_get_main_queue(), ^{
             if (completion) completion(YES, nil);
@@ -997,7 +1041,7 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     }
 }
 #pragma mark - Keychain Management
-
+/*
 - (void)saveTokensToKeychain {
     [self saveToKeychain:self.accessToken forKey:kKeychainAccessToken];
     [self saveToKeychain:self.refreshToken forKey:kKeychainRefreshToken];
@@ -1037,6 +1081,8 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     SecItemAdd((__bridge CFDictionaryRef)query, NULL);
 }
 
+
+
 - (NSString *)loadFromKeychain:(NSString *)key {
     NSDictionary *query = @{
         (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
@@ -1066,6 +1112,7 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     
     SecItemDelete((__bridge CFDictionaryRef)query);
 }
+ */
 
 #pragma mark - Rate Limiting
 

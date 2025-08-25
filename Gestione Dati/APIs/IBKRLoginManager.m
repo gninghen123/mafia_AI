@@ -1,11 +1,215 @@
 // IBKRLoginManager.m
 #import "IBKRLoginManager.h"
 #import <Cocoa/Cocoa.h>
+#import <WebKit/WebKit.h>
+
+// SOSTITUISCI la classe IBKRAuthWindowController con questa versione corretta:
+
+@interface IBKRAuthWindowController : NSWindowController <WKNavigationDelegate, NSWindowDelegate>
+@property (nonatomic, strong) WKWebView *webView;
+@property (nonatomic, strong) NSTimer *authCheckTimer;
+@property (nonatomic, copy) void (^completionHandler)(BOOL success, NSError *error);
+- (instancetype)initWithPort:(NSInteger)port;
+- (void)startAuthenticationFlow;
+@end
+
+@implementation IBKRAuthWindowController {
+    NSInteger _port;
+}
+
+- (instancetype)initWithPort:(NSInteger)port {
+    NSRect frame = NSMakeRect(0, 0, 800, 600);
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
+                                                   styleMask:NSWindowStyleMaskTitled |
+                                                            NSWindowStyleMaskClosable |
+                                                            NSWindowStyleMaskResizable
+                                                     backing:NSBackingStoreBuffered
+                                                       defer:NO];
+    window.title = @"IBKR Authentication";
+    [window center];
+    
+    self = [super initWithWindow:window];
+    if (self) {
+        _port = port;
+        
+        WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
+        config.processPool = [[WKProcessPool alloc] init];
+        
+        // REMOVED: Problematic preferences that cause crash
+        // Just use basic configuration
+        
+        self.webView = [[WKWebView alloc] initWithFrame:frame configuration:config];
+        self.webView.navigationDelegate = self;
+        
+        window.contentView = self.webView;
+        window.delegate = self;
+    }
+    return self;
+}
+
+- (void)startAuthenticationFlow {
+    NSString *urlString = [NSString stringWithFormat:@"https://localhost:%ld", (long)_port];
+    NSURL *url = [NSURL URLWithString:urlString];
+    
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.timeoutInterval = 30.0;
+    
+    [self.webView loadRequest:request];
+    
+    // Start checking auth status
+    self.authCheckTimer = [NSTimer scheduledTimerWithTimeInterval:3.0 repeats:YES block:^(NSTimer *timer) {
+        [self checkAuthenticationStatus];
+    }];
+}
+
+- (void)checkAuthenticationStatus {
+    NSString *urlString = [NSString stringWithFormat:@"https://localhost:%ld/v1/api/iserver/auth/status", (long)_port];
+    NSURL *url = [NSURL URLWithString:urlString];
+    
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.HTTPMethod = @"POST";
+    request.timeoutInterval = 5.0;
+    
+    NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
+    NSURLSession *session = [NSURLSession sessionWithConfiguration:config
+                                                          delegate:(id<NSURLSessionDelegate>)self
+                                                     delegateQueue:nil];
+    
+    NSURLSessionDataTask *task = [session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (error) {
+            return; // Keep checking
+        }
+        
+        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+        if (httpResponse.statusCode == 200 && data) {
+            NSError *jsonError;
+            NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
+            
+            if (!jsonError && [json[@"authenticated"] boolValue] && [json[@"connected"] boolValue]) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (self.authCheckTimer) {
+                        [self.authCheckTimer invalidate];
+                        self.authCheckTimer = nil;
+                    }
+                    
+                    NSLog(@"Authentication successful in WebView!");
+                    
+                    if (self.completionHandler) {
+                        self.completionHandler(YES, nil);
+                        self.completionHandler = nil; // IMPORTANTE: evita multiple calls
+                    }
+                    
+                    [self close];
+                });
+            }
+        }
+    }];
+    
+    [task resume];
+}
+
+- (void)close {
+    if (self.authCheckTimer) {
+        [self.authCheckTimer invalidate];
+        self.authCheckTimer = nil;
+    }
+    [super close];
+}
+
+#pragma mark - NSWindowDelegate
+
+- (void)windowWillClose:(NSNotification *)notification {
+    if (self.authCheckTimer) {
+        [self.authCheckTimer invalidate];
+        self.authCheckTimer = nil;
+    }
+    
+    if (self.completionHandler) {
+        NSError *error = [NSError errorWithDomain:@"IBKRLoginManager"
+                                             code:1008
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Authentication window closed by user"}];
+        self.completionHandler(NO, error);
+        self.completionHandler = nil;
+    }
+}
+
+#pragma mark - WKNavigationDelegate
+
+- (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+    NSLog(@"IBKR WebView loaded: %@", webView.URL);
+    
+    if ([webView.URL.absoluteString containsString:@"authenticated"] ||
+        [webView.URL.absoluteString containsString:@"success"]) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self checkAuthenticationStatus];
+        });
+    }
+}
+
+- (void)webView:(WKWebView *)webView didFailProvisionalNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    NSLog(@"IBKR WebView navigation failed: %@ (Code: %ld)", error.localizedDescription, (long)error.code);
+    
+    // Handle SSL certificate errors
+    if (error.code == NSURLErrorServerCertificateUntrusted || error.code == -1202) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSAlert *alert = [[NSAlert alloc] init];
+            alert.messageText = @"Certificate Trust Required";
+            alert.informativeText = @"IBKR Client Portal requires accepting a self-signed certificate.\n\nClick 'Open in Browser' to complete login in Safari.";
+            alert.alertStyle = NSAlertStyleWarning;
+            [alert addButtonWithTitle:@"Open in Browser"];
+            [alert addButtonWithTitle:@"Cancel"];
+            
+            [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
+                if (returnCode == NSAlertFirstButtonReturn) {
+                    // Open in browser
+                    NSString *urlString = [NSString stringWithFormat:@"https://localhost:%ld", (long)self->_port];
+                    [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:urlString]];
+                    
+                    // Start monitoring for auth completion
+                    [self startAuthenticationFlow];
+                } else {
+                    // Cancel
+                    if (self.completionHandler) {
+                        NSError *cancelError = [NSError errorWithDomain:@"IBKRLoginManager" code:1008
+                                                               userInfo:@{NSLocalizedDescriptionKey: @"SSL certificate not accepted"}];
+                        self.completionHandler(NO, cancelError);
+                        self.completionHandler = nil;
+                    }
+                    [self close];
+                }
+            }];
+        });
+        return;
+    }
+}
+
+#pragma mark - NSURLSessionDelegate
+
+- (void)URLSession:(NSURLSession *)session
+didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
+ completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition, NSURLCredential *))completionHandler {
+    
+    NSString *host = challenge.protectionSpace.host;
+    if ([host isEqualToString:@"localhost"] || [host isEqualToString:@"127.0.0.1"]) {
+        NSURLCredential *credential = [NSURLCredential credentialForTrust:challenge.protectionSpace.serverTrust];
+        completionHandler(NSURLSessionAuthChallengeUseCredential, credential);
+    } else {
+        completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
+    }
+}
+
+@end
+
+
+
+// ================================
+// MAIN IBKRLoginManager CLASS
+// ================================
 
 @interface IBKRLoginManager() <NSURLSessionDelegate>
-
 @property (nonatomic, strong) NSTask *clientPortalTask;
 @property (nonatomic, strong) NSTimer *authCheckTimer;
+@property (nonatomic, strong) IBKRAuthWindowController *authWindowController;
 @end
 
 @implementation IBKRLoginManager
@@ -164,25 +368,51 @@
     dispatch_async(dispatch_get_main_queue(), ^{
         NSAlert *alert = [[NSAlert alloc] init];
         alert.messageText = @"IBKR Login Required";
-        alert.informativeText = @"Client Portal is running. Please login in your browser to continue.";
+        alert.informativeText = @"Client Portal is running. Please choose how to login:";
         alert.alertStyle = NSAlertStyleInformational;
-        [alert addButtonWithTitle:@"Open Login & Wait"];
+        [alert addButtonWithTitle:@"Open in App"];       // NEW: WebView option
+        [alert addButtonWithTitle:@"Open in Browser"];   // OLD: External browser
         [alert addButtonWithTitle:@"I'll Login Myself"];
         [alert addButtonWithTitle:@"Cancel"];
         
         NSModalResponse response = [alert runModal];
         
         if (response == NSAlertFirstButtonReturn) {
+            // NEW: Use integrated WebView
+            [self openLoginInAppWithCompletion:completion];
+            
+        } else if (response == NSAlertSecondButtonReturn) {
+            // OLD: Use external browser
             [self openLoginPageInBrowser];
             [self waitForAuthenticationWithCompletion:completion];
-        } else if (response == NSAlertSecondButtonReturn) {
+            
+        } else if (response == NSAlertThirdButtonReturn) {
+            // Just wait for manual login
             [self waitForAuthenticationWithCompletion:completion];
+            
         } else {
+            // Cancel
             NSError *error = [NSError errorWithDomain:@"IBKRLoginManager" code:1005
                                              userInfo:@{NSLocalizedDescriptionKey: @"Login cancelled by user"}];
             completion(NO, error);
         }
     });
+}
+
+// NEW METHOD: Open login in integrated WebView
+- (void)openLoginInAppWithCompletion:(void (^)(BOOL success, NSError *error))completion {
+    self.authWindowController = [[IBKRAuthWindowController alloc] initWithPort:self.port];
+    
+    __weak typeof(self) weakSelf = self;
+    self.authWindowController.completionHandler = ^(BOOL success, NSError *error) {
+        if (completion) {
+            completion(success, error);
+        }
+        weakSelf.authWindowController = nil;
+    };
+    
+    [self.authWindowController showWindow:nil];
+    [self.authWindowController startAuthenticationFlow];
 }
 
 - (void)waitForAuthenticationWithCompletion:(void (^)(BOOL success, NSError *error))completion {

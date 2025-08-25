@@ -33,7 +33,7 @@ static NSString *const kIBKRPortfolioEndpoint = @"/portfolio/accounts";
 static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
 
 
-@interface IBKRDataSource () {
+@interface IBKRDataSource () <NSURLSessionDelegate> {
     // Private instance variables for readonly properties
     NSString *_host;
     NSInteger _port;
@@ -129,8 +129,8 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
         NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
         config.timeoutIntervalForRequest = kRequestTimeout;
         config.timeoutIntervalForResource = kRequestTimeout * 2;
-        _session = [NSURLSession sessionWithConfiguration:config];
-        
+        _session = [NSURLSession sessionWithConfiguration:config delegate:self delegateQueue:nil];
+
         // Setup request queue
         _requestQueue = [[NSOperationQueue alloc] init];
         _requestQueue.maxConcurrentOperationCount = 5;
@@ -737,9 +737,7 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
     
     // Allow self-signed certificates for localhost
     NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
-    NSURLSession *session = [NSURLSession sessionWithConfiguration:config];
-    
-    NSURLSessionDataTask *task = [session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+    NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         if (error) {
             [self logDebug:@"Client Portal check failed: %@", error.localizedDescription];
             completion(NO, error);

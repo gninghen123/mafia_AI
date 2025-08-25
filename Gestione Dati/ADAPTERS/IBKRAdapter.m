@@ -166,76 +166,190 @@
 }
 
 - (id)standardizePositionData:(NSDictionary *)rawData {
-    // Convert IBKR position data to standard format
+    if (!rawData || ![rawData isKindOfClass:[NSDictionary class]]) {
+        return nil;
+    }
+    
+    // Convert IBKR position data to standard format compatibile con Schwab
     NSMutableDictionary *standardizedPosition = [NSMutableDictionary dictionary];
     
-    standardizedPosition[@"symbol"] = rawData[@"contract"][@"symbol"] ?: @"";
-    standardizedPosition[@"quantity"] = rawData[@"position"] ?: @0;
-    standardizedPosition[@"averageCost"] = rawData[@"avgCost"] ?: @0;
-    standardizedPosition[@"marketValue"] = rawData[@"marketValue"] ?: @0;
-    standardizedPosition[@"unrealizedPnL"] = rawData[@"unrealizedPNL"] ?: @0;
-    standardizedPosition[@"realizedPnL"] = rawData[@"realizedPNL"] ?: @0;
-    standardizedPosition[@"account"] = rawData[@"account"] ?: @"";
+    // Basic position info
+    standardizedPosition[@"symbol"] = rawData[@"symbol"] ?: rawData[@"ticker"] ?: @"";
+    standardizedPosition[@"accountId"] = rawData[@"accountId"] ?: @"";
+    standardizedPosition[@"accountNumber"] = rawData[@"accountId"] ?: @""; // Compatibility
     
-    // Contract details
-    NSDictionary *contract = rawData[@"contract"];
-    if ([contract isKindOfClass:[NSDictionary class]]) {
-        standardizedPosition[@"contractId"] = contract[@"conId"] ?: @0;
-        standardizedPosition[@"secType"] = contract[@"secType"] ?: @"STK";
-        standardizedPosition[@"exchange"] = contract[@"exchange"] ?: @"";
-        standardizedPosition[@"currency"] = contract[@"currency"] ?: @"USD";
+    // Quantities - IBKR usa "position" mentre Schwab usa longQuantity/shortQuantity
+    double position = [rawData[@"position"] doubleValue];
+    if (position >= 0) {
+        standardizedPosition[@"longQuantity"] = @(position);
+        standardizedPosition[@"shortQuantity"] = @0;
+    } else {
+        standardizedPosition[@"longQuantity"] = @0;
+        standardizedPosition[@"shortQuantity"] = @(ABS(position));
     }
+    
+    // Pricing and costs
+    standardizedPosition[@"averagePrice"] = rawData[@"avgCost"] ?: rawData[@"avgPrice"] ?: @0;
+    standardizedPosition[@"averageCost"] = rawData[@"avgCost"] ?: rawData[@"avgPrice"] ?: @0;
+    standardizedPosition[@"marketValue"] = rawData[@"marketValue"] ?: rawData[@"mktValue"] ?: @0;
+    standardizedPosition[@"currentPrice"] = rawData[@"marketPrice"] ?: rawData[@"mktPrice"] ?: @0;
+    
+    // P&L information
+    standardizedPosition[@"unrealizedPnL"] = rawData[@"unrealizedPL"] ?: rawData[@"unrealizedPnl"] ?: @0;
+    standardizedPosition[@"realizedPnL"] = rawData[@"realizedPL"] ?: rawData[@"realizedPnl"] ?: @0;
+    
+    // IBKR specific fields (mantenuti per compatibilità)
+    standardizedPosition[@"contractId"] = rawData[@"conid"] ?: @0;
+    standardizedPosition[@"currency"] = rawData[@"currency"] ?: @"USD";
+    
+    // Instrument info (formato compatibile Schwab)
+    NSDictionary *instrument = @{
+        @"symbol": standardizedPosition[@"symbol"],
+        @"cusip": @"", // IBKR non fornisce CUSIP tipicamente
+        @"type": @"EQUITY" // Assume equity per ora
+    };
+    standardizedPosition[@"instrument"] = instrument;
+    
+    NSLog(@"✅ IBKRAdapter: Standardized position for %@ - Position: %.0f, Market Value: $%.2f",
+          standardizedPosition[@"symbol"], position, [standardizedPosition[@"marketValue"] doubleValue]);
     
     return [standardizedPosition copy];
 }
 
 - (id)standardizeOrderData:(NSDictionary *)rawData {
-    // Convert IBKR order data to standard format
+    if (!rawData || ![rawData isKindOfClass:[NSDictionary class]]) {
+        return nil;
+    }
+    
+    // Convert IBKR order data to standard format compatibile con Schwab
     NSMutableDictionary *standardizedOrder = [NSMutableDictionary dictionary];
     
-    // Order identification
-    standardizedOrder[@"orderId"] = rawData[@"orderId"] ?: @0;
+    // Basic order identification
+    standardizedOrder[@"orderId"] = [rawData[@"orderId"] stringValue] ?: @"";
+    standardizedOrder[@"accountNumber"] = rawData[@"accountId"] ?: rawData[@"acct"] ?: @"";
+    standardizedOrder[@"accountId"] = rawData[@"accountId"] ?: rawData[@"acct"] ?: @""; // Compatibility
+    
+    // Order status and type
+    standardizedOrder[@"status"] = rawData[@"status"] ?: @"";
+    standardizedOrder[@"orderType"] = rawData[@"orderType"] ?: @"";
+    standardizedOrder[@"duration"] = rawData[@"timeInForce"] ?: @"DAY"; // Schwab usa "duration"
+    
+    // Pricing
+    standardizedOrder[@"price"] = rawData[@"limitPrice"] ?: rawData[@"price"] ?: @0;
+    standardizedOrder[@"stopPrice"] = rawData[@"stopPrice"] ?: @0;
+    
+    // Quantities and fills
+    standardizedOrder[@"filledQuantity"] = rawData[@"filledQuantity"] ?: @0;
+    standardizedOrder[@"remainingQuantity"] = rawData[@"remainingQuantity"] ?: @0;
+    standardizedOrder[@"avgFillPrice"] = rawData[@"avgPrice"] ?: @0;
+    
+    // Timestamps
+    if (rawData[@"submittedTime"]) {
+        // Converti timestamp IBKR a formato Schwab
+        NSDate *submittedDate;
+        if ([rawData[@"submittedTime"] isKindOfClass:[NSNumber class]]) {
+            submittedDate = [NSDate dateWithTimeIntervalSince1970:[rawData[@"submittedTime"] doubleValue]];
+        } else if ([rawData[@"submittedTime"] isKindOfClass:[NSString class]]) {
+            // Try to parse string timestamp
+            submittedDate = [NSDate date]; // Fallback
+        } else {
+            submittedDate = [NSDate date];
+        }
+        
+        // Formato Schwab timestamp
+        NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+        formatter.dateFormat = @"yyyy-MM-dd'T'HH:mm:ss.SSSZ";
+        standardizedOrder[@"enteredTime"] = [formatter stringFromDate:submittedDate];
+    }
+    
+    // Order legs (formato Schwab) - IBKR ha struttura diversa
+    NSString *symbol = rawData[@"symbol"] ?: rawData[@"ticker"] ?: @"";
+    NSString *side = rawData[@"side"] ?: @""; // BUY/SELL
+    double quantity = [rawData[@"totalQuantity"] doubleValue];
+    
+    if (symbol.length > 0) {
+        NSDictionary *instrument = @{
+            @"symbol": symbol,
+            @"cusip": @"", // IBKR non fornisce CUSIP
+            @"type": @"EQUITY"
+        };
+        
+        NSDictionary *orderLeg = @{
+            @"instruction": side, // BUY/SELL
+            @"quantity": @(quantity),
+            @"instrument": instrument
+        };
+        
+        standardizedOrder[@"orderLegCollection"] = @[orderLeg];
+    }
+    
+    // IBKR specific fields (mantenuti per referenza)
     standardizedOrder[@"permId"] = rawData[@"permId"] ?: @0;
-    standardizedOrder[@"clientId"] = rawData[@"clientId"] ?: @0;
+    standardizedOrder[@"conid"] = rawData[@"conid"] ?: @0;
     
-    // Contract info
-    NSDictionary *contract = rawData[@"contract"];
-    if ([contract isKindOfClass:[NSDictionary class]]) {
-        standardizedOrder[@"symbol"] = contract[@"symbol"] ?: @"";
-        standardizedOrder[@"secType"] = contract[@"secType"] ?: @"STK";
-        standardizedOrder[@"exchange"] = contract[@"exchange"] ?: @"";
-        standardizedOrder[@"currency"] = contract[@"currency"] ?: @"USD";
-    }
-    
-    // Order details
-    NSDictionary *order = rawData[@"order"];
-    if ([order isKindOfClass:[NSDictionary class]]) {
-        standardizedOrder[@"action"] = order[@"action"] ?: @""; // BUY/SELL
-        standardizedOrder[@"orderType"] = order[@"orderType"] ?: @""; // MKT/LMT/STP
-        standardizedOrder[@"totalQuantity"] = order[@"totalQuantity"] ?: @0;
-        standardizedOrder[@"lmtPrice"] = order[@"lmtPrice"] ?: @0;
-        standardizedOrder[@"auxPrice"] = order[@"auxPrice"] ?: @0; // Stop price
-        standardizedOrder[@"timeInForce"] = order[@"tif"] ?: @"DAY";
-    }
-    
-    // Order status
-    NSDictionary *orderStatus = rawData[@"orderStatus"];
-    if ([orderStatus isKindOfClass:[NSDictionary class]]) {
-        standardizedOrder[@"status"] = orderStatus[@"status"] ?: @"";
-        standardizedOrder[@"filled"] = orderStatus[@"filled"] ?: @0;
-        standardizedOrder[@"remaining"] = orderStatus[@"remaining"] ?: @0;
-        standardizedOrder[@"avgFillPrice"] = orderStatus[@"avgFillPrice"] ?: @0;
-        standardizedOrder[@"lastFillPrice"] = orderStatus[@"lastFillPrice"] ?: @0;
-        standardizedOrder[@"whyHeld"] = orderStatus[@"whyHeld"] ?: @"";
-    }
+    NSLog(@"✅ IBKRAdapter: Standardized order %@ for %@ - %@ %.0f shares @ $%.2f",
+          standardizedOrder[@"orderId"], symbol, side, quantity, [standardizedOrder[@"price"] doubleValue]);
     
     return [standardizedOrder copy];
 }
+
 
 #pragma mark - DataSourceAdapter Optional
 
 - (NSString *)sourceName {
     return @"Interactive Brokers";
+}
+
+- (NSDictionary *)standardizeAccountData:(id)rawData {
+    if ([rawData isKindOfClass:[NSArray class]]) {
+        // Array di account IDs da getAccountsWithCompletion
+        NSArray *accountIds = (NSArray *)rawData;
+        NSMutableArray *standardizedAccounts = [NSMutableArray array];
+        
+        for (NSString *accountId in accountIds) {
+            if ([accountId isKindOfClass:[NSString class]]) {
+                NSDictionary *standardAccount = @{
+                    @"accountId": accountId,
+                    @"accountNumber": accountId, // Compatibility con formato Schwab
+                    @"type": @"UNKNOWN", // IBKR non fornisce tipo nell'elenco
+                    @"brokerName": @"IBKR",
+                    @"isConnected": @YES,
+                    @"lastUpdated": [NSDate date]
+                };
+                [standardizedAccounts addObject:standardAccount];
+            }
+        }
+        
+        return @{@"accounts": [standardizedAccounts copy]};
+        
+    } else if ([rawData isKindOfClass:[NSDictionary class]]) {
+        // Singolo account summary da getAccountSummary
+        NSDictionary *rawAccount = (NSDictionary *)rawData;
+        
+        NSDictionary *standardAccount = @{
+            @"accountId": rawAccount[@"AccountCode"] ?: @"",
+            @"accountNumber": rawAccount[@"AccountCode"] ?: @"", // Compatibility
+            @"type": @"UNKNOWN", // IBKR account summary non include tipo
+            @"brokerName": @"IBKR",
+            @"isConnected": @YES,
+            @"lastUpdated": [NSDate date],
+            
+            // Balance information
+            @"currentBalances": @{
+                @"liquidationValue": rawAccount[@"NetLiquidation"] ?: @0,
+                @"totalValue": rawAccount[@"NetLiquidation"] ?: @0,
+                @"cashBalance": rawAccount[@"TotalCashValue"] ?: @0,
+                @"buyingPower": rawAccount[@"BuyingPower"] ?: @0,
+                @"dayPL": @([rawAccount[@"UnrealizedPnL"] doubleValue] + [rawAccount[@"RealizedPnL"] doubleValue]),
+                @"marginUsed": rawAccount[@"InitMarginReq"] ?: @0
+            }
+        };
+        
+        return standardAccount;
+    }
+    
+    NSLog(@"❌ IBKRAdapter: Unexpected account data format: %@", [rawData class]);
+    return @{};
 }
 
 @end

@@ -283,4 +283,16 @@
     return nil;
 }
 
+- (NSDictionary *)standardizeAccountData:(id)rawData {
+    if ([rawData isKindOfClass:[NSArray class]]) {
+        // Array di account da Schwab API
+        return @{@"accounts": (NSArray *)rawData};
+    } else if ([rawData isKindOfClass:[NSDictionary class]]) {
+        // Singolo account
+        return @{@"accounts": @[rawData]};
+    }
+    
+    NSLog(@"❌ SchwabAdapter: Unexpected account data format: %@", [rawData class]);
+    return @{@"accounts": @[]};
+}
 @end

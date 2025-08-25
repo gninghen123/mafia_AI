@@ -31,6 +31,7 @@ NS_ASSUME_NONNULL_BEGIN
 // TODO: Future - convert these to runtime models too
 - (id)standardizePositionData:(NSDictionary *)rawData;
 - (id)standardizeOrderData:(NSDictionary *)rawData;
+- (NSDictionary *)standardizeAccountData:(id)rawData;
 
 @optional
 

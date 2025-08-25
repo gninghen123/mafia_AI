@@ -7,6 +7,7 @@
 
 #import "DataManager+Portfolio.h"
 #import "DownloadManager.h"
+#import "DataAdapterFactory.h"
 
 @implementation DataManager (Portfolio)
 
@@ -26,15 +27,15 @@
         @"completion": [completion copy]
     } mutableCopy];
     
-    // Store request info using private method from main DataManager
     [self setValue:requestInfo forKey:requestID inActiveRequests:YES];
     
-    // Use DownloadManager to execute accounts request
+    // ✅ CORRETTO: Passa usedSource al handler
     [[DownloadManager sharedManager] executeRequest:DataRequestTypeAccountInfo
                                          parameters:@{}
                                          completion:^(id result, DataSourceType usedSource, NSError *error) {
         [self handleAccountsResponse:result
                                error:error
+                          usedSource:usedSource  // ✅ AGGIUNTO
                            requestID:requestID
                           completion:completion];
     }];
@@ -151,6 +152,7 @@
                                          completion:^(id result, DataSourceType usedSource, NSError *error) {
         [self handlePositionsResponse:result
                                 error:error
+                           usedSource:usedSource  // ✅ AGGIUNTO
                            forAccount:accountId
                             requestID:requestID
                            completion:completion];
@@ -199,6 +201,7 @@
                                          completion:^(id result, DataSourceType usedSource, NSError *error) {
         [self handleOrdersResponse:result
                              error:error
+                        usedSource:usedSource  // ✅ AGGIUNTO
                         forAccount:accountId
                          requestID:requestID
                         completion:completion];
@@ -351,6 +354,7 @@
 
 - (void)handleAccountsResponse:(id)result
                          error:(NSError *)error
+                    usedSource:(DataSourceType)usedSource  // ✅ AGGIUNTO
                      requestID:(NSString *)requestID
                     completion:(void (^)(NSArray *accounts, NSError *error))completion {
     
@@ -366,16 +370,26 @@
         return;
     }
     
-    // Process accounts response - assume result is already an array of accounts
+    // ✅ CORRETTO: Usa usedSource invece di inventare getLastUsedDataSourceType
+    id<DataSourceAdapter> adapter = [DataAdapterFactory adapterForDataSource:usedSource];
+    
     NSArray *accounts = nil;
-    if ([result isKindOfClass:[NSArray class]]) {
-        accounts = (NSArray *)result;
-    } else if ([result isKindOfClass:[NSDictionary class]]) {
-        // Some APIs return accounts in a wrapper object
-        NSDictionary *resultDict = (NSDictionary *)result;
-        accounts = resultDict[@"accounts"] ?: @[result];
+    
+    if (adapter && [adapter respondsToSelector:@selector(standardizeAccountData:)]) {
+        NSLog(@"📊 DataManager: Standardizing account data using %@ adapter", [adapter sourceName]);
+        
+        NSDictionary *standardizedData = [adapter standardizeAccountData:result];
+        accounts = standardizedData[@"accounts"];
+        
+        if (!accounts) {
+            NSLog(@"⚠️ DataManager: Adapter did not return expected format, using raw data");
+            accounts = [self extractAccountsFromRawData:result];
+        } else {
+            NSLog(@"✅ DataManager: Successfully standardized %lu accounts via adapter", (unsigned long)accounts.count);
+        }
     } else {
-        accounts = @[];
+        NSLog(@"⚠️ DataManager: No adapter or standardizeAccountData method, using manual processing");
+        accounts = [self extractAccountsFromRawData:result];
     }
     
     NSLog(@"✅ DataManager: Retrieved %lu accounts", (unsigned long)accounts.count);
@@ -385,6 +399,21 @@
             completion(accounts, nil);
         });
     }
+}
+
+- (NSArray *)extractAccountsFromRawData:(id)result {
+    NSArray *accounts = nil;
+    
+    if ([result isKindOfClass:[NSArray class]]) {
+        accounts = (NSArray *)result;
+    } else if ([result isKindOfClass:[NSDictionary class]]) {
+        NSDictionary *resultDict = (NSDictionary *)result;
+        accounts = resultDict[@"accounts"] ?: @[result];
+    } else {
+        accounts = @[];
+    }
+    
+    return accounts;
 }
 
 - (void)handleAccountDetailsResponse:(id)result
@@ -457,9 +486,10 @@
 
 - (void)handlePositionsResponse:(id)result
                           error:(NSError *)error
-                      forAccount:(NSString *)accountId
-                       requestID:(NSString *)requestID
-                      completion:(void (^)(NSArray *positions, NSError *error))completion {
+                     usedSource:(DataSourceType)usedSource  // ✅ AGGIUNTO
+                     forAccount:(NSString *)accountId
+                      requestID:(NSString *)requestID
+                     completion:(void (^)(NSArray *positions, NSError *error))completion {
     
     [self removeValueForKey:requestID fromActiveRequests:YES];
     
@@ -473,14 +503,26 @@
         return;
     }
     
-    NSArray *positions = nil;
-    if ([result isKindOfClass:[NSArray class]]) {
-        positions = (NSArray *)result;
-    } else if ([result isKindOfClass:[NSDictionary class]]) {
-        NSDictionary *resultDict = (NSDictionary *)result;
-        positions = resultDict[@"positions"] ?: @[];
-    } else {
-        positions = @[];
+    // ✅ CORRETTO: Usa usedSource passato dal DownloadManager
+    id<DataSourceAdapter> adapter = [DataAdapterFactory adapterForDataSource:usedSource];
+    
+    NSArray *positions = result;
+    
+    if ([result isKindOfClass:[NSArray class]] && adapter && [adapter respondsToSelector:@selector(standardizePositionData:)]) {
+        NSLog(@"📊 DataManager: Standardizing %lu positions using %@ adapter", (unsigned long)[(NSArray*)result count], [adapter sourceName]);
+        
+        NSMutableArray *standardizedPositions = [NSMutableArray array];
+        for (NSDictionary *rawPosition in (NSArray *)result) {
+            if ([rawPosition isKindOfClass:[NSDictionary class]]) {
+                id standardizedPosition = [adapter standardizePositionData:rawPosition];
+                if (standardizedPosition) {
+                    [standardizedPositions addObject:standardizedPosition];
+                }
+            }
+        }
+        positions = [standardizedPositions copy];
+        
+        NSLog(@"✅ DataManager: Standardized %lu positions via adapter", (unsigned long)positions.count);
     }
     
     NSLog(@"✅ DataManager: Retrieved %lu positions for account %@", (unsigned long)positions.count, accountId);
@@ -494,6 +536,7 @@
 
 - (void)handleOrdersResponse:(id)result
                        error:(NSError *)error
+                  usedSource:(DataSourceType)usedSource  // ✅ AGGIUNTO
                   forAccount:(NSString *)accountId
                    requestID:(NSString *)requestID
                   completion:(void (^)(NSArray *orders, NSError *error))completion {
@@ -510,14 +553,26 @@
         return;
     }
     
-    NSArray *orders = nil;
-    if ([result isKindOfClass:[NSArray class]]) {
-        orders = (NSArray *)result;
-    } else if ([result isKindOfClass:[NSDictionary class]]) {
-        NSDictionary *resultDict = (NSDictionary *)result;
-        orders = resultDict[@"orders"] ?: @[];
-    } else {
-        orders = @[];
+    // ✅ CORRETTO: Usa usedSource passato dal DownloadManager
+    id<DataSourceAdapter> adapter = [DataAdapterFactory adapterForDataSource:usedSource];
+    
+    NSArray *orders = result;
+    
+    if ([result isKindOfClass:[NSArray class]] && adapter && [adapter respondsToSelector:@selector(standardizeOrderData:)]) {
+        NSLog(@"📊 DataManager: Standardizing %lu orders using %@ adapter", (unsigned long)[(NSArray*)result count], [adapter sourceName]);
+        
+        NSMutableArray *standardizedOrders = [NSMutableArray array];
+        for (NSDictionary *rawOrder in (NSArray *)result) {
+            if ([rawOrder isKindOfClass:[NSDictionary class]]) {
+                id standardizedOrder = [adapter standardizeOrderData:rawOrder];
+                if (standardizedOrder) {
+                    [standardizedOrders addObject:standardizedOrder];
+                }
+            }
+        }
+        orders = [standardizedOrders copy];
+        
+        NSLog(@"✅ DataManager: Standardized %lu orders via adapter", (unsigned long)orders.count);
     }
     
     NSLog(@"✅ DataManager: Retrieved %lu orders for account %@", (unsigned long)orders.count, accountId);

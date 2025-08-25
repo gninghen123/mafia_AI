@@ -505,7 +505,7 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
     
     NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         if (error) {
-            completion(nil, error);
+            if (completion) completion(nil, error);
             return;
         }
         
@@ -514,30 +514,80 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
             NSError *httpError = [NSError errorWithDomain:@"IBKRDataSource"
                                                      code:httpResponse.statusCode
                                                  userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Accounts request failed with HTTP %ld", (long)httpResponse.statusCode]}];
-            completion(nil, httpError);
+            if (completion) completion(nil, httpError);
             return;
         }
         
-        // Parse response
+        // QUESTA È LA PARTE CHE ERA ROTTA NEL CODICE ORIGINALE:
+        // Parse response - FIX: La riga era incompleta nel repository
         NSError *parseError;
-        NSDictionary *result = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
+        id result = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
         if (parseError) {
-            completion(nil, parseError);
+            if (completion) completion(nil, parseError);
             return;
         }
         
-        NSArray *accounts = result[@"accounts"];
-        NSMutableArray *accountIds = [NSMutableArray array];
+        // FIX: Aggiungi controllo di tipo prima di usare objectForKeyedSubscript:
+        NSArray *accountIds = @[];
         
-        for (NSDictionary *account in accounts) {
-            NSString *accountId = account[@"accountId"];
-            if (accountId) {
-                [accountIds addObject:accountId];
+        if ([result isKindOfClass:[NSDictionary class]]) {
+            // Se la response è un dictionary con chiave "accounts"
+            NSDictionary *resultDict = (NSDictionary *)result;
+            NSArray *accounts = resultDict[@"accounts"];
+            
+            if ([accounts isKindOfClass:[NSArray class]]) {
+                NSMutableArray *extractedAccountIds = [NSMutableArray array];
+                for (id account in accounts) {
+                    if ([account isKindOfClass:[NSDictionary class]]) {
+                        NSDictionary *accountDict = (NSDictionary *)account;
+                        NSString *accountId = accountDict[@"accountId"];
+                        if (accountId && [accountId isKindOfClass:[NSString class]]) {
+                            [extractedAccountIds addObject:accountId];
+                        }
+                    } else if ([account isKindOfClass:[NSString class]]) {
+                        // Se l'account è già una stringa (accountId diretto)
+                        [extractedAccountIds addObject:account];
+                    }
+                }
+                accountIds = [extractedAccountIds copy];
+            }
+        } else if ([result isKindOfClass:[NSArray class]]) {
+            // Se la response è direttamente un array di accounts
+            NSArray *accounts = (NSArray *)result;
+            NSMutableArray *extractedAccountIds = [NSMutableArray array];
+            
+            for (id account in accounts) {
+                if ([account isKindOfClass:[NSDictionary class]]) {
+                    NSDictionary *accountDict = (NSDictionary *)account;
+                    NSString *accountId = accountDict[@"accountId"];
+                    if (accountId && [accountId isKindOfClass:[NSString class]]) {
+                        [extractedAccountIds addObject:accountId];
+                    }
+                } else if ([account isKindOfClass:[NSString class]]) {
+                    [extractedAccountIds addObject:account];
+                }
+            }
+            accountIds = [extractedAccountIds copy];
+        } else {
+            // Se result è una stringa o altro tipo non atteso
+            [self logDebug:@"Unexpected result type: %@", NSStringFromClass([result class])];
+            
+            // Se result è una stringa che potrebbe contenere un singolo account ID
+            if ([result isKindOfClass:[NSString class]]) {
+                NSString *stringResult = (NSString *)result;
+                if (stringResult.length > 0) {
+                    accountIds = @[stringResult];
+                }
             }
         }
         
         [self logDebug:@"Found %lu real accounts", (unsigned long)accountIds.count];
-        completion([accountIds copy], nil);
+        
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(accountIds, nil);
+            });
+        }
     }];
     
     [task resume];
@@ -850,6 +900,267 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
     return [NSError errorWithDomain:@"IBKRDataSource"
                                code:statusCode
                            userInfo:@{NSLocalizedDescriptionKey: errorMessage}];
+}
+#pragma mark - DataSource Protocol - Portfolio Methods (MANCANTI)
+
+// ✅ NUOVO: Implementa fetchPositionsWithCompletion per il protocollo DataSource
+- (void)fetchPositionsWithCompletion:(void (^)(NSArray *positions, NSError *error))completion {
+    if (!self.isConnected) {
+        NSError *error = [NSError errorWithDomain:@"IBKRDataSource"
+                                             code:1002
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Not connected to IBKR"}];
+        if (completion) completion(@[], error);
+        return;
+    }
+    
+    [self logDebug:@"Fetching all positions from IBKR"];
+    
+    // Per ora usiamo la prima account disponibile
+    // In futuro potresti voler passare un parametro per l'account specifico
+    [self getAccountsWithCompletion:^(NSArray<NSString *> *accounts, NSError *accountError) {
+        if (accountError || accounts.count == 0) {
+            NSError *error = accountError ?: [NSError errorWithDomain:@"IBKRDataSource"
+                                                                 code:1006
+                                                             userInfo:@{NSLocalizedDescriptionKey: @"No accounts available"}];
+            if (completion) completion(@[], error);
+            return;
+        }
+        
+        // Usa il primo account per ora
+        NSString *firstAccountId = accounts[0];
+        [self getPositions:firstAccountId completion:^(NSArray *positions, NSError *positionError) {
+            if (completion) {
+                completion(positions ?: @[], positionError);
+            }
+        }];
+    }];
+}
+
+// ✅ NUOVO: Implementa fetchOrdersWithCompletion per il protocollo DataSource
+- (void)fetchOrdersWithCompletion:(void (^)(NSArray *orders, NSError *error))completion {
+    if (!self.isConnected) {
+        NSError *error = [NSError errorWithDomain:@"IBKRDataSource"
+                                             code:1002
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Not connected to IBKR"}];
+        if (completion) completion(@[], error);
+        return;
+    }
+    
+    [self logDebug:@"Fetching all orders from IBKR"];
+    
+    // Per ora usiamo la prima account disponibile
+    [self getAccountsWithCompletion:^(NSArray<NSString *> *accounts, NSError *accountError) {
+        if (accountError || accounts.count == 0) {
+            NSError *error = accountError ?: [NSError errorWithDomain:@"IBKRDataSource"
+                                                                 code:1006
+                                                             userInfo:@{NSLocalizedDescriptionKey: @"No accounts available"}];
+            if (completion) completion(@[], error);
+            return;
+        }
+        
+        // Usa il primo account per ora
+        NSString *firstAccountId = accounts[0];
+        [self getOrders:firstAccountId completion:^(NSArray *orders, NSError *orderError) {
+            if (completion) {
+                completion(orders ?: @[], orderError);
+            }
+        }];
+    }];
+}
+
+// =====================================
+// IMPLEMENTARE i metodi mancanti che abbiamo dichiarato nel .h
+// =====================================
+
+- (void)getPositions:(NSString *)accountId
+          completion:(void (^)(NSArray * _Nullable positions, NSError * _Nullable error))completion {
+    if (!self.isConnected) {
+        NSError *error = [NSError errorWithDomain:@"IBKRDataSource"
+                                             code:1002
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Not connected to IBKR"}];
+        if (completion) completion(nil, error);
+        return;
+    }
+    
+    [self logDebug:@"Requesting positions for account %@", accountId];
+    
+    NSString *urlString = [NSString stringWithFormat:@"%@/v1/api/portfolio/%@/positions", kIBKRClientPortalBaseURL, accountId];
+    NSURL *url = [NSURL URLWithString:urlString];
+    
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.HTTPMethod = @"GET";
+    
+    NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        
+        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+        if (httpResponse.statusCode != 200) {
+            NSError *httpError = [NSError errorWithDomain:@"IBKRDataSource"
+                                                     code:httpResponse.statusCode
+                                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Positions request failed with HTTP %ld", (long)httpResponse.statusCode]}];
+            if (completion) completion(nil, httpError);
+            return;
+        }
+        
+        // Parse response
+        NSError *parseError;
+        id result = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
+        if (parseError) {
+            if (completion) completion(nil, parseError);
+            return;
+        }
+        
+        NSArray *positionsArray = @[];
+        
+        if ([result isKindOfClass:[NSArray class]]) {
+            // Response è direttamente un array di positions
+            positionsArray = (NSArray *)result;
+        } else if ([result isKindOfClass:[NSDictionary class]]) {
+            // Response è un dictionary con chiave positions
+            NSDictionary *resultDict = (NSDictionary *)result;
+            positionsArray = resultDict[@"positions"] ?: @[];
+        }
+        
+        // Converti le positions IBKR al formato standard
+        NSMutableArray *standardizedPositions = [NSMutableArray array];
+        for (id rawPosition in positionsArray) {
+            if ([rawPosition isKindOfClass:[NSDictionary class]]) {
+                NSDictionary *positionDict = (NSDictionary *)rawPosition;
+                
+                // Crea position standardizzata
+                NSMutableDictionary *standardPosition = [NSMutableDictionary dictionary];
+                standardPosition[@"accountId"] = accountId;
+                standardPosition[@"symbol"] = positionDict[@"ticker"] ?: positionDict[@"symbol"] ?: @"";
+                standardPosition[@"position"] = positionDict[@"position"] ?: @0;
+                standardPosition[@"marketPrice"] = positionDict[@"mktPrice"] ?: @0;
+                standardPosition[@"marketValue"] = positionDict[@"mktValue"] ?: @0;
+                standardPosition[@"avgCost"] = positionDict[@"avgPrice"] ?: @0;
+                standardPosition[@"unrealizedPL"] = positionDict[@"unrealizedPnl"] ?: @0;
+                standardPosition[@"realizedPL"] = positionDict[@"realizedPnl"] ?: @0;
+                
+                // IBKR specific fields
+                standardPosition[@"conid"] = positionDict[@"conid"] ?: @0;
+                standardPosition[@"currency"] = positionDict[@"currency"] ?: @"USD";
+                
+                [standardizedPositions addObject:[standardPosition copy]];
+            }
+        }
+        
+        [self logDebug:@"Retrieved %lu positions for account %@", (unsigned long)standardizedPositions.count, accountId];
+        
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion([standardizedPositions copy], nil);
+            });
+        }
+    }];
+    
+    [task resume];
+}
+
+- (void)getOrders:(NSString *)accountId
+       completion:(void (^)(NSArray * _Nullable orders, NSError * _Nullable error))completion {
+    if (!self.isConnected) {
+        NSError *error = [NSError errorWithDomain:@"IBKRDataSource"
+                                             code:1002
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Not connected to IBKR"}];
+        if (completion) completion(nil, error);
+        return;
+    }
+    
+    [self logDebug:@"Requesting orders for account %@", accountId];
+    
+    NSString *urlString = [NSString stringWithFormat:@"%@/v1/api/iserver/account/orders", kIBKRClientPortalBaseURL];
+    NSURL *url = [NSURL URLWithString:urlString];
+    
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.HTTPMethod = @"GET";
+    
+    NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        
+        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+        if (httpResponse.statusCode != 200) {
+            NSError *httpError = [NSError errorWithDomain:@"IBKRDataSource"
+                                                     code:httpResponse.statusCode
+                                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Orders request failed with HTTP %ld", (long)httpResponse.statusCode]}];
+            if (completion) completion(nil, httpError);
+            return;
+        }
+        
+        // Parse response
+        NSError *parseError;
+        id result = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
+        if (parseError) {
+            if (completion) completion(nil, parseError);
+            return;
+        }
+        
+        NSArray *ordersArray = @[];
+        
+        if ([result isKindOfClass:[NSArray class]]) {
+            // Response è direttamente un array di orders
+            ordersArray = (NSArray *)result;
+        } else if ([result isKindOfClass:[NSDictionary class]]) {
+            // Response è un dictionary con chiave orders
+            NSDictionary *resultDict = (NSDictionary *)result;
+            ordersArray = resultDict[@"orders"] ?: @[];
+        }
+        
+        // Filtra gli ordini per l'account corrente e converti al formato standard
+        NSMutableArray *standardizedOrders = [NSMutableArray array];
+        for (id rawOrder in ordersArray) {
+            if ([rawOrder isKindOfClass:[NSDictionary class]]) {
+                NSDictionary *orderDict = (NSDictionary *)rawOrder;
+                
+                // Filtra per account se specificato
+                NSString *orderAccount = orderDict[@"acct"];
+                if (orderAccount && ![orderAccount isEqualToString:accountId]) {
+                    continue; // Skip ordini di altri account
+                }
+                
+                // Crea order standardizzato
+                NSMutableDictionary *standardOrder = [NSMutableDictionary dictionary];
+                standardOrder[@"orderId"] = [orderDict[@"orderId"] stringValue] ?: @"";
+                standardOrder[@"accountId"] = orderAccount ?: accountId;
+                standardOrder[@"symbol"] = orderDict[@"ticker"] ?: orderDict[@"symbol"] ?: @"";
+                standardOrder[@"side"] = orderDict[@"side"] ?: @""; // BUY/SELL
+                standardOrder[@"orderType"] = orderDict[@"orderType"] ?: @""; // LMT/MKT/etc
+                standardOrder[@"totalQuantity"] = orderDict[@"totalSize"] ?: @0;
+                standardOrder[@"filledQuantity"] = orderDict[@"filledQuantity"] ?: @0;
+                standardOrder[@"avgPrice"] = orderDict[@"avgPrice"] ?: @0;
+                standardOrder[@"limitPrice"] = orderDict[@"price"] ?: @0;
+                standardOrder[@"status"] = orderDict[@"status"] ?: @"";
+                
+                // IBKR specific fields
+                standardOrder[@"conid"] = orderDict[@"conid"] ?: @0;
+                standardOrder[@"permId"] = orderDict[@"permId"] ?: @0;
+                
+                // Timestamps
+                if (orderDict[@"orderTime"]) {
+                    standardOrder[@"submittedTime"] = orderDict[@"orderTime"];
+                }
+                
+                [standardizedOrders addObject:[standardOrder copy]];
+            }
+        }
+        
+        [self logDebug:@"Retrieved %lu orders for account %@", (unsigned long)standardizedOrders.count, accountId];
+        
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion([standardizedOrders copy], nil);
+            });
+        }
+    }];
+    
+    [task resume];
 }
 
 @end

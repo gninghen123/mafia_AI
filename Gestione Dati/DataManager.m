@@ -1,8 +1,11 @@
 //
-//  DataManager.m
+//  DataManager.m (UPDATED - NEW ARCHITECTURE)
 //  TradingApp
 //
-//  UPDATED: Now works with runtime models from adapters
+//  📈 MARKET DATA: Uses executeMarketDataRequest (automatic routing with fallback)
+//  🛡️ ACCOUNT DATA: Handled by DataManager+Portfolio extension
+//
+//  UPDATED: Now works with runtime models from adapters and secure DownloadManager APIs
 //
 
 #import "DataManager.h"
@@ -13,7 +16,7 @@
 #import "SeasonalDataModel.h"
 #import "DataSourceAdapter.h"
 #import "OrderBookEntry.h"
-#import "RuntimeModels.h"  // Add runtime models import
+#import "RuntimeModels.h"
 
 @interface DataManager ()
 @property (nonatomic, strong) DownloadManager *downloadManager;
@@ -40,6 +43,8 @@
         _delegates = [NSMutableSet set];
         _delegateQueue = dispatch_queue_create("DataManagerDelegateQueue", DISPATCH_QUEUE_CONCURRENT);
         _activeRequests = [NSMutableDictionary dictionary];
+        
+        NSLog(@"📊 DataManager: Initialized with secure DownloadManager integration");
     }
     return self;
 }
@@ -58,7 +63,7 @@
     });
 }
 
-#pragma mark - Market Data Requests
+#pragma mark - 📈 Market Data Requests (Secure with Automatic Routing)
 
 - (NSString *)requestQuoteForSymbol:(NSString *)symbol
                          completion:(void (^)(MarketData *quote, NSError *error))completion {
@@ -75,6 +80,8 @@
         return nil;
     }
     
+    NSLog(@"📈 DataManager: Requesting quote for symbol %@", symbol);
+    
     NSString *requestID = [[NSUUID UUID] UUIDString];
     NSMutableDictionary *requestInfo = [@{
         @"type": @"quote",
@@ -87,11 +94,13 @@
     
     self.activeRequests[requestID] = requestInfo;
     
-    [self.downloadManager executeRequest:DataRequestTypeQuote
-                              parameters:@{@"symbol": symbol}
-                              completion:^(id result, DataSourceType usedSource, NSError *error) {
+    // 📈 MARKET DATA: Use secure market data request with automatic routing and fallback
+    [self.downloadManager executeMarketDataRequest:DataRequestTypeQuote
+                                        parameters:@{@"symbol": symbol}
+                                        completion:^(id result, DataSourceType usedSource, NSError *error) {
         [self handleQuoteResponse:result
                             error:error
+                       usedSource:usedSource
                         forSymbol:symbol
                         requestID:requestID
                        completion:completion];
@@ -99,6 +108,7 @@
     
     return requestID;
 }
+
 - (NSString *)requestQuotesForSymbols:(NSArray<NSString *> *)symbols
                            completion:(void (^)(NSDictionary *quotes, NSError *error))completion {
     
@@ -114,7 +124,7 @@
         return nil;
     }
     
-    NSLog(@"📊 DataManager: Requesting batch quotes for %lu symbols: %@", (unsigned long)symbols.count, symbols);
+    NSLog(@"📈 DataManager: Requesting batch quotes for %lu symbols: %@", (unsigned long)symbols.count, symbols);
     
     NSString *requestID = [[NSUUID UUID] UUIDString];
     NSMutableDictionary *requestInfo = [@{
@@ -128,12 +138,13 @@
     
     self.activeRequests[requestID] = requestInfo;
     
-    // ✅ CORRETTO: Usa DownloadManager invece di chiamare direttamente SchwabDataSource
-    [self.downloadManager executeRequest:DataRequestTypeBatchQuotes
-                              parameters:@{@"symbols": symbols}
-                              completion:^(id result, DataSourceType usedSource, NSError *error) {
+    // 📈 MARKET DATA: Use secure market data request with automatic routing and fallback
+    [self.downloadManager executeMarketDataRequest:DataRequestTypeBatchQuotes
+                                        parameters:@{@"symbols": symbols}
+                                        completion:^(id result, DataSourceType usedSource, NSError *error) {
         [self handleBatchQuotesResponse:result
                                   error:error
+                             usedSource:usedSource
                              forSymbols:symbols
                               requestID:requestID
                              completion:completion];
@@ -148,41 +159,272 @@
                                      endDate:(NSDate *)endDate
                                   completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion {
     
-    // ✅ CHIAMARE IL NUOVO METODO CON needExtendedHours = NO
     return [self requestHistoricalDataForSymbol:symbol
                                       timeframe:timeframe
                                       startDate:startDate
                                         endDate:endDate
-                              needExtendedHours:NO  // Default: NO extended hours
+                              needExtendedHours:NO
                                      completion:completion];
 }
-
-
-// Historical data - with count
 
 - (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
                                    timeframe:(BarTimeframe)timeframe
                                        count:(NSInteger)count
                                   completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion {
     
-    // ✅ CHIAMARE IL NUOVO METODO CON needExtendedHours = NO
     return [self requestHistoricalDataForSymbol:symbol
                                       timeframe:timeframe
                                           count:count
-                              needExtendedHours:NO  // Default: NO extended hours
+                              needExtendedHours:NO
                                      completion:completion];
 }
 
-#pragma mark - Response Handlers
+- (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
+                                   timeframe:(BarTimeframe)timeframe
+                                   startDate:(NSDate *)startDate
+                                     endDate:(NSDate *)endDate
+                           needExtendedHours:(BOOL)needExtendedHours
+                                  completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion {
+    
+    if (!symbol || symbol.length == 0 || !startDate || !endDate) {
+        NSError *error = [NSError errorWithDomain:@"DataManager"
+                                             code:101
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid parameters for historical data request"}];
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, error);
+            });
+        }
+        return nil;
+    }
+    
+    NSLog(@"📈 DataManager: Requesting historical data for %@ (%@, %@ to %@, extended: %@)",
+          symbol, BarTimeframeToString(timeframe), startDate, endDate, @(needExtendedHours));
+    
+    NSString *requestID = [[NSUUID UUID] UUIDString];
+    NSMutableDictionary *requestInfo = [@{
+        @"type": @"historical",
+        @"symbol": symbol,
+        @"timeframe": @(timeframe),
+        @"startDate": startDate,
+        @"endDate": endDate,
+        @"needExtendedHours": @(needExtendedHours)
+    } mutableCopy];
+    
+    if (completion) {
+        requestInfo[@"completion"] = [completion copy];
+    }
+    
+    self.activeRequests[requestID] = requestInfo;
+    
+    NSDictionary *parameters = @{
+        @"symbol": symbol,
+        @"timeframe": @(timeframe),
+        @"startDate": startDate,
+        @"endDate": endDate,
+        @"needExtendedHours": @(needExtendedHours)
+    };
+    
+    // 📈 MARKET DATA: Use secure market data request with automatic routing and fallback
+    [self.downloadManager executeMarketDataRequest:DataRequestTypeHistoricalBars
+                                        parameters:parameters
+                                        completion:^(id result, DataSourceType usedSource, NSError *error) {
+        [self handleHistoricalDataResponse:result
+                                     error:error
+                                usedSource:usedSource
+                                 forSymbol:symbol
+                                 requestID:requestID
+                                completion:completion];
+    }];
+    
+    return requestID;
+}
 
-- (void)handleQuoteResponse:(id)responseData
+- (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
+                                   timeframe:(BarTimeframe)timeframe
+                                       count:(NSInteger)count
+                           needExtendedHours:(BOOL)needExtendedHours
+                                  completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion {
+    
+    if (!symbol || symbol.length == 0 || count <= 0) {
+        NSError *error = [NSError errorWithDomain:@"DataManager"
+                                             code:102
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid parameters for historical data count request"}];
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, error);
+            });
+        }
+        return nil;
+    }
+    
+    NSLog(@"📈 DataManager: Requesting %ld bars of historical data for %@ (%@, extended: %@)",
+          (long)count, symbol, BarTimeframeToString(timeframe), @(needExtendedHours));
+    
+    NSString *requestID = [[NSUUID UUID] UUIDString];
+    NSMutableDictionary *requestInfo = [@{
+        @"type": @"historical",
+        @"symbol": symbol,
+        @"timeframe": @(timeframe),
+        @"count": @(count),
+        @"needExtendedHours": @(needExtendedHours)
+    } mutableCopy];
+    
+    if (completion) {
+        requestInfo[@"completion"] = [completion copy];
+    }
+    
+    self.activeRequests[requestID] = requestInfo;
+    
+    NSDictionary *parameters = @{
+        @"symbol": symbol,
+        @"timeframe": @(timeframe),
+        @"barCount": @(count),
+        @"needExtendedHours": @(needExtendedHours)
+    };
+    
+    // 📈 MARKET DATA: Use secure market data request with automatic routing and fallback
+    [self.downloadManager executeMarketDataRequest:DataRequestTypeHistoricalBars
+                                        parameters:parameters
+                                        completion:^(id result, DataSourceType usedSource, NSError *error) {
+        [self handleHistoricalDataResponse:result
+                                     error:error
+                                usedSource:usedSource
+                                 forSymbol:symbol
+                                 requestID:requestID
+                                completion:completion];
+    }];
+    
+    return requestID;
+}
+
+- (NSString *)requestOrderBookForSymbol:(NSString *)symbol
+                             completion:(void (^)(NSArray<OrderBookEntry *> *bids,
+                                                  NSArray<OrderBookEntry *> *asks,
+                                                  NSError *error))completion {
+    
+    if (!symbol || symbol.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"DataManager"
+                                             code:103
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid symbol for order book request"}];
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, nil, error);
+            });
+        }
+        return nil;
+    }
+    
+    NSLog(@"📈 DataManager: Requesting order book for %@", symbol);
+    
+    NSString *requestID = [[NSUUID UUID] UUIDString];
+    NSMutableDictionary *requestInfo = [@{
+        @"type": @"orderBook",
+        @"symbol": symbol
+    } mutableCopy];
+    
+    if (completion) {
+        requestInfo[@"completion"] = [completion copy];
+    }
+    
+    self.activeRequests[requestID] = requestInfo;
+    
+    NSDictionary *parameters = @{
+        @"symbol": symbol,
+        @"depth": @(20) // Default depth
+    };
+    
+    // 📈 MARKET DATA: Use secure market data request with automatic routing and fallback
+    [self.downloadManager executeMarketDataRequest:DataRequestTypeOrderBook
+                                        parameters:parameters
+                                        completion:^(id result, DataSourceType usedSource, NSError *error) {
+        [self handleOrderBookResponse:result
+                                error:error
+                           usedSource:usedSource
+                            forSymbol:symbol
+                            requestID:requestID
+                           completion:completion];
+    }];
+    
+    return requestID;
+}
+
+#pragma mark - Market Lists Implementation
+
+- (void)getMarketPerformersForList:(NSString *)listType
+                         timeframe:(NSString *)timeframe
+                        completion:(void (^)(NSArray<MarketPerformerModel *> *performers, NSError *error))completion {
+    
+    if (!listType || !timeframe) {
+        NSError *error = [NSError errorWithDomain:@"DataManagerError"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid listType or timeframe"}];
+        if (completion) completion(@[], error);
+        return;
+    }
+    
+    NSLog(@"📈 DataManager: Getting market performers for list:%@ timeframe:%@", listType, timeframe);
+    
+    // Determine the request type based on listType
+    DataRequestType requestType;
+    if ([listType isEqualToString:@"topGainers"]) {
+        requestType = DataRequestTypeTopGainers;
+    } else if ([listType isEqualToString:@"topLosers"]) {
+        requestType = DataRequestTypeTopLosers;
+    } else if ([listType isEqualToString:@"etfs"]) {
+        requestType = DataRequestTypeETFList;
+    } else if ([listType isEqualToString:@"52WeekHigh"]) {
+        requestType = DataRequestType52WeekHigh;
+    } else if ([listType isEqualToString:@"52WeekLow"]) {
+        requestType = DataRequestType52WeekLow;
+    } else {
+        requestType = DataRequestTypeMarketList;
+    }
+    
+    NSString *requestID = [[NSUUID UUID] UUIDString];
+    NSMutableDictionary *requestInfo = [@{
+        @"type": @"marketList",
+        @"listType": listType
+    } mutableCopy];
+    
+    if (completion) {
+        requestInfo[@"completion"] = [completion copy];
+    }
+    
+    self.activeRequests[requestID] = requestInfo;
+    
+    NSMutableDictionary *parameters = [@{@"listType": @(requestType)} mutableCopy];
+    if (timeframe) {
+        parameters[@"timeframe"] = timeframe;
+    }
+    
+    // 📈 MARKET DATA: Use secure market data request with automatic routing and fallback
+    [self.downloadManager executeMarketDataRequest:requestType
+                                        parameters:[parameters copy]
+                                        completion:^(id result, DataSourceType usedSource, NSError *error) {
+        [self handleMarketListResponse:result
+                                 error:error
+                            usedSource:usedSource
+                               forList:listType
+                             requestID:requestID
+                            completion:completion];
+    }];
+}
+
+#pragma mark - 📊 Response Handling (Updated for New Architecture)
+
+- (void)handleQuoteResponse:(id)result
                       error:(NSError *)error
+                 usedSource:(DataSourceType)usedSource
                   forSymbol:(NSString *)symbol
                   requestID:(NSString *)requestID
                  completion:(void (^)(MarketData *quote, NSError *error))completion {
     
+    [self.activeRequests removeObjectForKey:requestID];
+    
     if (error) {
-        [self.activeRequests removeObjectForKey:requestID];
+        NSLog(@"❌ DataManager: Quote request failed for %@ from %@: %@",
+              symbol, DataSourceTypeToString(usedSource), error.localizedDescription);
         if (completion) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 completion(nil, error);
@@ -192,40 +434,32 @@
         return;
     }
     
-    // Get appropriate adapter and standardize data
-    id<DataSourceAdapter> adapter = [self getAdapterForCurrentDataSource];
-    if (!adapter) {
-        NSError *adapterError = [NSError errorWithDomain:@"DataManager"
-                                                     code:102
-                                                 userInfo:@{NSLocalizedDescriptionKey: @"No adapter for current data source"}];
-        [self.activeRequests removeObjectForKey:requestID];
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(nil, adapterError);
-            });
-        }
-        return;
-    }
+    NSLog(@"✅ DataManager: Quote received for %@ from %@", symbol, DataSourceTypeToString(usedSource));
     
-    // Standardize the data (unchanged - still returns MarketData)
-    MarketData *standardizedQuote = [adapter standardizeQuoteData:responseData forSymbol:symbol];
+    // Standardize the quote data using adapter
+    id<DataSourceAdapter> adapter = [DataAdapterFactory adapterForDataSource:usedSource];
+    MarketData *standardizedQuote = nil;
+    
+    if (adapter && [result isKindOfClass:[NSDictionary class]]) {
+        id standardizedData = [adapter standardizeQuoteData:(NSDictionary *)result];
+        if ([standardizedData isKindOfClass:[MarketData class]]) {
+            standardizedQuote = (MarketData *)standardizedData;
+        }
+    }
     
     if (!standardizedQuote) {
-        NSError *standardizationError = [NSError errorWithDomain:@"DataManager"
-                                                             code:101
-                                                         userInfo:@{NSLocalizedDescriptionKey: @"Failed to standardize quote data"}];
-        [self.activeRequests removeObjectForKey:requestID];
+        NSError *parseError = [NSError errorWithDomain:@"DataManager"
+                                                  code:150
+                                              userInfo:@{NSLocalizedDescriptionKey: @"Failed to standardize quote data"}];
         if (completion) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                completion(nil, standardizationError);
+                completion(nil, parseError);
             });
         }
         return;
     }
     
-    [self.activeRequests removeObjectForKey:requestID];
-    
-    // Call completion
+    // Success - return standardized quote
     if (completion) {
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(standardizedQuote, nil);
@@ -236,16 +470,18 @@
     [self notifyDelegatesOfQuoteUpdate:standardizedQuote forSymbol:symbol];
 }
 
-// UPDATED: Now handles runtime HistoricalBarModel objects from adapters
-- (void)handleHistoricalResponse:(NSArray *)rawData
-                           error:(NSError *)error
-                       forSymbol:(NSString *)symbol
-                       timeframe:(BarTimeframe)timeframe
-                       requestID:(NSString *)requestID
-                      completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion {
+- (void)handleBatchQuotesResponse:(id)result
+                            error:(NSError *)error
+                       usedSource:(DataSourceType)usedSource
+                       forSymbols:(NSArray<NSString *> *)symbols
+                        requestID:(NSString *)requestID
+                       completion:(void (^)(NSDictionary *quotes, NSError *error))completion {
+    
+    [self.activeRequests removeObjectForKey:requestID];
     
     if (error) {
-        [self.activeRequests removeObjectForKey:requestID];
+        NSLog(@"❌ DataManager: Batch quotes request failed for symbols from %@: %@",
+              DataSourceTypeToString(usedSource), error.localizedDescription);
         if (completion) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 completion(nil, error);
@@ -255,136 +491,90 @@
         return;
     }
     
-    // Standardizza i dati usando l'adapter
-    id<DataSourceAdapter> adapter = [self getAdapterForCurrentDataSource];
-    if (!adapter) {
-        NSError *adapterError = [NSError errorWithDomain:@"DataManager"
-                                                     code:102
-                                                 userInfo:@{NSLocalizedDescriptionKey: @"No adapter for current data source"}];
-        [self.activeRequests removeObjectForKey:requestID];
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(nil, adapterError);
-            });
+    NSLog(@"✅ DataManager: Batch quotes received for %lu symbols from %@",
+          (unsigned long)symbols.count, DataSourceTypeToString(usedSource));
+    
+    // Standardize batch quotes using adapter
+    id<DataSourceAdapter> adapter = [DataAdapterFactory adapterForDataSource:usedSource];
+    NSDictionary *standardizedQuotes = @{};
+    
+    if (adapter && [result isKindOfClass:[NSDictionary class]]) {
+        id standardizedData = [adapter standardizeBatchQuotesData:(NSDictionary *)result];
+        if ([standardizedData isKindOfClass:[NSDictionary class]]) {
+            standardizedQuotes = (NSDictionary *)standardizedData;
         }
-        return;
     }
     
-    // UPDATED: L'adapter ora restituisce runtime HistoricalBarModel objects
-    NSArray<HistoricalBarModel *> *runtimeBars = [adapter standardizeHistoricalData:rawData forSymbol:symbol];
-    
-    if (!runtimeBars || runtimeBars.count == 0) {
-        NSError *standardizationError = [NSError errorWithDomain:@"DataManager"
-                                                             code:103
-                                                         userInfo:@{NSLocalizedDescriptionKey: @"Failed to standardize historical data"}];
-        [self.activeRequests removeObjectForKey:requestID];
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(nil, standardizationError);
-            });
-        }
-        return;
-    }
-    
-    // Set timeframe on all bars (adapter might not have this context)
-    for (HistoricalBarModel *bar in runtimeBars) {
-        bar.timeframe = timeframe;
-    }
-    
-    [self.activeRequests removeObjectForKey:requestID];
+    NSLog(@"📊 DataManager: Standardized %lu quotes via adapter", (unsigned long)standardizedQuotes.count);
     
     if (completion) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            completion(runtimeBars, nil);
+            completion(standardizedQuotes, nil);
         });
     }
     
-    // UPDATED: Notifica con runtime models
-    [self notifyDelegatesOfHistoricalUpdate:runtimeBars forSymbol:symbol];
-}
-// Order book requests
-- (NSString *)requestOrderBookForSymbol:(NSString *)symbol
-                             completion:(void (^)(NSArray<OrderBookEntry *> *bids,
-                                                 NSArray<OrderBookEntry *> *asks,
-                                                 NSError *error))completion {
-    
-    if (!symbol || symbol.length == 0) {
-        NSError *error = [NSError errorWithDomain:@"DataManager"
-                                             code:100
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid symbol"}];
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(nil, nil, error);
-            });
-        }
-        return nil;
-    }
-    
-    NSString *requestID = [[NSUUID UUID] UUIDString];
-    NSDictionary *parameters = @{
-        @"symbol": symbol,
-        @"depth": @(10) // Default depth
-    };
-    
-    NSMutableDictionary *requestInfo = [@{
-        @"type": @"orderbook",
-        @"symbol": symbol
-    } mutableCopy];
-    
-    if (completion) {
-        requestInfo[@"completion"] = [completion copy];
-    }
-    
-    self.activeRequests[requestID] = requestInfo;
-    
-    [self.downloadManager executeRequest:DataRequestTypeOrderBook
-                              parameters:parameters
-                              completion:^(id result, DataSourceType usedSource, NSError *error) {
-        [self handleOrderBookResponse:result
-                                error:error
-                            forSymbol:symbol
-                            requestID:requestID
-                           completion:completion];
-    }];
-    
-    return requestID;
+    // Notify delegates
+    [self notifyDelegatesOfBatchQuotesUpdate:standardizedQuotes forSymbols:symbols];
 }
 
-// Account data requests - AGGIORNATI per restituire dizionari
-- (void)requestPositionsWithCompletion:(void (^)(NSArray<NSDictionary *> *positionDictionaries, NSError *error))completion {
-    [self.downloadManager executeRequest:DataRequestTypePositions
-                              parameters:@{}
-                              completion:^(id result, DataSourceType usedSource, NSError *error) {
-        if (completion) {
-            completion(result, error);
-        }
-    }];
-}
-
-- (void)requestOrdersWithCompletion:(void (^)(NSArray<NSDictionary *> *orderDictionaries, NSError *error))completion {
-    [self.downloadManager executeRequest:DataRequestTypeOrders
-                              parameters:@{}
-                              completion:^(id result, DataSourceType usedSource, NSError *error) {
-        if (completion) {
-            completion(result, error);
-        }
-    }];
-}
-
-#pragma mark - Response Handlers
-
-
-- (void)handleOrderBookResponse:(id)orderBook
-                          error:(NSError *)error
-                      forSymbol:(NSString *)symbol
-                      requestID:(NSString *)requestID
-                     completion:(void (^)(NSArray<OrderBookEntry *> *bids,
-                                         NSArray<OrderBookEntry *> *asks,
-                                         NSError *error))completion {
+- (void)handleHistoricalDataResponse:(id)result
+                               error:(NSError *)error
+                          usedSource:(DataSourceType)usedSource
+                           forSymbol:(NSString *)symbol
+                           requestID:(NSString *)requestID
+                          completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion {
     
     [self.activeRequests removeObjectForKey:requestID];
     
     if (error) {
+        NSLog(@"❌ DataManager: Historical data request failed for %@ from %@: %@",
+              symbol, DataSourceTypeToString(usedSource), error.localizedDescription);
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, error);
+            });
+        }
+        [self notifyDelegatesOfError:error forRequest:requestID];
+        return;
+    }
+    
+    NSLog(@"✅ DataManager: Historical data received for %@ from %@", symbol, DataSourceTypeToString(usedSource));
+    
+    // Standardize historical data using adapter
+    id<DataSourceAdapter> adapter = [DataAdapterFactory adapterForDataSource:usedSource];
+    NSArray<HistoricalBarModel *> *standardizedBars = @[];
+    
+    if (adapter && [result isKindOfClass:[NSArray class]]) {
+        id standardizedData = [adapter standardizeHistoricalData:(NSArray *)result];
+        if ([standardizedData isKindOfClass:[NSArray class]]) {
+            standardizedBars = (NSArray<HistoricalBarModel *> *)standardizedData;
+        }
+    }
+    
+    NSLog(@"📊 DataManager: Standardized %lu historical bars via adapter", (unsigned long)standardizedBars.count);
+    
+    if (completion) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(standardizedBars, nil);
+        });
+    }
+    
+    // Notify delegates
+    [self notifyDelegatesOfHistoricalDataUpdate:standardizedBars forSymbol:symbol];
+}
+
+- (void)handleOrderBookResponse:(id)result
+                          error:(NSError *)error
+                     usedSource:(DataSourceType)usedSource
+                      forSymbol:(NSString *)symbol
+                      requestID:(NSString *)requestID
+                     completion:(void (^)(NSArray<OrderBookEntry *> *bids, NSArray<OrderBookEntry *> *asks, NSError *error))completion {
+    
+    [self.activeRequests removeObjectForKey:requestID];
+    
+    if (error) {
+        NSLog(@"❌ DataManager: Order book request failed for %@ from %@: %@",
+              symbol, DataSourceTypeToString(usedSource), error.localizedDescription);
         if (completion) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 completion(nil, nil, error);
@@ -393,16 +583,62 @@
         return;
     }
     
-    // Process order book data through adapter
-    id<DataSourceAdapter> adapter = [self getAdapterForCurrentDataSource];
-    NSDictionary *processedOrderBook = [adapter standardizeOrderBookData:orderBook forSymbol:symbol];
+    NSLog(@"✅ DataManager: Order book received for %@ from %@", symbol, DataSourceTypeToString(usedSource));
     
-    NSArray<OrderBookEntry *> *bids = processedOrderBook[@"bids"];
-    NSArray<OrderBookEntry *> *asks = processedOrderBook[@"asks"];
+    // Parse order book data (implementation depends on format)
+    NSArray<OrderBookEntry *> *bids = @[];
+    NSArray<OrderBookEntry *> *asks = @[];
+    
+    // TODO: Implement order book parsing based on result format
     
     if (completion) {
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(bids, asks, nil);
+        });
+    }
+}
+
+- (void)handleMarketListResponse:(id)result
+                           error:(NSError *)error
+                      usedSource:(DataSourceType)usedSource
+                         forList:(NSString *)listType
+                       requestID:(NSString *)requestID
+                      completion:(void (^)(NSArray<MarketPerformerModel *> *performers, NSError *error))completion {
+    
+    [self.activeRequests removeObjectForKey:requestID];
+    
+    if (error) {
+        NSLog(@"❌ DataManager: Market list request failed for %@ from %@: %@",
+              listType, DataSourceTypeToString(usedSource), error.localizedDescription);
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(@[], error);
+            });
+        }
+        return;
+    }
+    
+    NSLog(@"✅ DataManager: Market list received for %@ from %@", listType, DataSourceTypeToString(usedSource));
+    
+    // Standardize market list data
+    NSMutableArray<MarketPerformerModel *> *performers = [NSMutableArray array];
+    
+    if ([result isKindOfClass:[NSArray class]]) {
+        for (NSDictionary *item in (NSArray *)result) {
+            if ([item isKindOfClass:[NSDictionary class]]) {
+                MarketPerformerModel *performer = [MarketPerformerModel fromDictionary:item];
+                if (performer) {
+                    [performers addObject:performer];
+                }
+            }
+        }
+    }
+    
+    NSLog(@"📊 DataManager: Created %lu MarketPerformerModel objects for %@", (unsigned long)performers.count, listType);
+    
+    if (completion) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion([performers copy], nil);
         });
     }
 }
@@ -421,8 +657,19 @@
     });
 }
 
-// UPDATED: Now notifies with runtime HistoricalBarModel objects
-- (void)notifyDelegatesOfHistoricalUpdate:(NSArray<HistoricalBarModel *> *)bars forSymbol:(NSString *)symbol {
+- (void)notifyDelegatesOfBatchQuotesUpdate:(NSDictionary *)quotes forSymbols:(NSArray<NSString *> *)symbols {
+    dispatch_async(self.delegateQueue, ^{
+        for (id<DataManagerDelegate> delegate in self.delegates) {
+            if ([delegate respondsToSelector:@selector(dataManager:didUpdateBatchQuotes:forSymbols:)]) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    [delegate dataManager:self didUpdateBatchQuotes:quotes forSymbols:symbols];
+                });
+            }
+        }
+    });
+}
+
+- (void)notifyDelegatesOfHistoricalDataUpdate:(NSArray<HistoricalBarModel *> *)bars forSymbol:(NSString *)symbol {
     dispatch_async(self.delegateQueue, ^{
         for (id<DataManagerDelegate> delegate in self.delegates) {
             if ([delegate respondsToSelector:@selector(dataManager:didUpdateHistoricalData:forSymbol:)]) {
@@ -446,14 +693,11 @@
     });
 }
 
-#pragma mark - Helper Methods
+#pragma mark - Utility Methods (moved from old version)
 
-- (id<DataSourceAdapter>)getAdapterForCurrentDataSource {
-    DataSourceType currentSource = self.downloadManager.currentDataSource;
-    return [DataAdapterFactory adapterForDataSource:currentSource];
-}
-
-- (NSDate *)calculateStartDateForTimeframe:(BarTimeframe)timeframe count:(NSInteger)count fromDate:(NSDate *)endDate {
+- (NSDate *)dateBySubtractingBarsFromEndDate:(NSDate *)endDate
+                                   timeframe:(BarTimeframe)timeframe
+                                       count:(NSInteger)count {
     NSCalendar *calendar = [NSCalendar currentCalendar];
     NSDateComponents *components = [[NSDateComponents alloc] init];
     
@@ -476,13 +720,13 @@
         case BarTimeframe4Hour:
             components.hour = -count * 4;
             break;
-        case BarTimeframe1Day:
+        case BarTimeframeDaily:
             components.day = -count;
             break;
-        case BarTimeframe1Week:
+        case BarTimeframeWeekly:
             components.weekOfYear = -count;
             break;
-        case BarTimeframe1Month:
+        case BarTimeframeMonthly:
             components.month = -count;
             break;
     }
@@ -494,7 +738,9 @@
 
 - (BOOL)isConnected {
     return [self.downloadManager isDataSourceConnected:DataSourceTypeSchwab] ||
-           [self.downloadManager isDataSourceConnected:DataSourceTypeCustom];
+           [self.downloadManager isDataSourceConnected:DataSourceTypeIBKR] ||
+           [self.downloadManager isDataSourceConnected:DataSourceTypeWebull] ||
+           [self.downloadManager isDataSourceConnected:DataSourceTypeYahoo];
 }
 
 - (NSArray<NSString *> *)availableDataSources {
@@ -503,443 +749,22 @@
     if ([self.downloadManager isDataSourceConnected:DataSourceTypeSchwab]) {
         [sources addObject:@"Schwab"];
     }
-    if ([self.downloadManager isDataSourceConnected:DataSourceTypeCustom]) {
+    if ([self.downloadManager isDataSourceConnected:DataSourceTypeIBKR]) {
+        [sources addObject:@"IBKR"];
+    }
+    if ([self.downloadManager isDataSourceConnected:DataSourceTypeWebull]) {
         [sources addObject:@"Webull"];
+    }
+    if ([self.downloadManager isDataSourceConnected:DataSourceTypeYahoo]) {
+        [sources addObject:@"Yahoo"];
     }
     
     return sources;
 }
 
 - (NSString *)activeDataSource {
-    if ([self.downloadManager isDataSourceConnected:DataSourceTypeSchwab]) {
-        return @"Schwab";
-    } else if ([self.downloadManager isDataSourceConnected:DataSourceTypeCustom]) {
-        return @"Webull";
-    }
-    return @"None";
-}
-
-#pragma mark - Market Lists Implementation
-
-- (void)getMarketPerformersForList:(NSString *)listType
-                         timeframe:(NSString *)timeframe
-                        completion:(void (^)(NSArray<MarketPerformerModel *> *performers, NSError *error))completion {
-    
-    if (!listType || !timeframe) {
-        NSError *error = [NSError errorWithDomain:@"DataManagerError"
-                                             code:400
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid listType or timeframe"}];
-        if (completion) completion(@[], error);
-        return;
-    }
-    
-    NSLog(@"DataManager: Getting market performers for list:%@ timeframe:%@", listType, timeframe);
-    
-    // Determina il tipo di richiesta in base al listType
-    DataRequestType requestType;
-    NSMutableDictionary *parameters = [NSMutableDictionary dictionary];
-    
-    if ([listType isEqualToString:@"gainers"]) {
-        requestType = DataRequestTypeTopGainers;
-        parameters[@"rankType"] = timeframe; // "1d" o "52w"
-        parameters[@"pageSize"] = @50;
-        parameters[@"requestType"] = @(requestType); // ✅ AGGIUNTO
-    } else if ([listType isEqualToString:@"losers"]) {
-        requestType = DataRequestTypeTopLosers;
-        parameters[@"rankType"] = timeframe;
-        parameters[@"pageSize"] = @50;
-        parameters[@"requestType"] = @(requestType); // ✅ AGGIUNTO
-    } else if ([listType isEqualToString:@"etf"]) {
-        requestType = DataRequestTypeETFList;
-        parameters[@"requestType"] = @(requestType); // ✅ AGGIUNTO
-        // ETF non ha timeframe specifico
-    } else {
-        NSError *error = [NSError errorWithDomain:@"DataManagerError"
-                                             code:400
-                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Unsupported list type: %@", listType]}];
-        if (completion) completion(@[], error);
-        return;
-    }
-    
-    // Esegui la richiesta tramite DownloadManager
-    [[DownloadManager sharedManager] executeRequest:requestType
-                                         parameters:parameters
-                                         completion:^(id result, DataSourceType usedSource, NSError *error) {
-        if (error) {
-            NSLog(@"❌ DataManager: Market list request failed: %@", error.localizedDescription);
-            if (completion) completion(@[], error);
-            return;
-        }
-        
-        // Standardizza i dati raw in MarketPerformerModel
-        NSArray<MarketPerformerModel *> *performers = [self standardizeMarketListData:result
-                                                                              listType:listType
-                                                                             timeframe:timeframe];
-        
-        NSLog(@"✅ DataManager: Standardized %lu market performers for %@ (source: %ld)",
-              (unsigned long)performers.count, listType, (long)usedSource);
-        
-        if (completion) completion(performers, nil);
-    }];
-}
-
-- (NSArray<MarketPerformerModel *> *)standardizeMarketListData:(id)rawData
-                                                      listType:(NSString *)listType
-                                                     timeframe:(NSString *)timeframe {
-    
-    if (!rawData || ![rawData isKindOfClass:[NSArray class]]) {
-        NSLog(@"⚠️ DataManager: Invalid raw data for market list standardization");
-        return @[];
-    }
-    
-    NSArray *rawArray = (NSArray *)rawData;
-    NSMutableArray<MarketPerformerModel *> *performers = [NSMutableArray arrayWithCapacity:rawArray.count];
-    
-    NSInteger rank = 1;
-    for (NSDictionary *rawItem in rawArray) {
-        if (![rawItem isKindOfClass:[NSDictionary class]]) continue;
-        
-        // Standardizza il dizionario grezzo
-        NSMutableDictionary *standardizedDict = [NSMutableDictionary dictionary];
-        
-        // Basic info
-        standardizedDict[@"symbol"] = rawItem[@"symbol"] ?: @"";
-        standardizedDict[@"name"] = rawItem[@"name"] ?: standardizedDict[@"symbol"];
-        standardizedDict[@"exchange"] = rawItem[@"exchange"];
-        standardizedDict[@"sector"] = rawItem[@"sector"];
-        
-        // Price data - standardizza i nomi dei campi
-        standardizedDict[@"price"] = rawItem[@"price"] ?: rawItem[@"close"];
-        standardizedDict[@"change"] = rawItem[@"change"];
-        standardizedDict[@"changePercent"] = rawItem[@"changePercent"];
-        standardizedDict[@"volume"] = rawItem[@"volume"];
-        
-        // Market data
-        standardizedDict[@"marketCap"] = rawItem[@"marketCap"];
-        standardizedDict[@"avgVolume"] = rawItem[@"avgVolume"];
-        
-        // List metadata
-        standardizedDict[@"listType"] = listType;
-        standardizedDict[@"timeframe"] = timeframe;
-        standardizedDict[@"rank"] = @(rank++);
-        standardizedDict[@"timestamp"] = [NSDate date];
-        
-        // Crea il MarketPerformerModel
-        MarketPerformerModel *performer = [MarketPerformerModel performerFromDictionary:standardizedDict];
-        if (performer && performer.symbol.length > 0) {
-            [performers addObject:performer];
-        }
-    }
-    
-    NSLog(@"DataManager: Standardized %lu performers from %lu raw items for %@",
-          (unsigned long)performers.count, (unsigned long)rawArray.count, listType);
-    
-    return [performers copy];
-}
-
-- (void)refreshMarketListCache:(NSString *)listType timeframe:(NSString *)timeframe {
-    // Per ora non implementiamo cache in DataManager,
-    // la cache viene gestita da DataHub
-    NSLog(@"DataManager: Market list cache refresh requested for %@:%@", listType, timeframe);
-}
-
-- (NSArray<MarketPerformerModel *> *)getCachedMarketPerformers:(NSString *)listType timeframe:(NSString *)timeframe {
-    // Per ora non implementiamo cache in DataManager,
-    // la cache viene gestita da DataHub
-    NSLog(@"DataManager: Cached market performers requested for %@:%@", listType, timeframe);
-    return @[];
-}
-
-
-#pragma mark - Seasonal/Zacks Data
-
-- (void)requestZacksData:(NSDictionary *)parameters
-              completion:(void (^)(SeasonalDataModel * _Nullable data, NSError * _Nullable error))completion {
-    
-    if (!parameters || !parameters[@"symbol"] || !parameters[@"wrapper"]) {
-        NSError *error = [NSError errorWithDomain:@"DataManager"
-                                             code:400
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid parameters for Zacks request"}];
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(nil, error);
-            });
-        }
-        return;
-    }
-    
-    NSString *symbol = parameters[@"symbol"];
-    NSString *wrapper = parameters[@"wrapper"];
-    
-    NSLog(@"📊 DataManager: Requesting Zacks data for %@ (%@)", symbol, wrapper);
-    
-    // Create request for OtherDataSource via DownloadManager
-    [self.downloadManager executeRequest:DataRequestTypeZacksCharts
-                              parameters:parameters
-                              completion:^(id result, DataSourceType usedSource, NSError *error) {
-        
-        if (error) {
-            NSLog(@"❌ DataManager: Zacks request failed: %@", error.localizedDescription);
-            if (completion) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(nil, error);
-                });
-            }
-            return;
-        }
-        
-        // OtherDataSource should return NSDictionary with raw Zacks data
-        if (![result isKindOfClass:[NSDictionary class]]) {
-            NSError *formatError = [NSError errorWithDomain:@"DataManager"
-                                                       code:500
-                                                   userInfo:@{NSLocalizedDescriptionKey: @"Invalid Zacks data format from source"}];
-            if (completion) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(nil, formatError);
-                });
-            }
-            return;
-        }
-        
-        NSDictionary *rawData = (NSDictionary *)result;
-        NSLog(@"✅ DataManager: Received raw Zacks data for %@ with keys: %@", symbol, rawData.allKeys);
-        
-        // Get OtherDataAdapter for standardization
-        id<DataSourceAdapter> adapter = [self getAdapterForDataSource:usedSource];
-        if (!adapter) {
-            NSError *adapterError = [NSError errorWithDomain:@"DataManager"
-                                                        code:102
-                                                    userInfo:@{NSLocalizedDescriptionKey: @"No adapter found for OtherDataSource"}];
-            if (completion) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(nil, adapterError);
-                });
-            }
-            return;
-        }
-        
-        // Verify it's OtherDataAdapter and convert using its specific method
-        if (![adapter isKindOfClass:[OtherDataAdapter class]]) {
-            NSError *adapterTypeError = [NSError errorWithDomain:@"DataManager"
-                                                            code:103
-                                                        userInfo:@{NSLocalizedDescriptionKey: @"Wrong adapter type for Zacks data"}];
-            if (completion) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(nil, adapterTypeError);
-                });
-            }
-            return;
-        }
-        
-        OtherDataAdapter *otherAdapter = (OtherDataAdapter *)adapter;
-        
-        // Convert raw Zacks data to SeasonalDataModel using adapter
-        SeasonalDataModel *seasonalModel = [otherAdapter convertZacksChartToSeasonalModel:rawData
-                                                                                   symbol:symbol
-                                                                                 dataType:wrapper];
-        
-        if (!seasonalModel) {
-            NSError *conversionError = [NSError errorWithDomain:@"DataManager"
-                                                           code:104
-                                                       userInfo:@{NSLocalizedDescriptionKey: @"Failed to convert Zacks data to SeasonalDataModel"}];
-            if (completion) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(nil, conversionError);
-                });
-            }
-            return;
-        }
-        
-        NSLog(@"✅ DataManager: Successfully converted Zacks data to SeasonalDataModel for %@ (%lu quarters)",
-              symbol, (unsigned long)seasonalModel.quarters.count);
-        
-        // Return standardized SeasonalDataModel
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(seasonalModel, nil);
-            });
-        }
-    }];
-}
-
-- (id<DataSourceAdapter>)getAdapterForDataSource:(DataSourceType)sourceType {
-    return [DataAdapterFactory adapterForDataSource:sourceType];
-}
-
-
-#pragma mark - Historical Data with Extended Hours Support
-
-// Historical data - with count + extended hours
-- (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
-                                   timeframe:(BarTimeframe)timeframe
-                                       count:(NSInteger)count
-                           needExtendedHours:(BOOL)needExtendedHours
-                                  completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion {
-    
-    if (!symbol || symbol.length == 0) {
-        NSError *error = [NSError errorWithDomain:@"DataManager"
-                                             code:100
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid symbol"}];
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(nil, error);
-            });
-        }
-        return nil;
-    }
-    
-    NSLog(@"📊 DataManager: Requesting %ld bars for %@ (timeframe:%ld, extended:%@)",
-          (long)count, symbol, (long)timeframe, needExtendedHours ? @"YES" : @"NO");
-    
-    NSString *requestID = [[NSUUID UUID] UUIDString];
-    NSDictionary *parameters = @{
-        @"symbol": symbol,
-        @"timeframe": @(timeframe),
-        @"count": @(count),
-        @"needExtendedHours": @(needExtendedHours)  // ✅ AGGIUNTO IL PARAMETRO
-    };
-    
-    NSMutableDictionary *requestInfo = [@{
-        @"type": @"historical",
-        @"symbol": symbol,
-        @"timeframe": @(timeframe),
-        @"needExtendedHours": @(needExtendedHours)  // ✅ TRACCIAMO IL PARAMETRO
-    } mutableCopy];
-    
-    if (completion) {
-        requestInfo[@"completion"] = [completion copy];
-    }
-    
-    self.activeRequests[requestID] = requestInfo;
-    
-    [[DownloadManager sharedManager] executeHistoricalRequestWithCount:parameters
-                                                             completion:^(id result, DataSourceType usedSource, NSError *error) {
-        [self handleHistoricalResponse:result
-                                 error:error
-                             forSymbol:symbol
-                            timeframe:timeframe
-                             requestID:requestID
-                            completion:completion];
-    }];
-    
-    return requestID;
-}
-
-// Historical data - with date range + extended hours
-- (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
-                                   timeframe:(BarTimeframe)timeframe
-                                   startDate:(NSDate *)startDate
-                                     endDate:(NSDate *)endDate
-                           needExtendedHours:(BOOL)needExtendedHours
-                                  completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion {
-    
-    if (!symbol || symbol.length == 0) {
-        NSError *error = [NSError errorWithDomain:@"DataManager"
-                                             code:100
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid symbol"}];
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(nil, error);
-            });
-        }
-        return nil;
-    }
-    
-    NSLog(@"📊 DataManager: Requesting historical data for %@ from %@ to %@ (timeframe:%ld, extended:%@)",
-          symbol, startDate, endDate, (long)timeframe, needExtendedHours ? @"YES" : @"NO");
-    
-    NSString *requestID = [[NSUUID UUID] UUIDString];
-    NSDictionary *parameters = @{
-        @"symbol": symbol,
-        @"timeframe": @(timeframe),
-        @"startDate": startDate ?: [NSDate dateWithTimeIntervalSinceNow:-86400 * 30], // Default 30 days
-        @"endDate": endDate ?: [NSDate date],
-        @"needExtendedHours": @(needExtendedHours)  // ✅ AGGIUNTO IL PARAMETRO
-    };
-    
-    NSMutableDictionary *requestInfo = [@{
-        @"type": @"historical",
-        @"symbol": symbol,
-        @"timeframe": @(timeframe),
-        @"needExtendedHours": @(needExtendedHours)  // ✅ TRACCIAMO IL PARAMETRO
-    } mutableCopy];
-    
-    if (completion) {
-        requestInfo[@"completion"] = [completion copy];
-    }
-    
-    self.activeRequests[requestID] = requestInfo;
-    
-    [self.downloadManager executeRequest:DataRequestTypeHistoricalBars
-                              parameters:parameters
-                              completion:^(id result, DataSourceType usedSource, NSError *error) {
-        [self handleHistoricalResponse:result
-                                 error:error
-                             forSymbol:symbol
-                            timeframe:timeframe
-                             requestID:requestID
-                            completion:completion];
-    }];
-    
-    return requestID;
-}
-
-#pragma mark - Response Handler for Batch Quotes
-
-- (void)handleBatchQuotesResponse:(id)result
-                            error:(NSError *)error
-                       forSymbols:(NSArray<NSString *> *)symbols
-                        requestID:(NSString *)requestID
-                       completion:(void (^)(NSDictionary *quotes, NSError *error))completion {
-    
-    [self.activeRequests removeObjectForKey:requestID];
-    
-    if (error) {
-        NSLog(@"❌ DataManager: Batch quotes failed: %@", error.localizedDescription);
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(nil, error);
-            });
-        }
-        return;
-    }
-    
-    // Process batch quotes response through adapter
-    id<DataSourceAdapter> adapter = [self getAdapterForCurrentDataSource];
-    NSDictionary *processedQuotes = nil;
-    
-    if ([adapter respondsToSelector:@selector(standardizeBatchQuotesData:forSymbols:)]) {
-        processedQuotes = [adapter standardizeBatchQuotesData:result forSymbols:symbols];
-    } else {
-        // Fallback: assume result is already in correct format
-        processedQuotes = result;
-    }
-    
-    NSLog(@"✅ DataManager: Batch quotes processed successfully for %lu symbols", (unsigned long)symbols.count);
-    
-    if (completion) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            completion(processedQuotes, nil);
-        });
-    }
-    
-    // Notify delegates if needed
-    [self notifyDelegatesOfBatchQuotesUpdate:processedQuotes forSymbols:symbols];
-}
-
-
-#pragma mark - Delegate Notification for Batch Quotes
-
-- (void)notifyDelegatesOfBatchQuotesUpdate:(NSDictionary *)quotes forSymbols:(NSArray<NSString *> *)symbols {
-    dispatch_async(self.delegateQueue, ^{
-        for (id<DataManagerDelegate> delegate in self.delegates) {
-            if ([delegate respondsToSelector:@selector(dataManager:didUpdateBatchQuotes:forSymbols:)]) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    [delegate dataManager:self didUpdateBatchQuotes:quotes forSymbols:symbols];
-                });
-            }
-        }
-    });
+    DataSourceType current = [self.downloadManager currentDataSource];
+    return DataSourceTypeToString(current);
 }
 
 @end

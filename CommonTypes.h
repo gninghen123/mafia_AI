@@ -1,7 +1,8 @@
 //
-//  CommonTypes.h (UPDATED - UNIFIED TIMEFRAMES)
+//  CommonTypes.h (UPDATED - SECURITY ENHANCED)
 //  TradingApp
 //
+//  🛡️ SECURITY UPDATE: Added missing DataRequestType for Account & Trading operations
 //  UNIFICAZIONE: Enum BarTimeframe standardizzato per supportare
 //  tutti i timeframe delle API (Yahoo, Schwab, Webull, IBKR)
 //
@@ -73,7 +74,7 @@ typedef NS_ENUM(NSInteger, BarTimeframe) {
 #pragma mark - Request Types
 
 typedef NS_ENUM(NSInteger, DataRequestType) {
-    // Core market data
+    // 📈 MARKET DATA (Automatic routing with fallback OK)
     DataRequestTypeQuote,           // Single symbol quote
     DataRequestTypeBatchQuotes,     // Multiple symbols quotes
     DataRequestTypeHistoricalBars,  // Historical OHLCV data
@@ -83,12 +84,13 @@ typedef NS_ENUM(NSInteger, DataRequestType) {
     DataRequestTypeNews,            // News feed
     DataRequestTypeFundamentals,    // Company fundamentals
     
-    // Account/portfolio data
+    // 🛡️ ACCOUNT DATA (Specific DataSource REQUIRED, NO fallback)
     DataRequestTypePositions,       // Account positions
     DataRequestTypeOrders,          // Account orders
     DataRequestTypeAccountInfo,     // Account details
+    DataRequestTypeAccounts,        // List of accounts for specific broker
     
-    // Market lists and screeners
+    // Market lists and screeners (routing OK)
     DataRequestTypeMarketList = 100,
     DataRequestTypeTopGainers = 101,
     DataRequestTypeTopLosers = 102,
@@ -101,7 +103,7 @@ typedef NS_ENUM(NSInteger, DataRequestType) {
     DataRequestTypeInstitutionalTx = 109,
     DataRequestTypePMMovers = 110,
     
-    // Company specific data
+    // Company specific data (routing OK)
     DataRequestTypeCompanyNews = 200,
     DataRequestTypePressReleases = 201,
     DataRequestTypeFinancials = 202,
@@ -118,10 +120,17 @@ typedef NS_ENUM(NSInteger, DataRequestType) {
     DataRequestTypeEarningsForecast = 213,
     DataRequestTypeAnalystMomentum = 214,
     
-    // External data sources
+    // External data sources (routing OK)
     DataRequestTypeFinvizStatements = 300,
     DataRequestTypeZacksCharts = 400,
-    DataRequestTypeOpenInsider = 500
+    DataRequestTypeOpenInsider = 500,
+    
+    // 🚨 TRADING OPERATIONS (Specific DataSource REQUIRED, NEVER fallback)
+    DataRequestTypePlaceOrder = 600,      // Place new order
+    DataRequestTypeCancelOrder = 601,     // Cancel existing order
+    DataRequestTypeModifyOrder = 602,     // Modify existing order
+    DataRequestTypePreviewOrder = 603,    // Preview order before placing
+    DataRequestTypeOrderStatus = 604      // Get order status
 };
 
 #pragma mark - Market Timeframes for Lists
@@ -147,6 +156,100 @@ typedef NS_ENUM(NSInteger, DataFreshnessType) {
     DataFreshnessStale      // Stale data (beyond TTL)
 };
 
+#pragma mark - 🛡️ Security Classification Helper Functions
+
+/**
+ * 📈 Check if request type allows automatic routing (Market Data)
+ * These request types can use fallback between different data sources
+ */
+static inline BOOL IsMarketDataRequestType(DataRequestType requestType) {
+    switch (requestType) {
+        // Core market data (routing OK)
+        case DataRequestTypeQuote:
+        case DataRequestTypeBatchQuotes:
+        case DataRequestTypeHistoricalBars:
+        case DataRequestTypeOrderBook:
+        case DataRequestTypeTimeSales:
+        case DataRequestTypeOptionChain:
+        case DataRequestTypeNews:
+        case DataRequestTypeFundamentals:
+            
+        // Market lists and screeners (routing OK)
+        case DataRequestTypeMarketList:
+        case DataRequestTypeTopGainers:
+        case DataRequestTypeTopLosers:
+        case DataRequestTypeETFList:
+        case DataRequestType52WeekHigh:
+        case DataRequestType52WeekLow:
+        case DataRequestTypeStocksList:
+        case DataRequestTypeEarningsCalendar:
+        case DataRequestTypeEarningsSurprise:
+        case DataRequestTypeInstitutionalTx:
+        case DataRequestTypePMMovers:
+            
+        // Company specific data (routing OK)
+        case DataRequestTypeCompanyNews:
+        case DataRequestTypePressReleases:
+        case DataRequestTypeFinancials:
+        case DataRequestTypePEGRatio:
+        case DataRequestTypeShortInterest:
+        case DataRequestTypeInsiderTrades:
+        case DataRequestTypeInstitutional:
+        case DataRequestTypeSECFilings:
+        case DataRequestTypeRevenue:
+        case DataRequestTypePriceTarget:
+        case DataRequestTypeRatings:
+        case DataRequestTypeEarningsDate:
+        case DataRequestTypeEPS:
+        case DataRequestTypeEarningsForecast:
+        case DataRequestTypeAnalystMomentum:
+            
+        // External data sources (routing OK)
+        case DataRequestTypeFinvizStatements:
+        case DataRequestTypeZacksCharts:
+        case DataRequestTypeOpenInsider:
+            return YES;
+            
+        default:
+            return NO; // Account data and trading operations not allowed
+    }
+}
+
+/**
+ * 🛡️ Check if request type is Account Data (requires specific DataSource)
+ * These request types MUST specify exact broker, NO automatic routing
+ */
+static inline BOOL IsAccountDataRequestType(DataRequestType requestType) {
+    switch (requestType) {
+        case DataRequestTypePositions:
+        case DataRequestTypeOrders:
+        case DataRequestTypeAccountInfo:
+        case DataRequestTypeAccounts:
+        case DataRequestTypeOrderStatus:  // Order status is account-specific
+            return YES;
+            
+        default:
+            return NO;
+    }
+}
+
+/**
+ * 🚨 Check if request type is Trading Operation (most critical security)
+ * These request types are NEVER allowed automatic routing - exact broker required
+ */
+static inline BOOL IsTradingRequestType(DataRequestType requestType) {
+    switch (requestType) {
+        case DataRequestTypePlaceOrder:
+        case DataRequestTypeCancelOrder:
+        case DataRequestTypeModifyOrder:
+        case DataRequestTypePreviewOrder:
+            return YES;
+            
+        default:
+            return NO;
+    }
+}
+
 #pragma mark - Helper Functions
 
 /**
@@ -165,58 +268,61 @@ static inline NSString* BarTimeframeToString(BarTimeframe timeframe) {
         case BarTimeframe90Min: return @"90min";
         case BarTimeframe2Hour: return @"2hour";
         case BarTimeframe4Hour: return @"4hour";
-        case BarTimeframeDaily: return @"daily";
-        case BarTimeframeWeekly: return @"weekly";
-        case BarTimeframeMonthly: return @"monthly";
-        case BarTimeframeQuarterly: return @"quarterly";
+        case BarTimeframeDaily: return @"1day";
+        case BarTimeframeWeekly: return @"1week";
+        case BarTimeframeMonthly: return @"1month";
+        case BarTimeframeQuarterly: return @"3month";
         default: return @"unknown";
     }
 }
 
 /**
- * Convert BarTimeframe to minutes (for intraday timeframes)
- * Returns 0 for daily and higher timeframes
+ * Convert DataRequestType to human-readable string for logging
  */
-static inline NSInteger BarTimeframeToMinutes(BarTimeframe timeframe) {
-    if (timeframe < 1000) {
-        return timeframe; // Intraday timeframes are stored as minutes
+static inline NSString* DataRequestTypeToString(DataRequestType requestType) {
+    switch (requestType) {
+        // Market Data
+        case DataRequestTypeQuote: return @"Quote";
+        case DataRequestTypeBatchQuotes: return @"BatchQuotes";
+        case DataRequestTypeHistoricalBars: return @"HistoricalBars";
+        case DataRequestTypeOrderBook: return @"OrderBook";
+        case DataRequestTypeFundamentals: return @"Fundamentals";
+        case DataRequestTypeNews: return @"News";
+        
+        // Account Data
+        case DataRequestTypePositions: return @"🛡️ Positions";
+        case DataRequestTypeOrders: return @"🛡️ Orders";
+        case DataRequestTypeAccountInfo: return @"🛡️ AccountInfo";
+        case DataRequestTypeAccounts: return @"🛡️ Accounts";
+        
+        // Trading Operations
+        case DataRequestTypePlaceOrder: return @"🚨 PlaceOrder";
+        case DataRequestTypeCancelOrder: return @"🚨 CancelOrder";
+        case DataRequestTypeModifyOrder: return @"🚨 ModifyOrder";
+        
+        // Market Lists
+        case DataRequestTypeTopGainers: return @"TopGainers";
+        case DataRequestTypeTopLosers: return @"TopLosers";
+        case DataRequestTypeETFList: return @"ETFList";
+        
+        default: return [NSString stringWithFormat:@"Unknown(%ld)", (long)requestType];
     }
-    return 0; // Daily and higher timeframes
 }
 
 /**
- * Check if timeframe is intraday
+ * Convert DataSourceType to human-readable string
  */
-static inline BOOL BarTimeframeIsIntraday(BarTimeframe timeframe) {
-    return timeframe < 1000;
-}
-
-/**
- * Get appropriate bar count for timeframe to cover a specific time period
- */
-static inline NSInteger BarTimeframeGetBarsForPeriod(BarTimeframe timeframe, NSTimeInterval period) {
-    NSTimeInterval barInterval;
-    
-    switch (timeframe) {
-        case BarTimeframe1Min: barInterval = 60; break;
-        case BarTimeframe2Min: barInterval = 120; break;
-        case BarTimeframe5Min: barInterval = 300; break;
-        case BarTimeframe10Min: barInterval = 600; break;
-        case BarTimeframe15Min: barInterval = 900; break;
-        case BarTimeframe20Min: barInterval = 1200; break;
-        case BarTimeframe30Min: barInterval = 1800; break;
-        case BarTimeframe1Hour: barInterval = 3600; break;
-        case BarTimeframe90Min: barInterval = 5400; break;
-        case BarTimeframe2Hour: barInterval = 7200; break;
-        case BarTimeframe4Hour: barInterval = 14400; break;
-        case BarTimeframeDaily: barInterval = 86400; break;
-        case BarTimeframeWeekly: barInterval = 604800; break;
-        case BarTimeframeMonthly: barInterval = 2592000; break; // Approx 30 days
-        case BarTimeframeQuarterly: barInterval = 7776000; break; // Approx 90 days
-        default: barInterval = 86400; break; // Default to daily
+static inline NSString* DataSourceTypeToString(DataSourceType sourceType) {
+    switch (sourceType) {
+        case DataSourceTypeSchwab: return @"Schwab";
+        case DataSourceTypeIBKR: return @"IBKR";
+        case DataSourceTypeYahoo: return @"Yahoo";
+        case DataSourceTypeWebull: return @"Webull";
+        case DataSourceTypeCustom: return @"Custom";
+        case DataSourceTypeClaude: return @"Claude";
+        case DataSourceTypeOther: return @"Other";
+        default: return [NSString stringWithFormat:@"Unknown(%ld)", (long)sourceType];
     }
-    
-    return (NSInteger)(period / barInterval);
 }
 
 #endif /* CommonTypes_h */

@@ -1,74 +1,51 @@
 //
-//  DownloadManager.m - PARTE 1
+//  DownloadManager.m (PART 1 - SECURITY ENHANCED)
 //  TradingApp
 //
-//  UNIFICATO: HTTP request manager con supporto completo per failover automatico
-//  Mantiene compatibilità con codice esistente + nuove funzionalità unificate
+//  🛡️ SECURITY UPDATE: Distinguished Market Data vs Account Data routing
+//  PART 1: Core methods, initialization, and MARKET DATA routing (with fallback)
 //
 
 #import "DownloadManager.h"
-#import "WebullDataSource.h"
-#import "ClaudeDataSource.h"
-#import "MarketData.h"
-#import "OtherDataSource.h"
-#import "SchwabDataSource.h"
-#import "IBKRDataSource.h"
-#import <Cocoa/Cocoa.h>
 
-#pragma mark - DataSourceInfo Helper Class
-
+// Internal data source info
 @interface DataSourceInfo : NSObject
 @property (nonatomic, strong) id<DataSource> dataSource;
 @property (nonatomic, assign) DataSourceType type;
 @property (nonatomic, assign) NSInteger priority;
 @property (nonatomic, assign) NSInteger failureCount;
+@property (nonatomic, assign) BOOL isConnected;
 @property (nonatomic, strong) NSDate *lastFailureTime;
-@property (nonatomic, strong) NSDate *lastSuccessTime;  // NEW: track success times
-@property (nonatomic, assign) BOOL isConnected;         // NEW: cached connection status
 @end
 
 @implementation DataSourceInfo
 @end
 
-#pragma mark - DownloadManager Implementation
-
 @interface DownloadManager ()
 @property (nonatomic, strong) NSMutableDictionary<NSNumber *, DataSourceInfo *> *dataSources;
-@property (nonatomic, strong) NSMutableDictionary<NSString *, id> *activeRequests;
-@property (nonatomic, strong) NSOperationQueue *requestQueue;
-@property (nonatomic, assign) BOOL fallbackEnabled;
-@property (nonatomic, assign) NSInteger maxRetries;
-@property (nonatomic, assign) NSTimeInterval requestTimeout;
 @property (nonatomic, strong) dispatch_queue_t dataSourceQueue;
-@property (nonatomic, assign) DataSourceType currentDataSource;
-@property (nonatomic, assign) NSInteger requestCounter;  // NEW: for unified request IDs
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSDictionary *> *activeRequests;
 @end
 
 @implementation DownloadManager
 
 + (instancetype)sharedManager {
-    static DownloadManager *sharedManager = nil;
+    static DownloadManager *sharedInstance = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        sharedManager = [[self alloc] init];
+        sharedInstance = [[self alloc] init];
     });
-    return sharedManager;
+    return sharedInstance;
 }
 
 - (instancetype)init {
     self = [super init];
     if (self) {
         _dataSources = [NSMutableDictionary dictionary];
+        _dataSourceQueue = dispatch_queue_create("com.tradingapp.datasourcequeue", DISPATCH_QUEUE_CONCURRENT);
         _activeRequests = [NSMutableDictionary dictionary];
-        _fallbackEnabled = YES;
-        _maxRetries = 3;
-        _requestTimeout = 30.0;
-        _requestCounter = 0;
-        _dataSourceQueue = dispatch_queue_create("com.tradingapp.downloadmanager.datasources", DISPATCH_QUEUE_SERIAL);
         
-        _requestQueue = [[NSOperationQueue alloc] init];
-        _requestQueue.maxConcurrentOperationCount = 10;
-        
+        NSLog(@"📡 DownloadManager: Initialized with security-enhanced routing");
         // Data sources are registered by AppDelegate
     }
     return self;
@@ -106,42 +83,158 @@
     });
 }
 
-#pragma mark - UNIFIED REQUEST EXECUTION
+#pragma mark - Connection Management
 
-/**
- * PRIMARY UNIFIED METHOD: Execute any request with automatic source selection
- */
-- (NSString *)executeRequest:(DataRequestType)requestType
-                  parameters:(NSDictionary *)parameters
-                  completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
-    return [self executeRequest:requestType
-                     parameters:parameters
-                preferredSource:-1 // Auto-select
-                     completion:completion];
+- (void)connectDataSource:(DataSourceType)type
+               completion:(nullable void (^)(BOOL success, NSError * _Nullable error))completion {
+    dispatch_async(self.dataSourceQueue, ^{
+        DataSourceInfo *info = self.dataSources[@(type)];
+        if (!info) {
+            NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                                 code:404
+                                             userInfo:@{NSLocalizedDescriptionKey: @"DataSource not registered"}];
+            if (completion) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(NO, error);
+                });
+            }
+            return;
+        }
+        
+        [info.dataSource connectWithCompletion:^(BOOL success, NSError *error) {
+            info.isConnected = success;
+            if (completion) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(success, error);
+                });
+            }
+        }];
+    });
 }
 
+- (void)disconnectDataSource:(DataSourceType)type {
+    dispatch_async(self.dataSourceQueue, ^{
+        DataSourceInfo *info = self.dataSources[@(type)];
+        if (info && info.dataSource.isConnected) {
+            [info.dataSource disconnect];
+            info.isConnected = NO;
+        }
+    });
+}
+
+- (void)reconnectAllDataSources {
+    dispatch_async(self.dataSourceQueue, ^{
+        for (NSNumber *typeNumber in self.dataSources) {
+            DataSourceInfo *info = self.dataSources[typeNumber];
+            if (!info.isConnected) {
+                [info.dataSource connectWithCompletion:^(BOOL success, NSError *error) {
+                    info.isConnected = success;
+                    if (success) {
+                        NSLog(@"✅ DownloadManager: Reconnected %@", info.dataSource.sourceName);
+                    }
+                }];
+            }
+        }
+    });
+}
+
+#pragma mark - Status and Monitoring
+
+- (BOOL)isDataSourceConnected:(DataSourceType)type {
+    __block BOOL connected = NO;
+    dispatch_sync(self.dataSourceQueue, ^{
+        DataSourceInfo *info = self.dataSources[@(type)];
+        connected = info ? info.isConnected : NO;
+    });
+    return connected;
+}
+
+- (DataSourceCapabilities)capabilitiesForDataSource:(DataSourceType)type {
+    __block DataSourceCapabilities capabilities = DataSourceCapabilityNone;
+    dispatch_sync(self.dataSourceQueue, ^{
+        DataSourceInfo *info = self.dataSources[@(type)];
+        capabilities = info ? info.dataSource.capabilities : DataSourceCapabilityNone;
+    });
+    return capabilities;
+}
+
+- (NSDictionary *)statisticsForDataSource:(DataSourceType)type {
+    __block NSDictionary *stats = nil;
+    dispatch_sync(self.dataSourceQueue, ^{
+        DataSourceInfo *info = self.dataSources[@(type)];
+        if (info) {
+            stats = @{
+                @"connected": @(info.isConnected),
+                @"failureCount": @(info.failureCount),
+                @"lastFailure": info.lastFailureTime ?: [NSNull null],
+                @"priority": @(info.priority)
+            };
+        }
+    });
+    return stats ?: @{};
+}
+
+- (DataSourceType)currentDataSource {
+    __block DataSourceType current = -1;
+    __block NSInteger highestPriority = NSIntegerMin;
+    
+    dispatch_sync(self.dataSourceQueue, ^{
+        for (NSNumber *typeNumber in self.dataSources) {
+            DataSourceInfo *info = self.dataSources[typeNumber];
+            if (info.isConnected && info.priority > highestPriority) {
+                highestPriority = info.priority;
+                current = [typeNumber integerValue];
+            }
+        }
+    });
+    return current;
+}
+
+#pragma mark - 📈 MARKET DATA REQUESTS (Automatic routing with fallback)
+
 /**
- * ADVANCED UNIFIED METHOD: Execute with preferred source
+ * 🔄 MARKET DATA routing logic: Automatic source selection with fallback
  */
-- (NSString *)executeRequest:(DataRequestType)requestType
-                  parameters:(NSDictionary *)parameters
-             preferredSource:(DataSourceType)preferredSource
-                  completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+- (NSString *)executeMarketDataRequest:(DataRequestType)requestType
+                            parameters:(NSDictionary *)parameters
+                            completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    return [self executeMarketDataRequest:requestType
+                               parameters:parameters
+                          preferredSource:-1 // Auto-select
+                               completion:completion];
+}
+
+- (NSString *)executeMarketDataRequest:(DataRequestType)requestType
+                            parameters:(NSDictionary *)parameters
+                       preferredSource:(DataSourceType)preferredSource
+                            completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    // Validate that this is market data request
+    if (![self isMarketDataRequestType:requestType]) {
+        NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"This is not a market data request type. Use executeAccountDataRequest or executeTradingRequest."}];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, -1, error);
+        });
+        return nil;
+    }
     
     NSString *requestID = [self generateRequestID];
     self.activeRequests[requestID] = parameters;
     
-    NSLog(@"📡 DownloadManager: Execute unified request type:%ld preferredSource:%ld requestID:%@",
+    NSLog(@"📈 DownloadManager: Execute MARKET DATA request type:%ld preferredSource:%ld requestID:%@",
           (long)requestType, (long)preferredSource, requestID);
     
     dispatch_async(self.dataSourceQueue, ^{
         NSArray<DataSourceInfo *> *availableSources = [self getAvailableSourcesForRequestType:requestType
-                                                                              preferredSource:preferredSource];
+                                                                               preferredSource:preferredSource];
         
         if (availableSources.count == 0) {
             NSError *error = [NSError errorWithDomain:@"DownloadManager"
-                                                 code:404
-                                             userInfo:@{NSLocalizedDescriptionKey: @"No available data sources for this request type"}];
+                                                 code:503
+                                             userInfo:@{NSLocalizedDescriptionKey: @"No data sources available for this request type"}];
+            [self.activeRequests removeObjectForKey:requestID];
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (completion) completion(nil, -1, error);
             });
@@ -149,41 +242,41 @@
         }
         
         [self executeRequestWithSources:availableSources
-                            requestType:requestType
-                             parameters:parameters
-                              requestID:requestID
-                            sourceIndex:0
-                             completion:completion];
+                             requestType:requestType
+                              parameters:parameters
+                               requestID:requestID
+                             sourceIndex:0
+                              completion:completion];
     });
     
     return requestID;
 }
 
-#pragma mark - UNIFIED CONVENIENCE METHODS
+#pragma mark - UNIFIED CONVENIENCE METHODS for Market Data
 
 - (NSString *)fetchQuoteForSymbol:(NSString *)symbol
                        completion:(void (^)(id quote, DataSourceType usedSource, NSError *error))completion {
-    
     NSDictionary *parameters = @{@"symbol": symbol};
-    return [self executeRequest:DataRequestTypeQuote
-                     parameters:parameters
-                     completion:completion];
+    
+    return [self executeMarketDataRequest:DataRequestTypeQuote
+                               parameters:parameters
+                               completion:completion];
 }
 
 - (NSString *)fetchQuotesForSymbols:(NSArray<NSString *> *)symbols
                          completion:(void (^)(NSDictionary *quotes, DataSourceType usedSource, NSError *error))completion {
-    
     NSDictionary *parameters = @{@"symbols": symbols};
-    return [self executeRequest:DataRequestTypeBatchQuotes
-                     parameters:parameters
-                     completion:completion];
+    
+    return [self executeMarketDataRequest:DataRequestTypeBatchQuotes
+                               parameters:parameters
+                               completion:completion];
 }
 
 - (NSString *)fetchHistoricalDataForSymbol:(NSString *)symbol
                                  timeframe:(BarTimeframe)timeframe
                                  startDate:(NSDate *)startDate
                                    endDate:(NSDate *)endDate
-                         needExtendedHours:(BOOL)needExtendedHours
+                          needExtendedHours:(BOOL)needExtendedHours
                                 completion:(void (^)(NSArray *bars, DataSourceType usedSource, NSError *error))completion {
     
     NSDictionary *parameters = @{
@@ -194,9 +287,9 @@
         @"needExtendedHours": @(needExtendedHours)
     };
     
-    return [self executeRequest:DataRequestTypeHistoricalBars
-                     parameters:parameters
-                     completion:completion];
+    return [self executeMarketDataRequest:DataRequestTypeHistoricalBars
+                               parameters:parameters
+                               completion:completion];
 }
 
 - (NSString *)fetchHistoricalDataForSymbol:(NSString *)symbol
@@ -212,9 +305,9 @@
         @"needExtendedHours": @(needExtendedHours)
     };
     
-    return [self executeRequest:DataRequestTypeHistoricalBars
-                     parameters:parameters
-                     completion:completion];
+    return [self executeMarketDataRequest:DataRequestTypeHistoricalBars
+                               parameters:parameters
+                               completion:completion];
 }
 
 - (NSString *)fetchMarketListForType:(DataRequestType)listType
@@ -228,13 +321,171 @@
         [requestParams addEntriesFromDictionary:parameters];
     }
     
-    return [self executeRequest:listType // Use the specific list type
-                     parameters:[requestParams copy]
-                     completion:completion];
+    return [self executeMarketDataRequest:listType // Use the specific list type
+                               parameters:[requestParams copy]
+                               completion:completion];
 }
 
-#pragma mark - Internal Request Execution
+#pragma mark - Helper Methods for Market Data Execution
 
+/**
+ * 📈 Classification: Check if request type is Market Data (allows automatic routing)
+ */
+- (BOOL)isMarketDataRequestType:(DataRequestType)requestType {
+    switch (requestType) {
+        // Core market data (routing OK)
+        case DataRequestTypeQuote:
+        case DataRequestTypeBatchQuotes:
+        case DataRequestTypeHistoricalBars:
+        case DataRequestTypeOrderBook:
+        case DataRequestTypeTimeSales:
+        case DataRequestTypeOptionChain:
+        case DataRequestTypeNews:
+        case DataRequestTypeFundamentals:
+            
+        // Market lists and screeners (routing OK)
+        case DataRequestTypeMarketList:
+        case DataRequestTypeTopGainers:
+        case DataRequestTypeTopLosers:
+        case DataRequestTypeETFList:
+        case DataRequestType52WeekHigh:
+        case DataRequestType52WeekLow:
+        case DataRequestTypeStocksList:
+        case DataRequestTypeEarningsCalendar:
+        case DataRequestTypeEarningsSurprise:
+        case DataRequestTypeInstitutionalTx:
+        case DataRequestTypePMMovers:
+            
+        // Company specific data (routing OK)
+        case DataRequestTypeCompanyNews:
+        case DataRequestTypePressReleases:
+        case DataRequestTypeFinancials:
+        case DataRequestTypePEGRatio:
+        case DataRequestTypeShortInterest:
+        case DataRequestTypeInsiderTrades:
+        case DataRequestTypeInstitutional:
+        case DataRequestTypeSECFilings:
+        case DataRequestTypeRevenue:
+        case DataRequestTypePriceTarget:
+        case DataRequestTypeRatings:
+        case DataRequestTypeEarningsDate:
+        case DataRequestTypeEPS:
+        case DataRequestTypeEarningsForecast:
+        case DataRequestTypeAnalystMomentum:
+            
+        // External data sources (routing OK)
+        case DataRequestTypeFinvizStatements:
+        case DataRequestTypeZacksCharts:
+        case DataRequestTypeOpenInsider:
+            return YES;
+            
+        default:
+            return NO; // Account data, trading operations not allowed here
+    }
+}
+
+/**
+ * 📊 Get available sources for Market Data with automatic priority sorting
+ */
+- (NSArray<DataSourceInfo *> *)getAvailableSourcesForRequestType:(DataRequestType)requestType
+                                                  preferredSource:(DataSourceType)preferredSource {
+    NSMutableArray<DataSourceInfo *> *availableSources = [NSMutableArray array];
+    
+    // First add preferred source if specified and supports the request type
+    if (preferredSource != -1) {
+        DataSourceInfo *preferredSourceInfo = self.dataSources[@(preferredSource)];
+        if (preferredSourceInfo && [self dataSourceSupportsRequestType:preferredSourceInfo requestType:requestType]) {
+            [availableSources addObject:preferredSourceInfo];
+        }
+    }
+    
+    // Then add other available sources sorted by priority (excluding preferred source)
+    NSArray<DataSourceInfo *> *allSources = [self.dataSources.allValues
+                                              sortedArrayUsingComparator:^NSComparisonResult(DataSourceInfo *obj1, DataSourceInfo *obj2) {
+        // Higher priority first
+        if (obj1.priority > obj2.priority) return NSOrderedAscending;
+        if (obj1.priority < obj2.priority) return NSOrderedDescending;
+        
+        // If same priority, prefer source with fewer recent failures
+        if (obj1.failureCount < obj2.failureCount) return NSOrderedAscending;
+        if (obj1.failureCount > obj2.failureCount) return NSOrderedDescending;
+        
+        return NSOrderedSame;
+    }];
+    
+    for (DataSourceInfo *sourceInfo in allSources) {
+        // Skip if already added as preferred source
+        if (preferredSource != -1 && sourceInfo.type == preferredSource) {
+            continue;
+        }
+        
+        // Only add if connected and supports request type
+        if (sourceInfo.isConnected && [self dataSourceSupportsRequestType:sourceInfo requestType:requestType]) {
+            [availableSources addObject:sourceInfo];
+        }
+    }
+    
+    NSLog(@"📊 DownloadManager: Found %lu available sources for request type %ld",
+          (unsigned long)availableSources.count, (long)requestType);
+    
+    return availableSources;
+}
+
+/**
+ * 🔍 Check if DataSource supports specific request type
+ */
+- (BOOL)dataSourceSupportsRequestType:(DataSourceInfo *)sourceInfo requestType:(DataRequestType)requestType {
+    DataSourceCapabilities capabilities = sourceInfo.dataSource.capabilities;
+    
+    switch (requestType) {
+        case DataRequestTypeQuote:
+        case DataRequestTypeBatchQuotes:
+            return (capabilities & DataSourceCapabilityQuotes) != 0;
+            
+        case DataRequestTypeHistoricalBars:
+            return (capabilities & DataSourceCapabilityHistoricalData) != 0;
+            
+        case DataRequestTypeOrderBook:
+            return (capabilities & DataSourceCapabilityLevel2Data) != 0;
+            
+        case DataRequestTypeTopGainers:
+        case DataRequestTypeTopLosers:
+        case DataRequestTypeETFList:
+        case DataRequestType52WeekHigh:
+        case DataRequestType52WeekLow:
+        case DataRequestTypeMarketList:
+        case DataRequestTypeStocksList:
+        case DataRequestTypeEarningsCalendar:
+        case DataRequestTypePMMovers:
+            return (capabilities & DataSourceCapabilityMarketLists) != 0;
+            
+        case DataRequestTypeFundamentals:
+        case DataRequestTypeFinancials:
+        case DataRequestTypePEGRatio:
+        case DataRequestTypeRevenue:
+        case DataRequestTypeEPS:
+        case DataRequestTypeEarningsForecast:
+            return (capabilities & DataSourceCapabilityFundamentals) != 0;
+            
+        case DataRequestTypeNews:
+        case DataRequestTypeCompanyNews:
+        case DataRequestTypePressReleases:
+            return (capabilities & DataSourceCapabilityNews) != 0;
+            
+        case DataRequestTypeOptionChain:
+            return (capabilities & DataSourceCapabilityOptions) != 0;
+            
+        default:
+            // For other types, assume basic quote capability is enough
+            return (capabilities & DataSourceCapabilityQuotes) != 0;
+    }
+}
+
+#pragma mark - Internal Market Data Request Execution
+
+/**
+ * 🔄 Execute market data request with automatic fallback
+ */
 - (void)executeRequestWithSources:(NSArray<DataSourceInfo *> *)sources
                       requestType:(DataRequestType)requestType
                        parameters:(NSDictionary *)parameters
@@ -262,7 +513,7 @@
     DataSourceInfo *sourceInfo = sources[sourceIndex];
     id<DataSource> dataSource = sourceInfo.dataSource;
     
-    NSLog(@"📡 DownloadManager: Trying %@ for request type %ld (attempt %ld/%lu)",
+    NSLog(@"📡 DownloadManager: Trying %@ for market data request type %ld (attempt %ld/%lu)",
           dataSource.sourceName, (long)requestType, (long)(sourceIndex + 1), (unsigned long)sources.count);
     
     // Route to appropriate DataSource method based on request type
@@ -321,40 +572,20 @@
                                completion:completion];
             break;
             
-        case DataRequestTypePositions:
-            [self executePositionsRequest:parameters
-                           withDataSource:dataSource
-                               sourceInfo:sourceInfo
-                                  sources:sources
-                              sourceIndex:sourceIndex
-                                requestID:requestID
-                               completion:completion];
-            break;
-            
-        case DataRequestTypeOrders:
-            [self executeOrdersRequest:parameters
-                        withDataSource:dataSource
-                            sourceInfo:sourceInfo
-                               sources:sources
-                           sourceIndex:sourceIndex
-                             requestID:requestID
-                            completion:completion];
-            break;
-            
-        case DataRequestTypeAccountInfo:
-            [self executeAccountInfoRequest:parameters
-                             withDataSource:dataSource
-                                 sourceInfo:sourceInfo
-                                    sources:sources
-                                sourceIndex:sourceIndex
-                                  requestID:requestID
-                                 completion:completion];
+        case DataRequestTypeFundamentals:
+            [self executeFundamentalsRequest:parameters
+                              withDataSource:dataSource
+                                  sourceInfo:sourceInfo
+                                     sources:sources
+                                 sourceIndex:sourceIndex
+                                   requestID:requestID
+                                  completion:completion];
             break;
             
         default: {
             NSError *unsupportedError = [NSError errorWithDomain:@"DownloadManager"
                                                             code:400
-                                                        userInfo:@{NSLocalizedDescriptionKey: @"Unsupported request type"}];
+                                                        userInfo:@{NSLocalizedDescriptionKey: @"Unsupported market data request type"}];
             [self.activeRequests removeObjectForKey:requestID];
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (completion) completion(nil, -1, unsupportedError);
@@ -364,8 +595,7 @@
     }
 }
 
-
-#pragma mark - Specific Request Type Implementations
+#pragma mark - Specific Market Data Request Type Implementations
 
 - (void)executeQuoteRequest:(NSDictionary *)parameters
              withDataSource:(id<DataSource>)dataSource
@@ -377,32 +607,28 @@
     
     NSString *symbol = parameters[@"symbol"];
     
-    [dataSource fetchQuoteForSymbol:symbol completion:^(id quote, NSError *error) {
-        if (!self.activeRequests[requestID]) {
-            return; // Request was cancelled
-        }
-        
-        if (error) {
-            NSLog(@"❌ DownloadManager: %@ failed for quote %@: %@", dataSource.sourceName, symbol, error.localizedDescription);
-            [self recordFailureForSource:sourceInfo];
-            
-            // Try next source
-            [self executeRequestWithSources:sources
-                                 requestType:DataRequestTypeQuote
-                                  parameters:parameters
-                                   requestID:requestID
-                                 sourceIndex:sourceIndex + 1
-                                  completion:completion];
-        } else {
-            NSLog(@"✅ DownloadManager: %@ succeeded for quote %@", dataSource.sourceName, symbol);
-            [self recordSuccessForSource:sourceInfo];
-            [self.activeRequests removeObjectForKey:requestID];
-            
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (completion) completion(quote, dataSource.sourceType, nil);
-            });
-        }
-    }];
+    if ([dataSource respondsToSelector:@selector(fetchQuoteForSymbol:completion:)]) {
+        [dataSource fetchQuoteForSymbol:symbol completion:^(id quote, NSError *error) {
+            [self handleGenericResponse:quote
+                                   error:error
+                              dataSource:dataSource
+                              sourceInfo:sourceInfo
+                                 sources:sources
+                             sourceIndex:sourceIndex
+                              parameters:parameters
+                               requestID:requestID
+                             requestType:DataRequestTypeQuote
+                              completion:completion];
+        }];
+    } else {
+        // DataSource doesn't support quotes - try next
+        [self executeRequestWithSources:sources
+                             requestType:DataRequestTypeQuote
+                              parameters:parameters
+                               requestID:requestID
+                             sourceIndex:sourceIndex + 1
+                              completion:completion];
+    }
 }
 
 - (void)executeBatchQuotesRequest:(NSDictionary *)parameters
@@ -413,34 +639,30 @@
                         requestID:(NSString *)requestID
                        completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
     
-    NSArray<NSString *> *symbols = parameters[@"symbols"];
+    NSArray *symbols = parameters[@"symbols"];
     
-    [dataSource fetchQuotesForSymbols:symbols completion:^(NSDictionary *quotes, NSError *error) {
-        if (!self.activeRequests[requestID]) {
-            return; // Request was cancelled
-        }
-        
-        if (error) {
-            NSLog(@"❌ DownloadManager: %@ failed for batch quotes: %@", dataSource.sourceName, error.localizedDescription);
-            [self recordFailureForSource:sourceInfo];
-            
-            // Try next source
-            [self executeRequestWithSources:sources
-                                 requestType:DataRequestTypeBatchQuotes
-                                  parameters:parameters
-                                   requestID:requestID
-                                 sourceIndex:sourceIndex + 1
-                                  completion:completion];
-        } else {
-            NSLog(@"✅ DownloadManager: %@ succeeded for batch quotes (%lu symbols)", dataSource.sourceName, (unsigned long)quotes.count);
-            [self recordSuccessForSource:sourceInfo];
-            [self.activeRequests removeObjectForKey:requestID];
-            
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (completion) completion(quotes, dataSource.sourceType, nil);
-            });
-        }
-    }];
+    if ([dataSource respondsToSelector:@selector(fetchQuotesForSymbols:completion:)]) {
+        [dataSource fetchQuotesForSymbols:symbols completion:^(NSDictionary *quotes, NSError *error) {
+            [self handleGenericResponse:quotes
+                                   error:error
+                              dataSource:dataSource
+                              sourceInfo:sourceInfo
+                                 sources:sources
+                             sourceIndex:sourceIndex
+                              parameters:parameters
+                               requestID:requestID
+                             requestType:DataRequestTypeBatchQuotes
+                              completion:completion];
+        }];
+    } else {
+        // DataSource doesn't support batch quotes - try next
+        [self executeRequestWithSources:sources
+                             requestType:DataRequestTypeBatchQuotes
+                              parameters:parameters
+                               requestID:requestID
+                             sourceIndex:sourceIndex + 1
+                              completion:completion];
+    }
 }
 
 - (void)executeHistoricalRequest:(NSDictionary *)parameters
@@ -455,83 +677,814 @@
     BarTimeframe timeframe = [parameters[@"timeframe"] integerValue];
     BOOL needExtendedHours = [parameters[@"needExtendedHours"] boolValue];
     
-    // Check if using date range or bar count
-    if (parameters[@"startDate"] && parameters[@"endDate"]) {
-        NSDate *startDate = parameters[@"startDate"];
-        NSDate *endDate = parameters[@"endDate"];
-        
-        [dataSource fetchHistoricalDataForSymbol:symbol
-                                       timeframe:timeframe
-                                       startDate:startDate
-                                         endDate:endDate
-                                needExtendedHours:needExtendedHours
-                                      completion:^(NSArray *bars, NSError *error) {
-            [self handleHistoricalResponse:bars
-                                     error:error
-                                dataSource:dataSource
-                                sourceInfo:sourceInfo
-                                   sources:sources
-                               sourceIndex:sourceIndex
-                                parameters:parameters
-                                 requestID:requestID
-                                completion:completion];
-        }];
+    if ([dataSource respondsToSelector:@selector(fetchHistoricalDataForSymbol:timeframe:startDate:endDate:needExtendedHours:completion:)]) {
+        if (parameters[@"startDate"] && parameters[@"endDate"]) {
+            // Date range version
+            NSDate *startDate = parameters[@"startDate"];
+            NSDate *endDate = parameters[@"endDate"];
+            
+            [dataSource fetchHistoricalDataForSymbol:symbol
+                                           timeframe:timeframe
+                                           startDate:startDate
+                                             endDate:endDate
+                                   needExtendedHours:needExtendedHours
+                                          completion:^(NSArray *bars, NSError *error) {
+                [self handleGenericResponse:bars
+                                       error:error
+                                  dataSource:dataSource
+                                  sourceInfo:sourceInfo
+                                     sources:sources
+                                 sourceIndex:sourceIndex
+                                  parameters:parameters
+                                   requestID:requestID
+                                 requestType:DataRequestTypeHistoricalBars
+                                  completion:completion];
+            }];
+        } else if (parameters[@"barCount"]) {
+            // Bar count version
+            NSInteger barCount = [parameters[@"barCount"] integerValue];
+            
+            if ([dataSource respondsToSelector:@selector(fetchHistoricalDataForSymbol:timeframe:barCount:needExtendedHours:completion:)]) {
+                [dataSource fetchHistoricalDataForSymbol:symbol
+                                               timeframe:timeframe
+                                                barCount:barCount
+                                       needExtendedHours:needExtendedHours
+                                              completion:^(NSArray *bars, NSError *error) {
+                    [self handleGenericResponse:bars
+                                           error:error
+                                      dataSource:dataSource
+                                      sourceInfo:sourceInfo
+                                         sources:sources
+                                     sourceIndex:sourceIndex
+                                      parameters:parameters
+                                       requestID:requestID
+                                     requestType:DataRequestTypeHistoricalBars
+                                      completion:completion];
+                }];
+            } else {
+                // DataSource doesn't support bar count version - try next
+                [self executeRequestWithSources:sources
+                                     requestType:DataRequestTypeHistoricalBars
+                                      parameters:parameters
+                                       requestID:requestID
+                                     sourceIndex:sourceIndex + 1
+                                      completion:completion];
+            }
+        }
     } else {
-        NSInteger barCount = [parameters[@"barCount"] integerValue];
-        
-        [dataSource fetchHistoricalDataForSymbol:symbol
-                                       timeframe:timeframe
-                                        barCount:barCount
-                                needExtendedHours:needExtendedHours
-                                      completion:^(NSArray *bars, NSError *error) {
-            [self handleHistoricalResponse:bars
-                                     error:error
-                                dataSource:dataSource
-                                sourceInfo:sourceInfo
-                                   sources:sources
-                               sourceIndex:sourceIndex
-                                parameters:parameters
-                                 requestID:requestID
-                                completion:completion];
-        }];
-    }
-}
-
-- (void)handleHistoricalResponse:(NSArray *)bars
-                           error:(NSError *)error
-                      dataSource:(id<DataSource>)dataSource
-                      sourceInfo:(DataSourceInfo *)sourceInfo
-                         sources:(NSArray<DataSourceInfo *> *)sources
-                     sourceIndex:(NSInteger)sourceIndex
-                      parameters:(NSDictionary *)parameters
-                       requestID:(NSString *)requestID
-                      completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
-    
-    if (!self.activeRequests[requestID]) {
-        return; // Request was cancelled
-    }
-    
-    if (error) {
-        NSLog(@"❌ DownloadManager: %@ failed for historical data: %@", dataSource.sourceName, error.localizedDescription);
-        [self recordFailureForSource:sourceInfo];
-        
-        // Try next source
+        // DataSource doesn't support historical data - try next
         [self executeRequestWithSources:sources
                              requestType:DataRequestTypeHistoricalBars
                               parameters:parameters
                                requestID:requestID
                              sourceIndex:sourceIndex + 1
                               completion:completion];
-    } else {
-        NSLog(@"✅ DownloadManager: %@ succeeded for historical data (%lu bars)", dataSource.sourceName, (unsigned long)bars.count);
-        [self recordSuccessForSource:sourceInfo];
-        [self.activeRequests removeObjectForKey:requestID];
-        
+    }
+}
+
+#pragma mark - Utility Methods
+
+/**
+ * 🆔 Generate unique request ID
+ */
+- (NSString *)generateRequestID {
+    return [[NSUUID UUID] UUIDString];
+}
+
+/**
+ * 📝 Record success for source (improve priority)
+ */
+- (void)recordSuccessForSource:(DataSourceInfo *)sourceInfo {
+    sourceInfo.failureCount = MAX(0, sourceInfo.failureCount - 1);
+    sourceInfo.lastFailureTime = nil;
+}
+
+/**
+ * ❌ Record failure for source (decrease priority)
+ */
+- (void)recordFailureForSource:(DataSourceInfo *)sourceInfo {
+    sourceInfo.failureCount++;
+    sourceInfo.lastFailureTime = [NSDate date];
+}
+
+
+//
+//  🛡️ SECURITY CRITICAL: Account Data & Trading Operations
+//  - NO automatic routing
+//  - Specific DataSource REQUIRED
+//  - NO fallback to prevent data mixing between brokers
+//
+
+
+#pragma mark - 🛡️ ACCOUNT DATA REQUESTS (Specific DataSource REQUIRED)
+
+/**
+ * 🛡️ ACCOUNT DATA security logic: NO automatic routing, specific source required
+ */
+- (NSString *)executeAccountDataRequest:(DataRequestType)requestType
+                             parameters:(NSDictionary *)parameters
+                         requiredSource:(DataSourceType)requiredSource
+                             completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    // Validate that this is account data request
+    if (![self isAccountDataRequestType:requestType]) {
+        NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"This is not an account data request type. Use executeMarketDataRequest for market data."}];
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (completion) completion(bars, dataSource.sourceType, nil);
+            if (completion) completion(nil, -1, error);
+        });
+        return nil;
+    }
+    
+    // Validate required parameters
+    NSError *validationError = [self validateAccountDataParameters:parameters requestType:requestType];
+    if (validationError) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, -1, validationError);
+        });
+        return nil;
+    }
+    
+    NSString *requestID = [self generateRequestID];
+    self.activeRequests[requestID] = parameters;
+    
+    NSLog(@"🛡️ DownloadManager: Execute ACCOUNT DATA request type:%ld requiredSource:%ld requestID:%@",
+          (long)requestType, (long)requiredSource, requestID);
+    
+    dispatch_async(self.dataSourceQueue, ^{
+        // Get ONLY the required source - NO fallback for account data
+        DataSourceInfo *sourceInfo = self.dataSources[@(requiredSource)];
+        
+        if (!sourceInfo) {
+            NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                                 code:404
+                                             userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Required DataSource %ld is not registered", (long)requiredSource]}];
+            [self.activeRequests removeObjectForKey:requestID];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(nil, -1, error);
+            });
+            return;
+        }
+        
+        if (!sourceInfo.isConnected) {
+            NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                                 code:503
+                                             userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Required DataSource %@ is not connected", sourceInfo.dataSource.sourceName]}];
+            [self.activeRequests removeObjectForKey:requestID];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(nil, -1, error);
+            });
+            return;
+        }
+        
+        if (![self dataSourceSupportsAccountRequestType:sourceInfo requestType:requestType]) {
+            NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                                 code:501
+                                             userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"DataSource %@ does not support account request type %ld", sourceInfo.dataSource.sourceName, (long)requestType]}];
+            [self.activeRequests removeObjectForKey:requestID];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(nil, -1, error);
+            });
+            return;
+        }
+        
+        // Execute account data request - NO fallback, single source only
+        [self executeAccountDataRequestOnSpecificSource:requestType
+                                              parameters:parameters
+                                              sourceInfo:sourceInfo
+                                               requestID:requestID
+                                              completion:completion];
+    });
+    
+    return requestID;
+}
+
+#pragma mark - 🚨 TRADING OPERATIONS (Specific DataSource REQUIRED)
+
+/**
+ * 🚨 TRADING OPERATIONS security logic: Most critical - exact broker required, NEVER fallback
+ */
+- (NSString *)executeTradingRequest:(DataRequestType)requestType
+                         parameters:(NSDictionary *)parameters
+                     requiredSource:(DataSourceType)requiredSource
+                         completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    // Validate that this is trading request
+    if (![self isTradingRequestType:requestType]) {
+        NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"This is not a trading request type. Use executeAccountDataRequest for account data."}];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, -1, error);
+        });
+        return nil;
+    }
+    
+    // Extra validation for trading operations
+    NSError *validationError = [self validateTradingParameters:parameters requestType:requestType];
+    if (validationError) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, -1, validationError);
+        });
+        return nil;
+    }
+    
+    NSString *requestID = [self generateRequestID];
+    self.activeRequests[requestID] = parameters;
+    
+    NSLog(@"🚨 DownloadManager: Execute TRADING request type:%ld requiredSource:%ld requestID:%@",
+          (long)requestType, (long)requiredSource, requestID);
+    
+    dispatch_async(self.dataSourceQueue, ^{
+        // Get ONLY the required source - ABSOLUTELY NO fallback for trading
+        DataSourceInfo *sourceInfo = self.dataSources[@(requiredSource)];
+        
+        if (!sourceInfo) {
+            NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                                 code:404
+                                             userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"🚨 CRITICAL: Trading DataSource %ld is not registered", (long)requiredSource]}];
+            [self.activeRequests removeObjectForKey:requestID];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(nil, -1, error);
+            });
+            return;
+        }
+        
+        if (!sourceInfo.isConnected) {
+            NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                                 code:503
+                                             userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"🚨 CRITICAL: Trading DataSource %@ is not connected", sourceInfo.dataSource.sourceName]}];
+            [self.activeRequests removeObjectForKey:requestID];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(nil, -1, error);
+            });
+            return;
+        }
+        
+        if (![self dataSourceSupportsTradingRequestType:sourceInfo requestType:requestType]) {
+            NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                                 code:501
+                                             userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"🚨 CRITICAL: Trading DataSource %@ does not support trading request type %ld", sourceInfo.dataSource.sourceName, (long)requestType]}];
+            [self.activeRequests removeObjectForKey:requestID];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(nil, -1, error);
+            });
+            return;
+        }
+        
+        // Execute trading request - NO fallback, single source only, extra logging
+        [self executeTradingRequestOnSpecificSource:requestType
+                                         parameters:parameters
+                                         sourceInfo:sourceInfo
+                                          requestID:requestID
+                                         completion:completion];
+    });
+    
+    return requestID;
+}
+
+#pragma mark - CONVENIENCE METHODS for Account Data (🛡️ Require DataSource)
+
+- (NSString *)fetchPositionsForAccount:(NSString *)accountId
+                        fromDataSource:(DataSourceType)requiredSource
+                            completion:(void (^)(NSArray *positions, DataSourceType usedSource, NSError *error))completion {
+    
+    NSDictionary *parameters = @{@"accountId": accountId};
+    
+    return [self executeAccountDataRequest:DataRequestTypePositions
+                                parameters:parameters
+                            requiredSource:requiredSource
+                                completion:completion];
+}
+
+- (NSString *)fetchOrdersForAccount:(NSString *)accountId
+                     fromDataSource:(DataSourceType)requiredSource
+                         completion:(void (^)(NSArray *orders, DataSourceType usedSource, NSError *error))completion {
+    
+    NSDictionary *parameters = @{@"accountId": accountId};
+    
+    return [self executeAccountDataRequest:DataRequestTypeOrders
+                                parameters:parameters
+                            requiredSource:requiredSource
+                                completion:completion];
+}
+
+- (NSString *)fetchAccountDetails:(NSString *)accountId
+                   fromDataSource:(DataSourceType)requiredSource
+                       completion:(void (^)(NSDictionary *details, DataSourceType usedSource, NSError *error))completion {
+    
+    NSDictionary *parameters = @{@"accountId": accountId};
+    
+    return [self executeAccountDataRequest:DataRequestTypeAccountInfo
+                                parameters:parameters
+                            requiredSource:requiredSource
+                                completion:completion];
+}
+
+#pragma mark - CONVENIENCE METHODS for Trading (🚨 Require DataSource)
+
+- (NSString *)placeOrder:(NSDictionary *)orderData
+              forAccount:(NSString *)accountId
+          usingDataSource:(DataSourceType)requiredSource
+               completion:(void (^)(NSString *orderId, DataSourceType usedSource, NSError *error))completion {
+    
+    NSDictionary *parameters = @{
+        @"accountId": accountId,
+        @"orderData": orderData
+    };
+    
+    return [self executeTradingRequest:DataRequestTypePlaceOrder
+                            parameters:parameters
+                        requiredSource:requiredSource
+                            completion:completion];
+}
+
+- (NSString *)cancelOrder:(NSString *)orderId
+               forAccount:(NSString *)accountId
+          usingDataSource:(DataSourceType)requiredSource
+               completion:(void (^)(BOOL success, DataSourceType usedSource, NSError *error))completion {
+    
+    NSDictionary *parameters = @{
+        @"accountId": accountId,
+        @"orderId": orderId
+    };
+    
+    // 🔧 WRAPPER: Converte da id a BOOL per il completion block
+    return [self executeTradingRequest:DataRequestTypeCancelOrder
+                            parameters:parameters
+                        requiredSource:requiredSource
+                            completion:^(id result, DataSourceType usedSource, NSError *error) {
+        BOOL success = NO;
+        
+        if (!error && result) {
+            if ([result isKindOfClass:[NSNumber class]]) {
+                success = [(NSNumber *)result boolValue];
+            } else if ([result respondsToSelector:@selector(boolValue)]) {
+                success = [result boolValue];
+            } else {
+                // Se non è un numero, considera success = YES se non c'è errore
+                success = YES;
+            }
+        }
+        
+        if (completion) {
+            completion(success, usedSource, error);
+        }
+    }];
+}
+
+#pragma mark - Security Classification Methods
+
+/**
+ * 🛡️ Classification: Check if request type is Account Data (requires specific source)
+ */
+- (BOOL)isAccountDataRequestType:(DataRequestType)requestType {
+    switch (requestType) {
+        case DataRequestTypePositions:
+        case DataRequestTypeOrders:
+        case DataRequestTypeAccountInfo:
+        case DataRequestTypeAccounts: // List of accounts for specific broker
+            return YES;
+            
+        default:
+            return NO;
+    }
+}
+
+/**
+ * 🚨 Classification: Check if request type is Trading Operation (most critical)
+ */
+- (BOOL)isTradingRequestType:(DataRequestType)requestType {
+    switch (requestType) {
+        case DataRequestTypePlaceOrder:
+        case DataRequestTypeCancelOrder:
+        case DataRequestTypeModifyOrder:
+            return YES;
+            
+        default:
+            return NO;
+    }
+}
+
+/**
+ * 🔍 Check if DataSource supports account data request type
+ */
+- (BOOL)dataSourceSupportsAccountRequestType:(DataSourceInfo *)sourceInfo requestType:(DataRequestType)requestType {
+    DataSourceCapabilities capabilities = sourceInfo.dataSource.capabilities;
+    
+    switch (requestType) {
+        case DataRequestTypePositions:
+        case DataRequestTypeOrders:
+        case DataRequestTypeAccountInfo:
+        case DataRequestTypeAccounts:
+            return (capabilities & DataSourceCapabilityPortfolioData) != 0;
+            
+        default:
+            return NO;
+    }
+}
+
+/**
+ * 🔍 Check if DataSource supports trading request type
+ */
+- (BOOL)dataSourceSupportsTradingRequestType:(DataSourceInfo *)sourceInfo requestType:(DataRequestType)requestType {
+    DataSourceCapabilities capabilities = sourceInfo.dataSource.capabilities;
+    
+    switch (requestType) {
+        case DataRequestTypePlaceOrder:
+        case DataRequestTypeCancelOrder:
+        case DataRequestTypeModifyOrder:
+            return (capabilities & DataSourceCapabilityTrading) != 0;
+            
+        default:
+            return NO;
+    }
+}
+
+#pragma mark - Parameter Validation
+
+/**
+ * ✅ Validate account data parameters
+ */
+- (NSError *)validateAccountDataParameters:(NSDictionary *)parameters requestType:(DataRequestType)requestType {
+    switch (requestType) {
+        case DataRequestTypePositions:
+        case DataRequestTypeOrders:
+        case DataRequestTypeAccountInfo: {
+            NSString *accountId = parameters[@"accountId"];
+            if (!accountId || accountId.length == 0) {
+                return [NSError errorWithDomain:@"DownloadManager"
+                                           code:400
+                                       userInfo:@{NSLocalizedDescriptionKey: @"accountId is required for account data requests"}];
+            }
+            break;
+        }
+        case DataRequestTypeAccounts:
+            // No specific parameters required for accounts list
+            break;
+            
+        default:
+            return [NSError errorWithDomain:@"DownloadManager"
+                                       code:400
+                                   userInfo:@{NSLocalizedDescriptionKey: @"Invalid account data request type"}];
+    }
+    
+    return nil;
+}
+
+/**
+ * ✅ Validate trading parameters (extra strict)
+ */
+- (NSError *)validateTradingParameters:(NSDictionary *)parameters requestType:(DataRequestType)requestType {
+    NSString *accountId = parameters[@"accountId"];
+    if (!accountId || accountId.length == 0) {
+        return [NSError errorWithDomain:@"DownloadManager"
+                                   code:400
+                               userInfo:@{NSLocalizedDescriptionKey: @"🚨 CRITICAL: accountId is required for trading operations"}];
+    }
+    
+    switch (requestType) {
+        case DataRequestTypePlaceOrder: {
+            NSDictionary *orderData = parameters[@"orderData"];
+            if (!orderData) {
+                return [NSError errorWithDomain:@"DownloadManager"
+                                           code:400
+                                       userInfo:@{NSLocalizedDescriptionKey: @"🚨 CRITICAL: orderData is required for place order"}];
+            }
+            break;
+        }
+        case DataRequestTypeCancelOrder: {
+            NSString *orderId = parameters[@"orderId"];
+            if (!orderId || orderId.length == 0) {
+                return [NSError errorWithDomain:@"DownloadManager"
+                                           code:400
+                                       userInfo:@{NSLocalizedDescriptionKey: @"🚨 CRITICAL: orderId is required for cancel order"}];
+            }
+            break;
+        }
+        default:
+            return [NSError errorWithDomain:@"DownloadManager"
+                                       code:400
+                                   userInfo:@{NSLocalizedDescriptionKey: @"🚨 CRITICAL: Invalid trading request type"}];
+    }
+    
+    return nil;
+}
+
+#pragma mark - Single Source Request Execution (Account & Trading)
+
+/**
+ * 🛡️ Execute account data request on specific source (NO fallback)
+ */
+- (void)executeAccountDataRequestOnSpecificSource:(DataRequestType)requestType
+                                       parameters:(NSDictionary *)parameters
+                                       sourceInfo:(DataSourceInfo *)sourceInfo
+                                        requestID:(NSString *)requestID
+                                       completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    id<DataSource> dataSource = sourceInfo.dataSource;
+    
+    NSLog(@"🛡️ DownloadManager: Executing account data on %@ for request type %ld",
+          dataSource.sourceName, (long)requestType);
+    
+    switch (requestType) {
+        case DataRequestTypePositions:
+            [self executePositionsRequestOnSource:parameters
+                                        dataSource:dataSource
+                                        sourceInfo:sourceInfo
+                                         requestID:requestID
+                                        completion:completion];
+            break;
+            
+        case DataRequestTypeOrders:
+            [self executeOrdersRequestOnSource:parameters
+                                     dataSource:dataSource
+                                     sourceInfo:sourceInfo
+                                      requestID:requestID
+                                     completion:completion];
+            break;
+            
+        case DataRequestTypeAccountInfo:
+            [self executeAccountInfoRequestOnSource:parameters
+                                          dataSource:dataSource
+                                          sourceInfo:sourceInfo
+                                           requestID:requestID
+                                          completion:completion];
+            break;
+            
+        case DataRequestTypeAccounts:
+            [self executeAccountsListRequestOnSource:parameters
+                                           dataSource:dataSource
+                                           sourceInfo:sourceInfo
+                                            requestID:requestID
+                                           completion:completion];
+            break;
+            
+        default: {
+            NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                                 code:400
+                                             userInfo:@{NSLocalizedDescriptionKey: @"Unsupported account data request type"}];
+            [self.activeRequests removeObjectForKey:requestID];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(nil, -1, error);
+            });
+            break;
+        }
+    }
+}
+
+/**
+ * 🚨 Execute trading request on specific source (NO fallback, extra logging)
+ */
+- (void)executeTradingRequestOnSpecificSource:(DataRequestType)requestType
+                                   parameters:(NSDictionary *)parameters
+                                   sourceInfo:(DataSourceInfo *)sourceInfo
+                                    requestID:(NSString *)requestID
+                                   completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    id<DataSource> dataSource = sourceInfo.dataSource;
+    NSString *accountId = parameters[@"accountId"];
+    
+    NSLog(@"🚨 DownloadManager: TRADING OPERATION - Executing on %@ for account %@ request type %ld",
+          dataSource.sourceName, accountId, (long)requestType);
+    
+    switch (requestType) {
+        case DataRequestTypePlaceOrder:
+            [self executePlaceOrderRequestOnSource:parameters
+                                         dataSource:dataSource
+                                         sourceInfo:sourceInfo
+                                          requestID:requestID
+                                         completion:completion];
+            break;
+            
+        case DataRequestTypeCancelOrder:
+            [self executeCancelOrderRequestOnSource:parameters
+                                          dataSource:dataSource
+                                          sourceInfo:sourceInfo
+                                           requestID:requestID
+                                          completion:completion];
+            break;
+            
+        default: {
+            NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                                 code:400
+                                             userInfo:@{NSLocalizedDescriptionKey: @"🚨 CRITICAL: Unsupported trading request type"}];
+            [self.activeRequests removeObjectForKey:requestID];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(nil, -1, error);
+            });
+            break;
+        }
+    }
+}
+
+#pragma mark - Specific Account Data Request Implementations
+
+- (void)executePositionsRequestOnSource:(NSDictionary *)parameters
+                             dataSource:(id<DataSource>)dataSource
+                             sourceInfo:(DataSourceInfo *)sourceInfo
+                              requestID:(NSString *)requestID
+                             completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    NSString *accountId = parameters[@"accountId"];
+    
+    if ([dataSource respondsToSelector:@selector(fetchPositionsForAccount:completion:)]) {
+        [dataSource fetchPositionsForAccount:accountId completion:^(NSArray *positions, NSError *error) {
+            [self handleSecureResponse:positions
+                                 error:error
+                            dataSource:dataSource
+                            sourceInfo:sourceInfo
+                            parameters:parameters
+                             requestID:requestID
+                           requestType:DataRequestTypePositions
+                            completion:completion];
+        }];
+    } else {
+        NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                             code:501
+                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"DataSource %@ does not support positions", dataSource.sourceName]}];
+        [self.activeRequests removeObjectForKey:requestID];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, -1, error);
         });
     }
 }
+
+- (void)executeOrdersRequestOnSource:(NSDictionary *)parameters
+                          dataSource:(id<DataSource>)dataSource
+                          sourceInfo:(DataSourceInfo *)sourceInfo
+                           requestID:(NSString *)requestID
+                          completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    NSString *accountId = parameters[@"accountId"];
+    
+    if ([dataSource respondsToSelector:@selector(fetchOrdersForAccount:completion:)]) {
+        [dataSource fetchOrdersForAccount:accountId completion:^(NSArray *orders, NSError *error) {
+            [self handleSecureResponse:orders
+                                 error:error
+                            dataSource:dataSource
+                            sourceInfo:sourceInfo
+                            parameters:parameters
+                             requestID:requestID
+                           requestType:DataRequestTypeOrders
+                            completion:completion];
+        }];
+    } else {
+        NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                             code:501
+                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"DataSource %@ does not support orders", dataSource.sourceName]}];
+        [self.activeRequests removeObjectForKey:requestID];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, -1, error);
+        });
+    }
+}
+
+- (void)executeAccountInfoRequestOnSource:(NSDictionary *)parameters
+                               dataSource:(id<DataSource>)dataSource
+                               sourceInfo:(DataSourceInfo *)sourceInfo
+                                requestID:(NSString *)requestID
+                               completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    NSString *accountId = parameters[@"accountId"];
+    
+    if (accountId) {
+        // Request for specific account details
+        if ([dataSource respondsToSelector:@selector(fetchAccountDetails:completion:)]) {
+            [dataSource fetchAccountDetails:accountId completion:^(NSDictionary *details, NSError *error) {
+                [self handleSecureResponse:details
+                                     error:error
+                                dataSource:dataSource
+                                sourceInfo:sourceInfo
+                                parameters:parameters
+                                 requestID:requestID
+                               requestType:DataRequestTypeAccountInfo
+                                completion:completion];
+            }];
+        } else {
+            NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                                 code:501
+                                             userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"DataSource %@ does not support account details", dataSource.sourceName]}];
+            [self.activeRequests removeObjectForKey:requestID];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(nil, -1, error);
+            });
+        }
+    }
+}
+
+- (void)executeAccountsListRequestOnSource:(NSDictionary *)parameters
+                                dataSource:(id<DataSource>)dataSource
+                                sourceInfo:(DataSourceInfo *)sourceInfo
+                                 requestID:(NSString *)requestID
+                                completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    if ([dataSource respondsToSelector:@selector(fetchAccountsWithCompletion:)]) {
+        [dataSource fetchAccountsWithCompletion:^(NSArray *accounts, NSError *error) {
+            [self handleSecureResponse:accounts
+                                 error:error
+                            dataSource:dataSource
+                            sourceInfo:sourceInfo
+                            parameters:parameters
+                             requestID:requestID
+                           requestType:DataRequestTypeAccounts
+                            completion:completion];
+        }];
+    } else {
+        NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                             code:501
+                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"DataSource %@ does not support accounts list", dataSource.sourceName]}];
+        [self.activeRequests removeObjectForKey:requestID];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, -1, error);
+        });
+    }
+}
+
+#pragma mark - Specific Trading Request Implementations
+
+- (void)executePlaceOrderRequestOnSource:(NSDictionary *)parameters
+                              dataSource:(id<DataSource>)dataSource
+                              sourceInfo:(DataSourceInfo *)sourceInfo
+                               requestID:(NSString *)requestID
+                              completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    NSString *accountId = parameters[@"accountId"];
+    NSDictionary *orderData = parameters[@"orderData"];
+    
+    NSLog(@"🚨 DownloadManager: PLACE ORDER - Account: %@ DataSource: %@ OrderData: %@",
+          accountId, dataSource.sourceName, orderData);
+    
+    if ([dataSource respondsToSelector:@selector(placeOrderForAccount:orderData:completion:)]) {
+        [dataSource placeOrderForAccount:accountId orderData:orderData completion:^(NSString *orderId, NSError *error) {
+            if (error) {
+                NSLog(@"❌ DownloadManager: PLACE ORDER FAILED - Account: %@ Error: %@", accountId, error.localizedDescription);
+            } else {
+                NSLog(@"✅ DownloadManager: PLACE ORDER SUCCESS - Account: %@ OrderID: %@", accountId, orderId);
+            }
+            
+            [self handleSecureResponse:orderId
+                                 error:error
+                            dataSource:dataSource
+                            sourceInfo:sourceInfo
+                            parameters:parameters
+                             requestID:requestID
+                           requestType:DataRequestTypePlaceOrder
+                            completion:completion];
+        }];
+    } else {
+        NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                             code:501
+                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"🚨 CRITICAL: DataSource %@ does not support place order", dataSource.sourceName]}];
+        [self.activeRequests removeObjectForKey:requestID];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, -1, error);
+        });
+    }
+}
+
+- (void)executeCancelOrderRequestOnSource:(NSDictionary *)parameters
+                               dataSource:(id<DataSource>)dataSource
+                               sourceInfo:(DataSourceInfo *)sourceInfo
+                                requestID:(NSString *)requestID
+                               completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    NSString *accountId = parameters[@"accountId"];
+    NSString *orderId = parameters[@"orderId"];
+    
+    NSLog(@"🚨 DownloadManager: CANCEL ORDER - Account: %@ OrderID: %@ DataSource: %@",
+          accountId, orderId, dataSource.sourceName);
+    
+    if ([dataSource respondsToSelector:@selector(cancelOrderForAccount:orderId:completion:)]) {
+        [dataSource cancelOrderForAccount:accountId orderId:orderId completion:^(BOOL success, NSError *error) {
+            if (error) {
+                NSLog(@"❌ DownloadManager: CANCEL ORDER FAILED - Account: %@ OrderID: %@ Error: %@", accountId, orderId, error.localizedDescription);
+            } else {
+                NSLog(@"✅ DownloadManager: CANCEL ORDER SUCCESS - Account: %@ OrderID: %@ Success: %@", accountId, orderId, @(success));
+            }
+            
+            [self handleSecureResponse:@(success)
+                                 error:error
+                            dataSource:dataSource
+                            sourceInfo:sourceInfo
+                            parameters:parameters
+                             requestID:requestID
+                           requestType:DataRequestTypeCancelOrder
+                            completion:completion];
+        }];
+    } else {
+        NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                             code:501
+                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"🚨 CRITICAL: DataSource %@ does not support cancel order", dataSource.sourceName]}];
+        [self.activeRequests removeObjectForKey:requestID];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, -1, error);
+        });
+    }
+}
+
+#pragma mark - Market Data Request Implementations (continued from Part 1)
 
 - (void)executeMarketListRequest:(NSDictionary *)parameters
                   withDataSource:(id<DataSource>)dataSource
@@ -583,9 +1536,7 @@
     NSInteger depth = [parameters[@"depth"] integerValue] ?: 10;
     
     if ([dataSource respondsToSelector:@selector(fetchOrderBookForSymbol:depth:completion:)]) {
-        [dataSource fetchOrderBookForSymbol:symbol
-                                      depth:depth
-                                 completion:^(id orderBook, NSError *error) {
+        [dataSource fetchOrderBookForSymbol:symbol depth:depth completion:^(NSDictionary *orderBook, NSError *error) {
             [self handleGenericResponse:orderBook
                                    error:error
                               dataSource:dataSource
@@ -608,20 +1559,19 @@
     }
 }
 
-- (void)executePositionsRequest:(NSDictionary *)parameters
-                 withDataSource:(id<DataSource>)dataSource
-                     sourceInfo:(DataSourceInfo *)sourceInfo
-                        sources:(NSArray<DataSourceInfo *> *)sources
-                    sourceIndex:(NSInteger)sourceIndex
-                      requestID:(NSString *)requestID
-                     completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+- (void)executeFundamentalsRequest:(NSDictionary *)parameters
+                    withDataSource:(id<DataSource>)dataSource
+                        sourceInfo:(DataSourceInfo *)sourceInfo
+                           sources:(NSArray<DataSourceInfo *> *)sources
+                       sourceIndex:(NSInteger)sourceIndex
+                         requestID:(NSString *)requestID
+                        completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
     
-    NSString *accountId = parameters[@"accountId"];
+    NSString *symbol = parameters[@"symbol"];
     
-    if ([dataSource respondsToSelector:@selector(fetchPositionsForAccount:completion:)]) {
-        [dataSource fetchPositionsForAccount:accountId
-                                  completion:^(NSArray *positions, NSError *error) {
-            [self handleGenericResponse:positions
+    if ([dataSource respondsToSelector:@selector(fetchFundamentalsForSymbol:completion:)]) {
+        [dataSource fetchFundamentalsForSymbol:symbol completion:^(NSDictionary *fundamentals, NSError *error) {
+            [self handleGenericResponse:fundamentals
                                    error:error
                               dataSource:dataSource
                               sourceInfo:sourceInfo
@@ -629,13 +1579,13 @@
                              sourceIndex:sourceIndex
                               parameters:parameters
                                requestID:requestID
-                             requestType:DataRequestTypePositions
+                             requestType:DataRequestTypeFundamentals
                               completion:completion];
         }];
     } else {
-        // DataSource doesn't support positions - try next
+        // DataSource doesn't support fundamentals - try next
         [self executeRequestWithSources:sources
-                             requestType:DataRequestTypePositions
+                             requestType:DataRequestTypeFundamentals
                               parameters:parameters
                                requestID:requestID
                              sourceIndex:sourceIndex + 1
@@ -643,90 +1593,11 @@
     }
 }
 
-- (void)executeOrdersRequest:(NSDictionary *)parameters
-              withDataSource:(id<DataSource>)dataSource
-                  sourceInfo:(DataSourceInfo *)sourceInfo
-                     sources:(NSArray<DataSourceInfo *> *)sources
-                 sourceIndex:(NSInteger)sourceIndex
-                   requestID:(NSString *)requestID
-                  completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
-    
-    NSString *accountId = parameters[@"accountId"];
-    
-    if ([dataSource respondsToSelector:@selector(fetchOrdersForAccount:completion:)]) {
-        [dataSource fetchOrdersForAccount:accountId
-                               completion:^(NSArray *orders, NSError *error) {
-            [self handleGenericResponse:orders
-                                   error:error
-                              dataSource:dataSource
-                              sourceInfo:sourceInfo
-                                 sources:sources
-                             sourceIndex:sourceIndex
-                              parameters:parameters
-                               requestID:requestID
-                             requestType:DataRequestTypeOrders
-                              completion:completion];
-        }];
-    } else {
-        // DataSource doesn't support orders - try next
-        [self executeRequestWithSources:sources
-                             requestType:DataRequestTypeOrders
-                              parameters:parameters
-                               requestID:requestID
-                             sourceIndex:sourceIndex + 1
-                              completion:completion];
-    }
-}
+#pragma mark - Response Handling
 
-- (void)executeAccountInfoRequest:(NSDictionary *)parameters
-                   withDataSource:(id<DataSource>)dataSource
-                       sourceInfo:(DataSourceInfo *)sourceInfo
-                          sources:(NSArray<DataSourceInfo *> *)sources
-                      sourceIndex:(NSInteger)sourceIndex
-                        requestID:(NSString *)requestID
-                       completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
-    
-    NSString *accountId = parameters[@"accountId"];
-    
-    if (accountId) {
-        // Request for specific account details
-        if ([dataSource respondsToSelector:@selector(fetchAccountDetails:completion:)]) {
-            [dataSource fetchAccountDetails:accountId completion:^(NSDictionary *details, NSError *error) {
-                [self handleGenericResponse:details
-                                       error:error
-                                  dataSource:dataSource
-                                  sourceInfo:sourceInfo
-                                     sources:sources
-                                 sourceIndex:sourceIndex
-                                  parameters:parameters
-                                   requestID:requestID
-                                 requestType:DataRequestTypeAccountInfo
-                                  completion:completion];
-            }];
-        } else {
-            [self executeRequestWithSources:sources requestType:DataRequestTypeAccountInfo parameters:parameters requestID:requestID sourceIndex:sourceIndex + 1 completion:completion];
-        }
-    } else {
-        // Request for all accounts
-        if ([dataSource respondsToSelector:@selector(fetchAccountsWithCompletion:)]) {
-            [dataSource fetchAccountsWithCompletion:^(NSArray *accounts, NSError *error) {
-                [self handleGenericResponse:accounts
-                                       error:error
-                                  dataSource:dataSource
-                                  sourceInfo:sourceInfo
-                                     sources:sources
-                                 sourceIndex:sourceIndex
-                                  parameters:parameters
-                                   requestID:requestID
-                                 requestType:DataRequestTypeAccountInfo
-                                  completion:completion];
-            }];
-        } else {
-            [self executeRequestWithSources:sources requestType:DataRequestTypeAccountInfo parameters:parameters requestID:requestID sourceIndex:sourceIndex + 1 completion:completion];
-        }
-    }
-}
-
+/**
+ * 📈 Handle market data response with fallback (from Part 1)
+ */
 - (void)handleGenericResponse:(id)result
                         error:(NSError *)error
                    dataSource:(id<DataSource>)dataSource
@@ -743,10 +1614,10 @@
     }
     
     if (error) {
-        NSLog(@"❌ DownloadManager: %@ failed for request type %ld: %@", dataSource.sourceName, (long)requestType, error.localizedDescription);
+        NSLog(@"❌ DownloadManager: %@ failed for market data request type %ld: %@", dataSource.sourceName, (long)requestType, error.localizedDescription);
         [self recordFailureForSource:sourceInfo];
         
-        // Try next source
+        // Try next source (fallback for market data)
         [self executeRequestWithSources:sources
                              requestType:requestType
                               parameters:parameters
@@ -754,7 +1625,7 @@
                              sourceIndex:sourceIndex + 1
                               completion:completion];
     } else {
-        NSLog(@"✅ DownloadManager: %@ succeeded for request type %ld", dataSource.sourceName, (long)requestType);
+        NSLog(@"✅ DownloadManager: %@ succeeded for market data request type %ld", dataSource.sourceName, (long)requestType);
         [self recordSuccessForSource:sourceInfo];
         [self.activeRequests removeObjectForKey:requestID];
         
@@ -764,240 +1635,59 @@
     }
 }
 
-#pragma mark - Source Selection and Management
-
-- (NSArray<DataSourceInfo *> *)getAvailableSourcesForRequestType:(DataRequestType)requestType
-                                                  preferredSource:(DataSourceType)preferredSource {
-    NSMutableArray<DataSourceInfo *> *availableSources = [NSMutableArray array];
+/**
+ * 🛡️ Handle secure response (NO fallback for account/trading data)
+ */
+- (void)handleSecureResponse:(id)result
+                       error:(NSError *)error
+                  dataSource:(id<DataSource>)dataSource
+                  sourceInfo:(DataSourceInfo *)sourceInfo
+                  parameters:(NSDictionary *)parameters
+                   requestID:(NSString *)requestID
+                 requestType:(DataRequestType)requestType
+                  completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
     
-    // First add preferred source if specified and supports the request type
-    if (preferredSource != -1) {
-        DataSourceInfo *preferredSourceInfo = self.dataSources[@(preferredSource)];
-        if (preferredSourceInfo && [self dataSource:preferredSourceInfo.dataSource supportsRequestType:requestType]) {
-            [availableSources addObject:preferredSourceInfo];
-        }
+    if (!self.activeRequests[requestID]) {
+        return; // Request was cancelled
     }
     
-    // Sort remaining sources by priority and failure count
-    NSArray *sortedKeys = [self.dataSources.allKeys sortedArrayUsingComparator:^NSComparisonResult(NSNumber *key1, NSNumber *key2) {
-        DataSourceInfo *info1 = self.dataSources[key1];
-        DataSourceInfo *info2 = self.dataSources[key2];
-        
-        // Skip already added preferred source
-        if (preferredSource != -1 &&
-            (info1.type == preferredSource || info2.type == preferredSource)) {
-            if (info1.type == preferredSource) return NSOrderedDescending;
-            if (info2.type == preferredSource) return NSOrderedAscending;
-        }
-        
-        // First by priority (lower number = higher priority)
-        if (info1.priority < info2.priority) return NSOrderedAscending;
-        if (info1.priority > info2.priority) return NSOrderedDescending;
-        
-        // Then by failure count (lower failures = higher priority)
-        if (info1.failureCount < info2.failureCount) return NSOrderedAscending;
-        if (info1.failureCount > info2.failureCount) return NSOrderedDescending;
-        
-        return NSOrderedSame;
-    }];
+    [self.activeRequests removeObjectForKey:requestID];
     
-    // Add remaining sources that support the request type
-    for (NSNumber *key in sortedKeys) {
-        DataSourceInfo *info = self.dataSources[key];
+    if (error) {
+        NSLog(@"❌ DownloadManager: 🛡️ %@ failed for secure request type %ld: %@ (NO fallback)",
+              dataSource.sourceName, (long)requestType, error.localizedDescription);
+        [self recordFailureForSource:sourceInfo];
         
-        // Skip if already added as preferred source
-        if (preferredSource != -1 && info.type == preferredSource) {
-            continue;
-        }
+        // NO fallback for account/trading data - return error immediately
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, dataSource.sourceType, error);
+        });
+    } else {
+        NSLog(@"✅ DownloadManager: 🛡️ %@ succeeded for secure request type %ld",
+              dataSource.sourceName, (long)requestType);
+        [self recordSuccessForSource:sourceInfo];
         
-        if ([self dataSource:info.dataSource supportsRequestType:requestType]) {
-            [availableSources addObject:info];
-        }
-    }
-    
-    return [availableSources copy];
-}
-
-- (BOOL)dataSource:(id<DataSource>)dataSource supportsRequestType:(DataRequestType)requestType {
-    DataSourceCapabilities capabilities = dataSource.capabilities;
-    
-    switch (requestType) {
-        case DataRequestTypeQuote:
-        case DataRequestTypeBatchQuotes:
-            return (capabilities & DataSourceCapabilityQuotes) != 0;
-            
-        case DataRequestTypeHistoricalBars:
-            // FIX: Usa il nome corretto dalla repo esistente
-            return (capabilities & DataSourceCapabilityHistoricalData) != 0;  // NON DataSourceCapabilityHistoricalData
-            
-        case DataRequestTypeTopGainers:
-        case DataRequestTypeTopLosers:
-        case DataRequestTypeETFList:
-        case DataRequestType52WeekHigh:
-        case DataRequestTypeMarketList:
-            // FIX: Questo capability non esiste nella repo - rimuovi o crea
-            // return (capabilities & DataSourceCapabilityMarketLists) != 0;
-            
-            // WORKAROUND: Usa una capability esistente o check diretto
-            return (capabilities & DataSourceCapabilityNews) != 0 || // Se WebullDataSource ha News
-                   [dataSource respondsToSelector:@selector(fetchMarketListForType:parameters:completion:)];
-            
-        case DataRequestTypeOrderBook:
-            // FIX: Usa il nome corretto
-            return (capabilities & DataSourceCapabilityOptions) != 0;  // NON DataSourceCapabilityLevel2Data
-            
-        case DataRequestTypePositions:
-        case DataRequestTypeOrders:
-        case DataRequestTypeAccountInfo:
-            // FIX: Usa il nome corretto dalla repo esistente
-            return (capabilities & DataSourceCapabilityAccounts) != 0;  // NON DataSourceCapabilityPortfolioData
-            
-        case DataRequestTypeFundamentals:
-            return (capabilities & DataSourceCapabilityFundamentals) != 0;
-            
-        default:
-            // For unknown request types, check if the DataSource explicitly implements the method
-            return [dataSource respondsToSelector:@selector(fetchMarketListForType:parameters:completion:)];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(result, dataSource.sourceType, nil);
+        });
     }
 }
 
-#pragma mark - Source Performance Tracking
-
-- (void)recordSuccessForSource:(DataSourceInfo *)sourceInfo {
-    sourceInfo.failureCount = MAX(0, sourceInfo.failureCount - 1); // Reduce failure count on success
-    sourceInfo.lastSuccessTime = [NSDate date];
-    sourceInfo.isConnected = sourceInfo.dataSource.isConnected;
-    NSLog(@"📈 DownloadManager: %@ success (failures: %ld)", sourceInfo.dataSource.sourceName, (long)sourceInfo.failureCount);
-}
-
-- (void)recordFailureForSource:(DataSourceInfo *)sourceInfo {
-    sourceInfo.failureCount++;
-    sourceInfo.lastFailureTime = [NSDate date];
-    sourceInfo.isConnected = sourceInfo.dataSource.isConnected;
-    NSLog(@"📉 DownloadManager: %@ failure (failures: %ld)", sourceInfo.dataSource.sourceName, (long)sourceInfo.failureCount);
-}
-
-#pragma mark - Request Management
-
-- (NSString *)generateRequestID {
-    @synchronized(self) {
-        return [NSString stringWithFormat:@"REQ_%ld_%ld",
-                (long)self.requestCounter++,
-                (long)[[NSDate date] timeIntervalSince1970]];
-    }
-}
+#pragma mark - Request Cancellation
 
 - (void)cancelRequest:(NSString *)requestID {
-    if (requestID) {
+    if (requestID && self.activeRequests[requestID]) {
         [self.activeRequests removeObjectForKey:requestID];
-        NSLog(@"📡 DownloadManager: Cancelled request %@", requestID);
+        NSLog(@"🚫 DownloadManager: Cancelled request %@", requestID);
     }
 }
 
 - (void)cancelAllRequests {
+    NSUInteger cancelledCount = self.activeRequests.count;
     [self.activeRequests removeAllObjects];
-    NSLog(@"📡 DownloadManager: Cancelled all active requests");
-}
-
-#pragma mark - Connection Management
-
-- (void)connectDataSource:(DataSourceType)type completion:(void (^)(BOOL success, NSError *error))completion {
-    dispatch_async(self.dataSourceQueue, ^{
-        DataSourceInfo *info = self.dataSources[@(type)];
-        if (info) {
-            [info.dataSource connectWithCompletion:^(BOOL success, NSError *error) {
-                info.isConnected = success;
-                if (success) {
-                    info.failureCount = 0; // Reset failure count on successful connection
-                    info.lastSuccessTime = [NSDate date];
-                }
-                if (completion) completion(success, error);
-            }];
-        } else {
-            NSError *error = [NSError errorWithDomain:@"DownloadManager"
-                                                 code:404
-                                             userInfo:@{NSLocalizedDescriptionKey: @"Data source not found"}];
-            if (completion) completion(NO, error);
-        }
-    });
-}
-
-- (void)disconnectDataSource:(DataSourceType)type {
-    dispatch_async(self.dataSourceQueue, ^{
-        DataSourceInfo *info = self.dataSources[@(type)];
-        if (info) {
-            [info.dataSource disconnect];
-            info.isConnected = NO;
-        }
-    });
-}
-
-- (void)reconnectAllDataSources {
-    dispatch_async(self.dataSourceQueue, ^{
-        for (DataSourceInfo *info in self.dataSources.allValues) {
-            [self connectDataSource:info.type completion:nil];
-        }
-    });
-}
-
-#pragma mark - Status and Monitoring
-
-- (BOOL)isDataSourceConnected:(DataSourceType)type {
-    __block BOOL connected = NO;
-    dispatch_sync(self.dataSourceQueue, ^{
-        DataSourceInfo *info = self.dataSources[@(type)];
-        connected = info ? info.dataSource.isConnected : NO;
-    });
-    return connected;
-}
-
-- (DataSourceCapabilities)capabilitiesForDataSource:(DataSourceType)type {
-    __block DataSourceCapabilities capabilities = 0;
-    dispatch_sync(self.dataSourceQueue, ^{
-        DataSourceInfo *info = self.dataSources[@(type)];
-        capabilities = info ? info.dataSource.capabilities : 0;
-    });
-    return capabilities;
-}
-
-- (DataSourceType)currentDataSource {
-    // Return the highest priority connected source
-    __block DataSourceType current = -1;
-    dispatch_sync(self.dataSourceQueue, ^{
-        NSArray *sortedInfos = [self.dataSources.allValues sortedArrayUsingComparator:^NSComparisonResult(DataSourceInfo *info1, DataSourceInfo *info2) {
-            if (info1.priority < info2.priority) return NSOrderedAscending;
-            if (info1.priority > info2.priority) return NSOrderedDescending;
-            return NSOrderedSame;
-        }];
-        
-        for (DataSourceInfo *info in sortedInfos) {
-            if (info.dataSource.isConnected) {
-                current = info.type;
-                break;
-            }
-        }
-    });
-    
-    return current;
-}
-
-- (NSDictionary *)statisticsForDataSource:(DataSourceType)type {
-    __block NSDictionary *stats = nil;
-    dispatch_sync(self.dataSourceQueue, ^{
-        DataSourceInfo *info = self.dataSources[@(type)];
-        if (info) {
-            stats = @{
-                @"sourceName": info.dataSource.sourceName,
-                @"isConnected": @(info.dataSource.isConnected),
-                @"priority": @(info.priority),
-                @"failureCount": @(info.failureCount),
-                @"lastSuccessTime": info.lastSuccessTime ?: [NSNull null],
-                @"lastFailureTime": info.lastFailureTime ?: [NSNull null],
-                @"capabilities": @(info.dataSource.capabilities)
-            };
-        }
-    });
-    return stats;
+    NSLog(@"🚫 DownloadManager: Cancelled all %lu active requests", (unsigned long)cancelledCount);
 }
 
 @end
+
+

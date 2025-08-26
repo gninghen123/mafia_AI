@@ -1,10 +1,11 @@
 //
-//  DownloadManager.h
+//  DownloadManager.h (UPDATED - SECURITY ENHANCED)
 //  TradingApp
 //
 //  UNIFICATO: HTTP request manager for external data sources
-//  Gestisce tutte le chiamate API in modo unificato con failover automatico
-//  VERSIONE PULITA - Solo metodi unificati, niente legacy
+//  🛡️ SECURITY UPDATE: Distinguished Market Data vs Account Data routing
+//  - Market Data: Automatic routing with fallback (Schwab → Yahoo)
+//  - Account Data: Specific DataSource REQUIRED, NO fallback for security
 //
 
 #import <Foundation/Foundation.h>
@@ -58,73 +59,54 @@ NS_ASSUME_NONNULL_BEGIN
                            timeframe:(BarTimeframe)timeframe
                            startDate:(NSDate *)startDate
                              endDate:(NSDate *)endDate
-                    needExtendedHours:(BOOL)needExtendedHours
+                   needExtendedHours:(BOOL)needExtendedHours
                           completion:(void (^)(NSArray *bars, NSError *error))completion;
 
 /**
- * UNIFIED: Historical bars with bar count instead of date range
+ * UNIFIED: Historical bars by bar count instead of date range
  * All DataSources MUST implement this method
- *
- * @param symbol The symbol to fetch data for
- * @param timeframe Standard timeframe enum (BarTimeframe)
- * @param barCount Number of bars to return (e.g., last 200 bars)
- * @param needExtendedHours YES for pre/post market data
- * @param completion Returns array of standardized bar dictionaries
  */
 - (void)fetchHistoricalDataForSymbol:(NSString *)symbol
                            timeframe:(BarTimeframe)timeframe
                             barCount:(NSInteger)barCount
-                    needExtendedHours:(BOOL)needExtendedHours
+                   needExtendedHours:(BOOL)needExtendedHours
                           completion:(void (^)(NSArray *bars, NSError *error))completion;
 
-@optional
-#pragma mark - MARKET LISTS (Optional)
+#pragma mark - MARKET LISTS AND ANALYTICS (Optional - implement if supported)
 
 /**
- * UNIFIED: Market lists (top gainers, losers, ETFs, etc.)
- * Implement this for DataSources that support market lists
+ * UNIFIED: Market lists and screeners
+ * Only implement if DataSource supports market lists
  *
- * @param listType The type of market list (DataRequestType enum)
- * @param parameters Dictionary with parameters like:
- *   - @"limit": NSNumber with max results to return
- *   - @"timeframe": MarketTimeframe enum for filtering
- *   - @"minVolume": NSNumber minimum volume filter
- * @param completion Returns array of symbol dictionaries with basic market data
+ * @param listType Type of list (TopGainers, TopLosers, ETFList, etc.)
+ * @param parameters Additional parameters (limit, timeframe, etc.)
+ * @param completion Returns array of result dictionaries
  */
 - (void)fetchMarketListForType:(DataRequestType)listType
                     parameters:(nullable NSDictionary *)parameters
                     completion:(void (^)(NSArray *results, NSError *error))completion;
 
-#pragma mark - EXTENDED MARKET DATA (Optional)
-
 /**
- * Order book / Level 2 data
- * Only implemented by DataSources that support Level 2
+ * UNIFIED: Level 2 order book data
+ * Only implement if DataSource supports order book
  */
 - (void)fetchOrderBookForSymbol:(NSString *)symbol
                           depth:(NSInteger)depth
-                     completion:(void (^)(id orderBook, NSError *error))completion;
+                     completion:(void (^)(NSDictionary *orderBook, NSError *error))completion;
 
 /**
- * Options chain data
- * Only implemented by DataSources that support options
- */
-- (void)fetchOptionChainForSymbol:(NSString *)symbol
-                   expirationDate:(nullable NSDate *)expirationDate
-                       completion:(void (^)(id optionChain, NSError *error))completion;
-
-/**
- * Company fundamental data
- * Only implemented by DataSources that support fundamentals
+ * UNIFIED: Company fundamentals
+ * Only implement if DataSource supports fundamentals
  */
 - (void)fetchFundamentalsForSymbol:(NSString *)symbol
-                        completion:(void (^)(id fundamentals, NSError *error))completion;
+                        completion:(void (^)(NSDictionary *fundamentals, NSError *error))completion;
 
-#pragma mark - PORTFOLIO DATA (Optional - only for trading APIs)
+#pragma mark - ACCOUNT DATA METHODS (Optional - only for trading DataSources)
+// 🛡️ SECURITY: These methods require specific DataSource, NO automatic routing
 
 /**
- * Get list of available accounts for this data source
- * Only implemented by trading DataSources (Schwab, IBKR, etc.)
+ * Get all available accounts for this broker
+ * Only implemented by trading DataSources
  */
 - (void)fetchAccountsWithCompletion:(void (^)(NSArray *accounts, NSError *error))completion;
 
@@ -150,6 +132,7 @@ NS_ASSUME_NONNULL_BEGIN
                    completion:(void (^)(NSArray *orders, NSError *error))completion;
 
 #pragma mark - TRADING OPERATIONS (Optional - only for trading APIs)
+// 🛡️ SECURITY: Trading operations require specific DataSource, NO fallback
 
 /**
  * Place a new order
@@ -197,11 +180,13 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property (nonatomic, readonly) DataSourceType currentDataSource;
 
-#pragma mark - UNIFIED REQUEST EXECUTION
+#pragma mark - 📈 MARKET DATA REQUESTS (Automatic routing with fallback)
 
 /**
- * PRIMARY METHOD: Execute any request with automatic source selection
- * The DownloadManager will:
+ * PRIMARY MARKET DATA METHOD: Execute market data requests with automatic source selection
+ * 📈 MARKET DATA - Automatic routing OK, fallback enabled
+ *
+ * For market data (quotes, historical, market lists), the DownloadManager will:
  * 1. Find the best available DataSource based on capabilities and priority
  * 2. Execute the request
  * 3. Handle failures with automatic fallback to next DataSource
@@ -212,14 +197,13 @@ NS_ASSUME_NONNULL_BEGIN
  * @param completion Called with result, actual source used, and any errors
  * @return Request ID for cancellation
  */
-- (NSString *)executeRequest:(DataRequestType)requestType
-                  parameters:(NSDictionary *)parameters
-                  completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion;
+- (NSString *)executeMarketDataRequest:(DataRequestType)requestType
+                            parameters:(NSDictionary *)parameters
+                            completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion;
 
 /**
- * ADVANCED METHOD: Execute request with preferred source
- * Use this when you want to force a specific DataSource
- * Still falls back to other sources if preferred source fails
+ * MARKET DATA with preferred source (still has fallback)
+ * Use this when you prefer a specific DataSource but want fallback
  *
  * @param requestType Type of request
  * @param parameters Request parameters
@@ -227,12 +211,50 @@ NS_ASSUME_NONNULL_BEGIN
  * @param completion Called with result, actual source used, and any errors
  * @return Request ID for cancellation
  */
-- (NSString *)executeRequest:(DataRequestType)requestType
-                  parameters:(NSDictionary *)parameters
-             preferredSource:(DataSourceType)preferredSource
-                  completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion;
+- (NSString *)executeMarketDataRequest:(DataRequestType)requestType
+                            parameters:(NSDictionary *)parameters
+                       preferredSource:(DataSourceType)preferredSource
+                            completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion;
 
-#pragma mark - UNIFIED CONVENIENCE METHODS
+#pragma mark - 🛡️ ACCOUNT DATA REQUESTS (Specific DataSource REQUIRED)
+
+/**
+ * 🛡️ ACCOUNT DATA REQUEST: Requires specific DataSource, NO fallback for security
+ *
+ * For account data (positions, orders, account info, trading), you MUST specify the DataSource.
+ * NO automatic routing, NO fallback to prevent mixing data between brokers!
+ *
+ * @param requestType Account request type (positions, orders, account info)
+ * @param parameters Request parameters (accountId required)
+ * @param requiredSource REQUIRED: Specific broker DataSource (Schwab, IBKR, etc.)
+ * @param completion Called with result, source used, and any errors
+ * @return Request ID for cancellation
+ */
+- (NSString *)executeAccountDataRequest:(DataRequestType)requestType
+                             parameters:(NSDictionary *)parameters
+                         requiredSource:(DataSourceType)requiredSource
+                             completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion;
+
+#pragma mark - 🚨 TRADING OPERATIONS (Specific DataSource REQUIRED)
+
+/**
+ * 🚨 TRADING OPERATION: Requires specific DataSource, NEVER allows fallback
+ *
+ * Trading operations are the most critical - they MUST always specify exact DataSource.
+ * Attempting to trade on wrong broker could be catastrophic!
+ *
+ * @param requestType Trading request type (place order, cancel order)
+ * @param parameters Request parameters (accountId, orderData required)
+ * @param requiredSource REQUIRED: Exact broker DataSource for the account
+ * @param completion Called with result, source used, and any errors
+ * @return Request ID for cancellation
+ */
+- (NSString *)executeTradingRequest:(DataRequestType)requestType
+                         parameters:(NSDictionary *)parameters
+                     requiredSource:(DataSourceType)requiredSource
+                         completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion;
+
+#pragma mark - UNIFIED CONVENIENCE METHODS for Market Data
 
 /**
  * CONVENIENCE: Single quote with automatic source selection and failover
@@ -262,7 +284,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSString *)fetchHistoricalDataForSymbol:(NSString *)symbol
                                  timeframe:(BarTimeframe)timeframe
                                   barCount:(NSInteger)barCount
-                          needExtendedHours:(BOOL)needExtendedHours
+                         needExtendedHours:(BOOL)needExtendedHours
                                 completion:(void (^)(NSArray *bars, DataSourceType usedSource, NSError *error))completion;
 
 /**
@@ -272,9 +294,57 @@ NS_ASSUME_NONNULL_BEGIN
                           parameters:(nullable NSDictionary *)parameters
                           completion:(void (^)(NSArray *results, DataSourceType usedSource, NSError *error))completion;
 
-#pragma mark - Request Management
+#pragma mark - CONVENIENCE METHODS for Account Data (🛡️ Require DataSource)
 
+/**
+ * 🛡️ CONVENIENCE: Account positions - requires specific DataSource
+ */
+- (NSString *)fetchPositionsForAccount:(NSString *)accountId
+                        fromDataSource:(DataSourceType)requiredSource
+                            completion:(void (^)(NSArray *positions, DataSourceType usedSource, NSError *error))completion;
+
+/**
+ * 🛡️ CONVENIENCE: Account orders - requires specific DataSource
+ */
+- (NSString *)fetchOrdersForAccount:(NSString *)accountId
+                     fromDataSource:(DataSourceType)requiredSource
+                         completion:(void (^)(NSArray *orders, DataSourceType usedSource, NSError *error))completion;
+
+/**
+ * 🛡️ CONVENIENCE: Account details - requires specific DataSource
+ */
+- (NSString *)fetchAccountDetails:(NSString *)accountId
+                   fromDataSource:(DataSourceType)requiredSource
+                       completion:(void (^)(NSDictionary *details, DataSourceType usedSource, NSError *error))completion;
+
+#pragma mark - CONVENIENCE METHODS for Trading (🚨 Require DataSource)
+
+/**
+ * 🚨 CONVENIENCE: Place order - requires exact DataSource
+ */
+- (NSString *)placeOrder:(NSDictionary *)orderData
+              forAccount:(NSString *)accountId
+          usingDataSource:(DataSourceType)requiredSource
+               completion:(void (^)(NSString *orderId, DataSourceType usedSource, NSError *error))completion;
+
+/**
+ * 🚨 CONVENIENCE: Cancel order - requires exact DataSource
+ */
+- (NSString *)cancelOrder:(NSString *)orderId
+               forAccount:(NSString *)accountId
+          usingDataSource:(DataSourceType)requiredSource
+               completion:(void (^)(BOOL success, DataSourceType usedSource, NSError *error))completion;
+
+#pragma mark - Request Cancellation
+
+/**
+ * Cancel an active request
+ */
 - (void)cancelRequest:(NSString *)requestID;
+
+/**
+ * Cancel all active requests
+ */
 - (void)cancelAllRequests;
 
 @end

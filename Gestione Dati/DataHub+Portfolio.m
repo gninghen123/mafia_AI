@@ -1,398 +1,814 @@
 //
-//  DataHub+Portfolio.m
+//  DataManager+Portfolio.m (COMPLETE - NEW ARCHITECTURE)
 //  TradingApp
 //
-//  Implementation of multi-account portfolio management
-//  SIMPLIFIED VERSION: No advanced caching - only standardized data from DataManager
+//  🛡️ ACCOUNT DATA: Methods require specific DataSource parameter (NO internal determination)
+//  🚨 TRADING: Methods require specific DataSource parameter (NEVER fallback)
+//
+//  Implementation of portfolio and account management for DataManager
 //
 
-#import "DataHub+Portfolio.h"
 #import "DataManager+Portfolio.h"
-#import "DataHub+MarketData.h"
-#import "DataHub+Private.h"
+#import "DownloadManager.h"
+#import "DataAdapterFactory.h"
 
-// Portfolio notification names
-NSString * const PortfolioAccountsUpdatedNotification = @"PortfolioAccountsUpdatedNotification";
-NSString * const PortfolioSummaryUpdatedNotification = @"PortfolioSummaryUpdatedNotification";
-NSString * const PortfolioPositionsUpdatedNotification = @"PortfolioPositionsUpdatedNotification";
-NSString * const PortfolioOrdersUpdatedNotification = @"PortfolioOrdersUpdatedNotification";
-NSString * const PortfolioOrderStatusChangedNotification = @"PortfolioOrderStatusChangedNotification";
-NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotification";
+@implementation DataManager (Portfolio)
 
-@implementation DataHub (Portfolio)
+#pragma mark - Account Management
 
-#pragma mark - Account Discovery & Management
-
-- (void)getAvailableAccountsWithCompletion:(void(^)(NSArray<AccountModel *> *accounts, NSError *error))completion {
-    if (!completion) return;
+- (NSString *)requestAccountsWithCompletion:(void (^)(NSArray *accounts, NSError *error))completion {
+    if (!completion) {
+        NSLog(@"⚠️ DataManager+Portfolio: No completion block provided for accounts request");
+        return nil;
+    }
     
-    NSLog(@"📱 DataHub: Getting available accounts across all brokers");
+    NSLog(@"📱 DataManager: Requesting accounts from all connected brokers");
     
-    // Request accounts from DataManager (already standardized)
-    [[DataManager sharedManager] requestAccountsWithCompletion:^(NSArray *standardizedAccounts, NSError *error) {
-        if (error) {
-            NSLog(@"❌ DataHub: Failed to get accounts: %@", error);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(nil, error);
-            });
-            return;
+    NSString *requestID = [[NSUUID UUID] UUIDString];
+    NSMutableDictionary *requestInfo = [@{
+        @"type": @"accounts",
+        @"completion": [completion copy]
+    } mutableCopy];
+    
+    [self setValue:requestInfo forKey:requestID inActiveRequests:YES];
+    
+    // 🛡️ ORCHESTRATION: Get accounts from each connected broker individually
+    // DataManager orchestrates multiple broker calls since UI requested "all accounts"
+    [self requestAccountsFromAllBrokersWithRequestID:requestID completion:completion];
+    
+    return requestID;
+}
+
+- (void)requestAccountsFromAllBrokersWithRequestID:(NSString *)requestID
+                                        completion:(void (^)(NSArray *accounts, NSError *error))completion {
+    
+    NSMutableArray *allAccounts = [NSMutableArray array];
+    NSMutableArray *errors = [NSMutableArray array];
+    dispatch_group_t group = dispatch_group_create();
+    
+    // List of brokers to check
+    NSArray *brokerTypes = @[@(DataSourceTypeSchwab), @(DataSourceTypeIBKR), @(DataSourceTypeWebull)];
+    
+    for (NSNumber *brokerTypeNum in brokerTypes) {
+        DataSourceType brokerType = [brokerTypeNum integerValue];
+        
+        // Check if broker is connected
+        if (![[DownloadManager sharedManager] isDataSourceConnected:brokerType]) {
+            NSLog(@"⚠️ DataManager: Broker %@ is not connected, skipping", DataSourceTypeToString(brokerType));
+            continue;
         }
         
-        // Create AccountModel objects from standardized data
-        NSMutableArray<AccountModel *> *accountModels = [NSMutableArray array];
+        dispatch_group_enter(group);
         
-        for (id accountData in standardizedAccounts) {
-            if ([accountData isKindOfClass:[NSDictionary class]]) {
-                AccountModel *account = [self createAccountModelFromStandardizedData:(NSDictionary *)accountData];
-                if (account) {
-                    [accountModels addObject:account];
-                }
+        NSLog(@"🛡️ DataManager: Requesting accounts from broker %@", DataSourceTypeToString(brokerType));
+        
+        // 🛡️ SECURITY: Use secure account data request with specific broker
+        [[DownloadManager sharedManager] executeAccountDataRequest:DataRequestTypeAccounts
+                                                        parameters:@{} // No account ID needed for accounts list
+                                                    requiredSource:brokerType
+                                                        completion:^(id result, DataSourceType usedSource, NSError *error) {
+            if (error) {
+                NSLog(@"❌ DataManager: Failed to get accounts from broker %@: %@", DataSourceTypeToString(brokerType), error.localizedDescription);
+                [errors addObject:error];
             } else {
-                NSLog(@"⚠️ DataHub: Unexpected account data format from DataManager: %@", [accountData class]);
+                // Standardize accounts from this broker
+                NSArray *brokerAccounts = [self standardizeAccountsData:result fromSource:usedSource];
+                if (brokerAccounts.count > 0) {
+                    [allAccounts addObjectsFromArray:brokerAccounts];
+                    NSLog(@"✅ DataManager: Got %lu accounts from broker %@", (unsigned long)brokerAccounts.count, DataSourceTypeToString(brokerType));
+                }
             }
+            dispatch_group_leave(group);
+        }];
+    }
+    
+    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
+        [self removeValueForKey:requestID fromActiveRequests:YES];
+        
+        if (allAccounts.count == 0 && errors.count > 0) {
+            // All brokers failed
+            NSError *combinedError = [NSError errorWithDomain:@"DataManager"
+                                                         code:500
+                                                     userInfo:@{NSLocalizedDescriptionKey: @"Failed to get accounts from all brokers"}];
+            completion(nil, combinedError);
+        } else {
+            NSLog(@"✅ DataManager: Total accounts retrieved: %lu", (unsigned long)allAccounts.count);
+            completion([allAccounts copy], nil);
         }
-        
-        NSLog(@"✅ DataHub: Created %lu AccountModel objects from standardized data", (unsigned long)accountModels.count);
-        
-        dispatch_async(dispatch_get_main_queue(), ^{
-            completion([accountModels copy], nil);
-            
-            // Broadcast notification
-            [[NSNotificationCenter defaultCenter] postNotificationName:PortfolioAccountsUpdatedNotification
-                                                                object:self
-                                                              userInfo:@{@"accounts": accountModels}];
-        });
-    }];
+    });
 }
 
-- (void)getAccountDetails:(NSString *)accountId completion:(void(^)(AccountModel *account, NSError *error))completion {
-    if (!accountId || !completion) return;
-    
-    [[DataManager sharedManager] requestAccountDetails:accountId completion:^(NSDictionary *standardizedDetails, NSError *error) {
-        if (error) {
+- (NSString *)requestAccountDetails:(NSString *)accountId
+                     fromDataSource:(DataSourceType)requiredSource
+                         completion:(void (^)(NSDictionary *accountDetails, NSError *error))completion {
+    if (!accountId || accountId.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"DataManager"
+                                             code:201
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid account ID"}];
+        if (completion) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 completion(nil, error);
             });
-            return;
         }
-        
-        AccountModel *account = [self createAccountModelFromStandardizedData:standardizedDetails];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            completion(account, nil);
-        });
+        return nil;
+    }
+    
+    NSLog(@"🛡️ DataManager: Requesting account details for %@ from broker %@", accountId, DataSourceTypeToString(requiredSource));
+    
+    NSString *requestID = [[NSUUID UUID] UUIDString];
+    NSMutableDictionary *requestInfo = [@{
+        @"type": @"accountDetails",
+        @"accountId": accountId,
+        @"requiredSource": @(requiredSource),
+        @"completion": [completion copy]
+    } mutableCopy];
+    
+    [self setValue:requestInfo forKey:requestID inActiveRequests:YES];
+    
+    // 🛡️ SECURITY: Use secure account data request with DataSource provided by caller
+    [[DownloadManager sharedManager] executeAccountDataRequest:DataRequestTypeAccountInfo
+                                                    parameters:@{@"accountId": accountId}
+                                                requiredSource:requiredSource
+                                                    completion:^(id result, DataSourceType usedSource, NSError *error) {
+        [self handleAccountDetailsResponse:result
+                                     error:error
+                                usedSource:usedSource
+                                 accountId:accountId
+                                 requestID:requestID
+                                completion:completion];
     }];
+    
+    return requestID;
 }
 
-- (void)refreshAccountConnectionStatus:(NSString *)accountId completion:(void(^)(BOOL isConnected, NSError *error))completion {
-    if (!accountId || !completion) return;
-    
-    // For now, assume connected if we can get account details
-    [self getAccountDetails:accountId completion:^(AccountModel *account, NSError *error) {
+#pragma mark - Portfolio Data Requests
+
+- (NSString *)requestPortfolioSummary:(NSString *)accountId
+                       fromDataSource:(DataSourceType)requiredSource
+                           completion:(void (^)(NSDictionary *summary, NSError *error))completion {
+    if (!accountId || accountId.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"DataManager"
+                                             code:202
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid account ID for portfolio summary"}];
         if (completion) {
-            completion(account ? account.isConnected : NO, error);
-        }
-    }];
-}
-
-#pragma mark - Multi-Account Portfolio Data (Simplified - No Caching)
-
-- (void)getPortfolioSummaryForAccount:(NSString *)accountId completion:(void(^)(PortfolioSummaryModel *summary, BOOL isFresh))completion {
-    if (!accountId || !completion) return;
-    
-    NSLog(@"📊 DataHub: Getting portfolio summary for account %@", accountId);
-    
-    // Fetch data from DataManager (always fresh for now)
-    [[DataManager sharedManager] requestPortfolioSummary:accountId completion:^(NSDictionary *standardizedSummary, NSError *error) {
-        if (error) {
-            NSLog(@"❌ DataHub: Failed to get portfolio summary for %@: %@", accountId, error);
             dispatch_async(dispatch_get_main_queue(), ^{
-                completion(nil, NO);
+                completion(nil, error);
             });
-            return;
         }
-        
-        PortfolioSummaryModel *summary = [self createPortfolioSummaryFromStandardizedData:standardizedSummary];
-        
-        NSLog(@"✅ DataHub: Loaded portfolio summary for account %@", accountId);
-        
-        dispatch_async(dispatch_get_main_queue(), ^{
-            completion(summary, YES); // Always fresh since we don't cache yet
-            
-            // Broadcast update
-            [[NSNotificationCenter defaultCenter] postNotificationName:PortfolioSummaryUpdatedNotification
-                                                                object:self
-                                                              userInfo:@{@"accountId": accountId, @"summary": summary}];
-        });
+        return nil;
+    }
+    
+    NSLog(@"🛡️ DataManager: Requesting portfolio summary for account %@ from broker %@", accountId, DataSourceTypeToString(requiredSource));
+    
+    NSString *requestID = [[NSUUID UUID] UUIDString];
+    NSMutableDictionary *requestInfo = [@{
+        @"type": @"portfolioSummary",
+        @"accountId": accountId,
+        @"requiredSource": @(requiredSource),
+        @"completion": [completion copy]
+    } mutableCopy];
+    
+    [self setValue:requestInfo forKey:requestID inActiveRequests:YES];
+    
+    // 🛡️ SECURITY: Use secure account data request with DataSource provided by caller
+    [[DownloadManager sharedManager] executeAccountDataRequest:DataRequestTypeAccountInfo
+                                                    parameters:@{@"accountId": accountId, @"type": @"summary"}
+                                                requiredSource:requiredSource
+                                                    completion:^(id result, DataSourceType usedSource, NSError *error) {
+        [self handlePortfolioSummaryResponse:result
+                                       error:error
+                                  usedSource:usedSource
+                                   accountId:accountId
+                                   requestID:requestID
+                                  completion:completion];
     }];
+    
+    return requestID;
 }
 
-- (void)getPositionsForAccount:(NSString *)accountId completion:(void(^)(NSArray<AdvancedPositionModel *> *positions, BOOL isFresh))completion {
-    if (!accountId || !completion) return;
-    
-    NSLog(@"📈 DataHub: Getting positions for account %@", accountId);
-    
-    // Fetch positions from DataManager (always fresh for now)
-    [[DataManager sharedManager] requestPositions:accountId completion:^(NSArray *standardizedPositions, NSError *error) {
-        if (error) {
-            NSLog(@"❌ DataHub: Failed to get positions for %@: %@", accountId, error);
+- (NSString *)requestPositions:(NSString *)accountId
+                fromDataSource:(DataSourceType)requiredSource
+                    completion:(void (^)(NSArray *positions, NSError *error))completion {
+    if (!accountId || accountId.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"DataManager"
+                                             code:203
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid account ID for positions request"}];
+        if (completion) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                completion(@[], NO);
+                completion(nil, error);
             });
-            return;
         }
-        
-        NSMutableArray<AdvancedPositionModel *> *positions = [NSMutableArray array];
-        
-        for (id positionData in standardizedPositions) {
-            if ([positionData isKindOfClass:[NSDictionary class]]) {
-                AdvancedPositionModel *position = [self createPositionModelFromStandardizedData:(NSDictionary *)positionData];
-                if (position) {
-                    [positions addObject:position];
-                }
-            }
-        }
-        
-        NSLog(@"✅ DataHub: Loaded %lu positions for account %@", (unsigned long)positions.count, accountId);
-        
-        dispatch_async(dispatch_get_main_queue(), ^{
-            completion([positions copy], YES); // Always fresh since we don't cache yet
-            
-            // Broadcast update
-            [[NSNotificationCenter defaultCenter] postNotificationName:PortfolioPositionsUpdatedNotification
-                                                                object:self
-                                                              userInfo:@{@"accountId": accountId, @"positions": positions}];
-        });
+        return nil;
+    }
+    
+    NSLog(@"🛡️ DataManager: Requesting positions for account %@ from broker %@", accountId, DataSourceTypeToString(requiredSource));
+    
+    NSString *requestID = [[NSUUID UUID] UUIDString];
+    NSMutableDictionary *requestInfo = [@{
+        @"type": @"positions",
+        @"accountId": accountId,
+        @"requiredSource": @(requiredSource),
+        @"completion": [completion copy]
+    } mutableCopy];
+    
+    [self setValue:requestInfo forKey:requestID inActiveRequests:YES];
+    
+    // 🛡️ SECURITY: Use secure account data request with DataSource provided by caller
+    [[DownloadManager sharedManager] executeAccountDataRequest:DataRequestTypePositions
+                                                    parameters:@{@"accountId": accountId}
+                                                requiredSource:requiredSource
+                                                    completion:^(id result, DataSourceType usedSource, NSError *error) {
+        [self handlePositionsResponse:result
+                                error:error
+                           usedSource:usedSource
+                           forAccount:accountId
+                            requestID:requestID
+                           completion:completion];
     }];
+    
+    return requestID;
 }
 
-- (void)getOrdersForAccount:(NSString *)accountId completion:(void(^)(NSArray<AdvancedOrderModel *> *orders, BOOL isFresh))completion {
-    [self getOrdersForAccount:accountId withStatus:nil completion:completion];
-}
-
-- (void)getOrdersForAccount:(NSString *)accountId
+- (NSString *)requestOrders:(NSString *)accountId
+             fromDataSource:(DataSourceType)requiredSource
                  withStatus:(NSString *)statusFilter
-                 completion:(void(^)(NSArray<AdvancedOrderModel *> *orders, BOOL isFresh))completion {
-    if (!accountId || !completion) return;
-    
-    NSLog(@"📋 DataHub: Getting orders for account %@ (filter: %@)", accountId, statusFilter ?: @"all");
-    
-    // Fetch orders from DataManager (always fresh for now)
-    [[DataManager sharedManager] requestOrders:accountId withStatus:statusFilter completion:^(NSArray *standardizedOrders, NSError *error) {
-        if (error) {
-            NSLog(@"❌ DataHub: Failed to get orders for %@: %@", accountId, error);
+                 completion:(void (^)(NSArray *orders, NSError *error))completion {
+    if (!accountId || accountId.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"DataManager"
+                                             code:204
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid account ID for orders request"}];
+        if (completion) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                completion(@[], NO);
+                completion(nil, error);
             });
-            return;
         }
-        
-        NSMutableArray<AdvancedOrderModel *> *orders = [NSMutableArray array];
-        
-        for (id orderData in standardizedOrders) {
-            if ([orderData isKindOfClass:[NSDictionary class]]) {
-                AdvancedOrderModel *order = [self createOrderModelFromStandardizedData:(NSDictionary *)orderData];
-                if (order) {
-                    [orders addObject:order];
+        return nil;
+    }
+    
+    NSLog(@"🛡️ DataManager: Requesting orders for account %@ from broker %@ (status: %@)",
+          accountId, DataSourceTypeToString(requiredSource), statusFilter ?: @"all");
+    
+    NSString *requestID = [[NSUUID UUID] UUIDString];
+    NSMutableDictionary *requestInfo = [@{
+        @"type": @"orders",
+        @"accountId": accountId,
+        @"requiredSource": @(requiredSource),
+        @"completion": [completion copy]
+    } mutableCopy];
+    
+    if (statusFilter) {
+        requestInfo[@"statusFilter"] = statusFilter;
+    }
+    
+    [self setValue:requestInfo forKey:requestID inActiveRequests:YES];
+    
+    NSMutableDictionary *parameters = [@{@"accountId": accountId} mutableCopy];
+    if (statusFilter) {
+        parameters[@"statusFilter"] = statusFilter;
+    }
+    
+    // 🛡️ SECURITY: Use secure account data request with DataSource provided by caller
+    [[DownloadManager sharedManager] executeAccountDataRequest:DataRequestTypeOrders
+                                                    parameters:[parameters copy]
+                                                requiredSource:requiredSource
+                                                    completion:^(id result, DataSourceType usedSource, NSError *error) {
+        [self handleOrdersResponse:result
+                             error:error
+                        usedSource:usedSource
+                        forAccount:accountId
+                         requestID:requestID
+                        completion:completion];
+    }];
+    
+    return requestID;
+}
+
+#pragma mark - 🚨 Order Management (Trading Operations)
+
+- (NSString *)placeOrder:(NSDictionary *)orderData
+              forAccount:(NSString *)accountId
+          usingDataSource:(DataSourceType)requiredSource
+              completion:(void (^)(NSString *orderId, NSError *error))completion {
+    if (!orderData || !accountId || accountId.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"DataManager"
+                                             code:210
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid order data or account ID"}];
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, error);
+            });
+        }
+        return nil;
+    }
+    
+    NSLog(@"🚨 DataManager: PLACE ORDER - Account: %@ Broker: %@ OrderData: %@",
+          accountId, DataSourceTypeToString(requiredSource), orderData);
+    
+    NSString *requestID = [[NSUUID UUID] UUIDString];
+    NSMutableDictionary *requestInfo = [@{
+        @"type": @"placeOrder",
+        @"accountId": accountId,
+        @"requiredSource": @(requiredSource),
+        @"orderData": orderData,
+        @"completion": [completion copy]
+    } mutableCopy];
+    
+    [self setValue:requestInfo forKey:requestID inActiveRequests:YES];
+    
+    // 🚨 SECURITY: Use secure trading request with DataSource provided by caller - NEVER fallback
+    [[DownloadManager sharedManager] executeTradingRequest:DataRequestTypePlaceOrder
+                                                parameters:@{
+                                                    @"accountId": accountId,
+                                                    @"orderData": orderData
+                                                }
+                                            requiredSource:requiredSource
+                                                completion:^(id result, DataSourceType usedSource, NSError *error) {
+        [self handlePlaceOrderResponse:result
+                                 error:error
+                            usedSource:usedSource
+                            forAccount:accountId
+                             requestID:requestID
+                            completion:completion];
+    }];
+    
+    return requestID;
+}
+
+- (NSString *)cancelOrder:(NSString *)orderId
+               forAccount:(NSString *)accountId
+          usingDataSource:(DataSourceType)requiredSource
+               completion:(void (^)(BOOL success, NSError *error))completion {
+    if (!orderId || !accountId || orderId.length == 0 || accountId.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"DataManager"
+                                             code:211
+                                         userInfo:@{NSLocalizedDescriptionKey: @"🚨 CRITICAL: Invalid order ID or account ID for cancel operation"}];
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(NO, error);
+            });
+        }
+        return nil;
+    }
+    
+    NSLog(@"🚨 DataManager: CANCEL ORDER - Account: %@ OrderID: %@ Broker: %@",
+          accountId, orderId, DataSourceTypeToString(requiredSource));
+    
+    NSString *requestID = [[NSUUID UUID] UUIDString];
+    NSMutableDictionary *requestInfo = [@{
+        @"type": @"cancelOrder",
+        @"accountId": accountId,
+        @"requiredSource": @(requiredSource),
+        @"orderId": orderId,
+        @"completion": [completion copy]
+    } mutableCopy];
+    
+    [self setValue:requestInfo forKey:requestID inActiveRequests:YES];
+    
+    // 🚨 SECURITY: Use secure trading request with DataSource provided by caller - NEVER fallback
+    [[DownloadManager sharedManager] executeTradingRequest:DataRequestTypeCancelOrder
+                                                parameters:@{
+                                                    @"accountId": accountId,
+                                                    @"orderId": orderId
+                                                }
+                                            requiredSource:requiredSource
+                                                completion:^(id result, DataSourceType usedSource, NSError *error) {
+        [self handleCancelOrderResponse:result
+                                  error:error
+                             usedSource:usedSource
+                             forAccount:accountId
+                                orderId:orderId
+                              requestID:requestID
+                             completion:completion];
+    }];
+    
+    return requestID;
+}
+
+- (NSString *)modifyOrder:(NSString *)orderId
+               forAccount:(NSString *)accountId
+          usingDataSource:(DataSourceType)requiredSource
+              newOrderData:(NSDictionary *)newOrderData
+               completion:(void (^)(BOOL success, NSError *error))completion {
+    if (!orderId || !accountId || !newOrderData || orderId.length == 0 || accountId.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"DataManager"
+                                             code:212
+                                         userInfo:@{NSLocalizedDescriptionKey: @"🚨 CRITICAL: Invalid parameters for order modification"}];
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(NO, error);
+            });
+        }
+        return nil;
+    }
+    
+    NSLog(@"🚨 DataManager: MODIFY ORDER - Account: %@ OrderID: %@ Broker: %@",
+          accountId, orderId, DataSourceTypeToString(requiredSource));
+    
+    NSString *requestID = [[NSUUID UUID] UUIDString];
+    NSMutableDictionary *requestInfo = [@{
+        @"type": @"modifyOrder",
+        @"accountId": accountId,
+        @"requiredSource": @(requiredSource),
+        @"orderId": orderId,
+        @"newOrderData": newOrderData,
+        @"completion": [completion copy]
+    } mutableCopy];
+    
+    [self setValue:requestInfo forKey:requestID inActiveRequests:YES];
+    
+    // 🚨 SECURITY: Use secure trading request with DataSource provided by caller - NEVER fallback
+    [[DownloadManager sharedManager] executeTradingRequest:DataRequestTypeModifyOrder
+                                                parameters:@{
+                                                    @"accountId": accountId,
+                                                    @"orderId": orderId,
+                                                    @"newOrderData": newOrderData
+                                                }
+                                            requiredSource:requiredSource
+                                                completion:^(id result, DataSourceType usedSource, NSError *error) {
+        [self handleModifyOrderResponse:result
+                                  error:error
+                             usedSource:usedSource
+                             forAccount:accountId
+                                orderId:orderId
+                              requestID:requestID
+                             completion:completion];
+    }];
+    
+    return requestID;
+}
+
+#pragma mark - 📊 Response Handling
+
+- (NSArray *)standardizeAccountsData:(id)result fromSource:(DataSourceType)usedSource {
+    if (!result) return @[];
+    
+    // Use adapter to standardize accounts data
+    id<DataSourceAdapter> adapter = [DataAdapterFactory adapterForDataSource:usedSource];
+    NSArray *standardizedAccounts = @[];
+    
+    if (adapter) {
+        if ([result isKindOfClass:[NSArray class]]) {
+            // Array of accounts
+            NSMutableArray *accounts = [NSMutableArray array];
+            for (id accountData in (NSArray *)result) {
+                if ([accountData isKindOfClass:[NSDictionary class]]) {
+                    id standardized = [adapter standardizeAccountData:(NSDictionary *)accountData];
+                    if (standardized) {
+                        [accounts addObject:standardized];
+                    }
+                }
+            }
+            standardizedAccounts = [accounts copy];
+        } else if ([result isKindOfClass:[NSDictionary class]]) {
+            // Single account or accounts wrapper
+            id standardized = [adapter standardizeAccountData:(NSDictionary *)result];
+            if (standardized) {
+                if ([standardized isKindOfClass:[NSArray class]]) {
+                    standardizedAccounts = (NSArray *)standardized;
+                } else {
+                    standardizedAccounts = @[standardized];
                 }
             }
         }
         
-        NSLog(@"✅ DataHub: Loaded %lu orders for account %@ (filter: %@)",
-              (unsigned long)orders.count, accountId, statusFilter ?: @"all");
-        
-        dispatch_async(dispatch_get_main_queue(), ^{
-            completion([orders copy], YES); // Always fresh since we don't cache yet
-            
-            // Broadcast update
-            [[NSNotificationCenter defaultCenter] postNotificationName:PortfolioOrdersUpdatedNotification
-                                                                object:self
-                                                              userInfo:@{@"accountId": accountId, @"orders": orders}];
-        });
-    }];
+        NSLog(@"✅ DataManager: Standardized %lu accounts from %@ via adapter",
+              (unsigned long)standardizedAccounts.count, DataSourceTypeToString(usedSource));
+    }
+    
+    return standardizedAccounts;
 }
 
-#pragma mark - Real-time Subscription Management
-
-- (void)subscribeToPortfolioUpdatesForAccount:(NSString *)accountId {
-    NSLog(@"📡 DataHub: Setting up portfolio subscriptions for account %@", accountId);
+- (void)handleAccountDetailsResponse:(id)result
+                               error:(NSError *)error
+                          usedSource:(DataSourceType)usedSource
+                           accountId:(NSString *)accountId
+                           requestID:(NSString *)requestID
+                          completion:(void (^)(NSDictionary *accountDetails, NSError *error))completion {
     
-    // Store current account for subscription management
-    [[NSUserDefaults standardUserDefaults] setObject:accountId forKey:@"CurrentPortfolioAccountId"];
+    [self removeValueForKey:requestID fromActiveRequests:YES];
     
-    // Get positions to subscribe to symbols
-    [self getPositionsForAccount:accountId completion:^(NSArray<AdvancedPositionModel *> *positions, BOOL isFresh) {
-        
-        // Subscribe to real-time prices for all position symbols
-        NSMutableSet *symbols = [NSMutableSet set];
-        for (AdvancedPositionModel *position in positions) {
-            if (position.symbol && position.symbol.length > 0) {
-                [symbols addObject:position.symbol];
-            }
+    if (error) {
+        NSLog(@"❌ DataManager: 🛡️ Account details failed for %@ from %@: %@",
+              accountId, DataSourceTypeToString(usedSource), error.localizedDescription);
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, error);
+            });
         }
-        
-        NSLog(@"📈 DataHub: Subscribing to real-time prices for %lu symbols in account %@",
-              (unsigned long)symbols.count, accountId);
-        
-        for (NSString *symbol in symbols) {
-            [self subscribeToQuoteUpdatesForSymbol:symbol];
-        }
-        
-        // Start portfolio-specific polling timers (simplified for now)
-        [self startPortfolioPollingForAccount:accountId];
-    }];
-}
-
-- (void)switchPortfolioSubscriptionToAccount:(NSString *)accountId {
-    NSString *currentAccountId = [[NSUserDefaults standardUserDefaults] stringForKey:@"CurrentPortfolioAccountId"];
-    
-    if ([currentAccountId isEqualToString:accountId]) {
-        NSLog(@"ℹ️ DataHub: Already subscribed to account %@", accountId);
         return;
     }
     
-    NSLog(@"🔄 DataHub: Switching portfolio subscription from %@ to %@", currentAccountId ?: @"none", accountId);
-    [self subscribeToPortfolioUpdatesForAccount:accountId];
-}
-
-#pragma mark - Helper Methods for Creating Models from Standardized Data
-
-- (AccountModel *)createAccountModelFromStandardizedData:(NSDictionary *)standardizedData {
-    if (!standardizedData || ![standardizedData isKindOfClass:[NSDictionary class]]) {
-        NSLog(@"❌ DataHub: Invalid standardized account data: %@", standardizedData);
-        return nil;
+    // Standardize account details
+    id<DataSourceAdapter> adapter = [DataAdapterFactory adapterForDataSource:usedSource];
+    NSDictionary *standardizedDetails = @{};
+    
+    if (adapter && [result isKindOfClass:[NSDictionary class]]) {
+        id standardized = [adapter standardizeAccountData:(NSDictionary *)result];
+        if ([standardized isKindOfClass:[NSDictionary class]]) {
+            standardizedDetails = (NSDictionary *)standardized;
+        }
     }
     
-    AccountModel *account = [[AccountModel alloc] init];
+    NSLog(@"✅ DataManager: 🛡️ Account details retrieved for %@ from %@",
+          accountId, DataSourceTypeToString(usedSource));
     
-    // Extract standardized fields safely
-    id accountIdValue = standardizedData[@"accountId"] ?: standardizedData[@"accountNumber"];
-    account.accountId = [accountIdValue isKindOfClass:[NSString class]] ? accountIdValue : @"UNKNOWN";
+    if (completion) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(standardizedDetails, nil);
+        });
+    }
+}
+
+- (void)handlePortfolioSummaryResponse:(id)result
+                                 error:(NSError *)error
+                            usedSource:(DataSourceType)usedSource
+                             accountId:(NSString *)accountId
+                             requestID:(NSString *)requestID
+                            completion:(void (^)(NSDictionary *summary, NSError *error))completion {
     
-    id typeValue = standardizedData[@"type"] ?: standardizedData[@"accountType"];
-    account.accountType = [typeValue isKindOfClass:[NSString class]] ? typeValue : @"UNKNOWN";
+    [self removeValueForKey:requestID fromActiveRequests:YES];
     
-    id brokerValue = standardizedData[@"brokerName"] ?: standardizedData[@"brokerIndicator"];
-    account.brokerName = [brokerValue isKindOfClass:[NSString class]] ? brokerValue : @"UNKNOWN";
+    if (error) {
+        NSLog(@"❌ DataManager: 🛡️ Portfolio summary failed for %@ from %@: %@",
+              accountId, DataSourceTypeToString(usedSource), error.localizedDescription);
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, error);
+            });
+        }
+        return;
+    }
     
-    // Generate display name if not provided
-    if (standardizedData[@"displayName"] && [standardizedData[@"displayName"] isKindOfClass:[NSString class]]) {
-        account.displayName = standardizedData[@"displayName"];
+    // Standardize portfolio summary data
+    id<DataSourceAdapter> adapter = [DataAdapterFactory adapterForDataSource:usedSource];
+    NSDictionary *standardizedSummary = @{};
+    
+    if (adapter && [result isKindOfClass:[NSDictionary class]]) {
+        id standardized = [adapter standardizeAccountData:(NSDictionary *)result];
+        if ([standardized isKindOfClass:[NSDictionary class]]) {
+            standardizedSummary = (NSDictionary *)standardized;
+        }
+    }
+    
+    NSLog(@"✅ DataManager: 🛡️ Portfolio summary retrieved for %@ from %@",
+          accountId, DataSourceTypeToString(usedSource));
+    
+    if (completion) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(standardizedSummary, nil);
+        });
+    }
+}
+
+- (void)handlePositionsResponse:(id)result
+                          error:(NSError *)error
+                     usedSource:(DataSourceType)usedSource
+                     forAccount:(NSString *)accountId
+                      requestID:(NSString *)requestID
+                     completion:(void (^)(NSArray *positions, NSError *error))completion {
+    
+    [self removeValueForKey:requestID fromActiveRequests:YES];
+    
+    if (error) {
+        NSLog(@"❌ DataManager: 🛡️ Positions failed for %@ from %@: %@",
+              accountId, DataSourceTypeToString(usedSource), error.localizedDescription);
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, error);
+            });
+        }
+        return;
+    }
+    
+    // Standardize positions data
+    id<DataSourceAdapter> adapter = [DataAdapterFactory adapterForDataSource:usedSource];
+    NSArray *positions = @[];
+    
+    if (adapter && [result isKindOfClass:[NSArray class]]) {
+        NSMutableArray *standardizedPositions = [NSMutableArray array];
+        for (NSDictionary *rawPosition in (NSArray *)result) {
+            if ([rawPosition isKindOfClass:[NSDictionary class]]) {
+                id standardizedPosition = [adapter standardizePositionData:rawPosition];
+                if (standardizedPosition) {
+                    [standardizedPositions addObject:standardizedPosition];
+                }
+            }
+        }
+        positions = [standardizedPositions copy];
+        
+        NSLog(@"✅ DataManager: 🛡️ Standardized %lu positions for %@ from %@ via adapter",
+              (unsigned long)positions.count, accountId, DataSourceTypeToString(usedSource));
+    }
+    
+    NSLog(@"✅ DataManager: 🛡️ Retrieved %lu positions for account %@", (unsigned long)positions.count, accountId);
+    
+    if (completion) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(positions, nil);
+        });
+    }
+}
+
+- (void)handleOrdersResponse:(id)result
+                       error:(NSError *)error
+                  usedSource:(DataSourceType)usedSource
+                  forAccount:(NSString *)accountId
+                   requestID:(NSString *)requestID
+                  completion:(void (^)(NSArray *orders, NSError *error))completion {
+    
+    [self removeValueForKey:requestID fromActiveRequests:YES];
+    
+    if (error) {
+        NSLog(@"❌ DataManager: 🛡️ Orders failed for %@ from %@: %@",
+              accountId, DataSourceTypeToString(usedSource), error.localizedDescription);
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, error);
+            });
+        }
+        return;
+    }
+    
+    // Standardize orders data
+    id<DataSourceAdapter> adapter = [DataAdapterFactory adapterForDataSource:usedSource];
+    NSArray *orders = @[];
+    
+    if (adapter && [result isKindOfClass:[NSArray class]]) {
+        NSMutableArray *standardizedOrders = [NSMutableArray array];
+        for (NSDictionary *rawOrder in (NSArray *)result) {
+            if ([rawOrder isKindOfClass:[NSDictionary class]]) {
+                id standardizedOrder = [adapter standardizeOrderData:rawOrder];
+                if (standardizedOrder) {
+                    [standardizedOrders addObject:standardizedOrder];
+                }
+            }
+        }
+        orders = [standardizedOrders copy];
+        
+        NSLog(@"✅ DataManager: 🛡️ Standardized %lu orders for %@ from %@ via adapter",
+              (unsigned long)orders.count, accountId, DataSourceTypeToString(usedSource));
+    }
+    
+    NSLog(@"✅ DataManager: 🛡️ Retrieved %lu orders for account %@", (unsigned long)orders.count, accountId);
+    
+    if (completion) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(orders, nil);
+        });
+    }
+}
+
+- (void)handlePlaceOrderResponse:(id)result
+                           error:(NSError *)error
+                      usedSource:(DataSourceType)usedSource
+                      forAccount:(NSString *)accountId
+                       requestID:(NSString *)requestID
+                      completion:(void (^)(NSString *orderId, NSError *error))completion {
+    
+    [self removeValueForKey:requestID fromActiveRequests:YES];
+    
+    if (error) {
+        NSLog(@"❌ DataManager: 🚨 PLACE ORDER FAILED for %@ from %@: %@",
+              accountId, DataSourceTypeToString(usedSource), error.localizedDescription);
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, error);
+            });
+        }
+        return;
+    }
+    
+    NSString *orderId = nil;
+    if ([result isKindOfClass:[NSDictionary class]]) {
+        NSDictionary *resultDict = (NSDictionary *)result;
+        orderId = resultDict[@"orderId"] ?: resultDict[@"id"] ?: resultDict[@"orderID"];
+    } else if ([result isKindOfClass:[NSString class]]) {
+        orderId = (NSString *)result;
+    }
+    
+    if (!orderId) {
+        NSError *parseError = [NSError errorWithDomain:@"DataManager"
+                                                  code:220
+                                              userInfo:@{NSLocalizedDescriptionKey: @"🚨 CRITICAL: Could not extract order ID from response"}];
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, parseError);
+            });
+        }
+        return;
+    }
+    
+    NSLog(@"✅ DataManager: 🚨 ORDER PLACED SUCCESSFULLY for %@ from %@ - ID: %@",
+          accountId, DataSourceTypeToString(usedSource), orderId);
+    
+    if (completion) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(orderId, nil);
+        });
+    }
+}
+
+- (void)handleCancelOrderResponse:(id)result
+                            error:(NSError *)error
+                       usedSource:(DataSourceType)usedSource
+                       forAccount:(NSString *)accountId
+                          orderId:(NSString *)orderId
+                        requestID:(NSString *)requestID
+                       completion:(void (^)(BOOL success, NSError *error))completion {
+    
+    [self removeValueForKey:requestID fromActiveRequests:YES];
+    
+    if (error) {
+        NSLog(@"❌ DataManager: 🚨 CANCEL ORDER FAILED for %@ OrderID: %@ from %@: %@",
+              accountId, orderId, DataSourceTypeToString(usedSource), error.localizedDescription);
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(NO, error);
+            });
+        }
+        return;
+    }
+    
+    BOOL success = NO;
+    if ([result isKindOfClass:[NSNumber class]]) {
+        success = [(NSNumber *)result boolValue];
+    } else if ([result respondsToSelector:@selector(boolValue)]) {
+        success = [result boolValue];
     } else {
-        // Use the formattedDisplayName method from AccountModel
-        account.displayName = [account formattedDisplayName];
+        // If not a boolean, consider success = YES if no error
+        success = YES;
     }
     
-    account.isConnected = [standardizedData[@"isConnected"] boolValue];
-    account.isPrimary = [standardizedData[@"isPrimary"] boolValue];
+    NSLog(@"✅ DataManager: 🚨 CANCEL ORDER %@ for %@ OrderID: %@ from %@",
+          success ? @"SUCCESS" : @"FAILED", accountId, orderId, DataSourceTypeToString(usedSource));
     
-    // Last updated date
-    if ([standardizedData[@"lastUpdated"] isKindOfClass:[NSDate class]]) {
-        account.lastUpdated = standardizedData[@"lastUpdated"];
+    if (completion) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(success, nil);
+        });
+    }
+}
+
+- (void)handleModifyOrderResponse:(id)result
+                            error:(NSError *)error
+                       usedSource:(DataSourceType)usedSource
+                       forAccount:(NSString *)accountId
+                          orderId:(NSString *)orderId
+                        requestID:(NSString *)requestID
+                       completion:(void (^)(BOOL success, NSError *error))completion {
+    
+    [self removeValueForKey:requestID fromActiveRequests:YES];
+    
+    if (error) {
+        NSLog(@"❌ DataManager: 🚨 MODIFY ORDER FAILED for %@ OrderID: %@ from %@: %@",
+              accountId, orderId, DataSourceTypeToString(usedSource), error.localizedDescription);
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(NO, error);
+            });
+        }
+        return;
+    }
+    
+    BOOL success = NO;
+    if ([result isKindOfClass:[NSNumber class]]) {
+        success = [(NSNumber *)result boolValue];
+    } else if ([result respondsToSelector:@selector(boolValue)]) {
+        success = [result boolValue];
     } else {
-        account.lastUpdated = [NSDate date];
+        // If not a boolean, consider success = YES if no error
+        success = YES;
     }
     
-    NSLog(@"✅ DataHub: Created AccountModel: %@ (ID: %@, Broker: %@)",
-          account.displayName, account.accountId, account.brokerName);
+    NSLog(@"✅ DataManager: 🚨 MODIFY ORDER %@ for %@ OrderID: %@ from %@",
+          success ? @"SUCCESS" : @"FAILED", accountId, orderId, DataSourceTypeToString(usedSource));
     
-    return account;
+    if (completion) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(success, nil);
+        });
+    }
 }
 
-- (PortfolioSummaryModel *)createPortfolioSummaryFromStandardizedData:(NSDictionary *)standardizedData {
-    if (!standardizedData || ![standardizedData isKindOfClass:[NSDictionary class]]) {
-        return nil;
+#pragma mark - Utility Methods
+
+// Access activeRequests using valueForKey to bypass private property access
+- (void)setValue:(id)value forKey:(NSString *)key inActiveRequests:(BOOL)flag {
+    if (flag) {
+        NSMutableDictionary *activeRequests = [self valueForKey:@"activeRequests"];
+        if (activeRequests) {
+            activeRequests[key] = value;
+        }
     }
-    
-    PortfolioSummaryModel *summary = [[PortfolioSummaryModel alloc] init];
-    
-    // Extract standardized portfolio values
-    summary.accountId = [standardizedData[@"accountId"] isKindOfClass:[NSString class]] ?
-                       standardizedData[@"accountId"] : @"";
-    summary.brokerName = [standardizedData[@"brokerName"] isKindOfClass:[NSString class]] ?
-                        standardizedData[@"brokerName"] : @"";
-    
-    NSDictionary *balances = standardizedData[@"currentBalances"] ?: standardizedData[@"balances"] ?: standardizedData;
-    
-    summary.totalValue = [balances[@"liquidationValue"] ?: balances[@"totalValue"] ?: @0 doubleValue];
-    summary.cashBalance = [balances[@"cashBalance"] ?: @0 doubleValue];
-    summary.buyingPower = [balances[@"buyingPower"] ?: @0 doubleValue];
-    summary.marginUsed = [balances[@"marginUsed"] ?: @0 doubleValue];
-    summary.dayPL = [balances[@"dayPL"] ?: @0 doubleValue];
-    summary.dayPLPercent = [balances[@"dayPLPercent"] ?: @0 doubleValue];
-    
-    summary.lastUpdated = [NSDate date];
-    
-    return summary;
 }
 
-- (AdvancedPositionModel *)createPositionModelFromStandardizedData:(NSDictionary *)standardizedData {
-    if (!standardizedData || ![standardizedData isKindOfClass:[NSDictionary class]]) {
-        return nil;
+- (void)removeValueForKey:(NSString *)key fromActiveRequests:(BOOL)flag {
+    if (flag) {
+        NSMutableDictionary *activeRequests = [self valueForKey:@"activeRequests"];
+        if (activeRequests) {
+            [activeRequests removeObjectForKey:key];
+        }
     }
-    
-    AdvancedPositionModel *position = [[AdvancedPositionModel alloc] init];
-    
-    // Extract standardized position data safely
-    position.symbol = [standardizedData[@"symbol"] isKindOfClass:[NSString class]] ?
-                     standardizedData[@"symbol"] : @"";
-    position.quantity = [standardizedData[@"quantity"] ?: @0 doubleValue];
-    position.avgCost = [standardizedData[@"averagePrice"] ?: standardizedData[@"avgCost"] ?: @0 doubleValue];
-    position.currentPrice = [standardizedData[@"currentPrice"] ?: @0 doubleValue];
-    position.marketValue = [standardizedData[@"marketValue"] ?: @0 doubleValue];
-    position.unrealizedPL = [standardizedData[@"unrealizedPL"] ?: @0 doubleValue];
-    position.unrealizedPLPercent = [standardizedData[@"unrealizedPLPercent"] ?: @0 doubleValue];
-    
-    // Set price update timestamp
-    position.priceLastUpdated = [NSDate date];
-    
-    return position;
-}
-
-- (AdvancedOrderModel *)createOrderModelFromStandardizedData:(NSDictionary *)standardizedData {
-    if (!standardizedData || ![standardizedData isKindOfClass:[NSDictionary class]]) {
-        return nil;
-    }
-    
-    AdvancedOrderModel *order = [[AdvancedOrderModel alloc] init];
-    
-    // Extract standardized order data safely
-    order.orderId = [standardizedData[@"orderId"] isKindOfClass:[NSString class]] ?
-                   standardizedData[@"orderId"] : @"";
-    order.symbol = [standardizedData[@"symbol"] isKindOfClass:[NSString class]] ?
-                  standardizedData[@"symbol"] : @"";
-    order.side = [standardizedData[@"side"] isKindOfClass:[NSString class]] ?
-                standardizedData[@"side"] : @"";
-    order.orderType = [standardizedData[@"orderType"] isKindOfClass:[NSString class]] ?
-                     standardizedData[@"orderType"] : @"";
-    order.status = [standardizedData[@"status"] isKindOfClass:[NSString class]] ?
-                  standardizedData[@"status"] : @"";
-    
-    order.quantity = [standardizedData[@"quantity"] ?: @0 doubleValue];
-    order.filledQuantity = [standardizedData[@"filledQuantity"] ?: @0 doubleValue];
-    order.price = [standardizedData[@"price"] ?: @0 doubleValue];
-    order.stopPrice = [standardizedData[@"stopPrice"] ?: @0 doubleValue];
-    
-    // Dates
-    if ([standardizedData[@"placedTime"] isKindOfClass:[NSDate class]]) {
-        order.createdDate = standardizedData[@"placedTime"];
-    } else if ([standardizedData[@"createdDate"] isKindOfClass:[NSDate class]]) {
-        order.createdDate = standardizedData[@"createdDate"];
-    }
-    
-    if ([standardizedData[@"lastModified"] isKindOfClass:[NSDate class]]) {
-        order.updatedDate = standardizedData[@"lastModified"];
-    } else if ([standardizedData[@"updatedDate"] isKindOfClass:[NSDate class]]) {
-        order.updatedDate = standardizedData[@"updatedDate"];
-    }
-    
-    return order;
-}
-
-#pragma mark - Private Helper Methods (Simplified)
-
-- (void)startPortfolioPollingForAccount:(NSString *)accountId {
-    // Simplified polling - TODO: Implement proper timers later
-    NSLog(@"📊 DataHub: Portfolio polling started for account %@ (simplified)", accountId);
 }
 
 @end

@@ -30,18 +30,6 @@ typedef NS_ENUM(NSInteger, MarketListType) {
     MarketListTypeIndustry
 };
 
-// Market timeframes for API calls
-typedef NS_ENUM(NSInteger, MarketTimeframe) {
-    MarketTimeframePreMarket,
-    MarketTimeframeAfterHours,
-    MarketTimeframeFiveMinutes,
-    MarketTimeframeOneDay,
-    MarketTimeframeFiveDays,
-    MarketTimeframeOneMonth,
-    MarketTimeframeThreeMonths,
-    MarketTimeframeFiftyTwoWeeks
-};
-
 #pragma mark - Basket Types
 
 // Basket types for interaction tracking

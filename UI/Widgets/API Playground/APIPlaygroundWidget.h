@@ -70,7 +70,7 @@ typedef NS_ENUM(NSInteger, APIPlaygroundRequestType) {
 // Action Buttons
 @property (nonatomic, strong) NSButton *executeButton;
 @property (nonatomic, strong) NSButton *clearButton;
-@property (nonatomic, strong) NSButton *copyRawButton; // NEW: Copy raw response
+@property (nonatomic, strong) NSButton *ccopyRawButton; // NEW: Copy raw response
 
 // RESULTS SECTION
 @property (nonatomic, strong) NSTableView *resultsTableView;
@@ -118,7 +118,9 @@ typedef NS_ENUM(NSInteger, APIPlaygroundRequestType) {
 // Utility
 - (void)copyRawResponseToClipboard;
 - (void)clearAllResults;
-
+// Account request helpers
+- (void)executeAccountsRequestForAllBrokers;
+- (void)executeAccountDataRequest:(APIPlaygroundRequestType)requestType parameters:(NSDictionary *)parameters;
 @end
 
 NS_ASSUME_NONNULL_END

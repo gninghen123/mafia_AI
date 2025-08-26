@@ -58,9 +58,8 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     if (self) {
         _sourceType = DataSourceTypeSchwab;
         _capabilities = DataSourceCapabilityQuotes |
-                       DataSourceCapabilityHistorical |
-                       DataSourceCapabilityOrderBook |
-                       DataSourceCapabilityAccounts |
+        DataSourceCapabilityHistoricalData |
+        DataSourceCapabilityPortfolioData |
                        DataSourceCapabilityTrading;
         _sourceName = @"Charles Schwab";
         
@@ -578,7 +577,7 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     NSString *periodType;
     NSInteger period;
     
-    if (timeframe < BarTimeframe1Day) {
+    if (timeframe < BarTimeframeDaily) {
         // Intraday: use "day" period
         periodType = @"day";
         period = 10;
@@ -1083,7 +1082,7 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     
     // NEW: Check for maxAvailable request
     if (count >= 9999999) {
-        if (timeframe < BarTimeframe1Day) {
+        if (timeframe < BarTimeframeDaily) {
             // Intraday: 1 year back
             NSDateComponents *components = [[NSDateComponents alloc] init];
             components.year = -1;
@@ -1114,15 +1113,15 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
         case BarTimeframe30Min:  secondsPerBar = 1800; break;
         case BarTimeframe1Hour:  secondsPerBar = 3600; break;
         case BarTimeframe4Hour:  secondsPerBar = 14400; break;
-        case BarTimeframe1Day:   secondsPerBar = 86400; break;
-        case BarTimeframe1Week:  secondsPerBar = 604800; break;
-        case BarTimeframe1Month: secondsPerBar = 2592000; break;
+        case BarTimeframeDaily:   secondsPerBar = 86400; break;
+        case BarTimeframeWeekly:  secondsPerBar = 604800; break;
+        case BarTimeframeMonthly: secondsPerBar = 2592000; break;
         default: secondsPerBar = 86400; break;
     }
     
     NSTimeInterval totalSeconds = count * secondsPerBar;
     
-    if (timeframe < BarTimeframe1Day) {
+    if (timeframe < BarTimeframeDaily) {
         totalSeconds *= 1.5; // 50% buffer for non-trading hours
     }
     
@@ -1159,16 +1158,16 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
             *frequencyType = @"minute";
             *frequency = 240;
             break;
-        case BarTimeframe1Day:
+        case BarTimeframeDaily:
             *frequencyType = @"daily";
             *frequency = 1;
             break;
-        case BarTimeframe1Week:
+        case BarTimeframeWeekly:
             // FIX: Use daily instead of weekly for Schwab API compatibility
             *frequencyType = @"daily";
             *frequency = 1;  // Will aggregate to weekly in adapter
             break;
-        case BarTimeframe1Month:
+        case BarTimeframeMonthly:
             // FIX: Use daily instead of monthly for Schwab API compatibility
             *frequencyType = @"daily";
             *frequency = 1;  // Will aggregate to monthly in adapter

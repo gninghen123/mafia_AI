@@ -138,7 +138,7 @@
     typeToClass[@"LegacyDataConverter"] = [LegacyDataConverterWidget class];
     typeToClass[@"Pattern Chart Library"] = [ChartPatternLibraryWidget class];
     typeToClass[@"Portfolio"] = [PortfolioWidget class];
-    typeToClass[ @"IBKR Test Widget"]= [IBKRTestWidget class];
+    typeToClass[@"IBKR Test Widget"]= [IBKRTestWidget class];
 
     // Map all other types to BaseWidget for now
     for (NSArray *types in self.widgetCategories.allValues) {

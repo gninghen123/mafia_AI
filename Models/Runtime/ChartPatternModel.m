@@ -111,7 +111,7 @@
 
 - (BarTimeframe)timeframe {
     SavedChartData *savedData = [self getCachedSavedData];
-    return savedData ? savedData.timeframe : BarTimeframe1Day;
+    return savedData ? savedData.timeframe : BarTimeframeDaily;
 }
 
 - (NSInteger)patternBarCount {

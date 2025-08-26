@@ -39,7 +39,7 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
         _sourceType = DataSourceTypeWebull; // FIXED: Use correct WebullDataSource type
         _sourceName = @"Webull";
         _capabilities = DataSourceCapabilityQuotes |
-                       DataSourceCapabilityHistorical |
+        DataSourceCapabilityHistoricalData |
                        DataSourceCapabilityFundamentals;
         _isConnected = YES; // Webull API doesn't require authentication for these endpoints
         
@@ -466,9 +466,9 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
         case BarTimeframe15Min: return @"m15";
         case BarTimeframe30Min: return @"m30";
         case BarTimeframe1Hour: return @"m60";
-        case BarTimeframe1Day: return @"d1";
-        case BarTimeframe1Week: return @"w1";
-        case BarTimeframe1Month: return @"mo1";
+        case BarTimeframeDaily: return @"d1";
+        case BarTimeframeWeekly: return @"w1";
+        case BarTimeframeMonthly: return @"mo1";
         default: return @"d1";
     }
 }
@@ -486,9 +486,9 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
         case BarTimeframe15Min: bars = interval / (60 * 15); break;
         case BarTimeframe30Min: bars = interval / (60 * 30); break;
         case BarTimeframe1Hour: bars = interval / (60 * 60); break;
-        case BarTimeframe1Day: bars = interval / (60 * 60 * 24); break;
-        case BarTimeframe1Week: bars = interval / (60 * 60 * 24 * 7); break;
-        case BarTimeframe1Month: bars = interval / (60 * 60 * 24 * 30); break;
+        case BarTimeframeDaily: bars = interval / (60 * 60 * 24); break;
+        case BarTimeframeWeekly: bars = interval / (60 * 60 * 24 * 7); break;
+        case BarTimeframeMonthly: bars = interval / (60 * 60 * 24 * 30); break;
     }
     
     return MAX(1, MIN(bars, 800)); // Webull limit

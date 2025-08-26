@@ -950,9 +950,9 @@
         case BarTimeframe30Min: expectedInterval = 1800; break;
         case BarTimeframe1Hour: expectedInterval = 3600; break;
         case BarTimeframe4Hour: expectedInterval = 14400; break;
-        case BarTimeframe1Day: expectedInterval = 86400; break;
-        case BarTimeframe1Week: expectedInterval = 604800; break;
-        case BarTimeframe1Month: return YES; // Monthly data gaps are normal
+        case BarTimeframeDaily: expectedInterval = 86400; break;
+        case BarTimeframeWeekly: expectedInterval = 604800; break;
+        case BarTimeframeMonthly: return YES; // Monthly data gaps are normal
         default: return YES;
     }
     
@@ -960,7 +960,7 @@
     for (NSInteger i = 1; i < bars.count; i++) {
         NSTimeInterval gap = [bars[i].date timeIntervalSinceDate:bars[i-1].date];
         
-        if (timeframe >= BarTimeframe1Day) {
+        if (timeframe >= BarTimeframeDaily) {
             // For daily+ data, allow gaps up to 7 days (weekends + holidays)
             if (gap > expectedInterval * 7) {
                 return NO;
@@ -1165,9 +1165,9 @@
         case BarTimeframe1Hour:
         case BarTimeframe4Hour:
             return daysAgo <= 255; // ~8.5 months
-        case BarTimeframe1Day:
-        case BarTimeframe1Week:
-        case BarTimeframe1Month:
+        case BarTimeframeDaily:
+        case BarTimeframeWeekly:
+        case BarTimeframeMonthly:
             return YES; // Daily+ data has no practical API limit
         default:
             return NO;
@@ -1184,9 +1184,9 @@
     if ([folderName isEqualToString:@"30"]) return BarTimeframe30Min;
     if ([folderName isEqualToString:@"60"]) return BarTimeframe1Hour;
     if ([folderName isEqualToString:@"240"]) return BarTimeframe4Hour;
-    if ([folderName isEqualToString:@"D"] || [folderName isEqualToString:@"daily"]) return BarTimeframe1Day;
-    if ([folderName isEqualToString:@"W"] || [folderName isEqualToString:@"weekly"]) return BarTimeframe1Week;
-    if ([folderName isEqualToString:@"M"] || [folderName isEqualToString:@"monthly"]) return BarTimeframe1Month;
+    if ([folderName isEqualToString:@"D"] || [folderName isEqualToString:@"daily"]) return BarTimeframeDaily;
+    if ([folderName isEqualToString:@"W"] || [folderName isEqualToString:@"weekly"]) return BarTimeframeWeekly;
+    if ([folderName isEqualToString:@"M"] || [folderName isEqualToString:@"monthly"]) return BarTimeframeMonthly;
     
     return -1; // Unknown timeframe
 }
@@ -1199,9 +1199,9 @@
         case BarTimeframe30Min: return @"30min";
         case BarTimeframe1Hour: return @"1hour";
         case BarTimeframe4Hour: return @"4hour";
-        case BarTimeframe1Day: return @"daily";
-        case BarTimeframe1Week: return @"weekly";
-        case BarTimeframe1Month: return @"monthly";
+        case BarTimeframeDaily: return @"daily";
+        case BarTimeframeWeekly: return @"weekly";
+        case BarTimeframeMonthly: return @"monthly";
         default: return @"unknown";
     }
 }

@@ -441,23 +441,20 @@
     MarketData *standardizedQuote = nil;
     
     if (adapter && [result isKindOfClass:[NSDictionary class]]) {
-        id standardizedData = [adapter standardizeQuoteData:(NSDictionary *)result];
-        if ([standardizedData isKindOfClass:[MarketData class]]) {
-            standardizedQuote = (MarketData *)standardizedData;
-        }
-    }
-    
-    if (!standardizedQuote) {
-        NSError *parseError = [NSError errorWithDomain:@"DataManager"
-                                                  code:150
-                                              userInfo:@{NSLocalizedDescriptionKey: @"Failed to standardize quote data"}];
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(nil, parseError);
-            });
-        }
-        return;
-    }
+          standardizedQuote = [adapter standardizeQuoteData:(NSDictionary *)result forSymbol:symbol];
+      }
+      
+      if (!standardizedQuote) {
+          NSError *parseError = [NSError errorWithDomain:@"DataManager"
+                                                    code:150
+                                                userInfo:@{NSLocalizedDescriptionKey: @"Failed to standardize quote data"}];
+          if (completion) {
+              dispatch_async(dispatch_get_main_queue(), ^{
+                  completion(nil, parseError);
+              });
+          }
+          return;
+      }
     
     // Success - return standardized quote
     if (completion) {
@@ -494,15 +491,12 @@
     NSLog(@"✅ DataManager: Batch quotes received for %lu symbols from %@",
           (unsigned long)symbols.count, DataSourceTypeToString(usedSource));
     
-    // Standardize batch quotes using adapter
+    // CORREZIONE: Standardize batch quotes using adapter with forSymbols:
     id<DataSourceAdapter> adapter = [DataAdapterFactory adapterForDataSource:usedSource];
     NSDictionary *standardizedQuotes = @{};
     
     if (adapter && [result isKindOfClass:[NSDictionary class]]) {
-        id standardizedData = [adapter standardizeBatchQuotesData:(NSDictionary *)result];
-        if ([standardizedData isKindOfClass:[NSDictionary class]]) {
-            standardizedQuotes = (NSDictionary *)standardizedData;
-        }
+        standardizedQuotes = [adapter standardizeBatchQuotesData:(NSDictionary *)result forSymbols:symbols];
     }
     
     NSLog(@"📊 DataManager: Standardized %lu quotes via adapter", (unsigned long)standardizedQuotes.count);
@@ -540,18 +534,15 @@
     
     NSLog(@"✅ DataManager: Historical data received for %@ from %@", symbol, DataSourceTypeToString(usedSource));
     
-    // Standardize historical data using adapter
+    // CORREZIONE: Standardize historical data using adapter with forSymbol:
     id<DataSourceAdapter> adapter = [DataAdapterFactory adapterForDataSource:usedSource];
     NSArray<HistoricalBarModel *> *standardizedBars = @[];
     
     if (adapter && [result isKindOfClass:[NSArray class]]) {
-        id standardizedData = [adapter standardizeHistoricalData:(NSArray *)result];
-        if ([standardizedData isKindOfClass:[NSArray class]]) {
-            standardizedBars = (NSArray<HistoricalBarModel *> *)standardizedData;
-        }
+        standardizedBars = [adapter standardizeHistoricalData:(NSArray *)result forSymbol:symbol];
     }
     
-    NSLog(@"📊 DataManager: Standardized %lu historical bars via adapter", (unsigned long)standardizedBars.count);
+    NSLog(@"📊 DataManager: Standardized %lu bars via adapter", (unsigned long)standardizedBars.count);
     
     if (completion) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -612,22 +603,41 @@
               listType, DataSourceTypeToString(usedSource), error.localizedDescription);
         if (completion) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                completion(@[], error);
+                completion(nil, error);
             });
         }
+        [self notifyDelegatesOfError:error forRequest:requestID];
         return;
     }
     
-    NSLog(@"✅ DataManager: Market list received for %@ from %@", listType, DataSourceTypeToString(usedSource));
+    NSLog(@"✅ DataManager: Market list data received for %@ from %@", listType, DataSourceTypeToString(usedSource));
     
-    // Standardize market list data
+    // CORREZIONE: Create MarketPerformerModel objects using proper factory method
     NSMutableArray<MarketPerformerModel *> *performers = [NSMutableArray array];
     
     if ([result isKindOfClass:[NSArray class]]) {
         for (NSDictionary *item in (NSArray *)result) {
             if ([item isKindOfClass:[NSDictionary class]]) {
-                MarketPerformerModel *performer = [MarketPerformerModel fromDictionary:item];
-                if (performer) {
+                // Creare MarketPerformerModel manualmente dalla dictionary
+                MarketPerformerModel *performer = [[MarketPerformerModel alloc] init];
+                performer.symbol = item[@"symbol"];
+                performer.name = item[@"name"];
+                performer.exchange = item[@"exchange"];
+                performer.sector = item[@"sector"];
+                
+                // Price data - using NSNumber properties
+                performer.price = item[@"price"] ?: item[@"lastPrice"];
+                performer.change = item[@"change"];
+                performer.changePercent = item[@"changePercent"];
+                performer.volume = item[@"volume"];
+                performer.marketCap = item[@"marketCap"];
+                performer.avgVolume = item[@"avgVolume"];
+                
+                // List metadata
+                performer.listType = listType;
+                performer.timeframe = @"1d"; // Default timeframe
+                
+                if (performer.symbol) { // Solo se abbiamo almeno un symbol valido
                     [performers addObject:performer];
                 }
             }
@@ -642,6 +652,7 @@
         });
     }
 }
+
 
 #pragma mark - Delegate Notifications
 

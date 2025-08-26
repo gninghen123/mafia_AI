@@ -70,10 +70,7 @@ static NSString *const kStockCatalystURL = @"https://www.thestockcatalyst.com/NY
         _sourceName = @"Other APIs (Yahoo/Nasdaq/Finviz/Zacks)"; // ✅ UPDATED: Include Yahoo
         _capabilities = DataSourceCapabilityQuotes |
                        DataSourceCapabilityNews |
-                       DataSourceCapabilityFundamentals |
-                       DataSourceCapabilityAnalyst |
-                       DataSourceCapabilityInsider |
-                       DataSourceCapabilityInstitutional;
+        DataSourceCapabilityFundamentals ;
         _isConnected = YES; // No authentication required
         
         _requestCount = [NSMutableDictionary dictionary];

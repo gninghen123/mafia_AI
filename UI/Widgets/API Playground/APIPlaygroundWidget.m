@@ -17,7 +17,7 @@
 - (instancetype)init {
     self = [super init];
     if (self) {
-        self.widgetType = WidgetTypeAPIPlayground;
+        self.widgetType = @"APIPlayground";
         self.resultData = [NSMutableArray array];
         self.tableColumns = [NSMutableArray array];
         self.currentRequestType = APIPlaygroundRequestTypeQuote;
@@ -26,8 +26,19 @@
     return self;
 }
 
-- (void)setupWidget {
-    [super setupWidget];
+- (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType {
+    self = [super initWithType:type panelType:panelType];
+    if (self) {
+        self.resultData = [NSMutableArray array];
+        self.tableColumns = [NSMutableArray array];
+        self.currentRequestType = APIPlaygroundRequestTypeQuote;
+        self.preferredDataSource = DataSourceTypeOther;
+    }
+    return self;
+}
+
+- (void)setupContentView {
+    [super setupContentView];
     [self setupTabs];
     [self setupUnifiedTab];
     [self setupResultsViews];
@@ -123,17 +134,31 @@
     [self.timeframePopup selectItemWithTitle:@"Daily"];
     
     NSTextField *startLabel = [self createLabel:@"Start Date:"];
-    self.startDatePicker = [[NSDatePicker alloc] init];
-    self.startDatePicker.datePickerStyle = NSDatePickerStyleCompact;
-    self.startDatePicker.dateValue = [[NSCalendar currentCalendar] dateByAddingUnit:NSCalendarUnitMonth
-                                                                               value:-1
-                                                                              toDate:[NSDate date]
-                                                                             options:0];
+       self.startDatePicker = [[NSDatePicker alloc] init];
+       
+       // CORREZIONE: Controllo versione per NSDatePickerStyleCompact
+      
+           // Fallback per versioni precedenti
+           self.startDatePicker.datePickerElements = NSDatePickerElementFlagYearMonthDay;
+           self.startDatePicker.datePickerMode = NSDatePickerModeSingle;
+       
+       
+       self.startDatePicker.dateValue = [[NSCalendar currentCalendar] dateByAddingUnit:NSCalendarUnitMonth
+                                                                                  value:-1
+                                                                                 toDate:[NSDate date]
+                                                                                options:0];
+       
+       NSTextField *endLabel = [self createLabel:@"End Date:"];
+       self.endDatePicker = [[NSDatePicker alloc] init];
+       
+       // CORREZIONE: Stesso controllo versione per endDatePicker
+     
+           self.endDatePicker.datePickerElements = NSDatePickerElementFlagYearMonthDay;
+           self.endDatePicker.datePickerMode = NSDatePickerModeSingle;
+       
+       
+       self.endDatePicker.dateValue = [NSDate date];
     
-    NSTextField *endLabel = [self createLabel:@"End Date:"];
-    self.endDatePicker = [[NSDatePicker alloc] init];
-    self.endDatePicker.datePickerStyle = NSDatePickerStyleCompact;
-    self.endDatePicker.dateValue = [NSDate date];
     
     NSTextField *barCountLabel = [self createLabel:@"Bar Count:"];
     self.barCountField = [self createTextField:@"100"];
@@ -176,10 +201,10 @@
                                           action:@selector(clearAllResults)];
     self.clearButton.bezelStyle = NSBezelStyleRounded;
     
-    self.copyRawButton = [NSButton buttonWithTitle:@"Copy Raw Response"
+    self.ccopyRawButton = [NSButton buttonWithTitle:@"Copy Raw Response"
                                             target:self
                                             action:@selector(copyRawResponseToClipboard)];
-    self.copyRawButton.bezelStyle = NSBezelStyleRounded;
+    self.ccopyRawButton.bezelStyle = NSBezelStyleRounded;
     
     // Status
     self.statusLabel = [self createLabel:@"Ready"];
@@ -215,7 +240,7 @@
                                                            [[NSView alloc] init], // Spacer
                                                            self.executeButton,
                                                            self.clearButton,
-                                                           self.copyRawButton]];
+                                                           self.ccopyRawButton]];
     
     // Controls Container
     self.controlsContainer = [[NSStackView alloc] init];
@@ -258,7 +283,7 @@
     self.resultsTableView.dataSource = self;
     self.resultsTableView.delegate = self;
     self.resultsTableView.allowsMultipleSelection = YES;
-    self.resultsTableView.alternatingRowBackgroundColors = YES;
+    self.resultsTableView.usesAlternatingRowBackgroundColors = YES;
     self.tableScrollView.documentView = self.resultsTableView;
     
     // Text View for raw response
@@ -383,21 +408,20 @@
     [self.loadingIndicator startAnimation:nil];
     
     DownloadManager *downloadManager = [DownloadManager sharedManager];
-    
-    // Build parameters based on request type
     NSMutableDictionary *parameters = [NSMutableDictionary dictionary];
     
     switch (self.currentRequestType) {
-        case APIPlaygroundRequestTypeQuote:
+        case APIPlaygroundRequestTypeQuote:{
             parameters[@"symbol"] = self.symbolField.stringValue;
-            self.activeRequestID = [downloadManager executeRequest:DataRequestTypeQuote
-                                                        parameters:parameters
-                                                   preferredSource:self.preferredDataSource
-                                                        completion:^(id result, DataSourceType usedSource, NSError *error) {
+            // CORREZIONE: executeMarketDataRequest con preferredSource
+            self.activeRequestID = [downloadManager executeMarketDataRequest:DataRequestTypeQuote
+                                                                  parameters:parameters
+                                                             preferredSource:self.preferredDataSource
+                                                                  completion:^(id result, DataSourceType usedSource, NSError *error) {
                 [self handleUnifiedResponse:result usedSource:usedSource error:error];
             }];
             break;
-            
+    }
         case APIPlaygroundRequestTypeBatchQuotes: {
             NSString *symbolsString = self.symbolsField.stringValue;
             NSArray *symbols = [symbolsString componentsSeparatedByString:@","];
@@ -407,61 +431,76 @@
             }
             parameters[@"symbols"] = trimmedSymbols;
             
-            self.activeRequestID = [downloadManager executeRequest:DataRequestTypeBatchQuotes
-                                                        parameters:parameters
-                                                   preferredSource:self.preferredDataSource
-                                                        completion:^(id result, DataSourceType usedSource, NSError *error) {
+            // CORREZIONE: executeMarketDataRequest
+            self.activeRequestID = [downloadManager executeMarketDataRequest:DataRequestTypeBatchQuotes
+                                                                  parameters:parameters
+                                                             preferredSource:self.preferredDataSource
+                                                                  completion:^(id result, DataSourceType usedSource, NSError *error) {
                 [self handleUnifiedResponse:result usedSource:usedSource error:error];
             }];
             break;
         }
             
-        case APIPlaygroundRequestTypeHistoricalBars:
+        case APIPlaygroundRequestTypeHistoricalBars:{
             parameters[@"symbol"] = self.symbolField.stringValue;
             parameters[@"timeframe"] = @([self selectedBarTimeframe]);
             parameters[@"startDate"] = self.startDatePicker.dateValue;
             parameters[@"endDate"] = self.endDatePicker.dateValue;
             parameters[@"needExtendedHours"] = @(self.extendedHoursCheckbox.state == NSControlStateValueOn);
             
-            self.activeRequestID = [downloadManager executeRequest:DataRequestTypeHistoricalBars
-                                                        parameters:parameters
-                                                   preferredSource:self.preferredDataSource
-                                                        completion:^(id result, DataSourceType usedSource, NSError *error) {
+            // CORREZIONE: executeMarketDataRequest
+            self.activeRequestID = [downloadManager executeMarketDataRequest:DataRequestTypeHistoricalBars
+                                                                  parameters:parameters
+                                                             preferredSource:self.preferredDataSource
+                                                                  completion:^(id result, DataSourceType usedSource, NSError *error) {
                 [self handleUnifiedResponse:result usedSource:usedSource error:error];
             }];
             break;
-            
-        case APIPlaygroundRequestTypeTopGainers:
+        }
+        case APIPlaygroundRequestTypeTopGainers:{
             parameters[@"limit"] = @([self.limitField.stringValue integerValue]);
-            self.activeRequestID = [downloadManager executeRequest:DataRequestTypeTopGainers
-                                                        parameters:parameters
-                                                   preferredSource:self.preferredDataSource
-                                                        completion:^(id result, DataSourceType usedSource, NSError *error) {
+            // CORREZIONE: executeMarketDataRequest
+            self.activeRequestID = [downloadManager executeMarketDataRequest:DataRequestTypeTopGainers
+                                                                  parameters:parameters
+                                                             preferredSource:self.preferredDataSource
+                                                                  completion:^(id result, DataSourceType usedSource, NSError *error) {
                 [self handleUnifiedResponse:result usedSource:usedSource error:error];
             }];
             break;
-            
-        case APIPlaygroundRequestTypeTopLosers:
+        }
+        case APIPlaygroundRequestTypeTopLosers:{
             parameters[@"limit"] = @([self.limitField.stringValue integerValue]);
-            self.activeRequestID = [downloadManager executeRequest:DataRequestTypeTopLosers
-                                                        parameters:parameters
-                                                   preferredSource:self.preferredDataSource
-                                                        completion:^(id result, DataSourceType usedSource, NSError *error) {
+            // CORREZIONE: executeMarketDataRequest
+            self.activeRequestID = [downloadManager executeMarketDataRequest:DataRequestTypeTopLosers
+                                                                  parameters:parameters
+                                                             preferredSource:self.preferredDataSource
+                                                                  completion:^(id result, DataSourceType usedSource, NSError *error) {
                 [self handleUnifiedResponse:result usedSource:usedSource error:error];
             }];
             break;
-            
-        case APIPlaygroundRequestTypeETFList:
+        }
+        case APIPlaygroundRequestTypeETFList:{
             parameters[@"limit"] = @([self.limitField.stringValue integerValue]);
-            self.activeRequestID = [downloadManager executeRequest:DataRequestTypeETFList
-                                                        parameters:parameters
-                                                   preferredSource:self.preferredDataSource
-                                                        completion:^(id result, DataSourceType usedSource, NSError *error) {
+            // CORREZIONE: executeMarketDataRequest
+            self.activeRequestID = [downloadManager executeMarketDataRequest:DataRequestTypeETFList
+                                                                  parameters:parameters
+                                                             preferredSource:self.preferredDataSource
+                                                                  completion:^(id result, DataSourceType usedSource, NSError *error) {
                 [self handleUnifiedResponse:result usedSource:usedSource error:error];
             }];
             break;
+        }
+        // Account requests necessitano gestione diversa
+        case APIPlaygroundRequestTypeAccounts:
+            [self executeAccountsRequestForAllBrokers];
+            return;
             
-        // Add more cases as needed...
+        case APIPlaygroundRequestTypeAccountDetails:
+        case APIPlaygroundRequestTypePositions:
+        case APIPlaygroundRequestTypeOrders:
+            [self executeAccountDataRequest:self.currentRequestType parameters:parameters];
+            return;
+            
         default:
             [self handleUnifiedResponse:nil
                              usedSource:DataSourceTypeOther
@@ -886,7 +925,7 @@
 
 - (NSDictionary *)serializeState {
     return @{
-        @"widgetType": @(self.widgetType),
+        @"widgetType": self.widgetType,
         @"currentRequestType": @(self.currentRequestType),
         @"preferredDataSource": @(self.preferredDataSource),
         @"symbol": self.symbolField.stringValue ?: @"",

@@ -12,6 +12,14 @@
 
 #import <Foundation/Foundation.h>
 
+typedef NS_ENUM(NSInteger, DataCacheType) {
+    DataCacheTypeQuote = 0,
+    DataCacheTypeMarketOverview,
+    DataCacheTypeHistorical,
+    DataCacheTypeCompanyInfo,
+    DataCacheTypeWatchlist
+};
+
 #pragma mark - Data Source Types
 
 typedef NS_ENUM(NSInteger, DataSourceType) {
@@ -21,7 +29,7 @@ typedef NS_ENUM(NSInteger, DataSourceType) {
     DataSourceTypeWebull,
     DataSourceTypeCustom,
     DataSourceTypeClaude,
-    DataSourceTypeOther  // For Yahoo Finance and other fallback APIs
+    DataSourceTypeOther  
 };
 
 #pragma mark - Data Source Capabilities
@@ -37,7 +45,8 @@ typedef NS_OPTIONS(NSInteger, DataSourceCapabilities) {
     DataSourceCapabilityFundamentals = 1 << 6,        // Company fundamental data
     DataSourceCapabilityOptions = 1 << 7,             // Options chains
     DataSourceCapabilityNews = 1 << 8,                // News feeds
-    DataSourceCapabilityAnalytics = 1 << 9            // Technical indicators/analytics
+    DataSourceCapabilityAnalytics = 1 << 9,
+    DataSourceCapabilityAI = 1 << 10
 };
 
 #pragma mark - UNIFIED BAR TIMEFRAMES

@@ -313,9 +313,9 @@ static NSString * const kDateColumn = @"Date";
         case BarTimeframe30Min:   return @"30m";
         case BarTimeframe1Hour:   return @"1h";
         case BarTimeframe4Hour:   return @"4h";
-        case BarTimeframe1Day:    return @"1D";
-        case BarTimeframe1Week:   return @"1W";
-        case BarTimeframe1Month:  return @"1M";
+        case BarTimeframeDaily:    return @"1D";
+        case BarTimeframeWeekly:   return @"1W";
+        case BarTimeframeMonthly:  return @"1M";
         default:                  return @"Unknown";
     }
 }

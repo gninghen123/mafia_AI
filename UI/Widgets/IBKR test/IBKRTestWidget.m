@@ -356,21 +356,24 @@
         
         [self appendResult:[NSString stringWithFormat:@"%@ Testing %@...", statusStr, sourceName]];
         
-        [downloadManager executeRequest:DataRequestTypeQuote
-                             parameters:@{@"symbol": @"AAPL"}
-                        preferredSource:sourceType
-                             completion:^(id result, DataSourceType usedSource, NSError *error) {
+        // CORREZIONE: Sostituito executeRequest con executeMarketDataRequest
+        [downloadManager executeMarketDataRequest:DataRequestTypeQuote
+                                        parameters:@{@"symbol": @"AAPL"}
+                                   preferredSource:sourceType
+                                        completion:^(id result, DataSourceType usedSource, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (error) {
                     [self appendResult:[NSString stringWithFormat:@"❌ %@ failed: %@", sourceName, error.localizedDescription]];
                 } else {
-                    NSString *actualSource = (usedSource == sourceType) ? sourceName : [NSString stringWithFormat:@"Fallback (%ld)", (long)usedSource];
+                    NSString *actualSource = (usedSource == sourceType) ?
+                        sourceName : [NSString stringWithFormat:@"Fallback (%ld)", (long)usedSource];
                     [self appendResult:[NSString stringWithFormat:@"✅ %@ → %@", sourceName, actualSource]];
                 }
             });
         }];
     }
 }
+
 
 - (void)twsPresetButtonClicked:(id)sender {
     [self.config loadTWSPreset];

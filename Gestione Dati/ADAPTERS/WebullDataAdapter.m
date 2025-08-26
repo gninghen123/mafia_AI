@@ -151,7 +151,7 @@
             bar.close = [barData[@"close"] doubleValue];
             bar.adjustedClose = bar.close; // Default
             bar.volume = [barData[@"volume"] longLongValue];
-            bar.timeframe = BarTimeframe1Day; // Default
+            bar.timeframe = BarTimeframeDaily; // Default
             
             [bars addObject:bar];
         }

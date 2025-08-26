@@ -597,9 +597,9 @@
         case BarTimeframe4Hour:
             return 2; // 2 barre indietro per altri intraday
             
-        case BarTimeframe1Day:
-        case BarTimeframe1Week:
-        case BarTimeframe1Month:
+        case BarTimeframeDaily:
+        case BarTimeframeWeekly:
+        case BarTimeframeMonthly:
         default:
             return 1; // 1 barra indietro per daily+
     }
@@ -616,9 +616,9 @@
         case BarTimeframe30Min:  return 1800;      // 30 minuti
         case BarTimeframe1Hour:  return 3600;      // 1 ora
         case BarTimeframe4Hour:  return 14400;     // 4 ore
-        case BarTimeframe1Day:   return 86400;     // 1 giorno
-        case BarTimeframe1Week:  return 604800;    // 1 settimana
-        case BarTimeframe1Month: return 2592000;   // ~30 giorni
+        case BarTimeframeDaily:   return 86400;     // 1 giorno
+        case BarTimeframeWeekly:  return 604800;    // 1 settimana
+        case BarTimeframeMonthly: return 2592000;   // ~30 giorni
         default: return 60;
     }
 }
@@ -946,7 +946,7 @@
     NSLog(@"📈 DataHub: Received %lu runtime HistoricalBarModel objects for %@", (unsigned long)bars.count, symbol);
     
     // Cache in memory with appropriate key
-    BarTimeframe timeframe = bars.firstObject ? bars.firstObject.timeframe : BarTimeframe1Day;
+    BarTimeframe timeframe = bars.firstObject ? bars.firstObject.timeframe : BarTimeframeDaily;
     NSString *cacheKey = [NSString stringWithFormat:@"historical_%@_%ld_%lu", symbol, (long)timeframe, (unsigned long)bars.count];
     [self cacheHistoricalBars:bars forKey:cacheKey];
     
@@ -1678,11 +1678,11 @@
             return (NSInteger)(interval / 3600);
         case BarTimeframe4Hour:
             return (NSInteger)(interval / 14400);
-        case BarTimeframe1Day:
+        case BarTimeframeDaily:
             return (NSInteger)(interval / 86400);
-        case BarTimeframe1Week:
+        case BarTimeframeWeekly:
             return (NSInteger)(interval / 604800);
-        case BarTimeframe1Month:
+        case BarTimeframeMonthly:
             return (NSInteger)(interval / 2592000);
     }
     

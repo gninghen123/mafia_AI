@@ -220,7 +220,7 @@
         bar.volume = volume;
         
         // Default timeframe (sarà settato dal DataManager se necessario)
-        bar.timeframe = BarTimeframe1Day;
+        bar.timeframe = BarTimeframeDaily;
         
         [bars addObject:bar];
     }

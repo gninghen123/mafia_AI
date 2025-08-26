@@ -427,11 +427,11 @@
         case MiniChartTimeframe1Hour:
             return BarTimeframe1Hour;
         case MiniChartTimeframeDaily:
-            return BarTimeframe1Day;
+            return BarTimeframeDaily;
         case MiniChartTimeframeWeekly:
-            return BarTimeframe1Week;
+            return BarTimeframeWeekly;
         case MiniChartTimeframeMonthly:
-            return BarTimeframe1Month;
+            return BarTimeframeMonthly;
     }
 }
 

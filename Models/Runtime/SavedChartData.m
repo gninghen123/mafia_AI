@@ -475,10 +475,10 @@
         case ChartTimeframe30Min: return BarTimeframe30Min;
         case ChartTimeframe1Hour: return BarTimeframe1Hour;
         case ChartTimeframe4Hour: return BarTimeframe4Hour;
-        case ChartTimeframeDaily: return BarTimeframe1Day;
-        case ChartTimeframeWeekly: return BarTimeframe1Week;
-        case ChartTimeframeMonthly: return BarTimeframe1Month;
-        default: return BarTimeframe1Day;
+        case ChartTimeframeDaily: return BarTimeframeDaily;
+        case ChartTimeframeWeekly: return BarTimeframeWeekly;
+        case ChartTimeframeMonthly: return BarTimeframeMonthly;
+        default: return BarTimeframeDaily;
     }
 }
 

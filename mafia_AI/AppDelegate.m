@@ -299,36 +299,8 @@
     [self setupClaudeDataSource];
 }
 
-// NUOVO: Utility method to test Claude connection
-- (void)testClaudeConnection:(void (^)(BOOL success, NSError *error))completion {
-    DownloadManager *downloadManager = [DownloadManager sharedManager];
-    
-    if (![downloadManager isDataSourceConnected:DataSourceTypeClaude]) {
-        NSError *error = [NSError errorWithDomain:@"AppDelegate"
-                                             code:503
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Claude data source not connected"}];
-        if (completion) completion(NO, error);
-        return;
-    }
-    
-    // Execute a simple test request
-    NSDictionary *testParams = @{
-        @"text": @"Hello, this is a test.",
-        @"maxTokens": @(10),
-        @"temperature": @(0.1),
-        @"requestType": @"textSummary"
-    };
-    
-    [downloadManager executeRequest:DataRequestTypeTextSummary
-                         parameters:testParams
-                         completion:^(id result, DataSourceType usedSource, NSError *error) {
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(error == nil, error);
-            });
-        }
-    }];
-}
+
+
 
 #pragma mark - Window Restoration
 

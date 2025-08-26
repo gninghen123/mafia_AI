@@ -32,7 +32,7 @@
     if (self) {
         _sourceType = DataSourceTypeYahoo;
         _capabilities = DataSourceCapabilityQuotes |
-                       DataSourceCapabilityHistorical |
+        DataSourceCapabilityHistoricalData |
                        DataSourceCapabilityFundamentals |
                        DataSourceCapabilityNews;
         _sourceName = @"Yahoo Finance";
@@ -263,9 +263,9 @@
         case BarTimeframe15Min: return @"15m";
         case BarTimeframe30Min: return @"30m";
         case BarTimeframe1Hour: return @"60m";
-        case BarTimeframe1Day: return @"1d";
-        case BarTimeframe1Week: return @"1wk";
-        case BarTimeframe1Month: return @"1mo";
+        case BarTimeframeDaily: return @"1d";
+        case BarTimeframeWeekly: return @"1wk";
+        case BarTimeframeMonthly: return @"1mo";
         default: return @"1d";
     }
 }

@@ -72,7 +72,7 @@
         runtimeBar.volume = [rawBar[@"volume"] longLongValue];
         
         // Set default timeframe (should be determined by request parameters)
-        runtimeBar.timeframe = BarTimeframe1Day;
+        runtimeBar.timeframe = BarTimeframeDaily;
         
         [runtimeBars addObject:runtimeBar];
     }

@@ -3,12 +3,12 @@
 //  TradingApp
 //
 //  Implementation of multi-account portfolio management
+//  SIMPLIFIED VERSION: No advanced caching - only standardized data from DataManager
 //
 
 #import "DataHub+Portfolio.h"
-#import "DataManager+Portfolio.h"  // ✅ AGGIUNTO IMPORT
-#import "DataHub+MarketData.h"     // ✅ AGGIUNTO IMPORT per subscribeToQuoteUpdatesForSymbol
-#import "SchwabDataSource.h"
+#import "DataManager+Portfolio.h"
+#import "DataHub+MarketData.h"
 #import "DataHub+Private.h"
 
 // Portfolio notification names
@@ -21,15 +21,15 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
 
 @implementation DataHub (Portfolio)
 
-#pragma mark - Account Discovery
+#pragma mark - Account Discovery & Management
 
 - (void)getAvailableAccountsWithCompletion:(void(^)(NSArray<AccountModel *> *accounts, NSError *error))completion {
     if (!completion) return;
     
     NSLog(@"📱 DataHub: Getting available accounts across all brokers");
     
-    // Request accounts from DataManager (which will use DownloadManager to select best source)
-    [[DataManager sharedManager] requestAccountsWithCompletion:^(NSArray *rawAccounts, NSError *error) {
+    // Request accounts from DataManager (already standardized)
+    [[DataManager sharedManager] requestAccountsWithCompletion:^(NSArray *standardizedAccounts, NSError *error) {
         if (error) {
             NSLog(@"❌ DataHub: Failed to get accounts: %@", error);
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -38,17 +38,21 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
             return;
         }
         
-        // Convert raw account data to AccountModel objects
+        // Create AccountModel objects from standardized data
         NSMutableArray<AccountModel *> *accountModels = [NSMutableArray array];
         
-        for (NSDictionary *rawAccount in rawAccounts) {
-            AccountModel *account = [self convertRawAccountToModel:rawAccount];
-            if (account) {
-                [accountModels addObject:account];
+        for (id accountData in standardizedAccounts) {
+            if ([accountData isKindOfClass:[NSDictionary class]]) {
+                AccountModel *account = [self createAccountModelFromStandardizedData:(NSDictionary *)accountData];
+                if (account) {
+                    [accountModels addObject:account];
+                }
+            } else {
+                NSLog(@"⚠️ DataHub: Unexpected account data format from DataManager: %@", [accountData class]);
             }
         }
         
-        NSLog(@"✅ DataHub: Loaded %lu accounts", (unsigned long)accountModels.count);
+        NSLog(@"✅ DataHub: Created %lu AccountModel objects from standardized data", (unsigned long)accountModels.count);
         
         dispatch_async(dispatch_get_main_queue(), ^{
             completion([accountModels copy], nil);
@@ -64,7 +68,7 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
 - (void)getAccountDetails:(NSString *)accountId completion:(void(^)(AccountModel *account, NSError *error))completion {
     if (!accountId || !completion) return;
     
-    [[DataManager sharedManager] requestAccountDetails:accountId completion:^(NSDictionary *rawDetails, NSError *error) {
+    [[DataManager sharedManager] requestAccountDetails:accountId completion:^(NSDictionary *standardizedDetails, NSError *error) {
         if (error) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 completion(nil, error);
@@ -72,123 +76,86 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
             return;
         }
         
-        AccountModel *account = [self convertRawAccountToModel:rawDetails];
+        AccountModel *account = [self createAccountModelFromStandardizedData:standardizedDetails];
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(account, nil);
         });
     }];
 }
 
-#pragma mark - Portfolio Data with Smart Caching
+- (void)refreshAccountConnectionStatus:(NSString *)accountId completion:(void(^)(BOOL isConnected, NSError *error))completion {
+    if (!accountId || !completion) return;
+    
+    // For now, assume connected if we can get account details
+    [self getAccountDetails:accountId completion:^(AccountModel *account, NSError *error) {
+        if (completion) {
+            completion(account ? account.isConnected : NO, error);
+        }
+    }];
+}
+
+#pragma mark - Multi-Account Portfolio Data (Simplified - No Caching)
 
 - (void)getPortfolioSummaryForAccount:(NSString *)accountId completion:(void(^)(PortfolioSummaryModel *summary, BOOL isFresh))completion {
     if (!accountId || !completion) return;
     
-    NSString *cacheKey = [NSString stringWithFormat:@"portfolio_summary_%@", accountId];
+    NSLog(@"📊 DataHub: Getting portfolio summary for account %@", accountId);
     
-    // Check cache first (30 second TTL for portfolio summary)
-    PortfolioSummaryModel *cachedSummary = [self getCachedPortfolioSummary:cacheKey];
-    BOOL isCacheFresh = [self isCacheFresh:cacheKey withTTL:30.0];
-    
-    if (isCacheFresh && cachedSummary) {
-        NSLog(@"✅ DataHub: Returning fresh cached portfolio summary for account %@", accountId);
-        dispatch_async(dispatch_get_main_queue(), ^{
-            completion(cachedSummary, YES);
-        });
-        return;
-    }
-    
-    // Return stale data first if available
-    if (cachedSummary) {
-        NSLog(@"📤 DataHub: Returning stale cached portfolio summary for %@, fetching fresh...", accountId);
-        dispatch_async(dispatch_get_main_queue(), ^{
-            completion(cachedSummary, NO);
-        });
-    }
-    
-    // Fetch fresh data
-    [[DataManager sharedManager] requestPortfolioSummary:accountId completion:^(NSDictionary *rawSummary, NSError *error) {
+    // Fetch data from DataManager (always fresh for now)
+    [[DataManager sharedManager] requestPortfolioSummary:accountId completion:^(NSDictionary *standardizedSummary, NSError *error) {
         if (error) {
             NSLog(@"❌ DataHub: Failed to get portfolio summary for %@: %@", accountId, error);
-            if (!cachedSummary) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(nil, NO);
-                });
-            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, NO);
+            });
             return;
         }
         
-        PortfolioSummaryModel *summary = [self convertRawPortfolioSummaryToModel:rawSummary];
-        if (summary) {
-            // Cache the fresh data
-            [self cachePortfolioSummary:summary forKey:cacheKey];
+        PortfolioSummaryModel *summary = [self createPortfolioSummaryFromStandardizedData:standardizedSummary];
+        
+        NSLog(@"✅ DataHub: Loaded portfolio summary for account %@", accountId);
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(summary, YES); // Always fresh since we don't cache yet
             
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(summary, YES);
-                
-                // Broadcast update
-                [[NSNotificationCenter defaultCenter] postNotificationName:PortfolioSummaryUpdatedNotification
-                                                                    object:self
-                                                                  userInfo:@{@"accountId": accountId, @"summary": summary}];
-            });
-        }
+            // Broadcast update
+            [[NSNotificationCenter defaultCenter] postNotificationName:PortfolioSummaryUpdatedNotification
+                                                                object:self
+                                                              userInfo:@{@"accountId": accountId, @"summary": summary}];
+        });
     }];
 }
 
 - (void)getPositionsForAccount:(NSString *)accountId completion:(void(^)(NSArray<AdvancedPositionModel *> *positions, BOOL isFresh))completion {
     if (!accountId || !completion) return;
     
-    NSString *cacheKey = [NSString stringWithFormat:@"positions_%@", accountId];
+    NSLog(@"📈 DataHub: Getting positions for account %@", accountId);
     
-    // Check cache (5 minute TTL for position list, prices updated real-time separately)
-    NSArray<AdvancedPositionModel *> *cachedPositions = [self getCachedPositions:cacheKey];
-    BOOL isCacheFresh = [self isCacheFresh:cacheKey withTTL:300.0]; // 5 minutes
-    
-    if (isCacheFresh && cachedPositions) {
-        NSLog(@"✅ DataHub: Returning fresh cached positions for account %@ (%lu positions)",
-              accountId, (unsigned long)cachedPositions.count);
-        dispatch_async(dispatch_get_main_queue(), ^{
-            completion(cachedPositions, YES);
-        });
-        return;
-    }
-    
-    // Return stale data first if available
-    if (cachedPositions) {
-        NSLog(@"📤 DataHub: Returning stale cached positions for %@, fetching fresh...", accountId);
-        dispatch_async(dispatch_get_main_queue(), ^{
-            completion(cachedPositions, NO);
-        });
-    }
-    
-    // Fetch fresh positions
-    [[DataManager sharedManager] requestPositions:accountId completion:^(NSArray *rawPositions, NSError *error) {
+    // Fetch positions from DataManager (always fresh for now)
+    [[DataManager sharedManager] requestPositions:accountId completion:^(NSArray *standardizedPositions, NSError *error) {
         if (error) {
             NSLog(@"❌ DataHub: Failed to get positions for %@: %@", accountId, error);
-            if (!cachedPositions) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(@[], NO);
-                });
-            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(@[], NO);
+            });
             return;
         }
         
         NSMutableArray<AdvancedPositionModel *> *positions = [NSMutableArray array];
         
-        for (NSDictionary *rawPosition in rawPositions) {
-            AdvancedPositionModel *position = [self convertRawPositionToModel:rawPosition];
-            if (position) {
-                [positions addObject:position];
+        for (id positionData in standardizedPositions) {
+            if ([positionData isKindOfClass:[NSDictionary class]]) {
+                AdvancedPositionModel *position = [self createPositionModelFromStandardizedData:(NSDictionary *)positionData];
+                if (position) {
+                    [positions addObject:position];
+                }
             }
         }
-        
-        // Cache the fresh positions
-        [self cachePositions:positions forKey:cacheKey];
         
         NSLog(@"✅ DataHub: Loaded %lu positions for account %@", (unsigned long)positions.count, accountId);
         
         dispatch_async(dispatch_get_main_queue(), ^{
-            completion([positions copy], YES);
+            completion([positions copy], YES); // Always fresh since we don't cache yet
             
             // Broadcast update
             [[NSNotificationCenter defaultCenter] postNotificationName:PortfolioPositionsUpdatedNotification
@@ -207,62 +174,34 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
                  completion:(void(^)(NSArray<AdvancedOrderModel *> *orders, BOOL isFresh))completion {
     if (!accountId || !completion) return;
     
-    NSString *cacheKey = [NSString stringWithFormat:@"orders_%@_%@", accountId, statusFilter ?: @"all"];
+    NSLog(@"📋 DataHub: Getting orders for account %@ (filter: %@)", accountId, statusFilter ?: @"all");
     
-    // Different TTL based on order status
-    NSTimeInterval ttl = 15.0; // 15 seconds for active orders
-    if (statusFilter && ([statusFilter isEqualToString:@"FILLED"] || [statusFilter isEqualToString:@"CANCELLED"])) {
-        ttl = 300.0; // 5 minutes for completed orders
-    }
-    
-    // Check cache
-    NSArray<AdvancedOrderModel *> *cachedOrders = [self getCachedOrders:cacheKey];
-    BOOL isCacheFresh = [self isCacheFresh:cacheKey withTTL:ttl];
-    
-    if (isCacheFresh && cachedOrders) {
-        NSLog(@"✅ DataHub: Returning fresh cached orders for account %@ (filter: %@, %lu orders)",
-              accountId, statusFilter ?: @"all", (unsigned long)cachedOrders.count);
-        dispatch_async(dispatch_get_main_queue(), ^{
-            completion(cachedOrders, YES);
-        });
-        return;
-    }
-    
-    // Return stale data first
-    if (cachedOrders) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            completion(cachedOrders, NO);
-        });
-    }
-    
-    // Fetch fresh orders
-    [[DataManager sharedManager] requestOrders:accountId withStatus:statusFilter completion:^(NSArray *rawOrders, NSError *error) {
+    // Fetch orders from DataManager (always fresh for now)
+    [[DataManager sharedManager] requestOrders:accountId withStatus:statusFilter completion:^(NSArray *standardizedOrders, NSError *error) {
         if (error) {
             NSLog(@"❌ DataHub: Failed to get orders for %@: %@", accountId, error);
-            if (!cachedOrders) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(@[], NO);
-                });
-            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(@[], NO);
+            });
             return;
         }
         
         NSMutableArray<AdvancedOrderModel *> *orders = [NSMutableArray array];
         
-        for (NSDictionary *rawOrder in rawOrders) {
-            AdvancedOrderModel *order = [self convertRawOrderToModel:rawOrder];
-            if (order) {
-                [orders addObject:order];
+        for (id orderData in standardizedOrders) {
+            if ([orderData isKindOfClass:[NSDictionary class]]) {
+                AdvancedOrderModel *order = [self createOrderModelFromStandardizedData:(NSDictionary *)orderData];
+                if (order) {
+                    [orders addObject:order];
+                }
             }
         }
         
-        // Cache the fresh orders
-        [self cacheOrders:orders forKey:cacheKey];
-        
-        NSLog(@"✅ DataHub: Loaded %lu orders for account %@", (unsigned long)orders.count, accountId);
+        NSLog(@"✅ DataHub: Loaded %lu orders for account %@ (filter: %@)",
+              (unsigned long)orders.count, accountId, statusFilter ?: @"all");
         
         dispatch_async(dispatch_get_main_queue(), ^{
-            completion([orders copy], YES);
+            completion([orders copy], YES); // Always fresh since we don't cache yet
             
             // Broadcast update
             [[NSNotificationCenter defaultCenter] postNotificationName:PortfolioOrdersUpdatedNotification
@@ -272,26 +211,23 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
     }];
 }
 
-#pragma mark - Smart Subscription System
+#pragma mark - Real-time Subscription Management
 
 - (void)subscribeToPortfolioUpdatesForAccount:(NSString *)accountId {
-    if (!accountId) return;
+    NSLog(@"📡 DataHub: Setting up portfolio subscriptions for account %@", accountId);
     
-    NSLog(@"📡 DataHub: Subscribing to portfolio updates for account %@", accountId);
-    
-    // Stop any existing portfolio subscription
-    [self stopPortfolioPollingForCurrentAccount];
-    
-    // Store current account
+    // Store current account for subscription management
     [[NSUserDefaults standardUserDefaults] setObject:accountId forKey:@"CurrentPortfolioAccountId"];
     
-    // Load positions to get symbols for real-time pricing
+    // Get positions to subscribe to symbols
     [self getPositionsForAccount:accountId completion:^(NSArray<AdvancedPositionModel *> *positions, BOOL isFresh) {
         
         // Subscribe to real-time prices for all position symbols
         NSMutableSet *symbols = [NSMutableSet set];
         for (AdvancedPositionModel *position in positions) {
-            [symbols addObject:position.symbol];
+            if (position.symbol && position.symbol.length > 0) {
+                [symbols addObject:position.symbol];
+            }
         }
         
         NSLog(@"📈 DataHub: Subscribing to real-time prices for %lu symbols in account %@",
@@ -301,7 +237,7 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
             [self subscribeToQuoteUpdatesForSymbol:symbol];
         }
         
-        // Start portfolio-specific polling timers
+        // Start portfolio-specific polling timers (simplified for now)
         [self startPortfolioPollingForAccount:accountId];
     }];
 }
@@ -318,191 +254,145 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
     [self subscribeToPortfolioUpdatesForAccount:accountId];
 }
 
-#pragma mark - Helper Methods (Private Implementation)
+#pragma mark - Helper Methods for Creating Models from Standardized Data
 
-- (AccountModel *)convertRawAccountToModel:(NSDictionary *)rawAccount {
-    if (!rawAccount || ![rawAccount isKindOfClass:[NSDictionary class]]) {
+- (AccountModel *)createAccountModelFromStandardizedData:(NSDictionary *)standardizedData {
+    if (!standardizedData || ![standardizedData isKindOfClass:[NSDictionary class]]) {
+        NSLog(@"❌ DataHub: Invalid standardized account data: %@", standardizedData);
         return nil;
     }
     
     AccountModel *account = [[AccountModel alloc] init];
     
-    // Map common fields from Schwab API response
-    account.accountId = rawAccount[@"accountNumber"] ?: rawAccount[@"accountId"] ?: @"";
-    account.accountType = rawAccount[@"type"] ?: rawAccount[@"accountType"] ?: @"UNKNOWN";
-    account.brokerName = @"SCHWAB"; // Default to Schwab for now
-    account.displayName = [NSString stringWithFormat:@"SCHWAB-%@", [account.accountId substringFromIndex:MAX(0, (NSInteger)account.accountId.length - 4)]];
-    account.isConnected = YES; // If we got data, assume connected
-    account.isPrimary = NO; // Will be set elsewhere
-    account.lastUpdated = [NSDate date];
+    // Extract standardized fields safely
+    id accountIdValue = standardizedData[@"accountId"] ?: standardizedData[@"accountNumber"];
+    account.accountId = [accountIdValue isKindOfClass:[NSString class]] ? accountIdValue : @"UNKNOWN";
     
-    NSLog(@"🔄 Converted raw account to AccountModel: %@", account.displayName);
+    id typeValue = standardizedData[@"type"] ?: standardizedData[@"accountType"];
+    account.accountType = [typeValue isKindOfClass:[NSString class]] ? typeValue : @"UNKNOWN";
+    
+    id brokerValue = standardizedData[@"brokerName"] ?: standardizedData[@"brokerIndicator"];
+    account.brokerName = [brokerValue isKindOfClass:[NSString class]] ? brokerValue : @"UNKNOWN";
+    
+    // Generate display name if not provided
+    if (standardizedData[@"displayName"] && [standardizedData[@"displayName"] isKindOfClass:[NSString class]]) {
+        account.displayName = standardizedData[@"displayName"];
+    } else {
+        // Use the formattedDisplayName method from AccountModel
+        account.displayName = [account formattedDisplayName];
+    }
+    
+    account.isConnected = [standardizedData[@"isConnected"] boolValue];
+    account.isPrimary = [standardizedData[@"isPrimary"] boolValue];
+    
+    // Last updated date
+    if ([standardizedData[@"lastUpdated"] isKindOfClass:[NSDate class]]) {
+        account.lastUpdated = standardizedData[@"lastUpdated"];
+    } else {
+        account.lastUpdated = [NSDate date];
+    }
+    
+    NSLog(@"✅ DataHub: Created AccountModel: %@ (ID: %@, Broker: %@)",
+          account.displayName, account.accountId, account.brokerName);
     
     return account;
 }
 
-- (PortfolioSummaryModel *)convertRawPortfolioSummaryToModel:(NSDictionary *)rawSummary {
-    if (!rawSummary || ![rawSummary isKindOfClass:[NSDictionary class]]) {
+- (PortfolioSummaryModel *)createPortfolioSummaryFromStandardizedData:(NSDictionary *)standardizedData {
+    if (!standardizedData || ![standardizedData isKindOfClass:[NSDictionary class]]) {
         return nil;
     }
     
     PortfolioSummaryModel *summary = [[PortfolioSummaryModel alloc] init];
     
-    // Map Schwab API fields to our model
-    summary.accountId = rawSummary[@"accountNumber"] ?: rawSummary[@"accountId"] ?: @"";
-    summary.brokerName = @"SCHWAB";
+    // Extract standardized portfolio values
+    summary.accountId = [standardizedData[@"accountId"] isKindOfClass:[NSString class]] ?
+                       standardizedData[@"accountId"] : @"";
+    summary.brokerName = [standardizedData[@"brokerName"] isKindOfClass:[NSString class]] ?
+                        standardizedData[@"brokerName"] : @"";
     
-    // Extract portfolio values
-    NSDictionary *balances = rawSummary[@"currentBalances"] ?: rawSummary[@"balances"] ?: rawSummary;
+    NSDictionary *balances = standardizedData[@"currentBalances"] ?: standardizedData[@"balances"] ?: standardizedData;
     
-    summary.totalValue = [balances[@"liquidationValue"] doubleValue] ?: [balances[@"totalValue"] doubleValue];
-    summary.dayPL = [balances[@"dayPL"] doubleValue] ?: 0.0;
-    summary.dayPLPercent = [balances[@"dayPLPercent"] doubleValue] ?: 0.0;
-    summary.buyingPower = [balances[@"buyingPower"] doubleValue] ?: [balances[@"availableFunds"] doubleValue];
-    summary.cashBalance = [balances[@"cashBalance"] doubleValue] ?: [balances[@"moneyMarketFund"] doubleValue];
-    summary.marginUsed = [balances[@"marginUsed"] doubleValue] ?: 0.0;
-    summary.dayTradesLeft = [balances[@"dayTradesLeft"] integerValue] ?: 3; // Default PDT limit
+    summary.totalValue = [balances[@"liquidationValue"] ?: balances[@"totalValue"] ?: @0 doubleValue];
+    summary.cashBalance = [balances[@"cashBalance"] ?: @0 doubleValue];
+    summary.buyingPower = [balances[@"buyingPower"] ?: @0 doubleValue];
+    summary.marginUsed = [balances[@"marginUsed"] ?: @0 doubleValue];
+    summary.dayPL = [balances[@"dayPL"] ?: @0 doubleValue];
+    summary.dayPLPercent = [balances[@"dayPLPercent"] ?: @0 doubleValue];
+    
     summary.lastUpdated = [NSDate date];
-    
-    NSLog(@"🔄 Converted raw portfolio summary - Total: $%.0f, Day P&L: $%.0f",
-          summary.totalValue, summary.dayPL);
     
     return summary;
 }
 
-- (AdvancedPositionModel *)convertRawPositionToModel:(NSDictionary *)rawPosition {
-    if (!rawPosition || ![rawPosition isKindOfClass:[NSDictionary class]]) {
+- (AdvancedPositionModel *)createPositionModelFromStandardizedData:(NSDictionary *)standardizedData {
+    if (!standardizedData || ![standardizedData isKindOfClass:[NSDictionary class]]) {
         return nil;
     }
     
     AdvancedPositionModel *position = [[AdvancedPositionModel alloc] init];
     
-    // Extract instrument info
-    NSDictionary *instrument = rawPosition[@"instrument"] ?: @{};
-    position.symbol = instrument[@"symbol"] ?: rawPosition[@"symbol"] ?: @"";
-    position.accountId = rawPosition[@"accountNumber"] ?: rawPosition[@"accountId"] ?: @"";
+    // Extract standardized position data safely
+    position.symbol = [standardizedData[@"symbol"] isKindOfClass:[NSString class]] ?
+                     standardizedData[@"symbol"] : @"";
+    position.quantity = [standardizedData[@"quantity"] ?: @0 doubleValue];
+    position.avgCost = [standardizedData[@"averagePrice"] ?: standardizedData[@"avgCost"] ?: @0 doubleValue];
+    position.currentPrice = [standardizedData[@"currentPrice"] ?: @0 doubleValue];
+    position.marketValue = [standardizedData[@"marketValue"] ?: @0 doubleValue];
+    position.unrealizedPL = [standardizedData[@"unrealizedPL"] ?: @0 doubleValue];
+    position.unrealizedPLPercent = [standardizedData[@"unrealizedPLPercent"] ?: @0 doubleValue];
     
-    // Position quantities and costs
-    position.quantity = [rawPosition[@"longQuantity"] doubleValue] - [rawPosition[@"shortQuantity"] doubleValue];
-    position.avgCost = [rawPosition[@"averagePrice"] doubleValue] ?: [rawPosition[@"averageCost"] doubleValue];
-    
-    // Market data (will be updated real-time)
-    position.currentPrice = [rawPosition[@"marketValue"] doubleValue] / MAX(1, ABS(position.quantity));
-    position.marketValue = [rawPosition[@"marketValue"] doubleValue];
-    
-    // P&L calculations
-    double totalCost = position.quantity * position.avgCost;
-    position.unrealizedPL = position.marketValue - totalCost;
-    if (totalCost != 0) {
-        position.unrealizedPLPercent = (position.unrealizedPL / totalCost) * 100.0;
-    }
-    
+    // Set price update timestamp
     position.priceLastUpdated = [NSDate date];
-    
-    NSLog(@"🔄 Converted raw position - %@ %.0f shares @ $%.2f",
-          position.symbol, position.quantity, position.avgCost);
     
     return position;
 }
 
-- (AdvancedOrderModel *)convertRawOrderToModel:(NSDictionary *)rawOrder {
-    if (!rawOrder || ![rawOrder isKindOfClass:[NSDictionary class]]) {
+- (AdvancedOrderModel *)createOrderModelFromStandardizedData:(NSDictionary *)standardizedData {
+    if (!standardizedData || ![standardizedData isKindOfClass:[NSDictionary class]]) {
         return nil;
     }
     
     AdvancedOrderModel *order = [[AdvancedOrderModel alloc] init];
     
-    // Basic order info
-    order.orderId = rawOrder[@"orderId"] ?: rawOrder[@"orderNumber"] ?: @"";
-    order.accountId = rawOrder[@"accountNumber"] ?: rawOrder[@"accountId"] ?: @"";
-    order.status = rawOrder[@"status"] ?: @"UNKNOWN";
-    order.orderType = rawOrder[@"orderType"] ?: @"UNKNOWN";
-    order.timeInForce = rawOrder[@"duration"] ?: rawOrder[@"timeInForce"] ?: @"DAY";
+    // Extract standardized order data safely
+    order.orderId = [standardizedData[@"orderId"] isKindOfClass:[NSString class]] ?
+                   standardizedData[@"orderId"] : @"";
+    order.symbol = [standardizedData[@"symbol"] isKindOfClass:[NSString class]] ?
+                  standardizedData[@"symbol"] : @"";
+    order.side = [standardizedData[@"side"] isKindOfClass:[NSString class]] ?
+                standardizedData[@"side"] : @"";
+    order.orderType = [standardizedData[@"orderType"] isKindOfClass:[NSString class]] ?
+                     standardizedData[@"orderType"] : @"";
+    order.status = [standardizedData[@"status"] isKindOfClass:[NSString class]] ?
+                  standardizedData[@"status"] : @"";
     
-    // Extract order leg info (Schwab uses orderLegCollection)
-    NSArray *orderLegs = rawOrder[@"orderLegCollection"] ?: @[];
-    if (orderLegs.count > 0) {
-        NSDictionary *firstLeg = orderLegs[0];
-        NSDictionary *instrument = firstLeg[@"instrument"] ?: @{};
-        
-        order.symbol = instrument[@"symbol"] ?: @"";
-        order.side = firstLeg[@"instruction"] ?: @"";
-        order.quantity = [firstLeg[@"quantity"] doubleValue];
-        order.filledQuantity = [rawOrder[@"filledQuantity"] doubleValue];
-    }
-    
-    // Prices
-    order.price = [rawOrder[@"price"] doubleValue];
-    order.stopPrice = [rawOrder[@"stopPrice"] doubleValue];
-    order.avgFillPrice = [rawOrder[@"avgFillPrice"] doubleValue];
+    order.quantity = [standardizedData[@"quantity"] ?: @0 doubleValue];
+    order.filledQuantity = [standardizedData[@"filledQuantity"] ?: @0 doubleValue];
+    order.price = [standardizedData[@"price"] ?: @0 doubleValue];
+    order.stopPrice = [standardizedData[@"stopPrice"] ?: @0 doubleValue];
     
     // Dates
-    NSString *enteredTime = rawOrder[@"enteredTime"];
-    if (enteredTime) {
-        // Parse ISO date string
-        NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-        formatter.dateFormat = @"yyyy-MM-dd'T'HH:mm:ss.SSSZ";
-        order.createdDate = [formatter dateFromString:enteredTime] ?: [NSDate date];
-    } else {
-        order.createdDate = [NSDate date];
+    if ([standardizedData[@"placedTime"] isKindOfClass:[NSDate class]]) {
+        order.createdDate = standardizedData[@"placedTime"];
+    } else if ([standardizedData[@"createdDate"] isKindOfClass:[NSDate class]]) {
+        order.createdDate = standardizedData[@"createdDate"];
     }
     
-    order.updatedDate = [NSDate date];
-    
-    NSLog(@"🔄 Converted raw order - %@ %@ %.0f %@ @ $%.2f",
-          order.side, order.symbol, order.quantity, order.orderType, order.price);
+    if ([standardizedData[@"lastModified"] isKindOfClass:[NSDate class]]) {
+        order.updatedDate = standardizedData[@"lastModified"];
+    } else if ([standardizedData[@"updatedDate"] isKindOfClass:[NSDate class]]) {
+        order.updatedDate = standardizedData[@"updatedDate"];
+    }
     
     return order;
 }
 
-// Cache management methods
-- (void)cachePortfolioSummary:(PortfolioSummaryModel *)summary forKey:(NSString *)key {
-    // TODO: Implement portfolio summary caching
-    NSLog(@"📝 TODO: Cache portfolio summary for key %@", key);
-}
-
-- (void)cachePositions:(NSArray *)positions forKey:(NSString *)key {
-    // TODO: Implement positions caching
-    NSLog(@"📝 TODO: Cache %lu positions for key %@", (unsigned long)[positions count], key);
-}
-
-- (void)cacheOrders:(NSArray *)orders forKey:(NSString *)key {
-    // TODO: Implement orders caching
-    NSLog(@"📝 TODO: Cache %lu orders for key %@", (unsigned long)[orders count], key);
-}
-
-- (PortfolioSummaryModel *)getCachedPortfolioSummary:(NSString *)key {
-    // TODO: Implement portfolio summary cache retrieval
-    NSLog(@"📝 TODO: Get cached portfolio summary for key %@", key);
-    return nil;
-}
-
-- (NSArray *)getCachedPositions:(NSString *)key {
-    // TODO: Implement positions cache retrieval
-    NSLog(@"📝 TODO: Get cached positions for key %@", key);
-    return nil;
-}
-
-- (NSArray *)getCachedOrders:(NSString *)key {
-    // TODO: Implement orders cache retrieval
-    NSLog(@"📝 TODO: Get cached orders for key %@", key);
-    return nil;
-}
-
-- (BOOL)isCacheFresh:(NSString *)key withTTL:(NSTimeInterval)ttl {
-    // TODO: Implement cache freshness check
-    NSLog(@"📝 TODO: Check cache freshness for key %@ with TTL %.0fs", key, ttl);
-    return NO;
-}
+#pragma mark - Private Helper Methods (Simplified)
 
 - (void)startPortfolioPollingForAccount:(NSString *)accountId {
-    // TODO: Implement portfolio-specific polling timers
-    NSLog(@"📝 TODO: Start portfolio polling for account %@", accountId);
-}
-
-- (void)stopPortfolioPollingForCurrentAccount {
-    // TODO: Stop existing timers
-    NSLog(@"📝 TODO: Stop portfolio polling for current account");
+    // Simplified polling - TODO: Implement proper timers later
+    NSLog(@"📊 DataHub: Portfolio polling started for account %@ (simplified)", accountId);
 }
 
 @end

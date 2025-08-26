@@ -608,75 +608,86 @@
                       requestID:(NSString *)requestID
                      completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
     
-    // ✅ NUOVO: Controllare se abbiamo un accountId nei parametri per IBKR
     NSString *accountId = parameters[@"accountId"];
     
-    if (accountId && [dataSource isKindOfClass:NSClassFromString(@"IBKRDataSource")]) {
-        // ✅ IBKR con account specifico - usa getPositions:completion:
-        NSLog(@"DownloadManager: Using IBKR-specific positions request for account %@", accountId);
-        
-        [dataSource performSelector:@selector(getPositions:completion:)
-                          withObject:accountId
-                          withObject:^(NSArray *positions, NSError *error) {
-            if (!self.activeRequests[requestID]) {
-                return;
-            }
+    if (accountId) {
+        // ✅ UNIFICATO: Richiesta positions per account specifico
+        if ([dataSource respondsToSelector:@selector(fetchPositionsForAccount:completion:)]) {
+            NSLog(@"DownloadManager: Using unified fetchPositionsForAccount for account %@ with %@", accountId, dataSource.sourceName);
             
-            if (error && self.fallbackEnabled && index < sources.count - 1) {
-                sourceInfo.failureCount++;
-                sourceInfo.lastFailureTime = [NSDate date];
-                
-                [self executeRequestWithSources:sources
-                                    requestType:DataRequestTypePositions
-                                     parameters:parameters
-                                    sourceIndex:index + 1
-                                      requestID:requestID
-                                     completion:completion];
-            } else {
-                [self.activeRequests removeObjectForKey:requestID];
-                if (completion) {
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        completion(positions, sourceInfo.type, error);
-                    });
+            [dataSource fetchPositionsForAccount:accountId completion:^(NSArray *positions, NSError *error) {
+                if (!self.activeRequests[requestID]) {
+                    return;
                 }
-            }
-        }];
-    } else if ([dataSource respondsToSelector:@selector(fetchPositionsWithCompletion:)]) {
-        // ✅ Usa il metodo generico del protocollo DataSource
-        [dataSource fetchPositionsWithCompletion:^(NSArray *positions, NSError *error) {
-            if (!self.activeRequests[requestID]) {
-                return;
-            }
-            
-            if (error && self.fallbackEnabled && index < sources.count - 1) {
-                sourceInfo.failureCount++;
-                sourceInfo.lastFailureTime = [NSDate date];
                 
-                [self executeRequestWithSources:sources
-                                    requestType:DataRequestTypePositions
-                                     parameters:parameters
-                                    sourceIndex:index + 1
-                                      requestID:requestID
-                                     completion:completion];
-            } else {
-                [self.activeRequests removeObjectForKey:requestID];
-                if (completion) {
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        completion(positions, sourceInfo.type, error);
-                    });
+                if (error && self.fallbackEnabled && index < sources.count - 1) {
+                    sourceInfo.failureCount++;
+                    sourceInfo.lastFailureTime = [NSDate date];
+                    
+                    [self executeRequestWithSources:sources
+                                        requestType:DataRequestTypePositions
+                                         parameters:parameters
+                                        sourceIndex:index + 1
+                                          requestID:requestID
+                                         completion:completion];
+                } else {
+                    [self.activeRequests removeObjectForKey:requestID];
+                    if (completion) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            completion(positions ?: @[], sourceInfo.type, error);
+                        });
+                    }
                 }
-            }
-        }];
+            }];
+        } else {
+            NSLog(@"⚠️ DownloadManager: %@ doesn't support fetchPositionsForAccount, trying next source", dataSource.sourceName);
+            [self executeRequestWithSources:sources
+                                requestType:DataRequestTypePositions
+                                 parameters:parameters
+                                sourceIndex:index + 1
+                                  requestID:requestID
+                                 completion:completion];
+        }
     } else {
-        [self executeRequestWithSources:sources
-                            requestType:DataRequestTypePositions
-                             parameters:parameters
-                            sourceIndex:index + 1
-                              requestID:requestID
-                             completion:completion];
+        // ✅ UNIFICATO: Richiesta positions generica (primo account disponibile)
+        if ([dataSource respondsToSelector:@selector(fetchPositionsWithCompletion:)]) {
+            NSLog(@"DownloadManager: Using unified fetchPositionsWithCompletion with %@", dataSource.sourceName);
+            
+            [dataSource fetchPositionsWithCompletion:^(NSArray *positions, NSError *error) {
+                if (!self.activeRequests[requestID]) {
+                    return;
+                }
+                
+                if (error && self.fallbackEnabled && index < sources.count - 1) {
+                    sourceInfo.failureCount++;
+                    sourceInfo.lastFailureTime = [NSDate date];
+                    
+                    [self executeRequestWithSources:sources
+                                        requestType:DataRequestTypePositions
+                                         parameters:parameters
+                                        sourceIndex:index + 1
+                                          requestID:requestID
+                                         completion:completion];
+                } else {
+                    [self.activeRequests removeObjectForKey:requestID];
+                    if (completion) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            completion(positions ?: @[], sourceInfo.type, error);
+                        });
+                    }
+                }
+            }];
+        } else {
+            NSLog(@"⚠️ DownloadManager: %@ doesn't support fetchPositionsWithCompletion, trying next source", dataSource.sourceName);
+            [self executeRequestWithSources:sources
+                                requestType:DataRequestTypePositions
+                                 parameters:parameters
+                                sourceIndex:index + 1
+                                  requestID:requestID
+                                 completion:completion];
+        }
     }
 }
-
 - (void)executeOrdersRequest:(NSDictionary *)parameters
               withDataSource:(id<DataSource>)dataSource
                   sourceInfo:(DataSourceInfo *)sourceInfo
@@ -685,74 +696,87 @@
                    requestID:(NSString *)requestID
                   completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
     
-    // ✅ NUOVO: Controllare se abbiamo un accountId nei parametri per IBKR
     NSString *accountId = parameters[@"accountId"];
     
-    if (accountId && [dataSource isKindOfClass:NSClassFromString(@"IBKRDataSource")]) {
-        // ✅ IBKR con account specifico - usa getOrders:completion:
-        NSLog(@"DownloadManager: Using IBKR-specific orders request for account %@", accountId);
-        
-        [dataSource performSelector:@selector(getOrders:completion:)
-                          withObject:accountId
-                          withObject:^(NSArray *orders, NSError *error) {
-            if (!self.activeRequests[requestID]) {
-                return;
-            }
+    if (accountId) {
+        // ✅ UNIFICATO: Richiesta orders per account specifico
+        if ([dataSource respondsToSelector:@selector(fetchOrdersForAccount:completion:)]) {
+            NSLog(@"DownloadManager: Using unified fetchOrdersForAccount for account %@ with %@", accountId, dataSource.sourceName);
             
-            if (error && self.fallbackEnabled && index < sources.count - 1) {
-                sourceInfo.failureCount++;
-                sourceInfo.lastFailureTime = [NSDate date];
-                
-                [self executeRequestWithSources:sources
-                                    requestType:DataRequestTypeOrders
-                                     parameters:parameters
-                                    sourceIndex:index + 1
-                                      requestID:requestID
-                                     completion:completion];
-            } else {
-                [self.activeRequests removeObjectForKey:requestID];
-                if (completion) {
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        completion(orders, sourceInfo.type, error);
-                    });
+            [dataSource fetchOrdersForAccount:accountId completion:^(NSArray *orders, NSError *error) {
+                if (!self.activeRequests[requestID]) {
+                    return;
                 }
-            }
-        }];
-    } else if ([dataSource respondsToSelector:@selector(fetchOrdersWithCompletion:)]) {
-        // ✅ Usa il metodo generico del protocollo DataSource
-        [dataSource fetchOrdersWithCompletion:^(NSArray *orders, NSError *error) {
-            if (!self.activeRequests[requestID]) {
-                return;
-            }
-            
-            if (error && self.fallbackEnabled && index < sources.count - 1) {
-                sourceInfo.failureCount++;
-                sourceInfo.lastFailureTime = [NSDate date];
                 
-                [self executeRequestWithSources:sources
-                                    requestType:DataRequestTypeOrders
-                                     parameters:parameters
-                                    sourceIndex:index + 1
-                                      requestID:requestID
-                                     completion:completion];
-            } else {
-                [self.activeRequests removeObjectForKey:requestID];
-                if (completion) {
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        completion(orders, sourceInfo.type, error);
-                    });
+                if (error && self.fallbackEnabled && index < sources.count - 1) {
+                    sourceInfo.failureCount++;
+                    sourceInfo.lastFailureTime = [NSDate date];
+                    
+                    [self executeRequestWithSources:sources
+                                        requestType:DataRequestTypeOrders
+                                         parameters:parameters
+                                        sourceIndex:index + 1
+                                          requestID:requestID
+                                         completion:completion];
+                } else {
+                    [self.activeRequests removeObjectForKey:requestID];
+                    if (completion) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            completion(orders ?: @[], sourceInfo.type, error);
+                        });
+                    }
                 }
-            }
-        }];
+            }];
+        } else {
+            NSLog(@"⚠️ DownloadManager: %@ doesn't support fetchOrdersForAccount, trying next source", dataSource.sourceName);
+            [self executeRequestWithSources:sources
+                                requestType:DataRequestTypeOrders
+                                 parameters:parameters
+                                sourceIndex:index + 1
+                                  requestID:requestID
+                                 completion:completion];
+        }
     } else {
-        [self executeRequestWithSources:sources
-                            requestType:DataRequestTypeOrders
-                             parameters:parameters
-                            sourceIndex:index + 1
-                              requestID:requestID
-                             completion:completion];
+        // ✅ UNIFICATO: Richiesta orders generica (primo account disponibile)
+        if ([dataSource respondsToSelector:@selector(fetchOrdersWithCompletion:)]) {
+            NSLog(@"DownloadManager: Using unified fetchOrdersWithCompletion with %@", dataSource.sourceName);
+            
+            [dataSource fetchOrdersWithCompletion:^(NSArray *orders, NSError *error) {
+                if (!self.activeRequests[requestID]) {
+                    return;
+                }
+                
+                if (error && self.fallbackEnabled && index < sources.count - 1) {
+                    sourceInfo.failureCount++;
+                    sourceInfo.lastFailureTime = [NSDate date];
+                    
+                    [self executeRequestWithSources:sources
+                                        requestType:DataRequestTypeOrders
+                                         parameters:parameters
+                                        sourceIndex:index + 1
+                                          requestID:requestID
+                                         completion:completion];
+                } else {
+                    [self.activeRequests removeObjectForKey:requestID];
+                    if (completion) {
+                        dispatch_async(dispatch_get_main_queue(), ^{
+                            completion(orders ?: @[], sourceInfo.type, error);
+                        });
+                    }
+                }
+            }];
+        } else {
+            NSLog(@"⚠️ DownloadManager: %@ doesn't support fetchOrdersWithCompletion, trying next source", dataSource.sourceName);
+            [self executeRequestWithSources:sources
+                                requestType:DataRequestTypeOrders
+                                 parameters:parameters
+                                sourceIndex:index + 1
+                                  requestID:requestID
+                                 completion:completion];
+        }
     }
 }
+
 
 #pragma mark - Helper Methods
 
@@ -2255,14 +2279,12 @@
     
     NSString *accountId = parameters[@"accountId"];
     
-    if ([dataSource isKindOfClass:NSClassFromString(@"IBKRDataSource")]) {
-        // ✅ IBKR: Se abbiamo accountId specifico, usa getAccountSummary, altrimenti getAccounts
-        if (accountId) {
-            NSLog(@"DownloadManager: Using IBKR account summary for account %@", accountId);
+    if (accountId) {
+        // ✅ UNIFICATO: Richiesta dettagli account specifico
+        if ([dataSource respondsToSelector:@selector(fetchAccountDetails:completion:)]) {
+            NSLog(@"DownloadManager: Using unified fetchAccountDetails for account %@ with %@", accountId, dataSource.sourceName);
             
-            [dataSource performSelector:@selector(getAccountSummary:completion:)
-                              withObject:accountId
-                              withObject:^(NSDictionary *summary, NSError *error) {
+            [dataSource fetchAccountDetails:accountId completion:^(NSDictionary *details, NSError *error) {
                 if (!self.activeRequests[requestID]) {
                     return;
                 }
@@ -2281,16 +2303,27 @@
                     [self.activeRequests removeObjectForKey:requestID];
                     if (completion) {
                         dispatch_async(dispatch_get_main_queue(), ^{
-                            completion(summary, sourceInfo.type, error);
+                            completion(details ?: @{}, sourceInfo.type, error);
                         });
                     }
                 }
             }];
         } else {
-            NSLog(@"DownloadManager: Using IBKR accounts list");
+            // Fallback al prossimo data source se questo non supporta fetchAccountDetails
+            NSLog(@"⚠️ DownloadManager: %@ doesn't support fetchAccountDetails, trying next source", dataSource.sourceName);
+            [self executeRequestWithSources:sources
+                                requestType:DataRequestTypeAccountInfo
+                                 parameters:parameters
+                                sourceIndex:index + 1
+                                  requestID:requestID
+                                 completion:completion];
+        }
+    } else {
+        // ✅ UNIFICATO: Richiesta lista accounts
+        if ([dataSource respondsToSelector:@selector(fetchAccountsWithCompletion:)]) {
+            NSLog(@"DownloadManager: Using unified fetchAccountsWithCompletion with %@", dataSource.sourceName);
             
-            [dataSource performSelector:@selector(getAccountsWithCompletion:)
-                              withObject:^(NSArray<NSString *> *accounts, NSError *error) {
+            [dataSource fetchAccountsWithCompletion:^(NSArray *accounts, NSError *error) {
                 if (!self.activeRequests[requestID]) {
                     return;
                 }
@@ -2309,33 +2342,21 @@
                     [self.activeRequests removeObjectForKey:requestID];
                     if (completion) {
                         dispatch_async(dispatch_get_main_queue(), ^{
-                            // ✅ Converti array di account IDs in formato compatibile con altri broker
-                            NSMutableArray *accountsData = [NSMutableArray array];
-                            for (NSString *accountIdStr in accounts) {
-                                [accountsData addObject:@{
-                                    @"accountId": accountIdStr,
-                                    @"accountNumber": accountIdStr, // Compatibility con Schwab
-                                    @"brokerIndicator": @"IBKR", // Per detection nel DataHub
-                                    @"type": @"UNKNOWN" // IBKR non fornisce tipo nell'elenco base
-                                }];
-                            }
-                            completion(accountsData, sourceInfo.type, error);
+                            completion(accounts ?: @[], sourceInfo.type, error);
                         });
                     }
                 }
             }];
+        } else {
+            // Fallback al prossimo data source se questo non supporta fetchAccountsWithCompletion
+            NSLog(@"⚠️ DownloadManager: %@ doesn't support fetchAccountsWithCompletion, trying next source", dataSource.sourceName);
+            [self executeRequestWithSources:sources
+                                requestType:DataRequestTypeAccountInfo
+                                 parameters:parameters
+                                sourceIndex:index + 1
+                                  requestID:requestID
+                                 completion:completion];
         }
-    } else {
-        // ✅ Altri data sources - usa metodo generico (se disponibile)
-        // La maggior parte degli altri data sources non hanno metodi account specifici
-        // quindi questa implementazione potrebbe essere estesa in futuro
-        
-        [self executeRequestWithSources:sources
-                            requestType:DataRequestTypeAccountInfo
-                             parameters:parameters
-                            sourceIndex:index + 1
-                              requestID:requestID
-                             completion:completion];
     }
 }
 

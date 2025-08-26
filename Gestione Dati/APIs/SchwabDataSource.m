@@ -694,6 +694,98 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     }];
 }
 
+- (void)fetchAccountsWithCompletion:(void (^)(NSArray *accounts, NSError *error))completion {
+    NSLog(@"SchwabDataSource: fetchAccountsWithCompletion called via unified method");
+    
+    // Chiama il metodo Schwab-specifico interno
+    [self fetchAccountNumbers:^(NSArray *accountNumbers, NSError *error) {
+        if (error) {
+            NSLog(@"❌ SchwabDataSource: Failed to fetch account numbers: %@", error);
+            if (completion) completion(@[], error);
+            return;
+        }
+        
+        if (accountNumbers.count == 0) {
+            NSLog(@"⚠️ SchwabDataSource: No account numbers found");
+            if (completion) completion(@[], nil);
+            return;
+        }
+        
+        // Convert account numbers to standardized account format
+        NSMutableArray *accountsData = [NSMutableArray array];
+        
+        for (NSString *accountNumber in accountNumbers) {
+            NSDictionary *accountInfo = @{
+                @"accountId": accountNumber,
+                @"accountNumber": accountNumber,
+                @"brokerIndicator": @"SCHWAB",
+                @"displayName": [NSString stringWithFormat:@"Schwab Account %@", accountNumber],
+                @"type": @"BROKERAGE" // Default type for Schwab accounts
+            };
+            [accountsData addObject:accountInfo];
+        }
+        
+        NSLog(@"✅ SchwabDataSource: Converted %lu account numbers to standardized format via unified method", (unsigned long)accountNumbers.count);
+        
+        if (completion) completion([accountsData copy], nil);
+    }];
+}
+
+- (void)fetchAccountDetails:(NSString *)accountId
+                 completion:(void (^)(NSDictionary *accountDetails, NSError *error))completion {
+    if (!accountId || accountId.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"SchwabDataSource"
+                                             code:1001
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid account ID"}];
+        if (completion) completion(@{}, error);
+        return;
+    }
+    
+    NSLog(@"SchwabDataSource: fetchAccountDetails called for %@ via unified method", accountId);
+    
+    // Chiama il metodo Schwab-specifico interno (se esiste) o implementa qui
+    [self refreshTokenIfNeeded:^(BOOL success, NSError *error) {
+        if (!success) {
+            if (completion) completion(@{}, error);
+            return;
+        }
+        
+        NSString *urlString = [NSString stringWithFormat:@"%@/trader/v1/accounts/%@", kSchwabAPIBaseURL, accountId];
+        
+        NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
+        [request setValue:[NSString stringWithFormat:@"Bearer %@", self.accessToken]
+       forHTTPHeaderField:@"Authorization"];
+        
+        NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
+                                                     completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+            if (error) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (completion) completion(@{}, error);
+                });
+                return;
+            }
+            
+            NSError *parseError;
+            NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
+            
+            if (parseError) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (completion) completion(@{}, parseError);
+                });
+                return;
+            }
+            
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(json ?: @{}, nil);
+            });
+        }];
+        
+        [task resume];
+    }];
+}
+
+
+
 - (void)fetchHistoricalDataForSymbol:(NSString *)symbol
                            timeframe:(BarTimeframe)timeframe
                            startDate:(NSDate *)startDate
@@ -723,9 +815,11 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
 #pragma mark - Account Data
 
 - (void)fetchPositionsWithCompletion:(void (^)(NSArray *positions, NSError *error))completion {
+    NSLog(@"SchwabDataSource: fetchPositionsWithCompletion called via unified method");
+    
     [self fetchAccountNumbers:^(NSArray *accountNumbers, NSError *error) {
         if (error) {
-            if (completion) completion(nil, error);
+            if (completion) completion(@[], error);
             return;
         }
         
@@ -738,17 +832,28 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
         }
     }];
 }
-- (void)fetchPositionsForAccount:(NSString *)accountNumber
+
+
+- (void)fetchPositionsForAccount:(NSString *)accountId
                       completion:(void (^)(NSArray *positions, NSError *error))completion {
+    if (!accountId || accountId.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"SchwabDataSource"
+                                             code:1001
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid account ID"}];
+        if (completion) completion(@[], error);
+        return;
+    }
+    
+    NSLog(@"SchwabDataSource: fetchPositionsForAccount called for %@ via unified method", accountId);
     
     [self refreshTokenIfNeeded:^(BOOL success, NSError *error) {
         if (!success) {
-            if (completion) completion(nil, error);
+            if (completion) completion(@[], error);
             return;
         }
         
         NSString *urlString = [NSString stringWithFormat:@"%@/trader/v1/accounts/%@/positions",
-                              kSchwabAPIBaseURL, accountNumber];
+                              kSchwabAPIBaseURL, accountId];
         
         NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
         [request setValue:[NSString stringWithFormat:@"Bearer %@", self.accessToken]
@@ -758,24 +863,24 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
                                                      completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
             if (error) {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    if (completion) completion(nil, error);
+                    if (completion) completion(@[], error);
                 });
                 return;
             }
             
             NSError *parseError;
-            NSArray *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
+            NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
             
             if (parseError) {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    if (completion) completion(nil, parseError);
+                    if (completion) completion(@[], parseError);
                 });
                 return;
             }
             
-            // CAMBIAMENTO: Restituisce i dati JSON grezzi invece di processarli
+            // Return raw JSON - will be standardized by adapter
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (completion) completion(json, nil);
+                if (completion) completion(json[@"securitiesAccount"][@"positions"] ?: @[], nil);
             });
         }];
         
@@ -783,29 +888,45 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
     }];
 }
 
+
+
 - (void)fetchOrdersWithCompletion:(void (^)(NSArray *orders, NSError *error))completion {
+    NSLog(@"SchwabDataSource: fetchOrdersWithCompletion called via unified method");
+    
     [self fetchAccountNumbers:^(NSArray *accountNumbers, NSError *error) {
         if (error) {
-            if (completion) completion(nil, error);
+            NSLog(@"❌ SchwabDataSource: Failed to fetch account numbers for orders: %@", error);
+            if (completion) completion(@[], error);
             return;
         }
         
-        // Fetch orders from first account
+        // For now, fetch orders from first account
         if (accountNumbers.count > 0) {
             NSString *accountNumber = accountNumbers[0];
             [self fetchOrdersForAccount:accountNumber completion:completion];
         } else {
+            NSLog(@"⚠️ SchwabDataSource: No accounts found for orders");
             if (completion) completion(@[], nil);
         }
     }];
 }
 
-- (void)fetchOrdersForAccount:(NSString *)accountNumber
+
+- (void)fetchOrdersForAccount:(NSString *)accountId
                    completion:(void (^)(NSArray *orders, NSError *error))completion {
+    if (!accountId || accountId.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"SchwabDataSource"
+                                             code:1001
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid account ID"}];
+        if (completion) completion(@[], error);
+        return;
+    }
+    
+    NSLog(@"SchwabDataSource: fetchOrdersForAccount called for %@ via unified method", accountId);
     
     [self refreshTokenIfNeeded:^(BOOL success, NSError *error) {
         if (!success) {
-            if (completion) completion(nil, error);
+            if (completion) completion(@[], error);
             return;
         }
         
@@ -818,7 +939,7 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
         
         NSString *urlString = [NSString stringWithFormat:@"%@/trader/v1/orders?accountNumber=%@&fromEnteredTime=%@&toEnteredTime=%@",
                               kSchwabAPIBaseURL,
-                              accountNumber,
+                              accountId,
                               [formatter stringFromDate:fromDate],
                               [formatter stringFromDate:toDate]];
         
@@ -830,7 +951,7 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
                                                      completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
             if (error) {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    if (completion) completion(nil, error);
+                    if (completion) completion(@[], error);
                 });
                 return;
             }
@@ -840,19 +961,37 @@ static NSString *const kKeychainTokenExpiry = @"token_expiry";
             
             if (parseError) {
                 dispatch_async(dispatch_get_main_queue(), ^{
-                    if (completion) completion(nil, parseError);
+                    if (completion) completion(@[], parseError);
                 });
                 return;
             }
             
-            // CAMBIAMENTO: Restituisce i dati JSON grezzi invece di processarli
+            // Return raw JSON array - will be standardized by adapter
             dispatch_async(dispatch_get_main_queue(), ^{
-                if (completion) completion(json, nil);
+                if (completion) completion(json ?: @[], nil);
             });
         }];
         
         [task resume];
     }];
+}
+
+- (void)placeOrderForAccount:(NSString *)accountId
+                   orderData:(NSDictionary *)orderData
+                  completion:(void (^)(NSString *orderId, NSError *error))completion {
+    NSLog(@"SchwabDataSource: placeOrderForAccount called for %@ via unified method", accountId);
+    
+    // Chiama il metodo Schwab-specifico esistente
+    [self placeOrder:orderData forAccount:accountId completion:completion];
+}
+
+- (void)cancelOrderForAccount:(NSString *)accountId
+                      orderId:(NSString *)orderId
+                   completion:(void (^)(BOOL success, NSError *error))completion {
+    NSLog(@"SchwabDataSource: cancelOrderForAccount called for %@ via unified method", accountId);
+    
+    // Chiama il metodo Schwab-specifico esistente
+    [self cancelOrder:orderId forAccount:accountId completion:completion];
 }
 
 - (void)fetchOrderBookForSymbol:(NSString *)symbol
@@ -1215,7 +1354,6 @@ decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
     }
     [self close];
 }
-
 
 
 

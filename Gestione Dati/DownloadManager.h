@@ -25,7 +25,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)disconnect;
 
 @optional
-// Market data via HTTP REST calls
+#pragma mark - Market Data (Unified)
 - (void)fetchQuoteForSymbol:(NSString *)symbol
                  completion:(void (^)(id quote, NSError *error))completion;
 - (void)fetchQuotesForSymbols:(NSArray<NSString *> *)symbols
@@ -36,26 +36,47 @@ NS_ASSUME_NONNULL_BEGIN
                              endDate:(NSDate *)endDate
                     needExtendedHours:(BOOL)needExtendedHours
                           completion:(void (^)(NSArray *bars, NSError *error))completion;
-
 - (void)fetchOrderBookForSymbol:(NSString *)symbol
                           depth:(NSInteger)depth
                      completion:(void (^)(id orderBook, NSError *error))completion;
 
+#pragma mark - Portfolio Data (Unified)
+/// Get list of available accounts for this data source
+- (void)fetchAccountsWithCompletion:(void (^)(NSArray *accounts, NSError *error))completion;
+
+/// Get detailed information for specific account (portfolio summary, balances, etc.)
+- (void)fetchAccountDetails:(NSString *)accountId
+                 completion:(void (^)(NSDictionary *accountDetails, NSError *error))completion;
+
+/// Get all positions for this data source (will use first available account if no account specified)
 - (void)fetchPositionsWithCompletion:(void (^)(NSArray *positions, NSError *error))completion;
+
+/// Get positions for specific account
+- (void)fetchPositionsForAccount:(NSString *)accountId
+                      completion:(void (^)(NSArray *positions, NSError *error))completion;
+
+/// Get all orders for this data source (will use first available account if no account specified)
 - (void)fetchOrdersWithCompletion:(void (^)(NSArray *orders, NSError *error))completion;
 
-// Market lists
+/// Get orders for specific account
+- (void)fetchOrdersForAccount:(NSString *)accountId
+                   completion:(void (^)(NSArray *orders, NSError *error))completion;
+
+#pragma mark - Trading Operations (Unified)
+/// Place order on specific account
+- (void)placeOrderForAccount:(NSString *)accountId
+                   orderData:(NSDictionary *)orderData
+                  completion:(void (^)(NSString *orderId, NSError *error))completion;
+
+/// Cancel order on specific account
+- (void)cancelOrderForAccount:(NSString *)accountId
+                      orderId:(NSString *)orderId
+                   completion:(void (^)(BOOL success, NSError *error))completion;
+
+#pragma mark - Market Lists (Unified)
 - (void)fetchMarketListForType:(DataRequestType)listType
                     parameters:(NSDictionary *)parameters
                     completion:(void (^)(NSArray *results, NSError *error))completion;
-
-// HTTP Polling subscription (NOT WebSocket - just symbol list management)
-- (void)subscribeToQuotes:(NSArray<NSString *> *)symbols;
-- (void)unsubscribeFromQuotes:(NSArray<NSString *> *)symbols;
-
-// Rate limiting info
-- (NSInteger)remainingRequests;
-- (NSDate *)rateLimitResetDate;
 
 @end
 

@@ -112,12 +112,12 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
         _sourceType = DataSourceTypeIBKR;
         _sourceName = @"Interactive Brokers";
         _capabilities = DataSourceCapabilityQuotes |
-                       DataSourceCapabilityHistorical |
-                       DataSourceCapabilityAccounts |
-                       DataSourceCapabilityTrading |
-                       DataSourceCapabilityRealtime |
-                       DataSourceCapabilityOrderBook |
-                       DataSourceCapabilityOptions;
+        DataSourceCapabilityHistorical |
+        DataSourceCapabilityAccounts |
+        DataSourceCapabilityTrading |
+        DataSourceCapabilityRealtime |
+        DataSourceCapabilityOrderBook |
+        DataSourceCapabilityOptions;
         _isConnected = NO;
         
         // Internal setup
@@ -130,7 +130,7 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
         config.timeoutIntervalForRequest = kRequestTimeout;
         config.timeoutIntervalForResource = kRequestTimeout * 2;
         _session = [NSURLSession sessionWithConfiguration:config delegate:self delegateQueue:nil];
-
+        
         // Setup request queue
         _requestQueue = [[NSOperationQueue alloc] init];
         _requestQueue.maxConcurrentOperationCount = 5;
@@ -913,10 +913,9 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
         return;
     }
     
-    [self logDebug:@"Fetching all positions from IBKR"];
+    [self logDebug:@"Fetching all positions from IBKR via unified method"];
     
     // Per ora usiamo la prima account disponibile
-    // In futuro potresti voler passare un parametro per l'account specifico
     [self getAccountsWithCompletion:^(NSArray<NSString *> *accounts, NSError *accountError) {
         if (accountError || accounts.count == 0) {
             NSError *error = accountError ?: [NSError errorWithDomain:@"IBKRDataSource"
@@ -928,13 +927,38 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
         
         // Usa il primo account per ora
         NSString *firstAccountId = accounts[0];
-        [self getPositions:firstAccountId completion:^(NSArray *positions, NSError *positionError) {
-            if (completion) {
-                completion(positions ?: @[], positionError);
-            }
-        }];
+        [self fetchPositionsForAccount:firstAccountId completion:completion];
     }];
 }
+
+- (void)fetchPositionsForAccount:(NSString *)accountId
+                      completion:(void (^)(NSArray *positions, NSError *error))completion {
+    if (!accountId || accountId.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"IBKRDataSource"
+                                             code:1001
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid account ID"}];
+        if (completion) completion(@[], error);
+        return;
+    }
+    
+    if (!self.isConnected) {
+        NSError *error = [NSError errorWithDomain:@"IBKRDataSource"
+                                             code:1002
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Not connected to IBKR"}];
+        if (completion) completion(@[], error);
+        return;
+    }
+    
+    [self logDebug:@"Fetching positions for account %@ via unified method", accountId];
+    
+    // Chiama il metodo IBKR-specifico interno
+    [self getPositions:accountId completion:^(NSArray *positions, NSError *error) {
+        if (completion) {
+            completion(positions ?: @[], error);
+        }
+    }];
+}
+
 
 // ✅ NUOVO: Implementa fetchOrdersWithCompletion per il protocollo DataSource
 - (void)fetchOrdersWithCompletion:(void (^)(NSArray *orders, NSError *error))completion {
@@ -946,7 +970,7 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
         return;
     }
     
-    [self logDebug:@"Fetching all orders from IBKR"];
+    [self logDebug:@"Fetching all orders from IBKR via unified method"];
     
     // Per ora usiamo la prima account disponibile
     [self getAccountsWithCompletion:^(NSArray<NSString *> *accounts, NSError *accountError) {
@@ -960,12 +984,64 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
         
         // Usa il primo account per ora
         NSString *firstAccountId = accounts[0];
-        [self getOrders:firstAccountId completion:^(NSArray *orders, NSError *orderError) {
-            if (completion) {
-                completion(orders ?: @[], orderError);
-            }
-        }];
+        [self fetchOrdersForAccount:firstAccountId completion:completion];
     }];
+}
+
+- (void)fetchOrdersForAccount:(NSString *)accountId
+                   completion:(void (^)(NSArray *orders, NSError *error))completion {
+    if (!accountId || accountId.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"IBKRDataSource"
+                                             code:1001
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid account ID"}];
+        if (completion) completion(@[], error);
+        return;
+    }
+    
+    if (!self.isConnected) {
+        NSError *error = [NSError errorWithDomain:@"IBKRDataSource"
+                                             code:1002
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Not connected to IBKR"}];
+        if (completion) completion(@[], error);
+        return;
+    }
+    
+    [self logDebug:@"Fetching orders for account %@ via unified method", accountId];
+    
+    // Chiama il metodo IBKR-specifico interno
+    [self getOrders:accountId completion:^(NSArray *orders, NSError *error) {
+        if (completion) {
+            completion(orders ?: @[], error);
+        }
+    }];
+}
+
+- (void)placeOrderForAccount:(NSString *)accountId
+                   orderData:(NSDictionary *)orderData
+                  completion:(void (^)(NSString *orderId, NSError *error))completion {
+    // TODO: Implementare quando necessario
+    NSLog(@"📝 TODO: IBKRDataSource placeOrderForAccount implementation needed");
+    
+    if (completion) {
+        NSError *error = [NSError errorWithDomain:@"IBKRDataSource"
+                                             code:1999
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Order placement not yet implemented for IBKR"}];
+        completion(nil, error);
+    }
+}
+
+- (void)cancelOrderForAccount:(NSString *)accountId
+                      orderId:(NSString *)orderId
+                   completion:(void (^)(BOOL success, NSError *error))completion {
+    // TODO: Implementare quando necessario
+    NSLog(@"📝 TODO: IBKRDataSource cancelOrderForAccount implementation needed");
+    
+    if (completion) {
+        NSError *error = [NSError errorWithDomain:@"IBKRDataSource"
+                                             code:1999
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Order cancellation not yet implemented for IBKR"}];
+        completion(NO, error);
+    }
 }
 
 // =====================================
@@ -1162,5 +1238,86 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
     
     [task resume];
 }
+
+- (void)fetchAccountsWithCompletion:(void (^)(NSArray *accounts, NSError *error))completion {
+    if (!self.isConnected) {
+        NSError *error = [NSError errorWithDomain:@"IBKRDataSource"
+                                             code:1002
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Not connected to IBKR"}];
+        if (completion) completion(@[], error);
+        return;
+    }
+    
+    [self logDebug:@"Fetching accounts list from IBKR via unified method"];
+    
+    // Chiama il metodo IBKR-specifico interno
+    [self getAccountsWithCompletion:^(NSArray<NSString *> *accountIds, NSError *error) {
+        if (error) {
+            NSLog(@"❌ IBKRDataSource: Failed to fetch account IDs: %@", error);
+            if (completion) completion(@[], error);
+            return;
+        }
+        
+        if (accountIds.count == 0) {
+            NSLog(@"⚠️ IBKRDataSource: No account IDs found");
+            if (completion) completion(@[], nil);
+            return;
+        }
+        
+        // Convert account IDs to standardized account format
+        NSMutableArray *accountsData = [NSMutableArray array];
+        
+        for (NSString *accountId in accountIds) {
+            NSDictionary *accountInfo = @{
+                @"accountId": accountId,
+                @"accountNumber": accountId, // IBKR uses same ID for both
+                @"brokerIndicator": @"IBKR",
+                @"displayName": [NSString stringWithFormat:@"IBKR Account %@", accountId],
+                @"type": @"UNKNOWN" // IBKR doesn't provide type in basic account list
+            };
+            [accountsData addObject:accountInfo];
+        }
+        
+        NSLog(@"✅ IBKRDataSource: Converted %lu account IDs to standardized format via unified method", (unsigned long)accountIds.count);
+        
+        if (completion) completion([accountsData copy], nil);
+    }];
+}
+
+- (void)fetchAccountDetails:(NSString *)accountId
+                 completion:(void (^)(NSDictionary *accountDetails, NSError *error))completion {
+    if (!accountId || accountId.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"IBKRDataSource"
+                                             code:1001
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid account ID"}];
+        if (completion) completion(@{}, error);
+        return;
+    }
+    
+    if (!self.isConnected) {
+        NSError *error = [NSError errorWithDomain:@"IBKRDataSource"
+                                             code:1002
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Not connected to IBKR"}];
+        if (completion) completion(@{}, error);
+        return;
+    }
+    
+    [self logDebug:@"Fetching account details for %@ via unified method", accountId];
+    
+    // Chiama il metodo IBKR-specifico interno
+    [self getAccountSummary:accountId completion:^(NSDictionary *summary, NSError *error) {
+        if (error) {
+            NSLog(@"❌ IBKRDataSource: Failed to fetch account summary for %@: %@", accountId, error);
+            if (completion) completion(@{}, error);
+            return;
+        }
+        
+        // Il summary è già nel formato giusto grazie a getAccountSummary
+        NSLog(@"✅ IBKRDataSource: Retrieved account details for %@ via unified method", accountId);
+        
+        if (completion) completion(summary ?: @{}, nil);
+    }];
+}
+
 
 @end

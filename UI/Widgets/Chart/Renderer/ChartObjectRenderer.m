@@ -122,6 +122,16 @@ typedef NS_ENUM(NSUInteger, SnapType) {
 }
 
 
+- (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext {
+    self.sharedXContext = sharedXContext;
+    
+    // Force redraw of objects with new coordinates
+    [self invalidateObjectsLayer];
+    [self invalidateEditingLayer];
+    
+    NSLog(@"🔄 ChartObjectRenderer: SharedXContext updated - forcing objects redraw");
+}
+
 - (NSPoint)screenPointFromControlPoint:(ControlPointModel *)controlPoint {
     if (!controlPoint || !self.sharedXContext || !self.panelYContext) {
         return NSMakePoint(-9999, -9999);

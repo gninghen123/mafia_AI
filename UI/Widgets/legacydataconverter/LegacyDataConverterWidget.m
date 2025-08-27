@@ -139,150 +139,157 @@
     objc_setAssociatedObject(self, "statusSection", statusSection, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
+// Update constraints to allow full horizontal stretching and remove minimum width restriction
 - (void)setupConstraints {
     NSView *container = self.contentView;
-    
+
     // Retrieve sections using objc_getAssociatedObject
     NSView *directorySection = objc_getAssociatedObject(self, "directorySection");
     NSView *buttonSection = objc_getAssociatedObject(self, "buttonSection");
     NSView *statusSection = objc_getAssociatedObject(self, "statusSection");
-    
+
     [NSLayoutConstraint activateConstraints:@[
         // Directory section (top)
         [directorySection.topAnchor constraintEqualToAnchor:container.topAnchor constant:8],
         [directorySection.leadingAnchor constraintEqualToAnchor:container.leadingAnchor constant:8],
         [directorySection.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-8],
         [directorySection.heightAnchor constraintEqualToConstant:32],
-        
+
         // Directory label and button - FIXED LAYOUT
         [self.directoryLabel.leadingAnchor constraintEqualToAnchor:directorySection.leadingAnchor],
         [self.directoryLabel.trailingAnchor constraintEqualToAnchor:self.selectDirectoryButton.leadingAnchor constant:-8],
         [self.directoryLabel.centerYAnchor constraintEqualToAnchor:directorySection.centerYAnchor],
         [self.directoryLabel.heightAnchor constraintEqualToConstant:24],
-        
+
         [self.selectDirectoryButton.trailingAnchor constraintEqualToAnchor:directorySection.trailingAnchor],
         [self.selectDirectoryButton.centerYAnchor constraintEqualToAnchor:directorySection.centerYAnchor],
         [self.selectDirectoryButton.widthAnchor constraintEqualToConstant:150],
         [self.selectDirectoryButton.heightAnchor constraintEqualToConstant:24],
-        
+
         // Button section
         [buttonSection.topAnchor constraintEqualToAnchor:directorySection.bottomAnchor constant:8],
         [buttonSection.leadingAnchor constraintEqualToAnchor:container.leadingAnchor constant:8],
         [buttonSection.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-8],
         [buttonSection.heightAnchor constraintEqualToConstant:32],
-        
+
         // Action buttons - IMPROVED LAYOUT
         [self.scanButton.leadingAnchor constraintEqualToAnchor:buttonSection.leadingAnchor],
         [self.scanButton.centerYAnchor constraintEqualToAnchor:buttonSection.centerYAnchor],
         [self.scanButton.widthAnchor constraintGreaterThanOrEqualToConstant:100],
         [self.scanButton.heightAnchor constraintEqualToConstant:24],
-        
+
         [self.convertSelectedButton.leadingAnchor constraintEqualToAnchor:self.scanButton.trailingAnchor constant:8],
         [self.convertSelectedButton.centerYAnchor constraintEqualToAnchor:buttonSection.centerYAnchor],
         [self.convertSelectedButton.widthAnchor constraintGreaterThanOrEqualToConstant:120],
         [self.convertSelectedButton.heightAnchor constraintEqualToConstant:24],
-        
+
         [self.convertAllSnapshotButton.leadingAnchor constraintEqualToAnchor:self.convertSelectedButton.trailingAnchor constant:8],
         [self.convertAllSnapshotButton.centerYAnchor constraintEqualToAnchor:buttonSection.centerYAnchor],
         [self.convertAllSnapshotButton.widthAnchor constraintGreaterThanOrEqualToConstant:150],
         [self.convertAllSnapshotButton.heightAnchor constraintEqualToConstant:24],
-        
+
         // Refresh button on the right with flexible space
         [self.refreshButton.trailingAnchor constraintEqualToAnchor:buttonSection.trailingAnchor],
         [self.refreshButton.centerYAnchor constraintEqualToAnchor:buttonSection.centerYAnchor],
         [self.refreshButton.widthAnchor constraintGreaterThanOrEqualToConstant:80],
         [self.refreshButton.heightAnchor constraintEqualToConstant:24],
-        
+
         // Ensure space between convertAllSnapshot and refresh
         [self.refreshButton.leadingAnchor constraintGreaterThanOrEqualToAnchor:self.convertAllSnapshotButton.trailingAnchor constant:8],
-        
+
         // Table view (main area) - ENSURED MINIMUM SIZE
         [self.scrollView.topAnchor constraintEqualToAnchor:buttonSection.bottomAnchor constant:8],
         [self.scrollView.leadingAnchor constraintEqualToAnchor:container.leadingAnchor constant:8],
         [self.scrollView.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-8],
         [self.scrollView.bottomAnchor constraintEqualToAnchor:statusSection.topAnchor constant:-8],
         [self.scrollView.heightAnchor constraintGreaterThanOrEqualToConstant:200], // MINIMUM HEIGHT
-        
+
         // Status section (bottom)
         [statusSection.leadingAnchor constraintEqualToAnchor:container.leadingAnchor constant:8],
         [statusSection.trailingAnchor constraintEqualToAnchor:container.trailingAnchor constant:-8],
         [statusSection.bottomAnchor constraintEqualToAnchor:container.bottomAnchor constant:-8],
         [statusSection.heightAnchor constraintEqualToConstant:24],
-        
+
         // Status components
         [self.progressIndicator.leadingAnchor constraintEqualToAnchor:statusSection.leadingAnchor],
         [self.progressIndicator.centerYAnchor constraintEqualToAnchor:statusSection.centerYAnchor],
         [self.progressIndicator.widthAnchor constraintEqualToConstant:16],
         [self.progressIndicator.heightAnchor constraintEqualToConstant:16],
-        
+
         [self.statusLabel.leadingAnchor constraintEqualToAnchor:self.progressIndicator.trailingAnchor constant:8],
         [self.statusLabel.centerYAnchor constraintEqualToAnchor:statusSection.centerYAnchor],
         [self.statusLabel.trailingAnchor constraintLessThanOrEqualToAnchor:statusSection.trailingAnchor]
     ]];
-    
-    // CRITICAL: Set content view minimum width to prevent horizontal compression
-    [container.widthAnchor constraintGreaterThanOrEqualToConstant:600].active = YES;
+    // Removed the fixed minimum width constraint so the content view can stretch fully horizontally.
 }
 
+// Make all table columns resizable so the tableView can expand to fill the window width
 - (void)setupTableColumns {
     // Remove any existing columns
     while (self.tableView.tableColumns.count > 0) {
         [self.tableView removeTableColumn:self.tableView.tableColumns[0]];
     }
-    
+
     // Symbol column
     NSTableColumn *symbolColumn = [[NSTableColumn alloc] initWithIdentifier:@"symbol"];
     symbolColumn.title = @"Symbol";
     symbolColumn.width = 80;
     symbolColumn.minWidth = 60;
+    symbolColumn.resizingMask = NSTableColumnUserResizingMask | NSTableColumnAutoresizingMask;
     symbolColumn.sortDescriptorPrototype = [NSSortDescriptor sortDescriptorWithKey:@"symbol" ascending:YES selector:@selector(caseInsensitiveCompare:)];
     [self.tableView addTableColumn:symbolColumn];
-    
+
     // Timeframe column
     NSTableColumn *timeframeColumn = [[NSTableColumn alloc] initWithIdentifier:@"timeframe"];
     timeframeColumn.title = @"Timeframe";
     timeframeColumn.width = 80;
     timeframeColumn.minWidth = 60;
+    timeframeColumn.resizingMask = NSTableColumnUserResizingMask | NSTableColumnAutoresizingMask;
     timeframeColumn.sortDescriptorPrototype = [NSSortDescriptor sortDescriptorWithKey:@"mappedTimeframe" ascending:YES];
     [self.tableView addTableColumn:timeframeColumn];
-    
+
     // File size column
     NSTableColumn *sizeColumn = [[NSTableColumn alloc] initWithIdentifier:@"fileSize"];
     sizeColumn.title = @"Size";
     sizeColumn.width = 70;
     sizeColumn.minWidth = 50;
+    sizeColumn.resizingMask = NSTableColumnUserResizingMask | NSTableColumnAutoresizingMask;
     sizeColumn.sortDescriptorPrototype = [NSSortDescriptor sortDescriptorWithKey:@"fileSize" ascending:NO];
     [self.tableView addTableColumn:sizeColumn];
-    
+
     // Date range column (only if parsed)
     NSTableColumn *rangeColumn = [[NSTableColumn alloc] initWithIdentifier:@"dateRange"];
     rangeColumn.title = @"Date Range";
     rangeColumn.width = 180;
     rangeColumn.minWidth = 150;
+    rangeColumn.resizingMask = NSTableColumnUserResizingMask | NSTableColumnAutoresizingMask;
     rangeColumn.sortDescriptorPrototype = [NSSortDescriptor sortDescriptorWithKey:@"startDate" ascending:NO];
     [self.tableView addTableColumn:rangeColumn];
-    
+
     // Bar count column (only if parsed)
     NSTableColumn *barsColumn = [[NSTableColumn alloc] initWithIdentifier:@"bars"];
     barsColumn.title = @"Bars";
     barsColumn.width = 60;
     barsColumn.minWidth = 50;
+    barsColumn.resizingMask = NSTableColumnUserResizingMask | NSTableColumnAutoresizingMask;
     barsColumn.sortDescriptorPrototype = [NSSortDescriptor sortDescriptorWithKey:@"barCount" ascending:NO];
     [self.tableView addTableColumn:barsColumn];
-    
+
     // Converted column
     NSTableColumn *convertedColumn = [[NSTableColumn alloc] initWithIdentifier:@"converted"];
     convertedColumn.title = @"Converted";
     convertedColumn.width = 80;
     convertedColumn.minWidth = 70;
+    convertedColumn.resizingMask = NSTableColumnUserResizingMask | NSTableColumnAutoresizingMask;
     convertedColumn.sortDescriptorPrototype = [NSSortDescriptor sortDescriptorWithKey:@"isConverted" ascending:NO];
     [self.tableView addTableColumn:convertedColumn];
-    
+
     // Status column
     NSTableColumn *statusColumn = [[NSTableColumn alloc] initWithIdentifier:@"status"];
     statusColumn.title = @"Status";
     statusColumn.width = 100;
     statusColumn.minWidth = 80;
+    statusColumn.resizingMask = NSTableColumnUserResizingMask | NSTableColumnAutoresizingMask;
     statusColumn.sortDescriptorPrototype = [NSSortDescriptor sortDescriptorWithKey:@"isParsed" ascending:NO];
     [self.tableView addTableColumn:statusColumn];
 }
@@ -442,6 +449,25 @@
     }
 }
 
+
+#pragma mark - Timeframe Mapping
+
+/// Helper: Map BarTimeframe to ChartTimeframe
+- (ChartTimeframe)chartTimeframeFromBarTimeframe:(BarTimeframe)barTimeframe {
+    switch (barTimeframe) {
+        case BarTimeframe1Min:    return ChartTimeframe1Min;
+        case BarTimeframe5Min:    return ChartTimeframe5Min;
+        case BarTimeframe15Min:   return ChartTimeframe15Min;
+        case BarTimeframe30Min:   return ChartTimeframe30Min;
+        case BarTimeframe1Hour:   return ChartTimeframe1Hour;
+        case BarTimeframe4Hour:   return ChartTimeframe4Hour;
+        case BarTimeframeDaily:   return ChartTimeframeDaily;
+        case BarTimeframeWeekly:  return ChartTimeframeWeekly;
+        case BarTimeframeMonthly: return ChartTimeframeMonthly;
+        default:                  return -1;
+    }
+}
+
 #pragma mark - Batch Conversion
 
 - (void)performBatchConversion:(NSArray<LegacyFileInfo *> *)files asType:(SavedChartDataType)preferredType {
@@ -462,32 +488,83 @@
         NSMutableArray *errors = [NSMutableArray array];
         
         for (LegacyFileInfo *file in files) {
-            NSError *error = nil;
-            SavedChartDataType typeToUse = preferredType;
-            
-            // If preferred type is continuous but file can't be continuous, use snapshot
-            if (typeToUse == SavedChartDataTypeContinuous && !file.canBeContinuous) {
-                typeToUse = SavedChartDataTypeSnapshot;
-            }
-            
-            BOOL success = [self convertLegacyFile:file asType:typeToUse error:&error];
-            
-            if (success) {
-                successCount++;
-                file.isConverted = YES;
-            } else {
-                errorCount++;
-                if (error) {
-                    [errors addObject:[NSString stringWithFormat:@"%@: %@", file.symbol, error.localizedDescription]];
+            @autoreleasepool {
+                NSError *error = nil;
+                SavedChartDataType typeToUse = preferredType;
+
+                // If preferred type is continuous but file can't be continuous, use snapshot
+                if (typeToUse == SavedChartDataTypeContinuous && !file.canBeContinuous) {
+                    typeToUse = SavedChartDataTypeSnapshot;
                 }
+
+                // Parse CSV file ONCE per file here, use bars immediately, do not store on fileInfo
+                NSArray<HistoricalBarModel *> *bars = [self parseCSVFile:file.filePath
+                                                                  symbol:file.symbol
+                                                               timeframe:file.mappedTimeframe
+                                                                   error:&error];
+
+                if (!bars || bars.count == 0) {
+                    errorCount++;
+                    if (!error) {
+                        error = [NSError errorWithDomain:@"LegacyConverter"
+                                                    code:1002
+                                                userInfo:@{NSLocalizedDescriptionKey: @"Failed to parse CSV file"}];
+                    }
+                    [errors addObject:[NSString stringWithFormat:@"%@: %@", file.symbol, error.localizedDescription]];
+                } else {
+                    // Check if continuous conversion is valid
+                    BOOL canConvertContinuous = YES;
+                    if (typeToUse == SavedChartDataTypeContinuous && !file.canBeContinuous) {
+                        canConvertContinuous = NO;
+                        error = [NSError errorWithDomain:@"LegacyConverter"
+                                                    code:1003
+                                                userInfo:@{NSLocalizedDescriptionKey: @"File data is too old for continuous conversion"}];
+                        errorCount++;
+                        [errors addObject:[NSString stringWithFormat:@"%@: %@", file.symbol, error.localizedDescription]];
+                    }
+                    if (typeToUse == SavedChartDataTypeSnapshot || canConvertContinuous) {
+                        // Create SavedChartData
+                        SavedChartData *savedData = [[SavedChartData alloc] init];
+                        savedData.chartID = [[NSUUID UUID] UUIDString];
+                        savedData.symbol = file.symbol;
+                        // Map BarTimeframe to ChartTimeframe before assigning
+                        savedData.timeframe = [self chartTimeframeFromBarTimeframe:file.mappedTimeframe];
+                        savedData.dataType = typeToUse;
+                        savedData.startDate = bars.firstObject.date;
+                        savedData.endDate = bars.lastObject.date;
+                        savedData.historicalBars = bars;
+                        savedData.creationDate = [NSDate date];
+                        savedData.includesExtendedHours = NO; // Legacy data assumption
+                        savedData.notes = [NSString stringWithFormat:@"Converted from legacy CSV: %@", file.filePath];
+                        if (typeToUse == SavedChartDataTypeContinuous) {
+                            savedData.lastUpdateDate = [NSDate date];
+                            savedData.lastSuccessfulUpdate = [NSDate date];
+                        }
+                        NSString *chartDataDir = [ChartWidget savedChartDataDirectory];
+                        [[NSFileManager defaultManager] createDirectoryAtPath:chartDataDir
+                                                  withIntermediateDirectories:YES
+                                                                   attributes:nil
+                                                                        error:nil];
+                        NSString *filename = [savedData suggestedFilename];
+                        NSString *outputPath = [chartDataDir stringByAppendingPathComponent:filename];
+                        BOOL saveSuccess = [savedData saveToFile:outputPath error:&error];
+                        if (saveSuccess) {
+                            file.convertedFilePath = outputPath;
+                            file.isConverted = YES;
+                            successCount++;
+                        } else {
+                            errorCount++;
+                            [errors addObject:[NSString stringWithFormat:@"%@: %@", file.symbol, error ? error.localizedDescription : @"Unknown error"]];
+                        }
+                    }
+                }
+                // Update progress on main thread
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    NSInteger processed = successCount + errorCount;
+                    self.statusLabel.stringValue = [NSString stringWithFormat:@"Converting... %ld/%ld", processed, files.count];
+                    // [self.tableView reloadData];  // Removed per instructions
+                });
             }
-            
-            // Update progress on main thread
-            dispatch_async(dispatch_get_main_queue(), ^{
-                NSInteger processed = successCount + errorCount;
-                self.statusLabel.stringValue = [NSString stringWithFormat:@"Converting... %ld/%ld", processed, files.count];
-                [self.tableView reloadData];
-            });
         }
         
         // Final update on main thread
@@ -513,9 +590,8 @@
                     [errorAlert runModal];
                 }
             }
-            
             // Simple reload - macOS handles sorting automatically
-            [self.tableView reloadData];
+            // [self.tableView reloadData];  // Removed per instructions
         });
     });
 }
@@ -1113,7 +1189,8 @@
     SavedChartData *savedData = [[SavedChartData alloc] init];
     savedData.chartID = [[NSUUID UUID] UUIDString];
     savedData.symbol = fileInfo.symbol;
-    savedData.timeframe = fileInfo.mappedTimeframe;
+    // Map BarTimeframe to ChartTimeframe before assigning
+    savedData.timeframe = [self chartTimeframeFromBarTimeframe:fileInfo.mappedTimeframe];
     savedData.dataType = dataType;
     savedData.startDate = bars.firstObject.date;
     savedData.endDate = bars.lastObject.date;

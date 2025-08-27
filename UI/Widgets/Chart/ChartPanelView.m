@@ -254,12 +254,13 @@
 - (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext {
     self.sharedXContext = sharedXContext; // Weak reference
     if (self.objectRenderer) {
-          self.objectRenderer.sharedXContext = sharedXContext;
-      }
-      
-      if (self.alertRenderer) {
-          self.alertRenderer.sharedXContext = sharedXContext;
-      }}
+        self.objectRenderer.sharedXContext = sharedXContext;
+    }
+    
+    if (self.alertRenderer) {
+        self.alertRenderer.sharedXContext = sharedXContext;
+    }
+}
 
 - (void)setCrosshairPoint:(NSPoint)point visible:(BOOL)visible {
     self.crosshairPoint = point;
@@ -267,15 +268,7 @@
     [self updateCrosshairOnly];
 }
 
-- (void)invalidateChartContent {
-    // Only redraw the heavy chart content layer
-    [self.chartContentLayer setNeedsDisplay];
-}
 
-- (void)updateCrosshairOnly {
-    // Only redraw the lightweight crosshair layer
-    [self.crosshairLayer setNeedsDisplay];
-}
 
 #pragma mark - Layer-Specific Drawing
 
@@ -713,9 +706,7 @@
     }
 }
 
-- (void)invalidateYAxis {
-    [self.yAxisLayer setNeedsDisplay];
-}
+
 
 
 - (NSString *)formatVolumeForDisplay:(double)volume {
@@ -2919,5 +2910,141 @@
           self.panelType, self.yRangeMin, self.yRangeMax);
 }
 
+
+#pragma mark - Unified Layer Management Implementation
+
+- (void)invalidateLayers:(ChartLayerInvalidationOptions)options
+    updateSharedXContext:(BOOL)updateSharedXContext
+                  reason:(NSString *)reason {
+    
+    NSMutableArray *invalidatedLayers = [NSMutableArray array];
+    
+    // Step 1: Update SharedXContext for external renderers if requested
+    if (updateSharedXContext) {
+        [self updateExternalRenderersSharedXContext];
+    }
+    
+    // Step 2: Invalidate native layers (ChartPanelView owns these)
+    if (options & ChartLayerInvalidationChartContent) {
+        [self.chartContentLayer setNeedsDisplay];
+        [invalidatedLayers addObject:@"chartContent"];
+    }
+    
+    if (options & ChartLayerInvalidationYAxis) {
+        [self.yAxisLayer setNeedsDisplay];
+        [invalidatedLayers addObject:@"yAxis"];
+    }
+    
+    if (options & ChartLayerInvalidationCrosshair) {
+        [self.crosshairLayer setNeedsDisplay];
+        [invalidatedLayers addObject:@"crosshair"];
+    }
+    
+    if (options & ChartLayerInvalidationSelection) {
+        [self.chartPortionSelectionLayer setNeedsDisplay];
+        [invalidatedLayers addObject:@"selection"];
+    }
+    
+    // Step 3: Invalidate external renderer layers
+    if (options & ChartLayerInvalidationObjects) {
+        if (self.objectRenderer) {
+            [self.objectRenderer invalidateObjectsLayer];
+            [invalidatedLayers addObject:@"objects"];
+        }
+    }
+    
+    if (options & ChartLayerInvalidationObjectsEditing) {
+        if (self.objectRenderer) {
+            [self.objectRenderer invalidateEditingLayer];
+            [invalidatedLayers addObject:@"objectsEditing"];
+        }
+    }
+    
+    if (options & ChartLayerInvalidationAlerts) {
+        if (self.alertRenderer) {
+            [self.alertRenderer invalidateAlertsLayer];
+            [invalidatedLayers addObject:@"alerts"];
+        }
+    }
+    
+    if (options & ChartLayerInvalidationAlertsEditing) {
+        if (self.alertRenderer) {
+            [self.alertRenderer invalidateAlertsEditingLayer];
+            [invalidatedLayers addObject:@"alertsEditing"];
+        }
+    }
+    
+    // Debug logging
+    if (invalidatedLayers.count > 0) {
+        NSString *reasonStr = reason ?: @"unspecified";
+        NSLog(@"🎨 ChartPanelView (%@): Invalidated layers [%@] - Reason: %@%@",
+              self.panelType,
+              [invalidatedLayers componentsJoinedByString:@", "],
+              reasonStr,
+              updateSharedXContext ? @" (with SharedXContext update)" : @"");
+    }
+}
+
+- (void)invalidateLayers:(ChartLayerInvalidationOptions)options {
+    [self invalidateLayers:options updateSharedXContext:NO reason:nil];
+}
+
+- (void)invalidateCoordinateDependentLayersWithReason:(NSString *)reason {
+    // These layers depend on coordinate system and need SharedXContext update
+    ChartLayerInvalidationOptions coordinateDependent = (ChartLayerInvalidationChartContent |
+                                                         ChartLayerInvalidationYAxis |
+                                                         ChartLayerInvalidationObjects |
+                                                         ChartLayerInvalidationAlerts);
+    
+    [self invalidateLayers:coordinateDependent
+      updateSharedXContext:YES
+                    reason:reason ?: @"coordinate system change"];
+}
+
+- (void)invalidateInteractionLayers {
+    // Only lightweight layers for mouse interactions
+    ChartLayerInvalidationOptions interactionLayers = (ChartLayerInvalidationCrosshair |
+                                                       ChartLayerInvalidationObjectsEditing |
+                                                       ChartLayerInvalidationAlertsEditing);
+    
+    [self invalidateLayers:interactionLayers updateSharedXContext:NO reason:@"user interaction"];
+}
+
+- (void)forceRedrawAllLayers {
+    NSLog(@"⚠️ ChartPanelView (%@): Force redraw all layers (emergency)", self.panelType);
+    [self invalidateLayers:ChartLayerInvalidationAll
+      updateSharedXContext:YES
+                    reason:@"force redraw (emergency)"];
+}
+
+#pragma mark - Internal Helper Methods
+
+/// Updates SharedXContext for all external renderers
+- (void)updateExternalRenderersSharedXContext {
+    if (self.objectRenderer) {
+        [self.objectRenderer updateSharedXContext:self.sharedXContext];
+    }
+    
+    if (self.alertRenderer) {
+        [self.alertRenderer updateSharedXContext:self.sharedXContext];
+    }
+}
+
+#pragma mark - Backward Compatibility Wrappers (DEPRECATED - will be removed)
+
+/// @deprecated Use invalidateLayers: instead
+- (void)invalidateChartContent {
+    [self invalidateLayers:ChartLayerInvalidationChartContent];
+}
+
+/// @deprecated Use invalidateInteractionLayers instead
+- (void)updateCrosshairOnly {
+    [self invalidateLayers:ChartLayerInvalidationCrosshair];
+}
+
+/// @deprecated Use invalidateLayers: instead
+- (void)invalidateYAxis {
+    [self invalidateLayers:ChartLayerInvalidationYAxis];
+}
 
 @end

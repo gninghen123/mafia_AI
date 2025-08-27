@@ -75,6 +75,10 @@ NS_ASSUME_NONNULL_BEGIN
                       yRangeMax:(double)yMax
                          bounds:(CGRect)bounds;
 
+/// Update shared X context reference (called when zoom/pan changes)
+/// @param sharedXContext Updated shared X coordinate context
+- (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext;
+
 #pragma mark - Rendering
 
 /// Render all static objects to objectsLayer

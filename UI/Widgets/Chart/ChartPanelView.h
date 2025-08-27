@@ -17,6 +17,40 @@
 #pragma mark - Import ChartWidget for constants
 #import "ChartWidget.h"  // Per accedere a CHART_Y_AXIS_WIDTH, CHART_MARGIN_LEFT, CHART_MARGIN_RIGHT
 
+#pragma mark - Layer Invalidation Options
+
+/// Bitmask options for layer invalidation control
+typedef NS_OPTIONS(NSUInteger, ChartLayerInvalidationOptions) {
+    ChartLayerInvalidationNone           = 0,
+    
+    // Native layers (owned by ChartPanelView)
+    ChartLayerInvalidationChartContent   = 1 << 0,  ///< Candlesticks/Volume bars
+    ChartLayerInvalidationYAxis          = 1 << 1,  ///< Y-axis ticks and labels
+    ChartLayerInvalidationCrosshair      = 1 << 2,  ///< Crosshair lines and bubbles
+    ChartLayerInvalidationSelection      = 1 << 3,  ///< Chart portion selection rectangle
+    
+    // External renderer layers
+    ChartLayerInvalidationObjects        = 1 << 4,  ///< Chart objects (trend lines, etc.)
+    ChartLayerInvalidationObjectsEditing = 1 << 5,  ///< Object being edited/created
+    ChartLayerInvalidationAlerts         = 1 << 6,  ///< Alert markers
+    ChartLayerInvalidationAlertsEditing  = 1 << 7,  ///< Alert being dragged
+    
+    // Convenience combinations
+    ChartLayerInvalidationNativeAll      = (ChartLayerInvalidationChartContent |
+                                            ChartLayerInvalidationYAxis |
+                                            ChartLayerInvalidationCrosshair |
+                                            ChartLayerInvalidationSelection),
+                                            
+    ChartLayerInvalidationExternalAll    = (ChartLayerInvalidationObjects |
+                                            ChartLayerInvalidationObjectsEditing |
+                                            ChartLayerInvalidationAlerts |
+                                            ChartLayerInvalidationAlertsEditing),
+                                            
+    ChartLayerInvalidationAll            = (ChartLayerInvalidationNativeAll |
+                                            ChartLayerInvalidationExternalAll)
+};
+
+
 @class ChartAlertRenderer;
 @class ChartWidget;
 @class ChartObjectRenderer;
@@ -117,5 +151,32 @@
 /// Reset del pan verticale ai valori originali
 - (void)resetYRangeOverride;
 
+
+#pragma mark - Unified Layer Management
+
+/// Primary method for layer invalidation with fine-grained control
+/// @param options Bitmask specifying which layers to invalidate
+/// @param updateSharedXContext Whether to update SharedXContext for external renderers
+/// @param reason Debug string describing why invalidation is needed
+- (void)invalidateLayers:(ChartLayerInvalidationOptions)options
+    updateSharedXContext:(BOOL)updateSharedXContext
+                  reason:(NSString * _Nullable)reason;
+
+/// Convenience method for layer invalidation without SharedXContext update
+/// @param options Bitmask specifying which layers to invalidate
+- (void)invalidateLayers:(ChartLayerInvalidationOptions)options;
+
+/// Specialized method for coordinate system changes (zoom/pan)
+/// Updates SharedXContext for external renderers and invalidates coordinate-dependent layers
+/// @param reason Debug string describing the coordinate change
+- (void)invalidateCoordinateDependentLayersWithReason:(NSString * _Nullable)reason;
+
+/// Lightweight method for mouse-driven updates (crosshair, hover effects)
+/// Only invalidates lightweight layers for optimal performance
+- (void)invalidateInteractionLayers;
+
+/// Emergency method to force redraw of everything
+/// Should be used sparingly, only when layer state is corrupted
+- (void)forceRedrawAllLayers;
 
 @end

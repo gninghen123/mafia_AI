@@ -1,5 +1,5 @@
-//
-//  YahooDataSource.m
+
+//  YahooDataSource.m - IMPLEMENTAZIONE UNIFICATA
 //  TradingApp
 //
 
@@ -7,6 +7,7 @@
 #import "MarketData.h"
 #import "HistoricalBar+CoreDataClass.h"
 #import "CommonTypes.h"
+
 @interface YahooDataSource ()
 @property (nonatomic, strong) NSURLSession *session;
 @property (nonatomic, strong) NSString *crumb;
@@ -27,12 +28,14 @@
 @synthesize capabilities = _capabilities;
 @synthesize sourceName = _sourceName;
 
+#pragma mark - Initialization
+
 - (instancetype)init {
     self = [super init];
     if (self) {
         _sourceType = DataSourceTypeYahoo;
         _capabilities = DataSourceCapabilityQuotes |
-        DataSourceCapabilityHistoricalData |
+                       DataSourceCapabilityHistoricalData |
                        DataSourceCapabilityFundamentals |
                        DataSourceCapabilityNews;
         _sourceName = @"Yahoo Finance";
@@ -54,16 +57,17 @@
     return self;
 }
 
-#pragma mark - DataSourceProtocol Required
+#pragma mark - DataSource Protocol Implementation - UNIFIED
 
 - (BOOL)isConnected {
     return _connected;
 }
 
-- (void)connectWithCredentials:(NSDictionary *)credentials
-                    completion:(void (^)(BOOL success, NSError *error))completion {
+// ✅ AGGIUNTO: Metodo unificato richiesto dal protocollo
+- (void)connectWithCompletion:(void (^)(BOOL success, NSError *error))completion {
+    NSLog(@"YahooDataSource: connectWithCompletion called (unified protocol)");
+    
     // Yahoo doesn't require authentication for basic data
-    // But we might need to get a crumb for some endpoints
     if (self.useCrumbAuthentication) {
         [self fetchCrumbWithCompletion:^(BOOL success, NSError *error) {
             self.connected = success;
@@ -79,6 +83,13 @@
     }
 }
 
+// MANTIENE: Metodo legacy per backward compatibility (se necessario)
+- (void)connectWithCredentials:(NSDictionary *)credentials
+                    completion:(void (^)(BOOL success, NSError *error))completion {
+    // Redirect to unified method
+    [self connectWithCompletion:completion];
+}
+
 - (void)disconnect {
     [self.session invalidateAndCancel];
     self.connected = NO;
@@ -87,9 +98,7 @@
     [self.cache removeAllObjects];
 }
 
-#pragma mark - Market Data
-
-// Aggiornamento del metodo fetchQuoteForSymbol nel YahooDataSource.m
+#pragma mark - Market Data - UNIFIED
 
 - (void)fetchQuoteForSymbol:(NSString *)symbol
                  completion:(void (^)(id quote, NSError *error))completion {
@@ -98,18 +107,27 @@
     
     // Check cache first
     NSString *cacheKey = [NSString stringWithFormat:@"quote_%@", symbol];
-    MarketData *cachedQuote = [self.cache objectForKey:cacheKey];
+    id cachedQuote = [self.cache objectForKey:cacheKey];
     if (cachedQuote) {
-        NSTimeInterval age = [[NSDate date] timeIntervalSinceDate:cachedQuote.timestamp];
-        if (age < self.cacheTimeout) {
-            NSLog(@"YahooDataSource: Using cached quote for %@", symbol);
-            if (completion) {
-                completion(cachedQuote, nil);
+        // ✅ Per dati raw, usiamo un timestamp embedded nel dictionary
+        NSNumber *timestamp = nil;
+        if ([cachedQuote isKindOfClass:[NSDictionary class]]) {
+            timestamp = cachedQuote[@"timestamp"];
+        }
+        
+        if (timestamp) {
+            NSTimeInterval age = [[NSDate date] timeIntervalSince1970] - [timestamp doubleValue];
+            if (age < self.cacheTimeout) {
+                NSLog(@"YahooDataSource: Using cached quote for %@", symbol);
+                if (completion) {
+                    completion(cachedQuote, nil);
+                }
+                return;
             }
-            return;
         }
     }
     
+    // ✅ Usa l'API Yahoo che hai specificato
     NSString *urlString = [NSString stringWithFormat:
                           @"https://query1.finance.yahoo.com/v8/finance/chart/%@", symbol];
     
@@ -128,239 +146,334 @@
     
     NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
                                                  completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        if (error) {
-            NSLog(@"YahooDataSource: Network error for %@: %@", symbol, error.localizedDescription);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (completion) completion(nil, error);
-            });
-            return;
-        }
-        
-        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
-        NSLog(@"YahooDataSource: HTTP Status Code: %ld", (long)httpResponse.statusCode);
-        
-        if (httpResponse.statusCode != 200) {
-            NSString *errorMsg = [NSString stringWithFormat:@"HTTP Error %ld", (long)httpResponse.statusCode];
-            NSError *httpError = [NSError errorWithDomain:@"YahooDataSource"
-                                                     code:httpResponse.statusCode
-                                                 userInfo:@{NSLocalizedDescriptionKey: errorMsg}];
-            NSLog(@"YahooDataSource: HTTP error: %@", errorMsg);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (completion) completion(nil, httpError);
-            });
-            return;
-        }
-        
-        // Log raw response
-        NSString *responseString = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-        NSLog(@"YahooDataSource: Raw response for %@ (first 500 chars): %@",
-              symbol, [responseString substringToIndex:MIN(500, responseString.length)]);
-        
-        NSError *parseError;
-        NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
-        
-        if (parseError) {
-            NSLog(@"YahooDataSource: JSON parsing error for %@: %@", symbol, parseError.localizedDescription);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (completion) completion(nil, parseError);
-            });
-            return;
-        }
-        
-        // Log parsed JSON structure
-        NSLog(@"YahooDataSource: Parsed JSON keys: %@", json.allKeys);
-        
-        // Check for error in JSON
-        if (json[@"chart"] && json[@"chart"][@"error"]) {
-            NSDictionary *errorInfo = json[@"chart"][@"error"];
-            NSString *errorMsg = errorInfo[@"description"] ?: @"Unknown Yahoo API error";
-            NSError *yahooError = [NSError errorWithDomain:@"YahooDataSource"
-                                                      code:[errorInfo[@"code"] integerValue]
-                                                  userInfo:@{NSLocalizedDescriptionKey: errorMsg}];
-            NSLog(@"YahooDataSource: Yahoo API error for %@: %@", symbol, errorMsg);
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (completion) completion(nil, yahooError);
-            });
-            return;
-        }
-        
-        MarketData *quote = [self parseQuoteFromJSON:json forSymbol:symbol];
-        
-        if (quote) {
-            NSLog(@"YahooDataSource: Successfully parsed quote for %@", symbol);
-            [self.cache setObject:quote forKey:cacheKey];
-        } else {
-            NSLog(@"YahooDataSource: Failed to parse quote for %@", symbol);
-        }
-        
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (completion) completion(quote, nil);
-        });
+        [self handleQuoteResponse:data response:response error:error symbol:symbol completion:completion];
     }];
     
     [task resume];
 }
+
+- (void)fetchQuotesForSymbols:(NSArray<NSString *> *)symbols
+                   completion:(void (^)(NSDictionary *quotes, NSError *error))completion {
+    
+    NSLog(@"YahooDataSource: Fetching batch quotes for %lu symbols", (unsigned long)symbols.count);
+    
+    // Yahoo API doesn't support true batch requests, so we make individual requests
+    // and collect results
+    NSMutableDictionary *allQuotes = [NSMutableDictionary dictionary];
+    dispatch_group_t group = dispatch_group_create();
+    __block NSError *firstError = nil;
+    
+    for (NSString *symbol in symbols) {
+        dispatch_group_enter(group);
+        
+        [self fetchQuoteForSymbol:symbol completion:^(id quote, NSError *error) {
+            @synchronized(allQuotes) {
+                if (error && !firstError) {
+                    firstError = error;
+                } else if (quote) {
+                    allQuotes[symbol] = quote;
+                }
+            }
+            dispatch_group_leave(group);
+        }];
+    }
+    
+    dispatch_group_notify(group, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) {
+                completion([allQuotes copy], firstError);
+            }
+        });
+    });
+}
+
+#pragma mark - Historical Data - UNIFIED with Yahoo API
+
+// ✅ METODO UNIFICATO: Historical data con date range
 - (void)fetchHistoricalDataForSymbol:(NSString *)symbol
                            timeframe:(BarTimeframe)timeframe
                            startDate:(NSDate *)startDate
                              endDate:(NSDate *)endDate
+                   needExtendedHours:(BOOL)needExtendedHours
                           completion:(void (^)(NSArray *bars, NSError *error))completion {
     
-    NSString *interval = [self intervalStringForTimeframe:timeframe];
-    NSString *urlString = [NSString stringWithFormat:
-                          @"https://query1.finance.yahoo.com/v8/finance/chart/%@?period1=%ld&period2=%ld&interval=%@",
-                          symbol,
-                          (long)[startDate timeIntervalSince1970],
-                          (long)[endDate timeIntervalSince1970],
-                          interval];
+    NSLog(@"YahooDataSource: Fetching historical data for %@ from %@ to %@",
+          symbol, startDate, endDate);
     
+    NSString *interval = [self intervalStringForTimeframe:timeframe];
+    NSTimeInterval period1 = [startDate timeIntervalSince1970];
+    NSTimeInterval period2 = [endDate timeIntervalSince1970];
+    
+    // ✅ USA L'API YAHOO CHE HAI SPECIFICATO
+    NSMutableString *urlString = [NSMutableString stringWithFormat:
+        @"https://query1.finance.yahoo.com/v8/finance/chart/%@?interval=%@&period1=%ld&period2=%ld",
+        symbol, interval, (long)period1, (long)period2];
+    
+    // ✅ AGGIUNGE includePrePost per extended hours
+    if (needExtendedHours) {
+        [urlString appendString:@"&includePrePost=true"];
+    }
+    
+    // Aggiungi events standard per dividendi/splits
+    [urlString appendString:@"&events=div,splits,capitalGains"];
+    
+    NSLog(@"YahooDataSource: Historical URL: %@", urlString);
+    
+    [self executeHistoricalRequest:urlString completion:completion];
+}
+
+// ✅ METODO UNIFICATO: Historical data con bar count
+- (void)fetchHistoricalDataForSymbol:(NSString *)symbol
+                           timeframe:(BarTimeframe)timeframe
+                            barCount:(NSInteger)barCount
+                   needExtendedHours:(BOOL)needExtendedHours
+                          completion:(void (^)(NSArray *bars, NSError *error))completion {
+    
+    NSLog(@"YahooDataSource: Fetching %ld bars of historical data for %@", (long)barCount, symbol);
+    
+    NSString *interval = [self intervalStringForTimeframe:timeframe];
+    NSString *range = [self rangeStringForBarCount:barCount timeframe:timeframe];
+    
+    // ✅ USA L'API YAHOO con range invece di period1/period2
+    NSMutableString *urlString = [NSMutableString stringWithFormat:
+        @"https://query1.finance.yahoo.com/v8/finance/chart/%@?interval=%@&range=%@",
+        symbol, interval, range];
+    
+    // ✅ AGGIUNGE includePrePost per extended hours
+    if (needExtendedHours) {
+        [urlString appendString:@"&includePrePost=true"];
+    }
+    
+    // Aggiungi events standard
+    [urlString appendString:@"&events=div,splits,capitalGains"];
+    
+    NSLog(@"YahooDataSource: Historical URL (count): %@", urlString);
+    
+    [self executeHistoricalRequest:urlString completion:completion];
+}
+
+#pragma mark - Helper Methods - ENHANCED
+
+- (void)executeHistoricalRequest:(NSString *)urlString completion:(void (^)(NSArray *bars, NSError *error))completion {
     NSURL *url = [NSURL URLWithString:urlString];
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
     
+    // Add headers to mimic a browser request
+    [request setValue:@"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" forHTTPHeaderField:@"User-Agent"];
+    [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+    
+    if (self.cookie) {
+        [request setValue:self.cookie.value forHTTPHeaderField:@"Cookie"];
+    }
+    
     NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
                                                  completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        if (error) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (completion) completion(nil, error);
-            });
-            return;
-        }
-        
-        NSError *parseError;
-        NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
-        
-        if (parseError) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                if (completion) completion(nil, parseError);
-            });
-            return;
-        }
-        
-        NSArray *bars = [self parseHistoricalDataFromJSON:json];
-        
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (completion) completion(bars, nil);
-        });
+        [self handleHistoricalResponse:data response:response error:error completion:completion];
     }];
     
     [task resume];
 }
 
-#pragma mark - Helper Methods
-
-- (void)fetchCrumbWithCompletion:(void (^)(BOOL success, NSError *error))completion {
-    // Implementation for getting Yahoo crumb if needed
-    // This is required for some protected endpoints
-    if (completion) {
-        completion(YES, nil); // Simplified for now
+- (void)handleQuoteResponse:(NSData *)data
+                   response:(NSURLResponse *)response
+                      error:(NSError *)error
+                     symbol:(NSString *)symbol
+                 completion:(void (^)(id quote, NSError *error))completion {
+    
+    if (error) {
+        NSLog(@"YahooDataSource: Network error for %@: %@", symbol, error.localizedDescription);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, error);
+        });
+        return;
     }
+    
+    NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+    if (httpResponse.statusCode != 200) {
+        NSString *errorMsg = [NSString stringWithFormat:@"HTTP Error %ld", (long)httpResponse.statusCode];
+        NSError *httpError = [NSError errorWithDomain:@"YahooDataSource"
+                                                 code:httpResponse.statusCode
+                                             userInfo:@{NSLocalizedDescriptionKey: errorMsg}];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, httpError);
+        });
+        return;
+    }
+    
+    NSError *parseError;
+    NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
+    
+    if (parseError) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, parseError);
+        });
+        return;
+    }
+    
+    // Check for error in JSON
+    if (json[@"chart"] && json[@"chart"][@"error"]) {
+        NSDictionary *errorInfo = json[@"chart"][@"error"];
+        NSString *errorMsg = errorInfo[@"description"] ?: @"Unknown Yahoo API error";
+        NSError *yahooError = [NSError errorWithDomain:@"YahooDataSource"
+                                                  code:[errorInfo[@"code"] integerValue]
+                                              userInfo:@{NSLocalizedDescriptionKey: errorMsg}];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, yahooError);
+        });
+        return;
+    }
+    
+    // ✅ RITORNA DATI RAW YAHOO - nessuna conversione a MarketData
+    id rawQuoteData = [self parseQuoteFromJSON:json forSymbol:symbol];
+    
+    if (rawQuoteData) {
+        NSString *cacheKey = [NSString stringWithFormat:@"quote_%@", symbol];
+        [self.cache setObject:rawQuoteData forKey:cacheKey];
+    }
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (completion) completion(rawQuoteData, nil);
+    });
 }
+
+- (void)handleHistoricalResponse:(NSData *)data
+                        response:(NSURLResponse *)response
+                           error:(NSError *)error
+                      completion:(void (^)(NSArray *bars, NSError *error))completion {
+    
+    if (error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, error);
+        });
+        return;
+    }
+    
+    NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+    if (httpResponse.statusCode != 200) {
+        NSString *errorMsg = [NSString stringWithFormat:@"HTTP Error %ld", (long)httpResponse.statusCode];
+        NSError *httpError = [NSError errorWithDomain:@"YahooDataSource"
+                                                 code:httpResponse.statusCode
+                                             userInfo:@{NSLocalizedDescriptionKey: errorMsg}];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, httpError);
+        });
+        return;
+    }
+    
+    NSError *parseError;
+    NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
+    
+    if (parseError) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, parseError);
+        });
+        return;
+    }
+    
+    NSArray *bars = [self parseHistoricalDataFromJSON:json];
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (completion) completion(bars, nil);
+    });
+}
+
+#pragma mark - Yahoo API Helper Methods - ENHANCED
 
 - (NSString *)intervalStringForTimeframe:(BarTimeframe)timeframe {
+    // ✅ MAPPATURA COMPLETA Yahoo intervals
     switch (timeframe) {
-        case BarTimeframe1Min: return @"1m";
-        case BarTimeframe5Min: return @"5m";
-        case BarTimeframe15Min: return @"15m";
-        case BarTimeframe30Min: return @"30m";
-        case BarTimeframe1Hour: return @"60m";
-        case BarTimeframeDaily: return @"1d";
-        case BarTimeframeWeekly: return @"1wk";
-        case BarTimeframeMonthly: return @"1mo";
-        default: return @"1d";
+        case BarTimeframe1Min:     return @"1m";
+        case BarTimeframe2Min:     return @"2m";     // ✅ AGGIUNTO
+        case BarTimeframe5Min:     return @"5m";
+        case BarTimeframe15Min:    return @"15m";
+        case BarTimeframe30Min:    return @"30m";
+        case BarTimeframe1Hour:    return @"60m";
+        case BarTimeframe90Min:    return @"90m";    // ✅ AGGIUNTO
+        case BarTimeframeDaily:    return @"1d";
+        case BarTimeframeWeekly:   return @"1wk";
+        case BarTimeframeMonthly:  return @"1mo";
+        default:                   return @"1d";
     }
 }
 
-// Aggiornamento del metodo parseQuoteFromJSON nel YahooDataSource.m
-
-- (MarketData *)parseQuoteFromJSON:(NSDictionary *)json forSymbol:(NSString *)symbol {
-    NSLog(@"YahooDataSource: Parsing JSON for %@", symbol);
+- (NSString *)rangeStringForBarCount:(NSInteger)barCount timeframe:(BarTimeframe)timeframe {
+    // ✅ LOGICA INTELLIGENTE per convertire barCount in range Yahoo
     
-    NSDictionary *chart = json[@"chart"];
-    if (!chart) {
-        NSLog(@"YahooDataSource: No 'chart' key in JSON");
-        return nil;
+    // Per timeframes intraday, calcola giorni necessari
+    if (timeframe <= BarTimeframe1Hour) {
+        // Intraday: assumiamo 6.5 ore di trading per giorno (390 min)
+        NSInteger barsPerDay;
+        switch (timeframe) {
+            case BarTimeframe1Min:  barsPerDay = 390; break;
+            case BarTimeframe2Min:  barsPerDay = 195; break;
+            case BarTimeframe5Min:  barsPerDay = 78; break;
+            case BarTimeframe15Min: barsPerDay = 26; break;
+            case BarTimeframe30Min: barsPerDay = 13; break;
+            case BarTimeframe1Hour: barsPerDay = 6; break;
+            default: barsPerDay = 390; break;
+        }
+        
+        NSInteger daysNeeded = MAX(1, (barCount + barsPerDay - 1) / barsPerDay);
+        
+        if (daysNeeded <= 1) return @"1d";
+        if (daysNeeded <= 5) return @"5d";
+        if (daysNeeded <= 30) return @"1mo";
+        if (daysNeeded <= 90) return @"3mo";
+        if (daysNeeded <= 180) return @"6mo";
+        if (daysNeeded <= 365) return @"1y";
+        if (daysNeeded <= 730) return @"2y";
+        if (daysNeeded <= 1825) return @"5y";
+        return @"max";
     }
     
-    NSArray *results = chart[@"result"];
-    if (!results || results.count == 0) {
-        NSLog(@"YahooDataSource: No results in chart");
-        return nil;
+    // Per timeframes daily e superiori
+    switch (timeframe) {
+        case BarTimeframeDaily:
+            if (barCount <= 5) return @"5d";
+            if (barCount <= 22) return @"1mo";
+            if (barCount <= 66) return @"3mo";
+            if (barCount <= 132) return @"6mo";
+            if (barCount <= 252) return @"1y";
+            if (barCount <= 504) return @"2y";
+            if (barCount <= 1260) return @"5y";
+            return @"max";
+            
+        case BarTimeframeWeekly:
+            if (barCount <= 4) return @"1mo";
+            if (barCount <= 12) return @"3mo";
+            if (barCount <= 26) return @"6mo";
+            if (barCount <= 52) return @"1y";
+            if (barCount <= 104) return @"2y";
+            if (barCount <= 260) return @"5y";
+            return @"max";
+            
+        case BarTimeframeMonthly:
+            if (barCount <= 3) return @"3mo";
+            if (barCount <= 6) return @"6mo";
+            if (barCount <= 12) return @"1y";
+            if (barCount <= 24) return @"2y";
+            if (barCount <= 60) return @"5y";
+            return @"max";
+            
+        default:
+            return @"1y";
     }
-    
-    NSDictionary *result = results[0];
-    NSDictionary *meta = result[@"meta"];
-    
-    NSLog(@"YahooDataSource: Meta data keys: %@", meta.allKeys);
-    NSLog(@"YahooDataSource: regularMarketPrice: %@ (%@)", meta[@"regularMarketPrice"], [meta[@"regularMarketPrice"] class]);
-    NSLog(@"YahooDataSource: previousClose: %@ (%@)", meta[@"previousClose"], [meta[@"previousClose"] class]);
-    
-    // Create dictionary for MarketData initialization
-    NSMutableDictionary *marketDataDict = [NSMutableDictionary dictionary];
-    marketDataDict[@"symbol"] = symbol;
-    
-    // Map Yahoo fields to our MarketData fields
-    if (meta[@"regularMarketPrice"]) {
-        marketDataDict[@"last"] = meta[@"regularMarketPrice"];
-    }
-    
-    if (meta[@"previousClose"]) {
-        marketDataDict[@"previousClose"] = meta[@"previousClose"];
-    }
-    
-    if (meta[@"regularMarketVolume"]) {
-        marketDataDict[@"volume"] = meta[@"regularMarketVolume"];
-    }
-    
-    // Try to get bid/ask from meta or use last price as fallback
-    if (meta[@"bid"]) {
-        marketDataDict[@"bid"] = meta[@"bid"];
-    } else if (meta[@"regularMarketPrice"]) {
-        // Use last price as bid if no bid available
-        marketDataDict[@"bid"] = meta[@"regularMarketPrice"];
-    }
-    
-    if (meta[@"ask"]) {
-        marketDataDict[@"ask"] = meta[@"ask"];
-    } else if (meta[@"regularMarketPrice"]) {
-        // Use last price as ask if no ask available
-        marketDataDict[@"ask"] = meta[@"regularMarketPrice"];
-    }
-    
-    // Get additional fields if available
-    if (meta[@"regularMarketOpen"]) {
-        marketDataDict[@"open"] = meta[@"regularMarketOpen"];
-    }
-    
-    if (meta[@"regularMarketDayHigh"]) {
-        marketDataDict[@"high"] = meta[@"regularMarketDayHigh"];
-    }
-    
-    if (meta[@"regularMarketDayLow"]) {
-        marketDataDict[@"low"] = meta[@"regularMarketDayLow"];
-    }
-    
-    if (meta[@"chartPreviousClose"]) {
-        marketDataDict[@"close"] = meta[@"chartPreviousClose"];
-    }
-    
-    if (meta[@"exchangeName"]) {
-        marketDataDict[@"exchange"] = meta[@"exchangeName"];
-    }
-    
-    // Add timestamp
-    marketDataDict[@"timestamp"] = @([[NSDate date] timeIntervalSince1970]);
-    
-    NSLog(@"YahooDataSource: MarketData dictionary: %@", marketDataDict);
-    
-    // Create MarketData object
-    MarketData *quote = [[MarketData alloc] initWithDictionary:marketDataDict];
-    
-    NSLog(@"YahooDataSource: Created quote - Last: %@, Bid: %@, Ask: %@", quote.last, quote.bid, quote.ask);
-    
-    return quote;
 }
 
-- (NSArray *)parseHistoricalDataFromJSON:(NSDictionary *)json {
+- (void)fetchCrumbWithCompletion:(void (^)(BOOL success, NSError *error))completion {
+    // ✅ IMPLEMENTAZIONE crumb se necessario per protezione
+    // Per ora Yahoo funziona senza crumb per i basic endpoints
+    if (completion) {
+        completion(YES, nil);
+    }
+}
+
+#pragma mark - Parsing Methods - ENHANCED
+
+- (id)parseQuoteFromJSON:(NSDictionary *)json forSymbol:(NSString *)symbol {
+    // ✅ RITORNA DATI RAW YAHOO - nessuna conversione a MarketData
+    // Il YahooDataAdapter si occuperà della standardizzazione
+    
     NSDictionary *chart = json[@"chart"];
     if (!chart) return nil;
     
@@ -368,32 +481,51 @@
     if (!results || results.count == 0) return nil;
     
     NSDictionary *result = results[0];
-    NSArray *timestamps = result[@"timestamp"];
-    NSDictionary *indicators = result[@"indicators"];
-    NSDictionary *quote = indicators[@"quote"][0];
+    NSDictionary *meta = result[@"meta"];
     
-    NSArray *opens = quote[@"open"];
-    NSArray *highs = quote[@"high"];
-    NSArray *lows = quote[@"low"];
-    NSArray *closes = quote[@"close"];
-    NSArray *volumes = quote[@"volume"];
+    NSLog(@"YahooDataSource: Returning raw Yahoo quote data for %@", symbol);
     
-    NSMutableArray *bars = [NSMutableArray array];
+    // ✅ RITORNA DICTIONARY RAW con tutti i dati Yahoo
+    return @{
+        @"symbol": symbol,
+        @"meta": meta ?: @{},
+        @"result": result,
+        @"timestamp": @([[NSDate date] timeIntervalSince1970])
+    };
+}
+
+- (NSArray *)parseHistoricalDataFromJSON:(NSDictionary *)json {
+    // ✅ RITORNA DATI RAW YAHOO - nessuna standardizzazione
+    // Il YahooDataAdapter si occuperà della conversione
     
-    for (NSInteger i = 0; i < timestamps.count; i++) {
-        NSMutableDictionary *barDict = [NSMutableDictionary dictionary];
-        
-        barDict[@"date"] = [NSDate dateWithTimeIntervalSince1970:[timestamps[i] doubleValue]];
-        barDict[@"open"] = opens[i];
-        barDict[@"high"] = highs[i];
-        barDict[@"low"] = lows[i];
-        barDict[@"close"] = closes[i];
-        barDict[@"volume"] = volumes[i];
-        
-        [bars addObject:barDict];
-    }
+    NSDictionary *chart = json[@"chart"];
+    if (!chart) return @[];
     
-    return bars;
+    NSArray *results = chart[@"result"];
+    if (!results || results.count == 0) return @[];
+    
+    NSDictionary *result = results[0];
+    
+    // ✅ RITORNA IL RESULT COMPLETO di Yahoo
+    // Include: timestamp, indicators, meta, etc.
+    return @[result]; // Singolo object con tutti i dati Yahoo
+}
+
+#pragma mark - Legacy Support Methods
+
+// ✅ MANTIENE metodi legacy per backward compatibility se necessari
+- (void)fetchHistoricalDataForSymbol:(NSString *)symbol
+                           timeframe:(BarTimeframe)timeframe
+                           startDate:(NSDate *)startDate
+                             endDate:(NSDate *)endDate
+                          completion:(void (^)(NSArray *bars, NSError *error))completion {
+    // Redirect to unified method with needExtendedHours = NO
+    [self fetchHistoricalDataForSymbol:symbol
+                             timeframe:timeframe
+                             startDate:startDate
+                               endDate:endDate
+                     needExtendedHours:NO
+                            completion:completion];
 }
 
 #pragma mark - Rate Limiting
@@ -405,6 +537,22 @@
 
 - (NSDate *)rateLimitResetDate {
     return [NSDate dateWithTimeIntervalSinceNow:60]; // Reset every minute
+}
+
+#pragma mark - Utility Methods
+
++ (NSString *)userAgentString {
+    return @"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+}
+
++ (NSDictionary *)standardHeaders {
+    return @{
+        @"User-Agent": [self userAgentString],
+        @"Accept": @"application/json, text/plain, */*",
+        @"Accept-Language": @"en-US,en;q=0.9",
+        @"Cache-Control": @"no-cache",
+        @"Pragma": @"no-cache"
+    };
 }
 
 @end

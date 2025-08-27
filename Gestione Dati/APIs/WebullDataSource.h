@@ -1,40 +1,48 @@
 //
-//  WebullDataSource.h
+//  WebullDataSource.h - UNIFICAZIONE PROTOCOLLO COMPLETA
 //  TradingApp
 //
-//  Webull API data source implementation
+//  ✅ UNIFIED: Implementa SOLO i metodi del protocollo DataSource unificato
+//  🔥 ELIMINATI: Metodi Webull-specifici legacy non del protocollo
 //
 
 #import <Foundation/Foundation.h>
 #import "DownloadManager.h"
+#import "CommonTypes.h"
 
 @interface WebullDataSource : NSObject <DataSource>
 
+#pragma mark - DataSource Protocol - UNIFIED METHODS
 
-// Market Lists
-- (void)fetchTopGainersWithRankType:(NSString *)rankType
-                           pageSize:(NSInteger)pageSize
-                         completion:(void (^)(NSArray *gainers, NSError *error))completion;
+// Connection Management (UNIFIED)
+- (void)connectWithCompletion:(void (^)(BOOL success, NSError *error))completion;
+- (void)disconnect;
 
-- (void)fetchTopLosersWithRankType:(NSString *)rankType
-                          pageSize:(NSInteger)pageSize
-                        completion:(void (^)(NSArray *losers, NSError *error))completion;
+// Market Data (UNIFIED - Required)
+- (void)fetchQuoteForSymbol:(NSString *)symbol
+                 completion:(void (^)(id quote, NSError *error))completion;
 
-- (void)fetchETFListWithCompletion:(void (^)(NSArray *etfs, NSError *error))completion;
+- (void)fetchQuotesForSymbols:(NSArray<NSString *> *)symbols
+                   completion:(void (^)(NSDictionary *quotes, NSError *error))completion;
 
-// DataSource Protocol - Market Lists (NEW)
+// Historical Data (UNIFIED - Required) - ✅ PARAMETRI CORRETTI
+- (void)fetchHistoricalDataForSymbol:(NSString *)symbol
+                           timeframe:(BarTimeframe)timeframe  // ✅ BarTimeframe non NSString
+                           startDate:(NSDate *)startDate
+                             endDate:(NSDate *)endDate
+                   needExtendedHours:(BOOL)needExtendedHours  // ✅ AGGIUNTO
+                          completion:(void (^)(NSArray *bars, NSError *error))completion;
+
+- (void)fetchHistoricalDataForSymbol:(NSString *)symbol
+                           timeframe:(BarTimeframe)timeframe  // ✅ BarTimeframe non NSString
+                            barCount:(NSInteger)barCount      // ✅ barCount non count
+                   needExtendedHours:(BOOL)needExtendedHours  // ✅ AGGIUNTO
+                          completion:(void (^)(NSArray *bars, NSError *error))completion;
+
+#pragma mark - Market Lists (UNIFIED - Optional)
 - (void)fetchMarketListForType:(DataRequestType)listType
                     parameters:(NSDictionary *)parameters
                     completion:(void (^)(NSArray *results, NSError *error))completion;
 
-// Quotes
-- (void)fetchQuotesForSymbols:(NSArray<NSString *> *)symbols
-                   completion:(void (^)(NSDictionary *quotes, NSError *error))completion;
-
-// Historical Data
-- (void)fetchHistoricalDataForSymbol:(NSString *)symbol
-                          timeframe:(NSString *)timeframe
-                              count:(NSInteger)count
-                         completion:(void (^)(NSArray *bars, NSError *error))completion;
-
 @end
+

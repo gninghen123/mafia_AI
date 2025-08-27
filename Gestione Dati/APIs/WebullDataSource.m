@@ -1,12 +1,11 @@
+
 //
-//  WebullDataSource.m
+//  WebullDataSource.m - IMPLEMENTAZIONE UNIFICATA (PARTE 1)
 //  TradingApp
 //
 
 #import "WebullDataSource.h"
-#import "MarketData.h"
-#import "HistoricalBar+CoreDataClass.h"
-#import "CommonTypes.h"  // Per BarTimeframe
+#import "CommonTypes.h"
 
 // Webull API Endpoints
 static NSString *const kWebullTopGainersURL = @"https://quotes-gw.webullfintech.com/api/bgw/market/topGainers";
@@ -33,20 +32,22 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
 @synthesize sourceName = _sourceName;
 @synthesize isConnected = _isConnected;
 
+#pragma mark - Initialization
+
 - (instancetype)init {
     self = [super init];
     if (self) {
-        _sourceType = DataSourceTypeWebull; // FIXED: Use correct WebullDataSource type
+        _sourceType = DataSourceTypeWebull;
         _sourceName = @"Webull";
         _capabilities = DataSourceCapabilityQuotes |
-        DataSourceCapabilityHistoricalData |
-                       DataSourceCapabilityFundamentals;
-        _isConnected = YES; // Webull API doesn't require authentication for these endpoints
+                       DataSourceCapabilityHistoricalData |
+                       DataSourceCapabilityMarketLists;
+        _isConnected = YES; // Webull API doesn't require authentication for public endpoints
         
-        // Generate a device ID for the session
+        // Generate device ID for session
         _deviceId = [[NSUUID UUID] UUIDString];
         
-        // Configure session
+        // Configure session with headers
         NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
         config.HTTPAdditionalHeaders = @{
             @"User-Agent": @"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
@@ -62,49 +63,20 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
     }
     return self;
 }
-#pragma mark - DataSource Protocol - Market Lists
 
-- (void)fetchMarketListForType:(DataRequestType)listType
-                    parameters:(NSDictionary *)parameters
-                    completion:(void (^)(NSArray *results, NSError *error))completion {
-    
-    switch (listType) {
-        case DataRequestTypeTopGainers: {
-            NSString *rankType = parameters[@"rankType"] ?: @"1d";
-            NSInteger pageSize = [parameters[@"pageSize"] integerValue] ?: 20;
-            [self fetchTopGainersWithRankType:rankType
-                                     pageSize:pageSize
-                                   completion:completion];
-            break;
-        }
-        case DataRequestTypeTopLosers: {
-            NSString *rankType = parameters[@"rankType"] ?: @"1d";
-            NSInteger pageSize = [parameters[@"pageSize"] integerValue] ?: 20;
-            [self fetchTopLosersWithRankType:rankType
-                                    pageSize:pageSize
-                                  completion:completion];
-            break;
-        }
-        case DataRequestTypeETFList: {
-            [self fetchETFListWithCompletion:completion];
-            break;
-        }
-        default: {
-            NSError *error = [NSError errorWithDomain:@"WebullDataSource"
-                                                 code:400
-                                             userInfo:@{NSLocalizedDescriptionKey:
-                                                       [NSString stringWithFormat:@"Unsupported market list type: %ld", (long)listType]}];
-            if (completion) completion(nil, error);
-            break;
-        }
-    }
+#pragma mark - DataSource Protocol Implementation
+
+- (BOOL)isConnected {
+    return _isConnected;
 }
 
-#pragma mark - DataSourceProtocol Required Methods
-
-- (void)connectWithCredentials:(NSDictionary *)credentials
-                    completion:(void (^)(BOOL success, NSError *error))completion {
-    // Webull doesn't require authentication for market data
+// ✅ UNIFICATO: Aggiunto metodo protocollo standard (era connectWithCredentials)
+- (void)connectWithCompletion:(void (^)(BOOL success, NSError *error))completion {
+    NSLog(@"WebullDataSource: connectWithCompletion called (unified protocol)");
+    
+    // Webull doesn't require authentication for market data endpoints
+    self.isConnected = YES;
+    
     if (completion) {
         completion(YES, nil);
     }
@@ -115,188 +87,21 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
     self.isConnected = NO;
 }
 
-#pragma mark - DataSourceProtocol Optional Methods
+#pragma mark - Market Data - UNIFIED PROTOCOL
 
 - (void)fetchQuoteForSymbol:(NSString *)symbol
                  completion:(void (^)(id quote, NSError *error))completion {
+    
     [self fetchQuotesForSymbols:@[symbol] completion:^(NSDictionary *quotes, NSError *error) {
         if (error) {
             if (completion) completion(nil, error);
         } else {
-            MarketData *quote = quotes[symbol];
-            if (completion) completion(quote, nil);
+            // ✅ RITORNA DATI RAW WEBULL
+            id rawQuoteData = quotes[symbol];
+            if (completion) completion(rawQuoteData, nil);
         }
     }];
 }
-
-- (void)fetchHistoricalDataForSymbol:(NSString *)symbol
-                           timeframe:(BarTimeframe)timeframe
-                           startDate:(NSDate *)startDate
-                             endDate:(NSDate *)endDate
-                          completion:(void (^)(NSArray *bars, NSError *error))completion {
-    
-    // Convert timeframe to Webull format
-    NSString *webullTimeframe = [self webullTimeframeFromBarTimeframe:timeframe];
-    NSInteger count = [self calculateBarCountFromStartDate:startDate endDate:endDate timeframe:timeframe];
-    
-    [self fetchHistoricalDataForSymbol:symbol
-                             timeframe:webullTimeframe
-                                 count:count
-                            completion:completion];
-}
-
-#pragma mark - Market Lists
-
-- (void)fetchTopGainersWithRankType:(NSString *)rankType
-                           pageSize:(NSInteger)pageSize
-                         completion:(void (^)(NSArray *gainers, NSError *error))completion {
-    
-    NSString *urlString = [NSString stringWithFormat:@"%@?regionId=6&pageIndex=1&pageSize=%ld&rankType=%@",
-                          kWebullTopGainersURL, (long)pageSize, rankType];
-    
-    [self executeRequest:urlString completion:^(NSDictionary *response, NSError *error) {
-        if (error) {
-            if (completion) completion(nil, error);
-            return;
-        }
-        
-        NSArray *data = response[@"data"];
-        if (!data) {
-            if (completion) completion(@[], nil);
-            return;
-        }
-        
-        NSMutableArray *gainers = [NSMutableArray array];
-        for (NSDictionary *item0 in data) {
-            NSDictionary *item = item0[@"ticker"];
-            // Calcola la variazione percentuale
-            NSNumber *changeRatio = item[@"changeRatio"];
-            double changePercent = 0.0;
-            if (changeRatio) {
-                changePercent = [changeRatio doubleValue] * 100.0; // Converti in percentuale
-            }
-            
-            NSDictionary *gainersData = @{
-                @"symbol": item[@"symbol"] ?: @"",
-                @"name": item[@"name"] ?: @"",
-                @"changePercent": @(changePercent),
-                @"price": item[@"close"] ?: @0,
-                @"change": item[@"change"] ?: @0,
-                @"volume": item[@"volume"] ?: @0
-            };
-            [gainers addObject:gainersData];
-        }
-        
-        if (completion) completion(gainers, nil);
-    }];
-}
-
-- (void)fetchTopLosersWithRankType:(NSString *)rankType
-                          pageSize:(NSInteger)pageSize
-                        completion:(void (^)(NSArray *losers, NSError *error))completion {
-    
-    NSString *urlString = [NSString stringWithFormat:@"%@?regionId=6&pageIndex=1&pageSize=%ld&rankType=%@",
-                          kWebullTopLosersURL, (long)pageSize, rankType];
-    
-    [self executeRequest:urlString completion:^(NSDictionary *response, NSError *error) {
-        if (error) {
-            if (completion) completion(nil, error);
-            return;
-        }
-        
-        NSArray *data = response[@"data"];
-        if (!data) {
-            if (completion) completion(@[], nil);
-            return;
-        }
-        
-        NSMutableArray *losers = [NSMutableArray array];
-        for (NSDictionary *item0 in data) {
-            NSDictionary *item = item0[@"ticker"];
-            // Calcola la variazione percentuale
-            NSNumber *changeRatio = item[@"changeRatio"];
-            double changePercent = 0.0;
-            if (changeRatio) {
-                changePercent = [changeRatio doubleValue] * 100.0; // Converti in percentuale
-            }
-            
-            NSDictionary *loserData = @{
-                @"symbol": item[@"symbol"] ?: @"",
-                @"name": item[@"name"] ?: @"",
-                @"changePercent": @(changePercent),
-                @"price": item[@"close"] ?: @0,
-                @"change": item[@"change"] ?: @0,
-                @"volume": item[@"volume"] ?: @0
-            };
-            [losers addObject:loserData];
-        }
-        
-        if (completion) completion(losers, nil);
-    }];
-}
-
-- (void)fetchETFListWithCompletion:(void (^)(NSArray *etfs, NSError *error))completion {
-    NSString *urlString = [NSString stringWithFormat:@"%@?topNum=5&finderId=wlas.etfinder.index&nbboLevel=false",
-                          kWebullETFListURL];
-    
-    [self executeRequest:urlString completion:^(NSDictionary *response, NSError *error) {
-        if (error) {
-            if (completion) completion(nil, error);
-            return;
-        }
-        
-        NSMutableArray *etfs = [NSMutableArray array];
-        
-        // La struttura è: response -> tabs -> tickerTupleList
-        NSArray *tabs = response[@"tabs"];
-        if (!tabs || tabs.count == 0) {
-            if (completion) completion(@[], nil);
-            return;
-        }
-        
-        // Prendiamo il primo tab (All) che contiene tutti gli ETF
-        NSDictionary *allTab = tabs[0];
-        NSArray *tickerTupleList = allTab[@"tickerTupleList"];
-        
-        if (!tickerTupleList) {
-            if (completion) completion(@[], nil);
-            return;
-        }
-        
-        // Limitiamo a 20 ETF per non sovraccaricare l'interfaccia
-        NSInteger maxETFs = MIN(tickerTupleList.count, 20);
-        
-        for (NSInteger i = 0; i < maxETFs; i++) {
-            NSDictionary *etf = tickerTupleList[i];
-            
-            // Estrai i dati dell'ETF
-            NSString *symbol = etf[@"symbol"] ?: etf[@"disSymbol"] ?: @"";
-            NSString *name = etf[@"name"] ?: @"";
-            
-            // Calcola la variazione percentuale
-            NSNumber *changeRatio = etf[@"changeRatio"];
-            double changePercent = 0.0;
-            if (changeRatio) {
-                changePercent = [changeRatio doubleValue] * 100.0; // Converti in percentuale
-            }
-            
-            NSDictionary *etfData = @{
-                @"symbol": symbol,
-                @"name": name,
-                @"changePercent": @(changePercent),
-                @"price": etf[@"close"] ?: @0,
-                @"change": etf[@"change"] ?: @0,
-                @"volume": etf[@"volume"] ?: @0
-            };
-            
-            [etfs addObject:etfData];
-        }
-        
-        if (completion) completion(etfs, nil);
-    }];
-}
-
-#pragma mark - Quotes
 
 - (void)fetchQuotesForSymbols:(NSArray<NSString *> *)symbols
                    completion:(void (^)(NSDictionary *quotes, NSError *error))completion {
@@ -335,35 +140,116 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
             NSString *symbol = item[@"symbol"];
             if (!symbol) continue;
             
-            // Create MarketData from Webull response
-            NSMutableDictionary *marketDataDict = [NSMutableDictionary dictionary];
-            marketDataDict[@"symbol"] = symbol;
-            marketDataDict[@"last"] = item[@"close"] ?: item[@"price"] ?: @0;
-            marketDataDict[@"bid"] = item[@"bid"] ?: item[@"close"] ?: @0;
-            marketDataDict[@"ask"] = item[@"ask"] ?: item[@"close"] ?: @0;
-            marketDataDict[@"volume"] = item[@"volume"] ?: @0;
-            marketDataDict[@"open"] = item[@"open"] ?: @0;
-            marketDataDict[@"high"] = item[@"high"] ?: @0;
-            marketDataDict[@"low"] = item[@"low"] ?: @0;
-            marketDataDict[@"previousClose"] = item[@"preClose"] ?: @0;
-            
-            MarketData *quote = [[MarketData alloc] initWithDictionary:marketDataDict];
-            quotesDict[symbol] = quote;
+            // ✅ RITORNA DATI RAW WEBULL - nessuna conversione a MarketData
+            // Il WebullDataAdapter si occuperà della standardizzazione
+            quotesDict[symbol] = item;
         }
         
         if (completion) completion(quotesDict, nil);
     }];
 }
 
-#pragma mark - Historical Data
+#pragma mark - HTTP Request Helper
 
-- (void)fetchHistoricalDataForSymbol:(NSString *)symbol
-                          timeframe:(NSString *)timeframe
-                              count:(NSInteger)count
-                         completion:(void (^)(NSArray *bars, NSError *error))completion {
+- (void)executeRequest:(NSString *)urlString completion:(void (^)(id response, NSError *error))completion {
+    NSURL *url = [NSURL URLWithString:urlString];
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
     
+    // Headers are already set in session configuration
+    
+    NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
+                                                 completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        [self handleHTTPResponse:data response:response error:error completion:completion];
+    }];
+    
+    [task resume];
+}
+
+- (void)handleHTTPResponse:(NSData *)data
+                  response:(NSURLResponse *)response
+                     error:(NSError *)error
+                completion:(void (^)(id response, NSError *error))completion {
+    
+    if (error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, error);
+        });
+        return;
+    }
+    
+    NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+    if (httpResponse.statusCode != 200) {
+        NSError *httpError = [NSError errorWithDomain:@"WebullDataSource"
+                                                 code:httpResponse.statusCode
+                                             userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"HTTP Error %ld", (long)httpResponse.statusCode]}];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, httpError);
+        });
+        return;
+    }
+    
+    NSError *parseError;
+    id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
+    
+    if (parseError) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, parseError);
+        });
+        return;
+    }
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (completion) completion(json, nil);
+    });
+}
+
+
+#pragma mark - Historical Data - UNIFIED PROTOCOL
+
+// ✅ UNIFICATO: Historical data con date range (AGGIUNTO)
+- (void)fetchHistoricalDataForSymbol:(NSString *)symbol
+                           timeframe:(BarTimeframe)timeframe
+                           startDate:(NSDate *)startDate
+                             endDate:(NSDate *)endDate
+                   needExtendedHours:(BOOL)needExtendedHours
+                          completion:(void (^)(NSArray *bars, NSError *error))completion {
+    
+    NSLog(@"WebullDataSource: fetchHistoricalData with date range for %@", symbol);
+    
+    // ✅ CONVERTI BarTimeframe → Webull timeframe string
+    NSString *webullTimeframe = [self webullTimeframeFromBarTimeframe:timeframe];
+    
+    // ✅ CALCOLA count dal date range
+    NSInteger count = [self calculateBarCountFromStartDate:startDate endDate:endDate timeframe:timeframe];
+    
+    // ✅ USA IL METODO CON BAR COUNT
+    [self fetchHistoricalDataForSymbol:symbol
+                             timeframe:timeframe
+                              barCount:count
+                     needExtendedHours:needExtendedHours
+                            completion:completion];
+}
+
+// ✅ UNIFICATO: Historical data con bar count (PARAMETRI CORRETTI)
+- (void)fetchHistoricalDataForSymbol:(NSString *)symbol
+                           timeframe:(BarTimeframe)timeframe  // ✅ BarTimeframe non NSString
+                            barCount:(NSInteger)barCount      // ✅ barCount non count
+                   needExtendedHours:(BOOL)needExtendedHours  // ✅ AGGIUNTO
+                          completion:(void (^)(NSArray *bars, NSError *error))completion {
+    
+    NSLog(@"WebullDataSource: fetchHistoricalData with barCount %ld for %@", (long)barCount, symbol);
+    
+    // ✅ CONVERTI BarTimeframe → Webull timeframe string
+    NSString *webullTimeframe = [self webullTimeframeFromBarTimeframe:timeframe];
+    
+    // ✅ COSTRUISCE URL WEBULL
     NSString *urlString = [NSString stringWithFormat:@"%@?tickerIds=%@&type=%@&count=%ld",
-                          kWebullHistoricalURL, symbol, timeframe, (long)count];
+                          kWebullHistoricalURL, symbol, webullTimeframe, (long)barCount];
+    
+    // ✅ AGGIUNGE extended hours se richiesto (Webull supporta)
+    if (needExtendedHours) {
+        urlString = [urlString stringByAppendingString:@"&extendedTradingSession=1"];
+    }
     
     [self executeRequest:urlString completion:^(id response, NSError *error) {
         if (error) {
@@ -371,137 +257,177 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
             return;
         }
         
+        // ✅ RITORNA DATI RAW WEBULL - nessuna conversione
+        // Il WebullDataAdapter si occuperà della standardizzazione
+        id rawBars = [self extractHistoricalDataFromResponse:response];
+        
+        if (completion) completion(rawBars, nil);
+    }];
+}
+
+#pragma mark - Market Lists - UNIFIED PROTOCOL
+
+- (void)fetchMarketListForType:(DataRequestType)listType
+                    parameters:(NSDictionary *)parameters
+                    completion:(void (^)(NSArray *results, NSError *error))completion {
+    
+    switch (listType) {
+        case DataRequestTypeTopGainers: {
+            NSString *rankType = parameters[@"rankType"] ?: @"1d";
+            NSInteger pageSize = [parameters[@"pageSize"] integerValue] ?: 20;
+            [self fetchTopGainersWithRankType:rankType
+                                     pageSize:pageSize
+                                   completion:completion];
+            break;
+        }
+        case DataRequestTypeTopLosers: {
+            NSString *rankType = parameters[@"rankType"] ?: @"1d";
+            NSInteger pageSize = [parameters[@"pageSize"] integerValue] ?: 20;
+            [self fetchTopLosersWithRankType:rankType
+                                    pageSize:pageSize
+                                  completion:completion];
+            break;
+        }
+        case DataRequestTypeETFList: {
+            [self fetchETFListWithCompletion:completion];
+            break;
+        }
+        default: {
+            NSError *error = [NSError errorWithDomain:@"WebullDataSource"
+                                                 code:400
+                                             userInfo:@{NSLocalizedDescriptionKey:
+                                                       [NSString stringWithFormat:@"Unsupported market list type: %ld", (long)listType]}];
+            if (completion) completion(nil, error);
+            break;
+        }
+    }
+}
+
+// INTERNAL: Top Gainers
+- (void)fetchTopGainersWithRankType:(NSString *)rankType
+                           pageSize:(NSInteger)pageSize
+                         completion:(void (^)(NSArray *gainers, NSError *error))completion {
+    
+    NSString *urlString = [NSString stringWithFormat:@"%@?rankType=%@&pageSize=%ld",
+                          kWebullTopGainersURL, rankType, (long)pageSize];
+    
+    [self executeRequest:urlString completion:^(id response, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        
+        // ✅ RITORNA DATI RAW WEBULL
         NSArray *data = nil;
         if ([response isKindOfClass:[NSArray class]]) {
             data = response;
         } else if ([response isKindOfClass:[NSDictionary class]]) {
-            NSDictionary *chartData = [response[@"data"] firstObject];
-            data = chartData[@"data"];
+            data = response[@"data"];
         }
         
-        if (!data) {
-            if (completion) completion(@[], nil);
+        if (completion) completion(data ?: @[], nil);
+    }];
+}
+
+// INTERNAL: Top Losers
+- (void)fetchTopLosersWithRankType:(NSString *)rankType
+                          pageSize:(NSInteger)pageSize
+                        completion:(void (^)(NSArray *losers, NSError *error))completion {
+    
+    NSString *urlString = [NSString stringWithFormat:@"%@?rankType=%@&pageSize=%ld",
+                          kWebullTopLosersURL, rankType, (long)pageSize];
+    
+    [self executeRequest:urlString completion:^(id response, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
             return;
         }
         
-        NSMutableArray *bars = [NSMutableArray array];
-        
-        for (NSDictionary *barData in data) {
-            // Crea un dizionario invece di un oggetto HistoricalBar
-            NSMutableDictionary *bar = [NSMutableDictionary dictionary];
-            bar[@"date"] = [NSDate dateWithTimeIntervalSince1970:[barData[@"time"] doubleValue] / 1000.0];
-            bar[@"open"] = barData[@"open"] ?: @0;
-            bar[@"high"] = barData[@"high"] ?: @0;
-            bar[@"low"] = barData[@"low"] ?: @0;
-            bar[@"close"] = barData[@"close"] ?: @0;
-            bar[@"volume"] = barData[@"volume"] ?: @0;
-            bar[@"symbol"] = symbol;
-            
-            [bars addObject:bar];
+        // ✅ RITORNA DATI RAW WEBULL
+        NSArray *data = nil;
+        if ([response isKindOfClass:[NSArray class]]) {
+            data = response;
+        } else if ([response isKindOfClass:[NSDictionary class]]) {
+            data = response[@"data"];
         }
         
-        if (completion) completion(bars, nil);
+        if (completion) completion(data ?: @[], nil);
+    }];
+}
+
+// INTERNAL: ETF List
+- (void)fetchETFListWithCompletion:(void (^)(NSArray *etfs, NSError *error))completion {
+    
+    [self executeRequest:kWebullETFListURL completion:^(id response, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        
+        // ✅ RITORNA DATI RAW WEBULL ETFs
+        NSArray *data = nil;
+        if ([response isKindOfClass:[NSArray class]]) {
+            data = response;
+        } else if ([response isKindOfClass:[NSDictionary class]]) {
+            data = response[@"data"];
+        }
+        
+        if (completion) completion(data ?: @[], nil);
     }];
 }
 
 #pragma mark - Helper Methods
 
-- (void)executeRequest:(NSString *)urlString
-            completion:(void (^)(id response, NSError *error))completion {
-    
-    NSURL *url = [NSURL URLWithString:urlString];
-    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
-    request.HTTPMethod = @"GET";
-    
-    NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
-                                                  completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        if (error) {
-            if (completion) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(nil, error);
-                });
-            }
-            return;
-        }
-        
-        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
-        if (httpResponse.statusCode != 200) {
-            NSError *statusError = [NSError errorWithDomain:@"WebullDataSource"
-                                                       code:httpResponse.statusCode
-                                                   userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"HTTP %ld", (long)httpResponse.statusCode]}];
-            if (completion) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(nil, statusError);
-                });
-            }
-            return;
-        }
-        
-        NSError *parseError;
-        id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
-        
-        if (parseError) {
-            if (completion) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(nil, parseError);
-                });
-            }
-            return;
-        }
-        
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(json, nil);
-            });
-        }
-    }];
-    
-    [task resume];
-}
-
 - (NSString *)webullTimeframeFromBarTimeframe:(BarTimeframe)timeframe {
+    // ✅ MAPPATURA BarTimeframe → Webull timeframe strings
     switch (timeframe) {
-        case BarTimeframe1Min: return @"m1";
-        case BarTimeframe5Min: return @"m5";
-        case BarTimeframe15Min: return @"m15";
-        case BarTimeframe30Min: return @"m30";
-        case BarTimeframe1Hour: return @"m60";
-        case BarTimeframeDaily: return @"d1";
-        case BarTimeframeWeekly: return @"w1";
-        case BarTimeframeMonthly: return @"mo1";
-        default: return @"d1";
+        case BarTimeframe1Min:     return @"m1";
+        case BarTimeframe5Min:     return @"m5";
+        case BarTimeframe15Min:    return @"m15";
+        case BarTimeframe30Min:    return @"m30";
+        case BarTimeframe1Hour:    return @"h1";
+        case BarTimeframe4Hour:    return @"h4";   // Se supportato da Webull
+        case BarTimeframeDaily:    return @"d1";
+        case BarTimeframeWeekly:   return @"w1";
+        case BarTimeframeMonthly:  return @"M1";
+        default:                   return @"d1";
     }
 }
 
 - (NSInteger)calculateBarCountFromStartDate:(NSDate *)startDate
-                                   endDate:(NSDate *)endDate
-                                 timeframe:(BarTimeframe)timeframe {
-    // Calculate approximate number of bars needed
-    NSTimeInterval interval = [endDate timeIntervalSinceDate:startDate];
-    NSInteger bars = 100; // Default
+                                    endDate:(NSDate *)endDate
+                                  timeframe:(BarTimeframe)timeframe {
     
+    NSTimeInterval interval = [endDate timeIntervalSinceDate:startDate];
+    
+    // ✅ CALCOLA count basato su timeframe
     switch (timeframe) {
-        case BarTimeframe1Min: bars = interval / 60; break;
-        case BarTimeframe5Min: bars = interval / (60 * 5); break;
-        case BarTimeframe15Min: bars = interval / (60 * 15); break;
-        case BarTimeframe30Min: bars = interval / (60 * 30); break;
-        case BarTimeframe1Hour: bars = interval / (60 * 60); break;
-        case BarTimeframeDaily: bars = interval / (60 * 60 * 24); break;
-        case BarTimeframeWeekly: bars = interval / (60 * 60 * 24 * 7); break;
-        case BarTimeframeMonthly: bars = interval / (60 * 60 * 24 * 30); break;
+        case BarTimeframe1Min:     return (NSInteger)(interval / 60);
+        case BarTimeframe5Min:     return (NSInteger)(interval / 300);
+        case BarTimeframe15Min:    return (NSInteger)(interval / 900);
+        case BarTimeframe30Min:    return (NSInteger)(interval / 1800);
+        case BarTimeframe1Hour:    return (NSInteger)(interval / 3600);
+        case BarTimeframe4Hour:    return (NSInteger)(interval / 14400);
+        case BarTimeframeDaily:    return (NSInteger)(interval / 86400);
+        case BarTimeframeWeekly:   return (NSInteger)(interval / 604800);
+        case BarTimeframeMonthly:  return (NSInteger)(interval / 2592000);
+        default:                   return (NSInteger)(interval / 86400);
+    }
+}
+
+- (id)extractHistoricalDataFromResponse:(id)response {
+    // ✅ ESTRAE DATI RAW WEBULL dalla response
+    
+    NSArray *data = nil;
+    if ([response isKindOfClass:[NSArray class]]) {
+        data = response;
+    } else if ([response isKindOfClass:[NSDictionary class]]) {
+        NSDictionary *chartData = [response[@"data"] firstObject];
+        data = chartData[@"data"];
     }
     
-    return MAX(1, MIN(bars, 800)); // Webull limit
-}
-
-#pragma mark - Rate Limiting
-
-- (NSInteger)remainingRequests {
-    return 100; // Webull doesn't provide rate limit info
-}
-
-- (NSDate *)rateLimitResetDate {
-    return [NSDate dateWithTimeIntervalSinceNow:60]; // Assume 1 minute
+    // ✅ RITORNA ARRAY RAW WEBULL bars
+    return data ?: @[];
 }
 
 @end

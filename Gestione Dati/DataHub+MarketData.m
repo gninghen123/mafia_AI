@@ -176,8 +176,9 @@
     }
     
     // CORREZIONE: Usare requestBatchQuotesForSymbols invece del metodo obsoleto
-    [[DataManager sharedManager] requestBatchQuotesForSymbols:symbolsToFetch
-                                                   completion:^(NSDictionary *rawQuotes, NSError *error) {
+    [[DataManager sharedManager] requestQuotesForSymbols:symbolsToFetch
+                                              completion:^(NSDictionary *rawQuotes, NSError *error) {
+
     
             if (error) {
                 NSLog(@"❌ Error fetching quotes from DataManager: %@", error);
@@ -240,10 +241,11 @@
     }
     
     // CORREZIONE: Usare requestHistoricalBarsForSymbol invece del metodo obsoleto
-    [[DataManager sharedManager] requestHistoricalBarsForSymbol:symbol
+    [[DataManager sharedManager] requestHistoricalDataForSymbol:symbol
                                                       timeframe:timeframe
-                                                       barCount:barCount
+                                                          count:barCount
                                                      completion:^(NSArray<HistoricalBarModel *> *bars, NSError *error) {
+
         if (error) {
             NSLog(@"❌ DataHub: Failed to get historical data: %@", error);
             if (!cachedBars) {
@@ -762,7 +764,7 @@
     // 1. Controlla cache
     @synchronized(self.historicalCache) {
             NSArray<HistoricalBarModel *> *cachedBars = self.historicalCache[cacheKey];
-            if (cachedBars && ![self isCacheStale:cacheKey dataType:DataFreshnessTypeHistorical]) {
+            if (cachedBars && ![self isCacheStale:cacheKey dataType:DataCacheTypeHistorical]) {
                 NSLog(@"✅ DataHub: Returning cached date range data (%lu bars)", (unsigned long)cachedBars.count);
                 completion(cachedBars, NO);
                 return;
@@ -820,7 +822,7 @@
     // 1. Check memory cache
     CompanyInfoModel *cachedInfo = self.companyInfoCache[symbol];
     NSString *cacheKey = [NSString stringWithFormat:@"company_%@", symbol];
-    BOOL isStale = [self isCacheStale:cacheKey dataType:DataFreshnessTypeCompanyInfo];
+    BOOL isStale = [self isCacheStale:cacheKey dataType:DataCacheTypeCompanyInfo];
     
     // 2. Return cached data immediately if available
     if (cachedInfo) {

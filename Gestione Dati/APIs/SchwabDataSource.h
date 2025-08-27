@@ -1,8 +1,9 @@
 //
-//  SchwabDataSource.h (UPDATED)
+//  SchwabDataSource.h - UNIFICAZIONE PROTOCOLLO COMPLETA
 //  TradingApp
 //
-//  UNIFICAZIONE: Header con tutti i metodi del protocollo DataSource unificato
+//  ✅ UNIFIED: Implementa SOLO i metodi del protocollo DataSource unificato
+//  🔥 ELIMINATI: Metodi Schwab-specifici legacy non del protocollo
 //
 
 #import <Foundation/Foundation.h>
@@ -11,70 +12,53 @@
 
 @interface SchwabDataSource : NSObject <DataSource>
 
-#pragma mark - OAuth2 Authentication
+#pragma mark - OAuth2 Authentication (Schwab-specific)
 - (void)authenticateWithCompletion:(void (^)(BOOL success, NSError *error))completion;
 - (void)refreshTokenIfNeeded:(void (^)(BOOL success, NSError *error))completion;
 - (BOOL)hasValidToken;
 
-#pragma mark - DataSource Protocol - Unified Methods
+#pragma mark - DataSource Protocol - UNIFIED METHODS
 
-// Portfolio Data (UNIFIED)
-- (void)fetchAccountsWithCompletion:(void (^)(NSArray *accounts, NSError *error))completion;
-- (void)fetchAccountDetails:(NSString *)accountId completion:(void (^)(NSDictionary *accountDetails, NSError *error))completion;
-- (void)fetchPositionsWithCompletion:(void (^)(NSArray *positions, NSError *error))completion;
-- (void)fetchPositionsForAccount:(NSString *)accountId completion:(void (^)(NSArray *positions, NSError *error))completion;
-- (void)fetchOrdersWithCompletion:(void (^)(NSArray *orders, NSError *error))completion;
-- (void)fetchOrdersForAccount:(NSString *)accountId completion:(void (^)(NSArray *orders, NSError *error))completion;
+// Connection Management (UNIFIED)
+- (void)connectWithCompletion:(void (^)(BOOL success, NSError *error))completion;
+- (void)disconnect;
 
-// Trading Operations (UNIFIED)
-- (void)placeOrderForAccount:(NSString *)accountId orderData:(NSDictionary *)orderData completion:(void (^)(NSString *orderId, NSError *error))completion;
-- (void)cancelOrderForAccount:(NSString *)accountId orderId:(NSString *)orderId completion:(void (^)(BOOL success, NSError *error))completion;
-
-#pragma mark - Schwab-Specific Internal Methods (Private - chiamati dai metodi unificati)
-
-// Account endpoints (INTERNAL)
-- (void)fetchAccountNumbers:(void (^)(NSArray *accountNumbers, NSError *error))completion;
-
-// Trading endpoints (INTERNAL)
-- (void)placeOrder:(NSDictionary *)orderData
-        forAccount:(NSString *)accountNumber
-        completion:(void (^)(NSString *orderID, NSError *error))completion;
-
-- (void)cancelOrder:(NSString *)orderID
-        forAccount:(NSString *)accountNumber
-        completion:(void (^)(BOOL success, NSError *error))completion;
-
-#pragma mark - Market Data (DataSource Protocol)
+// Market Data (UNIFIED - Required)
 - (void)fetchQuoteForSymbol:(NSString *)symbol
                  completion:(void (^)(id quote, NSError *error))completion;
+
 - (void)fetchQuotesForSymbols:(NSArray<NSString *> *)symbols
                    completion:(void (^)(NSDictionary *quotes, NSError *error))completion;
-- (void)fetchMarketHours:(NSString *)market
-              completion:(void (^)(NSDictionary *hours, NSError *error))completion;
 
-#pragma mark - Historical Data (DataSource Protocol)
-- (void)fetchPriceHistoryWithDateRange:(NSString *)symbol
-                             startDate:(NSDate *)startDate
-                               endDate:(NSDate *)endDate
-                             timeframe:(BarTimeframe)timeframe
-                 needExtendedHoursData:(BOOL)needExtendedHours
-                     needPreviousClose:(BOOL)needPreviousClose
-                            completion:(void (^)(NSDictionary *priceHistory, NSError *error))completion;
+// Historical Data (UNIFIED - Required)
+- (void)fetchHistoricalDataForSymbol:(NSString *)symbol
+                           timeframe:(BarTimeframe)timeframe
+                           startDate:(NSDate *)startDate
+                             endDate:(NSDate *)endDate
+                   needExtendedHours:(BOOL)needExtendedHours
+                          completion:(void (^)(NSArray *bars, NSError *error))completion;
 
-- (void)fetchHistoricalDataForSymbolWithCount:(NSString *)symbol
-                                    timeframe:(BarTimeframe)timeframe
-                                        count:(NSInteger)count
-                        needExtendedHoursData:(BOOL)needExtendedHours
-                             needPreviousClose:(BOOL)needPreviousClose
-                                    completion:(void (^)(NSArray *bars, NSError *error))completion;
+- (void)fetchHistoricalDataForSymbol:(NSString *)symbol
+                           timeframe:(BarTimeframe)timeframe
+                            barCount:(NSInteger)barCount
+                   needExtendedHours:(BOOL)needExtendedHours
+                          completion:(void (^)(NSArray *bars, NSError *error))completion;
 
-#pragma mark - Helper Methods
-- (NSDate *)calculateStartDateForTimeframe:(BarTimeframe)timeframe
-                                     count:(NSInteger)count
-                                  fromDate:(NSDate *)endDate;
+#pragma mark - Portfolio Data (UNIFIED - Optional for brokers)
+- (void)fetchAccountsWithCompletion:(void (^)(NSArray *accounts, NSError *error))completion;
+- (void)fetchAccountDetails:(NSString *)accountId
+                 completion:(void (^)(NSDictionary *accountDetails, NSError *error))completion;
+- (void)fetchPositionsForAccount:(NSString *)accountId
+                      completion:(void (^)(NSArray *positions, NSError *error))completion;
+- (void)fetchOrdersForAccount:(NSString *)accountId
+                   completion:(void (^)(NSArray *orders, NSError *error))completion;
 
-- (void)convertTimeframeToFrequency:(BarTimeframe)timeframe
-                      frequencyType:(NSString **)frequencyType
-                          frequency:(NSInteger *)frequency;
+#pragma mark - Trading Operations (UNIFIED - Optional for brokers)
+- (void)placeOrderForAccount:(NSString *)accountId
+                   orderData:(NSDictionary *)orderData
+                  completion:(void (^)(NSString *orderId, NSError *error))completion;
+- (void)cancelOrderForAccount:(NSString *)accountId
+                      orderId:(NSString *)orderId
+                   completion:(void (^)(BOOL success, NSError *error))completion;
 
 @end

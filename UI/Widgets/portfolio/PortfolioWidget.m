@@ -538,15 +538,15 @@
     self.isLoadingAccounts = YES;
     [self updateConnectionStatus];
     
-    NSLog(@"📱 PortfolioWidget: Loading accounts from all connected brokers");
+    NSLog(@"PortfolioWidget: Loading accounts from all connected brokers");
     
     // Get list of connected brokers
     NSArray<NSNumber *> *connectedBrokers = [self getConnectedBrokers];
     
     if (connectedBrokers.count == 0) {
-        NSLog(@"⚠️ PortfolioWidget: No brokers connected");
+        NSLog(@"PortfolioWidget: No brokers connected");
         self.isLoadingAccounts = NO;
-        self.connectionStatusLabel.stringValue = @"❌ No brokers connected";
+        self.connectionStatusLabel.stringValue = @"No brokers connected";
         return;
     }
     
@@ -560,17 +560,35 @@
         DataSourceType brokerType = [brokerTypeNum integerValue];
         dispatch_group_enter(group);
         
-        NSLog(@"📱 PortfolioWidget: Requesting accounts from %@", DataSourceTypeToString(brokerType));
+        NSLog(@"PortfolioWidget: Requesting accounts from %@", DataSourceTypeToString(brokerType));
         
-        [[DataHub shared] getAccountsFromBroker:brokerType completion:^(NSArray<AccountModel *> *accounts, BOOL isFresh, NSError *error) {
+        // Use DataHub with broker-specific method
+        [[DataHub shared] getAccountsFromBroker:brokerType
+                                      completion:^(NSArray<AccountModel *> *accounts, BOOL isFresh, NSError *error) {
             if (error) {
-                NSLog(@"❌ PortfolioWidget: Failed to get accounts from %@: %@",
+                NSLog(@"PortfolioWidget: Failed to get accounts from %@: %@",
                       DataSourceTypeToString(brokerType), error.localizedDescription);
                 errorCount++;
             } else {
-                NSLog(@"✅ PortfolioWidget: Got %lu accounts from %@",
+                NSLog(@"PortfolioWidget: Got %lu accounts from %@",
                       (unsigned long)accounts.count, DataSourceTypeToString(brokerType));
-                [allAccounts addObjectsFromArray:accounts];
+                
+                // Convert raw dictionaries to AccountModel objects and set broker type
+                for (id accountData in accounts) {
+                    AccountModel *accountModel = nil;
+                    
+                    if ([accountData isKindOfClass:[AccountModel class]]) {
+                        accountModel = (AccountModel *)accountData;
+                    } else if ([accountData isKindOfClass:[NSDictionary class]]) {
+                        accountModel = [[AccountModel alloc] initWithDictionary:(NSDictionary *)accountData];
+                    }
+                    
+                    if (accountModel) {
+                        // Set the broker name so we know which broker this account belongs to
+                        accountModel.brokerName = DataSourceTypeToString(brokerType);
+                        [allAccounts addObject:accountModel];
+                    }
+                }
                 successCount++;
             }
             dispatch_group_leave(group);
@@ -581,8 +599,8 @@
         self.isLoadingAccounts = NO;
         
         if (allAccounts.count == 0) {
-            NSLog(@"❌ PortfolioWidget: No accounts retrieved from any broker");
-            self.connectionStatusLabel.stringValue = @"❌ No accounts available";
+            NSLog(@"PortfolioWidget: No accounts retrieved from any broker");
+            self.connectionStatusLabel.stringValue = @"No accounts available";
             return;
         }
         
@@ -592,10 +610,10 @@
         // Auto-select first account or saved account
         [self selectInitialAccount];
         
-        NSLog(@"✅ PortfolioWidget: Loaded %lu total accounts from %ld brokers (Success: %ld, Errors: %ld)",
+        NSLog(@"PortfolioWidget: Loaded %lu total accounts from %ld brokers (Success: %ld, Errors: %ld)",
               (unsigned long)allAccounts.count, (long)connectedBrokers.count, (long)successCount, (long)errorCount);
         
-        self.connectionStatusLabel.stringValue = [NSString stringWithFormat:@"✅ %lu accounts from %ld brokers",
+        self.connectionStatusLabel.stringValue = [NSString stringWithFormat:@"%lu accounts from %ld brokers",
                                                  (unsigned long)allAccounts.count, (long)successCount];
     });
 }
@@ -608,13 +626,13 @@
     if (savedAccountId) {
         accountToSelect = [self findAccountById:savedAccountId];
         if (accountToSelect) {
-            NSLog(@"📱 PortfolioWidget: Restored saved account: %@", savedAccountId);
+            NSLog(@"PortfolioWidget: Restored saved account: %@", savedAccountId);
         }
     }
     
     if (!accountToSelect && self.availableAccounts.count > 0) {
         accountToSelect = self.availableAccounts[0];
-        NSLog(@"📱 PortfolioWidget: Auto-selected first account: %@", accountToSelect.accountId);
+        NSLog(@"PortfolioWidget: Auto-selected first account: %@", accountToSelect.accountId);
     }
     
     if (accountToSelect) {
@@ -634,14 +652,15 @@
         // Check if broker is connected
         if ([[DownloadManager sharedManager] isDataSourceConnected:brokerType]) {
             [connectedBrokers addObject:brokerTypeNum];
-            NSLog(@"🔗 PortfolioWidget: %@ is connected", DataSourceTypeToString(brokerType));
+            NSLog(@"PortfolioWidget: %@ is connected", DataSourceTypeToString(brokerType));
         } else {
-            NSLog(@"❌ PortfolioWidget: %@ is not connected", DataSourceTypeToString(brokerType));
+            NSLog(@"PortfolioWidget: %@ is not connected", DataSourceTypeToString(brokerType));
         }
     }
     
     return [connectedBrokers copy];
 }
+
 
 
 - (void)populateAccountSelector {
@@ -662,8 +681,8 @@
         return; // No change needed
     }
     
-    NSLog(@"📱 PortfolioWidget: Switching to account %@ (Broker: %@)",
-          account.accountId, DataSourceTypeToString(account.brokerName));
+    NSLog(@"PortfolioWidget: Switching to account %@ (Broker: %@)",
+          account.accountId, account.brokerName);
     
     // Save selection
     [[NSUserDefaults standardUserDefaults] setObject:account.accountId forKey:@"SelectedAccountId"];
@@ -675,12 +694,15 @@
     NSString *displayName = [account formattedDisplayName];
     [self.accountSelector selectItemWithTitle:displayName];
     
-    // Load portfolio data for this account
+    // Load portfolio data for this account using secure broker-specific calls
     [self loadPortfolioDataForCurrentAccount];
     
     // Update connection status
     [self updateConnectionStatus];
 }
+
+
+
 
 - (AccountModel *)findAccountById:(NSString *)accountId {
     for (AccountModel *account in self.availableAccounts) {
@@ -695,69 +717,129 @@
 
 - (void)loadPortfolioDataForCurrentAccount {
     if (!self.selectedAccount) {
-        NSLog(@"⚠️ PortfolioWidget: No selected account to load portfolio data");
+        NSLog(@"PortfolioWidget: No selected account to load portfolio data");
         return;
     }
     
     NSString *accountId = self.selectedAccount.accountId;
-    NSLog(@"📊 PortfolioWidget: Loading portfolio data for account %@", accountId);
+    DataSourceType brokerType = [self dataSourceTypeFromBrokerName:self.selectedAccount.brokerName];
+    
+    NSLog(@"PortfolioWidget: Loading portfolio data for account %@ from broker %@",
+          accountId, self.selectedAccount.brokerName);
     
     self.isLoadingPortfolioData = YES;
     
-    // Use existing methods - these already exist in the current implementation
-    [[DataHub shared] getPortfolioSummaryForAccount:accountId completion:^(PortfolioSummaryModel *summary, BOOL isFresh) {
-        self.portfolioSummary = summary;
-        [self updatePortfolioSummaryDisplay];
+    // Use DataHub with broker-specific call
+    [[DataHub shared] getPortfolioSummaryForAccount:accountId
+                                         fromBroker:brokerType
+                                         completion:^(PortfolioSummaryModel *summary, BOOL isFresh) {
+        self.isLoadingPortfolioData = NO;
         
-        if (isFresh) {
-            NSLog(@"✅ PortfolioWidget: Portfolio summary loaded for %@", accountId);
+        if (summary) {
+            self.portfolioSummary = summary;
+            [self updatePortfolioSummaryDisplay];
         }
     }];
     
-    // Load positions using existing method
+    // Load positions using DataHub broker-specific call
     [self loadPositionsForCurrentAccount];
     
-    // Load orders using existing method
+    // Load orders using DataHub broker-specific call
     [self loadOrdersForCurrentAccount];
     
     // Start polling using existing method
     [self startPollingForCurrentAccount];
 }
 
+
 - (void)loadPositionsForCurrentAccount {
     if (!self.selectedAccount) return;
     
     NSString *accountId = self.selectedAccount.accountId;
+    DataSourceType brokerType = [self dataSourceTypeFromBrokerName:self.selectedAccount.brokerName];
+    
     self.isLoadingPositions = YES;
     
-    [[DataHub shared] getPositionsForAccount:accountId completion:^(NSArray<AdvancedPositionModel *> *positions, BOOL isFresh) {
+    [[DataHub shared] getPositionsForAccount:accountId
+                                  fromBroker:brokerType
+                                  completion:^(NSArray<AdvancedPositionModel *> *positions, BOOL isFresh) {
         self.isLoadingPositions = NO;
         self.positions = positions ?: @[];
         
         [self refreshPositionsTable];
         [self subscribeToPositionPrices];
         
-        NSLog(@"📈 PortfolioWidget: Loaded %lu positions for account %@",
+        NSLog(@"PortfolioWidget: Loaded %lu positions for account %@",
               (unsigned long)self.positions.count, accountId);
     }];
 }
+
 
 - (void)loadOrdersForCurrentAccount {
     if (!self.selectedAccount) return;
     
     NSString *accountId = self.selectedAccount.accountId;
+    DataSourceType brokerType = [self dataSourceTypeFromBrokerName:self.selectedAccount.brokerName];
+    
     self.isLoadingOrders = YES;
     
-    [[DataHub shared] getOrdersForAccount:accountId withStatus:self.currentOrderStatusFilter completion:^(NSArray<AdvancedOrderModel *> *orders, BOOL isFresh) {
+    [[DataHub shared] getOrdersForAccount:accountId
+                               fromBroker:brokerType
+                               withStatus:self.currentOrderStatusFilter
+                               completion:^(NSArray<AdvancedOrderModel *> *orders, BOOL isFresh) {
         self.isLoadingOrders = NO;
         self.orders = orders ?: @[];
         
         [self refreshOrdersTable];
         
-        NSLog(@"📋 PortfolioWidget: Loaded %lu orders for account %@",
+        NSLog(@"PortfolioWidget: Loaded %lu orders for account %@",
               (unsigned long)self.orders.count, accountId);
     }];
 }
+
+
+- (DataSourceType)dataSourceTypeFromBrokerName:(NSString *)brokerName {
+    if ([brokerName isEqualToString:@"Schwab"]) {
+        return DataSourceTypeSchwab;
+    } else if ([brokerName isEqualToString:@"IBKR"]) {
+        return DataSourceTypeIBKR;
+    } else if ([brokerName isEqualToString:@"Webull"]) {
+        return DataSourceTypeWebull;
+    } else {
+        NSLog(@"Unknown broker name: %@, defaulting to Other", brokerName);
+        return DataSourceTypeOther;
+    }
+}
+
+
+- (void)placeOrder:(NSDictionary *)orderData {
+    if (!self.selectedAccount) {
+        NSLog(@"PortfolioWidget: Cannot place order - no account selected");
+        return;
+    }
+    
+    NSString *accountId = self.selectedAccount.accountId;
+    DataSourceType brokerType = [self dataSourceTypeFromBrokerName:self.selectedAccount.brokerName];
+    
+    NSLog(@"PortfolioWidget: Placing order for account %@ using broker %@",
+          accountId, self.selectedAccount.brokerName);
+    
+    [[DataHub shared] placeOrder:orderData
+                      forAccount:accountId
+                     usingBroker:brokerType
+                      completion:^(NSString *orderId, NSError *error) {
+        if (error) {
+            NSLog(@"PortfolioWidget: Order placement failed: %@", error.localizedDescription);
+            // Show error to user
+        } else {
+            NSLog(@"PortfolioWidget: Order placed successfully with ID: %@", orderId);
+            // Refresh orders and positions
+            [self loadOrdersForCurrentAccount];
+            [self loadPositionsForCurrentAccount];
+        }
+    }];
+}
+
 
 #pragma mark - Real-Time Updates
 
@@ -1287,6 +1369,37 @@
         }
     }];
 }
+
+
+- (void)cancelOrder:(NSString *)orderId {
+    if (!self.selectedAccount) {
+        NSLog(@"PortfolioWidget: Cannot cancel order - no account selected");
+        return;
+    }
+    
+    NSString *accountId = self.selectedAccount.accountId;
+    DataSourceType brokerType = [self dataSourceTypeFromBrokerName:self.selectedAccount.brokerName];
+    
+    NSLog(@"PortfolioWidget: Cancelling order %@ for account %@ using broker %@",
+          orderId, accountId, self.selectedAccount.brokerName);
+    
+    [[DataHub shared] cancelOrder:orderId
+                       forAccount:accountId
+                      usingBroker:brokerType
+                       completion:^(BOOL success, NSError *error) {
+        if (error || !success) {
+            NSLog(@"PortfolioWidget: Order cancellation failed: %@", error.localizedDescription);
+            // Show error to user
+        } else {
+            NSLog(@"PortfolioWidget: Order cancelled successfully");
+            // Refresh orders
+            [self loadOrdersForCurrentAccount];
+        }
+    }];
+}
+
+
+
 
 - (void)cancelOrders:(NSArray<AdvancedOrderModel *> *)orders {
     NSString *accountId = self.selectedAccount.accountId;

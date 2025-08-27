@@ -12,13 +12,6 @@
 
 #import <Foundation/Foundation.h>
 
-typedef NS_ENUM(NSInteger, DataCacheType) {
-    DataCacheTypeQuote = 0,
-    DataCacheTypeMarketOverview,
-    DataCacheTypeHistorical,
-    DataCacheTypeCompanyInfo,
-    DataCacheTypeWatchlist
-};
 
 #pragma mark - Data Source Types
 

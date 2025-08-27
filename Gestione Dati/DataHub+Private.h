@@ -7,6 +7,15 @@
 #import "RuntimeModels.h"
 #import "CommonTypes.h"
 
+
+typedef NS_ENUM(NSInteger, DataCacheType) {
+    DataCacheTypeQuote = 0,
+    DataCacheTypeMarketOverview,
+    DataCacheTypeHistorical,
+    DataCacheTypeCompanyInfo,
+    DataCacheTypeWatchlist
+};
+
 // Forward declarations for Core Data entities
 @class MarketQuote;
 @class HistoricalBar;

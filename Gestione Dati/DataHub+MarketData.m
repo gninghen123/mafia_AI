@@ -46,21 +46,22 @@
 
 #pragma mark - Data Freshness Management
 
-- (NSTimeInterval)TTLForDataType:(DataFreshnessType)type {
+- (NSTimeInterval)TTLForDataType:(DataCacheType)type {
     switch (type) {
-        case DataFreshnessTypeQuote:
+        case DataCacheTypeQuote:
             return 10.0; // 10 seconds for quotes
-        case DataFreshnessTypeMarketOverview:
-            return 300.0; // 5 minute
-        case DataFreshnessTypeHistorical:
+        case DataCacheTypeMarketOverview:
             return 300.0; // 5 minutes
-        case DataFreshnessTypeCompanyInfo:
+        case DataCacheTypeHistorical:
+            return 300.0; // 5 minutes
+        case DataCacheTypeCompanyInfo:
             return 86400.0; // 24 hours
-        case DataFreshnessTypeWatchlist:
+        case DataCacheTypeWatchlist:
             return INFINITY; // Never expires
     }
-    return INFINITY;
+    return 300.0; // Default 5 minutes
 }
+
 
 - (BOOL)isCacheStale:(NSString *)cacheKey dataType:(DataFreshnessType)type {
     [self initializeMarketDataCaches];
@@ -137,43 +138,32 @@
         return;
     }
     
-    // ✅ TYPE SAFETY: Validate input is array of strings
     NSMutableArray<NSString *> *validSymbols = [NSMutableArray array];
     for (id obj in symbols) {
         if ([obj isKindOfClass:[NSString class]]) {
             NSString *symbol = (NSString *)obj;
             if (symbol.length > 0) {
-                [validSymbols addObject:symbol.uppercaseString]; // Normalize
+                [validSymbols addObject:symbol.uppercaseString];
             }
-        } else {
-            NSLog(@"❌ getQuotesForSymbols: Invalid symbol type: %@", NSStringFromClass([obj class]));
         }
     }
     
     if (validSymbols.count == 0) {
-        NSLog(@"❌ getQuotesForSymbols: No valid symbols after filtering");
         completion(@{}, NO);
         return;
     }
     
-    NSLog(@"📊 DataHub: Getting quotes for %lu symbols: %@",
-          (unsigned long)validSymbols.count, validSymbols);
-    
-    // ✅ ENSURE: Symbol entities exist for tracking
-    for (NSString *symbol in validSymbols) {
-        Symbol *symbolEntity = [self getSymbolWithName:symbol];
-        if (!symbolEntity) {
-            [self createSymbolWithName:symbol];
-        }
-    }
+    NSLog(@"📊 DataHub: Getting quotes for %lu symbols", (unsigned long)validSymbols.count);
     
     // Check cache first
     NSMutableDictionary<NSString *, MarketQuoteModel *> *cachedQuotes = [NSMutableDictionary dictionary];
     NSMutableArray<NSString *> *symbolsToFetch = [NSMutableArray array];
     
+    [self initializeMarketDataCaches];
+    
     for (NSString *symbol in validSymbols) {
         MarketQuoteModel *cachedQuote = self.quotesCache[symbol];
-        if (cachedQuote && ![self isCacheStale:symbol dataType:DataFreshnessTypeQuote]) {
+        if (cachedQuote && ![self isCacheStale:symbol dataType:DataCacheTypeQuote]) {
             cachedQuotes[symbol] = cachedQuote;
         } else {
             [symbolsToFetch addObject:symbol];
@@ -181,78 +171,45 @@
     }
     
     if (symbolsToFetch.count == 0) {
-        // All symbols in cache
-        NSLog(@"✅ All quotes served from cache");
         completion([cachedQuotes copy], YES);
         return;
     }
     
-    // ✅ CORRECTED: Ask DataManager (not direct API)
-    [[DataManager sharedManager] requestQuotesForSymbols:symbolsToFetch
-                                                 completion:^(NSDictionary *rawQuotes, NSError *error) {
-           
-           if (error) {
-               NSLog(@"❌ Error fetching quotes from DataManager: %@", error);
-               // Return cached quotes even if DataManager failed
-               completion([cachedQuotes copy], NO);
-               return;
-           }
-           
-           NSLog(@"📊 DataHub: DataManager returned %lu raw quotes", (unsigned long)rawQuotes.count);
-           
-           // Merge cached and new quotes
-           NSMutableDictionary<NSString *, MarketQuoteModel *> *allQuotes = [cachedQuotes mutableCopy];
-           
-           // ✅ FIXED: Proper handling of DataManager return types
-           for (NSString *symbol in rawQuotes) {
-               id quoteData = rawQuotes[symbol];
-               MarketQuoteModel *runtimeQuote = nil;
-               
-               NSLog(@"📊 DataHub: Processing quote for %@ - type: %@", symbol, NSStringFromClass([quoteData class]));
-               
-               // Handle different possible return types from DataManager
-               if ([quoteData isKindOfClass:[MarketQuoteModel class]]) {
-                   // Already a runtime model
-                   runtimeQuote = (MarketQuoteModel *)quoteData;
-                   NSLog(@"✅ DataHub: Quote for %@ is already MarketQuoteModel", symbol);
-                   
-               } else if ([quoteData isKindOfClass:[MarketData class]]) {
-                   // ✅ ADDED: Handle MarketData objects from DataManager
-                   MarketData *marketData = (MarketData *)quoteData;
-                   runtimeQuote = [MarketQuoteModel quoteFromMarketData:marketData];
-                   NSLog(@"✅ DataHub: Converted MarketData to MarketQuoteModel for %@", symbol);
-                   
-               } else if ([quoteData isKindOfClass:[NSDictionary class]]) {
-                   // Dictionary format
-                   runtimeQuote = [MarketQuoteModel quoteFromDictionary:(NSDictionary *)quoteData];
-                   NSLog(@"✅ DataHub: Converted Dictionary to MarketQuoteModel for %@", symbol);
-                   
-               } else {
-                   NSLog(@"❌ DataHub: Unknown quote data type for %@: %@", symbol, NSStringFromClass([quoteData class]));
-                   continue;
-               }
-               
-               if (runtimeQuote) {
-                   // Cache the quote
-                   [self cacheQuote:runtimeQuote];
-                   [self updateCacheTimestamp:symbol];
-                   
-                   // Save to Core Data in background
-                   [self saveQuoteModelToCoreData:runtimeQuote];
-                   
-                   // Add to result
-                   allQuotes[symbol] = runtimeQuote;
-                   NSLog(@"✅ DataHub: Successfully added quote for %@ to results", symbol);
-               } else {
-                   NSLog(@"❌ DataHub: Failed to create MarketQuoteModel for %@", symbol);
-               }
-           }
-           
-           NSLog(@"✅ DataHub: Final result - returning %lu quotes to widget", (unsigned long)allQuotes.count);
-           
-           // Return all quotes (cached + new)
-           completion([allQuotes copy], symbolsToFetch.count == 0);
-       }];
+    // CORREZIONE: Usare requestBatchQuotesForSymbols invece del metodo obsoleto
+    [[DataManager sharedManager] requestBatchQuotesForSymbols:symbolsToFetch
+                                                   completion:^(NSDictionary *rawQuotes, NSError *error) {
+    
+            if (error) {
+                NSLog(@"❌ Error fetching quotes from DataManager: %@", error);
+                completion([cachedQuotes copy], NO);
+                return;
+            }
+            
+            NSMutableDictionary<NSString *, MarketQuoteModel *> *allQuotes = [cachedQuotes mutableCopy];
+            
+            for (NSString *symbol in rawQuotes) {
+                id quoteData = rawQuotes[symbol];
+                MarketQuoteModel *runtimeQuote = nil;
+                
+                if ([quoteData isKindOfClass:[MarketQuoteModel class]]) {
+                    runtimeQuote = (MarketQuoteModel *)quoteData;
+                } else if ([quoteData isKindOfClass:[MarketData class]]) {
+                    MarketData *marketData = (MarketData *)quoteData;
+                    runtimeQuote = [MarketQuoteModel quoteFromMarketData:marketData];
+                } else if ([quoteData isKindOfClass:[NSDictionary class]]) {
+                    runtimeQuote = [MarketQuoteModel quoteFromDictionary:(NSDictionary *)quoteData];
+                }
+                
+                if (runtimeQuote) {
+                    [self cacheQuote:runtimeQuote];
+                    [self updateCacheTimestamp:symbol];
+                    [self saveQuoteModelToCoreData:runtimeQuote];
+                    allQuotes[symbol] = runtimeQuote;
+                }
+            }
+            
+            completion([allQuotes copy], symbolsToFetch.count == 0);
+        }];
 }
 
 #pragma mark - Public API - Historical Data
@@ -268,78 +225,44 @@
     [self initializeMarketDataCaches];
     
     NSString *cacheKey = [NSString stringWithFormat:@"historical_%@_%ld_%ld_%@",
-                          symbol, (long)timeframe, (long)barCount,
-                          needExtendedHours ? @"extended" : @"regular"];
+                          symbol, (long)timeframe, (long)barCount, needExtendedHours ? @"extended" : @"regular"];
     
+    // Check cache
     NSArray<HistoricalBarModel *> *cachedBars = self.historicalCache[cacheKey];
-    BOOL isStale = [self isCacheStale:cacheKey dataType:DataFreshnessTypeHistorical];
-    
-    // 🚀 LOGIC 1: Fresh cache -> return immediately
-    if (cachedBars && !isStale) {
-        NSLog(@"✅ DataHub SMART: Returning fresh cached data for %@ (%lu bars)",
-              symbol, (unsigned long)cachedBars.count);
+    if (cachedBars && ![self isCacheStale:cacheKey dataType:DataCacheTypeHistorical]) {
         completion(cachedBars, YES);
         return;
     }
     
-    // 🚀 LOGIC 2: Stale cache -> Smart Update ONLY (NO double callback)
-    if (cachedBars && cachedBars.count > 0 && isStale) {
-        NSLog(@"🔄 DataHub SMART: Cache stale, performing smart update for %@", symbol);
-        
-        // ✅ FIX: Solo smart update, eliminato double callback
-        [self performSmartUpdateForSymbol:symbol
-                                timeframe:timeframe
-                                 barCount:barCount
-                        needExtendedHours:needExtendedHours
-                               cachedBars:cachedBars
-                                 cacheKey:cacheKey
-                               completion:completion];
-        return;
+    // Return stale data first if available
+    if (cachedBars) {
+        completion(cachedBars, NO);
     }
     
-    // 🚀 LOGIC 3: No memory cache -> Check Core Data first
-    if (!cachedBars) {
-        [self loadHistoricalDataFromCoreDataSafely:symbol
-                                         timeframe:timeframe
-                                          barCount:barCount
-                                 needExtendedHours:needExtendedHours
-                                        completion:^(NSArray<HistoricalBarModel *> *bars) {
-            if (bars.count > 0) {
-                // Cache in memory
-                self.historicalCache[cacheKey] = bars;
-                [self updateCacheTimestamp:cacheKey];
-                
-                // ✅ FIX: Smart update da Core Data senza double callback
-                NSLog(@"📦 DataHub SMART: Found Core Data cache, performing smart update for %@", symbol);
-                [self performSmartUpdateForSymbol:symbol
-                                        timeframe:timeframe
-                                         barCount:barCount
-                                needExtendedHours:needExtendedHours
-                                       cachedBars:bars
-                                         cacheKey:cacheKey
-                                       completion:completion];
-                return;
+    // CORREZIONE: Usare requestHistoricalBarsForSymbol invece del metodo obsoleto
+    [[DataManager sharedManager] requestHistoricalBarsForSymbol:symbol
+                                                      timeframe:timeframe
+                                                       barCount:barCount
+                                                     completion:^(NSArray<HistoricalBarModel *> *bars, NSError *error) {
+        if (error) {
+            NSLog(@"❌ DataHub: Failed to get historical data: %@", error);
+            if (!cachedBars) {
+                completion(@[], NO);
             }
-            
-            // No Core Data either - full request
-            NSLog(@"📡 DataHub SMART: No cache found, performing full request for %@", symbol);
-            [self performFullHistoricalRequest:symbol
-                                     timeframe:timeframe
-                                      barCount:barCount
-                             needExtendedHours:needExtendedHours
-                                      cacheKey:cacheKey
-                                    completion:completion];
-        }];
-        return;
-    }
-    
-    // 🚀 LOGIC 4: Fallback to full request
-    [self performFullHistoricalRequest:symbol
-                             timeframe:timeframe
-                              barCount:barCount
-                     needExtendedHours:needExtendedHours
-                              cacheKey:cacheKey
-                            completion:completion];
+            return;
+        }
+        
+        // Cache and return fresh data
+        @synchronized(self.historicalCache) {
+            self.historicalCache[cacheKey] = bars ?: @[];
+            [self updateCacheTimestamp:cacheKey];
+        }
+        
+        [self saveHistoricalBarsModelToCoreData:bars ?: @[] symbol:symbol timeframe:timeframe];
+        [self broadcastHistoricalDataUpdate:bars ?: @[] forSymbol:symbol];
+        
+        completion(bars ?: @[], YES);
+    }];
 }
 
 - (void)loadHistoricalDataFromCoreDataSafely:(NSString *)symbol
@@ -1700,6 +1623,7 @@
 - (void)refreshQuoteForSymbol:(NSString *)symbol
                    completion:(void(^)(MarketQuoteModel * _Nullable quote, NSError * _Nullable error))completion {
     
+    // CORREZIONE: Usare metodo corretto di DataManager
     [[DataManager sharedManager] requestQuoteForSymbol:symbol completion:^(MarketData *marketData, NSError *error) {
         if (marketData) {
             MarketQuoteModel *runtimeQuote = [MarketQuoteModel quoteFromMarketData:marketData];
@@ -1712,6 +1636,7 @@
         }
     }];
 }
+
 
 - (void)prefetchDataForSymbols:(NSArray<NSString *> *)symbols {
     // Prefetch quotes

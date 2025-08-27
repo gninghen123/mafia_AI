@@ -96,65 +96,117 @@
     return [[MarketData alloc] initWithDictionary:standardData];
 }
 
+// YahooDataAdapter.m - FIXED standardizeHistoricalData method
+
 - (NSArray<HistoricalBarModel *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol {
-    if (!rawData || ![rawData isKindOfClass:[NSDictionary class]]) {
-        NSLog(@"❌ YahooDataAdapter: Invalid historical data format for %@", symbol);
+    if (!rawData) {
+        NSLog(@"❌ YahooDataAdapter: No raw data provided for %@", symbol);
         return @[];
     }
     
-    NSDictionary *yahooData = (NSDictionary *)rawData;
+    NSLog(@"📊 YahooDataAdapter: Processing Yahoo historical data for %@ - Input type: %@", symbol, [rawData class]);
     
-    // Yahoo historical data structure: chart.result[0] contains timestamps and indicators
-    NSDictionary *chart = yahooData[@"chart"];
-    if (!chart) return @[];
-    
-    NSArray *results = chart[@"result"];
-    if (!results || results.count == 0) return @[];
-    
-    NSDictionary *result = results[0];
-    NSArray *timestamps = result[@"timestamp"];
-    NSDictionary *indicators = result[@"indicators"];
-    
-    if (!timestamps || !indicators) {
-        NSLog(@"❌ YahooDataAdapter: Missing timestamps or indicators in Yahoo historical data for %@", symbol);
+    // Yahoo returns an NSArray with a single NSDictionary containing all the chart data
+    NSArray *yahooArray = nil;
+    if ([rawData isKindOfClass:[NSArray class]]) {
+        yahooArray = (NSArray *)rawData;
+    } else {
+        NSLog(@"❌ YahooDataAdapter: Expected NSArray for Yahoo historical data, got %@", [rawData class]);
         return @[];
     }
     
-    // Extract OHLCV data
-    NSArray *quotes = indicators[@"quote"];
-    if (!quotes || quotes.count == 0) return @[];
+    if (yahooArray.count == 0) {
+        NSLog(@"❌ YahooDataAdapter: Empty array for Yahoo historical data");
+        return @[];
+    }
     
-    NSDictionary *quoteData = quotes[0];
+    // Get the first (and only) dictionary from the array
+    NSDictionary *yahooDataDict = yahooArray.firstObject;
+    if (![yahooDataDict isKindOfClass:[NSDictionary class]]) {
+        NSLog(@"❌ YahooDataAdapter: Expected NSDictionary in Yahoo array, got %@", [yahooDataDict class]);
+        return @[];
+    }
+    
+    // Extract timestamps array
+    NSArray *timestamps = yahooDataDict[@"timestamp"];
+    if (!timestamps || ![timestamps isKindOfClass:[NSArray class]]) {
+        NSLog(@"❌ YahooDataAdapter: No timestamps found in Yahoo data");
+        return @[];
+    }
+    
+    // Extract indicators -> quote data
+    NSDictionary *indicators = yahooDataDict[@"indicators"];
+    if (!indicators || ![indicators isKindOfClass:[NSDictionary class]]) {
+        NSLog(@"❌ YahooDataAdapter: No indicators found in Yahoo data");
+        return @[];
+    }
+    
+    NSArray *quoteArray = indicators[@"quote"];
+    if (!quoteArray || ![quoteArray isKindOfClass:[NSArray class]] || quoteArray.count == 0) {
+        NSLog(@"❌ YahooDataAdapter: No quote array found in indicators");
+        return @[];
+    }
+    
+    // Get the quote data (first element of quote array)
+    NSDictionary *quoteData = quoteArray.firstObject;
+    if (![quoteData isKindOfClass:[NSDictionary class]]) {
+        NSLog(@"❌ YahooDataAdapter: Invalid quote data structure");
+        return @[];
+    }
+    
+    // Extract OHLCV arrays
     NSArray *opens = quoteData[@"open"];
     NSArray *highs = quoteData[@"high"];
     NSArray *lows = quoteData[@"low"];
     NSArray *closes = quoteData[@"close"];
     NSArray *volumes = quoteData[@"volume"];
     
+    // Extract adjusted close if available
+    NSArray *adjCloses = nil;
+    NSArray *adjcloseArray = indicators[@"adjclose"];
+    if (adjcloseArray && [adjcloseArray isKindOfClass:[NSArray class]] && adjcloseArray.count > 0) {
+        NSDictionary *adjcloseData = adjcloseArray.firstObject;
+        if ([adjcloseData isKindOfClass:[NSDictionary class]]) {
+            adjCloses = adjcloseData[@"adjclose"];
+        }
+    }
+    
+    // Validate arrays
+    NSInteger barCount = timestamps.count;
+    if (opens.count != barCount || highs.count != barCount || lows.count != barCount || closes.count != barCount) {
+        NSLog(@"❌ YahooDataAdapter: OHLC arrays length mismatch - timestamps: %ld, OHLC: %ld,%ld,%ld,%ld",
+              (long)barCount, (long)opens.count, (long)highs.count, (long)lows.count, (long)closes.count);
+        return @[];
+    }
+    
+    NSLog(@"✅ YahooDataAdapter: Processing %ld bars for %@", (long)barCount, symbol);
+    
     // Convert to HistoricalBarModel objects
     NSMutableArray<HistoricalBarModel *> *bars = [NSMutableArray array];
-    NSInteger count = timestamps.count;
     
-    for (NSInteger i = 0; i < count; i++) {
-        // Skip bars with null values
-        if (i >= opens.count || i >= highs.count || i >= lows.count || i >= closes.count) continue;
-        
+    for (NSInteger i = 0; i < barCount; i++) {
+        // Skip bars with null values (Yahoo sometimes has null values)
         id openVal = opens[i];
         id highVal = highs[i];
         id lowVal = lows[i];
         id closeVal = closes[i];
+        id volumeVal = (i < volumes.count) ? volumes[i] : @0;
+        id timestampVal = timestamps[i];
         
+        // Skip null values
         if ([openVal isKindOfClass:[NSNull class]] ||
             [highVal isKindOfClass:[NSNull class]] ||
             [lowVal isKindOfClass:[NSNull class]] ||
-            [closeVal isKindOfClass:[NSNull class]]) {
+            [closeVal isKindOfClass:[NSNull class]] ||
+            [timestampVal isKindOfClass:[NSNull class]]) {
+            NSLog(@"⚠️ YahooDataAdapter: Skipping bar %ld due to null values", (long)i);
             continue;
         }
         
         HistoricalBarModel *bar = [[HistoricalBarModel alloc] init];
         
-        // Date from timestamp
-        NSNumber *ts = timestamps[i];
+        // Date from timestamp (Unix timestamp)
+        NSNumber *ts = timestampVal;
         bar.date = [NSDate dateWithTimeIntervalSince1970:ts.doubleValue];
         bar.symbol = symbol;
         
@@ -164,20 +216,45 @@
         bar.low = [lowVal doubleValue];
         bar.close = [closeVal doubleValue];
         
+        // Adjusted close (use regular close if adjusted not available)
+        if (adjCloses && i < adjCloses.count && ![adjCloses[i] isKindOfClass:[NSNull class]]) {
+            bar.adjustedClose = [adjCloses[i] doubleValue];
+        } else {
+            bar.adjustedClose = bar.close;
+        }
+        
         // Volume (may be null for some timeframes)
-        if (i < volumes.count && volumes[i] && ![volumes[i] isKindOfClass:[NSNull class]]) {
-            bar.volume = [volumes[i] longLongValue];
+        if (volumeVal && ![volumeVal isKindOfClass:[NSNull class]]) {
+            bar.volume = [volumeVal longLongValue];
         } else {
             bar.volume = 0;
         }
         
+       
         
-        [bars addObject:bar];
+        // Default timeframe (will be set by DataManager if needed)
+        bar.timeframe = BarTimeframeDaily;
+        
+        // Basic OHLC validation
+        if (bar.high >= bar.low && bar.high >= bar.open && bar.high >= bar.close &&
+            bar.low <= bar.open && bar.low <= bar.close &&
+            bar.open > 0 && bar.high > 0 && bar.low > 0 && bar.close > 0) {
+            [bars addObject:bar];
+        } else {
+            NSLog(@"⚠️ YahooDataAdapter: Skipping invalid OHLC bar %ld for %@ - O:%.2f H:%.2f L:%.2f C:%.2f",
+                  (long)i, symbol, bar.open, bar.high, bar.low, bar.close);
+        }
     }
     
-    NSLog(@"✅ YahooDataAdapter: Standardized %lu historical bars for %@", (unsigned long)bars.count, symbol);
+    // Sort by date (oldest to newest)
+    NSArray<HistoricalBarModel *> *sortedBars = [bars sortedArrayUsingComparator:^NSComparisonResult(HistoricalBarModel *obj1, HistoricalBarModel *obj2) {
+        return [obj1.date compare:obj2.date];
+    }];
     
-    return [bars copy];
+    NSLog(@"✅ YahooDataAdapter: Successfully converted %lu/%ld Yahoo bars to HistoricalBarModel for %@",
+          (unsigned long)sortedBars.count, (long)barCount, symbol);
+    
+    return sortedBars;
 }
 
 - (NSDictionary *)standardizeOrderBookData:(id)rawData forSymbol:(NSString *)symbol {

@@ -118,6 +118,32 @@
                                    priority:200];
     
     NSLog(@"AppDelegate: Registered all data sources (Schwab, Webull, Other, Claude)");
+    
+    [downloadManager connectDataSource:DataSourceTypeYahoo completion:^(BOOL success, NSError *error) {
+           if (success) {
+               NSLog(@"✅ Yahoo Finance connected successfully");
+           } else {
+               NSLog(@"❌ Yahoo Finance connection failed: %@", error.localizedDescription);
+           }
+       }];
+       
+       // Connect Webull (no auth needed for market data)
+       [downloadManager connectDataSource:DataSourceTypeWebull completion:^(BOOL success, NSError *error) {
+           if (success) {
+               NSLog(@"✅ Webull connected successfully");
+           } else {
+               NSLog(@"❌ Webull connection failed: %@", error.localizedDescription);
+           }
+       }];
+       
+       // Connect Other/CSV (always available)
+       [downloadManager connectDataSource:DataSourceTypeOther completion:^(BOOL success, NSError *error) {
+           if (success) {
+               NSLog(@"✅ Other/CSV connected successfully");
+           } else {
+               NSLog(@"❌ Other/CSV connection failed: %@", error.localizedDescription);
+           }
+       }];
 }
 
 

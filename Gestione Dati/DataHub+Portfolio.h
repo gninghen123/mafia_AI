@@ -1,9 +1,9 @@
 //
-//  DataHub+Portfolio.h
+//  DataHub+Portfolio.h - SECURE ARCHITECTURE
 //  TradingApp
 //
-//  Multi-account portfolio management extension for DataHub
-//  Supports Schwab + future IBKR integration
+//  🛡️ SECURITY: ALL portfolio methods require specific DataSource
+//  ❌ ELIMINATED: Generic aggregation calls (security violation)
 //
 
 #import "DataHub.h"
@@ -21,105 +21,115 @@ extern NSString * const PortfolioOrderFilledNotification;
 
 @interface DataHub (Portfolio)
 
-#pragma mark - Account Discovery & Management
+#pragma mark - 🛡️ SECURE Account Discovery (Broker-Specific Only)
 
-/// Get all available accounts across brokers
-- (void)getAvailableAccountsWithCompletion:(void(^)(NSArray<AccountModel *> *accounts, NSError * _Nullable error))completion;
+/**
+ * Get accounts from SPECIFIC broker with caching
+ * 🛡️ SECURITY: Requires specific DataSource - NO aggregation
+ * @param brokerType Specific broker (Schwab, IBKR, etc.)
+ * @param completion Completion with AccountModel objects from that broker
+ */
+- (void)getAccountsFromBroker:(DataSourceType)brokerType
+                   completion:(void(^)(NSArray<AccountModel *> *accounts, BOOL isFresh, NSError * _Nullable error))completion;
 
-/// Get detailed info for specific account
+/**
+ * Get account details from SPECIFIC broker with caching
+ * 🛡️ SECURITY: Requires specific DataSource
+ */
 - (void)getAccountDetails:(NSString *)accountId
-               completion:(void(^)(AccountModel * _Nullable account, NSError * _Nullable error))completion;
+               fromBroker:(DataSourceType)brokerType
+               completion:(void(^)(AccountModel * _Nullable account, BOOL isFresh, NSError * _Nullable error))completion;
 
-/// Refresh account connection status
-- (void)refreshAccountConnectionStatus:(NSString *)accountId
-                            completion:(void(^)(BOOL isConnected, NSError * _Nullable error))completion;
+/**
+ * Check connection status for specific broker
+ */
+- (void)checkBrokerConnectionStatus:(DataSourceType)brokerType
+                         completion:(void(^)(BOOL isConnected, NSError * _Nullable error))completion;
 
-#pragma mark - Multi-Account Portfolio Data with Smart Caching
+#pragma mark - 🛡️ SECURE Portfolio Data (Broker-Specific Only)
 
-/// Get portfolio summary with intelligent caching (30s TTL)
+/**
+ * Get portfolio summary with intelligent caching (30s TTL)
+ * 🛡️ SECURITY: Account and broker must be specified
+ */
 - (void)getPortfolioSummaryForAccount:(NSString *)accountId
+                           fromBroker:(DataSourceType)brokerType
                            completion:(void(^)(PortfolioSummaryModel * _Nullable summary, BOOL isFresh))completion;
 
-/// Get positions with price-aware caching (positions cached 5min, prices real-time)
+/**
+ * Get positions with price-aware caching
+ * 🛡️ SECURITY: Account and broker must be specified
+ */
 - (void)getPositionsForAccount:(NSString *)accountId
+                    fromBroker:(DataSourceType)brokerType
                     completion:(void(^)(NSArray<AdvancedPositionModel *> * _Nullable positions, BOOL isFresh))completion;
 
-/// Get orders with smart filtering and caching (15s TTL for active orders)
+/**
+ * Get orders with smart filtering and caching
+ * 🛡️ SECURITY: Account and broker must be specified
+ */
 - (void)getOrdersForAccount:(NSString *)accountId
+                 fromBroker:(DataSourceType)brokerType
+                 withStatus:(NSString * _Nullable)statusFilter
                  completion:(void(^)(NSArray<AdvancedOrderModel *> * _Nullable orders, BOOL isFresh))completion;
 
-/// Get filtered orders by status
-- (void)getOrdersForAccount:(NSString *)accountId
-                 withStatus:(NSString * _Nullable)statusFilter  // nil for all, "OPEN", "FILLED", etc.
-                 completion:(void(^)(NSArray<AdvancedOrderModel *> * _Nullable orders, BOOL isFresh))completion;
+#pragma mark - 🚨 SECURE Trading Operations (Broker-Specific Only)
 
-#pragma mark - Smart Multi-Account Subscription System
-
-/// Subscribe to portfolio updates for specific account (replaces any existing subscription)
-- (void)subscribeToPortfolioUpdatesForAccount:(NSString *)accountId;
-
-/// Unsubscribe from portfolio updates for specific account
-- (void)unsubscribeFromPortfolioUpdatesForAccount:(NSString *)accountId;
-
-/// Switch portfolio subscription to different account (efficient)
-- (void)switchPortfolioSubscriptionToAccount:(NSString *)accountId;
-
-/// Get currently subscribed account ID
-- (NSString * _Nullable)currentlySubscribedAccountId;
-
-#pragma mark - Real-Time Price Integration
-
-/// Subscribe to real-time prices for all positions in account
-- (void)subscribeToPositionPricesForAccount:(NSString *)accountId;
-
-/// Update position prices from real-time quote data
-- (void)updatePositionPricesFromQuote:(MarketQuoteModel *)quote;
-
-#pragma mark - Order Management
-
-/// Place new order
+/**
+ * Place order on SPECIFIC broker
+ * 🚨 CRITICAL: Account and broker must be specified
+ */
 - (void)placeOrder:(NSDictionary *)orderData
         forAccount:(NSString *)accountId
+        usingBroker:(DataSourceType)brokerType
         completion:(void(^)(NSString * _Nullable orderId, NSError * _Nullable error))completion;
 
-/// Cancel existing order
+/**
+ * Cancel order on SPECIFIC broker
+ * 🚨 CRITICAL: Account and broker must be specified
+ */
 - (void)cancelOrder:(NSString *)orderId
          forAccount:(NSString *)accountId
+        usingBroker:(DataSourceType)brokerType
          completion:(void(^)(BOOL success, NSError * _Nullable error))completion;
 
-/// Modify existing order
+/**
+ * Modify order on SPECIFIC broker
+ * 🚨 CRITICAL: Account and broker must be specified
+ */
 - (void)modifyOrder:(NSString *)orderId
          forAccount:(NSString *)accountId
+        usingBroker:(DataSourceType)brokerType
             newData:(NSDictionary *)modifiedData
          completion:(void(^)(BOOL success, NSError * _Nullable error))completion;
 
-#pragma mark - Polling & Refresh Management
+#pragma mark - 🔧 SECURE Subscription System (Broker-Specific)
 
-/// Start portfolio polling timers for account (different frequencies)
-- (void)startPortfolioPollingForAccount:(NSString *)accountId;
+/**
+ * Subscribe to portfolio updates for specific account on specific broker
+ */
+- (void)subscribeToPortfolioUpdatesForAccount:(NSString *)accountId
+                                   fromBroker:(DataSourceType)brokerType;
 
-/// Stop portfolio polling for account
-- (void)stopPortfolioPollingForAccount:(NSString *)accountId;
+/**
+ * Unsubscribe from portfolio updates for specific account on specific broker
+ */
+- (void)unsubscribeFromPortfolioUpdatesForAccount:(NSString *)accountId
+                                       fromBroker:(DataSourceType)brokerType;
 
-/// Force refresh all portfolio data for account
-- (void)forceRefreshPortfolioForAccount:(NSString *)accountId
-                             completion:(void(^)(BOOL success, NSError * _Nullable error))completion;
+#pragma mark - 🛠️ Utility Methods
 
-#pragma mark - Cache Management
+/**
+ * Get list of connected brokers
+ * Returns array of DataSourceType as NSNumber
+ */
+- (NSArray<NSNumber *> *)getConnectedBrokers;
 
-/// Clear portfolio cache for account
-- (void)clearPortfolioCacheForAccount:(NSString *)accountId;
-
-/// Get cache freshness info
-- (NSDictionary *)getPortfolioCacheInfoForAccount:(NSString *)accountId;
-
-#pragma mark - Future: Cross-Account Aggregation
-
-/// Get aggregated portfolio across all accounts (future feature)
-- (void)getAggregatedPortfolioSummaryWithCompletion:(void(^)(PortfolioSummaryModel *aggregatedSummary))completion;
-
-/// Get all positions across all accounts
-- (void)getAllPositionsAcrossAccountsWithCompletion:(void(^)(NSDictionary<NSString *, NSArray<AdvancedPositionModel *> *> *positionsByAccount))completion;
+/**
+ * Clear portfolio cache for specific account on specific broker
+ */
+- (void)clearPortfolioCacheForAccount:(NSString *)accountId
+                           fromBroker:(DataSourceType)brokerType;
 
 @end
 

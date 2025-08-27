@@ -1,11 +1,10 @@
 //
-//  DataManager+Portfolio.h (UPDATED - NEW ARCHITECTURE)
+//  DataManager+Portfolio.h - SECURE ARCHITECTURE
 //  TradingApp
 //
-//  🛡️ ACCOUNT DATA: Methods require specific DataSource parameter
-//  🚨 TRADING: Methods require specific DataSource parameter
-//
-//  Portfolio and account management extension for DataManager
+//  🛡️ ACCOUNT DATA: ALL methods require specific DataSource parameter
+//  🚨 TRADING: ALL methods require specific DataSource parameter
+//  ❌ ELIMINATED: Generic aggregation calls (security violation)
 //
 
 #import "DataManager.h"
@@ -15,78 +14,62 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface DataManager (Portfolio)
 
-#pragma mark - Account Management
+#pragma mark - 🛡️ SECURE Account Management (Broker-Specific Only)
 
 /**
- * Request all available accounts across all connected brokers
- * 🛡️ ORCHESTRATION: DataManager queries each broker separately and merges results
- * @param completion Completion block with array of raw account dictionaries
+ * Get accounts from SPECIFIC broker only
+ * 🛡️ SECURITY: Requires specific DataSource - NO aggregation
+ * @param requiredSource Specific broker DataSource (Schwab, IBKR, etc.)
+ * @param completion Completion block with accounts from that broker only
  * @return Request ID for tracking
  */
-- (NSString *)requestAccountsWithCompletion:(void (^)(NSArray *accounts, NSError *error))completion;
+- (NSString *)requestAccountsFromDataSource:(DataSourceType)requiredSource
+                                 completion:(void (^)(NSArray *accounts, NSError *error))completion;
 
 /**
- * Request detailed info for specific account
- * 🛡️ SECURITY: Requires specific DataSource - NO internal broker determination
+ * Get account details from SPECIFIC broker
+ * 🛡️ SECURITY: Requires specific DataSource
  * @param accountId Account identifier
  * @param requiredSource Specific broker DataSource (provided by caller)
- * @param completion Completion block with raw account details dictionary
+ * @param completion Completion block with account details
  * @return Request ID for tracking
  */
 - (NSString *)requestAccountDetails:(NSString *)accountId
                      fromDataSource:(DataSourceType)requiredSource
                          completion:(void (^)(NSDictionary *accountDetails, NSError *error))completion;
 
-#pragma mark - Portfolio Data Requests
+#pragma mark - 🛡️ SECURE Portfolio Data (Broker-Specific Only)
 
 /**
- * Request portfolio summary for account
- * 🛡️ SECURITY: Requires specific DataSource - NO internal broker determination
- * @param accountId Account identifier
- * @param requiredSource Specific broker DataSource (provided by caller)
- * @param completion Completion block with raw portfolio summary dictionary
- * @return Request ID for tracking
+ * Get portfolio summary from SPECIFIC broker
+ * 🛡️ SECURITY: Requires specific DataSource
  */
 - (NSString *)requestPortfolioSummary:(NSString *)accountId
                        fromDataSource:(DataSourceType)requiredSource
                            completion:(void (^)(NSDictionary *summary, NSError *error))completion;
 
 /**
- * Request positions for account
- * 🛡️ SECURITY: Requires specific DataSource - NO internal broker determination
- * @param accountId Account identifier
- * @param requiredSource Specific broker DataSource (provided by caller)
- * @param completion Completion block with array of raw position dictionaries
- * @return Request ID for tracking
+ * Get positions from SPECIFIC broker
+ * 🛡️ SECURITY: Requires specific DataSource
  */
 - (NSString *)requestPositions:(NSString *)accountId
                 fromDataSource:(DataSourceType)requiredSource
                     completion:(void (^)(NSArray *positions, NSError *error))completion;
 
 /**
- * Request orders for account
- * 🛡️ SECURITY: Requires specific DataSource - NO internal broker determination
- * @param accountId Account identifier
- * @param requiredSource Specific broker DataSource (provided by caller)
- * @param statusFilter Optional status filter ("OPEN", "FILLED", etc.) - nil for all
- * @param completion Completion block with array of raw order dictionaries
- * @return Request ID for tracking
+ * Get orders from SPECIFIC broker
+ * 🛡️ SECURITY: Requires specific DataSource
  */
 - (NSString *)requestOrders:(NSString *)accountId
              fromDataSource:(DataSourceType)requiredSource
                  withStatus:(NSString * _Nullable)statusFilter
                  completion:(void (^)(NSArray *orders, NSError *error))completion;
 
-#pragma mark - 🚨 Order Management (Trading Operations)
+#pragma mark - 🚨 SECURE Trading Operations (Broker-Specific Only)
 
 /**
- * Place new order
- * 🚨 CRITICAL: Requires exact broker DataSource - NEVER allows fallback
- * @param orderData Order dictionary in standardized format
- * @param accountId Account identifier
- * @param requiredSource Exact broker DataSource (provided by caller)
- * @param completion Completion block with order ID or error
- * @return Request ID for tracking
+ * Place order on SPECIFIC broker
+ * 🚨 CRITICAL: Requires exact broker DataSource
  */
 - (NSString *)placeOrder:(NSDictionary *)orderData
               forAccount:(NSString *)accountId
@@ -94,13 +77,8 @@ NS_ASSUME_NONNULL_BEGIN
               completion:(void (^)(NSString *orderId, NSError *error))completion;
 
 /**
- * Cancel existing order
- * 🚨 CRITICAL: Requires exact broker DataSource - NEVER allows fallback
- * @param orderId Order identifier to cancel
- * @param accountId Account identifier
- * @param requiredSource Exact broker DataSource (provided by caller)
- * @param completion Completion block with success status
- * @return Request ID for tracking
+ * Cancel order on SPECIFIC broker
+ * 🚨 CRITICAL: Requires exact broker DataSource
  */
 - (NSString *)cancelOrder:(NSString *)orderId
                forAccount:(NSString *)accountId
@@ -108,14 +86,8 @@ NS_ASSUME_NONNULL_BEGIN
                completion:(void (^)(BOOL success, NSError *error))completion;
 
 /**
- * Modify existing order
- * 🚨 CRITICAL: Requires exact broker DataSource - NEVER allows fallback
- * @param orderId Order identifier to modify
- * @param accountId Account identifier
- * @param requiredSource Exact broker DataSource (provided by caller)
- * @param newOrderData Modified order data
- * @param completion Completion block with success status
- * @return Request ID for tracking
+ * Modify order on SPECIFIC broker
+ * 🚨 CRITICAL: Requires exact broker DataSource
  */
 - (NSString *)modifyOrder:(NSString *)orderId
                forAccount:(NSString *)accountId

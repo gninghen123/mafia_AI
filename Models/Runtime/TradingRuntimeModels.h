@@ -25,6 +25,8 @@ NS_ASSUME_NONNULL_BEGIN
 // Display helpers
 - (NSString *)formattedDisplayName;
 - (NSColor *)connectionStatusColor;
+- (instancetype)initWithDictionary:(NSDictionary *)dictionary;
+
 @end
 
 #pragma mark - Enhanced Portfolio Summary

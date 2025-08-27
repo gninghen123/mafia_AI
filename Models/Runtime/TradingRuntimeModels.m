@@ -11,6 +11,22 @@
 
 @implementation AccountModel
 
+
+- (instancetype)initWithDictionary:(NSDictionary *)dictionary {
+    self = [super init];
+    if (self && dictionary) {
+        _accountId = dictionary[@"accountId"] ?: dictionary[@"id"] ?: @"";
+        _accountType = dictionary[@"accountType"] ?: dictionary[@"type"] ?: @"CASH";
+        _brokerName = dictionary[@"brokerName"] ?: dictionary[@"broker"] ?: @"UNKNOWN";
+        _displayName = dictionary[@"displayName"] ?: dictionary[@"name"] ?: @"";
+        _isConnected = dictionary[@"isConnected"] ? [dictionary[@"isConnected"] boolValue] : NO;
+        _isPrimary = dictionary[@"isPrimary"] ? [dictionary[@"isPrimary"] boolValue] : NO;
+        _lastUpdated = dictionary[@"lastUpdated"] ?: [NSDate date];
+    }
+    return self;
+}
+
+
 - (instancetype)init {
     self = [super init];
     if (self) {

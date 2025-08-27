@@ -860,11 +860,13 @@
         return;
     }
     
-    // ✅ CORREZIONE: Usa getPortfolioSummaryForAccount invece di getCurrentPortfolioSummary
     DataHub *dataHub = [DataHub shared];
     NSString *accountId = self.selectedAccount.accountId ?: @"default";
+    DataSourceType brokerType = [self dataSourceTypeFromBrokerName:self.selectedAccount.brokerName];
     
-    [dataHub getPortfolioSummaryForAccount:accountId completion:^(PortfolioSummaryModel *portfolio, BOOL isFresh) {
+    [dataHub getPortfolioSummaryForAccount:accountId
+                                fromBroker:brokerType
+                                completion:^(PortfolioSummaryModel *portfolio, BOOL isFresh) {
         if (portfolio) {
             [self submitOrderWithPortfolio:portfolio];
         } else {
@@ -879,6 +881,19 @@
             });
         }
     }];
+}
+
+- (DataSourceType)dataSourceTypeFromBrokerName:(NSString *)brokerName {
+    if ([brokerName isEqualToString:@"SCHWAB"]) {
+        return DataSourceTypeSchwab;
+    } else if ([brokerName isEqualToString:@"IBKR"]) {
+        return DataSourceTypeIBKR;
+    }  else if ([brokerName isEqualToString:@"Webull"]) {
+        return DataSourceTypeWebull;
+    }
+    
+    NSLog(@"⚠️ OrderEntry: Unknown broker name: %@, defaulting to Schwab", brokerName);
+    return DataSourceTypeSchwab; // Default fallback
 }
 
 

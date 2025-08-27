@@ -933,11 +933,21 @@
     
     NSLog(@"🔄 PortfolioWidget: Force refreshing account %@", self.selectedAccount.accountId);
     
-    [[DataHub shared] forceRefreshPortfolioForAccount:self.selectedAccount.accountId completion:^(BOOL success, NSError *error) {
-        if (success) {
-            [self loadPortfolioDataForCurrentAccount];
+    DataSourceType brokerType = [self dataSourceTypeFromBrokerName:self.selectedAccount.brokerName];
+    [[DataHub shared] getPortfolioSummaryForAccount:self.selectedAccount.accountId
+                                         fromBroker:brokerType
+                                         completion:^(PortfolioSummaryModel *summary, BOOL isFresh) {
+        // Mantieni la logica esistente, ma adatta per il nuovo formato
+        if (summary) {
+            // Success - equivalente a quando error era nil
+            self.portfolioSummary = summary;
+            [self updatePortfolioSummaryDisplay];
+            [self loadPositionsForCurrentAccount];
+            [self loadOrdersForCurrentAccount];
         } else {
-            NSLog(@"❌ PortfolioWidget: Failed to refresh account: %@", error);
+            // Error case - quando summary è nil
+            NSLog(@"❌ PortfolioWidget: Failed to refresh portfolio");
+            self.connectionStatusLabel.stringValue = @"Refresh failed";
         }
     }];
 }
@@ -1092,7 +1102,10 @@
 - (void)refreshPortfolioSummary {
     if (!self.selectedAccount) return;
     
-    [[DataHub shared] getPortfolioSummaryForAccount:self.selectedAccount.accountId completion:^(PortfolioSummaryModel *summary, BOOL isFresh) {
+    DataSourceType brokerType = [self dataSourceTypeFromBrokerName:self.selectedAccount.brokerName];
+    [[DataHub shared] getPortfolioSummaryForAccount:self.selectedAccount.accountId
+                                         fromBroker:brokerType
+                                         completion:^(PortfolioSummaryModel *summary, BOOL isFresh) {
         self.portfolioSummary = summary;
         [self updatePortfolioSummaryDisplay];
     }];
@@ -1403,11 +1416,13 @@
 
 - (void)cancelOrders:(NSArray<AdvancedOrderModel *> *)orders {
     NSString *accountId = self.selectedAccount.accountId;
+    DataSourceType brokerType = [self dataSourceTypeFromBrokerName:self.selectedAccount.brokerName];
     
     for (AdvancedOrderModel *order in orders) {
         [[DataHub shared] cancelOrder:order.orderId
-                                  forAccount:accountId
-                                  completion:^(BOOL success, NSError *error) {
+                          forAccount:accountId
+                         usingBroker:brokerType
+                          completion:^(BOOL success, NSError *error) {
             if (success) {
                 NSLog(@"✅ PortfolioWidget: Cancelled order %@", order.orderId);
             } else {

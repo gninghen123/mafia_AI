@@ -12,6 +12,16 @@
 #import "DownloadManager.h"
 #import "DataAdapterFactory.h"
 
+
+NSString * const PortfolioAccountsUpdatedNotification = @"PortfolioAccountsUpdatedNotification";
+NSString * const PortfolioSummaryUpdatedNotification = @"PortfolioSummaryUpdatedNotification";
+NSString * const PortfolioPositionsUpdatedNotification = @"PortfolioPositionsUpdatedNotification";
+NSString * const PortfolioOrdersUpdatedNotification = @"PortfolioOrdersUpdatedNotification";
+NSString * const PortfolioOrderStatusChangedNotification = @"PortfolioOrderStatusChangedNotification";
+NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotification";
+
+
+
 @implementation DataManager (Portfolio)
 
 #pragma mark - Account Management
@@ -808,6 +818,13 @@
         if (activeRequests) {
             [activeRequests removeObjectForKey:key];
         }
+    }
+}
+
+- (void)getAvailableAccountsWithCompletion:(void(^)(NSArray<AccountModel *> *accounts, NSError * _Nullable error))completion {
+    // TODO: Implementazione placeholder
+    if (completion) {
+        completion(@[], nil);
     }
 }
 

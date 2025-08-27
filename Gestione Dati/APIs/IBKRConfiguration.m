@@ -186,7 +186,7 @@ static NSInteger const kDefaultClientId = 1;
                                                              clientId:self.clientId
                                                        connectionType:self.connectionType];
     
-    dataSource.debugLogging = self.debugLoggingEnabled;
+    //dataSource.debugLogging = self.debugLoggingEnabled;
     
     NSLog(@"🏭 IBKRConfiguration: Created IBKRDataSource with configuration: %@", [self connectionURLString]);
     

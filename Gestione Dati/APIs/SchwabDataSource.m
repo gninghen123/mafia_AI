@@ -602,17 +602,140 @@ static NSString *const kSchwabTokenURL = @"https://api.schwabapi.com/v1/oauth/to
     return @"day";
 }
 
-// Authentication helpers (INTERNAL)
+
+
+#pragma mark - OAuth2 Token Validation - IMPLEMENTAZIONE MANCANTE
+
+- (BOOL)hasValidToken {
+    // Verifica che l'access token esista
+    if (!self.accessToken || self.accessToken.length == 0) {
+        NSLog(@"🚨 SchwabDataSource: No access token available");
+        return NO;
+    }
+    
+    // Verifica che il token non sia scaduto
+    if (self.tokenExpiry && [self.tokenExpiry timeIntervalSinceNow] <= 60) {
+        NSLog(@"🚨 SchwabDataSource: Access token expired or will expire in <60s");
+        return NO;
+    }
+    
+    // Se non abbiamo data di scadenza, assumiamo che il token sia ancora valido
+    // ma dovremmo provare a usarlo
+    if (!self.tokenExpiry) {
+        NSLog(@"⚠️ SchwabDataSource: No token expiry info, assuming valid");
+        return YES;
+    }
+    
+    NSLog(@"✅ SchwabDataSource: Access token is valid (expires in %.0f seconds)",
+          [self.tokenExpiry timeIntervalSinceNow]);
+    return YES;
+}
+
+#pragma mark - Token Management Helper Methods - IMPLEMENTAZIONI COMPLETE
+
 - (void)loadTokensFromUserDefaults {
-    // [MANTIENE implementazione esistente]
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    self.accessToken = [defaults stringForKey:@"SchwabAccessToken"];
+    self.refreshToken = [defaults stringForKey:@"SchwabRefreshToken"];
+    
+    NSNumber *expiryTimestamp = [defaults objectForKey:@"SchwabTokenExpiry"];
+    if (expiryTimestamp) {
+        self.tokenExpiry = [NSDate dateWithTimeIntervalSince1970:[expiryTimestamp doubleValue]];
+    }
+    
+    if (self.accessToken) {
+        NSLog(@"✅ SchwabDataSource: Loaded tokens from UserDefaults (expires: %@)", self.tokenExpiry);
+    } else {
+        NSLog(@"ℹ️ SchwabDataSource: No saved tokens found in UserDefaults");
+    }
 }
 
 - (void)saveTokensToUserDefaults {
-    // [MANTIENE implementazione esistente]
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    if (self.accessToken) {
+        [defaults setObject:self.accessToken forKey:@"SchwabAccessToken"];
+    } else {
+        [defaults removeObjectForKey:@"SchwabAccessToken"];
+    }
+    
+    if (self.refreshToken) {
+        [defaults setObject:self.refreshToken forKey:@"SchwabRefreshToken"];
+    } else {
+        [defaults removeObjectForKey:@"SchwabRefreshToken"];
+    }
+    
+    if (self.tokenExpiry) {
+        NSNumber *timestamp = @([self.tokenExpiry timeIntervalSince1970]);
+        [defaults setObject:timestamp forKey:@"SchwabTokenExpiry"];
+    } else {
+        [defaults removeObjectForKey:@"SchwabTokenExpiry"];
+    }
+    
+    [defaults synchronize];
+    
+    NSLog(@"💾 SchwabDataSource: Saved tokens to UserDefaults");
 }
 
 - (void)clearTokensFromUserDefaults {
-    // [MANTIENE implementazione esistente]
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    [defaults removeObjectForKey:@"SchwabAccessToken"];
+    [defaults removeObjectForKey:@"SchwabRefreshToken"];
+    [defaults removeObjectForKey:@"SchwabTokenExpiry"];
+    [defaults synchronize];
+    
+    self.accessToken = nil;
+    self.refreshToken = nil;
+    self.tokenExpiry = nil;
+    
+    NSLog(@"🗑️ SchwabDataSource: Cleared all tokens from UserDefaults");
+}
+
+
+- (void)authenticateWithCompletion:(void (^)(BOOL success, NSError *error))completion {
+    NSLog(@"🔐 SchwabDataSource: Starting OAuth2 authentication...");
+    
+    // TODO: Implementazione OAuth2 completa
+    // Per ora restituisce errore per evitare crash
+    NSError *error = [NSError errorWithDomain:@"SchwabDataSource"
+                                         code:501
+                                     userInfo:@{NSLocalizedDescriptionKey: @"OAuth2 authentication not implemented yet"}];
+    
+    if (completion) {
+        completion(NO, error);
+    }
+}
+
+- (void)refreshTokenIfNeeded:(void (^)(BOOL success, NSError *error))completion {
+    // Controlla se il refresh è necessario
+    if ([self hasValidToken]) {
+        NSLog(@"✅ SchwabDataSource: Token still valid, no refresh needed");
+        if (completion) completion(YES, nil);
+        return;
+    }
+    
+    if (!self.refreshToken) {
+        NSLog(@"❌ SchwabDataSource: No refresh token available");
+        NSError *error = [NSError errorWithDomain:@"SchwabDataSource"
+                                             code:401
+                                         userInfo:@{NSLocalizedDescriptionKey: @"No refresh token available"}];
+        if (completion) completion(NO, error);
+        return;
+    }
+    
+    NSLog(@"🔄 SchwabDataSource: Refreshing access token...");
+    
+    // TODO: Implementazione refresh token completa
+    // Per ora restituisce errore per evitare crash
+    NSError *error = [NSError errorWithDomain:@"SchwabDataSource"
+                                         code:501
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Token refresh not implemented yet"}];
+    
+    if (completion) {
+        completion(NO, error);
+    }
 }
 
 @end

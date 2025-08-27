@@ -230,7 +230,6 @@
 }
 
 - (void)testDirectIBKRQuote:(NSString *)symbol {
-    // Access IBKR data source directly to bypass priority system
     IBKRDataSource *ibkrSource = [self getIBKRDataSource];
     
     if (!ibkrSource) {
@@ -243,7 +242,8 @@
         return;
     }
     
-    [ibkrSource requestMarketData:symbol completion:^(NSDictionary *quote, NSError *error) {
+    // ✅ CORREZIONE: Usare il nuovo metodo unificato
+    [ibkrSource fetchQuoteForSymbol:symbol completion:^(id quote, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (error) {
                 [self appendResult:[NSString stringWithFormat:@"❌ Direct IBKR quote failed: %@", error.localizedDescription]];
@@ -254,6 +254,7 @@
         });
     }];
 }
+
 
 - (void)testHistoricalButtonClicked:(id)sender {
     [self appendResult:@"Testing historical data request for AAPL (direct IBKR call)..."];
@@ -273,10 +274,12 @@
         return;
     }
     
-    [ibkrSource requestHistoricalData:symbol
-                             duration:@"1 M"
-                              barSize:@"1 day"
-                           completion:^(NSArray *bars, NSError *error) {
+    // ✅ CORREZIONE: Usare il nuovo metodo unificato con parametri corretti
+    [ibkrSource fetchHistoricalDataForSymbol:symbol
+                                   timeframe:BarTimeframeDaily
+                                     barCount:30  // Circa 1 mese di dati
+                            needExtendedHours:NO
+                                   completion:^(NSArray *bars, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (error) {
                 [self appendResult:[NSString stringWithFormat:@"❌ Direct IBKR historical failed: %@", error.localizedDescription]];
@@ -308,7 +311,8 @@
         return;
     }
     
-    [ibkrSource getAccountsWithCompletion:^(NSArray<NSString *> *accounts, NSError *error) {
+    // ✅ QUESTO È GIÀ CORRETTO - fetchAccountsWithCompletion è il metodo unificato giusto
+    [ibkrSource fetchAccountsWithCompletion:^(NSArray<NSString *> *accounts, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (error) {
                 [self appendResult:[NSString stringWithFormat:@"❌ Direct IBKR accounts failed: %@", error.localizedDescription]];

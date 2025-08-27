@@ -21,7 +21,7 @@
 #import "APIPlaygroundWidget.h"
 #import "ibkrdatasource.h"
 #import "ibkrconfiguration.h"
-
+#import "yahooDataSource.h"
 
 @interface AppDelegate ()
 @property (nonatomic, strong) MainWindowController *mainWindowController;
@@ -72,35 +72,50 @@
 
 - (void)registerDataSources {
     DownloadManager *downloadManager = [DownloadManager sharedManager];
-    
-    // Registra Schwab data source (priorità 1 - alta)
-    SchwabDataSource *schwabSource = [[SchwabDataSource alloc] init];
-    [downloadManager registerDataSource:schwabSource
-                                withType:DataSourceTypeSchwab
-                                priority:1];
-    IBKRConfiguration *ibkrConfig = [IBKRConfiguration sharedConfiguration];
+       
+       NSLog(@"📡 AppDelegate: Registering data sources with updated priority order...");
+       
+       // 🥇 Priority 1 - PREMIUM TIER (Schwab)
+       SchwabDataSource *schwabSource = [[SchwabDataSource alloc] init];
+       [downloadManager registerDataSource:schwabSource
+                                   withType:DataSourceTypeSchwab
+                                   priority:1];
+       NSLog(@"📊 Registered Schwab - Priority 1 (Premium - Real-time data)");
+       
+       // 🥈 Priority 2 - PREMIUM TIER (IBKR)
+       IBKRConfiguration *ibkrConfig = [IBKRConfiguration sharedConfiguration];
        IBKRDataSource *ibkrSource = [ibkrConfig createDataSource];
        [downloadManager registerDataSource:ibkrSource
                                    withType:DataSourceTypeIBKR
                                    priority:2];
-    
-    // Registra Webull data source (priorità 50 - media)
-    WebullDataSource *webullSource = [[WebullDataSource alloc] init];
-    [downloadManager registerDataSource:webullSource
-                                withType:DataSourceTypeWebull
-                                priority:50];
-    
-    // NUOVO: Registra Other data source (priorità 100 - bassa, come fallback)
-    OtherDataSource *otherSource = [[OtherDataSource alloc] init];
-    [downloadManager registerDataSource:otherSource
-                                withType:DataSourceTypeOther
-                                priority:100];
-    
-    // Registra Claude data source (priorità 200 - molto bassa, solo per AI)
-    ClaudeDataSource *claudeSource = [ClaudeDataSource sharedInstance];
-    [downloadManager registerDataSource:claudeSource
-                                withType:DataSourceTypeClaude
-                                priority:200];
+       NSLog(@"📊 Registered IBKR - Priority 2 (Premium - Professional grade)");
+       
+       // 🥉 Priority 3 - FREE TIER HIGH QUALITY (Yahoo Finance) - NEW POSITION
+       YahooDataSource *yahooSource = [[YahooDataSource alloc] init];
+       [downloadManager registerDataSource:yahooSource
+                                   withType:DataSourceTypeYahoo
+                                   priority:3];
+       NSLog(@"📊 Registered Yahoo Finance - Priority 3 (Free - JSON API, good quality)");
+       
+       // 🏃 Priority 50 - FREE TIER (Webull)
+       WebullDataSource *webullSource = [[WebullDataSource alloc] init];
+       [downloadManager registerDataSource:webullSource
+                                   withType:DataSourceTypeWebull
+                                   priority:50];
+       NSLog(@"📊 Registered Webull - Priority 50 (Free - Delayed data)");
+       
+       // 📄 Priority 100 - FALLBACK (Other/CSV)
+       OtherDataSource *otherSource = [[OtherDataSource alloc] init];
+       [downloadManager registerDataSource:otherSource
+                                   withType:DataSourceTypeOther
+                                   priority:100];
+       NSLog(@"📊 Registered Other/CSV - Priority 100 (Fallback - Basic CSV data)");
+       
+       // 🤖 Priority 200 - AI ONLY (Claude)
+       ClaudeDataSource *claudeSource = [ClaudeDataSource sharedInstance];
+       [downloadManager registerDataSource:claudeSource
+                                   withType:DataSourceTypeClaude
+                                   priority:200];
     
     NSLog(@"AppDelegate: Registered all data sources (Schwab, Webull, Other, Claude)");
 }

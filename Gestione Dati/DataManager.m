@@ -511,6 +511,9 @@
     [self notifyDelegatesOfBatchQuotesUpdate:standardizedQuotes forSymbols:symbols];
 }
 
+// FIX per DataManager.m - metodo handleHistoricalDataResponse
+// Sostituire la sezione di standardizzazione dei dati storici
+
 - (void)handleHistoricalDataResponse:(id)result
                                error:(NSError *)error
                           usedSource:(DataSourceType)usedSource
@@ -534,15 +537,25 @@
     
     NSLog(@"✅ DataManager: Historical data received for %@ from %@", symbol, DataSourceTypeToString(usedSource));
     
-    // CORREZIONE: Standardize historical data using adapter with forSymbol:
+    // ✅ FIXED: Standardize historical data using adapter - support both NSArray and NSDictionary
     id<DataSourceAdapter> adapter = [DataAdapterFactory adapterForDataSource:usedSource];
     NSArray<HistoricalBarModel *> *standardizedBars = @[];
     
-    if (adapter && [result isKindOfClass:[NSArray class]]) {
-        standardizedBars = [adapter standardizeHistoricalData:(NSArray *)result forSymbol:symbol];
+    if (adapter && result) {
+        // ✅ NEW: Accept both NSArray (direct bars) and NSDictionary (wrapped response)
+        if ([result isKindOfClass:[NSArray class]] || [result isKindOfClass:[NSDictionary class]]) {
+            standardizedBars = [adapter standardizeHistoricalData:result forSymbol:symbol];
+        } else {
+            NSLog(@"⚠️ DataManager: Unexpected historical data format from %@: %@",
+                  DataSourceTypeToString(usedSource), [result class]);
+        }
+    } else {
+        NSLog(@"❌ DataManager: No adapter available for %@ or result is nil",
+              DataSourceTypeToString(usedSource));
     }
     
-    NSLog(@"📊 DataManager: Standardized %lu bars via adapter", (unsigned long)standardizedBars.count);
+    NSLog(@"📊 DataManager: Standardized %lu bars via %@ adapter",
+          (unsigned long)standardizedBars.count, DataSourceTypeToString(usedSource));
     
     if (completion) {
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -553,7 +566,6 @@
     // Notify delegates
     [self notifyDelegatesOfHistoricalDataUpdate:standardizedBars forSymbol:symbol];
 }
-
 - (void)handleOrderBookResponse:(id)result
                           error:(NSError *)error
                      usedSource:(DataSourceType)usedSource

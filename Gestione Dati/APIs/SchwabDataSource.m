@@ -15,6 +15,276 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
 static NSString *const kSchwabAuthURL = @"https://api.schwabapi.com/v1/oauth/authorize";
 static NSString *const kSchwabTokenURL = @"https://api.schwabapi.com/v1/oauth/token";
 
+
+
+//-----------------
+
+#pragma mark - autentication window
+
+//---------------------
+
+
+
+@interface SchwabAuthWindowController : NSWindowController <WKNavigationDelegate, NSWindowDelegate>
+@property (nonatomic, strong) WKWebView *webView;
+@property (nonatomic, copy) void (^completionHandler)(BOOL success, NSError *error);
+@property (nonatomic, strong) NSString *appKey;
+@property (nonatomic, strong) NSString *callbackURL;
+@property (nonatomic, strong) NSString *state;
+- (instancetype)initWithAppKey:(NSString *)appKey callbackURL:(NSString *)callbackURL;
+- (void)startAuthenticationFlow;
+@end
+
+@implementation SchwabAuthWindowController
+
+- (instancetype)initWithAppKey:(NSString *)appKey callbackURL:(NSString *)callbackURL {
+    NSRect frame = NSMakeRect(0, 0, 900, 700);
+    NSWindow *window = [[NSWindow alloc] initWithContentRect:frame
+                                                   styleMask:NSWindowStyleMaskTitled |
+                                                            NSWindowStyleMaskClosable |
+                                                            NSWindowStyleMaskResizable
+                                                     backing:NSBackingStoreBuffered
+                                                       defer:NO];
+    window.title = @"Schwab Authentication";
+    [window center];
+    
+    self = [super initWithWindow:window];
+    if (self) {
+        _appKey = [appKey copy];
+        _callbackURL = [callbackURL copy];
+        _state = [[NSUUID UUID] UUIDString];
+        
+        // ✅ CONFIGURAZIONE WEBVIEW CORRETTA
+        WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
+        config.processPool = [[WKProcessPool alloc] init];
+        
+        // Preferences di base
+        WKPreferences *preferences = [[WKPreferences alloc] init];
+        preferences.javaScriptEnabled = YES;
+        config.preferences = preferences;
+        
+        // 🚫 DISABILITA keychain auto-save usando websiteDataStore non persistente
+        // Solo se disponibile (macOS 10.13+)
+        if (@available(macOS 10.13, *)) {
+            config.websiteDataStore = [WKWebsiteDataStore nonPersistentDataStore];
+        }
+        
+        // 🚫 DISABILITA user content controller per evitare script injection
+        config.userContentController = [[WKUserContentController alloc] init];
+        
+        self.webView = [[WKWebView alloc] initWithFrame:frame configuration:config];
+        self.webView.navigationDelegate = self;
+        
+        // 🚫 DISABILITA altre funzioni che potrebbero triggera keychain
+        self.webView.allowsBackForwardNavigationGestures = NO;
+        if (@available(macOS 10.13, *)) {
+            self.webView.customUserAgent = @"SchwabTradingApp/1.0";
+        }
+        
+        window.contentView = self.webView;
+        window.delegate = self;
+    }
+    return self;
+}
+
+
+- (void)startAuthenticationFlow {
+    NSLog(@"🔐 Starting Schwab OAuth2 authentication flow...");
+    
+    // Costruisci URL di autorizzazione OAuth2
+    NSString *scope = @"readonly"; // Modifica secondo le tue necessità
+    NSString *responseType = @"code";
+    
+    NSURLComponents *components = [NSURLComponents componentsWithString:kSchwabAuthURL];
+    components.queryItems = @[
+        [NSURLQueryItem queryItemWithName:@"client_id" value:self.appKey],
+        [NSURLQueryItem queryItemWithName:@"redirect_uri" value:self.callbackURL],
+        [NSURLQueryItem queryItemWithName:@"scope" value:scope],
+        [NSURLQueryItem queryItemWithName:@"response_type" value:responseType],
+        [NSURLQueryItem queryItemWithName:@"state" value:self.state]
+    ];
+    
+    NSURL *authURL = components.URL;
+    NSLog(@"🌐 Loading Schwab auth URL: %@", authURL);
+    
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:authURL];
+    request.timeoutInterval = 30.0;
+    
+    [self.webView loadRequest:request];
+}
+
+#pragma mark - WKNavigationDelegate
+
+- (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
+    NSLog(@"📱 Schwab WebView loaded: %@", webView.URL.absoluteString);
+    
+    // 🎯 CONTROLLA se siamo arrivati al callback URL
+    if ([webView.URL.absoluteString hasPrefix:self.callbackURL]) {
+        NSLog(@"🎯 Detected callback URL: %@", webView.URL.absoluteString);
+        [self handleCallbackURL:webView.URL];
+        return;
+    }
+    
+    // 🎯 CONTROLLA altri possibili pattern di success
+    NSString *urlString = webView.URL.absoluteString;
+    if ([urlString containsString:@"code="] ||
+        [urlString containsString:@"access_token="] ||
+        [urlString containsString:@"success"] ||
+        [urlString containsString:@"authorized"]) {
+        NSLog(@"🎯 Detected OAuth success pattern in URL: %@", urlString);
+        [self handleCallbackURL:webView.URL];
+        return;
+    }
+    
+    // 🔍 DEBUG: Log URL per capire il flusso
+    NSLog(@"🔍 WebView URL: %@", urlString);
+    
+    // 🎯 CONTROLLA il title della pagina per success indicators
+    [webView evaluateJavaScript:@"document.title" completionHandler:^(id result, NSError *error) {
+        if (!error && [result isKindOfClass:[NSString class]]) {
+            NSString *title = (NSString *)result;
+            NSLog(@"📄 Page title: %@", title);
+        }
+    }];
+}
+- (void)webView:(WKWebView *)webView
+decidePolicyForNavigationAction:(WKNavigationAction *)navigationAction
+decisionHandler:(void (^)(WKNavigationActionPolicy))decisionHandler {
+    
+    NSURL *url = navigationAction.request.URL;
+    if ([url.absoluteString hasPrefix:self.callbackURL]) {
+        NSLog(@"🎯 Caught callback in navigationAction: %@", url.absoluteString);
+        [self handleCallbackURL:url];
+        decisionHandler(WKNavigationActionPolicyCancel);
+        return;
+    }
+    
+    decisionHandler(WKNavigationActionPolicyAllow);
+}
+
+- (void)webView:(WKWebView *)webView didFailNavigation:(WKNavigation *)navigation withError:(NSError *)error {
+    NSLog(@"❌ Schwab WebView navigation failed: %@ (Code: %ld)", error.localizedDescription, (long)error.code);
+    
+    // Non chiudere immediatamente, potrebbe essere solo un redirect
+    if (error.code == NSURLErrorCancelled) {
+        NSLog(@"⚠️ Navigation cancelled, ignoring...");
+        return;
+    }
+    
+    if (self.completionHandler) {
+        self.completionHandler(NO, error);
+        self.completionHandler = nil;
+    }
+    
+    [self close];
+}
+
+- (void)handleCallbackURL:(NSURL *)callbackURL {
+    NSLog(@"🎯 Processing Schwab callback: %@", callbackURL.absoluteString);
+    
+    NSURLComponents *components = [NSURLComponents componentsWithURL:callbackURL resolvingAgainstBaseURL:NO];
+    
+    NSString *authCode = nil;
+    NSString *receivedState = nil;
+    NSString *error = nil;
+    NSString *accessToken = nil; // Alcuni OAuth2 tornano direttamente il token
+    
+    // 📝 ESTRAI parametri dalla query string
+    for (NSURLQueryItem *queryItem in components.queryItems) {
+        NSLog(@"📝 Query param: %@ = %@", queryItem.name, queryItem.value);
+        
+        if ([queryItem.name isEqualToString:@"code"]) {
+            authCode = queryItem.value;
+        } else if ([queryItem.name isEqualToString:@"state"]) {
+            receivedState = queryItem.value;
+        } else if ([queryItem.name isEqualToString:@"error"]) {
+            error = queryItem.value;
+        } else if ([queryItem.name isEqualToString:@"access_token"]) {
+            accessToken = queryItem.value;
+        }
+    }
+    
+    // 📝 CONTROLLA anche il fragment (#) per token
+    if (!authCode && !accessToken && callbackURL.fragment) {
+        NSLog(@"📝 Checking URL fragment: %@", callbackURL.fragment);
+        NSArray *fragmentParams = [callbackURL.fragment componentsSeparatedByString:@"&"];
+        for (NSString *param in fragmentParams) {
+            NSArray *keyValue = [param componentsSeparatedByString:@"="];
+            if (keyValue.count == 2) {
+                NSString *key = keyValue[0];
+                NSString *value = keyValue[1];
+                NSLog(@"📝 Fragment param: %@ = %@", key, value);
+                
+                if ([key isEqualToString:@"access_token"]) {
+                    accessToken = value;
+                } else if ([key isEqualToString:@"code"]) {
+                    authCode = value;
+                }
+            }
+        }
+    }
+    
+    // 🚨 CONTROLLA errori
+    if (error) {
+        NSLog(@"❌ OAuth2 error: %@", error);
+        NSError *oauthError = [NSError errorWithDomain:@"SchwabDataSource"
+                                                  code:401
+                                              userInfo:@{NSLocalizedDescriptionKey: error}];
+        if (self.completionHandler) {
+            self.completionHandler(NO, oauthError);
+            self.completionHandler = nil;
+        }
+        [self close];
+        return;
+    }
+    
+    // ✅ SUCCESS: Abbiamo ricevuto un authorization code o access token
+    if (authCode || accessToken) {
+        NSLog(@"✅ OAuth2 success! Code: %@, Token: %@",
+              authCode ? @"YES" : @"NO",
+              accessToken ? @"YES" : @"NO");
+        
+        // Salva temporaneamente per il parent
+        if (authCode) {
+            [[NSUserDefaults standardUserDefaults] setObject:authCode forKey:@"SchwabTempAuthCode"];
+        }
+        if (accessToken) {
+            [[NSUserDefaults standardUserDefaults] setObject:accessToken forKey:@"SchwabTempAccessToken"];
+        }
+        [[NSUserDefaults standardUserDefaults] synchronize];
+        
+        // 🎉 NOTIFICA SUCCESSO
+        if (self.completionHandler) {
+            self.completionHandler(YES, nil);
+            self.completionHandler = nil;
+        }
+        
+        [self close];
+    }
+}
+
+- (void)close {
+    [super close];
+}
+
+#pragma mark - NSWindowDelegate
+
+- (void)windowWillClose:(NSNotification *)notification {
+    if (self.completionHandler) {
+        NSError *error = [NSError errorWithDomain:@"SchwabDataSource"
+                                             code:1008
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Authentication window closed by user"}];
+        self.completionHandler(NO, error);
+        self.completionHandler = nil;
+    }
+}
+
+
+
+@end
+
+@class SchwabAuthWindowController;
+
 @interface SchwabDataSource ()
 @property (nonatomic, strong) NSURLSession *session;
 @property (nonatomic, strong) NSString *appKey;
@@ -29,6 +299,9 @@ static NSString *const kSchwabTokenURL = @"https://api.schwabapi.com/v1/oauth/to
 @property (nonatomic, readwrite) DataSourceType sourceType;
 @property (nonatomic, readwrite) DataSourceCapabilities capabilities;
 @property (nonatomic, readwrite) NSString *sourceName;
+
+// 🆕 AGGIUNTO: OAuth2 window controller
+@property (nonatomic, strong) SchwabAuthWindowController *authWindowController;
 @end
 
 @implementation SchwabDataSource
@@ -694,48 +967,151 @@ static NSString *const kSchwabTokenURL = @"https://api.schwabapi.com/v1/oauth/to
 }
 
 
+
+#pragma mark - OAuth2 Authentication Implementation
+
 - (void)authenticateWithCompletion:(void (^)(BOOL success, NSError *error))completion {
     NSLog(@"🔐 SchwabDataSource: Starting OAuth2 authentication...");
-    
-    // TODO: Implementazione OAuth2 completa
-    // Per ora restituisce errore per evitare crash
-    NSError *error = [NSError errorWithDomain:@"SchwabDataSource"
-                                         code:501
-                                     userInfo:@{NSLocalizedDescriptionKey: @"OAuth2 authentication not implemented yet"}];
-    
-    if (completion) {
-        completion(NO, error);
-    }
-}
-
-- (void)refreshTokenIfNeeded:(void (^)(BOOL success, NSError *error))completion {
-    // Controlla se il refresh è necessario
-    if ([self hasValidToken]) {
-        NSLog(@"✅ SchwabDataSource: Token still valid, no refresh needed");
-        if (completion) completion(YES, nil);
-        return;
-    }
-    
-    if (!self.refreshToken) {
-        NSLog(@"❌ SchwabDataSource: No refresh token available");
+    if (!self.appKey || self.appKey.length == 0) {
         NSError *error = [NSError errorWithDomain:@"SchwabDataSource"
-                                             code:401
-                                         userInfo:@{NSLocalizedDescriptionKey: @"No refresh token available"}];
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Schwab App Key not configured"}];
         if (completion) completion(NO, error);
         return;
     }
-    
-    NSLog(@"🔄 SchwabDataSource: Refreshing access token...");
-    
-    // TODO: Implementazione refresh token completa
-    // Per ora restituisce errore per evitare crash
-    NSError *error = [NSError errorWithDomain:@"SchwabDataSource"
-                                         code:501
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Token refresh not implemented yet"}];
-    
-    if (completion) {
-        completion(NO, error);
+    if (!self.callbackURL || self.callbackURL.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"SchwabDataSource"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Schwab Callback URL not configured"}];
+        if (completion) completion(NO, error);
+        return;
     }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        self.authWindowController = [[SchwabAuthWindowController alloc] initWithAppKey:self.appKey callbackURL:self.callbackURL];
+        __weak typeof(self) weakSelf = self;
+        self.authWindowController.completionHandler = ^(BOOL success, NSError *error) {
+            if (success) {
+                [weakSelf exchangeAuthCodeForTokensWithCompletion:completion];
+            } else {
+                if (completion) completion(NO, error);
+            }
+            weakSelf.authWindowController = nil;
+        };
+        [self.authWindowController showWindow:nil];
+        [self.authWindowController startAuthenticationFlow];
+    });
 }
+
+// MARK: - OAuth2 Token Exchange & Refresh (Refactored)
+
+- (void)exchangeAuthCodeForTokensWithCompletion:(void (^)(BOOL success, NSError *error))completion {
+    NSString *authCode = [[NSUserDefaults standardUserDefaults] stringForKey:@"SchwabTempAuthCode"];
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"SchwabTempAuthCode"];
+    if (!authCode) {
+        NSError *error = [NSError errorWithDomain:@"SchwabDataSource"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"No authorization code available"}];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(NO, error);
+        });
+        return;
+    }
+    NSString *bodyString = [NSString stringWithFormat:@"grant_type=authorization_code&code=%@&redirect_uri=%@",
+                            [authCode stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]],
+                            [self.callbackURL stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]]];
+    [self performTokenRequestWithBody:bodyString completion:completion];
+}
+
+- (void)refreshTokenIfNeeded:(void (^)(BOOL success, NSError *error))completion {
+    if ([self hasValidToken]) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(YES, nil);
+        });
+        return;
+    }
+    if (!self.refreshToken) {
+        NSError *error = [NSError errorWithDomain:@"SchwabDataSource"
+                                             code:401
+                                         userInfo:@{NSLocalizedDescriptionKey: @"No refresh token available"}];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(NO, error);
+        });
+        return;
+    }
+    NSString *bodyString = [NSString stringWithFormat:@"grant_type=refresh_token&refresh_token=%@",
+                            [self.refreshToken stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]]];
+    [self performTokenRequestWithBody:bodyString completion:^(BOOL success, NSError *error) {
+        if (!success) {
+            [self clearTokensFromUserDefaults];
+        }
+        if (completion) completion(success, error);
+    }];
+}
+
+/// Helper method to perform token exchange/refresh requests and handle responses.
+- (void)performTokenRequestWithBody:(NSString *)bodyString completion:(void (^)(BOOL success, NSError *error))completion {
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:kSchwabTokenURL]];
+    request.HTTPMethod = @"POST";
+    [request setValue:@"application/x-www-form-urlencoded" forHTTPHeaderField:@"Content-Type"];
+    NSString *credentials = [NSString stringWithFormat:@"%@:%@", self.appKey, self.appSecret];
+    NSData *credentialsData = [credentials dataUsingEncoding:NSUTF8StringEncoding];
+    NSString *base64Credentials = [credentialsData base64EncodedStringWithOptions:0];
+    [request setValue:[NSString stringWithFormat:@"Basic %@", base64Credentials]
+   forHTTPHeaderField:@"Authorization"];
+    request.HTTPBody = [bodyString dataUsingEncoding:NSUTF8StringEncoding];
+
+    NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(NO, error);
+            });
+            return;
+        }
+        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+        if (httpResponse.statusCode != 200) {
+            NSError *httpError = [NSError errorWithDomain:@"SchwabDataSource"
+                                                     code:httpResponse.statusCode
+                                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Token request failed with HTTP %ld", (long)httpResponse.statusCode]}];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(NO, httpError);
+            });
+            return;
+        }
+        NSError *jsonError;
+        NSDictionary *tokenResponse = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
+        if (jsonError || ![tokenResponse isKindOfClass:[NSDictionary class]]) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(NO, jsonError);
+            });
+            return;
+        }
+        NSString *accessToken = tokenResponse[@"access_token"];
+        NSString *refreshToken = tokenResponse[@"refresh_token"];
+        NSNumber *expiresIn = tokenResponse[@"expires_in"];
+        if (!accessToken) {
+            NSError *tokenError = [NSError errorWithDomain:@"SchwabDataSource"
+                                                      code:400
+                                                  userInfo:@{NSLocalizedDescriptionKey: @"No access token in response"}];
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (completion) completion(NO, tokenError);
+            });
+            return;
+        }
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.accessToken = accessToken;
+            if (refreshToken) self.refreshToken = refreshToken;
+            if (expiresIn) {
+                self.tokenExpiry = [NSDate dateWithTimeIntervalSinceNow:[expiresIn doubleValue]];
+            } else {
+                self.tokenExpiry = [NSDate dateWithTimeIntervalSinceNow:1800];
+            }
+            [self saveTokensToUserDefaults];
+            if (completion) completion(YES, nil);
+        });
+    }];
+    [task resume];
+}
+
+
 
 @end

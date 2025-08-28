@@ -521,4 +521,238 @@
     return @"UNKNOWN";
 }
 
+#pragma mark - Market List Standardization (NEW)
+
+#pragma mark - Market List Standardization (NEW)
+
+- (NSArray<MarketPerformerModel *> *)standardizeMarketListData:(id)rawData
+                                                      listType:(NSString *)listType
+                                                     timeframe:(NSString *)timeframe {
+    
+    if (!rawData) {
+        NSLog(@"❌ WebullAdapter: No raw data provided for market list %@", listType);
+        return @[];
+    }
+    
+    NSLog(@"📊 WebullAdapter: Standardizing Webull market list data for %@ (%@)", listType, timeframe);
+    NSLog(@"📊 WebullAdapter: Input data type: %@", [rawData class]);
+    
+    NSArray *webullMarketArray = nil;
+    
+    // Webull market list format analysis from real data:
+    // rawData is NSArray of dictionaries, each containing:
+    // - "ticker": {complete stock data}
+    // - "values": {simplified price data}
+    
+    if ([rawData isKindOfClass:[NSArray class]]) {
+        webullMarketArray = (NSArray *)rawData;
+    } else {
+        NSLog(@"❌ WebullAdapter: Expected NSArray for Webull market data, got %@", [rawData class]);
+        return @[];
+    }
+    
+    if (webullMarketArray.count == 0) {
+        NSLog(@"❌ WebullAdapter: Empty array for Webull market data");
+        return @[];
+    }
+    
+    NSMutableArray<MarketPerformerModel *> *performers = [NSMutableArray array];
+    NSInteger rank = 1; // Track ranking position
+    
+    for (id item in webullMarketArray) {
+        if (![item isKindOfClass:[NSDictionary class]]) {
+            NSLog(@"⚠️ WebullAdapter: Skipping non-dictionary item in market list");
+            continue;
+        }
+        
+        NSDictionary *webullItem = (NSDictionary *)item;
+        
+        // Extract ticker and values sections
+        NSDictionary *ticker = webullItem[@"ticker"];
+        NSDictionary *values = webullItem[@"values"];
+        
+        if (!ticker || ![ticker isKindOfClass:[NSDictionary class]]) {
+            NSLog(@"⚠️ WebullAdapter: Missing or invalid ticker data in market item");
+            continue;
+        }
+        
+        MarketPerformerModel *performer = [self createMarketPerformerFromWebullTicker:ticker
+                                                                               values:values
+                                                                             listType:listType
+                                                                            timeframe:timeframe
+                                                                                 rank:rank];
+        
+        if (performer) {
+            [performers addObject:performer];
+            rank++;
+        }
+    }
+    
+    NSLog(@"✅ WebullAdapter: Created %lu MarketPerformerModel objects for %@ (%@)",
+          (unsigned long)performers.count, listType, timeframe);
+    
+    return [performers copy];
+}
+
+#pragma mark - Helper Methods
+
+- (MarketPerformerModel *)createMarketPerformerFromWebullTicker:(NSDictionary *)ticker
+                                                         values:(NSDictionary *)values
+                                                       listType:(NSString *)listType
+                                                      timeframe:(NSString *)timeframe
+                                                           rank:(NSInteger)rank {
+    
+    MarketPerformerModel *performer = [[MarketPerformerModel alloc] init];
+    
+    // Basic info from ticker section
+    performer.symbol = ticker[@"symbol"] ?: ticker[@"disSymbol"];
+    performer.name = ticker[@"name"];
+    performer.exchange = ticker[@"disExchangeCode"] ?: ticker[@"exchangeCode"];
+    performer.sector = ticker[@"sector"]; // Webull might not provide this in market lists
+    
+    // Price data - prefer values section, fallback to ticker
+    // Current price
+    NSNumber *currentPrice = values[@"price"] ?: ticker[@"close"] ?: ticker[@"price"];
+    performer.price = currentPrice;
+    
+    // Change - Webull provides this directly
+    NSNumber *change = values[@"change"] ?: ticker[@"change"];
+    performer.change = change;
+    
+    // Change percent - Webull uses changeRatio (as decimal, need to convert to percentage)
+    NSNumber *changeRatio = values[@"changeRatio"] ?: ticker[@"changeRatio"];
+    if (changeRatio) {
+        double ratio = [changeRatio doubleValue];
+        // Webull changeRatio is already a decimal ratio (e.g., 0.2895 = 28.95%)
+        performer.changePercent = @(ratio * 100.0);
+    } else {
+        // Fallback: calculate from change and price
+        if (change && currentPrice && [currentPrice doubleValue] > 0 && [change doubleValue] != 0) {
+            double changeValue = [change doubleValue];
+            double priceValue = [currentPrice doubleValue];
+            double prevClose = priceValue - changeValue;
+            if (prevClose > 0) {
+                double changePercent = (changeValue / prevClose) * 100.0;
+                performer.changePercent = @(changePercent);
+            }
+        }
+    }
+    
+    // Volume - from ticker section
+    performer.volume = ticker[@"volume"];
+    
+    // Market cap - Webull provides marketValue
+    performer.marketCap = ticker[@"marketValue"];
+    
+    // Average volume - not typically provided in Webull market lists
+    performer.avgVolume = ticker[@"avgVolume"]; // This will likely be nil
+    
+    // Additional data from ticker
+    // turnoverRate could be used as a volume indicator
+    NSNumber *turnoverRate = ticker[@"turnoverRate"];
+    if (turnoverRate && !performer.avgVolume) {
+        // turnoverRate is in percentage, could indicate liquidity
+        // Don't set as avgVolume since it's not the same thing
+    }
+    
+    // List metadata
+    performer.listType = listType;
+    performer.timeframe = timeframe;
+    performer.rank = rank;
+    performer.timestamp = [NSDate date];
+    
+    // Validation - must have at least symbol and price
+    if (!performer.symbol || !performer.price) {
+        NSLog(@"⚠️ WebullAdapter: Skipping invalid market item - Symbol: %@, Price: %@",
+              performer.symbol, performer.price);
+        return nil;
+    }
+    
+    NSLog(@"✅ WebullAdapter: Created performer - %@ at $%.4f (%+.2f%%)",
+          performer.symbol,
+          [performer.price doubleValue],
+          [performer.changePercent doubleValue]);
+    
+    return performer;
+}
+
+// Legacy helper method (simplified, no longer using multiple key fallbacks)
+- (NSNumber *)extractNumberValue:(NSDictionary *)data forKeys:(NSArray<NSString *> *)possibleKeys {
+    for (NSString *key in possibleKeys) {
+        id value = data[key];
+        if (value && ![value isEqual:[NSNull null]]) {
+            if ([value isKindOfClass:[NSNumber class]]) {
+                return (NSNumber *)value;
+            } else if ([value isKindOfClass:[NSString class]]) {
+                NSString *stringValue = (NSString *)value;
+                // Try to parse as number
+                NSNumberFormatter *formatter = [[NSNumberFormatter alloc] init];
+                formatter.numberStyle = NSNumberFormatterDecimalStyle;
+                NSNumber *parsedNumber = [formatter numberFromString:stringValue];
+                if (parsedNumber) {
+                    return parsedNumber;
+                }
+            }
+        }
+    }
+    return nil;
+}
+
+#pragma mark - Helper Methods
+
+- (MarketPerformerModel *)createMarketPerformerFromWebullData:(NSDictionary *)webullData
+                                                     listType:(NSString *)listType
+                                                    timeframe:(NSString *)timeframe
+                                                         rank:(NSInteger)rank {
+    
+    MarketPerformerModel *performer = [[MarketPerformerModel alloc] init];
+    
+    // Basic info - Webull field mapping
+    performer.symbol = webullData[@"symbol"] ?: webullData[@"ticker"] ?: webullData[@"tickerId"];
+    performer.name = webullData[@"name"] ?: webullData[@"disSymbol"] ?: webullData[@"shortName"];
+    performer.exchange = webullData[@"exchange"] ?: webullData[@"exchangeCode"];
+    performer.sector = webullData[@"sector"] ?: webullData[@"industryName"];
+    
+    // Price data - Webull specific fields
+    performer.price = [self extractNumberValue:webullData forKeys:@[@"price", @"close", @"lastPrice"]];
+    performer.change = [self extractNumberValue:webullData forKeys:@[@"change", @"priceChange"]];
+    
+    // Change percent - Webull might use different formats
+    NSNumber *changePercent = [self extractNumberValue:webullData forKeys:@[@"changePct", @"changePercent", @"changeRatio"]];
+    if (changePercent) {
+        // Check if it's a ratio (0.05) vs percentage (5.0)
+        double changeValue = [changePercent doubleValue];
+        if (fabs(changeValue) < 1.0 && performer.price && performer.change) {
+            // Seems like a ratio, convert to percentage
+            performer.changePercent = @(changeValue * 100.0);
+        } else {
+            performer.changePercent = changePercent;
+        }
+    }
+    
+    // Volume
+    performer.volume = [self extractNumberValue:webullData forKeys:@[@"volume", @"vol", @"turnoverRate"]];
+    
+    // Market cap - Webull specific
+    performer.marketCap = [self extractNumberValue:webullData forKeys:@[@"marketCap", @"marketValue", @"totalShares"]];
+    
+    // Average volume
+    performer.avgVolume = [self extractNumberValue:webullData forKeys:@[@"avgVolume", @"avgVol", @"averageVolume"]];
+    
+    // List metadata
+    performer.listType = listType;
+    performer.timeframe = timeframe;
+    performer.rank = rank;
+    performer.timestamp = [NSDate date];
+    
+    // Validation - must have at least symbol and price
+    if (!performer.symbol || !performer.price) {
+        NSLog(@"⚠️ WebullAdapter: Skipping invalid market item - missing symbol or price");
+        return nil;
+    }
+    
+    return performer;
+}
+
+
 @end

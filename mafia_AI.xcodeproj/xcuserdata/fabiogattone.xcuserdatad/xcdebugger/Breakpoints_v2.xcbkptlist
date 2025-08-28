@@ -103,32 +103,16 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "E29ED0AB-1681-4528-84D8-D7B3950A9D60"
+            uuid = "692DF652-6024-43F5-99BA-4B175DC0B305"
             shouldBeEnabled = "Yes"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
-            filePath = "Gestione Dati/DataHub+MarketData.m"
+            filePath = "Gestione Dati/ADAPTERS/WebullDataAdapter.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1693"
-            endingLineNumber = "1693"
-            landmarkName = "-getMarketPerformersForList:timeframe:completion:"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "AB36146A-0163-45B9-A073-149C7E462FD5"
-            shouldBeEnabled = "Yes"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "Gestione Dati/APIs/WebullDataSource.m"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "274"
-            endingLineNumber = "274"
-            landmarkName = "-fetchMarketListForType:parameters:completion:"
+            startingLineNumber = "231"
+            endingLineNumber = "231"
+            landmarkName = "-standardizeHistoricalData:forSymbol:"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

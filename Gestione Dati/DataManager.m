@@ -624,43 +624,66 @@
     
     NSLog(@"✅ DataManager: Market list data received for %@ from %@", listType, DataSourceTypeToString(usedSource));
     
-    // CORREZIONE: Create MarketPerformerModel objects using proper factory method
-    NSMutableArray<MarketPerformerModel *> *performers = [NSMutableArray array];
+    // ✅ NEW: Use adapter to standardize market list data instead of manual creation
+    id<DataSourceAdapter> adapter = [DataAdapterFactory adapterForDataSource:usedSource];
+    NSArray<MarketPerformerModel *> *standardizedPerformers = @[];
     
-    if ([result isKindOfClass:[NSArray class]]) {
-        for (NSDictionary *item in (NSArray *)result) {
-            if ([item isKindOfClass:[NSDictionary class]]) {
-                // Creare MarketPerformerModel manualmente dalla dictionary
-                MarketPerformerModel *performer = [[MarketPerformerModel alloc] init];
-                performer.symbol = item[@"symbol"];
-                performer.name = item[@"name"];
-                performer.exchange = item[@"exchange"];
-                performer.sector = item[@"sector"];
-                
-                // Price data - using NSNumber properties
-                performer.price = item[@"price"] ?: item[@"lastPrice"];
-                performer.change = item[@"change"];
-                performer.changePercent = item[@"changePercent"];
-                performer.volume = item[@"volume"];
-                performer.marketCap = item[@"marketCap"];
-                performer.avgVolume = item[@"avgVolume"];
-                
-                // List metadata
-                performer.listType = listType;
-                performer.timeframe = @"1d"; // Default timeframe
-                
-                if (performer.symbol) { // Solo se abbiamo almeno un symbol valido
-                    [performers addObject:performer];
+    if (adapter && result) {
+        // Extract timeframe from request info if available
+        NSDictionary *requestInfo = self.activeRequests[requestID];
+        NSString *timeframe = requestInfo[@"timeframe"] ?: @"1d"; // Default timeframe
+        
+        NSLog(@"📊 DataManager: Using %@ adapter to standardize market list data", DataSourceTypeToString(usedSource));
+        
+        // Use the new adapter method to standardize market list data
+        standardizedPerformers = [adapter standardizeMarketListData:result
+                                                           listType:listType
+                                                          timeframe:timeframe];
+    } else {
+        NSLog(@"❌ DataManager: No adapter available for %@ or result is nil", DataSourceTypeToString(usedSource));
+        
+        // ⚠️ FALLBACK: Create MarketPerformerModel objects manually (legacy behavior)
+        NSMutableArray<MarketPerformerModel *> *performers = [NSMutableArray array];
+        
+        if ([result isKindOfClass:[NSArray class]]) {
+            for (NSDictionary *item in (NSArray *)result) {
+                if ([item isKindOfClass:[NSDictionary class]]) {
+                    MarketPerformerModel *performer = [[MarketPerformerModel alloc] init];
+                    performer.symbol = item[@"symbol"];
+                    performer.name = item[@"name"];
+                    performer.exchange = item[@"exchange"];
+                    performer.sector = item[@"sector"];
+                    
+                    // Price data - using NSNumber properties
+                    performer.price = item[@"price"] ?: item[@"lastPrice"];
+                    performer.change = item[@"change"];
+                    performer.changePercent = item[@"changePercent"];
+                    performer.volume = item[@"volume"];
+                    performer.marketCap = item[@"marketCap"];
+                    performer.avgVolume = item[@"avgVolume"];
+                    
+                    // List metadata
+                    performer.listType = listType;
+                    performer.timeframe = @"1d"; // Default timeframe
+                    performer.timestamp = [NSDate date];
+                    
+                    if (performer.symbol) { // Solo se abbiamo almeno un symbol valido
+                        [performers addObject:performer];
+                    }
                 }
             }
         }
+        
+        standardizedPerformers = [performers copy];
+        NSLog(@"📦 DataManager: Used fallback manual creation for %lu performers", (unsigned long)standardizedPerformers.count);
     }
     
-    NSLog(@"📊 DataManager: Created %lu MarketPerformerModel objects for %@", (unsigned long)performers.count, listType);
+    NSLog(@"✅ DataManager: Standardized %lu MarketPerformerModel objects for %@",
+          (unsigned long)standardizedPerformers.count, listType);
     
     if (completion) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            completion([performers copy], nil);
+            completion(standardizedPerformers, nil);
         });
     }
 }

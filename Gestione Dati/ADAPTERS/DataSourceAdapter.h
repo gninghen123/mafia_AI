@@ -52,6 +52,19 @@ NS_ASSUME_NONNULL_BEGIN
  */
 - (NSDictionary *)standardizeBatchQuotesData:(id)rawData forSymbols:(NSArray<NSString *> *)symbols;
 
+#pragma mark - Market List Standardization (Runtime Models) - NEW
+
+/**
+ * Convert raw market list data from API to MarketPerformerModel runtime models
+ * @param rawData Raw API data (array or dictionary)
+ * @param listType Type of market list ("gainers", "losers", "etf", etc.)
+ * @param timeframe Timeframe for the list ("1d", "52w", etc.)
+ * @return Array of MarketPerformerModel runtime models
+ */
+- (NSArray<MarketPerformerModel *> *)standardizeMarketListData:(id)rawData
+                                                      listType:(NSString *)listType
+                                                     timeframe:(NSString *)timeframe;
+
 #pragma mark - Portfolio Data Standardization (Runtime Models)
 
 /**

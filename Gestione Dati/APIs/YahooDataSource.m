@@ -155,10 +155,89 @@
 - (void)fetchQuotesForSymbols:(NSArray<NSString *> *)symbols
                    completion:(void (^)(NSDictionary *quotes, NSError *error))completion {
     
-    NSLog(@"YahooDataSource: Fetching batch quotes for %lu symbols", (unsigned long)symbols.count);
+    if (!symbols || symbols.count == 0) {
+        NSError *error = [NSError errorWithDomain:@"OtherDataSource"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"No symbols provided"}];
+        if (completion) completion(@{}, error);
+        return;
+    }
     
-    // Yahoo API doesn't support true batch requests, so we make individual requests
-    // and collect results
+    NSLog(@"📊 OtherDataSource: Fetching batch quotes for %lu symbols using Yahoo Finance", (unsigned long)symbols.count);
+    
+    // ❌ OLD API (DEPRECATA E HTTP): Yahoo Finance CSV API URL
+    // NSString *urlString = [NSString stringWithFormat:@"http://finance.yahoo.com/d/quotes.csv?s=%@&f=%@", ...];
+    
+    // ✅ SOLUZIONE TEMPORANEA: Prova HTTPS per la vecchia API
+    // NOTA: Questa API potrebbe comunque fallire perché è deprecata
+    NSString *symbolsString = [symbols componentsJoinedByString:@"+"];
+    NSString *fields = @"snl1c1p2ohgvt1ab"; // symbol,name,last,change,change%,open,high,low,volume,time,ask,bid
+    
+    NSString *urlString = [NSString stringWithFormat:@"https://finance.yahoo.com/d/quotes.csv?s=%@&f=%@",
+                          [symbolsString stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]],
+                          fields];
+    
+    NSLog(@"📊 OtherDataSource: Fixed HTTPS Yahoo URL: %@", urlString);
+    
+    NSURL *url = [NSURL URLWithString:urlString];
+    NSURLRequest *request = [NSURLRequest requestWithURL:url
+                                             cachePolicy:NSURLRequestReloadIgnoringLocalCacheData
+                                         timeoutInterval:30.0];
+    
+    NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        
+        if (error) {
+            NSLog(@"❌ OtherDataSource: Yahoo Finance request failed: %@", error.localizedDescription);
+            
+            // ⚠️ FALLBACK: Se fallisce anche HTTPS, prova la nuova API Yahoo JSON
+            NSLog(@"🔄 OtherDataSource: CSV API failed, trying modern Yahoo API...");
+            [self fetchQuotesUsingModernYahooAPI:symbols completion:completion];
+            return;
+        }
+        
+        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+        if (httpResponse.statusCode != 200) {
+            NSError *httpError = [NSError errorWithDomain:@"OtherDataSource"
+                                                     code:httpResponse.statusCode
+                                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Yahoo Finance HTTP error: %ld", (long)httpResponse.statusCode]}];
+            NSLog(@"❌ OtherDataSource: Yahoo Finance HTTP error %ld", (long)httpResponse.statusCode);
+            
+            // FALLBACK alla nuova API
+            NSLog(@"🔄 OtherDataSource: CSV API returned error %ld, trying modern Yahoo API...", (long)httpResponse.statusCode);
+            [self fetchQuotesUsingModernYahooAPI:symbols completion:completion];
+            return;
+        }
+        
+        // Parse CSV response (codice esistente...)
+        NSString *csvString = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+        if (!csvString || csvString.length == 0) {
+            NSLog(@"🔄 OtherDataSource: Empty CSV response, trying modern Yahoo API...");
+            [self fetchQuotesUsingModernYahooAPI:symbols completion:completion];
+            return;
+        }
+        
+        NSDictionary *quotesDict = [self parseModernYahooResponse:csvString forSymbol:symbols];
+        
+        NSLog(@"✅ OtherDataSource: Successfully parsed %lu quotes from Yahoo CSV", (unsigned long)quotesDict.count);
+        
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(quotesDict, nil);
+            });
+        }
+    }];
+    
+    [task resume];
+}
+
+#pragma mark - Modern Yahoo API Fallback
+
+- (void)fetchQuotesUsingModernYahooAPI:(NSArray<NSString *> *)symbols
+                            completion:(void (^)(NSDictionary *quotes, NSError *error))completion {
+    
+    NSLog(@"📊 OtherDataSource: Using modern Yahoo Finance API for %lu symbols", (unsigned long)symbols.count);
+    
+    // Usa le chiamate individuali con la nuova API Yahoo
     NSMutableDictionary *allQuotes = [NSMutableDictionary dictionary];
     dispatch_group_t group = dispatch_group_create();
     __block NSError *firstError = nil;
@@ -166,25 +245,86 @@
     for (NSString *symbol in symbols) {
         dispatch_group_enter(group);
         
-        [self fetchQuoteForSymbol:symbol completion:^(id quote, NSError *error) {
-            @synchronized(allQuotes) {
-                if (error && !firstError) {
-                    firstError = error;
-                } else if (quote) {
-                    allQuotes[symbol] = quote;
+        // Usa la nuova API Yahoo JSON
+        NSString *urlString = [NSString stringWithFormat:
+                              @"https://query1.finance.yahoo.com/v8/finance/chart/%@", symbol];
+        
+        NSURL *url = [NSURL URLWithString:urlString];
+        NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+        
+        // Headers browser-like
+        [request setValue:@"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" forHTTPHeaderField:@"User-Agent"];
+        [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+        
+        NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
+                                                     completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+            if (error || !data) {
+                @synchronized(self) {
+                    if (!firstError) firstError = error;
+                }
+            } else {
+                // Parse JSON response
+                NSError *jsonError;
+                NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
+                if (!jsonError && json) {
+                    NSDictionary *quoteData = [self parseModernYahooResponse:json forSymbol:symbol];
+                    if (quoteData) {
+                        @synchronized(allQuotes) {
+                            allQuotes[symbol] = quoteData;
+                        }
+                    }
+                } else {
+                    @synchronized(self) {
+                        if (!firstError) firstError = jsonError;
+                    }
                 }
             }
             dispatch_group_leave(group);
         }];
+        
+        [task resume];
     }
     
     dispatch_group_notify(group, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         dispatch_async(dispatch_get_main_queue(), ^{
+            NSLog(@"📊 OtherDataSource: Modern Yahoo API completed with %lu quotes", (unsigned long)allQuotes.count);
             if (completion) {
                 completion([allQuotes copy], firstError);
             }
         });
     });
+}
+
+- (NSDictionary *)parseModernYahooResponse:(NSDictionary *)json forSymbol:(NSString *)symbol {
+    // Parse della nuova API Yahoo JSON (simile a YahooDataSource)
+    NSDictionary *chart = json[@"chart"];
+    if (!chart) return nil;
+    
+    NSArray *results = chart[@"result"];
+    if (!results || results.count == 0) return nil;
+    
+    NSDictionary *result = results[0];
+    NSDictionary *meta = result[@"meta"];
+    if (!meta) return nil;
+    
+    // Extract quote data from meta
+    double currentPrice = [meta[@"regularMarketPrice"] doubleValue];
+    double previousClose = [meta[@"previousClose"] doubleValue];
+    double change = currentPrice - previousClose;
+    double changePercent = previousClose > 0 ? (change / previousClose) * 100.0 : 0.0;
+    
+    return @{
+        @"symbol": symbol,
+        @"last": @(currentPrice),
+        @"change": @(change),
+        @"changePercent": @(changePercent),
+        @"open": meta[@"regularMarketOpen"] ?: @0,
+        @"high": meta[@"regularMarketDayHigh"] ?: @0,
+        @"low": meta[@"regularMarketDayLow"] ?: @0,
+        @"volume": meta[@"regularMarketVolume"] ?: @0,
+        @"previousClose": @(previousClose),
+        @"timestamp": [NSDate date]
+    };
 }
 
 #pragma mark - Historical Data - UNIFIED with Yahoo API

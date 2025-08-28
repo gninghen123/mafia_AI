@@ -244,28 +244,24 @@
                                              bounds:self.bounds
                                       currentSymbol:self.chartWidget.currentSymbol];
         [self.alertRenderer updateSharedXContext:self.sharedXContext];
-
     }
-    
-    [self invalidateChartContent];
-    [self invalidateYAxis];
+    [self invalidateCoordinateDependentLayersWithReason:@"data updated"];
 }
 
 - (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext {
     self.sharedXContext = sharedXContext; // Weak reference
-    if (self.objectRenderer) {
-        self.objectRenderer.sharedXContext = sharedXContext;
-    }
     
-    if (self.alertRenderer) {
-        self.alertRenderer.sharedXContext = sharedXContext;
-    }
+    // SOLO update dei contexts - NESSUNA invalidation
+    // Il redraw sarà chiamato separatamente dal caller quando necessario
+    [self updateExternalRenderersSharedXContext];
+    
+    NSLog(@"🔄 ChartPanelView (%@): SharedXContext updated (no redraw)", self.panelType);
 }
 
 - (void)setCrosshairPoint:(NSPoint)point visible:(BOOL)visible {
     self.crosshairPoint = point;
     self.crosshairVisible = visible;
-    [self updateCrosshairOnly];
+    [self invalidateInteractionLayers];
 }
 
 
@@ -1291,8 +1287,8 @@
     NSPoint clampedPoint = [self clampCrosshairToChartArea:locationInView];
     self.crosshairPoint = clampedPoint;
     
-    [self.crosshairLayer setNeedsDisplay];
-    
+    [self invalidateCrosshairIfVisible];
+
     // PRIORITA' 1: Se abbiamo currentCPSelected, aggiorna sempre le coordinate
     if (self.objectRenderer && self.objectRenderer.currentCPSelected) {
         [self.objectRenderer updateCurrentCPCoordinates:clampedPoint]; // Use clamped
@@ -1419,7 +1415,7 @@
         }
     }
     self.crosshairPoint = locationInView;
-    [self.crosshairLayer setNeedsDisplay];
+    [self invalidateCrosshairIfVisible];
 }
 
 - (void)rightMouseDragged:(NSEvent *)event {
@@ -2782,10 +2778,7 @@
     // ✅ Invalida e ridisegna per applicare la nuova scala
     [self setNeedsDisplay:YES];
     
-    // ✅ Aggiorna anche tutti i layer per riflettere i nuovi calcoli
-    [self.chartContentLayer setNeedsDisplay];
-    [self.yAxisLayer setNeedsDisplay];
-    [self.crosshairLayer setNeedsDisplay];
+    [self invalidateCoordinateDependentLayersWithReason:@"log scale changed"];
     
     // ✅ Notifica il ChartWidget del cambiamento (per eventuali coordinazioni future)
     if (self.chartWidget && [self.chartWidget respondsToSelector:@selector(panelDidChangeLogScale:)]) {
@@ -2885,9 +2878,8 @@
     self.panelYContext.yRangeMax = self.yRangeMax;
     
     // Redraw solo questo pannello
-    [self invalidateChartContent];
-    [self invalidateYAxis];
-    
+    [self invalidateCoordinateDependentLayersWithReason:@"vertical pan"];
+
     NSLog(@"📊 %@ panel Y-pan: [%.2f - %.2f] (override: %@)",
           self.panelType, self.yRangeMin, self.yRangeMax, self.isYRangeOverridden ? @"YES" : @"NO");
 }
@@ -2903,8 +2895,8 @@
     self.panelYContext.yRangeMin = self.yRangeMin;
     self.panelYContext.yRangeMax = self.yRangeMax;
     
-    [self invalidateChartContent];
-    [self invalidateYAxis];
+    [self invalidateCoordinateDependentLayersWithReason:@"Y range reset"];
+
     
     NSLog(@"🔄 %@ panel Y-range reset to original: [%.2f - %.2f]",
           self.panelType, self.yRangeMin, self.yRangeMax);
@@ -2991,23 +2983,82 @@
 
 - (void)invalidateCoordinateDependentLayersWithReason:(NSString *)reason {
     // These layers depend on coordinate system and need SharedXContext update
+    // ✅ ASSUMERE: che i contexts siano già stati aggiornati dal caller
+
     ChartLayerInvalidationOptions coordinateDependent = (ChartLayerInvalidationChartContent |
-                                                         ChartLayerInvalidationYAxis |
-                                                         ChartLayerInvalidationObjects |
-                                                         ChartLayerInvalidationAlerts);
-    
-    [self invalidateLayers:coordinateDependent
-      updateSharedXContext:YES
-                    reason:reason ?: @"coordinate system change"];
+                                                          ChartLayerInvalidationYAxis |
+                                                          ChartLayerInvalidationObjects |
+                                                          ChartLayerInvalidationAlerts);
+     
+     [self invalidateLayers:coordinateDependent
+       updateSharedXContext:NO  // ← CAMBIATO DA YES A NO
+                     reason:reason ?: @"coordinate system change"];
 }
 
 - (void)invalidateInteractionLayers {
-    // Only lightweight layers for mouse interactions
-    ChartLayerInvalidationOptions interactionLayers = (ChartLayerInvalidationCrosshair |
-                                                       ChartLayerInvalidationObjectsEditing |
-                                                       ChartLayerInvalidationAlertsEditing);
+    NSMutableArray *layersToInvalidate = [NSMutableArray array];
+    ChartLayerInvalidationOptions options = ChartLayerInvalidationNone;
     
-    [self invalidateLayers:interactionLayers updateSharedXContext:NO reason:@"user interaction"];
+    // 1. Crosshair - SOLO se visibile
+    if (self.crosshairVisible) {
+        options |= ChartLayerInvalidationCrosshair;
+        [layersToInvalidate addObject:@"crosshair"];
+    }
+    
+    // 2. Objects Editing - SOLO se c'è un oggetto in editing/creazione
+    if (self.objectRenderer &&
+        (self.objectRenderer.editingObject != nil ||
+         self.objectRenderer.isInCreationMode ||
+         self.objectRenderer.currentCPSelected != nil)) {
+        options |= ChartLayerInvalidationObjectsEditing;
+        [layersToInvalidate addObject:@"objectsEditing"];
+    }
+    
+    // 3. Alerts Editing - SOLO se c'è un alert in drag mode
+    if (self.alertRenderer && self.alertRenderer.isInAlertDragMode) {
+        options |= ChartLayerInvalidationAlertsEditing;
+        [layersToInvalidate addObject:@"alertsEditing"];
+    }
+    
+    // 4. Se nessun layer da invalidare, non fare nulla
+    if (options == ChartLayerInvalidationNone) {
+        NSLog(@"🎨 ChartPanelView (%@): No interaction layers need invalidation - skipping", self.panelType);
+        return;
+    }
+    
+    // 5. Invalida solo i layer necessari
+    [self invalidateLayers:options
+      updateSharedXContext:NO
+                    reason:[NSString stringWithFormat:@"smart interaction (%@)",
+                            [layersToInvalidate componentsJoinedByString:@", "]]];
+}
+- (void)invalidateCrosshairIfVisible {
+    if (self.crosshairVisible) {
+        [self invalidateLayers:ChartLayerInvalidationCrosshair
+          updateSharedXContext:NO
+                        reason:@"crosshair update"];
+    }
+}
+
+/// Invalida solo objects editing se necessario
+- (void)invalidateObjectsEditingIfActive {
+    if (self.objectRenderer &&
+        (self.objectRenderer.editingObject ||
+         self.objectRenderer.isInCreationMode ||
+         self.objectRenderer.currentCPSelected)) {
+        [self invalidateLayers:ChartLayerInvalidationObjectsEditing
+          updateSharedXContext:NO
+                        reason:@"objects editing active"];
+    }
+}
+
+/// Invalida solo alerts editing se necessario
+- (void)invalidateAlertsEditingIfActive {
+    if (self.alertRenderer && self.alertRenderer.isInAlertDragMode) {
+        [self invalidateLayers:ChartLayerInvalidationAlertsEditing
+          updateSharedXContext:NO
+                        reason:@"alert drag active"];
+    }
 }
 
 - (void)forceRedrawAllLayers {
@@ -3030,21 +3081,13 @@
     }
 }
 
-#pragma mark - Backward Compatibility Wrappers (DEPRECATED - will be removed)
-
-/// @deprecated Use invalidateLayers: instead
-- (void)invalidateChartContent {
-    [self invalidateLayers:ChartLayerInvalidationChartContent];
-}
-
-/// @deprecated Use invalidateInteractionLayers instead
-- (void)updateCrosshairOnly {
-    [self invalidateLayers:ChartLayerInvalidationCrosshair];
-}
-
-/// @deprecated Use invalidateLayers: instead
-- (void)invalidateYAxis {
-    [self invalidateLayers:ChartLayerInvalidationYAxis];
+- (void)updateSharedXContextAndInvalidate:(SharedXCoordinateContext *)sharedXContext
+                                   reason:(NSString *)reason {
+    // Step 1: Update contexts
+    [self updateSharedXContext:sharedXContext];
+    
+    // Step 2: Invalidate layers
+    [self invalidateCoordinateDependentLayersWithReason:reason];
 }
 
 @end

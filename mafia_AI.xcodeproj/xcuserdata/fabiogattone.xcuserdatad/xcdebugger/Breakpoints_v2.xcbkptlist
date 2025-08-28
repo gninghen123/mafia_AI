@@ -62,8 +62,8 @@
             filePath = "UI/Widgets/Chart/ChartPanelView.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "2523"
-            endingLineNumber = "2523"
+            startingLineNumber = "2519"
+            endingLineNumber = "2519"
             landmarkName = "-calculateDateRangeForType:clickedBarIndex:"
             landmarkType = "7">
          </BreakpointContent>
@@ -97,22 +97,6 @@
             startingLineNumber = "281"
             endingLineNumber = "281"
             landmarkName = "-fetchHistoricalDataForSymbol:timeframe:startDate:endDate:needExtendedHours:completion:"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "A37DE6D6-982F-4B66-863E-D4ECA4F143AC"
-            shouldBeEnabled = "Yes"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "UI/Widgets/Chart/Renderer/ChartObjectRenderer.m"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "126"
-            endingLineNumber = "126"
-            landmarkName = "-updateSharedXContext:"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

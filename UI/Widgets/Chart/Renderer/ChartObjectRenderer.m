@@ -125,12 +125,16 @@ typedef NS_ENUM(NSUInteger, SnapType) {
 - (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext {
     self.sharedXContext = sharedXContext;
     
-    // Force redraw of objects with new coordinates
+    NSLog(@"🔄 ChartObjectRenderer: SharedXContext updated ");
+}
+
+// Aggiungere questo metodo al ChartObjectRenderer per invalidation esplicita:
+- (void)invalidateAfterCoordinateChange {
     [self invalidateObjectsLayer];
     [self invalidateEditingLayer];
-    
-    NSLog(@"🔄 ChartObjectRenderer: SharedXContext updated - forcing objects redraw");
+    NSLog(@"🎨 ChartObjectRenderer: Layers invalidated after coordinate change");
 }
+
 
 - (NSPoint)screenPointFromControlPoint:(ControlPointModel *)controlPoint {
     if (!controlPoint || !self.sharedXContext || !self.panelYContext) {

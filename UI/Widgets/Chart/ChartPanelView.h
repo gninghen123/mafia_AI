@@ -117,8 +117,6 @@ typedef NS_OPTIONS(NSUInteger, ChartLayerInvalidationOptions) {
 
 // Rendering
 - (void)setCrosshairPoint:(NSPoint)point visible:(BOOL)visible;
-- (void)invalidateChartContent; // Force redraw of chart data
-- (void)updateCrosshairOnly;    // Update only crosshair layer
 
 // NUOVO: Objects interaction
 - (void)startCreatingObjectOfType:(ChartObjectType)objectType;

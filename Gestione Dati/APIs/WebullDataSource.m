@@ -307,8 +307,12 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
 - (void)fetchTopGainersWithRankType:(NSString *)rankType
                            pageSize:(NSInteger)pageSize
                          completion:(void (^)(NSArray *gainers, NSError *error))completion {
-    
-    NSString *urlString = [NSString stringWithFormat:@"%@?rankType=%@&pageSize=%ld",
+    // Default pageSize to 50 if not specified or <= 0
+    if (pageSize <= 0) {
+        pageSize = 50;
+    }
+    // Add regionId=6 and pageIndex=1 to URL
+    NSString *urlString = [NSString stringWithFormat:@"%@?rankType=%@&pageSize=%ld&regionId=6&pageIndex=1",
                           kWebullTopGainersURL, rankType, (long)pageSize];
     
     [self executeRequest:urlString completion:^(id response, NSError *error) {
@@ -333,8 +337,12 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
 - (void)fetchTopLosersWithRankType:(NSString *)rankType
                           pageSize:(NSInteger)pageSize
                         completion:(void (^)(NSArray *losers, NSError *error))completion {
-    
-    NSString *urlString = [NSString stringWithFormat:@"%@?rankType=%@&pageSize=%ld",
+    // Default pageSize to 50 if not specified or <= 0
+    if (pageSize <= 0) {
+        pageSize = 50;
+    }
+    // Add regionId=6 and pageIndex=1 to URL
+    NSString *urlString = [NSString stringWithFormat:@"%@?rankType=%@&pageSize=%ld&regionId=6&pageIndex=1",
                           kWebullTopLosersURL, rankType, (long)pageSize];
     
     [self executeRequest:urlString completion:^(id response, NSError *error) {

@@ -210,9 +210,9 @@
         case MarketListTypeETF:
             return @"etf";
         case MarketListTypeEarnings:
-            return @"gainers"; // Fallback to gainers if earnings not supported
+            return @"earnings";
         case MarketListTypeIndustry:
-            return @"gainers"; // Fallback to gainers if industry not supported
+            return @"industry";
         default:
             return @"gainers";
     }
@@ -229,13 +229,13 @@
         case MarketTimeframeThreeMonths:
             return @"3m";
         case MarketTimeframeFiftyTwoWeeks:
-            return @"1y";
+            return @"52w";
         case MarketTimeframePreMarket:
-            return @"1d"; // Fallback
+            return @"preMarket";
         case MarketTimeframeAfterHours:
-            return @"1d"; // Fallback
+            return @"afterMarket";
         case MarketTimeframeFiveMinutes:
-            return @"1d"; // Fallback
+            return @"5min";
         default:
             return @"1d";
     }

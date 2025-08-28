@@ -184,10 +184,11 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
         NSString *frequencyType = [self convertFrequencyTypeSchwab:timeframe];
         NSString *periodType = [self convertPeriodTypeSchwab:frequencyType];
         
-        NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-        formatter.dateFormat = @"yyyy-MM-dd";
-        NSString *startDateStr = [formatter stringFromDate:startDate];
-        NSString *endDateStr = [formatter stringFromDate:endDate];
+        // Schwab richiede UNIX timestamp in ms per startDate/endDate
+        long long startDateMillis = (long long)([startDate timeIntervalSince1970] * 1000.0);
+        long long endDateMillis = (long long)([endDate timeIntervalSince1970] * 1000.0);
+        NSString *startDateStr = [NSString stringWithFormat:@"%lld", startDateMillis];
+        NSString *endDateStr = [NSString stringWithFormat:@"%lld", endDateMillis];
         
         NSString *urlString = [NSString stringWithFormat:@"%@/marketdata/v1/pricehistory?symbol=%@&periodType=%@&frequencyType=%@&frequency=%@&startDate=%@&endDate=%@&needExtendedHoursData=%@",
                               kSchwabAPIBaseURL,

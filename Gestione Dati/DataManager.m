@@ -367,11 +367,11 @@
     
     // Determine the request type based on listType
     DataRequestType requestType;
-    if ([listType isEqualToString:@"topGainers"]) {
+    if ([listType isEqualToString:@"gainers"]) {
         requestType = DataRequestTypeTopGainers;
-    } else if ([listType isEqualToString:@"topLosers"]) {
+    } else if ([listType isEqualToString:@"losers"]) {
         requestType = DataRequestTypeTopLosers;
-    } else if ([listType isEqualToString:@"etfs"]) {
+    } else if ([listType isEqualToString:@"etf"]) {
         requestType = DataRequestTypeETFList;
     } else if ([listType isEqualToString:@"52WeekHigh"]) {
         requestType = DataRequestType52WeekHigh;

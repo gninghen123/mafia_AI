@@ -49,7 +49,7 @@
 - (NSTimeInterval)TTLForDataType:(DataCacheType)type {
     switch (type) {
         case DataCacheTypeQuote:
-            return 10.0; // 10 seconds for quotes
+            return 60.0; // 60 seconds for quotes
         case DataCacheTypeMarketOverview:
             return 300.0; // 5 minutes
         case DataCacheTypeHistorical:

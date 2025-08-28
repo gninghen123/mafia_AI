@@ -1,9 +1,9 @@
 //
-//  SchwabDataSource.h - UNIFICAZIONE PROTOCOLLO COMPLETA
+//  SchwabDataSource.h - REFACTORED: AUTH REMOVED
 //  TradingApp
 //
-//  ✅ UNIFIED: Implementa SOLO i metodi del protocollo DataSource unificato
-//  🔥 ELIMINATI: Metodi Schwab-specifici legacy non del protocollo
+//  ✅ REFACTORED: Rimossa tutta la logica di autenticazione (ora in SchwabLoginManager)
+//  ✅ MANTIENE: Tutti i metodi di market data, account, trading (INVARIATI)
 //
 
 #import <Foundation/Foundation.h>
@@ -12,25 +12,20 @@
 
 @interface SchwabDataSource : NSObject <DataSource>
 
-#pragma mark - OAuth2 Authentication (Schwab-specific)
-- (void)authenticateWithCompletion:(void (^)(BOOL success, NSError *error))completion;
-- (void)refreshTokenIfNeeded:(void (^)(BOOL success, NSError *error))completion;
-- (BOOL)hasValidToken;
-
-#pragma mark - DataSource Protocol - UNIFIED METHODS
+#pragma mark - DataSource Protocol - UNIFIED METHODS (INVARIATI)
 
 // Connection Management (UNIFIED)
 - (void)connectWithCompletion:(void (^)(BOOL success, NSError *error))completion;
 - (void)disconnect;
 
-// Market Data (UNIFIED - Required)
+// Market Data (UNIFIED - Required) - NON MODIFICATI
 - (void)fetchQuoteForSymbol:(NSString *)symbol
                  completion:(void (^)(id quote, NSError *error))completion;
 
 - (void)fetchQuotesForSymbols:(NSArray<NSString *> *)symbols
                    completion:(void (^)(NSDictionary *quotes, NSError *error))completion;
 
-// Historical Data (UNIFIED - Required)
+// Historical Data (UNIFIED - Required) - NON MODIFICATI
 - (void)fetchHistoricalDataForSymbol:(NSString *)symbol
                            timeframe:(BarTimeframe)timeframe
                            startDate:(NSDate *)startDate
@@ -44,7 +39,7 @@
                    needExtendedHours:(BOOL)needExtendedHours
                           completion:(void (^)(NSArray *bars, NSError *error))completion;
 
-#pragma mark - Portfolio Data (UNIFIED - Optional for brokers)
+#pragma mark - Portfolio Data (UNIFIED - Optional for brokers) - NON MODIFICATI
 - (void)fetchAccountsWithCompletion:(void (^)(NSArray *accounts, NSError *error))completion;
 - (void)fetchAccountDetails:(NSString *)accountId
                  completion:(void (^)(NSDictionary *accountDetails, NSError *error))completion;
@@ -53,7 +48,7 @@
 - (void)fetchOrdersForAccount:(NSString *)accountId
                    completion:(void (^)(NSArray *orders, NSError *error))completion;
 
-#pragma mark - Trading Operations (UNIFIED - Optional for brokers)
+#pragma mark - Trading Operations (UNIFIED - Optional for brokers) - NON MODIFICATI
 - (void)placeOrderForAccount:(NSString *)accountId
                    orderData:(NSDictionary *)orderData
                   completion:(void (^)(NSString *orderId, NSError *error))completion;

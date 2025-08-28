@@ -22,6 +22,8 @@
         return nil;
     }
     
+    NSLog(@"📊 YahooDataAdapter: Processing Yahoo quote for %@", symbol);
+    
     // Parse Yahoo chart response structure
     NSDictionary *parsedData = [self parseYahooChartResponse:rawData forSymbol:symbol];
     if (!parsedData) {
@@ -33,8 +35,8 @@
     NSDictionary *meta = parsedData[@"meta"];
     NSDictionary *currentValues = parsedData[@"currentValues"];
     
-    if (!meta || !currentValues) {
-        NSLog(@"❌ YahooDataAdapter: Missing meta or currentValues in Yahoo response for %@", symbol);
+    if (!meta) {
+        NSLog(@"❌ YahooDataAdapter: Missing meta in Yahoo response for %@", symbol);
         return nil;
     }
     
@@ -46,8 +48,9 @@
     standardData[@"exchange"] = meta[@"exchangeName"] ?: @"Yahoo Finance";
     
     // Price data - Yahoo returns in meta for current quote
-    standardData[@"last"] = meta[@"regularMarketPrice"] ?: @0;
-    standardData[@"close"] = meta[@"regularMarketPrice"] ?: @0;
+    NSNumber *regularPrice = meta[@"regularMarketPrice"];
+    standardData[@"last"] = regularPrice ?: @0;
+    standardData[@"close"] = regularPrice ?: @0;
     standardData[@"previousClose"] = meta[@"previousClose"] ?: @0;
     standardData[@"open"] = meta[@"regularMarketOpen"] ?: @0;
     standardData[@"high"] = meta[@"regularMarketDayHigh"] ?: @0;
@@ -57,7 +60,7 @@
     standardData[@"volume"] = meta[@"regularMarketVolume"] ?: @0;
     
     // Calculate change and change percent
-    double lastPrice = [meta[@"regularMarketPrice"] doubleValue];
+    double lastPrice = [regularPrice doubleValue];
     double previousClose = [meta[@"previousClose"] doubleValue];
     if (previousClose > 0) {
         double change = lastPrice - previousClose;
@@ -70,8 +73,8 @@
     }
     
     // Bid/Ask (not always available in Yahoo basic API)
-    standardData[@"bid"] = meta[@"bid"] ?: @0;
-    standardData[@"ask"] = meta[@"ask"] ?: @0;
+    standardData[@"bid"] = meta[@"bid"] ?: regularPrice ?: @0;
+    standardData[@"ask"] = meta[@"ask"] ?: regularPrice ?: @0;
     standardData[@"bidSize"] = meta[@"bidSize"] ?: @0;
     standardData[@"askSize"] = meta[@"askSize"] ?: @0;
     
@@ -85,7 +88,9 @@
     
     // Market status
     NSString *marketState = meta[@"marketState"];
-    standardData[@"isMarketOpen"] = @([marketState isEqualToString:@"REGULAR"] || [marketState isEqualToString:@"PRE"] || [marketState isEqualToString:@"POST"]);
+    standardData[@"isMarketOpen"] = @([marketState isEqualToString:@"REGULAR"] ||
+                                     [marketState isEqualToString:@"PRE"] ||
+                                     [marketState isEqualToString:@"POST"]);
     
     // Additional Yahoo-specific data
     standardData[@"currency"] = meta[@"currency"] ?: @"USD";
@@ -126,93 +131,101 @@
         return @[];
     }
     
+    // Extract chart data
+    NSDictionary *chart = yahooDataDict[@"chart"];
+    if (!chart) {
+        NSLog(@"❌ YahooDataAdapter: No chart data found");
+        return @[];
+    }
+    
+    NSArray *results = chart[@"result"];
+    if (!results || results.count == 0) {
+        NSLog(@"❌ YahooDataAdapter: No chart results found");
+        return @[];
+    }
+    
+    NSDictionary *result = results[0];
+    
     // Extract timestamps array
-    NSArray *timestamps = yahooDataDict[@"timestamp"];
+    NSArray *timestamps = result[@"timestamp"];
     if (!timestamps || ![timestamps isKindOfClass:[NSArray class]]) {
         NSLog(@"❌ YahooDataAdapter: No timestamps found in Yahoo data");
         return @[];
     }
     
     // Extract indicators -> quote data
-    NSDictionary *indicators = yahooDataDict[@"indicators"];
+    NSDictionary *indicators = result[@"indicators"];
     if (!indicators || ![indicators isKindOfClass:[NSDictionary class]]) {
         NSLog(@"❌ YahooDataAdapter: No indicators found in Yahoo data");
         return @[];
     }
     
     NSArray *quoteArray = indicators[@"quote"];
-    if (!quoteArray || ![quoteArray isKindOfClass:[NSArray class]] || quoteArray.count == 0) {
-        NSLog(@"❌ YahooDataAdapter: No quote data found in indicators");
+    if (!quoteArray || quoteArray.count == 0) {
+        NSLog(@"❌ YahooDataAdapter: No quote array found in indicators");
         return @[];
     }
     
-    // Get the first quote object (Yahoo structure)
-    NSDictionary *quoteData = quoteArray.firstObject;
-    if (!quoteData || ![quoteData isKindOfClass:[NSDictionary class]]) {
-        NSLog(@"❌ YahooDataAdapter: Invalid quote data structure");
-        return @[];
-    }
+    NSDictionary *quote = quoteArray[0]; // Yahoo sempre ha un solo quote object
     
     // Extract OHLCV arrays
-    NSArray *opens = quoteData[@"open"];
-    NSArray *highs = quoteData[@"high"];
-    NSArray *lows = quoteData[@"low"];
-    NSArray *closes = quoteData[@"close"];
-    NSArray *volumes = quoteData[@"volume"];
+    NSArray *opens = quote[@"open"];
+    NSArray *highs = quote[@"high"];
+    NSArray *lows = quote[@"low"];
+    NSArray *closes = quote[@"close"];
+    NSArray *volumes = quote[@"volume"];
     
     if (!opens || !highs || !lows || !closes || !volumes) {
-        NSLog(@"❌ YahooDataAdapter: Missing OHLCV data in Yahoo response");
+        NSLog(@"❌ YahooDataAdapter: Missing OHLCV data in quote");
         return @[];
     }
     
-    NSInteger barCount = timestamps.count;
-    NSMutableArray<HistoricalBarModel *> *bars = [NSMutableArray arrayWithCapacity:barCount];
+    if (timestamps.count != opens.count) {
+        NSLog(@"❌ YahooDataAdapter: Timestamp count (%lu) doesn't match OHLCV count (%lu)",
+              (unsigned long)timestamps.count, (unsigned long)opens.count);
+        return @[];
+    }
     
-    for (NSInteger i = 0; i < barCount; i++) {
-        // Create HistoricalBarModel
-        HistoricalBarModel *bar = [[HistoricalBarModel alloc] init];
-        bar.symbol = symbol;
-        
-        // Convert timestamp (Yahoo uses Unix timestamp)
-        NSNumber *timestamp = timestamps[i];
-        if (timestamp) {
-            bar.date = [NSDate dateWithTimeIntervalSince1970:[timestamp doubleValue]];
-        } else {
-            continue; // Skip bars without valid timestamp
-        }
-        
-        // OHLCV data - Yahoo sometimes has null values
-        NSNumber *open = i < opens.count ? opens[i] : nil;
-        NSNumber *high = i < highs.count ? highs[i] : nil;
-        NSNumber *low = i < lows.count ? lows[i] : nil;
-        NSNumber *close = i < closes.count ? closes[i] : nil;
-        NSNumber *volume = i < volumes.count ? volumes[i] : nil;
-        
-        // Skip bars with null essential data
-        if (!open || !high || !low || !close || [open isEqual:[NSNull null]] ||
-            [high isEqual:[NSNull null]] || [low isEqual:[NSNull null]] || [close isEqual:[NSNull null]]) {
+    // Convert to HistoricalBarModel objects
+    NSMutableArray<HistoricalBarModel *> *bars = [NSMutableArray array];
+    
+    for (NSInteger i = 0; i < timestamps.count; i++) {
+        // Skip bars with null values
+        if ([opens[i] isEqual:[NSNull null]] || [closes[i] isEqual:[NSNull null]]) {
             continue;
         }
         
-        bar.open = [open doubleValue];
-        bar.high = [high doubleValue];
-        bar.low = [low doubleValue];
-        bar.close = [close doubleValue];
-        bar.adjustedClose = bar.close; // Yahoo doesn't always provide adjusted close in this format
-        bar.volume = volume ? [volume longLongValue] : 0;
+        HistoricalBarModel *bar = [[HistoricalBarModel alloc] init];
+        bar.symbol = symbol;
+        bar.date = [NSDate dateWithTimeIntervalSince1970:[timestamps[i] doubleValue]];
+        bar.open = [opens[i] doubleValue];
+        bar.high = [highs[i] doubleValue];
+        bar.low = [lows[i] doubleValue];
+        bar.close = [closes[i] doubleValue];
+        bar.adjustedClose = bar.close; // Yahoo adjustedClose is in separate array if needed
+        bar.volume = [volumes[i] longLongValue];
+        bar.timeframe = BarTimeframeDaily; // Default, should be determined from context
+        bar.isPaddingBar = NO;
         
-        // Set default timeframe (should be determined from context)
-        bar.timeframe = BarTimeframeDaily; // Default
-        
-        [bars addObject:bar];
+        // Basic validation
+        if (bar.high >= bar.low && bar.high >= bar.open && bar.high >= bar.close &&
+            bar.low <= bar.open && bar.low <= bar.close && bar.open > 0 && bar.close > 0) {
+            [bars addObject:bar];
+        } else {
+            NSLog(@"⚠️ YahooDataAdapter: Skipping invalid bar data for %@ at %@", symbol, bar.date);
+        }
     }
+    
+    // Sort by date
+    [bars sortUsingComparator:^NSComparisonResult(HistoricalBarModel *bar1, HistoricalBarModel *bar2) {
+        return [bar1.date compare:bar2.date];
+    }];
     
     NSLog(@"✅ YahooDataAdapter: Created %lu HistoricalBarModel objects for %@",
           (unsigned long)bars.count, symbol);
     
     return [bars copy];
 }
-
 - (NSDictionary *)standardizeOrderBookData:(id)rawData forSymbol:(NSString *)symbol {
     // Yahoo Finance doesn't typically provide order book data in free tier
     NSLog(@"⚠️ YahooDataAdapter: Order book data not available from Yahoo Finance free tier");
@@ -274,31 +287,6 @@
 
 #pragma mark - Yahoo-Specific Helper Methods
 
-- (NSDictionary *)parseYahooChartResponse:(NSDictionary *)jsonResponse forSymbol:(NSString *)symbol {
-    // Yahoo chart API structure: chart.result[0].meta contains current quote info
-    NSDictionary *chart = jsonResponse[@"chart"];
-    if (!chart) return nil;
-    
-    NSArray *results = chart[@"result"];
-    if (!results || results.count == 0) return nil;
-    
-    NSDictionary *result = results[0];
-    NSDictionary *meta = result[@"meta"];
-    
-    if (!meta) return nil;
-    
-    // For quotes, we primarily use meta information
-    // For historical data, we'd also process timestamps and indicators
-    return @{
-        @"meta": meta,
-        @"result": result,
-        @"currentValues": @{
-            @"price": meta[@"regularMarketPrice"] ?: @0,
-            @"change": @([meta[@"regularMarketPrice"] doubleValue] - [meta[@"previousClose"] doubleValue]),
-            @"volume": meta[@"regularMarketVolume"] ?: @0
-        }
-    };
-}
 
 - (NSDictionary *)extractMetadataFromYahooResponse:(NSDictionary *)yahooResult {
     return yahooResult[@"meta"] ?: @{};
@@ -315,6 +303,43 @@
     return [dates copy];
 }
 
+#pragma mark - ✅ METODI DI PARSING SPOSTATI DAL DATASOURCE
+
+- (NSDictionary *)parseYahooChartResponse:(NSDictionary *)jsonResponse forSymbol:(NSString *)symbol {
+    // Yahoo chart API structure: chart.result[0].meta contains current quote info
+    NSDictionary *chart = jsonResponse[@"chart"];
+    if (!chart) {
+        NSLog(@"❌ YahooDataAdapter: No chart in response");
+        return nil;
+    }
+    
+    NSArray *results = chart[@"result"];
+    if (!results || results.count == 0) {
+        NSLog(@"❌ YahooDataAdapter: No results in chart");
+        return nil;
+    }
+    
+    NSDictionary *result = results[0];
+    NSDictionary *meta = result[@"meta"];
+    
+    if (!meta) {
+        NSLog(@"❌ YahooDataAdapter: No meta in result");
+        return nil;
+    }
+    
+    // For quotes, we primarily use meta information
+    // For historical data, we'd also process timestamps and indicators
+    return @{
+        @"meta": meta,
+        @"result": result,
+        @"currentValues": @{
+            @"price": meta[@"regularMarketPrice"] ?: @0,
+            @"change": @([meta[@"regularMarketPrice"] doubleValue] - [meta[@"previousClose"] doubleValue]),
+            @"volume": meta[@"regularMarketVolume"] ?: @0
+        }
+    };
+}
+
 - (BOOL)isValidYahooResponse:(NSDictionary *)response {
     if (!response || ![response isKindOfClass:[NSDictionary class]]) {
         return NO;
@@ -322,16 +347,34 @@
     
     // Check for basic Yahoo API structure
     NSDictionary *chart = response[@"chart"];
-    if (!chart) return NO;
-    
-    NSArray *results = chart[@"result"];
-    if (!results || results.count == 0) return NO;
-    
-    // Check for error in Yahoo response
-    NSArray *errors = chart[@"error"];
-    if (errors && errors.count > 0) {
-        NSLog(@"❌ YahooDataAdapter: Yahoo API returned error: %@", errors);
+    if (!chart || ![chart isKindOfClass:[NSDictionary class]]) {
         return NO;
+    }
+    
+    // ✅ FIX: Controllo sicuro per NSNull prima di chiamare count
+    id resultsObj = chart[@"result"];
+    if (!resultsObj || [resultsObj isEqual:[NSNull null]]) {
+        return NO;
+    }
+    
+    // Verifica che sia un array valido
+    if (![resultsObj isKindOfClass:[NSArray class]]) {
+        return NO;
+    }
+    
+    NSArray *results = (NSArray *)resultsObj;
+    if (results.count == 0) {
+        return NO;
+    }
+    
+    // ✅ FIX: Controllo sicuro anche per errors
+    id errorsObj = chart[@"error"];
+    if (errorsObj && ![errorsObj isEqual:[NSNull null]] && [errorsObj isKindOfClass:[NSArray class]]) {
+        NSArray *errors = (NSArray *)errorsObj;
+        if (errors.count > 0) {
+            NSLog(@"YahooDataAdapter: Yahoo API returned error: %@", errors);
+            return NO;
+        }
     }
     
     return YES;

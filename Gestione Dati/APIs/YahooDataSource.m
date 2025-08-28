@@ -103,31 +103,30 @@
 - (void)fetchQuoteForSymbol:(NSString *)symbol
                  completion:(void (^)(id quote, NSError *error))completion {
     
-    NSLog(@"YahooDataSource: Fetching quote for symbol: %@", symbol);
+    if (!symbol || symbol.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"YahooDataSource"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"No symbol provided"}];
+        if (completion) completion(nil, error);
+        return;
+    }
+    
+    NSLog(@"🔍 YahooDataSource: Fetching quote for %@", symbol);
     
     // Check cache first
-    NSString *cacheKey = [NSString stringWithFormat:@"quote_%@", symbol];
-    id cachedQuote = [self.cache objectForKey:cacheKey];
-    if (cachedQuote) {
-        // ✅ Per dati raw, usiamo un timestamp embedded nel dictionary
-        NSNumber *timestamp = nil;
-        if ([cachedQuote isKindOfClass:[NSDictionary class]]) {
-            timestamp = cachedQuote[@"timestamp"];
-        }
-        
-        if (timestamp) {
-            NSTimeInterval age = [[NSDate date] timeIntervalSince1970] - [timestamp doubleValue];
-            if (age < self.cacheTimeout) {
-                NSLog(@"YahooDataSource: Using cached quote for %@", symbol);
-                if (completion) {
-                    completion(cachedQuote, nil);
-                }
-                return;
+    if (self.cacheTimeout > 0) {
+        NSString *cacheKey = [NSString stringWithFormat:@"quote_%@", symbol];
+        id cachedQuote = [self.cache objectForKey:cacheKey];
+        if (cachedQuote) {
+            NSLog(@"📦 YahooDataSource: Returning cached quote for %@", symbol);
+            if (completion) {
+                completion(cachedQuote, nil);
             }
+            return;
         }
     }
     
-    // ✅ Usa l'API Yahoo che hai specificato
+    // ✅ HTTPS Yahoo JSON API
     NSString *urlString = [NSString stringWithFormat:
                           @"https://query1.finance.yahoo.com/v8/finance/chart/%@", symbol];
     
@@ -155,81 +154,36 @@
 - (void)fetchQuotesForSymbols:(NSArray<NSString *> *)symbols
                    completion:(void (^)(NSDictionary *quotes, NSError *error))completion {
     
-    if (!symbols || symbols.count == 0) {
-        NSError *error = [NSError errorWithDomain:@"OtherDataSource"
-                                             code:400
-                                         userInfo:@{NSLocalizedDescriptionKey: @"No symbols provided"}];
-        if (completion) completion(@{}, error);
-        return;
+    NSLog(@"YahooDataSource: Fetching batch quotes for %lu symbols", (unsigned long)symbols.count);
+    
+    // Yahoo API doesn't support true batch requests, so we make individual requests
+    NSMutableDictionary *allQuotes = [NSMutableDictionary dictionary];
+    dispatch_group_t group = dispatch_group_create();
+    __block NSError *firstError = nil;
+    
+    for (NSString *symbol in symbols) {
+        dispatch_group_enter(group);
+        
+        [self fetchQuoteForSymbol:symbol completion:^(id quote, NSError *error) {
+            @synchronized(allQuotes) {
+                if (error && !firstError) {
+                    firstError = error;
+                } else if (quote) {
+                    allQuotes[symbol] = quote;
+                }
+            }
+            dispatch_group_leave(group);
+        }];
     }
     
-    NSLog(@"📊 OtherDataSource: Fetching batch quotes for %lu symbols using Yahoo Finance", (unsigned long)symbols.count);
-    
-    // ❌ OLD API (DEPRECATA E HTTP): Yahoo Finance CSV API URL
-    // NSString *urlString = [NSString stringWithFormat:@"http://finance.yahoo.com/d/quotes.csv?s=%@&f=%@", ...];
-    
-    // ✅ SOLUZIONE TEMPORANEA: Prova HTTPS per la vecchia API
-    // NOTA: Questa API potrebbe comunque fallire perché è deprecata
-    NSString *symbolsString = [symbols componentsJoinedByString:@"+"];
-    NSString *fields = @"snl1c1p2ohgvt1ab"; // symbol,name,last,change,change%,open,high,low,volume,time,ask,bid
-    
-    NSString *urlString = [NSString stringWithFormat:@"https://finance.yahoo.com/d/quotes.csv?s=%@&f=%@",
-                          [symbolsString stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]],
-                          fields];
-    
-    NSLog(@"📊 OtherDataSource: Fixed HTTPS Yahoo URL: %@", urlString);
-    
-    NSURL *url = [NSURL URLWithString:urlString];
-    NSURLRequest *request = [NSURLRequest requestWithURL:url
-                                             cachePolicy:NSURLRequestReloadIgnoringLocalCacheData
-                                         timeoutInterval:30.0];
-    
-    NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        
-        if (error) {
-            NSLog(@"❌ OtherDataSource: Yahoo Finance request failed: %@", error.localizedDescription);
-            
-            // ⚠️ FALLBACK: Se fallisce anche HTTPS, prova la nuova API Yahoo JSON
-            NSLog(@"🔄 OtherDataSource: CSV API failed, trying modern Yahoo API...");
-            [self fetchQuotesUsingModernYahooAPI:symbols completion:completion];
-            return;
-        }
-        
-        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
-        if (httpResponse.statusCode != 200) {
-            NSError *httpError = [NSError errorWithDomain:@"OtherDataSource"
-                                                     code:httpResponse.statusCode
-                                                 userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Yahoo Finance HTTP error: %ld", (long)httpResponse.statusCode]}];
-            NSLog(@"❌ OtherDataSource: Yahoo Finance HTTP error %ld", (long)httpResponse.statusCode);
-            
-            // FALLBACK alla nuova API
-            NSLog(@"🔄 OtherDataSource: CSV API returned error %ld, trying modern Yahoo API...", (long)httpResponse.statusCode);
-            [self fetchQuotesUsingModernYahooAPI:symbols completion:completion];
-            return;
-        }
-        
-        // Parse CSV response (codice esistente...)
-        NSString *csvString = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
-        if (!csvString || csvString.length == 0) {
-            NSLog(@"🔄 OtherDataSource: Empty CSV response, trying modern Yahoo API...");
-            [self fetchQuotesUsingModernYahooAPI:symbols completion:completion];
-            return;
-        }
-        
-        NSDictionary *quotesDict = [self parseModernYahooResponse:csvString forSymbol:symbols];
-        
-        NSLog(@"✅ OtherDataSource: Successfully parsed %lu quotes from Yahoo CSV", (unsigned long)quotesDict.count);
-        
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(quotesDict, nil);
-            });
-        }
-    }];
-    
-    [task resume];
+    dispatch_group_notify(group, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) {
+                completion([allQuotes copy], firstError);
+            }
+        });
+    });
 }
-
 #pragma mark - Modern Yahoo API Fallback
 
 - (void)fetchQuotesUsingModernYahooAPI:(NSArray<NSString *> *)symbols
@@ -414,6 +368,8 @@
     [task resume];
 }
 
+#pragma mark - Response Handlers - ✅ RESTITUISCONO SOLO DATI RAW
+
 - (void)handleQuoteResponse:(NSData *)data
                    response:(NSURLResponse *)response
                       error:(NSError *)error
@@ -421,7 +377,7 @@
                  completion:(void (^)(id quote, NSError *error))completion {
     
     if (error) {
-        NSLog(@"YahooDataSource: Network error for %@: %@", symbol, error.localizedDescription);
+        NSLog(@"❌ YahooDataSource: Network error for %@: %@", symbol, error.localizedDescription);
         dispatch_async(dispatch_get_main_queue(), ^{
             if (completion) completion(nil, error);
         });
@@ -434,6 +390,7 @@
         NSError *httpError = [NSError errorWithDomain:@"YahooDataSource"
                                                  code:httpResponse.statusCode
                                              userInfo:@{NSLocalizedDescriptionKey: errorMsg}];
+        NSLog(@"❌ YahooDataSource: HTTP %ld for %@", (long)httpResponse.statusCode, symbol);
         dispatch_async(dispatch_get_main_queue(), ^{
             if (completion) completion(nil, httpError);
         });
@@ -444,37 +401,56 @@
     NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
     
     if (parseError) {
+        NSLog(@"❌ YahooDataSource: JSON parsing error for %@: %@", symbol, parseError.localizedDescription);
         dispatch_async(dispatch_get_main_queue(), ^{
             if (completion) completion(nil, parseError);
         });
         return;
     }
     
-    // Check for error in JSON
-    if (json[@"chart"] && json[@"chart"][@"error"]) {
-        NSDictionary *errorInfo = json[@"chart"][@"error"];
-        NSString *errorMsg = errorInfo[@"description"] ?: @"Unknown Yahoo API error";
-        NSError *yahooError = [NSError errorWithDomain:@"YahooDataSource"
-                                                  code:[errorInfo[@"code"] integerValue]
-                                              userInfo:@{NSLocalizedDescriptionKey: errorMsg}];
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (completion) completion(nil, yahooError);
-        });
-        return;
+    // ✅ CONTROLLO ERRORI YAHOO API (con safe checking per NSNull)
+    NSDictionary *chart = nil;
+    if ([json isKindOfClass:[NSDictionary class]]) {
+        id chartObj = json[@"chart"];
+        if (chartObj && ![chartObj isEqual:[NSNull null]] && [chartObj isKindOfClass:[NSDictionary class]]) {
+            chart = (NSDictionary *)chartObj;
+        }
     }
     
-    // ✅ RITORNA DATI RAW YAHOO - nessuna conversione a MarketData
-    id rawQuoteData = [self parseQuoteFromJSON:json forSymbol:symbol];
+    if (chart) {
+        id errorsObj = chart[@"error"];
+        if (errorsObj && ![errorsObj isEqual:[NSNull null]] && [errorsObj isKindOfClass:[NSArray class]]) {
+            NSArray *errors = (NSArray *)errorsObj;
+            if (errors.count > 0) {
+                NSDictionary *errorInfo = errors[0];
+                NSString *errorMsg = errorInfo[@"description"] ?: @"Unknown Yahoo API error";
+                NSError *yahooError = [NSError errorWithDomain:@"YahooDataSource"
+                                                          code:[errorInfo[@"code"] integerValue]
+                                                      userInfo:@{NSLocalizedDescriptionKey: errorMsg}];
+                NSLog(@"❌ YahooDataSource: Yahoo API error for %@: %@", symbol, errorMsg);
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (completion) completion(nil, yahooError);
+                });
+                return;
+            }
+        }
+    }
     
-    if (rawQuoteData) {
+    // ✅ RITORNA DATI RAW COMPLETI - nessun parsing, nessuna trasformazione
+    NSLog(@"✅ YahooDataSource: Raw Yahoo data received for %@ (%lu bytes)", symbol, (unsigned long)data.length);
+    
+    // Cache se abilitato
+    if (self.cacheTimeout > 0) {
         NSString *cacheKey = [NSString stringWithFormat:@"quote_%@", symbol];
-        [self.cache setObject:rawQuoteData forKey:cacheKey];
+        [self.cache setObject:json forKey:cacheKey];
     }
     
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (completion) completion(rawQuoteData, nil);
+        if (completion) completion(json, nil);  // ✅ RITORNA IL JSON RAW COMPLETO
     });
 }
+
+
 
 - (void)handleHistoricalResponse:(NSData *)data
                         response:(NSURLResponse *)response
@@ -482,6 +458,7 @@
                       completion:(void (^)(NSArray *bars, NSError *error))completion {
     
     if (error) {
+        NSLog(@"❌ YahooDataSource: Historical request error: %@", error.localizedDescription);
         dispatch_async(dispatch_get_main_queue(), ^{
             if (completion) completion(nil, error);
         });
@@ -494,6 +471,7 @@
         NSError *httpError = [NSError errorWithDomain:@"YahooDataSource"
                                                  code:httpResponse.statusCode
                                              userInfo:@{NSLocalizedDescriptionKey: errorMsg}];
+        NSLog(@"❌ YahooDataSource: Historical HTTP %ld", (long)httpResponse.statusCode);
         dispatch_async(dispatch_get_main_queue(), ^{
             if (completion) completion(nil, httpError);
         });
@@ -504,18 +482,24 @@
     NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
     
     if (parseError) {
+        NSLog(@"❌ YahooDataSource: Historical JSON parsing error: %@", parseError.localizedDescription);
         dispatch_async(dispatch_get_main_queue(), ^{
             if (completion) completion(nil, parseError);
         });
         return;
     }
     
-    NSArray *bars = [self parseHistoricalDataFromJSON:json];
+    // ✅ RITORNA ARRAY CON UN SOLO ELEMENTO: il JSON completo di Yahoo
+    // Il YahooDataAdapter si occuperà di estrarre timestamps, indicators, etc.
+    NSArray *rawHistoricalData = @[json];  // ✅ Wrapper in array per compatibilità
+    
+    NSLog(@"✅ YahooDataSource: Raw Yahoo historical data received (%lu bytes)", (unsigned long)data.length);
     
     dispatch_async(dispatch_get_main_queue(), ^{
-        if (completion) completion(bars, nil);
+        if (completion) completion(rawHistoricalData, nil);
     });
 }
+
 
 #pragma mark - Yahoo API Helper Methods - ENHANCED
 
@@ -608,48 +592,7 @@
     }
 }
 
-#pragma mark - Parsing Methods - ENHANCED
 
-- (id)parseQuoteFromJSON:(NSDictionary *)json forSymbol:(NSString *)symbol {
-    // ✅ RITORNA DATI RAW YAHOO - nessuna conversione a MarketData
-    // Il YahooDataAdapter si occuperà della standardizzazione
-    
-    NSDictionary *chart = json[@"chart"];
-    if (!chart) return nil;
-    
-    NSArray *results = chart[@"result"];
-    if (!results || results.count == 0) return nil;
-    
-    NSDictionary *result = results[0];
-    NSDictionary *meta = result[@"meta"];
-    
-    NSLog(@"YahooDataSource: Returning raw Yahoo quote data for %@", symbol);
-    
-    // ✅ RITORNA DICTIONARY RAW con tutti i dati Yahoo
-    return @{
-        @"symbol": symbol,
-        @"meta": meta ?: @{},
-        @"result": result,
-        @"timestamp": @([[NSDate date] timeIntervalSince1970])
-    };
-}
-
-- (NSArray *)parseHistoricalDataFromJSON:(NSDictionary *)json {
-    // ✅ RITORNA DATI RAW YAHOO - nessuna standardizzazione
-    // Il YahooDataAdapter si occuperà della conversione
-    
-    NSDictionary *chart = json[@"chart"];
-    if (!chart) return @[];
-    
-    NSArray *results = chart[@"result"];
-    if (!results || results.count == 0) return @[];
-    
-    NSDictionary *result = results[0];
-    
-    // ✅ RITORNA IL RESULT COMPLETO di Yahoo
-    // Include: timestamp, indicators, meta, etc.
-    return @[result]; // Singolo object con tutti i dati Yahoo
-}
 
 #pragma mark - Legacy Support Methods
 

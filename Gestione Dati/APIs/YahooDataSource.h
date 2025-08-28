@@ -51,8 +51,6 @@
 - (NSString *)intervalStringForTimeframe:(BarTimeframe)timeframe;
 - (NSString *)rangeStringForBarCount:(NSInteger)barCount timeframe:(BarTimeframe)timeframe;
 
-// Parsing helpers
-- (id)parseQuoteFromJSON:(NSDictionary *)json forSymbol:(NSString *)symbol;
-- (NSArray *)parseHistoricalDataFromJSON:(NSDictionary *)json;
+
 
 @end

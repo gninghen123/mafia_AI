@@ -402,9 +402,9 @@
     // Then add other available sources sorted by priority (excluding preferred source)
     NSArray<DataSourceInfo *> *allSources = [self.dataSources.allValues
                                               sortedArrayUsingComparator:^NSComparisonResult(DataSourceInfo *obj1, DataSourceInfo *obj2) {
-        // Higher priority first
-        if (obj1.priority > obj2.priority) return NSOrderedAscending;
-        if (obj1.priority < obj2.priority) return NSOrderedDescending;
+        // Lower priority number first (1 = highest priority, 100 = lowest)
+        if (obj1.priority < obj2.priority) return NSOrderedAscending;
+        if (obj1.priority > obj2.priority) return NSOrderedDescending;
         
         // If same priority, prefer source with fewer recent failures
         if (obj1.failureCount < obj2.failureCount) return NSOrderedAscending;
@@ -412,6 +412,7 @@
         
         return NSOrderedSame;
     }];
+    
     
     for (DataSourceInfo *sourceInfo in allSources) {
         // Skip if already added as preferred source

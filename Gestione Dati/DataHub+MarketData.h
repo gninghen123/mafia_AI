@@ -60,15 +60,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)getCompanyInfoForSymbol:(NSString *)symbol
                      completion:(void(^)(CompanyInfoModel * _Nullable info, BOOL isFresh))completion;
 
-#pragma mark - Subscription Management (Pseudo Real-Time)
 
-// Subscribe to quote updates (refreshes every 5-10 seconds)
-- (void)subscribeToQuoteUpdatesForSymbol:(NSString *)symbol;
-- (void)subscribeToQuoteUpdatesForSymbols:(NSArray<NSString *> *)symbols;
-
-// Unsubscribe from updates
-- (void)unsubscribeFromQuoteUpdatesForSymbol:(NSString *)symbol;
-- (void)unsubscribeFromAllQuoteUpdates;
 
 #pragma mark - Batch Operations
 
@@ -98,6 +90,30 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)clearMarketListCache;
 - (NSDictionary *)getMarketListCacheStatistics;
 
+
+#pragma mark - Subscription Management (UPDATED - Batch Support + Reference Counting)
+
+// Single symbol subscription (legacy compatibility)
+- (void)subscribeToQuoteUpdatesForSymbol:(NSString *)symbol;
+- (void)unsubscribeFromQuoteUpdatesForSymbol:(NSString *)symbol;
+
+// ✅ NEW: Widget-aware subscription (recommended)
+- (void)subscribeToQuoteUpdatesForSymbol:(NSString *)symbol widgetId:(NSString *)widgetId;
+- (void)unsubscribeFromQuoteUpdatesForSymbol:(NSString *)symbol widgetId:(NSString *)widgetId;
+
+// ✅ NEW: Batch subscription methods (efficient for multiple symbols)
+- (void)subscribeToQuoteUpdatesForSymbols:(NSArray<NSString *> *)symbols;
+- (void)subscribeToQuoteUpdatesForSymbols:(NSArray<NSString *> *)symbols widgetId:(NSString *)widgetId;
+- (void)unsubscribeFromQuoteUpdatesForSymbols:(NSArray<NSString *> *)symbols widgetId:(NSString *)widgetId;
+
+// ✅ NEW: Widget lifecycle management
+- (NSString *)generateWidgetId;
+- (void)registerWidget:(NSString *)widgetId;
+- (void)unregisterWidget:(NSString *)widgetId;
+
+// Cleanup and statistics
+- (void)unsubscribeFromAllQuoteUpdates;
+- (NSDictionary *)getSubscriptionStatistics;
 
 @end
 

@@ -34,6 +34,8 @@ typedef NS_ENUM(NSInteger, DataCacheType) {
 @interface DataHub ()
 
 
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *symbolSubscriptionCounts;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSMutableSet<NSString *> *> *widgetSubscriptions;
 
 
 // Seasonal Data Cache (NEW)
@@ -139,8 +141,25 @@ typedef NS_ENUM(NSInteger, DataCacheType) {
 - (NSInteger)estimateBarCountForTimeframe:(BarTimeframe)timeframe startDate:(NSDate *)startDate endDate:(NSDate *)endDate;
 
 - (Symbol *)findOrCreateSymbolWithName:(NSString *)symbolName inContext:(NSManagedObjectContext *)context;
-#pragma mark - Smart Cache Methods (NEW)
 
+
+#pragma mark -  Batch subscription methods
+
+// ✅ NUOVO: Batch subscription methods
+- (void)initializeSubscriptionManagement;
+- (NSSet<NSString *> *)getAllActiveSubscriptions;
+- (NSInteger)getSubscriptionCountForSymbol:(NSString *)symbol;
+- (NSDictionary *)getSubscriptionStatistics;
+
+// ✅ NUOVO: Widget tracking methods
+- (NSString *)generateWidgetId;
+- (void)registerWidget:(NSString *)widgetId;
+- (void)unregisterWidget:(NSString *)widgetId;
+- (void)cleanupSubscriptionsForWidget:(NSString *)widgetId;
+
+// ✅ NUOVO: Batch refresh methods
+- (void)refreshSubscribedQuotesBatch; // Sostituisce refreshSubscribedQuotes
+- (void)scheduleNextBatchRefresh;
 
 
 #pragma mark - Smart Cache Methods (NEW)

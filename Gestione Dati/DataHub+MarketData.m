@@ -1514,37 +1514,84 @@
 #pragma mark - Subscription Management
 
 - (void)subscribeToQuoteUpdatesForSymbol:(NSString *)symbol {
+    [self subscribeToQuoteUpdatesForSymbol:symbol widgetId:nil];
+}
+
+- (void)subscribeToQuoteUpdatesForSymbol:(NSString *)symbol widgetId:(NSString *)widgetId {
     if (!symbol) return;
     
     [self initializeMarketDataCaches];
-    [self.subscribedSymbols addObject:symbol];
+    [self initializeSubscriptionManagement];
     
-    // Start refresh timer if this is the first subscription
-    if (self.subscribedSymbols.count == 1) {
-        [self startRefreshTimer];
-    }
-    
-    NSLog(@"DataHub: Subscribed to quote updates for %@", symbol);
-}
-
-- (void)subscribeToQuoteUpdatesForSymbols:(NSArray<NSString *> *)symbols {
-    for (NSString *symbol in symbols) {
-        [self subscribeToQuoteUpdatesForSymbol:symbol];
+    @synchronized(self.symbolSubscriptionCounts) {
+        // Incrementa reference count
+        NSNumber *currentCount = self.symbolSubscriptionCounts[symbol] ?: @0;
+        NSInteger newCount = [currentCount integerValue] + 1;
+        self.symbolSubscriptionCounts[symbol] = @(newCount);
+        
+        // Aggiungi al set di simboli attivi (per compatibilità)
+        [self.subscribedSymbols addObject:symbol];
+        
+        // Track widget subscription se widgetId fornito
+        if (widgetId) {
+            if (!self.widgetSubscriptions[widgetId]) {
+                self.widgetSubscriptions[widgetId] = [NSMutableSet set];
+            }
+            [self.widgetSubscriptions[widgetId] addObject:symbol];
+        }
+        
+        // Avvia timer se questa è la prima subscription globale
+        if (self.symbolSubscriptionCounts.count == 1 && newCount == 1) {
+            [self startRefreshTimer];
+        }
+        
+        NSLog(@"DataHub: Subscribed to %@ (count: %ld, widget: %@)", symbol, (long)newCount, widgetId ?: @"unknown");
     }
 }
 
 - (void)unsubscribeFromQuoteUpdatesForSymbol:(NSString *)symbol {
+    [self unsubscribeFromQuoteUpdatesForSymbol:symbol widgetId:nil];
+}
+
+- (void)unsubscribeFromQuoteUpdatesForSymbol:(NSString *)symbol widgetId:(NSString *)widgetId {
     if (!symbol) return;
     
-    [self initializeMarketDataCaches];
-    [self.subscribedSymbols removeObject:symbol];
+    [self initializeSubscriptionManagement];
     
-    // Stop timer if no more subscriptions
-    if (self.subscribedSymbols.count == 0) {
-        [self stopRefreshTimer];
+    @synchronized(self.symbolSubscriptionCounts) {
+        NSNumber *currentCount = self.symbolSubscriptionCounts[symbol];
+        if (!currentCount || [currentCount integerValue] <= 0) {
+            NSLog(@"WARNING: DataHub: Attempting to unsubscribe from %@ but no active subscriptions", symbol);
+            return;
+        }
+        
+        // Decrementa reference count
+        NSInteger newCount = [currentCount integerValue] - 1;
+        
+        if (newCount <= 0) {
+            // Nessuna subscription rimanente per questo simbolo
+            [self.symbolSubscriptionCounts removeObjectForKey:symbol];
+            [self.subscribedSymbols removeObject:symbol];
+            NSLog(@"DataHub: Unsubscribed from %@ (removed - no more subscribers)", symbol);
+        } else {
+            // Ci sono ancora subscribers per questo simbolo
+            self.symbolSubscriptionCounts[symbol] = @(newCount);
+            NSLog(@"DataHub: Unsubscribed from %@ (count: %ld remaining)", symbol, (long)newCount);
+        }
+        
+        // Rimuovi da widget tracking se widgetId fornito
+        if (widgetId && self.widgetSubscriptions[widgetId]) {
+            [self.widgetSubscriptions[widgetId] removeObject:symbol];
+            if (self.widgetSubscriptions[widgetId].count == 0) {
+                [self.widgetSubscriptions removeObjectForKey:widgetId];
+            }
+        }
+        
+        // Ferma timer se non ci sono più subscription globali
+        if (self.symbolSubscriptionCounts.count == 0) {
+            [self stopRefreshTimer];
+        }
     }
-    
-    NSLog(@"DataHub: Unsubscribed from quote updates for %@", symbol);
 }
 
 - (void)unsubscribeFromAllQuoteUpdates {
@@ -1560,7 +1607,7 @@
         [self.refreshTimer invalidate];
     }
     
-    self.refreshTimer = [NSTimer scheduledTimerWithTimeInterval:5.0 // 5 seconds
+    self.refreshTimer = [NSTimer scheduledTimerWithTimeInterval:60.0 // 60 seconds
                                                          target:self
                                                        selector:@selector(refreshSubscribedQuotes)
                                                        userInfo:nil
@@ -1578,11 +1625,41 @@
     NSLog(@"DataHub: Stopped refresh timer");
 }
 
+#pragma mark - Batch Refresh (AGGIORNATO)
+
+- (void)refreshSubscribedQuotesBatch {
+    [self initializeSubscriptionManagement];
+    
+    NSArray<NSString *> *activeSymbols = [self getAllActiveSubscriptions].allObjects;
+    if (activeSymbols.count == 0) return;
+    
+    NSLog(@"DataHub: Batch refreshing quotes for %lu symbols", (unsigned long)activeSymbols.count);
+    
+    // UNA SOLA chiamata batch invece di N chiamate singole
+    [[DataManager sharedManager] requestQuotesForSymbols:activeSymbols
+                                              completion:^(NSDictionary *quotes, NSError *error) {
+        if (error) {
+            NSLog(@"ERROR: DataHub: Batch quote refresh failed: %@", error.localizedDescription);
+            return;
+        }
+        
+        // Process and cache batch results
+        for (NSString *symbol in quotes.allKeys) {
+            MarketData *marketData = quotes[symbol];
+            if (marketData) {
+                MarketQuoteModel *quote = [MarketQuoteModel quoteFromMarketData:marketData];
+                [self cacheQuote:quote];
+                [self broadcastQuoteUpdate:quote];
+            }
+        }
+        
+        NSLog(@"SUCCESS: DataHub: Batch processed %lu quote updates", (unsigned long)quotes.count);
+    }];
+}
+
+
 - (void)refreshSubscribedQuotes {
-    for (NSString *symbol in self.subscribedSymbols) {
-        // Force refresh by making direct request to DataManager
-        [[DataManager sharedManager] requestQuoteForSymbol:symbol completion:nil];
-    }
+    [self refreshSubscribedQuotesBatch];
 }
 
 #pragma mark - Utility Methods
@@ -1921,5 +1998,118 @@
     
     return isCompatible;
 }
+#pragma mark - Subscription Management (NUOVO - Reference Counting)
+
+- (void)initializeSubscriptionManagement {
+    if (!self.symbolSubscriptionCounts) {
+        self.symbolSubscriptionCounts = [NSMutableDictionary dictionary];
+    }
+    if (!self.widgetSubscriptions) {
+        self.widgetSubscriptions = [NSMutableDictionary dictionary];
+    }
+    if (!self.subscribedSymbols) {
+        self.subscribedSymbols = [NSMutableSet set];
+    }
+}
+
+#pragma mark - Batch Symbol Subscription (NUOVO)
+
+- (void)subscribeToQuoteUpdatesForSymbols:(NSArray<NSString *> *)symbols {
+    [self subscribeToQuoteUpdatesForSymbols:symbols widgetId:nil];
+}
+
+- (void)subscribeToQuoteUpdatesForSymbols:(NSArray<NSString *> *)symbols widgetId:(NSString *)widgetId {
+    if (!symbols || symbols.count == 0) return;
+    
+    for (NSString *symbol in symbols) {
+        [self subscribeToQuoteUpdatesForSymbol:symbol widgetId:widgetId];
+    }
+    
+    NSLog(@"DataHub: Batch subscribed to %lu symbols for widget %@", (unsigned long)symbols.count, widgetId ?: @"unknown");
+}
+
+- (void)unsubscribeFromQuoteUpdatesForSymbols:(NSArray<NSString *> *)symbols widgetId:(NSString *)widgetId {
+    if (!symbols || symbols.count == 0) return;
+    
+    for (NSString *symbol in symbols) {
+        [self unsubscribeFromQuoteUpdatesForSymbol:symbol widgetId:widgetId];
+    }
+    
+    NSLog(@"DataHub: Batch unsubscribed from %lu symbols for widget %@", (unsigned long)symbols.count, widgetId ?: @"unknown");
+}
+
+#pragma mark - Widget Management (NUOVO)
+
+- (NSString *)generateWidgetId {
+    return [[NSUUID UUID] UUIDString];
+}
+
+- (void)registerWidget:(NSString *)widgetId {
+    if (!widgetId) return;
+    
+    [self initializeSubscriptionManagement];
+    
+    @synchronized(self.widgetSubscriptions) {
+        if (!self.widgetSubscriptions[widgetId]) {
+            self.widgetSubscriptions[widgetId] = [NSMutableSet set];
+            NSLog(@"DataHub: Registered widget %@", widgetId);
+        }
+    }
+}
+
+- (void)unregisterWidget:(NSString *)widgetId {
+    if (!widgetId) return;
+    
+    [self cleanupSubscriptionsForWidget:widgetId];
+}
+
+- (void)cleanupSubscriptionsForWidget:(NSString *)widgetId {
+    if (!widgetId) return;
+    
+    [self initializeSubscriptionManagement];
+    
+    @synchronized(self.symbolSubscriptionCounts) {
+        NSMutableSet<NSString *> *widgetSymbols = self.widgetSubscriptions[widgetId];
+        if (widgetSymbols && widgetSymbols.count > 0) {
+            NSArray<NSString *> *symbolsArray = [widgetSymbols allObjects];
+            [self unsubscribeFromQuoteUpdatesForSymbols:symbolsArray widgetId:widgetId];
+            NSLog(@"DataHub: Cleaned up %lu subscriptions for widget %@", (unsigned long)symbolsArray.count, widgetId);
+        }
+        
+        [self.widgetSubscriptions removeObjectForKey:widgetId];
+    }
+}
+
+#pragma mark - Statistics and Debugging (NUOVO)
+
+- (NSSet<NSString *> *)getAllActiveSubscriptions {
+    [self initializeSubscriptionManagement];
+    return [NSSet setWithArray:self.symbolSubscriptionCounts.allKeys];
+}
+
+- (NSInteger)getSubscriptionCountForSymbol:(NSString *)symbol {
+    if (!symbol) return 0;
+    
+    [self initializeSubscriptionManagement];
+    NSNumber *count = self.symbolSubscriptionCounts[symbol];
+    return count ? [count integerValue] : 0;
+}
+
+- (NSDictionary *)getSubscriptionStatistics {
+    [self initializeSubscriptionManagement];
+    
+    NSInteger totalSubscriptions = 0;
+    for (NSNumber *count in self.symbolSubscriptionCounts.allValues) {
+        totalSubscriptions += [count integerValue];
+    }
+    
+    return @{
+        @"uniqueSymbols": @(self.symbolSubscriptionCounts.count),
+        @"totalSubscriptionCount": @(totalSubscriptions),
+        @"activeWidgets": @(self.widgetSubscriptions.count),
+        @"timerActive": @(self.refreshTimer != nil)
+    };
+}
+
 
 @end

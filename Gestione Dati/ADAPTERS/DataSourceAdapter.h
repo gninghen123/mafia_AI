@@ -3,12 +3,13 @@
 //  mafia_AI
 //
 //  Protocollo per gli adapter che convertono dati API
-//  UPDATED: Now returns runtime models directly
+//  UPDATED: All methods now return runtime models directly
 //
 
 #import <Foundation/Foundation.h>
 #import "MarketData.h"
-#import "RuntimeModels.h"  // Import runtime models
+#import "RuntimeModels.h"
+#import "TradingRuntimeModels.h"
 #import "OrderBookEntry.h"
 
 NS_ASSUME_NONNULL_BEGIN
@@ -17,25 +18,71 @@ NS_ASSUME_NONNULL_BEGIN
 
 @required
 
-// Converte dati quote da formato API a MarketData standard (unchanged)
+#pragma mark - Market Data Standardization (Runtime Models)
+
+/**
+ * Convert raw quote data from API to MarketData runtime model
+ * @param rawData Raw API data dictionary
+ * @param symbol Symbol identifier
+ * @return MarketData runtime model
+ */
 - (MarketData *)standardizeQuoteData:(NSDictionary *)rawData forSymbol:(NSString *)symbol;
 
-// UPDATED: Converte dati storici da formato API direttamente a runtime HistoricalBarModel objects
+/**
+ * Convert raw historical data from API to HistoricalBarModel runtime models
+ * @param rawData Raw API data (array or dictionary)
+ * @param symbol Symbol identifier
+ * @return Array of HistoricalBarModel runtime models
+ */
 - (NSArray<HistoricalBarModel *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol;
 
-// Converte dati order book da formato API
+/**
+ * Convert raw order book data from API to standardized dictionary with OrderBookEntry objects
+ * @param rawData Raw API data
+ * @param symbol Symbol identifier
+ * @return Dictionary with "bids" and "asks" arrays containing OrderBookEntry objects
+ */
 - (NSDictionary *)standardizeOrderBookData:(id)rawData forSymbol:(NSString *)symbol;
+
+/**
+ * Convert raw batch quotes data from API to dictionary of MarketData runtime models
+ * @param rawData Raw API data
+ * @param symbols Array of symbol identifiers
+ * @return Dictionary mapping symbols to MarketData runtime models
+ */
 - (NSDictionary *)standardizeBatchQuotesData:(id)rawData forSymbols:(NSArray<NSString *> *)symbols;
 
+#pragma mark - Portfolio Data Standardization (Runtime Models)
 
-// TODO: Future - convert these to runtime models too
-- (id)standardizePositionData:(NSDictionary *)rawData;
-- (id)standardizeOrderData:(NSDictionary *)rawData;
-- (NSDictionary *)standardizeAccountData:(id)rawData;
+/**
+ * Convert raw position data from API to AdvancedPositionModel runtime model
+ * @param rawData Raw API data dictionary
+ * @return AdvancedPositionModel runtime model or nil if conversion fails
+ */
+- (nullable AdvancedPositionModel *)standardizePositionData:(NSDictionary *)rawData;
+
+/**
+ * Convert raw order data from API to AdvancedOrderModel runtime model
+ * @param rawData Raw API data dictionary
+ * @return AdvancedOrderModel runtime model or nil if conversion fails
+ */
+- (nullable AdvancedOrderModel *)standardizeOrderData:(NSDictionary *)rawData;
+
+/**
+ * Convert raw account data from API to AccountModel runtime models
+ * @param rawData Raw API data (array or dictionary)
+ * @return Array of AccountModel runtime models
+ */
+- (NSArray<AccountModel *> *)standardizeAccountData:(id)rawData;
 
 @optional
 
-// Nome della fonte per logging/debugging
+#pragma mark - Adapter Information
+
+/**
+ * Source name for logging and debugging
+ * @return Human-readable name of the data source
+ */
 - (NSString *)sourceName;
 
 @end

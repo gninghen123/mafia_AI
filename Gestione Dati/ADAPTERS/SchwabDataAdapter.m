@@ -181,7 +181,7 @@
         // Schwab timestamp is in milliseconds
         NSNumber *timestampMs = candle[@"datetime"];
         if (timestampMs) {
-            bar.timestamp = [NSDate dateWithTimeIntervalSince1970:[timestampMs doubleValue] / 1000.0];
+            bar.date = [NSDate dateWithTimeIntervalSince1970:[timestampMs doubleValue] / 1000.0];
         }
         
         // OHLCV data

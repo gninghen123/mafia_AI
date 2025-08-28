@@ -9,6 +9,7 @@
 #import "YahooDataAdapter.h"
 #import "MarketData.h"
 #import "RuntimeModels.h"
+#import "TradingRuntimeModels.h"
 #import "CommonTypes.h"
 
 @implementation YahooDataAdapter
@@ -96,8 +97,6 @@
     return [[MarketData alloc] initWithDictionary:standardData];
 }
 
-// YahooDataAdapter.m - FIXED standardizeHistoricalData method
-
 - (NSArray<HistoricalBarModel *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol {
     if (!rawData) {
         NSLog(@"❌ YahooDataAdapter: No raw data provided for %@", symbol);
@@ -143,13 +142,13 @@
     
     NSArray *quoteArray = indicators[@"quote"];
     if (!quoteArray || ![quoteArray isKindOfClass:[NSArray class]] || quoteArray.count == 0) {
-        NSLog(@"❌ YahooDataAdapter: No quote array found in indicators");
+        NSLog(@"❌ YahooDataAdapter: No quote data found in indicators");
         return @[];
     }
     
-    // Get the quote data (first element of quote array)
+    // Get the first quote object (Yahoo structure)
     NSDictionary *quoteData = quoteArray.firstObject;
-    if (![quoteData isKindOfClass:[NSDictionary class]]) {
+    if (!quoteData || ![quoteData isKindOfClass:[NSDictionary class]]) {
         NSLog(@"❌ YahooDataAdapter: Invalid quote data structure");
         return @[];
     }
@@ -161,105 +160,62 @@
     NSArray *closes = quoteData[@"close"];
     NSArray *volumes = quoteData[@"volume"];
     
-    // Extract adjusted close if available
-    NSArray *adjCloses = nil;
-    NSArray *adjcloseArray = indicators[@"adjclose"];
-    if (adjcloseArray && [adjcloseArray isKindOfClass:[NSArray class]] && adjcloseArray.count > 0) {
-        NSDictionary *adjcloseData = adjcloseArray.firstObject;
-        if ([adjcloseData isKindOfClass:[NSDictionary class]]) {
-            adjCloses = adjcloseData[@"adjclose"];
-        }
-    }
-    
-    // Validate arrays
-    NSInteger barCount = timestamps.count;
-    if (opens.count != barCount || highs.count != barCount || lows.count != barCount || closes.count != barCount) {
-        NSLog(@"❌ YahooDataAdapter: OHLC arrays length mismatch - timestamps: %ld, OHLC: %ld,%ld,%ld,%ld",
-              (long)barCount, (long)opens.count, (long)highs.count, (long)lows.count, (long)closes.count);
+    if (!opens || !highs || !lows || !closes || !volumes) {
+        NSLog(@"❌ YahooDataAdapter: Missing OHLCV data in Yahoo response");
         return @[];
     }
     
-    NSLog(@"✅ YahooDataAdapter: Processing %ld bars for %@", (long)barCount, symbol);
-    
-    // Convert to HistoricalBarModel objects
-    NSMutableArray<HistoricalBarModel *> *bars = [NSMutableArray array];
+    NSInteger barCount = timestamps.count;
+    NSMutableArray<HistoricalBarModel *> *bars = [NSMutableArray arrayWithCapacity:barCount];
     
     for (NSInteger i = 0; i < barCount; i++) {
-        // Skip bars with null values (Yahoo sometimes has null values)
-        id openVal = opens[i];
-        id highVal = highs[i];
-        id lowVal = lows[i];
-        id closeVal = closes[i];
-        id volumeVal = (i < volumes.count) ? volumes[i] : @0;
-        id timestampVal = timestamps[i];
+        // Create HistoricalBarModel
+        HistoricalBarModel *bar = [[HistoricalBarModel alloc] init];
+        bar.symbol = symbol;
         
-        // Skip null values
-        if ([openVal isKindOfClass:[NSNull class]] ||
-            [highVal isKindOfClass:[NSNull class]] ||
-            [lowVal isKindOfClass:[NSNull class]] ||
-            [closeVal isKindOfClass:[NSNull class]] ||
-            [timestampVal isKindOfClass:[NSNull class]]) {
-            NSLog(@"⚠️ YahooDataAdapter: Skipping bar %ld due to null values", (long)i);
+        // Convert timestamp (Yahoo uses Unix timestamp)
+        NSNumber *timestamp = timestamps[i];
+        if (timestamp) {
+            bar.date = [NSDate dateWithTimeIntervalSince1970:[timestamp doubleValue]];
+        } else {
+            continue; // Skip bars without valid timestamp
+        }
+        
+        // OHLCV data - Yahoo sometimes has null values
+        NSNumber *open = i < opens.count ? opens[i] : nil;
+        NSNumber *high = i < highs.count ? highs[i] : nil;
+        NSNumber *low = i < lows.count ? lows[i] : nil;
+        NSNumber *close = i < closes.count ? closes[i] : nil;
+        NSNumber *volume = i < volumes.count ? volumes[i] : nil;
+        
+        // Skip bars with null essential data
+        if (!open || !high || !low || !close || [open isEqual:[NSNull null]] ||
+            [high isEqual:[NSNull null]] || [low isEqual:[NSNull null]] || [close isEqual:[NSNull null]]) {
             continue;
         }
         
-        HistoricalBarModel *bar = [[HistoricalBarModel alloc] init];
+        bar.open = [open doubleValue];
+        bar.high = [high doubleValue];
+        bar.low = [low doubleValue];
+        bar.close = [close doubleValue];
+        bar.adjustedClose = bar.close; // Yahoo doesn't always provide adjusted close in this format
+        bar.volume = volume ? [volume longLongValue] : 0;
         
-        // Date from timestamp (Unix timestamp)
-        NSNumber *ts = timestampVal;
-        bar.date = [NSDate dateWithTimeIntervalSince1970:ts.doubleValue];
-        bar.symbol = symbol;
+        // Set default timeframe (should be determined from context)
+        bar.timeframe = BarTimeframeDaily; // Default
         
-        // OHLC prices
-        bar.open = [openVal doubleValue];
-        bar.high = [highVal doubleValue];
-        bar.low = [lowVal doubleValue];
-        bar.close = [closeVal doubleValue];
-        
-        // Adjusted close (use regular close if adjusted not available)
-        if (adjCloses && i < adjCloses.count && ![adjCloses[i] isKindOfClass:[NSNull class]]) {
-            bar.adjustedClose = [adjCloses[i] doubleValue];
-        } else {
-            bar.adjustedClose = bar.close;
-        }
-        
-        // Volume (may be null for some timeframes)
-        if (volumeVal && ![volumeVal isKindOfClass:[NSNull class]]) {
-            bar.volume = [volumeVal longLongValue];
-        } else {
-            bar.volume = 0;
-        }
-        
-       
-        
-        // Default timeframe (will be set by DataManager if needed)
-        bar.timeframe = BarTimeframeDaily;
-        
-        // Basic OHLC validation
-        if (bar.high >= bar.low && bar.high >= bar.open && bar.high >= bar.close &&
-            bar.low <= bar.open && bar.low <= bar.close &&
-            bar.open > 0 && bar.high > 0 && bar.low > 0 && bar.close > 0) {
-            [bars addObject:bar];
-        } else {
-            NSLog(@"⚠️ YahooDataAdapter: Skipping invalid OHLC bar %ld for %@ - O:%.2f H:%.2f L:%.2f C:%.2f",
-                  (long)i, symbol, bar.open, bar.high, bar.low, bar.close);
-        }
+        [bars addObject:bar];
     }
     
-    // Sort by date (oldest to newest)
-    NSArray<HistoricalBarModel *> *sortedBars = [bars sortedArrayUsingComparator:^NSComparisonResult(HistoricalBarModel *obj1, HistoricalBarModel *obj2) {
-        return [obj1.date compare:obj2.date];
-    }];
+    NSLog(@"✅ YahooDataAdapter: Created %lu HistoricalBarModel objects for %@",
+          (unsigned long)bars.count, symbol);
     
-    NSLog(@"✅ YahooDataAdapter: Successfully converted %lu/%ld Yahoo bars to HistoricalBarModel for %@",
-          (unsigned long)sortedBars.count, (long)barCount, symbol);
-    
-    return sortedBars;
+    return [bars copy];
 }
 
 - (NSDictionary *)standardizeOrderBookData:(id)rawData forSymbol:(NSString *)symbol {
-    // Yahoo Finance doesn't provide detailed order book data in free API
-    NSLog(@"⚠️ YahooDataAdapter: Order book data not available from Yahoo Finance API");
+    // Yahoo Finance doesn't typically provide order book data in free tier
+    NSLog(@"⚠️ YahooDataAdapter: Order book data not available from Yahoo Finance free tier");
     return @{
         @"symbol": symbol,
         @"bids": @[],
@@ -269,7 +225,7 @@
 }
 
 - (NSDictionary *)standardizeBatchQuotesData:(id)rawData forSymbols:(NSArray<NSString *> *)symbols {
-    if (!rawData || ![rawData isKindOfClass:[NSDictionary class]]) {
+    if (![rawData isKindOfClass:[NSDictionary class]]) {
         NSLog(@"❌ YahooDataAdapter: Invalid batch quotes data format");
         return @{};
     }
@@ -296,24 +252,24 @@
     return [standardizedQuotes copy];
 }
 
-#pragma mark - Future Implementation (Portfolio/Trading)
+#pragma mark - Portfolio/Trading Methods (Not Available for Yahoo)
 
-- (id)standardizePositionData:(NSDictionary *)rawData {
+- (nullable AdvancedPositionModel *)standardizePositionData:(NSDictionary *)rawData {
     // Yahoo Finance doesn't provide portfolio data - this would be for Yahoo-connected brokers
     NSLog(@"⚠️ YahooDataAdapter: Position data not available from Yahoo Finance");
     return nil;
 }
 
-- (id)standardizeOrderData:(NSDictionary *)rawData {
+- (nullable AdvancedOrderModel *)standardizeOrderData:(NSDictionary *)rawData {
     // Yahoo Finance doesn't provide order data
     NSLog(@"⚠️ YahooDataAdapter: Order data not available from Yahoo Finance");
     return nil;
 }
 
-- (NSDictionary *)standardizeAccountData:(id)rawData {
+- (NSArray<AccountModel *> *)standardizeAccountData:(id)rawData {
     // Yahoo Finance doesn't provide account data
     NSLog(@"⚠️ YahooDataAdapter: Account data not available from Yahoo Finance");
-    return @{};
+    return @[];
 }
 
 #pragma mark - Yahoo-Specific Helper Methods

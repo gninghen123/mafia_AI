@@ -17,6 +17,14 @@ NS_ASSUME_NONNULL_BEGIN
 #pragma mark - 🛡️ SECURE Account Management (Broker-Specific Only)
 
 /**
+ * Get accounts from all connected brokers (INTERNAL ORCHESTRATION)
+ * 🛡️ SECURITY: This method orchestrates calls to specific brokers internally
+ * @param completion Completion block with all accounts from connected brokers
+ * @return Request ID for tracking
+ */
+- (NSString *)requestAccountsWithCompletion:(void (^)(NSArray *accounts, NSError *error))completion;
+
+/**
  * Get accounts from SPECIFIC broker only
  * 🛡️ SECURITY: Requires specific DataSource - NO aggregation
  * @param requiredSource Specific broker DataSource (Schwab, IBKR, etc.)

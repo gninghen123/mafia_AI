@@ -33,40 +33,22 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
     NSLog(@"🛡️ DataHub: Getting accounts from broker %@", DataSourceTypeToString(brokerType));
     
     // DataHub acts as a caching/coordination layer over DataManager
-    // Use the existing method that gets ALL accounts, then filter by broker type
+    // Use the internal method that actually exists and filter by broker type
     [[DataManager sharedManager] requestAccountsWithCompletion:^(NSArray *allAccounts, NSError *error) {
         
-        NSMutableArray<AccountModel *> *accountModels = [NSMutableArray array];
-        BOOL isFresh = YES; // DataManager provides fresh data
+        NSMutableArray<AccountModel *> *accountsForBroker = [NSMutableArray array];
+        BOOL isFresh = YES;
         
         if (!error && allAccounts) {
-            // Filter accounts for the requested broker type
-            for (id accountData in allAccounts) {
-                AccountModel *accountModel = nil;
-                
-                if ([accountData isKindOfClass:[AccountModel class]]) {
-                    accountModel = (AccountModel *)accountData;
-                } else if ([accountData isKindOfClass:[NSDictionary class]]) {
-                    accountModel = [[AccountModel alloc] initWithDictionary:(NSDictionary *)accountData];
-                }
-                
-                if (accountModel) {
-                    // Ensure broker name is set
-                    if (!accountModel.brokerName || [accountModel.brokerName isEqualToString:@"UNKNOWN"]) {
-                        accountModel.brokerName = DataSourceTypeToString(brokerType);
-                    }
-                    
-                    // Only include accounts from the requested broker
-                    if ([accountModel.brokerName isEqualToString:DataSourceTypeToString(brokerType)]) {
-                        [accountModels addObject:accountModel];
-                    }
+            for (AccountModel *account in allAccounts) {
+                if ([account.brokerName isEqualToString:DataSourceTypeToString(brokerType)]) {
+                    [accountsForBroker addObject:account];
                 }
             }
         }
         
-        // Call completion on main queue
         dispatch_async(dispatch_get_main_queue(), ^{
-            completion([accountModels copy], isFresh, error);
+            completion([accountsForBroker copy], isFresh, error);
         });
     }];
 }
@@ -174,7 +156,7 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
             summaryModel.cashBalance = [summaryData[@"cashBalance"] doubleValue];
             summaryModel.marginUsed = [summaryData[@"marginUsed"] doubleValue];
             summaryModel.dayTradesLeft = [summaryData[@"dayTradesLeft"] integerValue];
-            summaryModel.lastUpdated = summaryData[@"lastUpdated"] ?: [NSDate date];
+            summaryModel.lastUpdated = summaryData[@"lastUpdated"] ? : [NSDate date];
         }
         
         dispatch_async(dispatch_get_main_queue(), ^{
@@ -199,27 +181,22 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
         return;
     }
     
-    NSLog(@"📊 DataHub: Getting positions for account %@ from broker %@", accountId, DataSourceTypeToString(brokerType));
+    NSLog(@"🏦 DataHub: Getting positions for account %@ from broker %@", accountId, DataSourceTypeToString(brokerType));
     
     // Forward to DataManager for positions
     [[DataManager sharedManager] requestPositions:accountId
-                             fromDataSource:brokerType
-                                 completion:^(NSArray *positionsData, NSError *error) {
+                                    fromDataSource:brokerType
+                                        completion:^(NSArray *positionsArray, NSError *error) {
         
         NSMutableArray<AdvancedPositionModel *> *positionModels = [NSMutableArray array];
         BOOL isFresh = YES;
         
-        if (!error && positionsData) {
-            for (id positionData in positionsData) {
-                AdvancedPositionModel *positionModel = nil;
-                
-                if ([positionData isKindOfClass:[AdvancedPositionModel class]]) {
-                    positionModel = (AdvancedPositionModel *)positionData;
-                } else if ([positionData isKindOfClass:[NSDictionary class]]) {
-                    // Create new position model and populate from dictionary
-                    positionModel = [[AdvancedPositionModel alloc] init];
+        if (!error && positionsArray) {
+            for (id positionData in positionsArray) {
+                if ([positionData isKindOfClass:[NSDictionary class]]) {
                     NSDictionary *dict = (NSDictionary *)positionData;
                     
+                    AdvancedPositionModel *positionModel = [[AdvancedPositionModel alloc] init];
                     positionModel.symbol = dict[@"symbol"] ?: @"";
                     positionModel.accountId = dict[@"accountId"] ?: accountId;
                     positionModel.quantity = [dict[@"quantity"] doubleValue];
@@ -234,13 +211,8 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
                     positionModel.marketValue = [dict[@"marketValue"] doubleValue];
                     positionModel.unrealizedPL = [dict[@"unrealizedPL"] doubleValue];
                     positionModel.unrealizedPLPercent = [dict[@"unrealizedPLPercent"] doubleValue];
-                    positionModel.dayPL = [dict[@"dayPL"] doubleValue];
-                    positionModel.dayPLPercent = [dict[@"dayPLPercent"] doubleValue];
-                    positionModel.totalCost = [dict[@"totalCost"] doubleValue];
-                    positionModel.lastUpdated = dict[@"lastUpdated"] ?: [NSDate date];
-                }
-                
-                if (positionModel) {
+                    positionModel.priceLastUpdated = dict[@"lastUpdated"] ?: [NSDate date];
+                    
                     [positionModels addObject:positionModel];
                 }
             }
@@ -274,50 +246,43 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
     
     // Forward to DataManager for orders
     [[DataManager sharedManager] requestOrders:accountId
-                          fromDataSource:brokerType
-                              withStatus:statusFilter
-                              completion:^(NSArray *ordersData, NSError *error) {
+                                fromDataSource:brokerType
+                                    withStatus:statusFilter
+                                    completion:^(NSArray *ordersArray, NSError *error) {
         
         NSMutableArray<AdvancedOrderModel *> *orderModels = [NSMutableArray array];
         BOOL isFresh = YES;
         
-        if (!error && ordersData) {
-            for (id orderData in ordersData) {
-                AdvancedOrderModel *orderModel = nil;
-                
-                if ([orderData isKindOfClass:[AdvancedOrderModel class]]) {
-                    orderModel = (AdvancedOrderModel *)orderData;
-                } else if ([orderData isKindOfClass:[NSDictionary class]]) {
-                    // Create new order model and populate from dictionary
-                    orderModel = [[AdvancedOrderModel alloc] init];
+        if (!error && ordersArray) {
+            for (id orderData in ordersArray) {
+                if ([orderData isKindOfClass:[NSDictionary class]]) {
                     NSDictionary *dict = (NSDictionary *)orderData;
                     
-                    orderModel.orderId = dict[@"orderId"] ?: dict[@"id"] ?: @"";
+                    AdvancedOrderModel *orderModel = [[AdvancedOrderModel alloc] init];
+                    // Populate order model from dictionary
+                    orderModel.orderId = dict[@"orderId"] ?: @"";
                     orderModel.accountId = dict[@"accountId"] ?: accountId;
                     orderModel.symbol = dict[@"symbol"] ?: @"";
                     orderModel.orderType = dict[@"orderType"] ?: @"MARKET";
-                    orderModel.side = dict[@"side"] ?: dict[@"instruction"] ?: @"BUY";
+                    orderModel.side = dict[@"side"] ?: @"BUY";
                     orderModel.status = dict[@"status"] ?: @"PENDING";
-                    orderModel.timeInForce = dict[@"timeInForce"] ?: dict[@"duration"] ?: @"DAY";
+                    orderModel.timeInForce = dict[@"timeInForce"] ?: @"DAY";
                     orderModel.quantity = [dict[@"quantity"] doubleValue];
                     orderModel.filledQuantity = [dict[@"filledQuantity"] doubleValue];
                     orderModel.price = [dict[@"price"] doubleValue];
                     orderModel.stopPrice = [dict[@"stopPrice"] doubleValue];
                     orderModel.avgFillPrice = [dict[@"avgFillPrice"] doubleValue];
-                    orderModel.createdDate = dict[@"createdDate"] ?: dict[@"enteredTime"] ?: [NSDate date];
-                    orderModel.updatedDate = dict[@"updatedDate"] ?: dict[@"closeTime"] ?: [NSDate date];
-                    orderModel.instruction = dict[@"instruction"] ?: @"";
-                    orderModel.linkedOrderIds = dict[@"linkedOrderIds"] ?: @[];
-                    orderModel.parentOrderId = dict[@"parentOrderId"];
-                    orderModel.isChildOrder = [dict[@"isChildOrder"] boolValue];
-                    orderModel.orderStrategy = dict[@"orderStrategy"] ?: @"SINGLE";
-                    orderModel.currentBidPrice = [dict[@"currentBidPrice"] doubleValue];
-                    orderModel.currentAskPrice = [dict[@"currentAskPrice"] doubleValue];
-                    orderModel.dayHigh = [dict[@"dayHigh"] doubleValue];
-                    orderModel.dayLow = [dict[@"dayLow"] doubleValue];
-                }
-                
-                if (orderModel) {
+                    
+                    NSString *createdDateStr = dict[@"createdDate"];
+                    if (createdDateStr) {
+                        orderModel.createdDate = [NSDate dateWithTimeIntervalSince1970:[createdDateStr doubleValue]];
+                    }
+                    
+                    NSString *updatedDateStr = dict[@"updatedDate"];
+                    if (updatedDateStr) {
+                        orderModel.updatedDate = [NSDate dateWithTimeIntervalSince1970:[updatedDateStr doubleValue]];
+                    }
+                    
                     [orderModels addObject:orderModel];
                 }
             }
@@ -329,11 +294,11 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
     }];
 }
 
-#pragma mark - 🚨 SECURE Trading Operations (Broker-Specific Only)
+#pragma mark - 🛡️ SECURE Trading Operations (Broker-Specific Only)
 
 - (void)placeOrder:(NSDictionary *)orderData
         forAccount:(NSString *)accountId
-        usingBroker:(DataSourceType)brokerType
+        withBroker:(DataSourceType)brokerType
         completion:(void(^)(NSString * _Nullable orderId, NSError * _Nullable error))completion {
     
     if (!completion) {
@@ -341,41 +306,45 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
         return;
     }
     
-    if (!orderData || !accountId || accountId.length == 0) {
+    if (!accountId || accountId.length == 0 || !orderData) {
         NSError *error = [NSError errorWithDomain:@"DataHub"
                                              code:400
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid order data or account ID"}];
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid order parameters"}];
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(nil, error);
         });
         return;
     }
     
-    NSLog(@"🚨 DataHub: Placing order for account %@ using broker %@", accountId, DataSourceTypeToString(brokerType));
+    NSLog(@"🚨 DataHub: Placing order for account %@ via broker %@", accountId, DataSourceTypeToString(brokerType));
     
-    // Forward to DataManager for order placement
+    // Forward to DataManager's secure trading methods
     [[DataManager sharedManager] placeOrder:orderData
-                           forAccount:accountId
-                      usingDataSource:brokerType
-                           completion:^(NSString *orderId, NSError *error) {
+                                 forAccount:accountId
+                             usingDataSource:brokerType
+                                  completion:^(NSString *orderId, NSError *error) {
+        
+        if (!error && orderId) {
+            // Broadcast notification about successful order placement
+            [[NSNotificationCenter defaultCenter] postNotificationName:PortfolioOrderStatusChangedNotification
+                                                                object:self
+                                                              userInfo:@{
+                                                                  @"orderId": orderId,
+                                                                  @"accountId": accountId,
+                                                                  @"brokerType": @(brokerType),
+                                                                  @"status": @"PLACED"
+                                                              }];
+        }
         
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(orderId, error);
-            
-            // Post notification if successful
-            if (!error && orderId) {
-                [[NSNotificationCenter defaultCenter] postNotificationName:PortfolioOrdersUpdatedNotification
-                                                                    object:self
-                                                                  userInfo:@{@"accountId": accountId,
-                                                                           @"brokerType": @(brokerType)}];
-            }
         });
     }];
 }
 
 - (void)cancelOrder:(NSString *)orderId
          forAccount:(NSString *)accountId
-        usingBroker:(DataSourceType)brokerType
+         withBroker:(DataSourceType)brokerType
          completion:(void(^)(BOOL success, NSError * _Nullable error))completion {
     
     if (!completion) {
@@ -383,44 +352,46 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
         return;
     }
     
-    if (!orderId || !accountId || orderId.length == 0 || accountId.length == 0) {
+    if (!accountId || accountId.length == 0 || !orderId || orderId.length == 0) {
         NSError *error = [NSError errorWithDomain:@"DataHub"
                                              code:400
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid order ID or account ID"}];
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid cancel order parameters"}];
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(NO, error);
         });
         return;
     }
     
-    NSLog(@"🚨 DataHub: Cancelling order %@ for account %@ using broker %@", orderId, accountId, DataSourceTypeToString(brokerType));
+    NSLog(@"❌ DataHub: Cancelling order %@ for account %@ via broker %@", orderId, accountId, DataSourceTypeToString(brokerType));
     
-    // Forward to DataManager for order cancellation
+    // Forward to DataManager's secure trading methods
     [[DataManager sharedManager] cancelOrder:orderId
-                            forAccount:accountId
-                       usingDataSource:brokerType
-                            completion:^(BOOL success, NSError *error) {
+                                  forAccount:accountId
+                             usingDataSource:brokerType
+                                  completion:^(BOOL success, NSError *error) {
+        
+        if (success && !error) {
+            // Broadcast notification about successful order cancellation
+            [[NSNotificationCenter defaultCenter] postNotificationName:PortfolioOrderStatusChangedNotification
+                                                                object:self
+                                                              userInfo:@{
+                                                                  @"orderId": orderId,
+                                                                  @"accountId": accountId,
+                                                                  @"brokerType": @(brokerType),
+                                                                  @"status": @"CANCELLED"
+                                                              }];
+        }
         
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(success, error);
-            
-            // Post notification if successful
-            if (success) {
-                [[NSNotificationCenter defaultCenter] postNotificationName:PortfolioOrderStatusChangedNotification
-                                                                    object:self
-                                                                  userInfo:@{@"orderId": orderId,
-                                                                           @"accountId": accountId,
-                                                                           @"brokerType": @(brokerType),
-                                                                           @"status": @"CANCELLED"}];
-            }
         });
     }];
 }
 
 - (void)modifyOrder:(NSString *)orderId
+        withNewData:(NSDictionary *)newOrderData
          forAccount:(NSString *)accountId
-        usingBroker:(DataSourceType)brokerType
-            newData:(NSDictionary *)modifiedData
+         withBroker:(DataSourceType)brokerType
          completion:(void(^)(BOOL success, NSError * _Nullable error))completion {
     
     if (!completion) {
@@ -428,38 +399,40 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
         return;
     }
     
-    if (!orderId || !accountId || !modifiedData || orderId.length == 0 || accountId.length == 0) {
+    if (!accountId || accountId.length == 0 || !orderId || orderId.length == 0 || !newOrderData) {
         NSError *error = [NSError errorWithDomain:@"DataHub"
                                              code:400
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid parameters for order modification"}];
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid modify order parameters"}];
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(NO, error);
         });
         return;
     }
     
-    NSLog(@"🚨 DataHub: Modifying order %@ for account %@ using broker %@", orderId, accountId, DataSourceTypeToString(brokerType));
+    NSLog(@"🔧 DataHub: Modifying order %@ for account %@ via broker %@", orderId, accountId, DataSourceTypeToString(brokerType));
     
-    // Forward to DataManager for order modification
-    [[DataManager sharedManager] modifyOrder:orderId
-                            forAccount:accountId
-                       usingDataSource:brokerType
-                          newOrderData:modifiedData
-                            completion:^(BOOL success, NSError *error) {
-        
-        dispatch_async(dispatch_get_main_queue(), ^{
-            completion(success, error);
-            
-            // Post notification if successful
-            if (success) {
-                [[NSNotificationCenter defaultCenter] postNotificationName:PortfolioOrderStatusChangedNotification
-                                                                    object:self
-                                                                  userInfo:@{@"orderId": orderId,
-                                                                           @"accountId": accountId,
-                                                                           @"brokerType": @(brokerType),
-                                                                           @"status": @"MODIFIED"}];
-            }
-        });
+    // For now, implement modify as cancel + place new order
+    // TODO: Implement proper order modification when brokers support it
+    [self cancelOrder:orderId forAccount:accountId withBroker:brokerType completion:^(BOOL cancelSuccess, NSError *cancelError) {
+        if (cancelSuccess && !cancelError) {
+        [self placeOrder:newOrderData forAccount:accountId withBroker:brokerType completion:^(NSString *newOrderId, NSError *placeError) {
+                if (!placeError && newOrderId) {
+                    // Broadcast notification about order modification
+                    [[NSNotificationCenter defaultCenter] postNotificationName:PortfolioOrderStatusChangedNotification
+                                                                        object:self
+                                                                      userInfo:@{
+                                                                          @"originalOrderId": orderId,
+                                                                          @"newOrderId": newOrderId,
+                                                                          @"accountId": accountId,
+                                                                          @"brokerType": @(brokerType),
+                                                                          @"status": @"MODIFIED"}];
+                }
+                
+                completion(!placeError && newOrderId != nil, placeError);
+            }];
+        } else {
+            completion(NO, cancelError);
+        }
     }];
 }
 

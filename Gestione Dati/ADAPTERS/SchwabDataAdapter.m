@@ -6,9 +6,8 @@
 #import "SchwabDataAdapter.h"
 #import "MarketData.h"
 #import "HistoricalBar+CoreDataClass.h"
-#import "Position.h"
-#import "Order.h"
-#import "OrderBookEntry.h"  // AGGIUNGI QUESTO IMPORT
+#import "TradingRuntimeModels.h"
+#import "OrderBookEntry.h"
 
 @implementation SchwabDataAdapter
 
@@ -145,7 +144,6 @@
     return [standardizedQuotes copy];
 }
 
-
 - (NSArray<HistoricalBarModel *> *)standardizeHistoricalData:(id)rawData forSymbol:(NSString *)symbol {
     if (!rawData) return @[];
     
@@ -172,99 +170,69 @@
     NSMutableArray<HistoricalBarModel *> *bars = [NSMutableArray array];
     
     for (id candleItem in candles) {
-        if (![candleItem isKindOfClass:[NSDictionary class]]) {
-            NSLog(@"SchwabAdapter WARNING: Skipping non-dictionary candle item");
-            continue;
-        }
+        if (![candleItem isKindOfClass:[NSDictionary class]]) continue;
         
         NSDictionary *candle = (NSDictionary *)candleItem;
         
-        // Validazione datetime
-        NSNumber *datetime = candle[@"datetime"];
-        if (!datetime || [datetime doubleValue] <= 0) {
-            NSLog(@"SchwabAdapter WARNING: Invalid datetime %@ for symbol %@", datetime, symbol);
-            continue;
-        }
-        
-        // Validazione valori OHLCV
-        double open = [candle[@"open"] doubleValue];
-        double high = [candle[@"high"] doubleValue];
-        double low = [candle[@"low"] doubleValue];
-        double close = [candle[@"close"] doubleValue];
-        long long volume = [candle[@"volume"] longLongValue];
-        
-        // Validazione consistenza OHLC
-        if (open <= 0 || high <= 0 || low <= 0 || close <= 0) {
-            NSLog(@"SchwabAdapter WARNING: Invalid OHLC values for %@", symbol);
-            continue;
-        }
-        
-        if (high < low || open > high || open < low || close > high || close < low) {
-            NSLog(@"SchwabAdapter WARNING: Inconsistent OHLC values for %@", symbol);
-            continue;
-        }
-        
-        // CREARE RUNTIME MODEL DIRETTAMENTE
+        // Create HistoricalBarModel from Schwab candle data
         HistoricalBarModel *bar = [[HistoricalBarModel alloc] init];
-        
-        // Basic properties
         bar.symbol = symbol;
-        bar.date = [NSDate dateWithTimeIntervalSince1970:[datetime doubleValue] / 1000.0];
+        
+        // Schwab timestamp is in milliseconds
+        NSNumber *timestampMs = candle[@"datetime"];
+        if (timestampMs) {
+            bar.timestamp = [NSDate dateWithTimeIntervalSince1970:[timestampMs doubleValue] / 1000.0];
+        }
         
         // OHLCV data
-        bar.open = open;
-        bar.high = high;
-        bar.low = low;
-        bar.close = close;
-        bar.adjustedClose = close; // Default a close, miglioreremo con split/dividendi
-        bar.volume = volume;
+        bar.open = [candle[@"open"] doubleValue];
+        bar.high = [candle[@"high"] doubleValue];
+        bar.low = [candle[@"low"] doubleValue];
+        bar.close = [candle[@"close"] doubleValue];
+        bar.volume = [candle[@"volume"] integerValue];
         
-        // Default timeframe (sarà settato dal DataManager se necessario)
-        bar.timeframe = BarTimeframeDaily;
+        // Set timeframe based on data (this might need to be passed as parameter)
+        bar.timeframe = BarTimeframeDaily; // Default, should be determined from context
         
         [bars addObject:bar];
     }
     
-    // Ordina per data crescente
-    NSArray<HistoricalBarModel *> *sortedBars = [bars sortedArrayUsingComparator:^NSComparisonResult(HistoricalBarModel *bar1, HistoricalBarModel *bar2) {
-        return [bar1.date compare:bar2.date];
-    }];
+    NSLog(@"✅ SchwabAdapter: Created %lu HistoricalBarModel objects for %@",
+          (unsigned long)bars.count, symbol);
     
-    NSLog(@"SchwabAdapter SUCCESS: Standardized %lu runtime HistoricalBarModel objects for %@", (unsigned long)sortedBars.count, symbol);
-    return sortedBars;
+    return [bars copy];
 }
 
 - (NSDictionary *)standardizeOrderBookData:(id)rawData forSymbol:(NSString *)symbol {
-    if (!rawData) return @{@"bids": @[], @"asks": @[]};
+    // ✅ This method signature is correct in the protocol - returns NSDictionary
+    if (!rawData || ![rawData isKindOfClass:[NSDictionary class]]) {
+        return @{@"bids": @[], @"asks": @[]};
+    }
     
+    NSDictionary *orderBookData = (NSDictionary *)rawData;
     NSMutableArray<OrderBookEntry *> *bids = [NSMutableArray array];
     NSMutableArray<OrderBookEntry *> *asks = [NSMutableArray array];
     
-    // Schwab potrebbe fornire order book in diversi formati
-    if ([rawData isKindOfClass:[NSDictionary class]]) {
-        NSDictionary *orderBookData = (NSDictionary *)rawData;
-        
-        // Processa i bid
-        NSArray *rawBids = orderBookData[@"bids"] ?: orderBookData[@"bidList"] ?: @[];
-        for (NSDictionary *bidData in rawBids) {
-            OrderBookEntry *entry = [[OrderBookEntry alloc] init];
-            entry.price = [bidData[@"price"] ?: bidData[@"bidPrice"] ?: @0 doubleValue];
-            entry.size = [bidData[@"size"] ?: bidData[@"bidSize"] ?: @0 integerValue];
-            entry.marketMaker = bidData[@"marketMaker"];
-            entry.isBid = YES;
-            [bids addObject:entry];
-        }
-        
-        // Processa gli ask
-        NSArray *rawAsks = orderBookData[@"asks"] ?: orderBookData[@"askList"] ?: @[];
-        for (NSDictionary *askData in rawAsks) {
-            OrderBookEntry *entry = [[OrderBookEntry alloc] init];
-            entry.price = [askData[@"price"] ?: askData[@"askPrice"] ?: @0 doubleValue];
-            entry.size = [askData[@"size"] ?: askData[@"askSize"] ?: @0 integerValue];
-            entry.marketMaker = askData[@"marketMaker"];
-            entry.isBid = NO;
-            [asks addObject:entry];
-        }
+    // Process bids
+    NSArray *rawBids = orderBookData[@"bids"] ?: orderBookData[@"bidList"] ?: @[];
+    for (NSDictionary *bidData in rawBids) {
+        OrderBookEntry *entry = [[OrderBookEntry alloc] init];
+        entry.price = [bidData[@"price"] ?: bidData[@"bidPrice"] ?: @0 doubleValue];
+        entry.size = [bidData[@"size"] ?: bidData[@"bidSize"] ?: @0 integerValue];
+        entry.marketMaker = bidData[@"marketMaker"];
+        entry.isBid = YES;
+        [bids addObject:entry];
+    }
+    
+    // Process asks
+    NSArray *rawAsks = orderBookData[@"asks"] ?: orderBookData[@"askList"] ?: @[];
+    for (NSDictionary *askData in rawAsks) {
+        OrderBookEntry *entry = [[OrderBookEntry alloc] init];
+        entry.price = [askData[@"price"] ?: askData[@"askPrice"] ?: @0 doubleValue];
+        entry.size = [askData[@"size"] ?: askData[@"askSize"] ?: @0 integerValue];
+        entry.marketMaker = askData[@"marketMaker"];
+        entry.isBid = NO;
+        [asks addObject:entry];
     }
     
     return @{
@@ -273,26 +241,157 @@
     };
 }
 
-- (Position *)standardizePositionData:(NSDictionary *)rawData {
-    // TODO: Implementare quando necessario
-    return nil;
-}
-
-- (Order *)standardizeOrderData:(NSDictionary *)rawData {
-    // TODO: Implementare quando necessario
-    return nil;
-}
-
-- (NSDictionary *)standardizeAccountData:(id)rawData {
-    if ([rawData isKindOfClass:[NSArray class]]) {
-        // Array di account da Schwab API
-        return @{@"accounts": (NSArray *)rawData};
-    } else if ([rawData isKindOfClass:[NSDictionary class]]) {
-        // Singolo account
-        return @{@"accounts": @[rawData]};
+- (AdvancedPositionModel *)standardizePositionData:(NSDictionary *)rawData {
+    if (!rawData || ![rawData isKindOfClass:[NSDictionary class]]) {
+        return nil;
     }
     
-    NSLog(@"❌ SchwabAdapter: Unexpected account data format: %@", [rawData class]);
-    return @{@"accounts": @[]};
+    AdvancedPositionModel *position = [[AdvancedPositionModel alloc] init];
+    
+    // Basic position info
+    position.symbol = rawData[@"instrument"][@"symbol"] ?: rawData[@"symbol"] ?: @"";
+    position.accountId = rawData[@"accountId"] ?: @"";
+    position.quantity = [rawData[@"longQuantity"] doubleValue] - [rawData[@"shortQuantity"] doubleValue];
+    position.avgCost = [rawData[@"averagePrice"] doubleValue];
+    
+    // Market data
+    position.currentPrice = [rawData[@"currentPrice"] doubleValue] ?: [rawData[@"marketValue"] doubleValue] / position.quantity;
+    position.marketValue = [rawData[@"marketValue"] doubleValue];
+    
+    // P&L calculations
+    double totalCost = position.quantity * position.avgCost;
+    position.unrealizedPL = position.marketValue - totalCost;
+    if (totalCost != 0) {
+        position.unrealizedPLPercent = (position.unrealizedPL / totalCost) * 100.0;
+    }
+    
+    // Additional market data (if available)
+    position.bidPrice = [rawData[@"bidPrice"] doubleValue];
+    position.askPrice = [rawData[@"askPrice"] doubleValue];
+    position.dayHigh = [rawData[@"dayHigh"] doubleValue];
+    position.dayLow = [rawData[@"dayLow"] doubleValue];
+    position.dayOpen = [rawData[@"dayOpen"] doubleValue];
+    position.previousClose = [rawData[@"previousClose"] doubleValue];
+    position.volume = [rawData[@"volume"] integerValue];
+    
+    position.priceLastUpdated = [NSDate date];
+    
+    NSLog(@"✅ SchwabAdapter: Created AdvancedPositionModel for %@ - %.0f shares @ $%.2f",
+          position.symbol, position.quantity, position.avgCost);
+    
+    return position;
 }
+
+- (AdvancedOrderModel *)standardizeOrderData:(NSDictionary *)rawData {
+    if (!rawData || ![rawData isKindOfClass:[NSDictionary class]]) {
+        return nil;
+    }
+    
+    AdvancedOrderModel *order = [[AdvancedOrderModel alloc] init];
+    
+    // Basic order info
+    order.orderId = rawData[@"orderId"] ?: @"";
+    order.accountId = rawData[@"accountId"] ?: @"";
+    order.symbol = rawData[@"orderLegCollection"][0][@"instrument"][@"symbol"] ?: @"";
+    
+    // Order type and side
+    order.orderType = rawData[@"orderType"] ?: @"MARKET";
+    order.side = rawData[@"orderLegCollection"][0][@"instruction"] ?: @"BUY";
+    order.status = rawData[@"status"] ?: @"PENDING";
+    order.timeInForce = rawData[@"duration"] ?: @"DAY";
+    
+    // Quantities and prices
+    order.quantity = [rawData[@"quantity"] doubleValue];
+    order.filledQuantity = [rawData[@"filledQuantity"] doubleValue];
+    order.price = [rawData[@"price"] doubleValue];
+    order.stopPrice = [rawData[@"stopPrice"] doubleValue];
+    order.avgFillPrice = [rawData[@"avgFillPrice"] doubleValue];
+    
+    // Dates (Schwab uses ISO date strings or timestamps)
+    NSString *enteredTime = rawData[@"enteredTime"];
+    if (enteredTime) {
+        // Handle ISO date string conversion
+        NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+        formatter.dateFormat = @"yyyy-MM-dd'T'HH:mm:ss.SSSZ";
+        order.createdDate = [formatter dateFromString:enteredTime] ?: [NSDate date];
+    }
+    
+    NSString *closeTime = rawData[@"closeTime"];
+    if (closeTime) {
+        NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+        formatter.dateFormat = @"yyyy-MM-dd'T'HH:mm:ss.SSSZ";
+        order.updatedDate = [formatter dateFromString:closeTime] ?: [NSDate date];
+    } else {
+        order.updatedDate = order.createdDate;
+    }
+    
+    // Additional fields
+    order.instruction = rawData[@"orderLegCollection"][0][@"instruction"] ?: @"";
+    order.orderStrategy = rawData[@"orderStrategyType"] ?: @"SINGLE";
+    
+    NSLog(@"✅ SchwabAdapter: Created AdvancedOrderModel %@ for %@ - %@ %.0f shares",
+          order.orderId, order.symbol, order.side, order.quantity);
+    
+    return order;
+}
+
+- (NSArray<AccountModel *> *)standardizeAccountData:(id)rawData {
+    NSMutableArray<AccountModel *> *accounts = [NSMutableArray array];
+    
+    if ([rawData isKindOfClass:[NSArray class]]) {
+        // Array of account dictionaries from Schwab API
+        NSArray *accountsArray = (NSArray *)rawData;
+        
+        for (id accountItem in accountsArray) {
+            if ([accountItem isKindOfClass:[NSDictionary class]]) {
+                AccountModel *account = [self createAccountModelFromDictionary:(NSDictionary *)accountItem];
+                if (account) {
+                    [accounts addObject:account];
+                }
+            }
+        }
+        
+    } else if ([rawData isKindOfClass:[NSDictionary class]]) {
+        // Single account dictionary
+        NSDictionary *accountDict = (NSDictionary *)rawData;
+        
+        // Check if it's a wrapper with "accounts" key
+        if (accountDict[@"accounts"]) {
+            return [self standardizeAccountData:accountDict[@"accounts"]];
+        } else {
+            // Single account data
+            AccountModel *account = [self createAccountModelFromDictionary:accountDict];
+            if (account) {
+                [accounts addObject:account];
+            }
+        }
+    }
+    
+    NSLog(@"✅ SchwabAdapter: Created %lu AccountModel objects", (unsigned long)accounts.count);
+    return [accounts copy];
+}
+
+#pragma mark - Helper Methods
+
+- (AccountModel *)createAccountModelFromDictionary:(NSDictionary *)accountDict {
+    if (!accountDict || ![accountDict isKindOfClass:[NSDictionary class]]) {
+        return nil;
+    }
+    
+    AccountModel *account = [[AccountModel alloc] init];
+    
+    // Basic account info
+    account.accountId = accountDict[@"accountNumber"] ?: accountDict[@"accountId"] ?: @"";
+    account.accountType = accountDict[@"type"] ?: @"UNKNOWN";
+    account.brokerName = @"SCHWAB";
+    account.displayName = [NSString stringWithFormat:@"SCHWAB-%@", account.accountId];
+    account.isConnected = YES;
+    account.isPrimary = [accountDict[@"isPrimary"] boolValue];
+    account.lastUpdated = [NSDate date];
+    
+    NSLog(@"✅ SchwabAdapter: Created AccountModel %@ (%@)", account.accountId, account.accountType);
+    
+    return account;
+}
+
 @end

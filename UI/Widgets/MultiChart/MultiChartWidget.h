@@ -30,8 +30,8 @@
 @property (nonatomic, strong) NSButton *resetSymbolsButton;      // NUOVO: Pulsante reset simboli
 @property (nonatomic, strong) NSTextField *itemWidthField;
 @property (nonatomic, strong) NSTextField *itemHeightField;
-@property (nonatomic, assign) NSInteger itemWidth;
-@property (nonatomic, assign) NSInteger itemHeigth;          
+@property (nonatomic, assign) CGFloat itemWidth;    // ← CGFloat invece di NSInteger
+@property (nonatomic, assign) CGFloat itemHeight;   // ← Fix typo + CGFloat
 
 // UI Components - REMOVED readonly to allow internal assignment
 @property (nonatomic, strong) NSTextField *symbolsTextField;

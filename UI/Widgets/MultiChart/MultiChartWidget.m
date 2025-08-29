@@ -12,6 +12,9 @@
 #import "RuntimeModels.h"
 #import "MiniChartCollectionItem.h"
 
+static NSString *const kMultiChartItemWidthKey = @"MultiChart_ItemWidth";
+static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
+
 @interface MultiChartWidget ()
 
 // UI Components - Only declare internal ones not in header
@@ -50,10 +53,15 @@
     _symbols = @[];
     _symbolsString = @"";
     
+    // ✅ AGGIUNGI: Inizializzazione itemWidth/itemHeight
+    _itemWidth = 200;
+    _itemHeight = 150;
+    
     // Initialize arrays that are in header
     _miniCharts = [NSMutableArray array];
     _chartConstraints = [NSMutableArray array];
 }
+
 
 #pragma mark - BaseWidget Override
 
@@ -561,6 +569,43 @@
     NSLog(@"✅ MultiChartWidget: Rebuilt %lu mini charts with NSCollectionView", (unsigned long)self.miniCharts.count);
 }
 
+- (void)itemSizeChanged:(id)sender {
+    NSInteger newWidth = self.itemWidthField.integerValue;
+    NSInteger newHeight = self.itemHeightField.integerValue;
+    
+    // Validazione
+    if (newWidth < 100) newWidth = 100;
+    if (newWidth > 500) newWidth = 500;
+    if (newHeight < 80) newHeight = 80;
+    if (newHeight > 400) newHeight = 400;
+    
+    NSLog(@"🔧 Item size changing: %ldx%ld -> %ldx%ld",
+          (long)self.itemWidth, (long)self.itemHeight, (long)newWidth, (long)newHeight);
+    
+    self.itemWidth = newWidth;
+    self.itemHeight = newHeight;
+    
+    // Aggiorna field se corretti
+    self.itemWidthField.integerValue = newWidth;
+    self.itemHeightField.integerValue = newHeight;
+    
+    // Aggiorna layout collection view
+    if ([self.collectionView.collectionViewLayout isKindOfClass:[NSCollectionViewGridLayout class]]) {
+        NSCollectionViewGridLayout *gridLayout = (NSCollectionViewGridLayout *)self.collectionView.collectionViewLayout;
+        gridLayout.minimumItemSize = NSMakeSize(newWidth, newHeight);
+        gridLayout.maximumItemSize = NSMakeSize(newWidth * 1.2, newHeight * 1.2);
+        
+        NSLog(@"🔧 Updated grid layout: itemSize=%ldx%ld", (long)newWidth, (long)newHeight);
+        
+        [self.collectionView.collectionViewLayout invalidateLayout];
+    }
+    
+    // Salva automaticamente
+    [self saveSettingsToUserDefaults];
+    
+    NSLog(@"✅ MultiChartWidget: Item size changed to %ldx%ld", (long)newWidth, (long)newHeight);
+}
+
 
 - (NSInteger)collectionView:(NSCollectionView *)collectionView numberOfItemsInSection:(NSInteger)section {
     NSInteger count = self.miniCharts.count;
@@ -570,19 +615,27 @@
 - (NSCollectionViewItem *)collectionView:(NSCollectionView *)collectionView
                      itemForRepresentedObjectAtIndexPath:(NSIndexPath *)indexPath {
     
+    NSLog(@"🏗️ Collection view requesting item at indexPath: %ld/%ld",
+          (long)indexPath.item, (long)self.miniCharts.count);
+    
     MiniChartCollectionItem *item = [collectionView makeItemWithIdentifier:@"MiniChartItem"
                                                               forIndexPath:indexPath];
     
+    // ✅ FIX: Se non riesce a creare l'item, crea uno vuoto invece di return nil
     if (!item) {
-        return nil;
+        NSLog(@"❌ Failed to create collection item, creating fallback");
+        item = [[MiniChartCollectionItem alloc] init];
     }
     
     if (indexPath.item >= self.miniCharts.count) {
+        NSLog(@"❌ Index %ld out of bounds for miniCharts array (count: %ld)",
+              (long)indexPath.item, (long)self.miniCharts.count);
         return item;
     }
     
     MiniChart *miniChart = self.miniCharts[indexPath.item];
     if (!miniChart) {
+        NSLog(@"❌ MiniChart at index %ld is nil", (long)indexPath.item);
         return item;
     }
     
@@ -603,6 +656,8 @@
     NSLog(@"✅ Created collection item for: %@", miniChart.symbol);
     return item;
 }
+
+
 - (void)handleChartClick:(MiniChart *)clickedChart {
     NSString *symbol = clickedChart.symbol;
     
@@ -620,7 +675,7 @@
         
         NSLog(@"MultiChartWidget: Broadcasted symbol '%@' to chain", symbol);
         
-        // Mostra feedback temporaneo (risolvi problema scroll usando collection view bounds)
+        // Mostra feedback temporaneo
         [self showTemporaryMessageForCollectionView:[NSString stringWithFormat:@"Sent %@ to chain", symbol]];
     }
 }
@@ -1147,10 +1202,11 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     NSInteger savedMaxBars = [defaults integerForKey:kMultiChartMaxBarsKey];
     BOOL savedShowVolume = [defaults boolForKey:kMultiChartShowVolumeKey];
     NSInteger savedColumnsCount = [defaults integerForKey:kMultiChartColumnsCountKey];
-    NSInteger savedRows = [defaults integerForKey:@"MultiChart_GridRows"];
-      NSInteger savedColumns = [defaults integerForKey:@"MultiChart_GridColumns"];
-      
-  
+
+    NSInteger savedItemWidth = [defaults integerForKey:kMultiChartItemWidthKey];
+     NSInteger savedItemHeight = [defaults integerForKey:kMultiChartItemHeightKey];
+    
+    
     // Applica le impostazioni caricate con validazione
     
     // Chart Type (default: Line se non salvato)
@@ -1189,14 +1245,18 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         self.showVolume = YES; // Default
     }
     
-    // Columns Count (default: 3 se non salvato o fuori range)
-    if (savedColumnsCount >= 1 && savedColumnsCount <= 5) {
-        self.columnsCount = savedColumnsCount;
-    } else {
-        self.columnsCount = 3; // Default
-    }
-    
-    // Symbols (default: vuoto se non salvato)
+    // Applica con validazione
+      if (savedItemWidth >= 100 && savedItemWidth <= 500) {
+          self.itemWidth = savedItemWidth;
+      } else {
+          self.itemWidth = 200; // Default
+      }
+      
+      if (savedItemHeight >= 80 && savedItemHeight <= 400) {
+          self.itemHeight = savedItemHeight;
+      } else {
+          self.itemHeight = 150; // Default
+      }
   
         self.symbolsString = @"";
         self.symbols = @[];
@@ -1217,7 +1277,8 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     [defaults setInteger:self.maxBars forKey:kMultiChartMaxBarsKey];
     [defaults setBool:self.showVolume forKey:kMultiChartShowVolumeKey];
     [defaults setInteger:self.columnsCount forKey:kMultiChartColumnsCountKey];
-  
+    [defaults setInteger:self.itemWidth forKey:kMultiChartItemWidthKey];
+       [defaults setInteger:self.itemHeight forKey:kMultiChartItemHeightKey];
     // Forza la sincronizzazione immediata
     [defaults synchronize];
     
@@ -1254,7 +1315,12 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         self.volumeCheckbox.state = self.showVolume ? NSControlStateValueOn : NSControlStateValueOff;
     }
     
-    
+    if (self.itemWidthField) {
+           self.itemWidthField.integerValue = self.itemWidth;
+       }
+       if (self.itemHeightField) {
+           self.itemHeightField.integerValue = self.itemHeight;
+       }
  
 
     
@@ -1359,8 +1425,6 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         self.volumeCheckbox.target = self;
         self.volumeCheckbox.action = @selector(volumeCheckboxChangedWithAutoSave:);
     }
-    
-    
     
     if (self.symbolsTextField) {
         self.symbolsTextField.target = self;

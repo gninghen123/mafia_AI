@@ -19,7 +19,10 @@
     if (!symbolEntity) return @[];
     
     NSMutableArray<ChartLayerModel *> *layerModels = [NSMutableArray array];
-    
+    if (!symbolEntity.chartLayers) {
+        NSLog(@"WARNING: Symbol exists but chartLayers is nil");
+        return @[];
+    }
     // Sort layers by orderIndex
     NSSortDescriptor *orderSort = [NSSortDescriptor sortDescriptorWithKey:@"orderIndex" ascending:YES];
     NSArray *sortedLayers = [symbolEntity.chartLayers sortedArrayUsingDescriptors:@[orderSort]];

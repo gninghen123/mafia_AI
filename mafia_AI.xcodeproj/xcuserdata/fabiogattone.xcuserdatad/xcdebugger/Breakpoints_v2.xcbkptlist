@@ -62,8 +62,8 @@
             filePath = "UI/Widgets/Chart/ChartPanelView.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "2519"
-            endingLineNumber = "2519"
+            startingLineNumber = "2528"
+            endingLineNumber = "2528"
             landmarkName = "-calculateDateRangeForType:clickedBarIndex:"
             landmarkType = "7">
          </BreakpointContent>
@@ -119,16 +119,16 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "DFB90431-75F8-42FA-BC6D-EA83DEEBBE65"
+            uuid = "075D6359-9AA8-44A5-B234-4E40ACF3DEC3"
             shouldBeEnabled = "Yes"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
-            filePath = "Gestione Dati/DownloadManager.m"
+            filePath = "Gestione Dati/DataHub+ChartObjects.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "677"
-            endingLineNumber = "677"
-            landmarkName = "-executeHistoricalRequest:withDataSource:sourceInfo:sources:sourceIndex:requestID:completion:"
+            startingLineNumber = "23"
+            endingLineNumber = "23"
+            landmarkName = "-getChartLayersForSymbol:"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

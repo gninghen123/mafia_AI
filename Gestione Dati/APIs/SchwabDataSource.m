@@ -228,6 +228,7 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
     }];
 }
 
+// Refactored: use startDate and endDate calculation instead of unsupported &period param
 - (void)fetchHistoricalDataForSymbol:(NSString *)symbol
                            timeframe:(BarTimeframe)timeframe
                             barCount:(NSInteger)barCount
@@ -255,13 +256,31 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
         NSString *frequencyType = [self convertFrequencyTypeSchwab:timeframe];
         NSString *periodType = [self convertPeriodTypeSchwab:frequencyType];
         
-        NSString *urlString = [NSString stringWithFormat:@"%@/marketdata/v1/pricehistory?symbol=%@&periodType=%@&frequencyType=%@&frequency=%@&period=%ld&needExtendedHoursData=%@",
+        // Calculate endDateMillis = now, startDateMillis = now - barCount * interval * 1000
+        NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
+        long long endDateMillis = (long long)(now * 1000.0);
+        long long intervalSeconds = 60; // default to 1 min
+        NSInteger frequency = [schwabTimeframe integerValue];
+        if ([frequencyType isEqualToString:@"minute"]) {
+            intervalSeconds = 60 * frequency;
+        } else if ([frequencyType isEqualToString:@"daily"]) {
+            intervalSeconds = 60 * 60 * 24 * frequency;
+        } else if ([frequencyType isEqualToString:@"weekly"]) {
+            intervalSeconds = 60 * 60 * 24 * 7 * frequency;
+        } else if ([frequencyType isEqualToString:@"monthly"]) {
+            // Approximate a month as 30 days
+            intervalSeconds = 60 * 60 * 24 * 30 * frequency;
+        }
+        long long startDateMillis = endDateMillis - (long long)barCount * intervalSeconds * 1000;
+        
+        NSString *urlString = [NSString stringWithFormat:@"%@/marketdata/v1/pricehistory?symbol=%@&periodType=%@&frequencyType=%@&frequency=%@&startDate=%lld&endDate=%lld&needExtendedHoursData=%@",
                               kSchwabAPIBaseURL,
                               symbol,
                               periodType,
                               frequencyType,
                               schwabTimeframe,
-                              (long)barCount,
+                              startDateMillis,
+                              endDateMillis,
                               needExtendedHours ? @"true" : @"false"];
         
         NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];

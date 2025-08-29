@@ -244,6 +244,7 @@
     [[DataManager sharedManager] requestHistoricalDataForSymbol:symbol
                                                       timeframe:timeframe
                                                           count:barCount
+                                              needExtendedHours:needExtendedHours
                                                      completion:^(NSArray<HistoricalBarModel *> *bars, NSError *error) {
 
         if (error) {

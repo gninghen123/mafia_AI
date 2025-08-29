@@ -51,20 +51,6 @@
 // Batch quote request
 - (NSString *)requestQuotesForSymbols:(NSArray<NSString *> *)symbols
                            completion:(void (^)(NSDictionary *quotes, NSError *error))completion;
-// Historical data - with date range
-// UPDATED: Now returns runtime models
-- (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
-                                   timeframe:(BarTimeframe)timeframe
-                                   startDate:(NSDate *)startDate
-                                     endDate:(NSDate *)endDate
-                                  completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion;
-
-// Historical data - with count
-// UPDATED: Now returns runtime models
-- (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
-                                   timeframe:(BarTimeframe)timeframe
-                                       count:(NSInteger)count
-                                  completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion;
 
 - (NSString *)requestOrderBookForSymbol:(NSString *)symbol
                              completion:(void (^)(NSArray<OrderBookEntry *> *bids,

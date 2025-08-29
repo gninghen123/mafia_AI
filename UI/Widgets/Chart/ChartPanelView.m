@@ -2111,6 +2111,15 @@
     saveSnapshotItem.target = self;
     [contextMenu addItem:saveSnapshotItem];
     
+
+    NSMenuItem *microscopeItem = [self createMicroscopeMenuItem:point];
+    if (microscopeItem) {
+        [contextMenu addItem:[NSMenuItem separatorItem]];
+        [contextMenu addItem:microscopeItem];
+    }
+    [contextMenu addItem:[NSMenuItem separatorItem]];
+
+    
     // Save full data as continuous
     NSMenuItem *saveContinuousItem = [[NSMenuItem alloc] initWithTitle:@"🔄 Save Full Data as Continuous..."
                                                                 action:@selector(contextMenuSaveContinuous:)
@@ -2964,16 +2973,6 @@
             [self.alertRenderer invalidateAlertsEditingLayer];
             [invalidatedLayers addObject:@"alertsEditing"];
         }
-    }
-    
-    // Debug logging
-    if (invalidatedLayers.count > 0) {
-        NSString *reasonStr = reason ?: @"unspecified";
-        NSLog(@"🎨 ChartPanelView (%@): Invalidated layers [%@] - Reason: %@%@",
-              self.panelType,
-              [invalidatedLayers componentsJoinedByString:@", "],
-              reasonStr,
-              updateSharedXContext ? @" (with SharedXContext update)" : @"");
     }
 }
 

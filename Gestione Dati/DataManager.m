@@ -157,32 +157,6 @@
                                    timeframe:(BarTimeframe)timeframe
                                    startDate:(NSDate *)startDate
                                      endDate:(NSDate *)endDate
-                                  completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion {
-    
-    return [self requestHistoricalDataForSymbol:symbol
-                                      timeframe:timeframe
-                                      startDate:startDate
-                                        endDate:endDate
-                              needExtendedHours:NO
-                                     completion:completion];
-}
-
-- (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
-                                   timeframe:(BarTimeframe)timeframe
-                                       count:(NSInteger)count
-                                  completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion {
-    
-    return [self requestHistoricalDataForSymbol:symbol
-                                      timeframe:timeframe
-                                          count:count
-                              needExtendedHours:NO
-                                     completion:completion];
-}
-
-- (NSString *)requestHistoricalDataForSymbol:(NSString *)symbol
-                                   timeframe:(BarTimeframe)timeframe
-                                   startDate:(NSDate *)startDate
-                                     endDate:(NSDate *)endDate
                            needExtendedHours:(BOOL)needExtendedHours
                                   completion:(void (^)(NSArray<HistoricalBarModel *> *bars, NSError *error))completion {
     

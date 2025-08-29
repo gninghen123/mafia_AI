@@ -822,6 +822,7 @@
 #pragma mark - UI Feedback
 
 - (void)showTemporaryMessage:(NSString *)message {
+/*
     // Crea un label temporaneo per feedback
     NSTextField *messageLabel = [NSTextField labelWithString:message];
     messageLabel.backgroundColor = [NSColor controlAccentColor];
@@ -833,18 +834,18 @@
     messageLabel.font = [NSFont systemFontOfSize:11];
     messageLabel.translatesAutoresizingMaskIntoConstraints = NO;
     
-    [self.contentView addSubview:messageLabel];
+    [self.view addSubview:messageLabel];
     [NSLayoutConstraint activateConstraints:@[
         [messageLabel.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
         [messageLabel.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-10],
         [messageLabel.heightAnchor constraintEqualToConstant:20],
         [messageLabel.widthAnchor constraintGreaterThanOrEqualToConstant:100]
     ]];
-    
+   
     // Rimuovi dopo 2 secondi
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [messageLabel removeFromSuperview];
-    });
+    });*/
 }
 
 

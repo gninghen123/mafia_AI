@@ -9,8 +9,15 @@
 @property (nonatomic, strong) WKWebView *webView;
 @property (nonatomic, strong) NSTimer *authCheckTimer;
 @property (nonatomic, copy) void (^completionHandler)(BOOL success, NSError *error);
+
+
 - (instancetype)initWithPort:(NSInteger)port;
 - (void)startAuthenticationFlow;
+@end
+
+
+@interface IBKRLoginManager ()
+@property (nonatomic, copy) NSString *internalSessionCookie; // proprietà interna
 @end
 
 @implementation IBKRAuthWindowController {
@@ -91,15 +98,35 @@
                         [self.authCheckTimer invalidate];
                         self.authCheckTimer = nil;
                     }
-                    
+
                     NSLog(@"Authentication successful in WebView!");
-                    
-                    if (self.completionHandler) {
-                        self.completionHandler(YES, nil);
-                        self.completionHandler = nil; // IMPORTANTE: evita multiple calls
+
+                    // Retrieve x-sess-uuid cookie from WKWebView and assign to IBKRLoginManager.sessionCookie
+                    WKWebView *webView = self.webView;
+                    if (@available(macOS 10.13, *)) {
+                        WKHTTPCookieStore *cookieStore = webView.configuration.websiteDataStore.httpCookieStore;
+                        [cookieStore getAllCookies:^(NSArray<NSHTTPCookie *> *cookies) {
+                            for (NSHTTPCookie *cookie in cookies) {
+                                if ([cookie.name isEqualToString:@"x-sess-uuid"]) {
+                                    // Set the sessionCookie on the login manager singleton
+                                    [IBKRLoginManager sharedManager].internalSessionCookie = cookie.value;                                    NSLog(@"x-sess-uuid cookie set: %@", cookie.value);
+                                    break;
+                                }
+                            }
+                            if (self.completionHandler) {
+                                self.completionHandler(YES, nil);
+                                self.completionHandler = nil; // IMPORTANTE: evita multiple calls
+                            }
+                            [self close];
+                        }];
+                    } else {
+                        // Fallback for older macOS: just call completionHandler
+                        if (self.completionHandler) {
+                            self.completionHandler(YES, nil);
+                            self.completionHandler = nil;
+                        }
+                        [self close];
                     }
-                    
-                    [self close];
                 });
             }
         }
@@ -529,6 +556,10 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
     if (self.clientPortalTask && self.clientPortalTask.isRunning) {
         [self.clientPortalTask terminate];
     }
+}
+
+- (NSString *)sessionCookie {
+    return self.internalSessionCookie;
 }
 
 @end

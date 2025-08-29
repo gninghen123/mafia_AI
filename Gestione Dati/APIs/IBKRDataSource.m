@@ -366,6 +366,8 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
     
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
     request.HTTPMethod = @"GET";
+    id cook = [[IBKRLoginManager sharedManager] sessionCookie];
+    [request setValue:[[IBKRLoginManager sharedManager] sessionCookie] forHTTPHeaderField:@"Cookie"];
     
     NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
                                                  completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {

@@ -316,7 +316,7 @@ static inline NSString* DataRequestTypeToString(DataRequestType requestType) {
  */
 static inline NSString* DataSourceTypeToString(DataSourceType sourceType) {
     switch (sourceType) {
-        case DataSourceTypeSchwab: return @"Schwab";
+        case DataSourceTypeSchwab: return @"SCHWAB";
         case DataSourceTypeIBKR: return @"IBKR";
         case DataSourceTypeYahoo: return @"Yahoo";
         case DataSourceTypeWebull: return @"Webull";

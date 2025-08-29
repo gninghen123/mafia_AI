@@ -904,4 +904,24 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
     return NO; // Placeholder
 }
 
+
+#pragma mark - bypass ssl security for localhost
+
+#pragma mark - NSURLSessionDelegate (SSL Handling)
+
+// Accetta il certificato self-signed solo per localhost
+- (void)URLSession:(NSURLSession *)session
+    didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
+    completionHandler:(void (^)(NSURLSessionAuthChallengeDisposition disposition, NSURLCredential * _Nullable credential))completionHandler {
+
+    // Controlla che sia localhost
+    if ([challenge.protectionSpace.host isEqualToString:@"localhost"]) {
+        NSURLCredential *credential = [NSURLCredential credentialForTrust:challenge.protectionSpace.serverTrust];
+        completionHandler(NSURLSessionAuthChallengeUseCredential, credential);
+    } else {
+        // Comportamento di default per altri host
+        completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
+    }
+}
+
 @end

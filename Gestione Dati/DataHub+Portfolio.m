@@ -40,9 +40,12 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
         BOOL isFresh = YES;
         
         if (!error && allAccounts) {
-            for (AccountModel *account in allAccounts) {
-                if ([account.brokerName isEqualToString:DataSourceTypeToString(brokerType)]) {
-                    [accountsForBroker addObject:account];
+            for(id accarray in allAccounts){
+                for (AccountModel *account in accarray) {
+                    
+                    if ([account.brokerName caseInsensitiveCompare:DataSourceTypeToString(brokerType)] == NSOrderedSame) {
+                        [accountsForBroker addObject:account];
+                    }
                 }
             }
         }

@@ -381,12 +381,20 @@
     AccountModel *account = [[AccountModel alloc] init];
     
     // Basic account info
-    account.accountId = accountDict[@"accountNumber"] ?: accountDict[@"accountId"] ?: @"";
-    account.accountType = accountDict[@"type"] ?: @"UNKNOWN";
+    NSDictionary *securitiesAccount = accountDict[@"securitiesAccount"];
+    if (securitiesAccount && [securitiesAccount isKindOfClass:[NSDictionary class]]) {
+        account.accountId = securitiesAccount[@"accountNumber"] ?: @"";
+        account.accountType = securitiesAccount[@"type"] ?: @"UNKNOWN";
+        account.isPrimary = [securitiesAccount[@"isPrimary"] boolValue];
+    } else {
+        account.accountId = accountDict[@"accountNumber"] ?: accountDict[@"accountId"] ?: @"";
+        account.accountType = accountDict[@"type"] ?: @"UNKNOWN";
+        account.isPrimary = [accountDict[@"isPrimary"] boolValue];
+    }
+    
     account.brokerName = @"SCHWAB";
     account.displayName = [NSString stringWithFormat:@"SCHWAB-%@", account.accountId];
     account.isConnected = YES;
-    account.isPrimary = [accountDict[@"isPrimary"] boolValue];
     account.lastUpdated = [NSDate date];
     
     NSLog(@"✅ SchwabAdapter: Created AccountModel %@ (%@)", account.accountId, account.accountType);

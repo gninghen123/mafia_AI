@@ -8,6 +8,8 @@
 #import "IBKRDataSource.h"
 #import "CommonTypes.h"
 #import "IBKRLoginManager.h"
+#import "IBKRWebSocketDataSource.h"  // NEW: Import fallback
+
 
 // Default connection parameters
 static NSString *const kDefaultHost = @"127.0.0.1";
@@ -15,6 +17,8 @@ static NSInteger const kDefaultTWSPort = 7497;
 static NSInteger const kDefaultGatewayPort = 4002;
 static NSInteger const kDefaultClientId = 1;
 static NSTimeInterval const kRequestTimeout = 30.0;
+
+
 
 // IBKR Client Portal API Base URLs
 static NSString *const kIBKRClientPortalBaseURL = @"https://localhost:5001/v1/api";
@@ -33,6 +37,10 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
     NSInteger _clientId;
     IBKRConnectionType _connectionType;
 }
+
+@property (nonatomic, strong) IBKRWebSocketDataSource *fallbackDataSource;
+@property (nonatomic, assign) BOOL fallbackEnabled;
+@property (nonatomic, assign) BOOL fallbackConnected;
 
 // Protocol properties
 @property (nonatomic, readwrite) DataSourceType sourceType;
@@ -103,6 +111,14 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
                };
         // Setup request tracking
         _pendingRequests = [NSMutableDictionary dictionary];
+        
+        _fallbackDataSource = [[IBKRWebSocketDataSource alloc] initWithHost:@"127.0.0.1"
+                                                                              port:4002
+                                                                          clientId:clientId];
+               _fallbackEnabled = YES; // Enable by default
+               _fallbackConnected = NO;
+               
+               NSLog(@"🔄 IBKRDataSource: Fallback to TCP Gateway enabled");
     }
     return self;
 }
@@ -292,9 +308,37 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
 
 #pragma mark - Portfolio Data - UNIFIED PROTOCOL
 
-// ✅ UNIFICATO: Accounts (era getAccountsWithCompletion)
+- (void)tryRESTAccountsCall:(void (^)(NSArray *accounts, NSError *error))completion {
+    // Use IBKRLoginManager to ensure portal ready
+    [[IBKRLoginManager sharedManager] ensureClientPortalReadyWithCompletion:^(BOOL success, NSError *error) {
+        if (!success) {
+            NSLog(@"❌ Client Portal not ready: %@", error.localizedDescription);
+            if (completion) completion(@[], error);
+            return;
+        }
+        
+        // Make the actual REST call
+        NSString *urlString = [NSString stringWithFormat:@"%@%@", kIBKRClientPortalBaseURL, @"/iserver/accounts"];
+        NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
+        request.HTTPMethod = @"GET";
+        [self configureRequestHeaders:request];
+        
+        NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+            [self handleGenericResponse:data response:response error:error completion:^(id result, NSError *error) {
+                NSArray *accounts = @[];
+                if ([result isKindOfClass:[NSArray class]]) {
+                    accounts = (NSArray *)result;
+                }
+                if (completion) completion(accounts, error);
+            }];
+        }];
+        
+        [task resume];
+    }];
+}
+
+
 - (void)fetchAccountsWithCompletion:(void (^)(NSArray *accounts, NSError *error))completion {
-    
     if (!self.isConnected) {
         NSError *error = [NSError errorWithDomain:@"IBKRDataSource"
                                              code:1002
@@ -303,32 +347,34 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
         return;
     }
     
-    NSString *urlString = [NSString stringWithFormat:@"%@%@", kIBKRClientPortalBaseURL, kIBKRAccountsEndpoint];
+    NSLog(@"📡 IBKRDataSource: Fetching accounts (REST primary)...");
     
-    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
-    request.HTTPMethod = @"GET";
-    [self configureRequestHeaders:request];
-
-    NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
-                                                 completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        [self handleGenericResponse:data response:response error:error completion:^(id result, NSError *error) {
-            if (error) {
-                if (completion) completion(@[], error);
-            } else {
-                // ✅ RITORNA DATI RAW IBKR accounts
-                NSArray *accounts = @[];
-                if ([result isKindOfClass:[NSArray class]]) {
-                    accounts = (NSArray *)result;
-                } else if ([result isKindOfClass:[NSDictionary class]]) {
-                    accounts = @[result];
+    // 🔄 STEP 1: Try REST first
+    [self tryRESTAccountsCall:^(NSArray *accounts, NSError *error) {
+        if ([self shouldUseFallback:error]) {
+            NSLog(@"🔄 IBKRDataSource: REST auth failed, trying TCP fallback...");
+            
+            // 🔄 STEP 2: Fallback to TCP
+            [self ensureFallbackConnectedWithCompletion:^(BOOL connected) {
+                if (connected) {
+                    [self.fallbackDataSource fetchAccountsWithCompletion:^(NSArray *fallbackAccounts, NSError *fallbackError) {
+                        if (fallbackError) {
+                            NSLog(@"❌ IBKRDataSource: Both REST and TCP failed for accounts");
+                        } else {
+                            NSLog(@"✅ IBKRDataSource: Accounts retrieved via TCP fallback");
+                        }
+                        if (completion) completion(fallbackAccounts, fallbackError);
+                    }];
+                } else {
+                    NSLog(@"❌ IBKRDataSource: TCP fallback not available");
+                    if (completion) completion(@[], error); // Return original REST error
                 }
-                
-                if (completion) completion(accounts, nil);
-            }
-        }];
+            }];
+        } else {
+            // REST succeeded or non-auth error
+            if (completion) completion(accounts, error);
+        }
     }];
-    
-    [task resume];
 }
 
 // ✅ UNIFICATO: Account details (AGGIUNTO)
@@ -373,28 +419,61 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
         return;
     }
     
-    NSString *urlString = [NSString stringWithFormat:@"%@%@/%@/positions",
-                          kIBKRClientPortalBaseURL, kIBKRPortfolioEndpoint, accountId];
+    NSLog(@"📡 IBKRDataSource: Fetching positions for %@ (REST primary)...", accountId);
     
-    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
-    request.HTTPMethod = @"GET";
-    [self configureRequestHeaders:request];
-    
-    NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
-                                                 completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        [self handleGenericResponse:data response:response error:error completion:^(id result, NSError *error) {
-            // ✅ RITORNA DATI RAW IBKR positions
-            NSArray *positions = @[];
-            if ([result isKindOfClass:[NSArray class]]) {
-                positions = (NSArray *)result;
-            }
+    // 🔄 STEP 1: Try REST first
+    [self tryRESTPositionsCall:accountId completion:^(NSArray *positions, NSError *error) {
+        if ([self shouldUseFallback:error]) {
+            NSLog(@"🔄 IBKRDataSource: REST auth failed, trying TCP fallback...");
             
+            // 🔄 STEP 2: Fallback to TCP
+            [self ensureFallbackConnectedWithCompletion:^(BOOL connected) {
+                if (connected) {
+                    [self.fallbackDataSource fetchPositionsForAccount:accountId completion:^(NSArray *fallbackPositions, NSError *fallbackError) {
+                        if (fallbackError) {
+                            NSLog(@"❌ IBKRDataSource: Both REST and TCP failed for positions");
+                        } else {
+                            NSLog(@"✅ IBKRDataSource: Positions retrieved via TCP fallback");
+                        }
+                        if (completion) completion(fallbackPositions, fallbackError);
+                    }];
+                } else {
+                    NSLog(@"❌ IBKRDataSource: TCP fallback not available");
+                    if (completion) completion(@[], error);
+                }
+            }];
+        } else {
             if (completion) completion(positions, error);
-        }];
+        }
     }];
-    
-    [task resume];
 }
+
+- (void)tryRESTPositionsCall:(NSString *)accountId completion:(void (^)(NSArray *positions, NSError *error))completion {
+    [[IBKRLoginManager sharedManager] ensureClientPortalReadyWithCompletion:^(BOOL success, NSError *error) {
+        if (!success) {
+            if (completion) completion(@[], error);
+            return;
+        }
+        
+        NSString *urlString = [NSString stringWithFormat:@"%@/portfolio/accounts/%@/positions", kIBKRClientPortalBaseURL, accountId];
+        NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
+        request.HTTPMethod = @"GET";
+        [self configureRequestHeaders:request];
+        
+        NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+            [self handleGenericResponse:data response:response error:error completion:^(id result, NSError *error) {
+                NSArray *positions = @[];
+                if ([result isKindOfClass:[NSArray class]]) {
+                    positions = (NSArray *)result;
+                }
+                if (completion) completion(positions, error);
+            }];
+        }];
+        
+        [task resume];
+    }];
+}
+
 
 // ✅ UNIFICATO: Orders (era getOrders)
 - (void)fetchOrdersForAccount:(NSString *)accountId
@@ -408,28 +487,60 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
         return;
     }
     
-    NSString *urlString = [NSString stringWithFormat:@"%@/iserver/account/orders", kIBKRClientPortalBaseURL];
+    NSLog(@"📡 IBKRDataSource: Fetching orders for %@ (REST primary)...", accountId);
     
-    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
-    request.HTTPMethod = @"GET";
-    [self configureRequestHeaders:request];
-
-    NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
-                                                 completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        [self handleGenericResponse:data response:response error:error completion:^(id result, NSError *error) {
-            // ✅ RITORNA DATI RAW IBKR orders
-            NSArray *orders = @[];
-            if ([result isKindOfClass:[NSArray class]]) {
-                orders = (NSArray *)result;
-            }
+    // 🔄 STEP 1: Try REST first
+    [self tryRESTOrdersCall:accountId completion:^(NSArray *orders, NSError *error) {
+        if ([self shouldUseFallback:error]) {
+            NSLog(@"🔄 IBKRDataSource: REST auth failed, trying TCP fallback...");
             
+            // 🔄 STEP 2: Fallback to TCP
+            [self ensureFallbackConnectedWithCompletion:^(BOOL connected) {
+                if (connected) {
+                    [self.fallbackDataSource fetchOrdersForAccount:accountId completion:^(NSArray *fallbackOrders, NSError *fallbackError) {
+                        if (fallbackError) {
+                            NSLog(@"❌ IBKRDataSource: Both REST and TCP failed for orders");
+                        } else {
+                            NSLog(@"✅ IBKRDataSource: Orders retrieved via TCP fallback");
+                        }
+                        if (completion) completion(fallbackOrders, fallbackError);
+                    }];
+                } else {
+                    NSLog(@"❌ IBKRDataSource: TCP fallback not available");
+                    if (completion) completion(@[], error);
+                }
+            }];
+        } else {
             if (completion) completion(orders, error);
-        }];
+        }
     }];
-    
-    [task resume];
 }
 
+- (void)tryRESTOrdersCall:(NSString *)accountId completion:(void (^)(NSArray *orders, NSError *error))completion {
+    [[IBKRLoginManager sharedManager] ensureClientPortalReadyWithCompletion:^(BOOL success, NSError *error) {
+        if (!success) {
+            if (completion) completion(@[], error);
+            return;
+        }
+        
+        NSString *urlString = [NSString stringWithFormat:@"%@/iserver/account/orders", kIBKRClientPortalBaseURL];
+        NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
+        request.HTTPMethod = @"GET";
+        [self configureRequestHeaders:request];
+        
+        NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+            [self handleGenericResponse:data response:response error:error completion:^(id result, NSError *error) {
+                NSArray *orders = @[];
+                if ([result isKindOfClass:[NSArray class]]) {
+                    orders = (NSArray *)result;
+                }
+                if (completion) completion(orders, error);
+            }];
+        }];
+        
+        [task resume];
+    }];
+}
 #pragma mark - Trading Operations - UNIFIED PROTOCOL
 
 // ✅ UNIFICATO: Place order
@@ -925,24 +1036,6 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
 }
 
 
-- (void)configureRequestHeaders:(NSMutableURLRequest *)request {
-    // Headers base già impostati nella configurazione session
-    
-    // ✅ FIX 401: Aggiungi cookie di sessione se disponibile
-    IBKRLoginManager *loginManager = [IBKRLoginManager sharedManager];
-    NSString *sessionCookie = [loginManager sessionCookie];
-    if (sessionCookie && sessionCookie.length > 0) {
-        NSString *cookieValue = [NSString stringWithFormat:@"x-sess-uuid=%@", sessionCookie];
-        [request setValue:cookieValue forHTTPHeaderField:@"Cookie"];
-        NSLog(@"🍪 IBKRDataSource: Adding session cookie to request");
-    } else {
-        NSLog(@"⚠️ IBKRDataSource: No session cookie available");
-    }
-    
-    // Forza headers critici (override della configurazione se necessario)
-    [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
-    [request setValue:@"XMLHttpRequest" forHTTPHeaderField:@"X-Requested-With"];
-}
 
 #pragma mark - NSURLSessionDelegate (SSL Handling)
 
@@ -962,6 +1055,131 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
 }
 
 
+- (void)configureRequestHeaders:(NSMutableURLRequest *)request {
+    // 🍪 SESSIONE: Cookie esistente (già implementato)
+    IBKRLoginManager *loginManager = [IBKRLoginManager sharedManager];
+    NSString *sessionCookie = [loginManager sessionCookie];
+    if (sessionCookie && sessionCookie.length > 0) {
+        NSString *cookieValue = [NSString stringWithFormat:@"x-sess-uuid=%@", sessionCookie];
+        [request setValue:cookieValue forHTTPHeaderField:@"Cookie"];
+        NSLog(@"🍪 IBKRDataSource: Adding session cookie to request");
+    } else {
+        NSLog(@"⚠️ IBKRDataSource: No session cookie available - questo causerà 401!");
+    }
+    
+    // ✅ FIX: Headers CRITICI per IBKR REST API
+    [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+    [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    [request setValue:@"XMLHttpRequest" forHTTPHeaderField:@"X-Requested-With"];
+    
+    // 🔥 MANCAVANO QUESTI headers critici per auth:
+    [request setValue:@"cors" forHTTPHeaderField:@"Sec-Fetch-Mode"];
+    [request setValue:@"same-origin" forHTTPHeaderField:@"Sec-Fetch-Site"];
+    [request setValue:@"empty" forHTTPHeaderField:@"Sec-Fetch-Dest"];
+    
+    // 🌍 REFERRER header (importante per IBKR)
+    NSString *referer = [NSString stringWithFormat:@"https://localhost:%ld/", (long)loginManager.port];
+    [request setValue:referer forHTTPHeaderField:@"Referer"];
+    
+    // 🎭 USER AGENT specifico per IBKR
+    [request setValue:@"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+       forHTTPHeaderField:@"User-Agent"];
+    
+    // ⚡ IBKR specifici headers
+    [request setValue:@"1" forHTTPHeaderField:@"X-Force-Auth"];
+    
+    // 🔒 CACHE control per requests authenticated
+    [request setValue:@"no-cache, no-store, must-revalidate" forHTTPHeaderField:@"Cache-Control"];
+    [request setValue:@"no-cache" forHTTPHeaderField:@"Pragma"];
+    
+    NSLog(@"🔧 IBKRDataSource: Configured all authentication headers for %@", request.URL.path);
+}
+
+// ✅ AGGIUNTA: Method per verificare se abbiamo tutti gli headers necessari
+- (BOOL)validateAuthenticationHeaders:(NSURLRequest *)request {
+    NSDictionary *headers = request.allHTTPHeaderFields;
+    
+    NSArray *requiredHeaders = @[
+        @"Cookie",           // Session cookie
+        @"X-Requested-With", // CSRF protection
+        @"Referer",          // Origin validation
+        @"User-Agent"        // Browser simulation
+    ];
+    
+    for (NSString *headerName in requiredHeaders) {
+        if (!headers[headerName] || [headers[headerName] length] == 0) {
+            NSLog(@"❌ MISSING HEADER: %@ - questo causerà 401!", headerName);
+            return NO;
+        }
+    }
+    
+    NSLog(@"✅ All authentication headers present");
+    return YES;
+}
+
+#pragma mark - Fallback Management
+
+- (void)ensureFallbackConnectedWithCompletion:(void (^)(BOOL connected))completion {
+    if (self.fallbackConnected) {
+        if (completion) completion(YES);
+        return;
+    }
+    
+    [self.fallbackDataSource connectWithCompletion:^(BOOL success, NSError *error) {
+        self.fallbackConnected = success;
+        if (success) {
+            NSLog(@"✅ IBKRDataSource: TCP fallback connected to Gateway");
+        } else {
+            NSLog(@"❌ IBKRDataSource: TCP fallback failed: %@", error.localizedDescription);
+        }
+        if (completion) completion(success);
+    }];
+}
+
+- (BOOL)isAuthenticationError:(NSError *)error {
+    if (!error) return NO;
+    
+    // Check for common auth error patterns
+    if (error.code == 401) return YES; // HTTP Unauthorized
+    
+    NSString *description = error.localizedDescription.lowercaseString;
+    return [description containsString:@"unauthorized"] ||
+           [description containsString:@"authentication"] ||
+           [description containsString:@"session"] ||
+           [description containsString:@"cookie"];
+}
+
+- (BOOL)shouldUseFallback:(NSError *)error {
+    return self.fallbackEnabled && [self isAuthenticationError:error];
+}
+
+
+#pragma mark - Debug & Control Methods
+
+- (void)enableFallback:(BOOL)enabled {
+    self.fallbackEnabled = enabled;
+    NSLog(@"🔄 IBKRDataSource: TCP fallback %@", enabled ? @"ENABLED" : @"DISABLED");
+}
+
+- (void)forceFallbackConnection {
+    NSLog(@"🔄 IBKRDataSource: Force connecting TCP fallback...");
+    [self ensureFallbackConnectedWithCompletion:^(BOOL connected) {
+        NSLog(@"🔄 IBKRDataSource: Force fallback result: %@", connected ? @"SUCCESS" : @"FAILED");
+    }];
+}
+
+- (void)debugFallbackStatus {
+    NSLog(@"🔍 IBKRDataSource Fallback Status:");
+    NSLog(@"   Fallback enabled: %@", self.fallbackEnabled ? @"YES" : @"NO");
+    NSLog(@"   Fallback connected: %@", self.fallbackConnected ? @"YES" : @"NO");
+    NSLog(@"   Fallback datasource: %@", self.fallbackDataSource ? @"INITIALIZED" : @"NIL");
+}
+
+#pragma mark - Deallocation
+
+- (void)dealloc {
+    [self.fallbackDataSource disconnect];
+}
 
 
 @end

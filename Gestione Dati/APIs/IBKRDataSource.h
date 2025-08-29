@@ -85,5 +85,20 @@ typedef NS_ENUM(NSInteger, IBKRConnectionStatus) {
                       orderId:(NSString *)orderId
                    completion:(void (^)(BOOL success, NSError *error))completion;
 
+
+#pragma mark - ✅ NEW: Fallback Control & Debug Methods
+/// Enable or disable TCP fallback system
+- (void)enableFallback:(BOOL)enabled;
+
+/// Force connection to TCP fallback (for testing)
+- (void)forceFallbackConnection;
+
+/// Debug fallback system status
+- (void)debugFallbackStatus;
+
+/// Check if fallback is enabled and connected
+- (BOOL)isFallbackEnabled;
+- (BOOL)isFallbackConnected;
+
 @end
 

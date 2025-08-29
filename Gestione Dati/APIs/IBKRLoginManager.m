@@ -1,24 +1,33 @@
-// IBKRLoginManager.m
+//
+//  IBKRLoginManager.m
+//  TradingApp
+//
+//  Complete implementation with external browser cookie support
+//
+
 #import "IBKRLoginManager.h"
 #import <Cocoa/Cocoa.h>
 #import <WebKit/WebKit.h>
 
-// SOSTITUISCI la classe IBKRAuthWindowController con questa versione corretta:
-
+// Forward declaration for IBKRAuthWindowController
 @interface IBKRAuthWindowController : NSWindowController <WKNavigationDelegate, NSWindowDelegate>
 @property (nonatomic, strong) WKWebView *webView;
 @property (nonatomic, strong) NSTimer *authCheckTimer;
 @property (nonatomic, copy) void (^completionHandler)(BOOL success, NSError *error);
 
-
 - (instancetype)initWithPort:(NSInteger)port;
 - (void)startAuthenticationFlow;
 @end
 
-
-@interface IBKRLoginManager ()
-@property (nonatomic, copy) NSString *internalSessionCookie; // proprietà interna
+// Main IBKRLoginManager private interface
+@interface IBKRLoginManager () <NSURLSessionDelegate>
+@property (nonatomic, copy) NSString *internalSessionCookie;
+@property (nonatomic, strong) NSTask *clientPortalTask;
+@property (nonatomic, strong) NSTimer *authCheckTimer;
+@property (nonatomic, strong) IBKRAuthWindowController *authWindowController;
 @end
+
+#pragma mark - IBKRAuthWindowController Implementation
 
 @implementation IBKRAuthWindowController {
     NSInteger _port;
@@ -41,9 +50,6 @@
         
         WKWebViewConfiguration *config = [[WKWebViewConfiguration alloc] init];
         config.processPool = [[WKProcessPool alloc] init];
-        
-        // REMOVED: Problematic preferences that cause crash
-        // Just use basic configuration
         
         self.webView = [[WKWebView alloc] initWithFrame:frame configuration:config];
         self.webView.navigationDelegate = self;
@@ -99,9 +105,9 @@
                         self.authCheckTimer = nil;
                     }
 
-                    NSLog(@"Authentication successful in WebView!");
+                    NSLog(@"✅ Authentication successful in WebView!");
 
-                    // Retrieve x-sess-uuid cookie from WKWebView and assign to IBKRLoginManager.sessionCookie
+                    // Retrieve x-sess-uuid cookie from WKWebView
                     WKWebView *webView = self.webView;
                     if (@available(macOS 10.13, *)) {
                         WKHTTPCookieStore *cookieStore = webView.configuration.websiteDataStore.httpCookieStore;
@@ -109,18 +115,19 @@
                             for (NSHTTPCookie *cookie in cookies) {
                                 if ([cookie.name isEqualToString:@"x-sess-uuid"]) {
                                     // Set the sessionCookie on the login manager singleton
-                                    [IBKRLoginManager sharedManager].internalSessionCookie = cookie.value;                                    NSLog(@"x-sess-uuid cookie set: %@", cookie.value);
+                                    [[IBKRLoginManager sharedManager] setInternalSessionCookie:cookie.value];
+                                    NSLog(@"🍪 x-sess-uuid cookie set: %@", cookie.value);
                                     break;
                                 }
                             }
                             if (self.completionHandler) {
                                 self.completionHandler(YES, nil);
-                                self.completionHandler = nil; // IMPORTANTE: evita multiple calls
+                                self.completionHandler = nil;
                             }
                             [self close];
                         }];
                     } else {
-                        // Fallback for older macOS: just call completionHandler
+                        // Fallback for older macOS
                         if (self.completionHandler) {
                             self.completionHandler(YES, nil);
                             self.completionHandler = nil;
@@ -227,17 +234,7 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
 
 @end
 
-
-
-// ================================
-// MAIN IBKRLoginManager CLASS
-// ================================
-
-@interface IBKRLoginManager() <NSURLSessionDelegate>
-@property (nonatomic, strong) NSTask *clientPortalTask;
-@property (nonatomic, strong) NSTimer *authCheckTimer;
-@property (nonatomic, strong) IBKRAuthWindowController *authWindowController;
-@end
+#pragma mark - Main IBKRLoginManager Implementation
 
 @implementation IBKRLoginManager
 
@@ -258,6 +255,17 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
         [self findClientPortalInstallation];
     }
     return self;
+}
+
+#pragma mark - Public Cookie Methods
+
+- (NSString *)sessionCookie {
+    return self.internalSessionCookie;
+}
+
+- (void)setInternalSessionCookie:(NSString *)cookie {
+    _internalSessionCookie = [cookie copy];
+    NSLog(@"🍪 IBKRLoginManager: Session cookie updated: %@", cookie ? @"[SET]" : @"[CLEARED]");
 }
 
 #pragma mark - Main Integration Method
@@ -395,21 +403,21 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
     dispatch_async(dispatch_get_main_queue(), ^{
         NSAlert *alert = [[NSAlert alloc] init];
         alert.messageText = @"IBKR Login Required";
-        alert.informativeText = @"Client Portal is running. Please choose how to login:";
+        alert.informativeText = @"Client Portal is running.\nPlease choose how to login:";
         alert.alertStyle = NSAlertStyleInformational;
-        [alert addButtonWithTitle:@"Open in App"];       // NEW: WebView option
-        [alert addButtonWithTitle:@"Open in Browser"];   // OLD: External browser
+        [alert addButtonWithTitle:@"Open in App"];       // WebView option
+        [alert addButtonWithTitle:@"Open in Browser"];   // External browser
         [alert addButtonWithTitle:@"I'll Login Myself"];
         [alert addButtonWithTitle:@"Cancel"];
         
         NSModalResponse response = [alert runModal];
         
         if (response == NSAlertFirstButtonReturn) {
-            // NEW: Use integrated WebView
+            // Use integrated WebView
             [self openLoginInAppWithCompletion:completion];
             
         } else if (response == NSAlertSecondButtonReturn) {
-            // OLD: Use external browser
+            // Use external browser
             [self openLoginPageInBrowser];
             [self waitForAuthenticationWithCompletion:completion];
             
@@ -426,7 +434,6 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
     });
 }
 
-// NEW METHOD: Open login in integrated WebView
 - (void)openLoginInAppWithCompletion:(void (^)(BOOL success, NSError *error))completion {
     self.authWindowController = [[IBKRAuthWindowController alloc] initWithPort:self.port];
     
@@ -474,7 +481,7 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
     }];
 }
 
-#pragma mark - Status Checking
+#pragma mark - Status Checking with Enhanced Cookie Management
 
 - (void)checkClientPortalStatus:(void (^)(BOOL running, BOOL authenticated))completion {
     NSString *urlString = [NSString stringWithFormat:@"https://localhost:%ld/v1/api/iserver/auth/status", (long)self.port];
@@ -483,17 +490,26 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
     request.HTTPMethod = @"POST";
     request.timeoutInterval = 5.0;
     
+    // ✅ ENHANCED: Cookie sharing configuration for external browser support
     NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
-       NSURLSession *session = [NSURLSession sessionWithConfiguration:config
-                                                             delegate:self
-                                                        delegateQueue:nil];
+    config.HTTPCookieAcceptPolicy = NSHTTPCookieAcceptPolicyAlways;
+    config.HTTPShouldSetCookies = YES;
+    config.HTTPCookieStorage = [NSHTTPCookieStorage sharedHTTPCookieStorage];
+    
+    NSURLSession *session = [NSURLSession sessionWithConfiguration:config
+                                                          delegate:(id<NSURLSessionDelegate>)self
+                                                     delegateQueue:nil];
+    
     NSURLSessionDataTask *task = [session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         if (error) {
+            NSLog(@"❌ Auth status check failed: %@", error.localizedDescription);
             completion(NO, NO);
             return;
         }
         
         NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+        NSLog(@"📡 Auth status response: %ld", (long)httpResponse.statusCode);
+        
         if (httpResponse.statusCode != 200) {
             completion(NO, NO);
             return;
@@ -505,7 +521,14 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
             NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&jsonError];
             if (!jsonError) {
                 authenticated = [json[@"authenticated"] boolValue] && [json[@"connected"] boolValue];
+                NSLog(@"🔍 Auth response: authenticated=%@, connected=%@",
+                      json[@"authenticated"], json[@"connected"]);
             }
+        }
+        
+        // ✅ ENHANCED: Extract session cookie when authenticated
+        if (authenticated) {
+            [self extractSessionCookieFromStorage];
         }
         
         completion(YES, authenticated);
@@ -513,6 +536,96 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
     
     [task resume];
 }
+
+#pragma mark - Enhanced Cookie Management for External Browser
+
+- (void)extractSessionCookieFromStorage {
+    NSHTTPCookieStorage *cookieStorage = [NSHTTPCookieStorage sharedHTTPCookieStorage];
+    NSString *urlString = [NSString stringWithFormat:@"https://localhost:%ld", (long)self.port];
+    NSURL *url = [NSURL URLWithString:urlString];
+    
+    NSArray<NSHTTPCookie *> *cookies = [cookieStorage cookiesForURL:url];
+    NSLog(@"🔍 Found %lu cookies for localhost:%ld", (unsigned long)cookies.count, (long)self.port);
+    
+    for (NSHTTPCookie *cookie in cookies) {
+        NSLog(@"🍪 Cookie: %@ = %@", cookie.name, cookie.value);
+        
+        if ([cookie.name isEqualToString:@"x-sess-uuid"]) {
+            self.internalSessionCookie = cookie.value;
+            NSLog(@"✅ Extracted session cookie: %@", cookie.value);
+            return;
+        }
+    }
+    
+    NSLog(@"⚠️ x-sess-uuid cookie not found in storage");
+    
+    // Fallback: Force refresh session cookie
+    [self forceRefreshSessionCookie];
+}
+
+- (void)forceRefreshSessionCookie {
+    NSLog(@"🔄 Forcing session cookie refresh...");
+    
+    NSString *urlString = [NSString stringWithFormat:@"https://localhost:%ld/v1/api/tickle", (long)self.port];
+    NSURL *url = [NSURL URLWithString:urlString];
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.HTTPMethod = @"POST";
+    
+    NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
+    config.HTTPCookieAcceptPolicy = NSHTTPCookieAcceptPolicyAlways;
+    config.HTTPShouldSetCookies = YES;
+    config.HTTPCookieStorage = [NSHTTPCookieStorage sharedHTTPCookieStorage];
+    
+    NSURLSession *session = [NSURLSession sessionWithConfiguration:config
+                                                          delegate:(id<NSURLSessionDelegate>)self
+                                                     delegateQueue:nil];
+    
+    NSURLSessionDataTask *task = [session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (!error) {
+            NSLog(@"🔄 Tickle call completed, re-checking cookies...");
+            
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                [self extractSessionCookieFromStorage];
+            });
+        }
+    }];
+    
+    [task resume];
+}
+
+#pragma mark - Debug Methods
+
+- (void)debugAllCookies {
+    NSLog(@"🔍 === DEBUGGING ALL COOKIES ===");
+    
+    NSHTTPCookieStorage *cookieStorage = [NSHTTPCookieStorage sharedHTTPCookieStorage];
+    NSArray<NSHTTPCookie *> *allCookies = cookieStorage.cookies;
+    
+    NSLog(@"📊 Total cookies in storage: %lu", (unsigned long)allCookies.count);
+    
+    for (NSHTTPCookie *cookie in allCookies) {
+        if ([cookie.domain containsString:@"localhost"]) {
+            NSLog(@"🍪 Localhost cookie: %@ = %@ (domain: %@)",
+                  cookie.name, cookie.value, cookie.domain);
+        }
+    }
+    
+    NSString *urlString = [NSString stringWithFormat:@"https://localhost:%ld", (long)self.port];
+    NSURL *url = [NSURL URLWithString:urlString];
+    NSArray<NSHTTPCookie *> *urlCookies = [cookieStorage cookiesForURL:url];
+    
+    NSLog(@"🎯 Cookies for %@: %lu", urlString, (unsigned long)urlCookies.count);
+    NSLog(@"🔍 Internal session cookie: %@", self.internalSessionCookie ?: @"NOT SET");
+    NSLog(@"🔍 === END DEBUG ===");
+}
+
+- (void)refreshSessionCookie {
+    NSLog(@"🔄 Manual session cookie refresh requested");
+    [self extractSessionCookieFromStorage];
+    [self debugAllCookies];
+}
+
+#pragma mark - NSURLSessionDelegate
 
 - (void)URLSession:(NSURLSession *)session
 didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
@@ -556,10 +669,6 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
     if (self.clientPortalTask && self.clientPortalTask.isRunning) {
         [self.clientPortalTask terminate];
     }
-}
-
-- (NSString *)sessionCookie {
-    return self.internalSessionCookie;
 }
 
 @end

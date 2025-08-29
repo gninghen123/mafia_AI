@@ -371,13 +371,15 @@
     
     // Load objects
     NSSortDescriptor *creationSort = [NSSortDescriptor sortDescriptorWithKey:@"creationDate" ascending:YES];
-    NSArray *sortedObjects = [coreDataLayer.objects sortedArrayUsingDescriptors:@[creationSort]];
-    
-    for (ChartObject *coreDataObject in sortedObjects) {
-        ChartObjectModel *objectModel = [self objectModelFromCoreData:coreDataObject];
-        [model addObject:objectModel];
+    if (coreDataLayer.objects && [coreDataLayer.objects count]) {
+        NSArray *sortedObjects = [coreDataLayer.objects sortedArrayUsingDescriptors:@[creationSort]];
+        
+        for (ChartObject *coreDataObject in sortedObjects) {
+            ChartObjectModel *objectModel = [self objectModelFromCoreData:coreDataObject];
+            [model addObject:objectModel];
+        }
     }
-    
+  
     return model;
 }
 

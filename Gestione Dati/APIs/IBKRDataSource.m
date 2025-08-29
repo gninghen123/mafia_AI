@@ -153,23 +153,87 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
     
     self.connectionStatus = IBKRConnectionStatusConnecting;
     
-    // Usa IBKRLoginManager per gestire Client Portal
+    // 🎯 NEW LOGIC: Check if we should use Gateway or Client Portal
+    if ([self shouldUseGatewayConnection]) {
+        NSLog(@"🚀 IBKRDataSource: Using IB Gateway connection (port %ld)", (long)_port);
+        [self connectToGatewayWithCompletion:completion];
+    } else {
+        NSLog(@"🌐 IBKRDataSource: Using Client Portal connection (port %ld)", (long)_port);
+        [self connectToClientPortalWithCompletion:completion];
+    }
+}
+
+- (BOOL)shouldUseGatewayConnection {
+    // Use Gateway connection if:
+    // 1. Port is 4002 (standard Gateway port)
+    // 2. Port is 7497 (standard TWS port)
+    // 3. ConnectionType is explicitly Gateway or TWS
+    
+    if (_port == 4002 || _port == 7497) {
+        NSLog(@"🔍 IBKRDataSource: Port %ld detected → Using Gateway connection", (long)_port);
+        return YES;
+    }
+    
+    if (_connectionType == IBKRConnectionTypeGateway || _connectionType == IBKRConnectionTypeTWS) {
+        NSLog(@"🔍 IBKRDataSource: Connection type %ld → Using Gateway connection", (long)_connectionType);
+        return YES;
+    }
+    
+    NSLog(@"🔍 IBKRDataSource: Port %ld detected → Using Client Portal connection", (long)_port);
+    return NO;
+}
+
+// ✅ NEW: Gateway connection (TCP native)
+- (void)connectToGatewayWithCompletion:(void (^)(BOOL success, NSError *error))completion {
+    NSLog(@"🔄 IBKRDataSource: Attempting Gateway/TWS connection to %@:%ld", _host, (long)_port);
+    
+    // For now, use the fallback websocket connection we created
+    if (!self.fallbackDataSource) {
+        self.fallbackDataSource = [[IBKRWebSocketDataSource alloc] initWithHost:_host
+                                                                           port:_port
+                                                                       clientId:_clientId];
+    }
+    
+    [self.fallbackDataSource connectWithCompletion:^(BOOL success, NSError *error) {
+        if (success) {
+            self.connectionStatus = IBKRConnectionStatusConnected;
+            self->_isConnected = YES;
+            NSLog(@"✅ IBKRDataSource: Gateway connection successful");
+        } else {
+            self.connectionStatus = IBKRConnectionStatusError;
+            self->_isConnected = NO;
+            NSLog(@"❌ IBKRDataSource: Gateway connection failed: %@", error.localizedDescription);
+        }
+        
+        if (completion) completion(success, error);
+    }];
+}
+
+// ✅ EXISTING: Client Portal connection (REST)
+- (void)connectToClientPortalWithCompletion:(void (^)(BOOL success, NSError *error))completion {
+    NSLog(@"🔄 IBKRDataSource: Attempting Client Portal connection");
+    
+    // Use existing Client Portal logic
     IBKRLoginManager *loginManager = [IBKRLoginManager sharedManager];
     
     [loginManager ensureClientPortalReadyWithCompletion:^(BOOL ready, NSError *error) {
         if (ready) {
             self.connectionStatus = IBKRConnectionStatusAuthenticated;
             self->_isConnected = YES;
+            NSLog(@"✅ IBKRDataSource: Client Portal connection successful");
             
             if (completion) completion(YES, nil);
         } else {
             self.connectionStatus = IBKRConnectionStatusError;
             self->_isConnected = NO;
+            NSLog(@"❌ IBKRDataSource: Client Portal connection failed: %@", error.localizedDescription);
             
             if (completion) completion(NO, error);
         }
     }];
 }
+
+
 
 - (void)disconnect {
     [self.session invalidateAndCancel];
@@ -347,34 +411,41 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
         return;
     }
     
-    NSLog(@"📡 IBKRDataSource: Fetching accounts (REST primary)...");
-    
-    // 🔄 STEP 1: Try REST first
-    [self tryRESTAccountsCall:^(NSArray *accounts, NSError *error) {
-        if ([self shouldUseFallback:error]) {
-            NSLog(@"🔄 IBKRDataSource: REST auth failed, trying TCP fallback...");
-            
-            // 🔄 STEP 2: Fallback to TCP
-            [self ensureFallbackConnectedWithCompletion:^(BOOL connected) {
-                if (connected) {
-                    [self.fallbackDataSource fetchAccountsWithCompletion:^(NSArray *fallbackAccounts, NSError *fallbackError) {
-                        if (fallbackError) {
-                            NSLog(@"❌ IBKRDataSource: Both REST and TCP failed for accounts");
-                        } else {
-                            NSLog(@"✅ IBKRDataSource: Accounts retrieved via TCP fallback");
-                        }
-                        if (completion) completion(fallbackAccounts, fallbackError);
-                    }];
-                } else {
-                    NSLog(@"❌ IBKRDataSource: TCP fallback not available");
-                    if (completion) completion(@[], error); // Return original REST error
-                }
-            }];
-        } else {
-            // REST succeeded or non-auth error
-            if (completion) completion(accounts, error);
-        }
-    }];
+    // 🎯 SMART ROUTING: Check if we're using Gateway connection
+    if ([self shouldUseGatewayConnection] && self.fallbackDataSource && self.fallbackDataSource.isConnected) {
+        NSLog(@"📡 IBKRDataSource: Fetching accounts via Gateway (TCP primary)...");
+        
+        // Use TCP directly - no REST attempt
+        [self.fallbackDataSource fetchAccountsWithCompletion:completion];
+        
+    } else {
+        NSLog(@"📡 IBKRDataSource: Fetching accounts via Client Portal (REST primary)...");
+        
+        // Use existing REST with TCP fallback logic
+        [self tryRESTAccountsCall:^(NSArray *accounts, NSError *error) {
+            if ([self shouldUseFallback:error]) {
+                NSLog(@"🔄 IBKRDataSource: REST auth failed, trying TCP fallback...");
+                
+                [self ensureFallbackConnectedWithCompletion:^(BOOL connected) {
+                    if (connected) {
+                        [self.fallbackDataSource fetchAccountsWithCompletion:^(NSArray *fallbackAccounts, NSError *fallbackError) {
+                            if (fallbackError) {
+                                NSLog(@"❌ IBKRDataSource: Both REST and TCP failed for accounts");
+                            } else {
+                                NSLog(@"✅ IBKRDataSource: Accounts retrieved via TCP fallback");
+                            }
+                            if (completion) completion(fallbackAccounts, fallbackError);
+                        }];
+                    } else {
+                        NSLog(@"❌ IBKRDataSource: TCP fallback not available");
+                        if (completion) completion(@[], error);
+                    }
+                }];
+            } else {
+                if (completion) completion(accounts, error);
+            }
+        }];
+    }
 }
 
 // ✅ UNIFICATO: Account details (AGGIUNTO)
@@ -419,34 +490,43 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
         return;
     }
     
-    NSLog(@"📡 IBKRDataSource: Fetching positions for %@ (REST primary)...", accountId);
-    
-    // 🔄 STEP 1: Try REST first
-    [self tryRESTPositionsCall:accountId completion:^(NSArray *positions, NSError *error) {
-        if ([self shouldUseFallback:error]) {
-            NSLog(@"🔄 IBKRDataSource: REST auth failed, trying TCP fallback...");
-            
-            // 🔄 STEP 2: Fallback to TCP
-            [self ensureFallbackConnectedWithCompletion:^(BOOL connected) {
-                if (connected) {
-                    [self.fallbackDataSource fetchPositionsForAccount:accountId completion:^(NSArray *fallbackPositions, NSError *fallbackError) {
-                        if (fallbackError) {
-                            NSLog(@"❌ IBKRDataSource: Both REST and TCP failed for positions");
-                        } else {
-                            NSLog(@"✅ IBKRDataSource: Positions retrieved via TCP fallback");
-                        }
-                        if (completion) completion(fallbackPositions, fallbackError);
-                    }];
-                } else {
-                    NSLog(@"❌ IBKRDataSource: TCP fallback not available");
-                    if (completion) completion(@[], error);
-                }
-            }];
-        } else {
-            if (completion) completion(positions, error);
-        }
-    }];
+    // 🎯 SMART ROUTING: Check connection method
+    if ([self shouldUseGatewayConnection] && self.fallbackDataSource && self.fallbackDataSource.isConnected) {
+        NSLog(@"📡 IBKRDataSource: Fetching positions via Gateway (TCP primary)...");
+        
+        // Use TCP directly
+        [self.fallbackDataSource fetchPositionsForAccount:accountId completion:completion];
+        
+    } else {
+        NSLog(@"📡 IBKRDataSource: Fetching positions via Client Portal (REST primary)...");
+        
+        // Use existing REST with fallback logic
+        [self tryRESTPositionsCall:accountId completion:^(NSArray *positions, NSError *error) {
+            if ([self shouldUseFallback:error]) {
+                NSLog(@"🔄 IBKRDataSource: REST auth failed, trying TCP fallback...");
+                
+                [self ensureFallbackConnectedWithCompletion:^(BOOL connected) {
+                    if (connected) {
+                        [self.fallbackDataSource fetchPositionsForAccount:accountId completion:^(NSArray *fallbackPositions, NSError *fallbackError) {
+                            if (fallbackError) {
+                                NSLog(@"❌ IBKRDataSource: Both REST and TCP failed for positions");
+                            } else {
+                                NSLog(@"✅ IBKRDataSource: Positions retrieved via TCP fallback");
+                            }
+                            if (completion) completion(fallbackPositions, fallbackError);
+                        }];
+                    } else {
+                        NSLog(@"❌ IBKRDataSource: TCP fallback not available");
+                        if (completion) completion(@[], error);
+                    }
+                }];
+            } else {
+                if (completion) completion(positions, error);
+            }
+        }];
+    }
 }
+
 
 - (void)tryRESTPositionsCall:(NSString *)accountId completion:(void (^)(NSArray *positions, NSError *error))completion {
     [[IBKRLoginManager sharedManager] ensureClientPortalReadyWithCompletion:^(BOOL success, NSError *error) {
@@ -487,34 +567,44 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
         return;
     }
     
-    NSLog(@"📡 IBKRDataSource: Fetching orders for %@ (REST primary)...", accountId);
-    
-    // 🔄 STEP 1: Try REST first
-    [self tryRESTOrdersCall:accountId completion:^(NSArray *orders, NSError *error) {
-        if ([self shouldUseFallback:error]) {
-            NSLog(@"🔄 IBKRDataSource: REST auth failed, trying TCP fallback...");
-            
-            // 🔄 STEP 2: Fallback to TCP
-            [self ensureFallbackConnectedWithCompletion:^(BOOL connected) {
-                if (connected) {
-                    [self.fallbackDataSource fetchOrdersForAccount:accountId completion:^(NSArray *fallbackOrders, NSError *fallbackError) {
-                        if (fallbackError) {
-                            NSLog(@"❌ IBKRDataSource: Both REST and TCP failed for orders");
-                        } else {
-                            NSLog(@"✅ IBKRDataSource: Orders retrieved via TCP fallback");
-                        }
-                        if (completion) completion(fallbackOrders, fallbackError);
-                    }];
-                } else {
-                    NSLog(@"❌ IBKRDataSource: TCP fallback not available");
-                    if (completion) completion(@[], error);
-                }
-            }];
-        } else {
-            if (completion) completion(orders, error);
-        }
-    }];
+    // 🎯 SMART ROUTING: Check connection method
+    if ([self shouldUseGatewayConnection] && self.fallbackDataSource && self.fallbackDataSource.isConnected) {
+        NSLog(@"📡 IBKRDataSource: Fetching orders via Gateway (TCP primary)...");
+        
+        // Use TCP directly
+        [self.fallbackDataSource fetchOrdersForAccount:accountId completion:completion];
+        
+    } else {
+        NSLog(@"📡 IBKRDataSource: Fetching orders via Client Portal (REST primary)...");
+        
+        // Use existing REST with fallback logic
+        [self tryRESTOrdersCall:accountId completion:^(NSArray *orders, NSError *error) {
+            if ([self shouldUseFallback:error]) {
+                NSLog(@"🔄 IBKRDataSource: REST auth failed, trying TCP fallback...");
+                
+                [self ensureFallbackConnectedWithCompletion:^(BOOL connected) {
+                    if (connected) {
+                        [self.fallbackDataSource fetchOrdersForAccount:accountId completion:^(NSArray *fallbackOrders, NSError *fallbackError) {
+                            if (fallbackError) {
+                                NSLog(@"❌ IBKRDataSource: Both REST and TCP failed for orders");
+                            } else {
+                                NSLog(@"✅ IBKRDataSource: Orders retrieved via TCP fallback");
+                            }
+                            if (completion) completion(fallbackOrders, fallbackError);
+                        }];
+                    } else {
+                        NSLog(@"❌ IBKRDataSource: TCP fallback not available");
+                        if (completion) completion(@[], error);
+                    }
+                }];
+            } else {
+                if (completion) completion(orders, error);
+            }
+        }];
+    }
 }
+
+
 
 - (void)tryRESTOrdersCall:(NSString *)accountId completion:(void (^)(NSArray *orders, NSError *error))completion {
     [[IBKRLoginManager sharedManager] ensureClientPortalReadyWithCompletion:^(BOOL success, NSError *error) {

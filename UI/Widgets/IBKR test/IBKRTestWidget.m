@@ -716,7 +716,6 @@
 
 - (IBAction)testAccountsWithFallback:(id)sender {
     [self appendResult:@"📡 Testing accounts with fallback architecture..."];
-    [self appendResult:@"🔄 Will try REST first, then fallback to TCP if auth fails"];
     
     IBKRDataSource *ibkrSource = [self getIBKRDataSource];
     

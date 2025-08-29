@@ -10,6 +10,10 @@
 
 @interface MultiChartWidget : BaseWidget
 
+
+@property (nonatomic, strong) NSCollectionView *collectionView;
+@property (nonatomic, strong) NSScrollView *collectionScrollView;
+
 // Configuration
 @property (nonatomic, assign) MiniChartType chartType;
 @property (nonatomic, assign) MiniChartTimeframe timeframe;
@@ -38,8 +42,6 @@
 @property (nonatomic, strong) NSButton *volumeCheckbox;
 
 // Mini charts container - REMOVED readonly to allow internal assignment
-@property (nonatomic, strong) NSScrollView *scrollView;
-@property (nonatomic, strong) NSView *chartsContainer;
 @property (nonatomic, strong) NSMutableArray<MiniChart *> *miniCharts;
 
 // Actions

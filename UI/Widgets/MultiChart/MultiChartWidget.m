@@ -10,6 +10,7 @@
 #import "MiniChart.h"
 #import "DataHub+MarketData.h"
 #import "RuntimeModels.h"
+#import "MiniChartCollectionItem.h"
 
 @interface MultiChartWidget ()
 
@@ -238,30 +239,45 @@
 }
 
 - (void)setupScrollView {
-    // Scroll view for charts - FIXED: Proper constraints
-    self.scrollView = [[NSScrollView alloc] init];
-    self.scrollView.hasVerticalScroller = YES;
-    self.scrollView.hasHorizontalScroller = YES;
-    self.scrollView.autohidesScrollers = YES;
-    self.scrollView.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.contentView addSubview:self.scrollView];
+    // Collection view layout
+    NSCollectionViewGridLayout *gridLayout = [[NSCollectionViewGridLayout alloc] init];
+    gridLayout.minimumItemSize = NSMakeSize(100, 80);
+    gridLayout.maximumItemSize = NSMakeSize(500, 400);
+    gridLayout.minimumInteritemSpacing = 10;
+    gridLayout.minimumLineSpacing = 10;
+    gridLayout.margins = NSEdgeInsetsMake(10, 10, 10, 10);
     
-   
-
-    // Charts container
-    self.chartsContainer = [[NSView alloc] init];
-    self.chartsContainer.translatesAutoresizingMaskIntoConstraints = NO;
-    self.scrollView.documentView = self.chartsContainer;
-    self.scrollView.verticalScrollElasticity = NSScrollElasticityAllowed;
-      self.scrollView.horizontalScrollElasticity = NSScrollElasticityAllowed;    // FIXED: Scroll view constraints - takes remaining space below controls
+    // Collection view
+    self.collectionView = [[NSCollectionView alloc] init];
+    self.collectionView.collectionViewLayout = gridLayout;
+    self.collectionView.dataSource = self;
+    self.collectionView.delegate = self;
+    self.collectionView.backgroundColors = @[[NSColor controlBackgroundColor]];
+    
+    // Registra la classe item
+    [self.collectionView registerClass:[MiniChartCollectionItem class]
+                  forItemWithIdentifier:@"MiniChartItem"];
+    
+    // Scroll view per collection view
+    self.collectionScrollView = [[NSScrollView alloc] init];
+    self.collectionScrollView.hasVerticalScroller = YES;
+    self.collectionScrollView.hasHorizontalScroller = YES;
+    self.collectionScrollView.autohidesScrollers = YES;
+    self.collectionScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.collectionScrollView.documentView = self.collectionView;
+    self.collectionScrollView.verticalScrollElasticity = NSScrollElasticityAllowed;
+    self.collectionScrollView.horizontalScrollElasticity = NSScrollElasticityAllowed;
+    
+    [self.contentView addSubview:self.collectionScrollView];
+    
+    // Constraints - stesso layout del vecchio scrollView
     [NSLayoutConstraint activateConstraints:@[
-        [self.scrollView.topAnchor constraintEqualToAnchor:self.controlsView.bottomAnchor constant:8],
-        [self.scrollView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
-        [self.scrollView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
-        [self.scrollView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor]
+        [self.collectionScrollView.topAnchor constraintEqualToAnchor:self.controlsView.bottomAnchor constant:8],
+        [self.collectionScrollView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
+        [self.collectionScrollView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
+        [self.collectionScrollView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-8]
     ]];
 }
-
 #pragma mark - Notifications
 
 - (void)registerForNotifications {
@@ -494,17 +510,10 @@
 #pragma mark - MiniChart Management
 
 - (void)rebuildMiniCharts {
-    // Remove existing charts
-    for (MiniChart *chart in self.miniCharts) {
-        [chart removeFromSuperview];
-    }
+    // Mantieni gli stessi MiniChart esistenti ma pulisci l'array
     [self.miniCharts removeAllObjects];
     
-    // Remove constraints
-    [self.chartsContainer removeConstraints:self.chartConstraints];
-    [self.chartConstraints removeAllObjects];
-    
-    // Create new charts with chain support
+    // Crea i MiniChart usando lo stesso codice esistente
     for (NSString *symbol in self.symbols) {
         MiniChart *miniChart = [[MiniChart alloc] init];
         miniChart.symbol = symbol;
@@ -513,20 +522,98 @@
         miniChart.scaleType = self.scaleType;
         miniChart.maxBars = self.maxBars;
         miniChart.showVolume = self.showVolume;
-        miniChart.translatesAutoresizingMaskIntoConstraints = NO;
         
-        // Setup chain integration
-        [self setupChartClickHandler:miniChart];
-        [self setupChartContextMenu:miniChart];
+        // Setup appearance esistente
+        [self setupChartSelectionAppearance:miniChart];
         
-        [self.chartsContainer addSubview:miniChart];
         [self.miniCharts addObject:miniChart];
     }
     
-    // Layout charts
-    [self layoutMiniCharts];
+    // Aggiorna collection view
+    [self.collectionView reloadData];
     
-    NSLog(@"MultiChartWidget: Rebuilt %lu mini charts with chain support", (unsigned long)self.miniCharts.count);
+    NSLog(@"MultiChartWidget: Rebuilt %lu mini charts with NSCollectionView", (unsigned long)self.miniCharts.count);
+}
+
+
+- (NSInteger)collectionView:(NSCollectionView *)collectionView numberOfItemsInSection:(NSInteger)section {
+    return self.miniCharts.count;
+}
+
+- (NSCollectionViewItem *)collectionView:(NSCollectionView *)collectionView
+                     itemForRepresentedObjectAtIndexPath:(NSIndexPath *)indexPath {
+    
+    MiniChartCollectionItem *item = [collectionView makeItemWithIdentifier:@"MiniChartItem"
+                                                              forIndexPath:indexPath];
+    
+    if (indexPath.item < self.miniCharts.count) {
+        MiniChart *miniChart = self.miniCharts[indexPath.item];
+        
+        // Configura l'item con il MiniChart esistente
+        [item configureMiniChart:miniChart];
+        
+        // Setup callbacks usando i metodi esistenti
+        __weak typeof(self) weakSelf = self;
+        item.onChartClicked = ^(MiniChart *chart) {
+            [weakSelf handleChartClick:chart];
+        };
+        
+        item.onSetupContextMenu = ^(MiniChart *chart) {
+            [weakSelf setupChartContextMenu:chart];
+        };
+    }
+    
+    return item;
+}
+
+- (void)handleChartClick:(MiniChart *)clickedChart {
+    NSString *symbol = clickedChart.symbol;
+    
+    NSLog(@"MultiChartWidget: Mini chart clicked for symbol: %@", symbol);
+    
+    // Aggiorna la selezione visuale (usa codice esistente)
+    [self updateChartSelection:clickedChart];
+    
+    // Broadcast del simbolo selezionato alla chain (codice esistente)
+    if (self.chainActive && symbol.length > 0) {
+        [self broadcastUpdate:@{
+            @"action": @"setSymbols",
+            @"symbols": @[symbol]
+        }];
+        
+        NSLog(@"MultiChartWidget: Broadcasted symbol '%@' to chain", symbol);
+        
+        // Mostra feedback temporaneo (risolvi problema scroll usando collection view bounds)
+        [self showTemporaryMessageForCollectionView:[NSString stringWithFormat:@"Sent %@ to chain", symbol]];
+    }
+}
+
+- (void)showTemporaryMessageForCollectionView:(NSString *)message {
+    NSTextField *messageLabel = [NSTextField labelWithString:message];
+    messageLabel.editable = NO;
+    messageLabel.bordered = NO;
+    messageLabel.backgroundColor = [NSColor.controlAccentColor colorWithAlphaComponent:0.8];
+    messageLabel.textColor = [NSColor whiteColor];
+    messageLabel.font = [NSFont boldSystemFontOfSize:12];
+    messageLabel.alignment = NSTextAlignmentCenter;
+    messageLabel.wantsLayer = YES;
+    messageLabel.layer.cornerRadius = 4.0;
+    messageLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    // Aggiungi al contentView (non alla collection view) per evitare problemi scroll
+    [self.contentView addSubview:messageLabel];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [messageLabel.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
+        [messageLabel.topAnchor constraintEqualToAnchor:self.controlsView.bottomAnchor constant:20],
+        [messageLabel.heightAnchor constraintEqualToConstant:30],
+        [messageLabel.widthAnchor constraintGreaterThanOrEqualToConstant:100]
+    ]];
+    
+    // Rimuovi dopo 2 secondi
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [messageLabel removeFromSuperview];
+    });
 }
 
 - (void)setupChartClickHandler:(MiniChart *)chart {
@@ -1411,7 +1498,6 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     self.symbolsTextField.stringValue = @"";
 }
 
-// ✅ NUOVO: Gestione cambio griglia
 - (void)gridSizeChanged:(id)sender {
     NSInteger newRows = self.rowsField.integerValue;
     NSInteger newColumns = self.columnsField.integerValue;
@@ -1422,8 +1508,13 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     self.gridRows = newRows;
     self.gridColumns = newColumns;
     
-    // Ricalcola layout
-    [self layoutMiniCharts];
+    // Aggiorna layout collection view
+    if ([self.collectionView.collectionViewLayout isKindOfClass:[NSCollectionViewGridLayout class]]) {
+        NSCollectionViewGridLayout *gridLayout = (NSCollectionViewGridLayout *)self.collectionView.collectionViewLayout;
+        gridLayout.maximumNumberOfColumns = newColumns;
+        gridLayout.maximumNumberOfRows = newRows;
+        [self.collectionView.collectionViewLayout invalidateLayout];
+    }
     
     NSLog(@"MultiChartWidget: Grid changed to %ldx%ld", (long)newRows, (long)newColumns);
 }

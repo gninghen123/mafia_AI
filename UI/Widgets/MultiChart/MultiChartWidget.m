@@ -47,8 +47,6 @@
     _scaleType = MiniChartScaleLinear;
     _maxBars = 100;
     _showVolume = YES;
-    _gridRows = 2;
-      _gridColumns = 3;
     _symbols = @[];
     _symbolsString = @"";
     
@@ -137,21 +135,21 @@
     self.volumeCheckbox.state = NSControlStateValueOn;
     self.volumeCheckbox.translatesAutoresizingMaskIntoConstraints = NO;
     [self.controlsView addSubview:self.volumeCheckbox];
-    self.rowsField = [[NSTextField alloc] init];
-       self.rowsField.stringValue = @"2";
-       self.rowsField.translatesAutoresizingMaskIntoConstraints = NO;
-       [self.rowsField setTarget:self];
-       [self.rowsField setAction:@selector(gridSizeChanged:)];
-       [self.controlsView addSubview:self.rowsField];
-       
-       // ✅ NUOVO: Columns field
-       self.columnsField = [[NSTextField alloc] init];
-       self.columnsField.stringValue = @"3";
-       self.columnsField.translatesAutoresizingMaskIntoConstraints = NO;
-       [self.columnsField setTarget:self];
-       [self.columnsField setAction:@selector(gridSizeChanged:)];
-       [self.controlsView addSubview:self.columnsField];    // Columns control
-   
+    
+    
+    self.itemWidthField = [[NSTextField alloc] init];
+    self.itemWidthField.stringValue = @"200";
+    self.itemWidthField.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.itemWidthField setTarget:self];
+    [self.itemWidthField setAction:@selector(itemSizeChanged:)];
+    [self.controlsView addSubview:self.itemWidthField];
+    
+    self.itemHeightField = [[NSTextField alloc] init];
+    self.itemHeightField.stringValue = @"150";
+    self.itemHeightField.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.itemHeightField setTarget:self];
+    [self.itemHeightField setAction:@selector(itemSizeChanged:)];
+    [self.controlsView addSubview:self.itemHeightField];
     
     // Refresh button
     self.refreshButton = [NSButton buttonWithTitle:@"Refresh" target:self action:@selector(refreshButtonClicked:)];
@@ -169,20 +167,20 @@
         [self.controlsView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor],
         [self.controlsView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
         [self.controlsView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
-        [self.controlsView.heightAnchor constraintEqualToConstant:40] // Reduced from 60
+        [self.controlsView.heightAnchor constraintEqualToConstant:40]
     ]];
     
-    // Symbols field
+    // Symbols field + reset button
     [NSLayoutConstraint activateConstraints:@[
-           [self.symbolsTextField.leadingAnchor constraintEqualToAnchor:self.controlsView.leadingAnchor constant:spacing],
-           [self.symbolsTextField.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
-           [self.symbolsTextField.widthAnchor constraintEqualToConstant:180], // Ridotto da 200 per fare spazio al reset
-           
-           [self.resetSymbolsButton.leadingAnchor constraintEqualToAnchor:self.symbolsTextField.trailingAnchor constant:4],
-           [self.resetSymbolsButton.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
-           [self.resetSymbolsButton.widthAnchor constraintEqualToConstant:25],
-           [self.resetSymbolsButton.heightAnchor constraintEqualToConstant:25]
-       ]];
+        [self.symbolsTextField.leadingAnchor constraintEqualToAnchor:self.controlsView.leadingAnchor constant:spacing],
+        [self.symbolsTextField.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
+        [self.symbolsTextField.widthAnchor constraintEqualToConstant:180],
+        
+        [self.resetSymbolsButton.leadingAnchor constraintEqualToAnchor:self.symbolsTextField.trailingAnchor constant:4],
+        [self.resetSymbolsButton.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
+        [self.resetSymbolsButton.widthAnchor constraintEqualToConstant:25],
+        [self.resetSymbolsButton.heightAnchor constraintEqualToConstant:25]
+    ]];
     
     // Chart type popup
     [NSLayoutConstraint activateConstraints:@[
@@ -218,34 +216,50 @@
         [self.volumeCheckbox.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor]
     ]];
     
+    // ❌ ELIMINA QUESTI (vecchi constraint righe/colonne):
+    // [self.rowsField.leadingAnchor constraintEqualToAnchor:self.volumeCheckbox.trailingAnchor constant:spacing]
+    // [self.columnsField.leadingAnchor constraintEqualToAnchor:self.rowsField.trailingAnchor constant:4]
+    
+    // ✅ SOSTITUISCI CON QUESTI (nuovi constraint width/height):
     [NSLayoutConstraint activateConstraints:@[
-            [self.rowsField.leadingAnchor constraintEqualToAnchor:self.volumeCheckbox.trailingAnchor constant:spacing],
-            [self.rowsField.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
-            [self.rowsField.widthAnchor constraintEqualToConstant:30]
-        ]];
-        
-        [NSLayoutConstraint activateConstraints:@[
-            [self.columnsField.leadingAnchor constraintEqualToAnchor:self.rowsField.trailingAnchor constant:4],
-            [self.columnsField.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
-            [self.columnsField.widthAnchor constraintEqualToConstant:30]
-        ]];
+        [self.itemWidthField.leadingAnchor constraintEqualToAnchor:self.volumeCheckbox.trailingAnchor constant:spacing],
+        [self.itemWidthField.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
+        [self.itemWidthField.widthAnchor constraintEqualToConstant:40]
+    ]];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [self.itemHeightField.leadingAnchor constraintEqualToAnchor:self.itemWidthField.trailingAnchor constant:4],
+        [self.itemHeightField.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
+        [self.itemHeightField.widthAnchor constraintEqualToConstant:40]
+    ]];
     
     // Refresh button
     [NSLayoutConstraint activateConstraints:@[
-        [self.refreshButton.leadingAnchor constraintEqualToAnchor:self.columnsField.trailingAnchor constant:spacing],
+        [self.refreshButton.leadingAnchor constraintEqualToAnchor:self.itemHeightField.trailingAnchor constant:spacing],
         [self.refreshButton.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
         [self.refreshButton.trailingAnchor constraintLessThanOrEqualToAnchor:self.controlsView.trailingAnchor constant:-spacing]
     ]];
 }
+    
 
 - (void)setupScrollView {
-    // Collection view layout
+    // ✅ FIX: Collection view layout CORRETTO
     NSCollectionViewGridLayout *gridLayout = [[NSCollectionViewGridLayout alloc] init];
-    gridLayout.minimumItemSize = NSMakeSize(100, 80);
-    gridLayout.maximumItemSize = NSMakeSize(500, 400);
+    
+    // ❌ PROBLEMA ERA QUI: minimumItemSize troppo piccolo e maximumItemSize troppo grande
+    gridLayout.minimumItemSize = NSMakeSize(200, 150);  // Era 100,80 - troppo piccolo
+    gridLayout.maximumItemSize = NSMakeSize(400, 300);  // Era 500,400 - troppo grande
     gridLayout.minimumInteritemSpacing = 10;
     gridLayout.minimumLineSpacing = 10;
     gridLayout.margins = NSEdgeInsetsMake(10, 10, 10, 10);
+    
+    // ✅ FIX: Configura ESPLICITAMENTE il numero di colonne
+
+    
+    NSLog(@"🔧 GridLayout configured: columns=%ld, minSize=%.0fx%.0f, maxSize=%.0fx%.0f",
+          (long)gridLayout.maximumNumberOfColumns,
+          gridLayout.minimumItemSize.width, gridLayout.minimumItemSize.height,
+          gridLayout.maximumItemSize.width, gridLayout.maximumItemSize.height);
     
     // Collection view
     self.collectionView = [[NSCollectionView alloc] init];
@@ -254,7 +268,7 @@
     self.collectionView.delegate = self;
     self.collectionView.backgroundColors = @[[NSColor controlBackgroundColor]];
     
-    // Registra la classe item
+    // ✅ FIX: Registra la classe item CORRETTAMENTE
     [self.collectionView registerClass:[MiniChartCollectionItem class]
                   forItemWithIdentifier:@"MiniChartItem"];
     
@@ -277,7 +291,11 @@
         [self.collectionScrollView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
         [self.collectionScrollView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-8]
     ]];
+    
+    NSLog(@"✅ NSCollectionView setup completed with proper grid configuration");
 }
+
+
 #pragma mark - Notifications
 
 - (void)registerForNotifications {
@@ -506,8 +524,16 @@
 #pragma mark - MiniChart Management
 
 - (void)rebuildMiniCharts {
+    NSLog(@"🔨 rebuildMiniCharts called with symbols: %@", [self.symbols componentsJoinedByString:@","]);
+    
     // Mantieni gli stessi MiniChart esistenti ma pulisci l'array
     [self.miniCharts removeAllObjects];
+    
+    if (self.symbols.count == 0) {
+        NSLog(@"⚠️ No symbols to build charts for");
+        [self.collectionView reloadData];
+        return;
+    }
     
     // Crea i MiniChart usando lo stesso codice esistente
     for (NSString *symbol in self.symbols) {
@@ -525,15 +551,20 @@
         [self.miniCharts addObject:miniChart];
     }
     
+    
+    // ✅ FIX: Force layout update prima del reload
+    [self.collectionView.collectionViewLayout invalidateLayout];
+    
     // Aggiorna collection view
     [self.collectionView reloadData];
     
-    NSLog(@"MultiChartWidget: Rebuilt %lu mini charts with NSCollectionView", (unsigned long)self.miniCharts.count);
+    NSLog(@"✅ MultiChartWidget: Rebuilt %lu mini charts with NSCollectionView", (unsigned long)self.miniCharts.count);
 }
 
 
 - (NSInteger)collectionView:(NSCollectionView *)collectionView numberOfItemsInSection:(NSInteger)section {
-    return self.miniCharts.count;
+    NSInteger count = self.miniCharts.count;
+    return count;
 }
 
 - (NSCollectionViewItem *)collectionView:(NSCollectionView *)collectionView
@@ -542,26 +573,36 @@
     MiniChartCollectionItem *item = [collectionView makeItemWithIdentifier:@"MiniChartItem"
                                                               forIndexPath:indexPath];
     
-    if (indexPath.item < self.miniCharts.count) {
-        MiniChart *miniChart = self.miniCharts[indexPath.item];
-        
-        // Configura l'item con il MiniChart esistente
-        [item configureMiniChart:miniChart];
-        
-        // Setup callbacks usando i metodi esistenti
-        __weak typeof(self) weakSelf = self;
-        item.onChartClicked = ^(MiniChart *chart) {
-            [weakSelf handleChartClick:chart];
-        };
-        
-        item.onSetupContextMenu = ^(MiniChart *chart) {
-            [weakSelf setupChartContextMenu:chart];
-        };
+    if (!item) {
+        return nil;
     }
     
+    if (indexPath.item >= self.miniCharts.count) {
+        return item;
+    }
+    
+    MiniChart *miniChart = self.miniCharts[indexPath.item];
+    if (!miniChart) {
+        return item;
+    }
+    
+    // Configura l'item con il MiniChart esistente
+    [item configureMiniChart:miniChart];
+    
+    // Setup callbacks usando i metodi esistenti
+    __weak typeof(self) weakSelf = self;
+    item.onChartClicked = ^(MiniChart *chart) {
+        NSLog(@"👆 Chart clicked callback: %@", chart.symbol);
+        [weakSelf handleChartClick:chart];
+    };
+    
+    item.onSetupContextMenu = ^(MiniChart *chart) {
+        [weakSelf setupChartContextMenu:chart];
+    };
+    
+    NSLog(@"✅ Created collection item for: %@", miniChart.symbol);
     return item;
 }
-
 - (void)handleChartClick:(MiniChart *)clickedChart {
     NSString *symbol = clickedChart.symbol;
     
@@ -1109,8 +1150,7 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     NSInteger savedRows = [defaults integerForKey:@"MultiChart_GridRows"];
       NSInteger savedColumns = [defaults integerForKey:@"MultiChart_GridColumns"];
       
-      if (savedRows > 0) self.gridRows = savedRows;
-      if (savedColumns > 0) self.gridColumns = savedColumns;
+  
     // Applica le impostazioni caricate con validazione
     
     // Chart Type (default: Line se non salvato)
@@ -1177,8 +1217,7 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     [defaults setInteger:self.maxBars forKey:kMultiChartMaxBarsKey];
     [defaults setBool:self.showVolume forKey:kMultiChartShowVolumeKey];
     [defaults setInteger:self.columnsCount forKey:kMultiChartColumnsCountKey];
-    [defaults setInteger:self.gridRows forKey:@"MultiChart_GridRows"];
-      [defaults setInteger:self.gridColumns forKey:@"MultiChart_GridColumns"];
+  
     // Forza la sincronizzazione immediata
     [defaults synchronize];
     
@@ -1216,12 +1255,7 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     }
     
     
-    if (self.rowsField) {
-           self.rowsField.integerValue = self.gridRows;
-       }
-       if (self.columnsField) {
-           self.columnsField.integerValue = self.gridColumns;
-       }
+ 
 
     
     NSLog(@"MultiChartWidget: Updated UI from settings");
@@ -1333,16 +1367,6 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         self.symbolsTextField.action = @selector(symbolsChanged:); // Senza auto-save
     }
 
-    // ✅ AGGIUNGI collegamento grid fields:
-    if (self.rowsField) {
-        self.rowsField.target = self;
-        self.rowsField.action = @selector(gridSizeChanged:);
-    }
-
-    if (self.columnsField) {
-        self.columnsField.target = self;
-        self.columnsField.action = @selector(gridSizeChanged:);
-    }
     
     NSLog(@"MultiChartWidget: Auto-save action methods connected");
 }
@@ -1367,26 +1391,6 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     self.symbolsTextField.stringValue = @"";
 }
 
-- (void)gridSizeChanged:(id)sender {
-    NSInteger newRows = self.rowsField.integerValue;
-    NSInteger newColumns = self.columnsField.integerValue;
-    
-    if (newRows < 1) newRows = 1;
-    if (newColumns < 1) newColumns = 1;
-    
-    self.gridRows = newRows;
-    self.gridColumns = newColumns;
-    
-    // Aggiorna layout collection view
-    if ([self.collectionView.collectionViewLayout isKindOfClass:[NSCollectionViewGridLayout class]]) {
-        NSCollectionViewGridLayout *gridLayout = (NSCollectionViewGridLayout *)self.collectionView.collectionViewLayout;
-        gridLayout.maximumNumberOfColumns = newColumns;
-        gridLayout.maximumNumberOfRows = newRows;
-        [self.collectionView.collectionViewLayout invalidateLayout];
-    }
-    
-    NSLog(@"MultiChartWidget: Grid changed to %ldx%ld", (long)newRows, (long)newColumns);
-}
 
 
 - (void)updateChartSelection:(MiniChart *)selectedChart {

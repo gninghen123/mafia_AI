@@ -28,10 +28,10 @@
 
 
 @property (nonatomic, strong) NSButton *resetSymbolsButton;      // NUOVO: Pulsante reset simboli
-@property (nonatomic, strong) NSTextField *rowsField;           // NUOVO: Campo per numero righe
-@property (nonatomic, strong) NSTextField *columnsField;       // NUOVO: Campo per numero colonne
-@property (nonatomic, assign) NSInteger gridRows;              // NUOVO: Numero di righe nella griglia
-@property (nonatomic, assign) NSInteger gridColumns;           // NUOVO: Numero di colonne nella griglia
+@property (nonatomic, strong) NSTextField *itemWidthField;
+@property (nonatomic, strong) NSTextField *itemHeightField;
+@property (nonatomic, assign) NSInteger itemWidth;
+@property (nonatomic, assign) NSInteger itemHeigth;          
 
 // UI Components - REMOVED readonly to allow internal assignment
 @property (nonatomic, strong) NSTextField *symbolsTextField;

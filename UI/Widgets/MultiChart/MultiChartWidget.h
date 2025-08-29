@@ -57,6 +57,6 @@
 
 // Layout
 - (void)setColumnsCount:(NSInteger)count animated:(BOOL)animated;
-- (void)optimizeLayoutForSize:(NSSize)size;
+- (void)showTemporaryMessageForCollectionView:(NSString *)message;
 
 @end

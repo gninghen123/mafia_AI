@@ -295,11 +295,7 @@
                name:@"DataHubHistoricalDataUpdatedNotification"
              object:nil];
     
-    // ✅ AGGIUNGI: Listen for view frame changes
-    [nc addObserver:self
-           selector:@selector(viewFrameDidChange:)
-               name:NSViewFrameDidChangeNotification
-             object:self.contentView];
+   
 }
 
 
@@ -654,112 +650,10 @@
         NSLog(@"MultiChartWidget: Broadcasted symbol '%@' to chain", symbol);
         
         // Mostra feedback temporaneo
-        [self showTemporaryMessage:[NSString stringWithFormat:@"Sent %@ to chain", symbol]];
+        [self showTemporaryMessageForCollectionView:[NSString stringWithFormat:@"Sent %@ to chain", symbol]];
     }
 }
 
-- (void)layoutMiniCharts {
-    if (self.miniCharts.count == 0) return;
-    
-    // Remove existing constraints
-    [self.chartsContainer removeConstraints:self.chartConstraints];
-    [self.chartConstraints removeAllObjects];
-    
-    // ✅ NUOVO: Usa gridRows e gridColumns invece di columnsCount
-    NSInteger rows = (self.miniCharts.count + self.gridColumns - 1) / self.gridColumns;
-    CGFloat spacing = 10;
-    
-    // ✅ NUOVO: Calcolo responsivo basato su container size
-    CGSize containerSize = self.scrollView.bounds.size;
-    if (containerSize.width <= 0 || containerSize.height <= 0) {
-        containerSize = CGSizeMake(800, 600); // Fallback
-    }
-    
-    CGFloat chartWidth = (containerSize.width - (self.gridColumns + 1) * spacing) / self.gridColumns;
-    CGFloat chartHeight = (containerSize.height - (self.gridRows + 1) * spacing) / self.gridRows;
-    
-    // Dimensioni minime
-    chartWidth = MAX(chartWidth, 100);
-    chartHeight = MAX(chartHeight, 80);
-    
-    NSLog(@"Layout: container=%.0fx%.0f, chart=%.0fx%.0f, grid=%ldx%ld",
-          containerSize.width, containerSize.height, chartWidth, chartHeight,
-          (long)self.gridColumns, (long)self.gridRows);
-    
-    // Layout each chart
-    for (NSInteger i = 0; i < self.miniCharts.count; i++) {
-        MiniChart *chart = self.miniCharts[i];
-        
-        // ✅ NUOVO: Usa gridColumns invece di columnsCount
-        NSInteger row = i / self.gridColumns;
-        NSInteger col = i % self.gridColumns;
-        
-        CGFloat x = spacing + col * (chartWidth + spacing);
-        CGFloat y = spacing + row * (chartHeight + spacing);
-        
-        // Width constraint
-        [self.chartConstraints addObject:[NSLayoutConstraint constraintWithItem:chart
-                                                                      attribute:NSLayoutAttributeWidth
-                                                                      relatedBy:NSLayoutRelationEqual
-                                                                         toItem:nil
-                                                                      attribute:NSLayoutAttributeNotAnAttribute
-                                                                     multiplier:1.0
-                                                                       constant:chartWidth]];
-        
-        // Height constraint
-        [self.chartConstraints addObject:[NSLayoutConstraint constraintWithItem:chart
-                                                                      attribute:NSLayoutAttributeHeight
-                                                                      relatedBy:NSLayoutRelationEqual
-                                                                         toItem:nil
-                                                                      attribute:NSLayoutAttributeNotAnAttribute
-                                                                     multiplier:1.0
-                                                                       constant:chartHeight]];
-        
-        // X position
-        [self.chartConstraints addObject:[NSLayoutConstraint constraintWithItem:chart
-                                                                      attribute:NSLayoutAttributeLeft
-                                                                      relatedBy:NSLayoutRelationEqual
-                                                                         toItem:self.chartsContainer
-                                                                      attribute:NSLayoutAttributeLeft
-                                                                     multiplier:1.0
-                                                                       constant:x]];
-        
-        // Y position
-        [self.chartConstraints addObject:[NSLayoutConstraint constraintWithItem:chart
-                                                                      attribute:NSLayoutAttributeTop
-                                                                      relatedBy:NSLayoutRelationEqual
-                                                                         toItem:self.chartsContainer
-                                                                      attribute:NSLayoutAttributeTop
-                                                                     multiplier:1.0
-                                                                       constant:y]];
-    }
-    
-    // Set container size
-    CGFloat containerWidth = self.gridColumns * chartWidth + (self.gridColumns + 1) * spacing;
-    CGFloat containerHeight = rows * chartHeight + (rows + 1) * spacing;
-    
-    // Container size constraints
-    [self.chartConstraints addObject:[NSLayoutConstraint constraintWithItem:self.chartsContainer
-                                                                  attribute:NSLayoutAttributeWidth
-                                                                  relatedBy:NSLayoutRelationEqual
-                                                                     toItem:nil
-                                                                  attribute:NSLayoutAttributeNotAnAttribute
-                                                                 multiplier:1.0
-                                                                   constant:containerWidth]];
-    
-    [self.chartConstraints addObject:[NSLayoutConstraint constraintWithItem:self.chartsContainer
-                                                                  attribute:NSLayoutAttributeHeight
-                                                                  relatedBy:NSLayoutRelationEqual
-                                                                     toItem:nil
-                                                                  attribute:NSLayoutAttributeNotAnAttribute
-                                                                 multiplier:1.0
-                                                                   constant:containerHeight]];
-    
-    [self.chartsContainer addConstraints:self.chartConstraints];
-    
-    // ✅ SCROLL TOP-DOWN: Assicura scroll dall'alto
-    [self.chartsContainer scrollPoint:NSMakePoint(0, 0)];
-}
 
 
 
@@ -862,7 +756,7 @@
             @"symbols": @[symbol]
         }];
         
-        [self showTemporaryMessage:[NSString stringWithFormat:@"Sent %@ to chain", symbol]];
+        [self showTemporaryMessageForCollectionView:[NSString stringWithFormat:@"Sent %@ to chain", symbol]];
     }
 }
 
@@ -884,7 +778,7 @@
             @"symbols": @[symbol]
         }];
         
-        [self showTemporaryMessage:[NSString stringWithFormat:@"Sent %@ to %@", symbol, colorName]];
+        [self showTemporaryMessageForCollectionView:[NSString stringWithFormat:@"Sent %@ to %@", symbol, colorName]];
     }
 }
 
@@ -902,38 +796,12 @@
         // Ricostruisci i chart
         [self rebuildMiniCharts];
         
-        [self showTemporaryMessage:[NSString stringWithFormat:@"Removed %@", symbol]];
+        [self showTemporaryMessageForCollectionView:[NSString stringWithFormat:@"Removed %@", symbol]];
     }
 }
 
 #pragma mark - UI Feedback
 
-- (void)showTemporaryMessage:(NSString *)message {
-/*
-    // Crea un label temporaneo per feedback
-    NSTextField *messageLabel = [NSTextField labelWithString:message];
-    messageLabel.backgroundColor = [NSColor controlAccentColor];
-    messageLabel.textColor = [NSColor controlTextColor];
-    messageLabel.drawsBackground = YES;
-    messageLabel.bordered = NO;
-    messageLabel.editable = NO;
-    messageLabel.alignment = NSTextAlignmentCenter;
-    messageLabel.font = [NSFont systemFontOfSize:11];
-    messageLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    
-    [self.view addSubview:messageLabel];
-    [NSLayoutConstraint activateConstraints:@[
-        [messageLabel.centerXAnchor constraintEqualToAnchor:self.contentView.centerXAnchor],
-        [messageLabel.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-10],
-        [messageLabel.heightAnchor constraintEqualToConstant:20],
-        [messageLabel.widthAnchor constraintGreaterThanOrEqualToConstant:100]
-    ]];
-   
-    // Rimuovi dopo 2 secondi
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [messageLabel removeFromSuperview];
-    });*/
-}
 
 
 
@@ -1051,6 +919,7 @@
 }
 
 - (MiniChart *)miniChartForSymbol:(NSString *)symbol {
+    // Con collection view, cerchiamo direttamente nell'array miniCharts
     for (MiniChart *chart in self.miniCharts) {
         if ([chart.symbol isEqualToString:symbol]) {
             return chart;
@@ -1521,27 +1390,34 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
 
 
 - (void)updateChartSelection:(MiniChart *)selectedChart {
-    // Rimuovi selezione da tutti i chart
+    // Rimuovi selezione da tutti i chart (stesso codice)
     for (MiniChart *chart in self.miniCharts) {
         if (chart.layer) {
             chart.layer.borderWidth = 0.0;
         }
     }
     
-    // Aggiungi selezione al chart cliccato
+    // Aggiungi selezione al chart cliccato (stesso codice)
     if (selectedChart.layer) {
         selectedChart.layer.borderWidth = 2.0;
         selectedChart.layer.borderColor = [NSColor controlAccentColor].CGColor;
     }
     
-    // Animazione per evidenziare la selezione
+    // ✅ NUOVO: Scroll al chart selezionato per assicurarsi che sia visibile
+    NSInteger index = [self.miniCharts indexOfObject:selectedChart];
+    if (index != NSNotFound) {
+        NSIndexPath *indexPath = [NSIndexPath indexPathForItem:index inSection:0];
+        [self.collectionView scrollToItemsAtIndexPaths:@[indexPath]
+                                        scrollPosition:NSCollectionViewScrollPositionCenteredVertically];
+    }
+    
+    // Animazione esistente rimane identica
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0.2;
         if (selectedChart.layer) {
             selectedChart.layer.backgroundColor = [NSColor.controlAccentColor colorWithAlphaComponent:0.1].CGColor;
         }
     } completionHandler:^{
-        // Rimuovi l'highlight dopo un breve periodo
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
                 context.duration = 0.3;
@@ -1553,34 +1429,7 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     }];
 }
 
-#pragma mark - Layout Management
 
-- (void)optimizeLayoutForSize:(NSSize)size {
-    NSLog(@"📐 MultiChartWidget: Optimizing layout for size %.0fx%.0f", size.width, size.height);
-    [self layoutMiniCharts];
-}
-
-- (void)viewFrameDidChange:(NSNotification *)notification {
-    if (!self.symbols.count) {
-        return;
-    }
-    NSView *view = notification.object;
-    NSSize newSize = view.frame.size;
-    
-    static NSSize lastSize = {0, 0}; // mantiene l'ultimo valore
-    
-    if (!NSEqualSizes(newSize, lastSize)) {
-        NSLog(@"📐 MultiChartWidget: Frame size changed from %@ to %@",
-              NSStringFromSize(lastSize), NSStringFromSize(newSize));
-        
-        lastSize = newSize;
-        
-        // Usa dispatch per sicurezza
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self layoutMiniCharts];
-        });
-    }
-}
 
 
 @end

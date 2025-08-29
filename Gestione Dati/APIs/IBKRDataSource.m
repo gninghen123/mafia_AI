@@ -90,7 +90,17 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
         NSURLSessionConfiguration *config = [NSURLSessionConfiguration defaultSessionConfiguration];
         config.timeoutIntervalForRequest = kRequestTimeout;
         _session = [NSURLSession sessionWithConfiguration:config delegate:self delegateQueue:nil];
-        
+        config.HTTPCookieAcceptPolicy = NSHTTPCookieAcceptPolicyAlways;
+               config.HTTPCookieStorage = [NSHTTPCookieStorage sharedHTTPCookieStorage];
+               config.HTTPShouldSetCookies = YES;
+               
+               // ✅ FIX 401: Aggiungi headers di default per IBKR
+               config.HTTPAdditionalHeaders = @{
+                   @"Accept": @"application/json",
+                   @"Content-Type": @"application/json",
+                   @"User-Agent": @"TradingApp/1.0",
+                   @"X-Requested-With": @"XMLHttpRequest"
+               };
         // Setup request tracking
         _pendingRequests = [NSMutableDictionary dictionary];
     }
@@ -297,7 +307,8 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
     
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
     request.HTTPMethod = @"GET";
-    
+    [self configureRequestHeaders:request];
+
     NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
                                                  completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         [self handleGenericResponse:data response:response error:error completion:^(id result, NSError *error) {
@@ -337,7 +348,8 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
     
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
     request.HTTPMethod = @"GET";
-    
+    [self configureRequestHeaders:request];
+
     NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
                                                  completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         [self handleGenericResponse:data response:response error:error completion:^(id result, NSError *error) {
@@ -366,8 +378,7 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
     
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
     request.HTTPMethod = @"GET";
-    id cook = [[IBKRLoginManager sharedManager] sessionCookie];
-    [request setValue:[[IBKRLoginManager sharedManager] sessionCookie] forHTTPHeaderField:@"Cookie"];
+    [self configureRequestHeaders:request];
     
     NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
                                                  completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
@@ -401,7 +412,8 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
     
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
     request.HTTPMethod = @"GET";
-    
+    [self configureRequestHeaders:request];
+
     NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
                                                  completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         [self handleGenericResponse:data response:response error:error completion:^(id result, NSError *error) {
@@ -439,6 +451,8 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
     request.HTTPMethod = @"POST";
     [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    [self configureRequestHeaders:request];
+
     
     NSError *jsonError;
     NSData *jsonData = [NSJSONSerialization dataWithJSONObject:orderData options:0 error:&jsonError];
@@ -474,7 +488,8 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
     
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
     request.HTTPMethod = @"DELETE";
-    
+    [self configureRequestHeaders:request];
+
     NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
                                                  completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
         [self handleCancelOrderResponse:data response:response error:error completion:completion];
@@ -491,7 +506,8 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
     request.HTTPMethod = @"POST";
     [request setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
-    
+    [self configureRequestHeaders:request];
+
     NSDictionary *searchBody = @{
         @"symbol": symbol,
         @"name": @"true",
@@ -520,7 +536,8 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
     
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
     request.HTTPMethod = @"GET";
-    
+    [self configureRequestHeaders:request];
+
     NSURLComponents *components = [NSURLComponents componentsWithURL:url resolvingAgainstBaseURL:NO];
     components.queryItems = @[
         [NSURLQueryItem queryItemWithName:@"conids" value:conid.stringValue],
@@ -545,7 +562,8 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
     
     NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
     request.HTTPMethod = @"GET";
-    
+    [self configureRequestHeaders:request];
+
     NSURLComponents *components = [NSURLComponents componentsWithURL:[NSURL URLWithString:urlString] resolvingAgainstBaseURL:NO];
     NSMutableArray *queryItems = [NSMutableArray array];
     
@@ -907,7 +925,24 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
 }
 
 
-#pragma mark - bypass ssl security for localhost
+- (void)configureRequestHeaders:(NSMutableURLRequest *)request {
+    // Headers base già impostati nella configurazione session
+    
+    // ✅ FIX 401: Aggiungi cookie di sessione se disponibile
+    IBKRLoginManager *loginManager = [IBKRLoginManager sharedManager];
+    NSString *sessionCookie = [loginManager sessionCookie];
+    if (sessionCookie && sessionCookie.length > 0) {
+        NSString *cookieValue = [NSString stringWithFormat:@"x-sess-uuid=%@", sessionCookie];
+        [request setValue:cookieValue forHTTPHeaderField:@"Cookie"];
+        NSLog(@"🍪 IBKRDataSource: Adding session cookie to request");
+    } else {
+        NSLog(@"⚠️ IBKRDataSource: No session cookie available");
+    }
+    
+    // Forza headers critici (override della configurazione se necessario)
+    [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+    [request setValue:@"XMLHttpRequest" forHTTPHeaderField:@"X-Requested-With"];
+}
 
 #pragma mark - NSURLSessionDelegate (SSL Handling)
 
@@ -925,5 +960,8 @@ static NSString *const kIBKRContractSearchEndpoint = @"/iserver/secdef/search";
         completionHandler(NSURLSessionAuthChallengePerformDefaultHandling, nil);
     }
 }
+
+
+
 
 @end

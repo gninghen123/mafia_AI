@@ -188,33 +188,34 @@ typedef NS_ENUM(NSInteger, IBKRRealMessageType) {
 
 #pragma mark - IBKR Protocol Implementation
 
+// Updated: Use correct IBKR API handshake format ("API\0" + version\0 + clientId\0)
 - (void)sendConnectionHandshake {
-    NSLog(@"📡 IBKRWebSocketDataSource: Sending CORRECTED IBKR handshake...");
-    
-    // ✅ PROTOCOLLO IBKR CORRETTO:
-    // 1. Prefix: Nessun "API" all'inizio
-    // 2. Format: "v{minVersion}.{maxVersion}\0{clientId}\0"
-    // 3. No timestamps, no extra data
-    
-    NSString *minVersion = @"100";
-    NSString *maxVersion = @"176";  // Versione API corrente
+    NSLog(@"📡 IBKRWebSocketDataSource: Sending IBKR API handshake...");
+
+    NSString *version = @"76"; // API version
     NSString *clientIdStr = [NSString stringWithFormat:@"%ld", (long)self.clientId];
-    
-    // Create handshake message nel formato corretto
-    NSString *handshakeMsg = [NSString stringWithFormat:@"v%@..%@\0%@\0",
-                             minVersion, maxVersion, clientIdStr];
-    
-    NSData *handshakeData = [handshakeMsg dataUsingEncoding:NSUTF8StringEncoding];
-    
-    NSLog(@"📤 IBKRWebSocketDataSource: Sending handshake: 'v%@..%@\\0%@\\0' (%lu bytes)",
-          minVersion, maxVersion, clientIdStr, (unsigned long)handshakeData.length);
-    
+
+    NSMutableData *handshakeData = [NSMutableData data];
+
+    // "API\0"
+    [handshakeData appendData:[@"API" dataUsingEncoding:NSUTF8StringEncoding]];
+    uint8_t zero = 0;
+    [handshakeData appendBytes:&zero length:1];
+
+    // "76\0"
+    [handshakeData appendData:[version dataUsingEncoding:NSUTF8StringEncoding]];
+    [handshakeData appendBytes:&zero length:1];
+
+    // "clientId\0"
+    [handshakeData appendData:[clientIdStr dataUsingEncoding:NSUTF8StringEncoding]];
+    [handshakeData appendBytes:&zero length:1];
+
+    NSLog(@"📤 IBKRWebSocketDataSource: Sending handshake bytes: %@", handshakeData);
+
     ssize_t bytesSent = send(self.socketFD, handshakeData.bytes, handshakeData.length, 0);
-    
+
     if (bytesSent == handshakeData.length) {
-        NSLog(@"✅ IBKRWebSocketDataSource: Handshake sent successfully (%ld bytes)", (long)bytesSent);
-        
-        // Aspetta risposta handshake prima di procedere
+        NSLog(@"✅ IBKRWebSocketDataSource: Handshake sent (%ld bytes)", (long)bytesSent);
         [self waitForHandshakeResponse];
     } else {
         NSLog(@"❌ IBKRWebSocketDataSource: Handshake send failed: %s", strerror(errno));
@@ -548,7 +549,7 @@ typedef NS_ENUM(NSInteger, IBKRRealMessageType) {
     NSLog(@"📤 IBKRWebSocketDataSource: Sending managed accounts request");
     
     // ✅ FORMATO CORRETTO: Solo message type e version (SENZA length prefix)
-    NSString *message = [NSString stringWithFormat:@"%d\0%d\0",
+    NSString *message = [NSString stringWithFormat:@"%d\0%d",
                          IBKRRealMessageTypeRequestManagedAccounts, 1];    NSData *messageData = [message dataUsingEncoding:NSUTF8StringEncoding];
     
     ssize_t bytesSent = send(self.socketFD, messageData.bytes, messageData.length, 0);

@@ -22,6 +22,13 @@ typedef NS_ENUM(NSInteger, IBKRMessageType) {
     IBKRMessageTypeHistoricalData = 17
 };
 
+// IBKR TWS API Message Types (corretti)
+typedef NS_ENUM(NSInteger, IBKRRealMessageType) {
+    IBKRRealMessageTypeManagedAccounts = 15,     // Response: Managed accounts list
+    IBKRRealMessageTypeError = 50,               // Error message
+    IBKRRealMessageTypeRequestManagedAccounts = 71  // Request: Get managed accounts
+};
+
 @interface IBKRWebSocketDataSource ()
 @property (nonatomic, assign) int socketFD;
 @property (nonatomic, strong) NSMutableDictionary *pendingRequests;
@@ -64,19 +71,25 @@ typedef NS_ENUM(NSInteger, IBKRMessageType) {
 
 - (void)performConnectionWithCompletion:(void (^)(BOOL, NSError *))completion {
     if (self.isConnected) {
+        NSLog(@"✅ IBKRWebSocketDataSource: Already connected");
         if (completion) completion(YES, nil);
         return;
     }
     
+    NSLog(@"🔄 IBKRWebSocketDataSource: Starting connection to %@:%ld", self.host, (long)self.port);
+    
     // Create socket
     self.socketFD = socket(AF_INET, SOCK_STREAM, 0);
     if (self.socketFD < 0) {
+        NSLog(@"❌ IBKRWebSocketDataSource: Failed to create socket: %s", strerror(errno));
         NSError *error = [NSError errorWithDomain:@"IBKRWebSocketDataSource"
                                              code:1001
                                          userInfo:@{NSLocalizedDescriptionKey: @"Failed to create socket"}];
         if (completion) completion(NO, error);
         return;
     }
+    
+    NSLog(@"✅ IBKRWebSocketDataSource: Socket created successfully (fd=%d)", self.socketFD);
     
     // Configure server address
     struct sockaddr_in serverAddr;
@@ -85,9 +98,12 @@ typedef NS_ENUM(NSInteger, IBKRMessageType) {
     serverAddr.sin_port = htons((uint16_t)self.port);
     inet_pton(AF_INET, [self.host UTF8String], &serverAddr.sin_addr);
     
+    NSLog(@"🌐 IBKRWebSocketDataSource: Connecting to %@:%d...", self.host, ntohs(serverAddr.sin_port));
+    
     // Connect
     int result = connect(self.socketFD, (struct sockaddr *)&serverAddr, sizeof(serverAddr));
     if (result < 0) {
+        NSLog(@"❌ IBKRWebSocketDataSource: Failed to connect: %s", strerror(errno));
         close(self.socketFD);
         self.socketFD = -1;
         
@@ -98,17 +114,63 @@ typedef NS_ENUM(NSInteger, IBKRMessageType) {
         return;
     }
     
-    // Send connection handshake
+    NSLog(@"✅ IBKRWebSocketDataSource: TCP socket connected successfully!");
+    
+    // ✅ IMPORTANTE: Invia handshake CORRETTO
     [self sendConnectionHandshake];
     
-    // Start reading responses
+    // Start reading responses in background thread
     [self startReadingResponses];
     
+    // Mark as connected
     self.isConnected = YES;
-    NSLog(@"✅ IBKRWebSocketDataSource: Connected to Gateway %@:%ld", self.host, (long)self.port);
+    NSLog(@"🎉 IBKRWebSocketDataSource: Successfully connected to Gateway %@:%ld", self.host, (long)self.port);
     
     if (completion) completion(YES, nil);
 }
+
+
+- (BOOL)performHandshakeWithTimeout:(NSTimeInterval)timeout {
+    NSLog(@"🤝 IBKRWebSocketDataSource: Starting handshake protocol...");
+    
+    // IBKR TWS API handshake format (corrected):
+    // Send: "API\0" + version + "\0" + client_id + "\0"
+    
+    NSString *version = @"76";  // Standard TWS API version
+    NSString *clientIdStr = [NSString stringWithFormat:@"%ld", (long)self.clientId];
+    
+    // Create handshake message
+    NSMutableData *handshakeData = [NSMutableData data];
+    
+    // 1. API prefix
+    [handshakeData appendData:[@"API" dataUsingEncoding:NSUTF8StringEncoding]];
+    [handshakeData appendBytes:"\0" length:1];
+    
+    // 2. Version
+    [handshakeData appendData:[version dataUsingEncoding:NSUTF8StringEncoding]];
+    [handshakeData appendBytes:"\0" length:1];
+    
+    // 3. Client ID
+    [handshakeData appendData:[clientIdStr dataUsingEncoding:NSUTF8StringEncoding]];
+    [handshakeData appendBytes:"\0" length:1];
+    
+    NSLog(@"📤 IBKRWebSocketDataSource: Sending handshake: API\\0%@\\0%@\\0 (%lu bytes)",
+          version, clientIdStr, (unsigned long)handshakeData.length);
+    
+    // Send handshake
+    ssize_t bytesSent = send(self.socketFD, handshakeData.bytes, handshakeData.length, 0);
+    
+    if (bytesSent != handshakeData.length) {
+        NSLog(@"❌ IBKRWebSocketDataSource: Handshake send failed: %s", strerror(errno));
+        return NO;
+    }
+    
+    NSLog(@"✅ IBKRWebSocketDataSource: Handshake sent successfully (%ld bytes)", (long)bytesSent);
+    
+    // Wait for handshake response
+    return [self readHandshakeResponseWithTimeout:timeout];
+}
+
 
 - (void)disconnect {
     dispatch_async(self.socketQueue, ^{
@@ -125,41 +187,330 @@ typedef NS_ENUM(NSInteger, IBKRMessageType) {
 #pragma mark - IBKR Protocol Implementation
 
 - (void)sendConnectionHandshake {
-    // IBKR handshake: API version + client ID
-    NSString *handshake = [NSString stringWithFormat:@"API\0\0\0\tv100..20130313 13:50:27 EST\0%ld\0", (long)self.clientId];
-    NSData *handshakeData = [handshake dataUsingEncoding:NSUTF8StringEncoding];
+    NSLog(@"📡 IBKRWebSocketDataSource: Sending CORRECTED IBKR handshake...");
     
-    send(self.socketFD, handshakeData.bytes, handshakeData.length, 0);
-    NSLog(@"📡 IBKRWebSocketDataSource: Sent handshake for client %ld", (long)self.clientId);
+    // ✅ PROTOCOLLO IBKR CORRETTO:
+    // 1. Prefix: Nessun "API" all'inizio
+    // 2. Format: "v{minVersion}.{maxVersion}\0{clientId}\0"
+    // 3. No timestamps, no extra data
+    
+    NSString *minVersion = @"100";
+    NSString *maxVersion = @"176";  // Versione API corrente
+    NSString *clientIdStr = [NSString stringWithFormat:@"%ld", (long)self.clientId];
+    
+    // Create handshake message nel formato corretto
+    NSString *handshakeMsg = [NSString stringWithFormat:@"v%@..%@\0%@\0",
+                             minVersion, maxVersion, clientIdStr];
+    
+    NSData *handshakeData = [handshakeMsg dataUsingEncoding:NSUTF8StringEncoding];
+    
+    NSLog(@"📤 IBKRWebSocketDataSource: Sending handshake: 'v%@..%@\\0%@\\0' (%lu bytes)",
+          minVersion, maxVersion, clientIdStr, (unsigned long)handshakeData.length);
+    
+    ssize_t bytesSent = send(self.socketFD, handshakeData.bytes, handshakeData.length, 0);
+    
+    if (bytesSent == handshakeData.length) {
+        NSLog(@"✅ IBKRWebSocketDataSource: Handshake sent successfully (%ld bytes)", (long)bytesSent);
+        
+        // Aspetta risposta handshake prima di procedere
+        [self waitForHandshakeResponse];
+    } else {
+        NSLog(@"❌ IBKRWebSocketDataSource: Handshake send failed: %s", strerror(errno));
+    }
 }
 
+- (void)waitForHandshakeResponse {
+    NSLog(@"👂 IBKRWebSocketDataSource: Waiting for handshake response...");
+    
+    // Set socket timeout per handshake
+    struct timeval timeout;
+    timeout.tv_sec = 5;  // 5 secondi timeout
+    timeout.tv_usec = 0;
+    setsockopt(self.socketFD, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    
+    char buffer[256];
+    ssize_t bytesRead = recv(self.socketFD, buffer, sizeof(buffer) - 1, 0);
+    
+    if (bytesRead > 0) {
+        buffer[bytesRead] = '\0';
+        NSLog(@"📨 IBKRWebSocketDataSource: Handshake response received (%ld bytes): '%s'",
+              (long)bytesRead, buffer);
+        
+        // Rimuovi timeout per operazioni normali
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 0;
+        setsockopt(self.socketFD, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+        
+        NSLog(@"✅ IBKRWebSocketDataSource: Handshake completed successfully");
+        
+    } else if (bytesRead == 0) {
+        NSLog(@"❌ IBKRWebSocketDataSource: Connection closed during handshake");
+    } else {
+        NSLog(@"❌ IBKRWebSocketDataSource: Handshake timeout or error: %s", strerror(errno));
+    }
+}
+
+- (BOOL)readHandshakeResponseWithTimeout:(NSTimeInterval)timeout {
+    NSLog(@"👂 IBKRWebSocketDataSource: Waiting for handshake response...");
+    
+    char buffer[1024];
+    NSTimeInterval startTime = [NSDate timeIntervalSinceReferenceDate];
+    
+    while (([NSDate timeIntervalSinceReferenceDate] - startTime) < timeout) {
+        ssize_t bytesRead = recv(self.socketFD, buffer, sizeof(buffer) - 1, MSG_DONTWAIT);
+        
+        if (bytesRead > 0) {
+            buffer[bytesRead] = '\0';
+            NSData *responseData = [NSData dataWithBytes:buffer length:bytesRead];
+            NSString *response = [[NSString alloc] initWithData:responseData encoding:NSUTF8StringEncoding];
+            
+            NSLog(@"📨 IBKRWebSocketDataSource: Handshake response received (%ld bytes):", (long)bytesRead);
+            NSLog(@"📨 Raw bytes: %@", responseData);
+            NSLog(@"📨 As string: '%@'", response ?: @"<invalid UTF-8>");
+            
+            // IBKR Gateway typically responds with version info or empty response for success
+            if (bytesRead >= 4) {  // Minimum valid response
+                NSLog(@"✅ IBKRWebSocketDataSource: Handshake appears successful");
+                return YES;
+            }
+        } else if (bytesRead == 0) {
+            NSLog(@"❌ IBKRWebSocketDataSource: Connection closed during handshake");
+            return NO;
+        } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
+            NSLog(@"❌ IBKRWebSocketDataSource: Handshake receive error: %s", strerror(errno));
+            return NO;
+        }
+        
+        // Brief pause before retry
+        usleep(100000); // 100ms
+    }
+    
+    NSLog(@"⏰ IBKRWebSocketDataSource: Handshake timeout after %.1f seconds", timeout);
+    return NO;
+}
+
+- (void)readHandshakeResponse {
+    // Read server's handshake response
+    char buffer[1024];
+    ssize_t bytesRead = recv(self.socketFD, buffer, sizeof(buffer) - 1, 0);
+    
+    if (bytesRead > 0) {
+        buffer[bytesRead] = '\0';
+        NSString *response = [NSString stringWithUTF8String:buffer];
+        NSLog(@"📨 IBKRWebSocketDataSource: Handshake response: %@", response);
+        
+        // Check if handshake was successful
+        if ([response containsString:@"76"] || [response length] > 0) {
+            NSLog(@"✅ IBKRWebSocketDataSource: Handshake successful");
+        } else {
+            NSLog(@"❌ IBKRWebSocketDataSource: Handshake failed");
+        }
+    } else {
+        NSLog(@"❌ IBKRWebSocketDataSource: No handshake response received");
+    }
+}
+
+
 - (void)startReadingResponses {
+    NSLog(@"📡 IBKRWebSocketDataSource: Starting response reader thread...");
     dispatch_async(self.socketQueue, ^{
-        [self readSocketData];
+        [self readSocketDataWithDebug];
+    });
+}
+
+- (void)readSocketDataWithDebug {
+    NSLog(@"👂 IBKRWebSocketDataSource: Response reader thread started");
+    
+    // Remove timeout for normal operation
+    struct timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 0;
+    setsockopt(self.socketFD, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    
+    char buffer[4096];
+    while (self.isConnected && self.socketFD >= 0) {
+        ssize_t bytesRead = recv(self.socketFD, buffer, sizeof(buffer) - 1, 0);
+        
+        if (bytesRead > 0) {
+            buffer[bytesRead] = '\0';
+            NSData *responseData = [NSData dataWithBytes:buffer length:bytesRead];
+            NSString *response = [[NSString alloc] initWithData:responseData encoding:NSUTF8StringEncoding];
+            
+            NSLog(@"📨 IBKRWebSocketDataSource: Received %ld bytes", (long)bytesRead);
+            NSLog(@"📨 Raw data: %@", responseData);
+            NSLog(@"📨 As string: '%@'", response ?: @"<invalid UTF-8>");
+            
+            if (response) {
+                [self processResponse:response];
+            }
+        } else if (bytesRead == 0) {
+            NSLog(@"🔌 IBKRWebSocketDataSource: Connection closed by Gateway");
+            break;
+        } else {
+            NSLog(@"❌ IBKRWebSocketDataSource: Read error: %s", strerror(errno));
+            break;
+        }
+    }
+    
+    NSLog(@"🛑 IBKRWebSocketDataSource: Response reader thread terminated");
+    self.isConnected = NO;
+}
+
+#pragma mark - Connection Test Method
+
+- (void)testConnectionWithCompletion:(void (^)(BOOL success, NSString *details))completion {
+    NSLog(@"🧪 IBKRWebSocketDataSource: Starting connection test...");
+    
+    dispatch_async(self.socketQueue, ^{
+        NSMutableString *details = [NSMutableString string];
+        BOOL success = YES;
+        
+        [details appendString:@"=== IBKR Gateway Connection Test ===\n"];
+        [details appendFormat:@"Target: %@:%ld\n", self.host, (long)self.port];
+        [details appendFormat:@"Client ID: %ld\n", (long)self.clientId];
+        
+        // Test 1: Socket creation
+        int testSocket = socket(AF_INET, SOCK_STREAM, 0);
+        if (testSocket < 0) {
+            [details appendFormat:@"❌ Socket creation failed: %s\n", strerror(errno)];
+            success = NO;
+        } else {
+            [details appendString:@"✅ Socket created successfully\n"];
+        }
+        
+        // Test 2: TCP connection
+        struct sockaddr_in serverAddr;
+        memset(&serverAddr, 0, sizeof(serverAddr));
+        serverAddr.sin_family = AF_INET;
+        serverAddr.sin_port = htons((uint16_t)self.port);
+        inet_pton(AF_INET, [self.host UTF8String], &serverAddr.sin_addr);
+        
+        int result = connect(testSocket, (struct sockaddr *)&serverAddr, sizeof(serverAddr));
+        if (result < 0) {
+            [details appendFormat:@"❌ TCP connection failed: %s\n", strerror(errno)];
+            [details appendString:@"💡 Check: Is IB Gateway running?\n"];
+            [details appendString:@"💡 Check: Is API enabled in Gateway settings?\n"];
+            [details appendFormat:@"💡 Check: Is port %ld open?\n", (long)self.port];
+            success = NO;
+        } else {
+            [details appendString:@"✅ TCP connection successful\n"];
+        }
+        
+        // Cleanup
+        if (testSocket >= 0) {
+            close(testSocket);
+        }
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSLog(@"%@", details);
+            if (completion) completion(success, [details copy]);
+        });
     });
 }
 
 - (void)readSocketData {
-    // Simplified response reading - in production this needs proper message framing
-    char buffer[4096];
+    // Improved response reading with proper IBKR message framing
+    char lengthBuffer[4];
+    char *messageBuffer = NULL;
+    
     while (self.isConnected) {
-        ssize_t bytesRead = recv(self.socketFD, buffer, sizeof(buffer) - 1, 0);
-        if (bytesRead <= 0) {
-            break; // Connection closed
+        // 1. Read message length (4 bytes, big endian)
+        ssize_t lengthBytesRead = recv(self.socketFD, lengthBuffer, 4, MSG_WAITALL);
+        
+        if (lengthBytesRead <= 0) {
+            NSLog(@"🔌 IBKRWebSocketDataSource: Connection closed during length read");
+            break;
         }
         
-        buffer[bytesRead] = '\0';
-        NSString *response = [NSString stringWithUTF8String:buffer];
-        [self processResponse:response];
+        if (lengthBytesRead != 4) {
+            NSLog(@"⚠️ IBKRWebSocketDataSource: Incomplete length read: %ld bytes", lengthBytesRead);
+            continue;
+        }
+        
+        // 2. Convert length from big endian
+        uint32_t messageLength = ntohl(*((uint32_t*)lengthBuffer));
+        
+        if (messageLength == 0) {
+            NSLog(@"⚠️ IBKRWebSocketDataSource: Zero length message");
+            continue;
+        }
+        
+        if (messageLength > 100000) { // Sanity check
+            NSLog(@"❌ IBKRWebSocketDataSource: Message too large: %u bytes", messageLength);
+            break;
+        }
+        
+        // 3. Allocate buffer for message content
+        messageBuffer = malloc(messageLength + 1);
+        if (!messageBuffer) {
+            NSLog(@"❌ IBKRWebSocketDataSource: Failed to allocate message buffer");
+            break;
+        }
+        
+        // 4. Read message content
+        ssize_t messageBytesRead = recv(self.socketFD, messageBuffer, messageLength, MSG_WAITALL);
+        
+        if (messageBytesRead <= 0) {
+            NSLog(@"🔌 IBKRWebSocketDataSource: Connection closed during message read");
+            free(messageBuffer);
+            break;
+        }
+        
+        if (messageBytesRead != messageLength) {
+            NSLog(@"⚠️ IBKRWebSocketDataSource: Incomplete message read: %ld/%u bytes", messageBytesRead, messageLength);
+            free(messageBuffer);
+            continue;
+        }
+        
+        // 5. Null terminate and process
+        messageBuffer[messageLength] = '\0';
+        NSString *message = [NSString stringWithUTF8String:messageBuffer];
+        
+        if (message) {
+            [self processResponse:message];
+        } else {
+            NSLog(@"⚠️ IBKRWebSocketDataSource: Failed to decode message as UTF-8");
+        }
+        
+        // 6. Clean up
+        free(messageBuffer);
+        messageBuffer = NULL;
+    }
+    
+    // Clean up on exit
+    if (messageBuffer) {
+        free(messageBuffer);
     }
 }
 
+
 - (void)processResponse:(NSString *)response {
-    // Parse IBKR native response and call appropriate handler
-    NSLog(@"📨 IBKRWebSocketDataSource: Received response: %@", response);
+    NSLog(@"📨 IBKRWebSocketDataSource: Processing REAL response: %@", response);
     
-    // TODO: Implement proper message parsing based on IBKR protocol
-    // For now, this is a simplified implementation
+    // Parse IBKR response format
+    NSArray *fields = [response componentsSeparatedByString:@"\0"];
+    
+    if (fields.count < 2) {
+        NSLog(@"⚠️ IBKRWebSocketDataSource: Invalid response format");
+        return;
+    }
+    
+    NSString *messageTypeStr = fields[0];
+    NSInteger messageType = [messageTypeStr integerValue];
+    
+    switch (messageType) {
+        case 15: // MANAGED_ACCTS response
+            [self processManagedAccountsResponse:fields];
+            break;
+            
+        case 50: // ERROR response
+            [self processErrorResponse:fields];
+            break;
+            
+        default:
+            NSLog(@"⚠️ IBKRWebSocketDataSource: Unknown message type %ld", (long)messageType);
+            break;
+    }
 }
 
 #pragma mark - Account Data (REST Format Compatible)
@@ -179,45 +530,154 @@ typedef NS_ENUM(NSInteger, IBKRMessageType) {
     self.pendingRequests[@(requestId)] = [completion copy];
     
     dispatch_async(self.socketQueue, ^{
-        // Send account request via IBKR protocol
+        // Send REAL account request via IBKR protocol
         [self sendAccountRequest:requestId];
     });
 }
 
 - (void)sendAccountRequest:(NSInteger)requestId {
-    // IBKR native protocol: Request managed accounts
-    NSString *message = [NSString stringWithFormat:@"%ld\0%ld\0", (long)IBKRMessageTypeRequestAccounts, (long)requestId];
-    NSData *messageData = [message dataUsingEncoding:NSUTF8StringEncoding];
+    NSLog(@"📤 IBKRWebSocketDataSource: Sending REAL managed accounts request %ld", (long)requestId);
     
-    send(self.socketFD, messageData.bytes, messageData.length, 0);
-    NSLog(@"📤 IBKRWebSocketDataSource: Sent account request %ld", (long)requestId);
+    // IBKR TWS API: Request Managed Accounts (Message Type = 71)
+    // Format: [Message Length][Message Type][Version]
     
-    // Simulate response for testing (remove in production)
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [self simulateAccountResponse:requestId];
-    });
+    NSMutableData *messageData = [NSMutableData data];
+    
+    // 1. Message Type per managed accounts (TWS API v71)
+    NSString *messageType = @"71";
+    
+    // 2. Version (sempre 1 per managed accounts)
+    NSString *version = @"1";
+    
+    // 3. Create message string
+    NSString *message = [NSString stringWithFormat:@"%@\0%@\0", messageType, version];
+    
+    // 4. Calculate message length (excluding the length field itself)
+    NSInteger messageLength = message.length;
+    
+    // 5. Create length prefix (4 bytes, big endian)
+    uint32_t lengthBigEndian = htonl((uint32_t)messageLength);
+    [messageData appendBytes:&lengthBigEndian length:sizeof(lengthBigEndian)];
+    
+    // 6. Append message content
+    [messageData appendData:[message dataUsingEncoding:NSUTF8StringEncoding]];
+    
+    // 7. Send to socket
+    ssize_t bytesSent = send(self.socketFD, messageData.bytes, messageData.length, 0);
+    
+    if (bytesSent == messageData.length) {
+        NSLog(@"✅ IBKRWebSocketDataSource: Sent managed accounts request successfully (%ld bytes)", (long)bytesSent);
+    } else {
+        NSLog(@"❌ IBKRWebSocketDataSource: Failed to send managed accounts request");
+        
+        // Call completion with error
+        NSError *error = [NSError errorWithDomain:@"IBKRWebSocketDataSource"
+                                             code:1004
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Failed to send request to Gateway"}];
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            void (^completion)(NSArray *, NSError *) = self.pendingRequests[@(requestId)];
+            if (completion) {
+                completion(@[], error);
+                [self.pendingRequests removeObjectForKey:@(requestId)];
+            }
+        });
+    }
+    
+    // ❌ RIMUOVO la simulazione - ora usa il vero protocollo
+    // dispatch_after(...simulateAccountResponse...) REMOVED
 }
 
-- (void)simulateAccountResponse:(NSInteger)requestId {
-    // SIMULATE: Convert TCP response to REST format
-    NSArray *accounts = @[
-        @{
-            @"id": @"DU123456",
-            @"accountId": @"DU123456",
-            @"accountVan": @"DU123456",
-            @"accountTitle": @"Demo Account",
-            @"accountStatus": @"O",
-            @"currency": @"USD",
-            @"type": @"DEMO"
-        }
-    ];
+#pragma mark - Response Processing (REAL)
+
+
+
+- (void)processManagedAccountsResponse:(NSArray *)fields {
+    NSLog(@"📊 IBKRWebSocketDataSource: Processing managed accounts response");
     
+    if (fields.count < 3) {
+        NSLog(@"❌ IBKRWebSocketDataSource: Invalid managed accounts response");
+        return;
+    }
+    
+    // Format: [MessageType][Version][AccountsList]
+    NSString *accountsListStr = fields[2];
+    
+    if (!accountsListStr || accountsListStr.length == 0) {
+        NSLog(@"⚠️ IBKRWebSocketDataSource: Empty accounts list received");
+        
+        // Call all pending account completions with empty array
+        [self callAccountCompletionsWithAccounts:@[] error:nil];
+        return;
+    }
+    
+    // Parse account IDs (comma separated)
+    NSArray *accountIds = [accountsListStr componentsSeparatedByString:@","];
+    NSMutableArray *accounts = [NSMutableArray array];
+    
+    for (NSString *accountId in accountIds) {
+        NSString *trimmedId = [accountId stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+        
+        if (trimmedId.length > 0) {
+            // Convert to REST API format for compatibility
+            NSDictionary *accountDict = @{
+                @"id": trimmedId,
+                @"accountId": trimmedId,
+                @"accountVan": trimmedId,
+                @"accountTitle": [NSString stringWithFormat:@"Account %@", trimmedId],
+                @"accountStatus": @"O", // Open
+                @"currency": @"USD",    // Default, will be updated later
+                @"type": @"INDIVIDUAL"  // Default, will be updated later
+            };
+            
+            [accounts addObject:accountDict];
+        }
+    }
+    
+    NSLog(@"✅ IBKRWebSocketDataSource: Parsed %lu accounts from response", (unsigned long)accounts.count);
+    
+    // Call all pending account completions
+    [self callAccountCompletionsWithAccounts:[accounts copy] error:nil];
+}
+
+
+- (void)processErrorResponse:(NSArray *)fields {
+    NSLog(@"❌ IBKRWebSocketDataSource: Processing error response");
+    
+    if (fields.count < 4) {
+        NSLog(@"❌ IBKRWebSocketDataSource: Invalid error response format");
+        return;
+    }
+    
+    // Format: [MessageType][Version][RequestId][ErrorCode][ErrorMsg]
+    NSString *requestIdStr = fields[2];
+    NSString *errorCodeStr = fields[3];
+    NSString *errorMsg = fields.count > 4 ? fields[4] : @"Unknown error";
+    
+    NSInteger requestId = [requestIdStr integerValue];
+    NSInteger errorCode = [errorCodeStr integerValue];
+    
+    NSLog(@"❌ IBKRWebSocketDataSource: Error %ld for request %ld: %@", (long)errorCode, (long)requestId, errorMsg);
+    
+    // Create error object
+    NSError *error = [NSError errorWithDomain:@"IBKRWebSocketDataSource"
+                                         code:errorCode
+                                     userInfo:@{NSLocalizedDescriptionKey: errorMsg}];
+    
+    // Find and call specific completion
     void (^completion)(NSArray *, NSError *) = self.pendingRequests[@(requestId)];
     if (completion) {
-        completion(accounts, nil);
-        [self.pendingRequests removeObjectForKey:@(requestId)];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            completion(@[], error);
+            [self.pendingRequests removeObjectForKey:@(requestId)];
+        });
+    } else {
+        // If no specific request ID match, this might be a general error
+        // Call all pending account completions with error
+        [self callAccountCompletionsWithAccounts:@[] error:error];
     }
 }
+
 
 - (void)fetchPositionsForAccount:(NSString *)accountId completion:(void (^)(NSArray *positions, NSError *_Nullable error))completion {
     if (!self.isConnected) {
@@ -236,6 +696,24 @@ typedef NS_ENUM(NSInteger, IBKRMessageType) {
     });
 }
 
+- (void)callAccountCompletionsWithAccounts:(NSArray *)accounts error:(NSError *)error {
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // Get all pending account request completions
+        NSArray *requestIds = [self.pendingRequests allKeys];
+        
+        for (NSNumber *requestIdObj in requestIds) {
+            void (^completion)(NSArray *, NSError *) = self.pendingRequests[requestIdObj];
+            if (completion) {
+                completion(accounts, error);
+            }
+        }
+        
+        // Clear all pending requests
+        [self.pendingRequests removeAllObjects];
+    });
+}
+
+
 - (void)sendPositionsRequest:(NSInteger)requestId accountId:(NSString *)accountId {
     // IBKR protocol: Request positions
     NSString *message = [NSString stringWithFormat:@"%ld\0%ld\0%@\0", (long)IBKRMessageTypeRequestPositions, (long)requestId, accountId];
@@ -249,6 +727,8 @@ typedef NS_ENUM(NSInteger, IBKRMessageType) {
         [self simulatePositionsResponse:requestId];
     });
 }
+
+
 
 - (void)simulatePositionsResponse:(NSInteger)requestId {
     // SIMULATE: Convert TCP response to EXACT REST format

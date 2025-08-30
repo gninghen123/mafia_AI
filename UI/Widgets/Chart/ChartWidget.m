@@ -149,23 +149,13 @@ extern NSString *const DataHubDataLoadedNotification;
     self.timeframeSegmented.segmentCount = 8;
     [self.contentView addSubview:self.timeframeSegmented];
     
-    // 🆕 NEW: Date Range Slider
-       self.dateRangeSlider = [[NSSlider alloc] init];
-       self.dateRangeSlider.sliderType = NSSliderTypeLinear;
-       self.dateRangeSlider.target = self;
-       self.dateRangeSlider.action = @selector(dateRangeSliderChanged:);
-       self.dateRangeSlider.continuous = YES;
-       [self.contentView addSubview:self.dateRangeSlider];
-       
-       // 🆕 NEW: Date Range Label
-       self.dateRangeLabel = [[NSTextField alloc] init];
-       self.dateRangeLabel.editable = NO;
-       self.dateRangeLabel.bordered = NO;
-       self.dateRangeLabel.backgroundColor = [NSColor clearColor];
-       self.dateRangeLabel.font = [NSFont systemFontOfSize:11];
-       self.dateRangeLabel.alignment = NSTextAlignmentCenter;
-       self.dateRangeLabel.stringValue = @"6 months";
-       [self.contentView addSubview:self.dateRangeLabel];
+    // Timeframe segmented control (existing)
+      self.timeframeSegmented = [[NSSegmentedControl alloc] init];
+      self.timeframeSegmented.segmentCount = 8;
+      [self.contentView addSubview:self.timeframeSegmented];
+      
+      // 🔄 REPLACE: Date Range Slider → Date Range Segmented Control
+      [self setupDateRangeSegmentedControl];
     
     // Template popup (mantieni)
     self.templatePopup = [[NSPopUpButton alloc] init];
@@ -237,8 +227,7 @@ extern NSString *const DataHubDataLoadedNotification;
     self.staticModeToggle.translatesAutoresizingMaskIntoConstraints = NO;
     self.objectsVisibilityToggle.translatesAutoresizingMaskIntoConstraints = NO;
     self.timeframeSegmented.translatesAutoresizingMaskIntoConstraints = NO;
-    self.dateRangeSlider.translatesAutoresizingMaskIntoConstraints = NO;
-    self.dateRangeLabel.translatesAutoresizingMaskIntoConstraints = NO;
+ 
     self.templatePopup.translatesAutoresizingMaskIntoConstraints = NO;
     self.preferencesButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.objectsPanel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -284,21 +273,11 @@ extern NSString *const DataHubDataLoadedNotification;
         [self.timeframeSegmented.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
         [self.timeframeSegmented.leadingAnchor constraintEqualToAnchor:self.objectsVisibilityToggle.trailingAnchor constant:8],
         
-        // 🆕 NEW: Date Range Slider
-        [self.dateRangeSlider.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
-        [self.dateRangeSlider.leadingAnchor constraintEqualToAnchor:self.timeframeSegmented.trailingAnchor constant:8],
-        [self.dateRangeSlider.widthAnchor constraintEqualToConstant:150],
-        [self.dateRangeSlider.heightAnchor constraintEqualToConstant:21],
-        
-        // 🆕 NEW: Date Range Label
-        [self.dateRangeLabel.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
-        [self.dateRangeLabel.leadingAnchor constraintEqualToAnchor:self.dateRangeSlider.trailingAnchor constant:4],
-        [self.dateRangeLabel.widthAnchor constraintEqualToConstant:80],
-        [self.dateRangeLabel.heightAnchor constraintEqualToConstant:21],
+  
         
         // Template popup - connected to date range label
         [self.templatePopup.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
-        [self.templatePopup.leadingAnchor constraintEqualToAnchor:self.dateRangeLabel.trailingAnchor constant:8],
+        [self.templatePopup.leadingAnchor constraintEqualToAnchor:self.dateRangeSegmented.trailingAnchor constant:8],
         [self.templatePopup.widthAnchor constraintEqualToConstant:100],
         
         // Preferences button (rightmost)
@@ -353,6 +332,41 @@ extern NSString *const DataHubDataLoadedNotification;
     self.isObjectsPanelVisible = NO;
     
     NSLog(@"✅ Chart widget constraints setup completed with date range slider");
+}
+- (void)setupDateRangeSegmentedControl {
+    // Create the segmented control
+    self.dateRangeSegmented = [[NSSegmentedControl alloc] init];
+    self.dateRangeSegmented.segmentCount = 8;
+    self.dateRangeSegmented.target = self;
+    self.dateRangeSegmented.action = @selector(dateRangeSegmentChanged:);
+    
+    // Setup segment labels (trading days)
+    [self.dateRangeSegmented setLabel:@"CUSTOM" forSegment:0];
+    [self.dateRangeSegmented setLabel:@"1M" forSegment:1];   // 22 giorni
+    [self.dateRangeSegmented setLabel:@"3M" forSegment:2];   // 65 giorni
+    [self.dateRangeSegmented setLabel:@"6M" forSegment:3];   // 130 giorni
+    [self.dateRangeSegmented setLabel:@"1Y" forSegment:4];   // 250 giorni
+    [self.dateRangeSegmented setLabel:@"5Y" forSegment:5];   // 1250 giorni
+    [self.dateRangeSegmented setLabel:@"10Y" forSegment:6];  // 2500 giorni
+    [self.dateRangeSegmented setLabel:@"MAX" forSegment:7];  // limite API
+    
+    // Customize CUSTOM segment appearance (sfondo blu, testo bianco)
+    [self styleCustomSegment];
+    
+    [self.contentView addSubview:self.dateRangeSegmented];
+    
+    NSLog(@"🔵 Date range segmented control created with 8 segments");
+}
+- (void)styleCustomSegment {
+    // Approccio alternativo: usa selectedSegmentTintColor per il colore generale
+    if (@available(macOS 10.14, *)) {
+        self.dateRangeSegmented.selectedSegmentBezelColor = [NSColor systemBlueColor];
+    }
+    
+    // Alternativa: usa un'immagine personalizzata per il segmento CUSTOM
+    // Questo richiederà più codice ma funziona su tutte le versioni di macOS
+    
+    NSLog(@"🔵 Custom segment styling applied (selectedSegmentTintColor)");
 }
 
 // 🆕 NEW: Method to update split view constraint when objects panel is toggled
@@ -447,8 +461,12 @@ extern NSString *const DataHubDataLoadedNotification;
     self.panSlider.action = @selector(panSliderChanged:);
     
     
-    [self updateDateRangeSliderForTimeframe:self.currentTimeframe];
-
+    [self loadDateRangeSegmentedDefaults];
+     
+     // Update for current timeframe
+     [self updateDateRangeSegmentedForTimeframe:self.currentTimeframe];
+    
+    
     // Actions già collegati nei setup dei bottoni:
     // - zoomOutButton -> zoomOut:
     // - zoomInButton -> zoomIn:
@@ -687,8 +705,8 @@ extern NSString *const DataHubDataLoadedNotification;
         if (newTimeframe != self.currentTimeframe) {
             self.currentTimeframe = newTimeframe;
             
-            // 🆕 NEW: Update date range slider for new timeframe
-            [self updateDateRangeSliderForTimeframe:newTimeframe];
+            // 🔄 REPLACE: Update date range segmented control instead of slider
+            [self updateDateRangeSegmentedForTimeframe:newTimeframe];
             
             // Reload data if we have a symbol
             if (self.currentSymbol && self.currentSymbol.length > 0) {
@@ -699,7 +717,6 @@ extern NSString *const DataHubDataLoadedNotification;
         }
     }
 }
-
 
 - (void)zoomIn:(NSButton *)sender {
     NSInteger currentRange = self.visibleEndIndex - self.visibleStartIndex;
@@ -1833,22 +1850,21 @@ extern NSString *const DataHubDataLoadedNotification;
         self.currentTimeframe = params.timeframe;
         NSLog(@"⏰ Applied timeframe: %ld", (long)params.timeframe);
         
-        // 🆕 NEW: Update slider for new timeframe
-        [self updateDateRangeSliderForTimeframe:params.timeframe];
+        // 🔄 REPLACE: Update segmented control instead of slider
+        [self updateDateRangeSegmentedForTimeframe:params.timeframe];
     }
     
-    // 🆕 NEW: Apply days if specified
+    // 🔄 REPLACE: Apply days to custom segment instead of slider
     if (params.hasDaysSpecified) {
         // Clamp to valid range for current timeframe
         NSInteger minDays = [self getMinDaysForTimeframe:self.currentTimeframe];
         NSInteger maxDays = [self getMaxDaysForTimeframe:self.currentTimeframe];
         NSInteger clampedDays = MAX(minDays, MIN(maxDays, params.daysToDownload));
         
-        self.currentDateRangeDays = clampedDays;
-        self.dateRangeSlider.integerValue = clampedDays;
-        [self updateDateRangeLabel];
+        // 🆕 NEW: Update custom segment with smart symbol value
+        [self updateCustomSegmentWithDays:clampedDays];
         
-        NSLog(@"📅 Applied date range: %ld days (requested: %ld, clamped: %ld)",
+        NSLog(@"📅 Applied custom date range: %ld days (requested: %ld, clamped: %ld)",
               (long)clampedDays, (long)params.daysToDownload, (long)clampedDays);
     }
     
@@ -2063,47 +2079,9 @@ extern NSString *const DataHubDataLoadedNotification;
     }
 }
 
-- (void)updateDateRangeSliderForTimeframe:(ChartTimeframe)timeframe {
-    NSInteger minDays = [self getMinDaysForTimeframe:timeframe];
-    NSInteger maxDays = [self getMaxDaysForTimeframe:timeframe];
-    NSInteger defaultDays = [self getDefaultDaysForTimeframe:timeframe];
-    
-    // Clamp default to valid range
-    if (defaultDays < minDays) defaultDays = minDays;
-    if (defaultDays > maxDays) defaultDays = maxDays;
-    
-    // Update slider range
-    self.dateRangeSlider.minValue = minDays;
-    self.dateRangeSlider.maxValue = maxDays;
-    self.dateRangeSlider.integerValue = defaultDays;
-    
-    // Update current value
-    self.currentDateRangeDays = defaultDays;
-    
-    // Update label
-    [self updateDateRangeLabel];
-    
-    NSLog(@"📊 Updated date range slider for timeframe %ld: %ld-%ld days (default: %ld)",
-          (long)timeframe, (long)minDays, (long)maxDays, (long)defaultDays);
-}
 
-- (void)dateRangeSliderChanged:(id)sender {
-    self.currentDateRangeDays = self.dateRangeSlider.integerValue;
-    [self updateDateRangeLabel];
-    
-    // Reload data with new date range
-    /*
-    if (self.currentSymbol && self.currentSymbol.length > 0) {
-        [self loadDataWithCurrentSettings];
-    }
-    */
-    NSLog(@"📅 Date range slider changed to: %ld days", (long)self.currentDateRangeDays);
-}
 
-- (void)updateDateRangeLabel {
-    NSString *displayText = [self formatDaysToDisplayString:self.currentDateRangeDays];
-    self.dateRangeLabel.stringValue = displayText;
-}
+
 
 - (NSString *)formatDaysToDisplayString:(NSInteger)days {
     if (days >= 3650) {
@@ -2374,5 +2352,166 @@ extern NSString *const DataHubDataLoadedNotification;
     
     NSLog(@"✅ ChartWidget: Updated with %ld historical bars", (long)bars.count);
 }
+
+#pragma mark - 🆕 NEW: Persistence Methods
+
+- (void)loadDateRangeSegmentedDefaults {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    // Carica il segmento selezionato (default: 6M = segmento 3)
+    self.selectedDateRangeSegment = [defaults integerForKey:@"ChartWidget_SelectedDateRangeSegment"];
+    if (self.selectedDateRangeSegment < 0 || self.selectedDateRangeSegment >= 8) {
+        self.selectedDateRangeSegment = 3; // Default: 6M
+    }
+    
+    // Carica il valore custom (default: 100 giorni)
+    self.customDateRangeDays = [defaults integerForKey:@"ChartWidget_CustomDateRangeDays"];
+    if (self.customDateRangeDays < 1) {
+        self.customDateRangeDays = 100;
+    }
+    
+    // Carica il titolo custom
+    NSString *savedTitle = [defaults stringForKey:@"ChartWidget_CustomSegmentTitle"];
+    if (savedTitle && savedTitle.length > 0) {
+        self.customSegmentTitle = savedTitle;
+        [self.dateRangeSegmented setLabel:savedTitle forSegment:0];
+    } else {
+        // Genera il titolo dalla quantità di giorni
+        self.customSegmentTitle = [self formatDaysToAbbreviation:self.customDateRangeDays];
+        [self.dateRangeSegmented setLabel:self.customSegmentTitle forSegment:0];
+    }
+    
+    // Imposta la selezione corrente
+    self.dateRangeSegmented.selectedSegment = self.selectedDateRangeSegment;
+    self.currentDateRangeDays = [self getDaysForSegment:self.selectedDateRangeSegment];
+    
+    NSLog(@"📱 Loaded date range defaults: segment %ld, custom %ld days ('%@')",
+          (long)self.selectedDateRangeSegment, (long)self.customDateRangeDays, self.customSegmentTitle);
+}
+
+- (void)saveDateRangeSegmentedDefaults {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    [defaults setInteger:self.selectedDateRangeSegment forKey:@"ChartWidget_SelectedDateRangeSegment"];
+    [defaults setInteger:self.customDateRangeDays forKey:@"ChartWidget_CustomDateRangeDays"];
+    [defaults setObject:self.customSegmentTitle forKey:@"ChartWidget_CustomSegmentTitle"];
+    
+    [defaults synchronize];
+    
+    NSLog(@"💾 Saved date range defaults: segment %ld, custom %ld days ('%@')",
+          (long)self.selectedDateRangeSegment, (long)self.customDateRangeDays, self.customSegmentTitle ?: @"nil");
+}
+
+#pragma mark - 🆕 NEW: Date Range Segmented Actions
+
+- (void)dateRangeSegmentChanged:(id)sender {
+    NSInteger selectedSegment = self.dateRangeSegmented.selectedSegment;
+    self.selectedDateRangeSegment = selectedSegment;
+    
+    // Calcola i giorni per il segmento selezionato
+    NSInteger days = [self getDaysForSegment:selectedSegment];
+    self.currentDateRangeDays = days;
+    
+    // Salva la selezione
+    [self saveDateRangeSegmentedDefaults];
+    
+    // Ricarica i dati se abbiamo un simbolo
+    if (self.currentSymbol && self.currentSymbol.length > 0) {
+        [self loadDataWithCurrentSettings];
+    }
+    
+    NSLog(@"📅 Date range segment changed to %ld (%ld days)",
+          (long)selectedSegment, (long)days);
+}
+
+- (NSInteger)getDaysForSegment:(NSInteger)segment {
+    switch (segment) {
+        case 0: return self.customDateRangeDays;    // CUSTOM
+        case 1: return 22;                          // 1M
+        case 2: return 65;                          // 3M
+        case 3: return 130;                         // 6M
+        case 4: return 250;                         // 1Y
+        case 5: return 1250;                        // 5Y
+        case 6: return 2500;                        // 10Y
+        case 7: return [self getMaxDaysForTimeframe:self.currentTimeframe]; // MAX
+        default: return 130; // Default 6M
+    }
+}
+
+- (void)updateDateRangeSegmentedForTimeframe:(ChartTimeframe)timeframe {
+    // Verifica quali segmenti devono essere disabilitati per timeframes intraday
+    BOOL isIntraday = (timeframe <= ChartTimeframe4Hour);
+    NSInteger maxDaysForTimeframe = [self getMaxDaysForTimeframe:timeframe];
+    
+    // Abilita/disabilita segmenti basandosi sui limiti del timeframe
+    for (NSInteger i = 0; i < self.dateRangeSegmented.segmentCount; i++) {
+        NSInteger segmentDays = [self getDaysForSegment:i];
+        BOOL shouldEnable = (segmentDays <= maxDaysForTimeframe);
+        
+        [self.dateRangeSegmented setEnabled:shouldEnable forSegment:i];
+        
+        // Log per debug
+        if (!shouldEnable && isIntraday) {
+            NSLog(@"⚠️ Segment %ld disabled for intraday (needs %ld days, max %ld)",
+                  (long)i, (long)segmentDays, (long)maxDaysForTimeframe);
+        }
+    }
+    
+    // Se il segmento correntemente selezionato è disabilitato, passa a un altro
+    if (![self.dateRangeSegmented isEnabledForSegment:self.selectedDateRangeSegment]) {
+        // Trova il primo segmento abilitato
+        for (NSInteger i = 0; i < self.dateRangeSegmented.segmentCount; i++) {
+            if ([self.dateRangeSegmented isEnabledForSegment:i]) {
+                self.dateRangeSegmented.selectedSegment = i;
+                self.selectedDateRangeSegment = i;
+                self.currentDateRangeDays = [self getDaysForSegment:i];
+                break;
+            }
+        }
+    }
+    
+    NSLog(@"📊 Updated date range segments for timeframe %ld", (long)timeframe);
+}
+
+#pragma mark - 🆕 NEW: Custom Segment Management
+
+- (void)updateCustomSegmentWithDays:(NSInteger)days {
+    // Aggiorna il valore custom
+    self.customDateRangeDays = days;
+    
+    // Formatta il titolo abbreviato
+    NSString *abbreviation = [self formatDaysToAbbreviation:days];
+    self.customSegmentTitle = abbreviation;
+    
+    // Aggiorna la label del segmento CUSTOM
+    [self.dateRangeSegmented setLabel:abbreviation forSegment:0];
+    
+    // Imposta il segmento CUSTOM come selezionato
+    self.dateRangeSegmented.selectedSegment = 0;
+    self.selectedDateRangeSegment = 0;
+    self.currentDateRangeDays = days;
+    
+    // Ri-applica lo styling al segmento CUSTOM
+    [self styleCustomSegment];
+    
+    // Salva le preferenze
+    [self saveDateRangeSegmentedDefaults];
+    
+    NSLog(@"🔵 Custom segment updated: %ld days → '%@'", (long)days, abbreviation);
+}
+
+- (NSString *)formatDaysToAbbreviation:(NSInteger)days {
+    if (days < 30) {
+        return [NSString stringWithFormat:@"%ldD", (long)days];
+    } else if (days < 250) {
+        NSInteger months = (days + 11) / 22; // Approssimazione mesi trading (22 giorni/mese)
+        return [NSString stringWithFormat:@"%ldM", (long)months];
+    } else {
+        NSInteger years = (days + 124) / 250; // Approssimazione anni trading (250 giorni/anno)
+        return [NSString stringWithFormat:@"%ldY", (long)years];
+    }
+}
+
+
 
 @end

@@ -61,11 +61,14 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 @property (nonatomic, strong) NSButton *zoomInButton;
 @property (nonatomic, strong) NSButton *zoomAllButton;
 // Objects UI
-@property (nonatomic, strong) NSSlider *dateRangeSlider;
-@property (nonatomic, strong) NSTextField *dateRangeLabel;
+@property (nonatomic, strong) NSSegmentedControl *dateRangeSegmented;
 
-// 🆕 NEW: Current date range in days (calculated from slider)
 @property (nonatomic, assign) NSInteger currentDateRangeDays;
+@property (nonatomic, assign) NSInteger selectedDateRangeSegment; // 0=CUSTOM, 1=1M, 2=3M...
+
+// Custom segment persistence
+@property (nonatomic, assign) NSInteger customDateRangeDays;     // Ultimo valore custom inserito
+@property (nonatomic, strong) NSString *customSegmentTitle;
 
 // 🆕 NEW: Default preferences for each timeframe group
 @property (nonatomic, assign) NSInteger defaultDaysFor1Min;        // 20
@@ -150,5 +153,15 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 -(void)resetToInitialView;
 - (void)loadDateRangeDefaults;
 - (void)saveDateRangeDefaults;
+
+
+- (void)setupDateRangeSegmentedControl;
+- (void)dateRangeSegmentChanged:(id)sender;
+- (void)updateDateRangeSegmentedForTimeframe:(ChartTimeframe)timeframe;
+- (void)updateCustomSegmentWithDays:(NSInteger)days;
+- (NSString *)formatDaysToAbbreviation:(NSInteger)days;
+- (NSInteger)getDaysForSegment:(NSInteger)segment;
+- (void)loadDateRangeSegmentedDefaults;
+- (void)saveDateRangeSegmentedDefaults;
 
 @end

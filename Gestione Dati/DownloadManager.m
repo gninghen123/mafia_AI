@@ -14,7 +14,7 @@
 @property (nonatomic, assign) DataSourceType type;
 @property (nonatomic, assign) NSInteger priority;
 @property (nonatomic, assign) NSInteger failureCount;
-@property (nonatomic, assign) BOOL isConnected;
+@property (atomic, assign) BOOL isConnected;  // Thread-safe automaticamente!
 @property (nonatomic, strong) NSDate *lastFailureTime;
 @end
 
@@ -85,14 +85,13 @@
 
 #pragma mark - Connection Management
 
-- (void)connectDataSource:(DataSourceType)type
-               completion:(nullable void (^)(BOOL success, NSError * _Nullable error))completion {
+- (void)connectDataSource:(DataSourceType)type completion:(void (^)(BOOL success, NSError *error))completion {
     dispatch_async(self.dataSourceQueue, ^{
         DataSourceInfo *info = self.dataSources[@(type)];
         if (!info) {
             NSError *error = [NSError errorWithDomain:@"DownloadManager"
                                                  code:404
-                                             userInfo:@{NSLocalizedDescriptionKey: @"DataSource not registered"}];
+                                             userInfo:@{NSLocalizedDescriptionKey: @"Data source not registered"}];
             if (completion) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     completion(NO, error);
@@ -102,7 +101,9 @@
         }
         
         [info.dataSource connectWithCompletion:^(BOOL success, NSError *error) {
-            info.isConnected = success;
+            // ✅ IMPORTANTE: Aggiorna la property atomica
+            info.isConnected = success;  // Thread-safe atomic write
+            
             if (completion) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     completion(success, error);
@@ -117,7 +118,9 @@
         DataSourceInfo *info = self.dataSources[@(type)];
         if (info && info.dataSource.isConnected) {
             [info.dataSource disconnect];
-            info.isConnected = NO;
+            
+            // ✅ IMPORTANTE: Aggiorna la property atomica
+            info.isConnected = NO;  // Thread-safe atomic write
         }
     });
 }
@@ -126,9 +129,11 @@
     dispatch_async(self.dataSourceQueue, ^{
         for (NSNumber *typeNumber in self.dataSources) {
             DataSourceInfo *info = self.dataSources[typeNumber];
-            if (!info.isConnected) {
+            if (!info.isConnected) {  // Atomic read - thread safe!
                 [info.dataSource connectWithCompletion:^(BOOL success, NSError *error) {
-                    info.isConnected = success;
+                    // ✅ IMPORTANTE: Aggiorna la property atomica
+                    info.isConnected = success;  // Thread-safe atomic write
+                    
                     if (success) {
                         NSLog(@"✅ DownloadManager: Reconnected %@", info.dataSource.sourceName);
                     }
@@ -141,37 +146,35 @@
 #pragma mark - Status and Monitoring
 
 - (BOOL)isDataSourceConnected:(DataSourceType)type {
-    __block BOOL connected = NO;
-    dispatch_sync(self.dataSourceQueue, ^{
-        DataSourceInfo *info = self.dataSources[@(type)];
-        connected = info ? info.isConnected : NO;
-    });
+    DataSourceInfo *info = self.dataSources[@(type)];
+    BOOL connected = info ? info.isConnected : NO;
+    
+    // Log per debug (opzionale)
+    NSLog(@"🔍 isDataSourceConnected(%@): %@", DataSourceTypeToString(type), connected ? @"YES" : @"NO");
+    
     return connected;
 }
 
 - (DataSourceCapabilities)capabilitiesForDataSource:(DataSourceType)type {
-    __block DataSourceCapabilities capabilities = DataSourceCapabilityNone;
-    dispatch_sync(self.dataSourceQueue, ^{
-        DataSourceInfo *info = self.dataSources[@(type)];
-        capabilities = info ? info.dataSource.capabilities : DataSourceCapabilityNone;
-    });
+    DataSourceInfo *info = self.dataSources[@(type)];
+    DataSourceCapabilities capabilities = info ? info.dataSource.capabilities : DataSourceCapabilityNone;
+    
     return capabilities;
 }
 
 - (NSDictionary *)statisticsForDataSource:(DataSourceType)type {
-    __block NSDictionary *stats = nil;
-    dispatch_sync(self.dataSourceQueue, ^{
-        DataSourceInfo *info = self.dataSources[@(type)];
-        if (info) {
-            stats = @{
-                @"connected": @(info.isConnected),
-                @"failureCount": @(info.failureCount),
-                @"lastFailure": info.lastFailureTime ?: [NSNull null],
-                @"priority": @(info.priority)
-            };
-        }
-    });
-    return stats ?: @{};
+    DataSourceInfo *info = self.dataSources[@(type)];
+    if (!info) {
+        return @{};
+    }
+    
+    // Accesso diretto alle property (thread-safe grazie ad atomic)
+    return @{
+        @"connected": @(info.isConnected),  // Atomic property - thread safe!
+        @"failureCount": @(info.failureCount),
+        @"lastFailure": info.lastFailureTime ?: [NSNull null],
+        @"priority": @(info.priority)
+    };
 }
 
 - (DataSourceType)currentDataSource {

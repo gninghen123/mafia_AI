@@ -32,7 +32,8 @@ typedef NS_ENUM(NSInteger, IBKRRealMessageType) {
 @interface IBKRWebSocketDataSource ()
 @property (nonatomic, assign) int socketFD;
 @property (nonatomic, strong) NSMutableDictionary *pendingRequests;
-@property (nonatomic, strong) dispatch_queue_t socketQueue;
+@property (nonatomic, strong) dispatch_queue_t socketReadQueue;
+@property (nonatomic, strong) dispatch_queue_t socketWriteQueue;
 @property (nonatomic, assign) NSInteger nextRequestId;
 @property (nonatomic, readwrite) BOOL isConnected;
 
@@ -53,7 +54,8 @@ typedef NS_ENUM(NSInteger, IBKRRealMessageType) {
         _port = port > 0 ? port : 4002;
         _clientId = clientId > 0 ? clientId : 1;
         _pendingRequests = [NSMutableDictionary dictionary];
-        _socketQueue = dispatch_queue_create("IBKRWebSocket.queue", DISPATCH_QUEUE_SERIAL);
+        _socketReadQueue = dispatch_queue_create("IBKRWebSocket.read", DISPATCH_QUEUE_SERIAL);
+        _socketWriteQueue = dispatch_queue_create("IBKRWebSocket.write", DISPATCH_QUEUE_SERIAL);
         _nextRequestId = 1;
         _socketFD = -1;
         _isConnected = NO;
@@ -64,7 +66,7 @@ typedef NS_ENUM(NSInteger, IBKRRealMessageType) {
 #pragma mark - Connection Management
 
 - (void)connectWithCompletion:(void (^)(BOOL success, NSError *_Nullable error))completion {
-    dispatch_async(self.socketQueue, ^{
+    dispatch_async(self.socketWriteQueue, ^{
         [self performConnectionWithCompletion:completion];
     });
 }
@@ -173,7 +175,7 @@ typedef NS_ENUM(NSInteger, IBKRRealMessageType) {
 
 
 - (void)disconnect {
-    dispatch_async(self.socketQueue, ^{
+    dispatch_async(self.socketWriteQueue, ^{
         if (self.socketFD >= 0) {
             close(self.socketFD);
             self.socketFD = -1;
@@ -313,7 +315,7 @@ typedef NS_ENUM(NSInteger, IBKRRealMessageType) {
 
 - (void)startReadingResponses {
     NSLog(@"📡 IBKRWebSocketDataSource: Starting response reader thread...");
-    dispatch_async(self.socketQueue, ^{
+    dispatch_async(self.socketReadQueue, ^{
         [self readSocketDataWithDebug];
     });
 }
@@ -361,7 +363,7 @@ typedef NS_ENUM(NSInteger, IBKRRealMessageType) {
 - (void)testConnectionWithCompletion:(void (^)(BOOL success, NSString *details))completion {
     NSLog(@"🧪 IBKRWebSocketDataSource: Starting connection test...");
     
-    dispatch_async(self.socketQueue, ^{
+    dispatch_async(self.socketWriteQueue, ^{
         NSMutableString *details = [NSMutableString string];
         BOOL success = YES;
         
@@ -528,64 +530,29 @@ typedef NS_ENUM(NSInteger, IBKRRealMessageType) {
     
     // Store completion for when response arrives
     self.pendingRequests[@(requestId)] = [completion copy];
+    NSLog(@"DEBUG socketWriteQueue: %@", self.socketWriteQueue);
     
-    dispatch_async(self.socketQueue, ^{
+    dispatch_async(self.socketWriteQueue, ^{
+        NSLog(@"✅ socketWriteQueue test log");
+    });
+    
+    dispatch_async(self.socketWriteQueue, ^{
+        NSLog(@"🎯 DEBUG: ENTERED dispatch block! Thread: %@", [NSThread currentThread]);
+
         // Send REAL account request via IBKR protocol
         [self sendAccountRequest:requestId];
     });
 }
 
 - (void)sendAccountRequest:(NSInteger)requestId {
-    NSLog(@"📤 IBKRWebSocketDataSource: Sending REAL managed accounts request %ld", (long)requestId);
+    NSLog(@"📤 IBKRWebSocketDataSource: Sending managed accounts request");
     
-    // IBKR TWS API: Request Managed Accounts (Message Type = 71)
-    // Format: [Message Length][Message Type][Version]
+    // ✅ FORMATO CORRETTO: Solo message type e version (SENZA length prefix)
+    NSString *message = [NSString stringWithFormat:@"%d\0%d\0",
+                         IBKRRealMessageTypeRequestManagedAccounts, 1];    NSData *messageData = [message dataUsingEncoding:NSUTF8StringEncoding];
     
-    NSMutableData *messageData = [NSMutableData data];
-    
-    // 1. Message Type per managed accounts (TWS API v71)
-    NSString *messageType = @"71";
-    
-    // 2. Version (sempre 1 per managed accounts)
-    NSString *version = @"1";
-    
-    // 3. Create message string
-    NSString *message = [NSString stringWithFormat:@"%@\0%@\0", messageType, version];
-    
-    // 4. Calculate message length (excluding the length field itself)
-    NSInteger messageLength = message.length;
-    
-    // 5. Create length prefix (4 bytes, big endian)
-    uint32_t lengthBigEndian = htonl((uint32_t)messageLength);
-    [messageData appendBytes:&lengthBigEndian length:sizeof(lengthBigEndian)];
-    
-    // 6. Append message content
-    [messageData appendData:[message dataUsingEncoding:NSUTF8StringEncoding]];
-    
-    // 7. Send to socket
     ssize_t bytesSent = send(self.socketFD, messageData.bytes, messageData.length, 0);
-    
-    if (bytesSent == messageData.length) {
-        NSLog(@"✅ IBKRWebSocketDataSource: Sent managed accounts request successfully (%ld bytes)", (long)bytesSent);
-    } else {
-        NSLog(@"❌ IBKRWebSocketDataSource: Failed to send managed accounts request");
-        
-        // Call completion with error
-        NSError *error = [NSError errorWithDomain:@"IBKRWebSocketDataSource"
-                                             code:1004
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Failed to send request to Gateway"}];
-        
-        dispatch_async(dispatch_get_main_queue(), ^{
-            void (^completion)(NSArray *, NSError *) = self.pendingRequests[@(requestId)];
-            if (completion) {
-                completion(@[], error);
-                [self.pendingRequests removeObjectForKey:@(requestId)];
-            }
-        });
-    }
-    
-    // ❌ RIMUOVO la simulazione - ora usa il vero protocollo
-    // dispatch_after(...simulateAccountResponse...) REMOVED
+    NSLog(@"📤 Sent: %ld bytes", (long)bytesSent);
 }
 
 #pragma mark - Response Processing (REAL)
@@ -691,7 +658,7 @@ typedef NS_ENUM(NSInteger, IBKRRealMessageType) {
     NSInteger requestId = self.nextRequestId++;
     self.pendingRequests[@(requestId)] = [completion copy];
     
-    dispatch_async(self.socketQueue, ^{
+    dispatch_async(self.socketWriteQueue, ^{
         [self sendPositionsRequest:requestId accountId:accountId];
     });
 }

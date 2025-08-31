@@ -37,6 +37,9 @@ static NSString * const kConnectionCellIdentifier = @"ConnectionCell";
 @property (nonatomic, strong) NSTimer *refreshTimer;
 @property (nonatomic, assign) BOOL compactView;
 
+// Sheet controller for editing/creating connections
+@property (nonatomic, strong) ConnectionEditController *activeEditController;
+
 // Private methods
 - (void)setupContextMenu;
 - (void)configureCell:(NSTableCellView *)cellView withConnection:(ConnectionModel *)connection;
@@ -716,45 +719,55 @@ static NSString * const kConnectionCellIdentifier = @"ConnectionCell";
     // Cancel = do nothing
 }
 
+// Use a strong property for the controller and present as sheet
 - (void)createNewConnection {
     NSLog(@"ConnectionsWidget: Opening connection creation dialog");
-    
-    ConnectionEditController *editController = [ConnectionEditController controllerForCreating];
-    
-    editController.onSave = ^(ConnectionModel *newConnectionModel) {
+
+    self.activeEditController = [ConnectionEditController controllerForCreating];
+
+    __weak typeof(self) weakSelf = self;
+    self.activeEditController.onSave = ^(ConnectionModel *newConnectionModel) {
         NSLog(@"Connection created: %@", newConnectionModel.title);
-        [self refreshConnections];
-        [self showTemporaryMessage:@"Connection created successfully"];
+        [weakSelf refreshConnections];
+        [weakSelf showTemporaryMessage:@"Connection created successfully"];
     };
-    
-    editController.onCancel = ^{
+
+    self.activeEditController.onCancel = ^{
         NSLog(@"Connection creation cancelled");
     };
-    
-    // Usa i metodi standard di NSWindowController
-    [editController.window makeKeyAndOrderFront:nil];
-    [editController.window center];
+
+    // Present as sheet
+    [NSApp beginSheet:self.activeEditController.window
+       modalForWindow:self.view.window
+        modalDelegate:nil
+       didEndSelector:nil
+          contextInfo:nil];
 }
 
 
+// Use a strong property for the controller and present as sheet
 - (void)editConnection:(ConnectionModel *)connection {
     NSLog(@"ConnectionsWidget: Editing connection: %@", connection.title);
-    
-    ConnectionEditController *editController = [ConnectionEditController controllerForEditing:connection];
-    
-    editController.onSave = ^(ConnectionModel *updatedModel) {
+
+    self.activeEditController = [ConnectionEditController controllerForEditing:connection];
+
+    __weak typeof(self) weakSelf = self;
+    self.activeEditController.onSave = ^(ConnectionModel *updatedModel) {
         NSLog(@"Connection updated: %@", updatedModel.title);
-        [self refreshConnections];
-        [self showTemporaryMessage:@"Connection updated successfully"];
+        [weakSelf refreshConnections];
+        [weakSelf showTemporaryMessage:@"Connection updated successfully"];
     };
-    
-    editController.onCancel = ^{
+
+    self.activeEditController.onCancel = ^{
         NSLog(@"Connection editing cancelled");
     };
-    
-    [editController.window makeKeyAndOrderFront:nil];
-    [editController.window center];
-    
+
+    // Present as sheet
+    [NSApp beginSheet:self.activeEditController.window
+       modalForWindow:self.view.window
+        modalDelegate:nil
+       didEndSelector:nil
+          contextInfo:nil];
 }
 // Helper method per creare labels
 - (NSTextField *)createLabel:(NSString *)text at:(NSPoint)point {

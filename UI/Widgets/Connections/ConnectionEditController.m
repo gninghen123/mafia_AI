@@ -50,6 +50,7 @@
 + (instancetype)controllerForEditing:(ConnectionModel *)connectionModel {
     ConnectionEditController *controller = [[self alloc] init];
     controller.connectionModel = connectionModel; // Edit mode
+    [controller populateFieldsFromConnection];
     return controller;
 }
 
@@ -296,10 +297,18 @@
     
     yPos -= 80;
     self.descScrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(20, yPos, 400, 75)];
-    NSTextView *descTextView = [[NSTextView alloc] init];
+    NSTextView *descTextView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 400, 75)];
     descTextView.font = [NSFont systemFontOfSize:12];
+    descTextView.editable = YES;
+    descTextView.selectable = YES;
+    descTextView.richText = NO;
+    descTextView.usesFontPanel = NO;
+    descTextView.allowsUndo = YES;
+    descTextView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     self.descScrollView.documentView = descTextView;
     self.descScrollView.hasVerticalScroller = YES;
+    self.descScrollView.hasHorizontalScroller = NO;
+    self.descScrollView.borderType = NSBezelBorder;
     [contentView addSubview:self.descScrollView];
     
     // Notes
@@ -309,10 +318,18 @@
     
     yPos -= 80;
     self.notesScrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(20, yPos, 400, 75)];
-    NSTextView *notesTextView = [[NSTextView alloc] init];
+    NSTextView *notesTextView = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 400, 75)];
     notesTextView.font = [NSFont systemFontOfSize:12];
+    notesTextView.editable = YES;
+    notesTextView.selectable = YES;
+    notesTextView.richText = NO;
+    notesTextView.usesFontPanel = NO;
+    notesTextView.allowsUndo = YES;
+    notesTextView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     self.notesScrollView.documentView = notesTextView;
     self.notesScrollView.hasVerticalScroller = YES;
+    self.notesScrollView.hasHorizontalScroller = NO;
+    self.notesScrollView.borderType = NSBezelBorder;
     [contentView addSubview:self.notesScrollView];
     
     contentTab.view = contentView;

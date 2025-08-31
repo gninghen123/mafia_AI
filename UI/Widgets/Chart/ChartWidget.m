@@ -495,10 +495,18 @@ extern NSString *const DataHubDataLoadedNotification;
             }
         }
         
-        // ✅ SETUP ALERT RENDERER: Per tutti i pannelli (gli alert possono essere ovunque)
-        if (!panel.alertRenderer) {
-            [panel setupAlertRenderer];
-            NSLog(@"🚨 Setup alert renderer for panel %@", panel.panelType);
+        // ✅ SETUP ALERT RENDERER: SOLO per il pannello security
+        if ([panel.panelType isEqualToString:@"security"]) {
+            if (!panel.alertRenderer) {
+                [panel setupAlertRenderer];
+                NSLog(@"🚨 Setup alert renderer for SECURITY panel only");
+            }
+        } else {
+            // ✅ ASSICURATI che altri pannelli NON abbiano alert renderer
+            if (panel.alertRenderer) {
+                panel.alertRenderer = nil;
+                NSLog(@"🚫 Removed alert renderer from %@ panel", panel.panelType);
+            }
         }
     }
     self.renderersInitialized = YES;
@@ -902,10 +910,7 @@ extern NSString *const DataHubDataLoadedNotification;
         if (self.objectsPanel && self.objectsPanel.objectManagerWindow) {
             [self.objectsPanel.objectManagerWindow updateForSymbol:symbol];
         }
-        
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self forceChartRedraw];
-        });
+
     }
 }
 
@@ -972,6 +977,8 @@ extern NSString *const DataHubDataLoadedNotification;
     }
 }
 
+
+
 - (void)zoomToRange:(NSInteger)startIndex endIndex:(NSInteger)endIndex {
     if (!self.chartData || self.chartData.count == 0) return;
     if (self.visibleStartIndex == startIndex && self.visibleEndIndex == endIndex) {
@@ -1006,6 +1013,7 @@ extern NSString *const DataHubDataLoadedNotification;
     [self zoomToRange:0 endIndex:self.chartData.count-1];
 }
 #pragma mark - Helper Methods
+
 
 - (void)resetToInitialView {
     if (!self.chartData || self.chartData.count == 0) return;
@@ -1181,7 +1189,7 @@ extern NSString *const DataHubDataLoadedNotification;
     if (textField == self.symbolTextField) {
         NSString *inputText = [textField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
         if (inputText.length > 0) {
-            [self processSmartSymbolInput:inputText];
+            [self symbolChanged:inputText];
         }
     }
 }
@@ -1383,8 +1391,8 @@ extern NSString *const DataHubDataLoadedNotification;
     
     // 🔧 FIX: Solo se NON c'è già un visible range valido, imposta il default
     BOOL hasValidVisibleRange = (self.visibleStartIndex >= 0 &&
-                                self.visibleEndIndex >= 0 &&
-                                self.visibleStartIndex <= self.visibleEndIndex &&
+                                self.visibleEndIndex > 0 &&
+                                self.visibleStartIndex < self.visibleEndIndex &&
                                 self.visibleEndIndex < dataCount);
     
     if (!hasValidVisibleRange) {
@@ -1398,12 +1406,10 @@ extern NSString *const DataHubDataLoadedNotification;
               (long)(self.visibleEndIndex - self.visibleStartIndex + 1));
     } else {
         // ✅ CARICAMENTO SUCCESSIVO: Mantieni visible range esistente, ma aggiusta se fuori bounds
-        if (self.visibleEndIndex >= dataCount) {
-            // Se il range esistente è fuori dai nuovi dati, aggiusta mantenendo la stessa ampiezza
-            NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex + 1;
-            self.visibleEndIndex = dataCount - 1;
-            self.visibleStartIndex = MAX(0, self.visibleEndIndex - visibleBars + 1);
-        }
+        // ✅ COMPORTAMENTO NUOVO: Sposta SEMPRE all'ultima barra mantenendo l'ampiezza
+        NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex + 1;
+        self.visibleEndIndex = dataCount - 1;  // Sempre all'ultima barra
+        self.visibleStartIndex = MAX(0, self.visibleEndIndex - visibleBars + 1);
         
         NSLog(@"📊 Preserving existing viewport: Data: %ld bars, Visible: [%ld-%ld] (%ld bars visible)",
               (long)dataCount, (long)self.visibleStartIndex, (long)self.visibleEndIndex,
@@ -1892,14 +1898,15 @@ extern NSString *const DataHubDataLoadedNotification;
             // Update the barsToDownload to reflect actual bars received
             self.barsToDownload = data.count;
             
+         
             // Update panels with new data
             [self updatePanelsWithData:data];
             
-            // Update viewport to show recent data
-            [self resetToInitialView];
+      
         });
     }];
 }
+
 
 #pragma mark - Helper Methods
 

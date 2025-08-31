@@ -1095,23 +1095,17 @@
     if (!input || input.length == 0) return @[];
     
     NSMutableSet<NSString *> *symbolSet = [NSMutableSet set];
+
+    // Pattern: separatori = virgola, spazio, tab, newline, punto e virgola
+    NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"[^,\\s;\\n\\r\\t]+" options:0 error:nil];
+    NSArray<NSTextCheckingResult *> *matches = [regex matchesInString:input options:0 range:NSMakeRange(0, input.length)];
     
-    // Replace multiple whitespace/newlines with single space
-    NSString *cleaned = [input stringByReplacingOccurrencesOfString:@"\\s+"
-                                                         withString:@" "
-                                                            options:NSRegularExpressionSearch
-                                                              range:NSMakeRange(0, input.length)];
-    
-    // Split by common separators: comma, space, newline, semicolon, tab
-    NSCharacterSet *separators = [NSCharacterSet characterSetWithCharactersInString:@", \\n\\r\\t;"];
-    NSArray<NSString *> *components = [cleaned componentsSeparatedByCharactersInSet:separators];
-    
-    for (NSString *component in components) {
-        NSString *symbol = [[component stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] uppercaseString];
+    for (NSTextCheckingResult *match in matches) {
+        NSString *symbol = [[input substringWithRange:match.range] uppercaseString];
         
-        // Basic validation: 1-10 characters, alphanumeric only
+        // Validazione: 1-10 caratteri alfanumerici
         if (symbol.length >= 1 && symbol.length <= 10) {
-            NSCharacterSet *validCharacters = [NSCharacterSet characterSetWithCharactersInString:@"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"];
+            NSCharacterSet *validCharacters = [NSCharacterSet alphanumericCharacterSet];
             if ([symbol rangeOfCharacterFromSet:[validCharacters invertedSet]].location == NSNotFound) {
                 [symbolSet addObject:symbol];
             }

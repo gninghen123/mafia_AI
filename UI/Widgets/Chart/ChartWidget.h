@@ -46,6 +46,7 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 @property (nonatomic, assign) NSInteger cachedEndIndex;
 
 
+
 #pragma mark - Trading Hours Preferences
 @property (nonatomic, assign) ChartTradingHours tradingHoursMode;
 

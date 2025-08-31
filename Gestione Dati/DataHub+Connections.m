@@ -216,7 +216,7 @@
     NSMutableArray<ConnectionModel *> *runtimeModels = [NSMutableArray array];
     
     for (StockConnection *coreDataConnection in self.connections) {
-        ConnectionModel *runtimeModel = [self convertConnectionCoreDataToRuntimeModel:coreDataConnection];
+        ConnectionModel *runtimeModel = [self convertCoreDataConnectionToRuntimeModel:coreDataConnection];
         if (runtimeModel) {
             [runtimeModels addObject:runtimeModel];
         }

@@ -313,35 +313,69 @@
 }
 
 - (IBAction)resetToDefaults:(id)sender {
-    // Reset to hard-coded defaults
-    self.defaultDays1MinField.stringValue = @"20";
-    self.defaultDays5MinField.stringValue = @"40";
-    self.defaultDaysHourlyField.stringValue = @"999999";
-    self.defaultDaysDailyField.stringValue = @"180";
-    self.defaultDaysWeeklyField.stringValue = @"365";
-    self.defaultDaysMonthlyField.stringValue = @"1825";
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Reset to Default Values";
+    alert.informativeText = @"This will reset all chart preferences to their default values. Continue?";
+    alert.alertStyle = NSAlertStyleWarning;
+    [alert addButtonWithTitle:@"Reset"];
+    [alert addButtonWithTitle:@"Cancel"];
     
-    self.defaultVisible1MinField.stringValue = @"5";
-    self.defaultVisible5MinField.stringValue = @"10";
-    self.defaultVisibleHourlyField.stringValue = @"30";
-    self.defaultVisibleDailyField.stringValue = @"90";
-    self.defaultVisibleWeeklyField.stringValue = @"180";
-    self.defaultVisibleMonthlyField.stringValue = @"365";
-    
-    [self.includeAfterHoursSwitch setState:NSControlStateValueOff];
-    
-    NSLog(@"🔄 Reset all preferences to defaults");
-}
-
-- (IBAction)savePreferences:(id)sender {
-    if (!self.chartWidget) {
-        NSLog(@"❌ No chart widget reference for saving");
-        return;
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        // Reset to hardcoded defaults
+        self.includeAfterHoursSwitch.state = NSControlStateValueOff;
+        
+        // Download defaults
+        self.defaultDays1MinField.stringValue = @"20";
+        self.defaultDays5MinField.stringValue = @"40";
+        self.defaultDaysHourlyField.stringValue = @"999999";
+        self.defaultDaysDailyField.stringValue = @"180";
+        self.defaultDaysWeeklyField.stringValue = @"365";
+        self.defaultDaysMonthlyField.stringValue = @"1825";
+        
+        // Visible defaults
+        self.defaultVisible1MinField.stringValue = @"5";
+        self.defaultVisible5MinField.stringValue = @"10";
+        self.defaultVisibleHourlyField.stringValue = @"30";
+        self.defaultVisibleDailyField.stringValue = @"90";
+        self.defaultVisibleWeeklyField.stringValue = @"180";
+        self.defaultVisibleMonthlyField.stringValue = @"365";
+        
+        // 🆕 NEW: Apply to chart widget immediately
+        self.chartWidget.tradingHoursMode = ChartTradingHoursRegularOnly;
+        
+        self.chartWidget.defaultDaysFor1Min = 20;
+        self.chartWidget.defaultDaysFor5Min = 40;
+        self.chartWidget.defaultDaysForHourly = 999999;
+        self.chartWidget.defaultDaysForDaily = 180;
+        self.chartWidget.defaultDaysForWeekly = 365;
+        self.chartWidget.defaultDaysForMonthly = 1825;
+        
+        self.chartWidget.defaultVisibleFor1Min = 5;
+        self.chartWidget.defaultVisibleFor5Min = 10;
+        self.chartWidget.defaultVisibleForHourly = 30;
+        self.chartWidget.defaultVisibleForDaily = 90;
+        self.chartWidget.defaultVisibleForWeekly = 180;
+        self.chartWidget.defaultVisibleForMonthly = 365;
+        
+        // 🔧 FIX: Update segmented control with new defaults
+        if (self.chartWidget.selectedDateRangeSegment != 0) {
+            [self.chartWidget updateDateRangeSegmentedForTimeframe:self.chartWidget.currentTimeframe];
+        }
+        
+        // Save defaults
+        [self.chartWidget saveDateRangeDefaults];
+        [self savePreferencesToUserDefaults:ChartTradingHoursRegularOnly];
+        
+        // Notify of changes
+        [self.chartWidget preferencesDidChange:YES];
+        
+        NSLog(@"🔄 Chart preferences reset to defaults - Segmented control updated");
     }
-    
-    // Save trading hours
+}
+- (IBAction)savePreferences:(id)sender {
     BOOL includeAfterHours = (self.includeAfterHoursSwitch.state == NSControlStateValueOn);
-    ChartTradingHours newTradingHours = includeAfterHours ? ChartTradingHoursWithAfterHours : ChartTradingHoursRegularOnly;
+    ChartTradingHours newTradingHours = includeAfterHours ?
+        ChartTradingHoursWithAfterHours : ChartTradingHoursRegularOnly;
     self.chartWidget.tradingHoursMode = newTradingHours;
     
     // Save download defaults
@@ -364,14 +398,17 @@
     [self.chartWidget saveDateRangeDefaults];
     [self savePreferencesToUserDefaults:newTradingHours];
     
-    // Update the current slider if needed
-    [self.chartWidget updateDateRangeSliderForTimeframe:self.chartWidget.currentTimeframe];
+    // 🔧 FIX: Update segmented control instead of slider
+    // Se il segmento corrente NON è CUSTOM, aggiorna con le nuove preferenze
+    if (self.chartWidget.selectedDateRangeSegment != 0) {
+        [self.chartWidget updateDateRangeSegmentedForTimeframe:self.chartWidget.currentTimeframe];
+    }
     
     // Notify chart widget of changes
     BOOL needsDataReload = (newTradingHours != self.originalTradingHours);
     [self.chartWidget preferencesDidChange:needsDataReload];
     
-    NSLog(@"✅ Enhanced chart preferences saved - After-Hours: %@, Download defaults updated, Reload needed: %@",
+    NSLog(@"✅ Enhanced chart preferences saved - After-Hours: %@, Segmented control updated, Reload needed: %@",
           includeAfterHours ? @"YES" : @"NO", needsDataReload ? @"YES" : @"NO");
     
     [self closeWindow];

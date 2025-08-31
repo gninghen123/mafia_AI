@@ -236,7 +236,8 @@ extern NSString *const DataHubDataLoadedNotification;
     self.zoomOutButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.zoomInButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.zoomAllButton.translatesAutoresizingMaskIntoConstraints = NO;
-    
+    self.dateRangeSegmented.translatesAutoresizingMaskIntoConstraints = NO;
+
     // Create the split view leading constraint that can be modified for objects panel
     self.splitViewLeadingConstraint = [self.panelsSplitView.leadingAnchor
                                       constraintEqualToAnchor:self.contentView.leadingAnchor
@@ -273,6 +274,11 @@ extern NSString *const DataHubDataLoadedNotification;
         [self.timeframeSegmented.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
         [self.timeframeSegmented.leadingAnchor constraintEqualToAnchor:self.objectsVisibilityToggle.trailingAnchor constant:8],
         
+        [self.dateRangeSegmented.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
+        [self.dateRangeSegmented.leadingAnchor constraintEqualToAnchor:self.timeframeSegmented.trailingAnchor constant:8],
+        [self.dateRangeSegmented.widthAnchor constraintEqualToConstant:300],
+        [self.dateRangeSegmented.heightAnchor constraintEqualToConstant:21],
+
   
         
         // Template popup - connected to date range label
@@ -460,19 +466,14 @@ extern NSString *const DataHubDataLoadedNotification;
     self.panSlider.target = self;
     self.panSlider.action = @selector(panSliderChanged:);
     
-    
+    // 🔧 FIX: Ordine corretto di caricamento
+    // 1. Prima carica le preferenze segmented control
     [self loadDateRangeSegmentedDefaults];
-     
-     // Update for current timeframe
-     [self updateDateRangeSegmentedForTimeframe:self.currentTimeframe];
     
+    // 2. Poi aggiorna per il timeframe corrente (che potrebbe usare le preferenze)
+    [self updateDateRangeSegmentedForTimeframe:self.currentTimeframe];
     
-    // Actions già collegati nei setup dei bottoni:
-    // - zoomOutButton -> zoomOut:
-    // - zoomInButton -> zoomIn:
-    // - zoomAllButton -> zoomAll:
-    // - preferencesButton -> showPreferences:
-    
+    NSLog(@"✅ Initial UI setup completed with correct preferences integration");
 }
 
 - (void)ensureRenderersAreSetup {
@@ -690,13 +691,25 @@ extern NSString *const DataHubDataLoadedNotification;
 
 #pragma mark - Actions
 
-- (void)symbolChanged:(NSTextField *)sender {
-    NSString *symbol = sender.stringValue.uppercaseString;
-    if (symbol.length > 0 && ![symbol isEqualToString:self.currentSymbol]) {
+- (IBAction)symbolChanged:(id)sender {
+    NSString *symbol = [[self.symbolTextField.stringValue stringByTrimmingCharactersInSet:
+                        [NSCharacterSet whitespaceAndNewlineCharacterSet]] uppercaseString];
+    
+    if (symbol.length == 0) return;
+    
+    // Parse for smart symbol input
+    if ([symbol containsString:@","]) {
+        [self processSmartSymbolInput:symbol];
+        return;
+    }
+    
+    // 🔧 FIX: Simple symbol change preserva visible range
+    if (![symbol isEqualToString:self.currentSymbol]) {
         [self loadSymbol:symbol];
         [self broadcastSymbolToChain:symbol];
     }
 }
+
 
 - (IBAction)timeframeChanged:(id)sender {
     if (self.timeframeSegmented.selectedSegment >= 0) {
@@ -705,18 +718,79 @@ extern NSString *const DataHubDataLoadedNotification;
         if (newTimeframe != self.currentTimeframe) {
             self.currentTimeframe = newTimeframe;
             
-            // 🔄 REPLACE: Update date range segmented control instead of slider
+            // Update date range segmented control (usa preferences)
             [self updateDateRangeSegmentedForTimeframe:newTimeframe];
+            
+            // 🆕 NEW: Reset visible range per il nuovo timeframe
+            [self resetVisibleRangeForTimeframe];
             
             // Reload data if we have a symbol
             if (self.currentSymbol && self.currentSymbol.length > 0) {
                 [self loadDataWithCurrentSettings];
             }
             
-            NSLog(@"📊 Timeframe changed to: %ld", (long)newTimeframe);
+            NSLog(@"📊 Timeframe changed to: %ld, visible range will be reset", (long)newTimeframe);
         }
     }
 }
+
+#pragma mark - 🆕 NEW: Visible Range Management
+
+- (void)resetVisibleRangeForTimeframe {
+    // 🎯 UNICO PUNTO dove si resetta il visible range
+    // Ottieni il default visible per il timeframe corrente
+    NSInteger defaultVisible = [self getDefaultVisibleDaysForTimeframe:self.currentTimeframe];
+    
+    // Converte giorni in barre approssimative (dipende dal timeframe)
+    NSInteger barsToShow = [self convertDaysToBarsForTimeframe:defaultVisible timeframe:self.currentTimeframe];
+    
+    // Imposta il nuovo initialBarsToShow
+    self.initialBarsToShow = barsToShow;
+    
+    // Forza il reset del visible range al prossimo caricamento dati
+    // Invalida il visible range corrente così updatePanelsWithData lo resetterà
+    self.visibleStartIndex = -1;
+    self.visibleEndIndex = -1;
+    
+    NSLog(@"🔄 Reset visible range for timeframe %ld: will show ~%ld bars (from %ld days default)",
+          (long)self.currentTimeframe, (long)barsToShow, (long)defaultVisible);
+}
+
+- (NSInteger)convertDaysToBarsForTimeframe:(NSInteger)days timeframe:(ChartTimeframe)timeframe {
+    // Converte giorni di trading in numero approssimativo di barre
+    switch (timeframe) {
+        case ChartTimeframe1Min:
+            return days * 390; // ~390 barre per giorno di trading (6.5 ore)
+            
+        case ChartTimeframe5Min:
+            return days * 78;  // ~78 barre per giorno di trading
+            
+        case ChartTimeframe15Min:
+            return days * 26;  // ~26 barre per giorno di trading
+            
+        case ChartTimeframe30Min:
+            return days * 13;  // ~13 barre per giorno di trading
+            
+        case ChartTimeframe1Hour:
+            return days * 7;   // ~7 barre per giorno di trading
+            
+        case ChartTimeframe4Hour:
+            return days * 2;   // ~2 barre per giorno di trading (mattina + pomeriggio)
+            
+        case ChartTimeframeDaily:
+            return days;       // 1 barra = 1 giorno
+            
+        case ChartTimeframeWeekly:
+            return days / 5;   // 1 barra = ~5 giorni
+            
+        case ChartTimeframeMonthly:
+            return days / 22;  // 1 barra = ~22 giorni di trading
+            
+        default:
+            return MAX(50, days); // Fallback ragionevole
+    }
+}
+
 
 - (void)zoomIn:(NSButton *)sender {
     NSInteger currentRange = self.visibleEndIndex - self.visibleStartIndex;
@@ -802,51 +876,22 @@ extern NSString *const DataHubDataLoadedNotification;
     self.currentSymbol = symbol;
     self.symbolTextField.stringValue = symbol;
     
-    // Convert ChartTimeframe to BarTimeframe
-    BarTimeframe barTimeframe = [self chartTimeframeToBarTimeframe:self.currentTimeframe];
-    NSInteger barsCount = self.barsToDownload;
-    if (barsCount <= 0) barsCount = 50; // Fallback se non impostato
-    
     // ✅ NUOVO: Determina se includere after-hours dalle preferenze
     BOOL needExtendedHours = (self.tradingHoursMode == ChartTradingHoursWithAfterHours);
     
-    NSLog(@"📊 ChartWidget: Loading %@ with %ld bars (timeframe: %ld, after-hours: %@)",
-          symbol, (long)barsCount, (long)barTimeframe, needExtendedHours ? @"YES" : @"NO");
+    NSLog(@"📊 ChartWidget: Loading %@ with date range (timeframe: %ld, after-hours: %@)",
+          symbol, (long)self.currentTimeframe, needExtendedHours ? @"YES" : @"NO");
     
     if (!self.isStaticMode) {
-        [[DataHub shared] getHistoricalBarsForSymbol:symbol
-                                              timeframe:barTimeframe
-                                               barCount:barsCount
-                                   needExtendedHours:needExtendedHours
-                                             completion:^(NSArray<HistoricalBarModel *> *data, BOOL isFresh) {
-               dispatch_async(dispatch_get_main_queue(), ^{
-                   if (!data || data.count == 0) {
-                       NSLog(@"❌ ChartWidget: No data received for %@", symbol);
-                       return;
-                   }
-                   
-                   NSLog(@"✅ ChartWidget: Received %lu bars for %@ (%@, extended-hours: %@)",
-                         (unsigned long)data.count, symbol, isFresh ? @"fresh" : @"cached",
-                         needExtendedHours ? @"included" : @"excluded");
-                   
-                   // ✅ DIRETTO: Dataset già completo dal DownloadManager
-                   self.chartData = data;
-                   
-                   [self resetToInitialView];
-                   
-                   
-                   NSLog(@"📊 ChartWidget: Final dataset has %lu bars (auto-completed by DownloadManager)",
-                         (unsigned long)data.count);
-               });
-           }];
-        
+        // 🔧 FIX: Use loadDataWithCurrentSettings instead of barCount
+        // This preserves visible range and uses start/end dates
+        [self loadDataWithCurrentSettings];
         
         [self refreshAlertsForCurrentSymbol];
-    }else{
+    } else {
         [self showMicroscopeModeNotification];
     }
- 
-    
+
     // ✅ OGGETTI: Aggiorna manager per nuovo symbol e forza load
     if (self.objectsManager) {
         self.objectsManager.currentSymbol = symbol;
@@ -1334,25 +1379,40 @@ extern NSString *const DataHubDataLoadedNotification;
     
     // Store data reference
     self.chartData = data;
-    
-    // ✅ FIX: Calculate visible range CORRETTAMENTE
     NSInteger dataCount = data.count;
-    NSInteger barsToShow = MIN(self.initialBarsToShow, dataCount);
     
-    // ✅ CORREZIONE CRUCIALE: endIndex deve essere l'ultimo elemento valido, non oltre
-    self.visibleStartIndex = MAX(0, dataCount - barsToShow);
-    self.visibleEndIndex = dataCount - 1;  // ❌ ERA: dataCount (fuori range)
+    // 🔧 FIX: Solo se NON c'è già un visible range valido, imposta il default
+    BOOL hasValidVisibleRange = (self.visibleStartIndex >= 0 &&
+                                self.visibleEndIndex >= 0 &&
+                                self.visibleStartIndex <= self.visibleEndIndex &&
+                                self.visibleEndIndex < dataCount);
     
-    NSLog(@"📊 Setting initial viewport - Data: %ld bars, Showing: [%ld-%ld] (%ld bars visible)",
-          (long)dataCount, (long)self.visibleStartIndex, (long)self.visibleEndIndex,
-          (long)(self.visibleEndIndex - self.visibleStartIndex + 1));
-    
+    if (!hasValidVisibleRange) {
+        // ✅ PRIMO CARICAMENTO: Imposta visible range di default
+        NSInteger barsToShow = MIN(self.initialBarsToShow, dataCount);
+        self.visibleStartIndex = MAX(0, dataCount - barsToShow);
+        self.visibleEndIndex = dataCount - 1;
+        
+        NSLog(@"📊 First load - Setting initial viewport: Data: %ld bars, Showing: [%ld-%ld] (%ld bars visible)",
+              (long)dataCount, (long)self.visibleStartIndex, (long)self.visibleEndIndex,
+              (long)(self.visibleEndIndex - self.visibleStartIndex + 1));
+    } else {
+        // ✅ CARICAMENTO SUCCESSIVO: Mantieni visible range esistente, ma aggiusta se fuori bounds
+        if (self.visibleEndIndex >= dataCount) {
+            // Se il range esistente è fuori dai nuovi dati, aggiusta mantenendo la stessa ampiezza
+            NSInteger visibleBars = self.visibleEndIndex - self.visibleStartIndex + 1;
+            self.visibleEndIndex = dataCount - 1;
+            self.visibleStartIndex = MAX(0, self.visibleEndIndex - visibleBars + 1);
+        }
+        
+        NSLog(@"📊 Preserving existing viewport: Data: %ld bars, Visible: [%ld-%ld] (%ld bars visible)",
+              (long)dataCount, (long)self.visibleStartIndex, (long)self.visibleEndIndex,
+              (long)(self.visibleEndIndex - self.visibleStartIndex + 1));
+    }
 
     // Update all panels with new data and viewport
     [self synchronizePanels];
-       [self updatePanSlider];
-    
- 
+    [self updatePanSlider];
 }
 
 // ============================================================
@@ -1373,21 +1433,20 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 - (void)preferencesDidChange:(BOOL)needsDataReload {
-    /*NSLog(@"⚙️ Chart preferences changed - Data reload needed: %@", needsDataReload ? @"YES" : @"NO");
+    // 🆕 NEW: Ricarica le preferenze di date range
+    [self loadDateRangeDefaults];
     
-    if (needsDataReload) {
-        // Ricarica dati con nuove impostazioni trading hours
-        if (self.currentSymbol) {
-            [self loadSymbol:self.currentSymbol];
-        }
-        
-        // Notifica tutti i renderer del cambio context
-        [self updateAllRenderersContext];
-    } else {
-        // Solo aggiornamenti UI senza ricarica dati
-        if (self.chartData) {
-                    [self updatePanelsWithData:self.chartData]; // ✅ CORREZIONE: usa updatePanelsWithData:
-                }    }*/
+    // 🆕 NEW: Se il timeframe corrente è cambiato nelle preferenze, aggiorna il segmented
+    // Ma solo se non è CUSTOM (lascia il custom inalterato)
+    if (self.selectedDateRangeSegment != 0) {
+        NSInteger preferenceDefault = [self getDefaultDaysForTimeframe:self.currentTimeframe];
+        [self updateCustomSegmentWithDays:preferenceDefault];
+    }
+    
+    // Reload data if needed
+    if (needsDataReload && self.currentSymbol && self.currentSymbol.length > 0) {
+        [self loadDataWithCurrentSettings];
+    }
 }
 
 - (void)updateAllRenderersContext {
@@ -1845,38 +1904,51 @@ extern NSString *const DataHubDataLoadedNotification;
 #pragma mark - Helper Methods
 
 - (void)applySmartSymbolParameters:(SmartSymbolParameters)params {
-    // Apply timeframe if specified
-    if (params.hasTimeframe) {
+    BOOL timeframeChanged = NO;
+    
+    // Apply timeframe if specified and different from current
+    if (params.hasTimeframe && params.timeframe != self.currentTimeframe) {
         self.currentTimeframe = params.timeframe;
+        timeframeChanged = YES;
         NSLog(@"⏰ Applied timeframe: %ld", (long)params.timeframe);
-        
-        // 🔄 REPLACE: Update segmented control instead of slider
-        [self updateDateRangeSegmentedForTimeframe:params.timeframe];
     }
     
-    // 🔄 REPLACE: Apply days to custom segment instead of slider
-    if (params.hasDaysSpecified) {
-        // Clamp to valid range for current timeframe
-        NSInteger minDays = [self getMinDaysForTimeframe:self.currentTimeframe];
-        NSInteger maxDays = [self getMaxDaysForTimeframe:self.currentTimeframe];
-        NSInteger clampedDays = MAX(minDays, MIN(maxDays, params.daysToDownload));
+    // Handle different combinations
+    if (timeframeChanged && params.hasDaysSpecified) {
+        // CASO 1: Ha sia timeframe che giorni → reset visible + custom segment
+        [self updateCustomSegmentWithDays:params.daysToDownload];
+        [self resetVisibleRangeForTimeframe];
         
-        // 🆕 NEW: Update custom segment with smart symbol value
-        [self updateCustomSegmentWithDays:clampedDays];
+        NSLog(@"📅 Smart symbol: timeframe + days → visible range reset + CUSTOM segment");
         
-        NSLog(@"📅 Applied custom date range: %ld days (requested: %ld, clamped: %ld)",
-              (long)clampedDays, (long)params.daysToDownload, (long)clampedDays);
+    } else if (timeframeChanged && !params.hasDaysSpecified) {
+        // CASO 2: Ha solo timeframe → reset visible + use preferences
+        [self updateDateRangeSegmentedForTimeframe:params.timeframe];
+        [self resetVisibleRangeForTimeframe];
+        
+        NSLog(@"📅 Smart symbol: timeframe only → visible range reset + preferences");
+        
+    } else if (!timeframeChanged && params.hasDaysSpecified) {
+        // CASO 3: Ha solo giorni → NO reset visible, solo custom segment
+        [self updateCustomSegmentWithDays:params.daysToDownload];
+        
+        NSLog(@"📅 Smart symbol: days only → visible range preserved + CUSTOM segment");
+        
+    } else {
+        // CASO 4: Solo simbolo → NO reset visible, mantieni tutto
+        NSLog(@"📅 Smart symbol: symbol only → everything preserved");
     }
     
     // Store current symbol
     self.currentSymbol = params.symbol;
 }
 
+
 - (void)updateUIAfterSmartSymbolInput:(SmartSymbolParameters)params {
     // Update symbol text field (show clean symbol only)
     self.symbolTextField.stringValue = params.symbol;
     
-    // Update timeframe segmented control if needed
+    // 🔧 FIX: Update timeframe segmented control if changed
     if (params.hasTimeframe && self.timeframeSegmented.segmentCount > params.timeframe) {
         self.timeframeSegmented.selectedSegment = params.timeframe;
     }
@@ -1890,8 +1962,9 @@ extern NSString *const DataHubDataLoadedNotification;
     }
     
     if (params.hasDaysSpecified) {
-        [appliedParams addObject:[NSString stringWithFormat:@"%ld days",
-                                 (long)params.daysToDownload]];
+        // 🆕 NEW: Mostra il valore effettivo del segmented control
+        NSString *segmentLabel = [self.dateRangeSegmented labelForSegment:self.selectedDateRangeSegment];
+        [appliedParams addObject:[NSString stringWithFormat:@"Range: %@", segmentLabel]];
     }
     
     if (appliedParams.count > 0) {
@@ -2010,20 +2083,20 @@ extern NSString *const DataHubDataLoadedNotification;
 - (NSInteger)getMaxDaysForTimeframe:(ChartTimeframe)timeframe {
     switch (timeframe) {
         case ChartTimeframe1Min:
-            return 45; // ~1.5 months - Schwab API limit
+            return 60;
             
         case ChartTimeframe5Min:
         case ChartTimeframe15Min:
         case ChartTimeframe30Min:
         case ChartTimeframe1Hour:
         case ChartTimeframe4Hour:
-            return 255; // ~8.5 months - Schwab API limit
+            return 300;
             
         case ChartTimeframeDaily:
         case ChartTimeframeWeekly:
         case ChartTimeframeMonthly:
         default:
-            return 3650; // ~10 years (practically unlimited)
+            return 99999;
     }
 }
 
@@ -2079,42 +2152,6 @@ extern NSString *const DataHubDataLoadedNotification;
     }
 }
 
-
-
-
-
-- (NSString *)formatDaysToDisplayString:(NSInteger)days {
-    if (days >= 3650) {
-        return @"max";
-    } else if (days >= 365) {
-        NSInteger years = days / 365;
-        if (years == 1) {
-            return @"1 year";
-        } else {
-            return [NSString stringWithFormat:@"%ld years", (long)years];
-        }
-    } else if (days >= 30) {
-        NSInteger months = days / 30;
-        if (months == 1) {
-            return @"1 month";
-        } else {
-            return [NSString stringWithFormat:@"%ld months", (long)months];
-        }
-    } else if (days >= 7) {
-        NSInteger weeks = days / 7;
-        if (weeks == 1) {
-            return @"1 week";
-        } else {
-            return [NSString stringWithFormat:@"%ld weeks", (long)weeks];
-        }
-    } else {
-        if (days == 1) {
-            return @"1 day";
-        } else {
-            return [NSString stringWithFormat:@"%ld days", (long)days];
-        }
-    }
-}
 
 - (void)loadDataWithCurrentSettings {
     if (!self.currentSymbol || self.currentSymbol.length == 0) return;
@@ -2415,63 +2452,59 @@ extern NSString *const DataHubDataLoadedNotification;
     // Salva la selezione
     [self saveDateRangeSegmentedDefaults];
     
+    // 🔧 FIX: NON resettare il visible range quando cambia solo il data range
+    // L'utente mantiene lo stesso zoom level, ma ottiene più/meno dati storici
+    
     // Ricarica i dati se abbiamo un simbolo
     if (self.currentSymbol && self.currentSymbol.length > 0) {
         [self loadDataWithCurrentSettings];
     }
     
-    NSLog(@"📅 Date range segment changed to %ld (%ld days)",
+    NSLog(@"📅 Date range segment changed to %ld (%ld days) - visible range preserved",
           (long)selectedSegment, (long)days);
 }
+
 
 - (NSInteger)getDaysForSegment:(NSInteger)segment {
     switch (segment) {
         case 0: return self.customDateRangeDays;    // CUSTOM
-        case 1: return 22;                          // 1M
-        case 2: return 65;                          // 3M
-        case 3: return 130;                         // 6M
-        case 4: return 250;                         // 1Y
-        case 5: return 1250;                        // 5Y
-        case 6: return 2500;                        // 10Y
+        case 1: return 30;                          // 1M
+        case 2: return 90;                          // 3M
+        case 3: return 180;                         // 6M
+        case 4: return 365;                         // 1Y
+        case 5: return 1825;                        // 5Y
+        case 6: return 3650;                        // 10Y
         case 7: return [self getMaxDaysForTimeframe:self.currentTimeframe]; // MAX
         default: return 130; // Default 6M
     }
 }
 
 - (void)updateDateRangeSegmentedForTimeframe:(ChartTimeframe)timeframe {
-    // Verifica quali segmenti devono essere disabilitati per timeframes intraday
+    // 🆕 NEW: Ottieni il valore di default dalle preferenze
+    NSInteger preferenceDefault = [self getDefaultDaysForTimeframe:timeframe];
+    
+    // ✅ MANTIENI: Tutta questa logica esistente per disable/enable
     BOOL isIntraday = (timeframe <= ChartTimeframe4Hour);
     NSInteger maxDaysForTimeframe = [self getMaxDaysForTimeframe:timeframe];
     
-    // Abilita/disabilita segmenti basandosi sui limiti del timeframe
     for (NSInteger i = 0; i < self.dateRangeSegmented.segmentCount; i++) {
         NSInteger segmentDays = [self getDaysForSegment:i];
         BOOL shouldEnable = (segmentDays <= maxDaysForTimeframe);
-        
         [self.dateRangeSegmented setEnabled:shouldEnable forSegment:i];
         
-        // Log per debug
         if (!shouldEnable && isIntraday) {
             NSLog(@"⚠️ Segment %ld disabled for intraday (needs %ld days, max %ld)",
                   (long)i, (long)segmentDays, (long)maxDaysForTimeframe);
         }
     }
     
-    // Se il segmento correntemente selezionato è disabilitato, passa a un altro
-    if (![self.dateRangeSegmented isEnabledForSegment:self.selectedDateRangeSegment]) {
-        // Trova il primo segmento abilitato
-        for (NSInteger i = 0; i < self.dateRangeSegmented.segmentCount; i++) {
-            if ([self.dateRangeSegmented isEnabledForSegment:i]) {
-                self.dateRangeSegmented.selectedSegment = i;
-                self.selectedDateRangeSegment = i;
-                self.currentDateRangeDays = [self getDaysForSegment:i];
-                break;
-            }
-        }
-    }
+    // 🚀 SOSTITUISCI: Solo questa parte - usa sempre CUSTOM
+    [self updateCustomSegmentWithDays:preferenceDefault];
     
-    NSLog(@"📊 Updated date range segments for timeframe %ld", (long)timeframe);
+    NSLog(@"📊 Updated date range segments for timeframe %ld: using preferences default %ld days in CUSTOM segment",
+          (long)timeframe, (long)preferenceDefault);
 }
+
 
 #pragma mark - 🆕 NEW: Custom Segment Management
 

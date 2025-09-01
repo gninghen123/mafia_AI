@@ -62,8 +62,8 @@
             filePath = "UI/Widgets/Chart/ChartPanelView.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "2528"
-            endingLineNumber = "2528"
+            startingLineNumber = "2550"
+            endingLineNumber = "2550"
             landmarkName = "-calculateDateRangeForType:clickedBarIndex:"
             landmarkType = "7">
          </BreakpointContent>

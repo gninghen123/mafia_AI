@@ -93,6 +93,11 @@
 			path = Models;
 			sourceTree = "<group>";
 		};
+		95D8C7D22E65793400628924 /* technical indicators */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "technical indicators";
+			sourceTree = "<group>";
+		};
 		95F1AD762E2E517E00D96BDD /* UI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = UI;
@@ -133,6 +138,7 @@
 		954D2FF72E28514A00C7DC88 = {
 			isa = PBXGroup;
 			children = (
+				95D8C7D22E65793400628924 /* technical indicators */,
 				958DF9D22E5C6E4700720709 /* coredata */,
 				958DF9482E5B57C500720709 /* clientportal */,
 				958DF9D02E5B57F200720709 /* clientportal */,
@@ -195,6 +201,7 @@
 				958DF9482E5B57C500720709 /* clientportal */,
 				958DF9D22E5C6E4700720709 /* coredata */,
 				959A4B4E2E3A1E6000D83EB1 /* Models */,
+				95D8C7D22E65793400628924 /* technical indicators */,
 				95F1AD762E2E517E00D96BDD /* UI */,
 				95F1AFB42E31131100D96BDD /* Gestione Dati */,
 			);

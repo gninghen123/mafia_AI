@@ -43,6 +43,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, weak) SharedXCoordinateContext *sharedXContext;      // WEAK - shared
 @property (nonatomic, strong) PanelYCoordinateContext *panelYContext;
 
+//-----
+
+@property (nonatomic, assign, readwrite) ChartObjectType currentCreationObjectType;
+
 // Initialization
 - (instancetype)initWithPanelView:(ChartPanelView *)panelView
                    objectsManager:(ChartObjectsManager *)objectsManager;

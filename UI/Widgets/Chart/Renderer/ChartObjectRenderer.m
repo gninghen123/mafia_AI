@@ -416,7 +416,7 @@ typedef NS_ENUM(NSUInteger, SnapType) {
     
     ControlPointModel *cp1 = object.controlPoints[0];
     ControlPointModel *cp2 = object.controlPoints.count > 1 ?
-        object.controlPoints[1] : cp1; // FALLBACK
+                            object.controlPoints[1] : cp1; // FALLBACK
     
     NSPoint startPoint = [self screenPointFromControlPoint:cp1];
     NSPoint endPoint = [self screenPointFromControlPoint:cp2];
@@ -424,18 +424,31 @@ typedef NS_ENUM(NSUInteger, SnapType) {
     // ✅ Apply global style (color, opacity)
     [self applyStyleForObject:object];
     
-    // ✅ Create and style path
+    // 🆕 NUOVO: Calcola estensione automatica a destra se abbiamo 2 punti
+    NSPoint finalStartPoint = startPoint;
+    NSPoint finalEndPoint = endPoint;
+    
+    if (object.controlPoints.count >= 2) {
+        // Usa il metodo esistente per estendere solo a destra
+        [self calculateExtendedLineFromPoint:startPoint
+                                     toPoint:endPoint
+                                  startPoint:&finalStartPoint
+                                    endPoint:&finalEndPoint
+                                  extendLeft:NO        // ❌ NON estendere a sinistra
+                                 extendRight:YES];     // ✅ Estendi a destra
+    }
+    
+    // ✅ Create and style path con punti estesi
     NSBezierPath *path = [NSBezierPath bezierPath];
-    [path moveToPoint:startPoint];
-    [path lineToPoint:endPoint];
+    [path moveToPoint:finalStartPoint];
+    [path lineToPoint:finalEndPoint];
     
     // ✅ Apply path-specific style and stroke
     [self strokePath:path withStyle:object.style];
     
-    NSLog(@"🎨 Drew trendline from (%.1f,%.1f) to (%.1f,%.1f) with thickness %.1f",
-          startPoint.x, startPoint.y, endPoint.x, endPoint.y, object.style.thickness);
+    NSLog(@"🎨 Drew extended trendline from (%.1f,%.1f) to (%.1f,%.1f) with thickness %.1f",
+          finalStartPoint.x, finalStartPoint.y, finalEndPoint.x, finalEndPoint.y, object.style.thickness);
 }
-
 - (void)drawTrendlineControlPoints:(NSPoint)pointA pointB:(NSPoint)pointB {
     [[NSColor systemBlueColor] setFill];
     
@@ -474,37 +487,46 @@ typedef NS_ENUM(NSUInteger, SnapType) {
     CGFloat deltaY = pointB.y - pointA.y;
     
     if (fabs(deltaX) < 0.001) {
-        // Vertical line
+        // 🔧 FIX: Linea verticale - estendi verticalmente
         CGFloat x = pointA.x;
         *startPoint = NSMakePoint(x, extendLeft ? (viewport.origin.y - 50) : MIN(pointA.y, pointB.y));
         *endPoint = NSMakePoint(x, extendRight ? (viewport.origin.y + viewport.size.height + 50) : MAX(pointA.y, pointB.y));
         return;
     }
     
+    // Calculate slope and y-intercept
     CGFloat slope = deltaY / deltaX;
-    CGFloat intercept = pointA.y - slope * pointA.x;
+    CGFloat yIntercept = pointA.y - (slope * pointA.x);
     
-    // Calculate extended endpoints
-    CGFloat startX, endX;
+    // 🆕 NUOVO: Calcola i punti di intersezione con i bordi del viewport
+    CGFloat leftX = viewport.origin.x - 50;      // Margine extra a sinistra
+    CGFloat rightX = viewport.origin.x + viewport.size.width + 50;  // Margine extra a destra
     
-    if (extendLeft) {
-        startX = viewport.origin.x - 100; // Extend well beyond left edge
+    CGFloat leftY = slope * leftX + yIntercept;
+    CGFloat rightY = slope * rightX + yIntercept;
+    
+    // 🆕 NUOVO: Determina punti finali basati sulle opzioni
+    if (extendLeft && extendRight) {
+        // Estendi entrambe le direzioni
+        *startPoint = NSMakePoint(leftX, leftY);
+        *endPoint = NSMakePoint(rightX, rightY);
+    } else if (extendLeft) {
+        // Estendi solo a sinistra
+        *startPoint = NSMakePoint(leftX, leftY);
+        *endPoint = pointB;
+    } else if (extendRight) {
+        // ✅ CASO PRINCIPALE: Estendi solo a destra
+        *startPoint = pointA;
+        *endPoint = NSMakePoint(rightX, rightY);
     } else {
-        startX = MIN(pointA.x, pointB.x);
+        // Nessuna estensione (non dovrebbe mai succedere)
+        *startPoint = pointA;
+        *endPoint = pointB;
     }
     
-    if (extendRight) {
-        endX = viewport.origin.x + viewport.size.width + 100; // Extend well beyond right edge
-    } else {
-        endX = MAX(pointA.x, pointB.x);
-    }
-    
-    // Calculate Y values for extended endpoints
-    CGFloat startY = slope * startX + intercept;
-    CGFloat endY = slope * endX + intercept;
-    
-    *startPoint = NSMakePoint(startX, startY);
-    *endPoint = NSMakePoint(endX, endY);
+    NSLog(@"🔧 Extended line: Original (%.1f,%.1f)→(%.1f,%.1f), Final (%.1f,%.1f)→(%.1f,%.1f)",
+          pointA.x, pointA.y, pointB.x, pointB.y,
+          startPoint->x, startPoint->y, endPoint->x, endPoint->y);
 }
 
 - (void)drawFibonacci:(ChartObjectModel *)object {
@@ -1178,6 +1200,8 @@ typedef NS_ENUM(NSUInteger, SnapType) {
         case ChartObjectTypeTarget:
             // ✅ Channel ha bisogno di 3 CP
             return self.tempControlPoints.count < 3;
+        case ChartObjectTypeFreeDrawing:
+            return YES;  // 🆕 SEMPRE bisogno di più punti!
             
         default:
             return NO;
@@ -2427,6 +2451,12 @@ typedef NS_ENUM(NSUInteger, SnapType) {
     [self invalidateEditingLayer];
     
     NSLog(@"🎯 Updated currentCP coordinates: %.4f (with snap)", self.currentCPSelected.absoluteValue);
+}
+
+- (void)setCurrentCreationObjectType:(ChartObjectType)currentCreationObjectType {
+    _currentCreationObjectType = currentCreationObjectType;
+    // Aggiorna anche la proprietà interna per compatibilità
+    self.creationObjectType = currentCreationObjectType;
 }
 
 

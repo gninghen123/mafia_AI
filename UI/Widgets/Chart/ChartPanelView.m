@@ -1321,16 +1321,35 @@
 
 
 - (void)mouseDown:(NSEvent *)event {
+    if (event.clickCount == 2 &&
+            self.objectRenderer &&
+            self.objectRenderer.isInCreationMode) {
+            
+            // ✅ SOLUZIONE: Accesso diretto alla variabile private via runtime
+            ChartObjectType currentType = [self getCurrentCreationTypeFromRenderer];
+            
+            if (currentType == ChartObjectTypeFreeDrawing) {
+                NSLog(@"🎯 Double-click detected - finishing Free Drawing");
+                [self.objectRenderer finishCreatingObject];
+                [self.objectRenderer notifyObjectCreationCompleted];
+                return;
+            }
+        }
+    
     if (self.objectRenderer.currentCPSelected) {
         return;
     }
     
     NSPoint locationInView = [self convertPoint:event.locationInWindow fromView:nil];
+    if (self.objectRenderer) {
+           self.objectRenderer.currentMousePosition = locationInView;
+       }
    NSPoint clampedPoint = [self clampCrosshairToChartArea:locationInView]; // 🆕 FIX
 
     self.dragStartPoint = clampedPoint; // Use clamped
     self.isDragging = NO;
-    
+    // 🆕 CHECK: Double-click per terminare Free Drawing
+   
     // Alert hit testing
     if (self.alertRenderer) {
         AlertModel *hitAlert = [self.alertRenderer alertAtScreenPoint:clampedPoint tolerance:12.0];
@@ -1369,6 +1388,7 @@
     self.isMouseDown = YES;
     self.lastMousePoint = locationInView;
 }
+
 
 
 - (void)mouseDragged:(NSEvent *)event {
@@ -1438,6 +1458,8 @@
     
     // PRIORITA' 1: Se abbiamo currentCPSelected, consolidalo
     if (self.objectRenderer && self.objectRenderer.currentCPSelected) {
+               self.objectRenderer.currentMousePosition = locationInView;
+           
         NSLog(@"🎯 MouseUp: Consolidating currentCPSelected");
         
         if (self.objectRenderer.isInCreationMode) {
@@ -3087,6 +3109,10 @@
     
     // Step 2: Invalidate layers
     [self invalidateCoordinateDependentLayersWithReason:reason];
+}
+
+- (ChartObjectType)getCurrentCreationTypeFromRenderer {
+    return [[self.objectRenderer valueForKey:@"creationObjectType"] integerValue];
 }
 
 @end

@@ -6,7 +6,7 @@
 //
 
 #import <Foundation/Foundation.h>
-#import "runtimemodels.h"  // From RuntimeModels
+#import "runtimemodels.h"
 
 NS_ASSUME_NONNULL_BEGIN
 

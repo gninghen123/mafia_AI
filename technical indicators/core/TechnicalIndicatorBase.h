@@ -7,7 +7,7 @@
 
 #import <Foundation/Foundation.h>
 #import <Cocoa/Cocoa.h>
-#import "runtimemodels.h"  // From RuntimeModels
+#import "RuntimeModels.h"  // From RuntimeModels
 
 @class IndicatorDataModel;
 
@@ -41,8 +41,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign, readonly) NSInteger minimumBarsRequired;
 
 #pragma mark - Calculation State
-@property (nonatomic, assign, readonly) BOOL isCalculated;
-@property (nonatomic, strong, nullable) NSError *lastError;
+@property (nonatomic, assign) BOOL isCalculated;  // Made writable
+@property (nonatomic, strong, nullable) NSError *lastError;  // Made writable
 
 #pragma mark - Initialization (Subclasses must override)
 

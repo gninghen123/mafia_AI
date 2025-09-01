@@ -1,4 +1,3 @@
-
 //
 // EMAIndicator.h
 // TradingApp

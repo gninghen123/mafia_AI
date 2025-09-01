@@ -3,6 +3,7 @@
 //
 
 #import "IndicatorRegistry.h"
+#import "emaindicator.h"
 
 @interface IndicatorRegistry ()
 @property (nonatomic, strong) NSMutableDictionary<NSString *, Class> *hardcodedIndicators;
@@ -233,7 +234,7 @@
     NSLog(@"🔧 IndicatorRegistry: Ready for indicator registration");
     
     // TODO: Register built-in indicators here:
-    // [self registerIndicatorClass:[EMAIndicator class] withIdentifier:@"EMA"];
+     [self registerIndicatorClass:[EMAIndicator class] withIdentifier:@"EMA"];
     // [self registerIndicatorClass:[SMAIndicator class] withIdentifier:@"SMA"];
     // [self registerIndicatorClass:[RSIIndicator class] withIdentifier:@"RSI"];
     // [self registerIndicatorClass:[ATRIndicator class] withIdentifier:@"ATR"];

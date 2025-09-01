@@ -12,15 +12,22 @@
 - (instancetype)initWithParameters:(NSDictionary<NSString *, id> *)parameters {
     self = [super initWithParameters:parameters];
     if (self) {
-        // Set specific properties for EMA
-        _name = @"Exponential Moving Average";
-        _shortName = @"EMA";
-        _type = IndicatorTypeHardcoded;
+        // EMAIndicator specific initialization
+        // Note: name and shortName are implemented as methods, not properties
     }
     return self;
 }
 
 #pragma mark - Abstract Method Implementations
+
+// Override name and shortName methods from base class
+- (NSString *)name {
+    return @"Exponential Moving Average";
+}
+
+- (NSString *)shortName {
+    return @"EMA";
+}
 
 + (NSDictionary<NSString *, id> *)defaultParameters {
     return @{
@@ -57,7 +64,7 @@
     
     // Validate input
     if (![self canCalculateWithBars:bars]) {
-        _lastError = [NSError errorWithDomain:@"EMAIndicator"
+        self.lastError = [NSError errorWithDomain:@"EMAIndicator"
                                          code:1001
                                      userInfo:@{NSLocalizedDescriptionKey: @"Insufficient bars for EMA calculation"}];
         return;
@@ -69,7 +76,7 @@
     
     // Validate parameters
     if (period <= 0 || period > 500) {
-        _lastError = [NSError errorWithDomain:@"EMAIndicator"
+        self.lastError = [NSError errorWithDomain:@"EMAIndicator"
                                          code:1002
                                      userInfo:@{NSLocalizedDescriptionKey:
                                                [NSString stringWithFormat:@"Invalid period: %ld", (long)period]}];
@@ -79,7 +86,7 @@
     // Extract price series from bars
     NSArray<NSNumber *> *prices = [IndicatorCalculationEngine extractPriceSeries:bars priceType:source];
     if (!prices || prices.count == 0) {
-        _lastError = [NSError errorWithDomain:@"EMAIndicator"
+        self.lastError = [NSError errorWithDomain:@"EMAIndicator"
                                          code:1003
                                      userInfo:@{NSLocalizedDescriptionKey: @"Failed to extract price series"}];
         return;
@@ -88,7 +95,7 @@
     // Calculate EMA using the calculation engine
     NSArray<NSNumber *> *emaValues = [IndicatorCalculationEngine ema:prices period:period];
     if (!emaValues || emaValues.count != bars.count) {
-        _lastError = [NSError errorWithDomain:@"EMAIndicator"
+        self.lastError = [NSError errorWithDomain:@"EMAIndicator"
                                          code:1004
                                      userInfo:@{NSLocalizedDescriptionKey: @"EMA calculation failed"}];
         return;
@@ -116,9 +123,9 @@
     }
     
     // Set results
-    _outputSeries = [outputData copy];
-    _isCalculated = YES;
-    _lastError = nil;
+    self.outputSeries = [outputData copy];
+    self.isCalculated = YES;
+    self.lastError = nil;
     
     NSLog(@"✅ EMAIndicator: Calculated EMA(%ld) for %lu bars using %@ prices",
           (long)period, (unsigned long)bars.count, source);

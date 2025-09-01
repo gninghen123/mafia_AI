@@ -1,4 +1,3 @@
-
 //
 // TechnicalIndicatorBase.m
 //
@@ -25,8 +24,8 @@
         
         // Initialize state
         _isCalculated = NO;
-        _outputSeries = nil;
-        _lastError = nil;
+        self.outputSeries = nil;
+        self.lastError = nil;
     }
     return self;
 }
@@ -89,9 +88,9 @@
 }
 
 - (void)reset {
-    _isCalculated = NO;
-    _outputSeries = nil;
-    _lastError = nil;
+    self.isCalculated = NO;
+    self.outputSeries = nil;
+    self.lastError = nil;
 }
 
 - (NSString *)displayDescription {
@@ -137,4 +136,3 @@
 }
 
 @end
-

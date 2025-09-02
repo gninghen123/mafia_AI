@@ -45,6 +45,16 @@
             <fetchIndexElement property="objectUUID" type="Binary" order="ascending"/>
         </fetchIndex>
     </entity>
+    <entity name="ChartPanelTemplate" representedClassName="ChartPanelTemplate" syncable="YES" codeGenerationType="category">
+        <attribute name="childIndicatorsData" optional="YES" attributeType="Binary"/>
+        <attribute name="displayOrder" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+        <attribute name="panelID" attributeType="String"/>
+        <attribute name="panelName" optional="YES" attributeType="String"/>
+        <attribute name="relativeHeight" attributeType="Double" defaultValueString="0.33" usesScalarValueType="YES"/>
+        <attribute name="rootIndicatorParams" optional="YES" attributeType="Binary"/>
+        <attribute name="rootIndicatorType" attributeType="String"/>
+        <relationship name="template" optional="YES" maxCount="1" deletionRule="Nullify" destinationEntity="ChartTemplate" inverseName="panels" inverseEntity="ChartTemplate"/>
+    </entity>
     <entity name="ChartPattern" representedClassName="ChartPattern" syncable="YES">
         <attribute name="additionalNotes" optional="YES" attributeType="String"/>
         <attribute name="creationDate" attributeType="Date" usesScalarValueType="NO"/>
@@ -67,6 +77,14 @@
                 <constraint value="patternID"/>
             </uniquenessConstraint>
         </uniquenessConstraints>
+    </entity>
+    <entity name="ChartTemplate" representedClassName="ChartTemplate" syncable="YES" codeGenerationType="category">
+        <attribute name="createdDate" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="isDefault" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="modifiedDate" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="templateID" attributeType="String" spotlightIndexingEnabled="YES"/>
+        <attribute name="templateName" attributeType="String"/>
+        <relationship name="panels" optional="YES" toMany="YES" deletionRule="Cascade" destinationEntity="ChartPanelTemplate" inverseName="template" inverseEntity="ChartPanelTemplate"/>
     </entity>
     <entity name="CompanyInfo" representedClassName="CompanyInfo" syncable="YES">
         <attribute name="ceo" optional="YES" attributeType="String"/>

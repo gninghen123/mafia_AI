@@ -47,6 +47,8 @@ extern NSString *const DataHubDataLoadedNotification;
 @interface ChartWidget () <NSTextFieldDelegate,ObjectsPanelDelegate,IndicatorsPanelDelegate>
 
 @property (nonatomic, assign) double lastSliderValue;
+@property (nonatomic, assign) double savedHeight;
+
 @property (nonatomic, assign) BOOL isUpdatingSlider;
 
 // Internal data
@@ -74,8 +76,17 @@ extern NSString *const DataHubDataLoadedNotification;
 - (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType {
     self = [super initWithType:type panelType:panelType];
     if (self) {
+        // ✅ FIX: Set initial saved height BEFORE any setup
+        self.savedHeight = 400; // Default expanded height for ChartWidget
+        self.collapsed = NO;    // Start expanded
+        
         [self setupChartDefaults];
         [self registerForDataNotifications];
+        
+        // ✅ FIX: Ensure proper layout after everything is initialized
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self forceProperInitialLayout];
+        });
     }
     return self;
 }
@@ -83,17 +94,30 @@ extern NSString *const DataHubDataLoadedNotification;
 - (void)setupContentView {
     [super setupContentView];
     
-    // Rimuovi il placeholder del BaseWidget
+    // ✅ FIX: Remove the placeholder that BaseWidget adds
     for (NSView *subview in self.contentView.subviews) {
-        [subview removeFromSuperview];
+        if ([subview isKindOfClass:[NSTextField class]]) {
+            [subview removeFromSuperview];
+        }
     }
-    [self setupObjectsUI];
-
-    // Setup UI programmatico seguendo il pattern degli altri widget
+    
+    // ✅ FIX: Ensure contentView has proper initial size
+    if (NSIsEmptyRect(self.contentView.frame)) {
+        self.contentView.frame = NSMakeRect(0, 0, 800, 400);
+    }
+    
+    // Setup all UI components
     [self setupUI];
     [self setupConstraints];
-    [self setupInitialUI]; // Mantieni questa chiamata esistente
+    [self setupDefaultPanels];
+    
+    // ✅ FIX: Set content priorities for proper expansion
+    [self.contentView setContentHuggingPriority:NSLayoutPriorityDefaultLow
+                                forOrientation:NSLayoutConstraintOrientationVertical];
+    [self.contentView setContentCompressionResistancePriority:NSLayoutPriorityRequired
+                                              forOrientation:NSLayoutConstraintOrientationVertical];
 }
+
 
 - (void)setupUI {
     // Setup toolbar superiore (MODIFICATO per objects UI)
@@ -174,12 +198,40 @@ extern NSString *const DataHubDataLoadedNotification;
 
 // ======== AGGIUNGI setupMainSplitView ========
 - (void)setupMainSplitView {
-    // Split view principale per i pannelli (come nello XIB)
+    // Split view principale per i pannelli
     self.panelsSplitView = [[NSSplitView alloc] init];
     self.panelsSplitView.translatesAutoresizingMaskIntoConstraints = NO;
     self.panelsSplitView.vertical = NO; // Divisione orizzontale
     self.panelsSplitView.dividerStyle = NSSplitViewDividerStyleThin;
     [self.contentView addSubview:self.panelsSplitView];
+    
+    // ✅ NUOVO: Crea i pannelli di default subito
+    [self createDefaultPanels];
+}
+- (void)createDefaultPanels {
+    // Inizializza l'array se non esiste
+    if (!self.chartPanels) {
+        self.chartPanels = [NSMutableArray array];
+    }
+    
+    // Security panel (candlestick) - 80% dell'altezza
+    ChartPanelView *securityPanel = [[ChartPanelView alloc] initWithType:@"security"];
+    securityPanel.chartWidget = self;
+    securityPanel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.chartPanels addObject:securityPanel];
+    [self.panelsSplitView addSubview:securityPanel];
+    
+    // Volume panel (histogram) - 20% dell'altezza
+    ChartPanelView *volumePanel = [[ChartPanelView alloc] initWithType:@"volume"];
+    volumePanel.chartWidget = self;
+    volumePanel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.chartPanels addObject:volumePanel];
+    [self.panelsSplitView addSubview:volumePanel];
+    
+    // Setup holding priorities
+    [self configureSplitViewPriorities];
+    
+    NSLog(@"🎯 Default panels created and added to split view");
 }
 
 // ======== AGGIUNGI setupBottomControls ========
@@ -222,13 +274,12 @@ extern NSString *const DataHubDataLoadedNotification;
 // Replace the existing setupConstraints method with this complete version
 
 - (void)setupConstraints {
-    // Set translatesAutoresizingMaskIntoConstraints = NO for all controls
+    // ✅ FIX: Ensure all controls have translatesAutoresizingMaskIntoConstraints = NO
     self.objectsPanelToggle.translatesAutoresizingMaskIntoConstraints = NO;
     self.symbolTextField.translatesAutoresizingMaskIntoConstraints = NO;
     self.staticModeToggle.translatesAutoresizingMaskIntoConstraints = NO;
     self.objectsVisibilityToggle.translatesAutoresizingMaskIntoConstraints = NO;
     self.timeframeSegmented.translatesAutoresizingMaskIntoConstraints = NO;
- 
     self.templatePopup.translatesAutoresizingMaskIntoConstraints = NO;
     self.preferencesButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.objectsPanel.translatesAutoresizingMaskIntoConstraints = NO;
@@ -238,52 +289,59 @@ extern NSString *const DataHubDataLoadedNotification;
     self.zoomInButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.zoomAllButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.dateRangeSegmented.translatesAutoresizingMaskIntoConstraints = NO;
-
-    // Create the split view leading constraint that can be modified for objects panel
-    self.splitViewLeadingConstraint = [self.panelsSplitView.leadingAnchor
-                                      constraintEqualToAnchor:self.contentView.leadingAnchor
-                                      constant:8];
     
+    // ✅ FIX: Create the splitViewLeadingConstraint BEFORE using it
+    self.splitViewLeadingConstraint = [self.panelsSplitView.leadingAnchor
+                                       constraintEqualToAnchor:self.contentView.leadingAnchor
+                                       constant:8];
+    
+    // ✅ FIX: Add minimum height constraint to contentView to prevent collapse
+    NSLayoutConstraint *contentMinHeight = [self.contentView.heightAnchor
+                                           constraintGreaterThanOrEqualToConstant:350];
+    contentMinHeight.priority = NSLayoutPriorityRequired;
+    contentMinHeight.active = YES;
+    
+    // Activate all constraints
     [NSLayoutConstraint activateConstraints:@[
         // ===== TOP TOOLBAR ROW =====
         
         // Objects panel toggle (leftmost)
-        [self.objectsPanelToggle.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:8],
         [self.objectsPanelToggle.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
-        [self.objectsPanelToggle.widthAnchor constraintEqualToConstant:32],
+        [self.objectsPanelToggle.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:8],
+        [self.objectsPanelToggle.widthAnchor constraintEqualToConstant:30],
         [self.objectsPanelToggle.heightAnchor constraintEqualToConstant:21],
         
         // Symbol text field
-        [self.symbolTextField.centerYAnchor constraintEqualToAnchor:self.objectsPanelToggle.centerYAnchor],
         [self.symbolTextField.leadingAnchor constraintEqualToAnchor:self.objectsPanelToggle.trailingAnchor constant:8],
+        [self.symbolTextField.centerYAnchor constraintEqualToAnchor:self.objectsPanelToggle.centerYAnchor],
         [self.symbolTextField.widthAnchor constraintEqualToConstant:100],
         [self.symbolTextField.heightAnchor constraintEqualToConstant:21],
         
         // Static mode toggle
         [self.staticModeToggle.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
         [self.staticModeToggle.leadingAnchor constraintEqualToAnchor:self.symbolTextField.trailingAnchor constant:8],
-        [self.staticModeToggle.widthAnchor constraintEqualToConstant:32],
+        [self.staticModeToggle.widthAnchor constraintEqualToConstant:30],
         [self.staticModeToggle.heightAnchor constraintEqualToConstant:21],
         
         // Objects visibility toggle
         [self.objectsVisibilityToggle.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
         [self.objectsVisibilityToggle.leadingAnchor constraintEqualToAnchor:self.staticModeToggle.trailingAnchor constant:8],
-        [self.objectsVisibilityToggle.widthAnchor constraintEqualToConstant:32],
+        [self.objectsVisibilityToggle.widthAnchor constraintEqualToConstant:30],
         [self.objectsVisibilityToggle.heightAnchor constraintEqualToConstant:21],
         
-        // Timeframe segmented control
+        // Timeframe segmented
         [self.timeframeSegmented.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
         [self.timeframeSegmented.leadingAnchor constraintEqualToAnchor:self.objectsVisibilityToggle.trailingAnchor constant:8],
+        [self.timeframeSegmented.widthAnchor constraintEqualToConstant:130],
         [self.timeframeSegmented.heightAnchor constraintEqualToConstant:21],
         
+        // Date range segmented
         [self.dateRangeSegmented.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
         [self.dateRangeSegmented.leadingAnchor constraintEqualToAnchor:self.timeframeSegmented.trailingAnchor constant:8],
         [self.dateRangeSegmented.widthAnchor constraintEqualToConstant:300],
         [self.dateRangeSegmented.heightAnchor constraintEqualToConstant:21],
-
-  
         
-        // Template popup - connected to date range label
+        // Template popup
         [self.templatePopup.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
         [self.templatePopup.leadingAnchor constraintEqualToAnchor:self.dateRangeSegmented.trailingAnchor constant:8],
         [self.templatePopup.widthAnchor constraintEqualToConstant:100],
@@ -296,52 +354,53 @@ extern NSString *const DataHubDataLoadedNotification;
         
         // ===== MAIN CONTENT AREA =====
         
-       /* // Objects panel (sidebar)
+        // Objects panel (sidebar) - initially hidden
         [self.objectsPanel.topAnchor constraintEqualToAnchor:self.panelsSplitView.topAnchor],
         [self.objectsPanel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
         [self.objectsPanel.bottomAnchor constraintEqualToAnchor:self.panelsSplitView.bottomAnchor],
-        [self.objectsPanel.widthAnchor constraintEqualToConstant:150], // Fixed width for objects panel
-        */
+        [self.objectsPanel.widthAnchor constraintEqualToConstant:150],
         
         // Main split view for chart panels
         [self.panelsSplitView.topAnchor constraintEqualToAnchor:self.symbolTextField.bottomAnchor constant:8],
-        self.splitViewLeadingConstraint, // This will be modified when objects panel is shown/hidden
+        self.splitViewLeadingConstraint, // ✅ FIX: Now properly initialized
         [self.panelsSplitView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
         [self.panelsSplitView.bottomAnchor constraintEqualToAnchor:self.panSlider.topAnchor constant:-8],
         
         // ===== BOTTOM TOOLBAR ROW =====
         
-        // Pan slider (takes most of the width)
+        // Pan slider
         [self.panSlider.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-8],
-        [self.panSlider.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
-        [self.panSlider.trailingAnchor constraintEqualToAnchor:self.zoomOutButton.leadingAnchor constant:-8],
-        [self.panSlider.heightAnchor constraintEqualToConstant:21],
+        [self.panSlider.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:48],
+        [self.panSlider.trailingAnchor constraintEqualToAnchor:self.zoomAllButton.leadingAnchor constant:-8],
+        [self.panSlider.heightAnchor constraintEqualToConstant:20],
         
         // Zoom out button
         [self.zoomOutButton.centerYAnchor constraintEqualToAnchor:self.panSlider.centerYAnchor],
-        [self.zoomOutButton.trailingAnchor constraintEqualToAnchor:self.zoomInButton.leadingAnchor constant:-4],
+        [self.zoomOutButton.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
         [self.zoomOutButton.widthAnchor constraintEqualToConstant:30],
-        [self.zoomOutButton.heightAnchor constraintEqualToConstant:21],
+        [self.zoomOutButton.heightAnchor constraintEqualToConstant:20],
+        
+        // Zoom all button
+        [self.zoomAllButton.centerYAnchor constraintEqualToAnchor:self.panSlider.centerYAnchor],
+        [self.zoomAllButton.trailingAnchor constraintEqualToAnchor:self.zoomInButton.leadingAnchor constant:-8],
+        [self.zoomAllButton.widthAnchor constraintEqualToConstant:40],
+        [self.zoomAllButton.heightAnchor constraintEqualToConstant:20],
         
         // Zoom in button
         [self.zoomInButton.centerYAnchor constraintEqualToAnchor:self.panSlider.centerYAnchor],
-        [self.zoomInButton.trailingAnchor constraintEqualToAnchor:self.zoomAllButton.leadingAnchor constant:-4],
+        [self.zoomInButton.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
         [self.zoomInButton.widthAnchor constraintEqualToConstant:30],
-        [self.zoomInButton.heightAnchor constraintEqualToConstant:21],
-        
-        // Zoom all button (rightmost)
-        [self.zoomAllButton.centerYAnchor constraintEqualToAnchor:self.panSlider.centerYAnchor],
-        [self.zoomAllButton.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
-        [self.zoomAllButton.widthAnchor constraintEqualToConstant:50],
-        [self.zoomAllButton.heightAnchor constraintEqualToConstant:21]
+        [self.zoomInButton.heightAnchor constraintEqualToConstant:20]
     ]];
     
-    // Initially hide objects panel
+    // ✅ FIX: Initially hide objects panel
     self.objectsPanel.hidden = YES;
-    self.isObjectsPanelVisible = NO;
     
-    NSLog(@"✅ Chart widget constraints setup completed with date range slider");
+    NSLog(@"✅ ChartWidget: Constraints setup completed with splitViewLeadingConstraint: %@",
+          self.splitViewLeadingConstraint);
 }
+
+
 - (void)setupDateRangeSegmentedControl {
     // Create the segmented control
     self.dateRangeSegmented = [[NSSegmentedControl alloc] init];
@@ -527,11 +586,17 @@ extern NSString *const DataHubDataLoadedNotification;
     NSLog(@"✅ All renderers (objects, alerts, indicators) setup completed");
 }
 
-- (void)viewDidAppear{
+- (void)viewDidAppear {
     [super viewDidAppear];
-    // Ora setup panels DOPO che la UI è stata creata
-  
     
+    // I pannelli sono già stati creati in setupMainSplitView
+    // Ora impostiamo solo la posizione iniziale del divider
+    [self setInitialDividerPosition];
+    
+    // Setup renderers se non ancora fatto
+    [self ensureRenderersAreSetup];
+    
+    NSLog(@"🎯 ChartWidget appeared - panels already created");
 }
 
 - (void)setupPanelsFromTemplateSystem {
@@ -550,7 +615,7 @@ extern NSString *const DataHubDataLoadedNotification;
             NSLog(@"❌ Failed to load templates, falling back to default panels: %@", error);
             // Fallback ai pannelli hardcoded se i template falliscono
             dispatch_async(dispatch_get_main_queue(), ^{
-                [self setupDefaultPanels];
+               // [self setupDefaultPanels];
                 [self ensureRenderersAreSetup];
             });
             return;
@@ -569,10 +634,6 @@ extern NSString *const DataHubDataLoadedNotification;
             if (defaultTemplate) {
                 NSLog(@"✅ Applying default template: %@", defaultTemplate.templateName);
                 [self applyTemplate:defaultTemplate];
-            } else {
-                NSLog(@"⚠️ No default template found, creating default panels");
-                [self setupDefaultPanels];
-                [self ensureRenderersAreSetup];
             }
         });
     }];
@@ -582,7 +643,7 @@ extern NSString *const DataHubDataLoadedNotification;
 - (void)viewDidLoad {
     [super viewDidLoad];
 }
-
+/*
 // Nuova implementazione setupDefaultPanels che gestisce il placeholder
 - (void)setupDefaultPanels {
     self.renderersInitialized = NO;  // Reset flag
@@ -637,59 +698,50 @@ extern NSString *const DataHubDataLoadedNotification;
 
     NSLog(@"🎯 Default panels setup completed with placeholder");
 }
-
+*/
 // Helper per aggiornare la visibilità del placeholder
 - (void)updatePlaceholderVisibility {
     BOOL hasPanels = self.panelsSplitView.subviews.count > 1; // >1 perché include il placeholder
     self.placeholderView.hidden = hasPanels;
 }
+
+
 - (void)configureSplitViewPriorities {
-    NSLog(@"🔧 Configuring split view priorities...");
-    
     if (self.chartPanels.count >= 2) {
-        ChartPanelView *securityPanel = self.chartPanels[0];
-        ChartPanelView *volumePanel = self.chartPanels[1];
-        
-        // Set holding priorities for resize behavior
+        // Security panel mantiene dimensione durante resize
         [self.panelsSplitView setHoldingPriority:NSLayoutPriorityDefaultHigh
-                               forSubviewAtIndex:0]; // Security panel
+                               forSubviewAtIndex:0];
+        // Volume panel si adatta alle dimensioni rimanenti
         [self.panelsSplitView setHoldingPriority:NSLayoutPriorityDefaultLow
-                               forSubviewAtIndex:1]; // Volume panel
+                               forSubviewAtIndex:1];
         
-        // Set content hugging priorities
-        [securityPanel setContentHuggingPriority:NSLayoutPriorityDefaultLow
-                                  forOrientation:NSLayoutConstraintOrientationVertical];
-        [volumePanel setContentHuggingPriority:NSLayoutPriorityDefaultHigh
-                                forOrientation:NSLayoutConstraintOrientationVertical];
-        
-        // Set compression resistance
-        [securityPanel setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh
-                                                forOrientation:NSLayoutConstraintOrientationVertical];
-        [volumePanel setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow
-                                              forOrientation:NSLayoutConstraintOrientationVertical];
-        
-        NSLog(@"✅ Split view priorities configured");
+        NSLog(@"✅ Split view holding priorities configured");
     }
 }
 
 - (void)setInitialDividerPosition {
-    NSLog(@"🔧 Setting initial divider position...");
-    CGFloat totalHeight = self.panelsSplitView.frame.size.height;
-    
-    if (totalHeight > 150) {
-        CGFloat securityHeight = totalHeight * 0.8;
-        [self.panelsSplitView setPosition:securityHeight ofDividerAtIndex:0];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        CGFloat totalHeight = self.panelsSplitView.frame.size.height;
         
-        NSLog(@"✅ Set divider position: %.2f (Security: %.2f, Volume: %.2f)",
-              securityHeight, securityHeight, totalHeight - securityHeight);
-        
-        [self configureSplitViewPriorities];
-    } else {
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-            [self setInitialDividerPosition];
-        });
-    }
+        if (totalHeight > 100) {
+            // 80% per security panel, 20% per volume panel
+            CGFloat dividerPosition = totalHeight * 0.8;
+            [self.panelsSplitView setPosition:dividerPosition ofDividerAtIndex:0];
+            
+            NSLog(@"✅ Set initial divider position: %.1f (80%% of %.1f)",
+                  dividerPosition, totalHeight);
+        } else {
+            NSLog(@"⚠️ Split view height still too small: %.1f", totalHeight);
+            
+            // Riprova dopo un piccolo delay
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.1 * NSEC_PER_SEC),
+                          dispatch_get_main_queue(), ^{
+                [self setInitialDividerPosition];
+            });
+        }
+    });
 }
+
 #pragma mark - Data Notifications
 
 - (void)registerForDataNotifications {

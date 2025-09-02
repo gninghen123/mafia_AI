@@ -22,7 +22,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @end
 
-
 NS_ASSUME_NONNULL_END
 
+// ✅ SPOSTATO FUORI dal blocco NS_ASSUME_NONNULL
 #import "ChartTemplate+CoreDataProperties.h"

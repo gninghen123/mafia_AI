@@ -14,11 +14,11 @@
 	return [NSFetchRequest fetchRequestWithEntityName:@"ChartTemplate"];
 }
 
+@dynamic createdDate;
+@dynamic isDefault;
+@dynamic modifiedDate;
 @dynamic templateID;
 @dynamic templateName;
-@dynamic createdDate;
-@dynamic modifiedDate;
-@dynamic isDefault;
 @dynamic panels;
 
 @end

@@ -14,13 +14,13 @@
 	return [NSFetchRequest fetchRequestWithEntityName:@"ChartPanelTemplate"];
 }
 
-@dynamic panelID;
-@dynamic relativeHeight;
-@dynamic displayOrder;
-@dynamic panelName;
-@dynamic rootIndicatorType;
-@dynamic rootIndicatorParams;
 @dynamic childIndicatorsData;
+@dynamic displayOrder;
+@dynamic panelID;
+@dynamic panelName;
+@dynamic relativeHeight;
+@dynamic rootIndicatorParams;
+@dynamic rootIndicatorType;
 @dynamic template;
 
 @end

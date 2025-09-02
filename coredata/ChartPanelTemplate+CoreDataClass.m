@@ -11,9 +11,7 @@
 
 @implementation ChartPanelTemplate
 
-@dynamic panelID, relativeHeight, displayOrder, panelName;
-@dynamic rootIndicatorType, rootIndicatorParams, childIndicatorsData;
-@dynamic template;
+// ❌ RIMUOVO TUTTI I @dynamic - Xcode li genererà automaticamente nei +CoreDataProperties files
 
 // Runtime property (not persisted)
 @synthesize rootIndicator = _rootIndicator;

@@ -15,11 +15,11 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (NSFetchRequest<ChartTemplate *> *)fetchRequest NS_SWIFT_NAME(fetchRequest());
 
+@property (nullable, nonatomic, copy) NSDate *createdDate;
+@property (nonatomic) BOOL isDefault;
+@property (nullable, nonatomic, copy) NSDate *modifiedDate;
 @property (nullable, nonatomic, copy) NSString *templateID;
 @property (nullable, nonatomic, copy) NSString *templateName;
-@property (nullable, nonatomic, copy) NSDate *createdDate;
-@property (nullable, nonatomic, copy) NSDate *modifiedDate;
-@property (nonatomic) BOOL isDefault;
 @property (nullable, nonatomic, retain) NSSet<ChartPanelTemplate *> *panels;
 
 @end

@@ -14,6 +14,9 @@
 #import "ChartObjectSettingsWindow.h"
 #import "SharedXCoordinateContext.h"
 #import "PanelYCoordinateContext.h"
+#import "ChartPanelTemplate+CoreDataClass.h"
+#import "TechnicalIndicatorBase.h"
+
 #pragma mark - Import ChartWidget for constants
 #import "ChartWidget.h"  // Per accedere a CHART_Y_AXIS_WIDTH, CHART_MARGIN_LEFT, CHART_MARGIN_RIGHT
 
@@ -50,6 +53,7 @@ typedef NS_OPTIONS(NSUInteger, ChartLayerInvalidationOptions) {
                                             ChartLayerInvalidationExternalAll)
 };
 
+@class ChartPanelTemplate; // Forward declaration necessaria
 
 @class ChartAlertRenderer;
 @class ChartWidget;
@@ -57,6 +61,9 @@ typedef NS_OPTIONS(NSUInteger, ChartLayerInvalidationOptions) {
 @class ChartObjectsManager;
 
 @interface ChartPanelView : NSView
+
+@property (nonatomic, strong, nullable) ChartPanelTemplate *panelTemplate;
+@property (nonatomic, strong, nullable) TechnicalIndicatorBase *rootIndicator;
 
 @property (nonatomic, strong) CALayer *yAxisLayer;
 

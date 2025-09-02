@@ -15,13 +15,13 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (NSFetchRequest<ChartPanelTemplate *> *)fetchRequest NS_SWIFT_NAME(fetchRequest());
 
-@property (nullable, nonatomic, copy) NSString *panelID;
-@property (nonatomic) double relativeHeight;
-@property (nonatomic) int16_t displayOrder;
-@property (nullable, nonatomic, copy) NSString *panelName;
-@property (nullable, nonatomic, copy) NSString *rootIndicatorType;
-@property (nullable, nonatomic, retain) NSData *rootIndicatorParams;
 @property (nullable, nonatomic, retain) NSData *childIndicatorsData;
+@property (nonatomic) int16_t displayOrder;
+@property (nullable, nonatomic, copy) NSString *panelID;
+@property (nullable, nonatomic, copy) NSString *panelName;
+@property (nonatomic) double relativeHeight;
+@property (nullable, nonatomic, retain) NSData *rootIndicatorParams;
+@property (nullable, nonatomic, copy) NSString *rootIndicatorType;
 @property (nullable, nonatomic, retain) ChartTemplate *template;
 
 @end

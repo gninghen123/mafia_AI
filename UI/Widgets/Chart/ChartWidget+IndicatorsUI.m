@@ -165,8 +165,8 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     
     // Setup trailing constraint for main content area
     // This will be adjusted when panel is shown/hidden
-    if (self.chartSplitView) {
-        self.splitViewTrailingConstraint = [self.chartSplitView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor];
+    if (self.panelsSplitView) {
+        self.splitViewTrailingConstraint = [self.panelsSplitView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor];
         self.splitViewTrailingConstraint.active = YES;
     }
 }
@@ -263,15 +263,15 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     for (ChartPanelTemplate *panelTemplate in orderedPanels) {
         ChartPanelView *panelView = [self createChartPanelFromTemplate:panelTemplate];
         [self.chartPanels addObject:panelView];
-        [self.chartSplitView addSubview:panelView];
+        [self.panelsSplitView addSubview:panelView];
     }
     
     // Redistribute heights
     [self redistributePanelHeights:template];
     
     // Update data if available
-    if (self.chartData.count > 0) {
-        [self updateIndicatorsWithChartData:self.chartData];
+    if (self.currentChartData.count > 0) {
+        [self updateIndicatorsWithChartData:self.currentChartData];
     }
 }
 
@@ -390,7 +390,7 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 }
 
 - (void)calculateAllIndicators {
-    if (!self.currentChartTemplate || !self.chartData) return;
+    if (!self.currentChartTemplate || !self.currentChartData) return;
     
     for (ChartPanelTemplate *panelTemplate in self.currentChartTemplate.panels) {
         [self calculateIndicatorsForPanel:panelTemplate];
@@ -398,10 +398,10 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 }
 
 - (void)calculateIndicatorsForPanel:(ChartPanelTemplate *)panelTemplate {
-    if (!panelTemplate.rootIndicator || !self.chartData) return;
+    if (!panelTemplate.rootIndicator || !self.currentChartData) return;
     
     // Calculate the entire indicator tree for this panel
-    [panelTemplate.rootIndicator calculateIndicatorTree:self.chartData];
+    [panelTemplate.rootIndicator calculateIndicatorTree:self.currentChartData];
     
     // Update rendering
     ChartIndicatorRenderer *renderer = [self getIndicatorRendererForPanel:panelTemplate.panelID];
@@ -484,10 +484,7 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 
 #pragma mark - Data Flow
 
-- (void)updateIndicatorsWithChartData:(NSArray<HistoricalBarModel *> *)chartData {
-    self.chartData = chartData;
-    [self calculateAllIndicators];
-}
+
 
 - (ChartIndicatorRenderer *)getIndicatorRendererForPanel:(NSString *)panelID {
     return self.indicatorRenderers[panelID];

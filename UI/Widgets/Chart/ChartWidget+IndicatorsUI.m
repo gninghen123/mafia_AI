@@ -96,8 +96,8 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 - (void)setupIndicatorsUI {
     NSLog(@"🎨 Setting up indicators UI...");
     
-    // Create toggle button
-    [self createIndicatorsPanelToggleButton];
+    // ✅ NON creare il toggle button qui - viene creato in setupTopToolbar
+    // [self createIndicatorsPanelToggleButton]; ← RIMUOVI questa linea
     
     // Create indicators panel
     self.indicatorsPanel = [[IndicatorsPanel alloc] init];
@@ -116,7 +116,7 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     // Ensure default template exists
     [self ensureDefaultTemplateExists];
     
-    NSLog(@"✅ Indicators UI setup completed");
+    NSLog(@"✅ Indicators UI setup completed (button created separately in toolbar)");
 }
 
 - (void)createIndicatorsPanelToggleButton {
@@ -138,26 +138,30 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     NSButton *preferencesButton = self.preferencesButton;
     
     if (preferencesButton) {
-        // ✅ CORRETTO: Posiziona a sinistra del bottone preferences (quindi prima delle preferences)
+        NSLog(@"🎯 Positioning indicators toggle relative to preferences button...");
+        
+        // ✅ POSIZIONA a sinistra del bottone preferences
         [NSLayoutConstraint activateConstraints:@[
             [self.indicatorsPanelToggle.trailingAnchor constraintEqualToAnchor:preferencesButton.leadingAnchor constant:-4],
             [self.indicatorsPanelToggle.centerYAnchor constraintEqualToAnchor:preferencesButton.centerYAnchor],
             [self.indicatorsPanelToggle.widthAnchor constraintEqualToConstant:32],
-            [self.indicatorsPanelToggle.heightAnchor constraintEqualToConstant:21]  // ✅ Stessa altezza di preferences
+            [self.indicatorsPanelToggle.heightAnchor constraintEqualToConstant:24] // Stessa altezza degli altri
         ]];
         
         NSLog(@"✅ Indicators toggle positioned before preferences button");
         
     } else {
-        // Fallback: posiziona in top-right se non c'è il bottone preferences
+        NSLog(@"⚠️ Preferences button not found, positioning at right edge...");
+        
+        // Fallback: posiziona in alto a destra
         [NSLayoutConstraint activateConstraints:@[
             [self.indicatorsPanelToggle.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
-            [self.indicatorsPanelToggle.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
+            [self.indicatorsPanelToggle.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:8],
             [self.indicatorsPanelToggle.widthAnchor constraintEqualToConstant:32],
-            [self.indicatorsPanelToggle.heightAnchor constraintEqualToConstant:21]
+            [self.indicatorsPanelToggle.heightAnchor constraintEqualToConstant:24]
         ]];
         
-        NSLog(@"⚠️ Preferences button not found, indicators toggle positioned at right edge");
+        NSLog(@"⚠️ Indicators toggle positioned at top-right corner");
     }
 }
 

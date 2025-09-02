@@ -87,29 +87,27 @@ extern NSString *const DataHubDataLoadedNotification;
 - (void)setupContentView {
     [super setupContentView];
     
-    // ✅ FIX: Remove the placeholder that BaseWidget adds
+    // Rimuovi placeholder di BaseWidget
     for (NSView *subview in self.contentView.subviews) {
         if ([subview isKindOfClass:[NSTextField class]]) {
             [subview removeFromSuperview];
         }
     }
     
-    // ✅ FIX: Ensure contentView has proper initial size
-    if (NSIsEmptyRect(self.contentView.frame)) {
-        self.contentView.frame = NSMakeRect(0, 0, 800, 400);
-    }
-    
-    // Setup all UI components
+    // Setup UI components
     [self setupUI];
     [self setupConstraints];
     
-    // ✅ FIX: Set content priorities for proper expansion
+    // ✅ AGGIUNGI: Configura immediatamente dopo il setup
+    [self setupInitialUI];
+    
+    
+    // Content priorities
     [self.contentView setContentHuggingPriority:NSLayoutPriorityDefaultLow
                                 forOrientation:NSLayoutConstraintOrientationVertical];
     [self.contentView setContentCompressionResistancePriority:NSLayoutPriorityRequired
                                               forOrientation:NSLayoutConstraintOrientationVertical];
 }
-
 
 - (void)setupUI {
     // Setup toolbar superiore (MODIFICATO per objects UI)
@@ -126,7 +124,7 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 - (void)setupTopToolbar {
-    // Objects panel toggle (NUOVO - primo elemento)
+    // Objects panel toggle (ESISTENTE)
     self.objectsPanelToggle = [[NSButton alloc] init];
     self.objectsPanelToggle.title = @"📊";
     self.objectsPanelToggle.bezelStyle = NSBezelStyleRounded;
@@ -136,26 +134,25 @@ extern NSString *const DataHubDataLoadedNotification;
     self.objectsPanelToggle.toolTip = @"Toggle Objects Panel";
     [self.contentView addSubview:self.objectsPanelToggle];
     
-    // Symbol text field
+    // Symbol text field (ESISTENTE)
     self.symbolTextField = [[NSTextField alloc] init];
     self.symbolTextField.stringValue = @"";
     self.symbolTextField.placeholderString = @"Symbol";
     self.symbolTextField.delegate = self;
     [self.contentView addSubview:self.symbolTextField];
     
-    // ✅ NEW: StaticMode toggle button
-       self.staticModeToggle = [[NSButton alloc] init];
-       self.staticModeToggle.title = @"📋";
-       self.staticModeToggle.bezelStyle = NSBezelStyleRounded;
-       self.staticModeToggle.state = NSControlStateValueOff;
-       self.staticModeToggle.target = self;
-       self.staticModeToggle.action = @selector(toggleStaticMode:);
-       self.staticModeToggle.toolTip = @"Toggle Static Mode (No Data Updates)";
-       self.staticModeToggle.wantsLayer = YES;
-       [self.contentView addSubview:self.staticModeToggle];
+    // StaticMode toggle button (ESISTENTE)
+    self.staticModeToggle = [[NSButton alloc] init];
+    self.staticModeToggle.title = @"📋";
+    self.staticModeToggle.bezelStyle = NSBezelStyleRounded;
+    self.staticModeToggle.state = NSControlStateValueOff;
+    self.staticModeToggle.target = self;
+    self.staticModeToggle.action = @selector(toggleStaticMode:);
+    self.staticModeToggle.toolTip = @"Toggle Static Mode (No Data Updates)";
+    self.staticModeToggle.wantsLayer = YES;
+    [self.contentView addSubview:self.staticModeToggle];
     
-    
-    // Objects visibility toggle (NUOVO)
+    // Objects visibility toggle (ESISTENTE)
     self.objectsVisibilityToggle = [[NSButton alloc] init];
     self.objectsVisibilityToggle.title = @"👁";
     self.objectsVisibilityToggle.bezelStyle = NSBezelStyleRounded;
@@ -165,20 +162,24 @@ extern NSString *const DataHubDataLoadedNotification;
     self.objectsVisibilityToggle.toolTip = @"Toggle Objects Visibility";
     [self.contentView addSubview:self.objectsVisibilityToggle];
     
-  
-    // Timeframe segmented control (existing)
-      self.timeframeSegmented = [[NSSegmentedControl alloc] init];
-      self.timeframeSegmented.segmentCount = 8;
-      [self.contentView addSubview:self.timeframeSegmented];
-      
-      // 🔄 REPLACE: Date Range Slider → Date Range Segmented Control
-      [self setupDateRangeSegmentedControl];
+    // ✅ TIMEFRAME SEGMENTED CONTROL - Crea E configura subito
+    self.timeframeSegmented = [[NSSegmentedControl alloc] init];
+    self.timeframeSegmented.segmentCount = 8;
+    self.timeframeSegmented.translatesAutoresizingMaskIntoConstraints = NO;
     
-    // Template popup (mantieni)
+    // ✅ CONFIGURA le etichette subito dopo la creazione
+    [self configureTimeframeSegmentedLabels];
+    
+    [self.contentView addSubview:self.timeframeSegmented];
+    
+    // Date Range Segmented Control (ESISTENTE)
+    [self setupDateRangeSegmentedControl];
+    
+    // Template popup (ESISTENTE)
     self.templatePopup = [[NSPopUpButton alloc] init];
     [self.contentView addSubview:self.templatePopup];
     
-    // Preferences button (MODIFICATO - ora apre preferences window)
+    // Preferences button (ESISTENTE)
     self.preferencesButton = [[NSButton alloc] init];
     self.preferencesButton.title = @"⚙️";
     self.preferencesButton.bezelStyle = NSBezelStyleRounded;
@@ -186,7 +187,62 @@ extern NSString *const DataHubDataLoadedNotification;
     self.preferencesButton.action = @selector(showPreferences:);
     self.preferencesButton.toolTip = @"Chart Preferences";
     [self.contentView addSubview:self.preferencesButton];
+    
+    // ✅ DOPO crea il pulsante indicatori (ora che preferences esiste)
+    [self createIndicatorsPanelToggleButton];
+    
+    NSLog(@"✅ Top toolbar setup completed - all controls configured");
 }
+
+- (void)configureTimeframeSegmentedLabels {
+    if (self.timeframeSegmented.segmentCount >= 8) {
+        [self.timeframeSegmented setLabel:@"1m" forSegment:0];
+        [self.timeframeSegmented setLabel:@"5m" forSegment:1];
+        [self.timeframeSegmented setLabel:@"15m" forSegment:2];
+        [self.timeframeSegmented setLabel:@"30m" forSegment:3];
+        [self.timeframeSegmented setLabel:@"1h" forSegment:4];
+        [self.timeframeSegmented setLabel:@"4h" forSegment:5];
+        [self.timeframeSegmented setLabel:@"1D" forSegment:6];
+        [self.timeframeSegmented setLabel:@"1W" forSegment:7];
+        [self.timeframeSegmented setSelectedSegment:6]; // Daily default
+        
+        // Setup target e action
+        self.timeframeSegmented.target = self;
+        self.timeframeSegmented.action = @selector(timeframeChanged:);
+        
+        NSLog(@"✅ Timeframe segmented control configured with labels");
+    } else {
+        NSLog(@"⚠️ Timeframe segmented control doesn't have enough segments (%ld)", (long)self.timeframeSegmented.segmentCount);
+    }
+}
+
+
+- (void)createIndicatorsPanelToggleButton {
+    if (self.indicatorsPanelToggle) {
+        NSLog(@"⚠️ Indicators toggle button already exists, skipping creation");
+        return;
+    }
+    
+    NSLog(@"🎨 Creating indicators panel toggle button...");
+    
+    self.indicatorsPanelToggle = [[NSButton alloc] init];
+    self.indicatorsPanelToggle.translatesAutoresizingMaskIntoConstraints = NO;
+    self.indicatorsPanelToggle.title = @"📈"; // Indicatori icon - cambia quando pannello è aperto
+    self.indicatorsPanelToggle.bezelStyle = NSBezelStyleRounded; // Stesso stile degli altri
+    self.indicatorsPanelToggle.buttonType = NSButtonTypeMomentaryPushIn;
+    self.indicatorsPanelToggle.target = self;
+    self.indicatorsPanelToggle.action = @selector(toggleIndicatorsPanel:);
+    self.indicatorsPanelToggle.toolTip = @"Toggle Indicators Panel"; // Tooltip utile
+    
+    // Add to content view (non self.view)
+    [self.contentView addSubview:self.indicatorsPanelToggle];
+    
+    // Position button
+    [self positionIndicatorsPanelToggleButton];
+    
+    NSLog(@"✅ Indicators toggle button created and positioned");
+}
+
 
 // ======== AGGIUNGI setupMainSplitView ========
 - (void)setupMainSplitView {
@@ -491,51 +547,40 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 - (void)setupInitialUI {
-    // Setup text field delegates e actions
-    self.symbolTextField.delegate = self;
-    self.symbolTextField.target = self;
-    self.symbolTextField.action = @selector(symbolChanged:);
-    
-    // Setup timeframe segmented control (mantieni codice esistente)
-    if (self.timeframeSegmented.segmentCount >= 8) {
-        [self.timeframeSegmented setLabel:@"1m" forSegment:0];
-        [self.timeframeSegmented setLabel:@"5m" forSegment:1];
-        [self.timeframeSegmented setLabel:@"15m" forSegment:2];
-        [self.timeframeSegmented setLabel:@"30m" forSegment:3];
-        [self.timeframeSegmented setLabel:@"1h" forSegment:4];
-        [self.timeframeSegmented setLabel:@"4h" forSegment:5];
-        [self.timeframeSegmented setLabel:@"1D" forSegment:6];
-        [self.timeframeSegmented setLabel:@"1W" forSegment:7];
-        [self.timeframeSegmented setSelectedSegment:6]; // Daily default
+    // Setup symbol text field (se non già fatto in setupTopToolbar)
+    if (!self.symbolTextField.delegate) {
+        self.symbolTextField.delegate = self;
+        self.symbolTextField.target = self;
+        self.symbolTextField.action = @selector(symbolChanged:);
     }
     
-    // Setup template popup (mantieni codice esistente)
-    [self.templatePopup removeAllItems];
-    [self.templatePopup addItemsWithTitles:@[@"Default", @"Technical", @"Volume Analysis", @"Custom"]];
+    // ✅ VERIFICA se timeframe è già configurato, se no configuralo
+    if (self.timeframeSegmented && ![self.timeframeSegmented labelForSegment:0]) {
+        [self configureTimeframeSegmentedLabels];
+        NSLog(@"⚠️ Timeframe segmented configured late in setupInitialUI");
+    }
     
-    // Setup zoom controls
-    self.panSlider.minValue = 0;
-    self.panSlider.maxValue = 100;
-    self.panSlider.integerValue = 50;
+    // Setup template popup (ESISTENTE)
+    if (self.templatePopup.numberOfItems == 0) {
+        [self.templatePopup removeAllItems];
+        [self.templatePopup addItemsWithTitles:@[@"Default", @"Technical", @"Volume Analysis", @"Custom"]];
+    }
     
-    // Connect actions se non già collegati
-    self.timeframeSegmented.target = self;
-    self.timeframeSegmented.action = @selector(timeframeChanged:);
+    // Setup zoom controls (ESISTENTE)
+    if (self.panSlider) {
+        self.panSlider.minValue = 0;
+        self.panSlider.maxValue = 100;
+        self.panSlider.integerValue = 50;
+        self.panSlider.target = self;
+        self.panSlider.action = @selector(panSliderChanged:);
+    }
     
-    self.panSlider.target = self;
-    self.panSlider.action = @selector(panSliderChanged:);
-    
-    // 🔧 FIX: Ordine corretto di caricamento
-    // 1. Prima carica le preferenze segmented control
+    // 🔧 FIX: Ordine corretto di caricamento (ESISTENTE)
     [self loadDateRangeSegmentedDefaults];
-    
-    // 2. Poi aggiorna per il timeframe corrente (che potrebbe usare le preferenze)
     [self updateDateRangeSegmentedForTimeframe:self.currentTimeframe];
-    
     [self setupIndicatorsUI];
-
     
-    NSLog(@"✅ Initial UI setup completed with correct preferences integration");
+    NSLog(@"✅ Initial UI setup completed");
 }
 
 - (void)ensureRenderersAreSetup {

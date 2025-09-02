@@ -9,6 +9,7 @@
 #import "ChartTemplate+CoreDataClass.h"
 #import "ChartPanelTemplate+CoreDataClass.h"
 #import "TechnicalIndicatorBase.h"
+#import "TechnicalIndicatorBase+Hierarchy.h"
 
 NS_ASSUME_NONNULL_BEGIN
 

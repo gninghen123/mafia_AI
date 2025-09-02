@@ -7,6 +7,7 @@
 
 #import "IndicatorsPanel.h"
 #import "DataHub+ChartTemplates.h"
+#import "Quartz/Quartz.h"
 
 // Outline view item types
 static NSString *const kAddPanelItem = @"ADD_PANEL";
@@ -371,7 +372,7 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     } else if ([item isKindOfClass:[TechnicalIndicatorBase class]]) {
         TechnicalIndicatorBase *indicator = item;
         
-        if (!indicator.isRootIndicator) {
+        if (![indicator isRootIndicator]) {
             [menu addItemWithTitle:@"Remove Indicator" action:@selector(removeIndicator:) keyEquivalent:@""];
         }
         

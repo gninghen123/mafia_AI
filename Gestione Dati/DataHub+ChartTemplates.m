@@ -594,9 +594,12 @@
     return success;
 }
 
+
 - (NSManagedObjectContext *)backgroundContext {
-    // Reuse existing DataHub background context method
-    return [self newBackgroundContext];
+    // Create background context with same pattern as OptimizedTracking
+    NSManagedObjectContext *backgroundContext = [[NSManagedObjectContext alloc] initWithConcurrencyType:NSPrivateQueueConcurrencyType];
+    backgroundContext.parentContext = self.mainContext;
+    return backgroundContext;
 }
 
 @end

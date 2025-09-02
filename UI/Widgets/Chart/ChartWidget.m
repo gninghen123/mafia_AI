@@ -18,6 +18,9 @@
 #import "SharedXCoordinateContext.h"  // ✅ AGGIUNTO: Import necessario nel .m
 #import "ChartWidget+ImageExport.h"
 #import "chartpatternmanager.h"
+#import "ChartWidget+IndicatorsUI.h"
+#import "DataHub+ChartTemplates.h"  // ✅ NUOVO - necessario per loadAllChartTemplates:
+
 
 #pragma mark - Smart Symbol Input Parameters
 
@@ -41,7 +44,7 @@ static NSString *const kChainSenderKey = @"sender";
 // Import DataHub constants
 extern NSString *const DataHubDataLoadedNotification;
 
-@interface ChartWidget () <NSTextFieldDelegate,ObjectsPanelDelegate>
+@interface ChartWidget () <NSTextFieldDelegate,ObjectsPanelDelegate,IndicatorsPanelDelegate>
 
 
 @property (nonatomic, assign) double lastSliderValue;
@@ -473,22 +476,24 @@ extern NSString *const DataHubDataLoadedNotification;
     // 2. Poi aggiorna per il timeframe corrente (che potrebbe usare le preferenze)
     [self updateDateRangeSegmentedForTimeframe:self.currentTimeframe];
     
+    [self setupIndicatorsUI];
+
+    
     NSLog(@"✅ Initial UI setup completed with correct preferences integration");
 }
 
 - (void)ensureRenderersAreSetup {
-    if (self.renderersInitialized) return;  // ✅ Evita setup multipli
+    if (self.renderersInitialized) return;
     
     for (ChartPanelView *panel in self.chartPanels) {
         
-        // ✅ SETUP OBJECTS RENDERER: SOLO per il pannello dei prezzi (security)
+        // ✅ SETUP OBJECTS RENDERER: SOLO per il pannello security
         if ([panel.panelType isEqualToString:@"security"]) {
             if (!panel.objectRenderer) {
                 [panel setupObjectsRendererWithManager:self.objectsManager];
                 NSLog(@"🔧 Setup objects renderer for SECURITY panel only");
             }
         } else {
-            // ✅ ASSICURATI che altri pannelli NON abbiano l'objects renderer
             if (panel.objectRenderer) {
                 panel.objectRenderer = nil;
                 NSLog(@"🚫 Removed objects renderer from %@ panel", panel.panelType);
@@ -502,23 +507,71 @@ extern NSString *const DataHubDataLoadedNotification;
                 NSLog(@"🚨 Setup alert renderer for SECURITY panel only");
             }
         } else {
-            // ✅ ASSICURATI che altri pannelli NON abbiano alert renderer
             if (panel.alertRenderer) {
                 panel.alertRenderer = nil;
                 NSLog(@"🚫 Removed alert renderer from %@ panel", panel.panelType);
             }
         }
+        
+        // ✅ NUOVO: Setup indicator renderer per ogni pannello
+        [self setupIndicatorRendererForPanel:panel];
     }
+    
     self.renderersInitialized = YES;
+    NSLog(@"✅ All renderers (objects, alerts, indicators) setup completed");
 }
 
 - (void)viewDidAppear{
     [super viewDidAppear];
     // Ora setup panels DOPO che la UI è stata creata
-    [self setupDefaultPanels];
-    [self ensureRenderersAreSetup];
+  
     
 }
+
+- (void)setupPanelsFromTemplateSystem {
+    NSLog(@"🎨 Setting up panels from template system...");
+    
+    // Prima verifica che esista un template di default
+    [self ensureDefaultTemplateExists];
+    
+    // Poi carica e applica il template
+    [self loadAndApplyDefaultTemplate];
+}
+
+- (void)loadAndApplyDefaultTemplate {
+    [[DataHub shared] loadAllChartTemplates:^(NSArray<ChartTemplate *> *templates, NSError *error) {
+        if (error) {
+            NSLog(@"❌ Failed to load templates, falling back to default panels: %@", error);
+            // Fallback ai pannelli hardcoded se i template falliscono
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self setupDefaultPanels];
+                [self ensureRenderersAreSetup];
+            });
+            return;
+        }
+        
+        // Trova il template di default
+        ChartTemplate *defaultTemplate = nil;
+        for (ChartTemplate *template in templates) {
+            if (template.isDefault) {
+                defaultTemplate = template;
+                break;
+            }
+        }
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (defaultTemplate) {
+                NSLog(@"✅ Applying default template: %@", defaultTemplate.templateName);
+                [self applyTemplate:defaultTemplate];
+            } else {
+                NSLog(@"⚠️ No default template found, creating default panels");
+                [self setupDefaultPanels];
+                [self ensureRenderersAreSetup];
+            }
+        });
+    }];
+}
+
 
 - (void)viewDidLoad {
     [super viewDidLoad];

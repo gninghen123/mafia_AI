@@ -133,25 +133,30 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 }
 
 - (void)positionIndicatorsPanelToggleButton {
-    // Position next to objects panel toggle (if it exists)
-    NSButton *objectsToggle = self.objectsPanelToggle;
+    // Il bottone degli indicatori dovrebbe stare a destra, prima del bottone delle preferenze
+    NSButton *preferencesButton = self.preferencesButton;
     
-    if (objectsToggle) {
-        // Place to the right of objects toggle
+    if (preferencesButton) {
+        // ✅ CORRETTO: Posiziona a sinistra del bottone preferences (quindi prima delle preferences)
         [NSLayoutConstraint activateConstraints:@[
-            [self.indicatorsPanelToggle.trailingAnchor constraintEqualToAnchor:objectsToggle.leadingAnchor constant:-4],
-            [self.indicatorsPanelToggle.centerYAnchor constraintEqualToAnchor:objectsToggle.centerYAnchor],
+            [self.indicatorsPanelToggle.trailingAnchor constraintEqualToAnchor:preferencesButton.leadingAnchor constant:-4],
+            [self.indicatorsPanelToggle.centerYAnchor constraintEqualToAnchor:preferencesButton.centerYAnchor],
             [self.indicatorsPanelToggle.widthAnchor constraintEqualToConstant:32],
-            [self.indicatorsPanelToggle.heightAnchor constraintEqualToConstant:32]
+            [self.indicatorsPanelToggle.heightAnchor constraintEqualToConstant:21]  // ✅ Stessa altezza di preferences
         ]];
+        
+        NSLog(@"✅ Indicators toggle positioned before preferences button");
+        
     } else {
-        // Place in top-right corner
+        // Fallback: posiziona in top-right se non c'è il bottone preferences
         [NSLayoutConstraint activateConstraints:@[
-            [self.indicatorsPanelToggle.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-8],
-            [self.indicatorsPanelToggle.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:8],
+            [self.indicatorsPanelToggle.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
+            [self.indicatorsPanelToggle.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
             [self.indicatorsPanelToggle.widthAnchor constraintEqualToConstant:32],
-            [self.indicatorsPanelToggle.heightAnchor constraintEqualToConstant:32]
+            [self.indicatorsPanelToggle.heightAnchor constraintEqualToConstant:21]
         ]];
+        
+        NSLog(@"⚠️ Preferences button not found, indicators toggle positioned at right edge");
     }
 }
 

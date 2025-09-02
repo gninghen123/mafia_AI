@@ -46,7 +46,6 @@ extern NSString *const DataHubDataLoadedNotification;
 
 @interface ChartWidget () <NSTextFieldDelegate,ObjectsPanelDelegate,IndicatorsPanelDelegate>
 
-
 @property (nonatomic, assign) double lastSliderValue;
 @property (nonatomic, assign) BOOL isUpdatingSlider;
 
@@ -62,6 +61,9 @@ extern NSString *const DataHubDataLoadedNotification;
 
 @property (nonatomic, strong) ChartPreferencesWindow *preferencesWindowController;
 
+// === NUOVE PROPRIETÀ PRIVATE PER PLACEHOLDER ===
+@property (strong) NSView *placeholderView;
+@property (strong) NSTextField *placeholderLabel;
 
 @end
 
@@ -147,11 +149,7 @@ extern NSString *const DataHubDataLoadedNotification;
     self.objectsVisibilityToggle.toolTip = @"Toggle Objects Visibility";
     [self.contentView addSubview:self.objectsVisibilityToggle];
     
-    // Timeframe segmented control
-    self.timeframeSegmented = [[NSSegmentedControl alloc] init];
-    self.timeframeSegmented.segmentCount = 8;
-    [self.contentView addSubview:self.timeframeSegmented];
-    
+  
     // Timeframe segmented control (existing)
       self.timeframeSegmented = [[NSSegmentedControl alloc] init];
       self.timeframeSegmented.segmentCount = 8;
@@ -276,6 +274,7 @@ extern NSString *const DataHubDataLoadedNotification;
         // Timeframe segmented control
         [self.timeframeSegmented.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
         [self.timeframeSegmented.leadingAnchor constraintEqualToAnchor:self.objectsVisibilityToggle.trailingAnchor constant:8],
+        [self.timeframeSegmented.heightAnchor constraintEqualToConstant:21],
         
         [self.dateRangeSegmented.centerYAnchor constraintEqualToAnchor:self.symbolTextField.centerYAnchor],
         [self.dateRangeSegmented.leadingAnchor constraintEqualToAnchor:self.timeframeSegmented.trailingAnchor constant:8],
@@ -297,11 +296,12 @@ extern NSString *const DataHubDataLoadedNotification;
         
         // ===== MAIN CONTENT AREA =====
         
-        // Objects panel (sidebar)
+       /* // Objects panel (sidebar)
         [self.objectsPanel.topAnchor constraintEqualToAnchor:self.panelsSplitView.topAnchor],
         [self.objectsPanel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
         [self.objectsPanel.bottomAnchor constraintEqualToAnchor:self.panelsSplitView.bottomAnchor],
         [self.objectsPanel.widthAnchor constraintEqualToConstant:150], // Fixed width for objects panel
+        */
         
         // Main split view for chart panels
         [self.panelsSplitView.topAnchor constraintEqualToAnchor:self.symbolTextField.bottomAnchor constant:8],
@@ -378,34 +378,40 @@ extern NSString *const DataHubDataLoadedNotification;
     NSLog(@"🔵 Custom segment styling applied (selectedSegmentTintColor)");
 }
 
-// 🆕 NEW: Method to update split view constraint when objects panel is toggled
 - (void)updateSplitViewConstraintForObjectsPanel:(BOOL)visible {
     // Deactivate current constraint
     self.splitViewLeadingConstraint.active = NO;
-    
+
     if (visible) {
-        // Objects panel is visible - split view starts after objects panel
+        // Attiva i vincoli dell’objectsPanel
+        [NSLayoutConstraint activateConstraints:@[
+            [self.objectsPanel.topAnchor constraintEqualToAnchor:self.panelsSplitView.topAnchor],
+            [self.objectsPanel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
+            [self.objectsPanel.bottomAnchor constraintEqualToAnchor:self.panelsSplitView.bottomAnchor],
+            [self.objectsPanel.widthAnchor constraintEqualToConstant:150]
+        ]];
+
+        // Split view dopo objectsPanel
         self.splitViewLeadingConstraint = [self.panelsSplitView.leadingAnchor
-                                          constraintEqualToAnchor:self.objectsPanel.trailingAnchor
-                                          constant:8];
+            constraintEqualToAnchor:self.objectsPanel.trailingAnchor constant:8];
+
     } else {
-        // Objects panel is hidden - split view starts from left edge
+        // Disattiva vincoli objectsPanel
+        [NSLayoutConstraint deactivateConstraints:self.objectsPanel.constraints];
+
+        // Split view attaccato al bordo sinistro
         self.splitViewLeadingConstraint = [self.panelsSplitView.leadingAnchor
-                                          constraintEqualToAnchor:self.contentView.leadingAnchor
-                                          constant:8];
+            constraintEqualToAnchor:self.contentView.leadingAnchor constant:8];
     }
-    
-    // Activate new constraint
+
     self.splitViewLeadingConstraint.active = YES;
-    
-    // Animate the change
+
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0.3;
         context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
         [self.contentView layoutSubtreeIfNeeded];
     } completionHandler:nil];
 }
-
 
 - (void)setupChartDefaults {
     self.currentSymbol = @"";
@@ -577,79 +583,65 @@ extern NSString *const DataHubDataLoadedNotification;
     [super viewDidLoad];
 }
 
+// Nuova implementazione setupDefaultPanels che gestisce il placeholder
 - (void)setupDefaultPanels {
     self.renderersInitialized = NO;  // Reset flag
 
     // Remove any existing panels
     [self.chartPanels removeAllObjects];
-    
+
     // Clear existing subviews from split view
     for (NSView *subview in [self.panelsSplitView.subviews copy]) {
-        [subview removeFromSuperview];  // ✅ Correct method for removing from split view
+        [subview removeFromSuperview];
     }
-    
-    NSRect splitFrame = self.panelsSplitView.frame;
-    double secheight = splitFrame.size.height * 0.8;
-    double volh = splitFrame.size.height - secheight;
-    splitFrame.size.height = secheight;
-    
-    // Add Security panel (candlestick)
-    ChartPanelView *securityPanel = [[ChartPanelView alloc] initWithType:@"security"];
-    securityPanel.chartWidget = self;
-    securityPanel.translatesAutoresizingMaskIntoConstraints = NO;
-    [securityPanel setFrame:splitFrame];
-    [self.chartPanels addObject:securityPanel];
-    [self.panelsSplitView addSubview:securityPanel];
-    
-    
-    
-    // Add Volume panel (histogram)
-    ChartPanelView *volumePanel = [[ChartPanelView alloc] initWithType:@"volume"];
-    volumePanel.chartWidget = self;
-    volumePanel.translatesAutoresizingMaskIntoConstraints = NO;
-    splitFrame.size.height = volh;
-    [volumePanel setFrame:splitFrame];
-    [self.chartPanels addObject:volumePanel];
-    [self.panelsSplitView addSubview:volumePanel];
-    
-    [_panelsSplitView arrangesAllSubviews];
-    
-    
-    
-    /*   // Force layout
-     [self.panelsSplitView setNeedsLayout:YES];
-     [self.view setNeedsLayout:YES];
-     [self configureSplitViewPriorities];
-     dispatch_async(dispatch_get_main_queue(), ^{
-     [self setInitialDividerPosition];
-     });
-     // Set initial divider position after a delay to ensure layout is complete
-     dispatch_async(dispatch_get_main_queue(), ^{
-     NSLog(@"🔧 Setting divider position...");
-     CGFloat totalHeight = self.panelsSplitView.frame.size.height;
-     NSLog(@"🔍 Total height for divider calculation: %.2f", totalHeight);
-     
-     if (totalHeight > 150) { // Only if we have reasonable height
-     CGFloat securityHeight = totalHeight * 0.8;
-     [self.panelsSplitView setPosition:securityHeight ofDividerAtIndex:0];
-     NSLog(@"✅ Set divider at position: %.2f (80%% of %.2f)", securityHeight, totalHeight);
-     } else {
-     NSLog(@"⚠️ Height too small (%.2f), will retry later", totalHeight);
-     // Retry after view is properly sized
-     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
-     CGFloat retryHeight = self.panelsSplitView.frame.size.height;
-     NSLog(@"🔄 Retry height: %.2f", retryHeight);
-     if (retryHeight > 150) {
-     [self.panelsSplitView setPosition:retryHeight * 0.8 ofDividerAtIndex:0];
-     NSLog(@"✅ Retry: Set divider at position: %.2f", retryHeight * 0.8);
-     } else {
-     NSLog(@"❌ Still too small after retry: %.2f", retryHeight);
-     }
-     });
-     }
-     });
-     */
-    NSLog(@"🎯 Default panels setup completed");
+
+    // Placeholder view
+    self.placeholderView = [[NSView alloc] initWithFrame:NSMakeRect(0.0, 0.0, 1900.0, 1800.0)];
+    self.placeholderView.wantsLayer = YES;
+    self.placeholderView.layer.backgroundColor = [[NSColor clearColor] CGColor];
+    self.placeholderView.translatesAutoresizingMaskIntoConstraints = NO;
+
+    // Placeholder label
+    self.placeholderLabel = [[NSTextField alloc] init];
+    self.placeholderLabel.stringValue = @"! No symbol entered !";
+    self.placeholderLabel.bezeled = NO;
+    self.placeholderLabel.drawsBackground = NO;
+    self.placeholderLabel.editable = NO;
+    self.placeholderLabel.selectable = NO;
+    self.placeholderLabel.alignment = NSTextAlignmentCenter;
+    self.placeholderLabel.font = [NSFont boldSystemFontOfSize:18];
+    self.placeholderLabel.textColor = [NSColor secondaryLabelColor];
+    self.placeholderLabel.translatesAutoresizingMaskIntoConstraints = NO;
+
+    [self.placeholderView addSubview:self.placeholderLabel];
+
+    // Center label in placeholder view
+    [NSLayoutConstraint activateConstraints:@[
+        [self.placeholderLabel.centerXAnchor constraintEqualToAnchor:self.placeholderView.centerXAnchor],
+        [self.placeholderLabel.centerYAnchor constraintEqualToAnchor:self.placeholderView.centerYAnchor]
+    ]];
+
+    // Add placeholder to split view
+    [self.panelsSplitView addSubview:self.placeholderView];
+
+    // Make placeholder fill the split view
+    [NSLayoutConstraint activateConstraints:@[
+        [self.placeholderView.topAnchor constraintEqualToAnchor:self.panelsSplitView.topAnchor],
+        [self.placeholderView.bottomAnchor constraintEqualToAnchor:self.panelsSplitView.bottomAnchor],
+        [self.placeholderView.leadingAnchor constraintEqualToAnchor:self.panelsSplitView.leadingAnchor],
+        [self.placeholderView.trailingAnchor constraintEqualToAnchor:self.panelsSplitView.trailingAnchor],
+    ]];
+
+    // Initially show placeholder
+    self.placeholderView.hidden = NO;
+
+    NSLog(@"🎯 Default panels setup completed with placeholder");
+}
+
+// Helper per aggiornare la visibilità del placeholder
+- (void)updatePlaceholderVisibility {
+    BOOL hasPanels = self.panelsSplitView.subviews.count > 1; // >1 perché include il placeholder
+    self.placeholderView.hidden = hasPanels;
 }
 - (void)configureSplitViewPriorities {
     NSLog(@"🔧 Configuring split view priorities...");

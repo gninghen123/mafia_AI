@@ -47,7 +47,6 @@ extern NSString *const DataHubDataLoadedNotification;
 @interface ChartWidget () <NSTextFieldDelegate,ObjectsPanelDelegate,IndicatorsPanelDelegate>
 
 @property (nonatomic, assign) double lastSliderValue;
-@property (nonatomic, assign) double savedHeight;
 
 @property (nonatomic, assign) BOOL isUpdatingSlider;
 
@@ -76,17 +75,11 @@ extern NSString *const DataHubDataLoadedNotification;
 - (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType {
     self = [super initWithType:type panelType:panelType];
     if (self) {
-        // ✅ FIX: Set initial saved height BEFORE any setup
-        self.savedHeight = 400; // Default expanded height for ChartWidget
-        self.collapsed = NO;    // Start expanded
         
         [self setupChartDefaults];
         [self registerForDataNotifications];
         
-        // ✅ FIX: Ensure proper layout after everything is initialized
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self forceProperInitialLayout];
-        });
+    
     }
     return self;
 }
@@ -109,7 +102,6 @@ extern NSString *const DataHubDataLoadedNotification;
     // Setup all UI components
     [self setupUI];
     [self setupConstraints];
-    [self setupDefaultPanels];
     
     // ✅ FIX: Set content priorities for proper expansion
     [self.contentView setContentHuggingPriority:NSLayoutPriorityDefaultLow
@@ -206,7 +198,7 @@ extern NSString *const DataHubDataLoadedNotification;
     [self.contentView addSubview:self.panelsSplitView];
     
     // ✅ NUOVO: Crea i pannelli di default subito
-    [self createDefaultPanels];
+    [self setupDefaultPanels];
 }
 - (void)createDefaultPanels {
     // Inizializza l'array se non esiste
@@ -228,8 +220,7 @@ extern NSString *const DataHubDataLoadedNotification;
     [self.chartPanels addObject:volumePanel];
     [self.panelsSplitView addSubview:volumePanel];
     
-    // Setup holding priorities
-    [self configureSplitViewPriorities];
+    
     
     NSLog(@"🎯 Default panels created and added to split view");
 }
@@ -643,7 +634,7 @@ extern NSString *const DataHubDataLoadedNotification;
 - (void)viewDidLoad {
     [super viewDidLoad];
 }
-/*
+
 // Nuova implementazione setupDefaultPanels che gestisce il placeholder
 - (void)setupDefaultPanels {
     self.renderersInitialized = NO;  // Reset flag
@@ -698,7 +689,7 @@ extern NSString *const DataHubDataLoadedNotification;
 
     NSLog(@"🎯 Default panels setup completed with placeholder");
 }
-*/
+
 // Helper per aggiornare la visibilità del placeholder
 - (void)updatePlaceholderVisibility {
     BOOL hasPanels = self.panelsSplitView.subviews.count > 1; // >1 perché include il placeholder
@@ -706,18 +697,7 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 
-- (void)configureSplitViewPriorities {
-    if (self.chartPanels.count >= 2) {
-        // Security panel mantiene dimensione durante resize
-        [self.panelsSplitView setHoldingPriority:NSLayoutPriorityDefaultHigh
-                               forSubviewAtIndex:0];
-        // Volume panel si adatta alle dimensioni rimanenti
-        [self.panelsSplitView setHoldingPriority:NSLayoutPriorityDefaultLow
-                               forSubviewAtIndex:1];
-        
-        NSLog(@"✅ Split view holding priorities configured");
-    }
-}
+
 
 - (void)setInitialDividerPosition {
     dispatch_async(dispatch_get_main_queue(), ^{
@@ -730,14 +710,6 @@ extern NSString *const DataHubDataLoadedNotification;
             
             NSLog(@"✅ Set initial divider position: %.1f (80%% of %.1f)",
                   dividerPosition, totalHeight);
-        } else {
-            NSLog(@"⚠️ Split view height still too small: %.1f", totalHeight);
-            
-            // Riprova dopo un piccolo delay
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 0.1 * NSEC_PER_SEC),
-                          dispatch_get_main_queue(), ^{
-                [self setInitialDividerPosition];
-            });
         }
     });
 }

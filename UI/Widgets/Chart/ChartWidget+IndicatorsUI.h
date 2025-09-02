@@ -171,6 +171,22 @@ NS_ASSUME_NONNULL_BEGIN
 /// Clean up indicators UI resources
 - (void)cleanupIndicatorsUI;
 
+
+#pragma mark - Missing Method Declarations
+
+/// Update all panels with current chart data
+- (void)updateAllPanelsWithCurrentData;
+
+/// Rename existing template
+/// @param template Template to rename
+- (void)renameTemplate:(ChartTemplate *)template;
+
+/// Export template to file
+/// @param template Template to export
+- (void)exportTemplate:(ChartTemplate *)template;
+
+
+
 @end
 
 NS_ASSUME_NONNULL_END

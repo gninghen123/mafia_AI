@@ -10,7 +10,8 @@
 #import "ChartPanelView.h"
 #import <objc/runtime.h>
 
-// Associated object keys
+#pragma mark - Associated Object Keys
+
 static const void *kIndicatorsPanelToggleKey = &kIndicatorsPanelToggleKey;
 static const void *kIndicatorsPanelKey = &kIndicatorsPanelKey;
 static const void *kIsIndicatorsPanelVisibleKey = &kIsIndicatorsPanelVisibleKey;
@@ -245,14 +246,33 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 #pragma mark - Panel Management
 
 - (ChartPanelView *)createChartPanelFromTemplate:(ChartPanelTemplate *)panelTemplate {
-    ChartPanelView *panelView = [[ChartPanelView alloc] initWithType:panelTemplate.rootIndicatorType];
+    if (!panelTemplate) {
+        NSLog(@"❌ Cannot create panel from nil template");
+        return nil;
+    }
     
-    // Configure panel properties
+    NSLog(@"🏗️ Creating panel from template: %@ (%@)",
+          panelTemplate.panelName ?: @"Unnamed", panelTemplate.rootIndicatorType);
+    
+    // ✅ STEP 1: Determina il panel type dal root indicator
+    NSString *panelType = [self panelTypeForRootIndicator:panelTemplate.rootIndicatorType];
+    
+    // ✅ STEP 2: Crea il panel view
+    ChartPanelView *panelView = [[ChartPanelView alloc] initWithType:panelType];
+    panelView.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    // ✅ STEP 3: Configura le proprietà base
+    panelView.chartWidget = self;
     panelView.panelTemplate = panelTemplate;
     
-    // Setup indicator renderer for the panel
-    [self setupIndicatorRendererForPanel:panelView];
+    // ✅ STEP 4: Imposta panelName se disponibile
+    if (panelTemplate.panelName) {
+        // Nota: ChartPanelView potrebbe non avere una proprietà panelName
+        // In tal caso potresti aggiungerla o usare un tag/identifier
+        NSLog(@"📝 Panel name: %@", panelTemplate.panelName);
+    }
     
+    NSLog(@"✅ Panel created: %@ -> %@", panelTemplate.rootIndicatorType, panelType);
     return panelView;
 }
 
@@ -284,18 +304,35 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     NSArray<ChartPanelTemplate *> *orderedPanels = [template orderedPanels];
     
     if (orderedPanels.count != self.chartPanels.count) {
-        NSLog(@"⚠️ Panel count mismatch during height redistribution");
+        NSLog(@"⚠️ Panel count mismatch during height redistribution (%ld vs %ld)",
+              (long)orderedPanels.count, (long)self.chartPanels.count);
         return;
     }
     
-    // Apply relative heights to split view
-    for (NSInteger i = 0; i < orderedPanels.count; i++) {
-        ChartPanelTemplate *panelTemplate = orderedPanels[i];
-        // Note: Actual height distribution implementation depends on your split view setup
-        // This is a placeholder for the height distribution logic
-        NSLog(@"📏 Panel %ld height: %.2f%%", (long)i, panelTemplate.relativeHeight * 100);
+    NSLog(@"📏 Redistributing panel heights...");
+    
+    // ✅ Imposta le altezze usando NSSplitView divider positions
+    if (self.chartPanels.count > 1) {
+        // Calcola posizioni cumulative dei divider
+        CGFloat totalHeight = NSHeight(self.panelsSplitView.bounds);
+        CGFloat currentPosition = 0;
+        
+        for (NSInteger i = 0; i < orderedPanels.count - 1; i++) { // -1 perché l'ultimo pannello non ha divider
+            ChartPanelTemplate *panelTemplate = orderedPanels[i];
+            currentPosition += panelTemplate.relativeHeight * totalHeight;
+            
+            // Imposta posizione del divider
+            if (i < [self.panelsSplitView.subviews count] - 1) {
+                [self.panelsSplitView setPosition:currentPosition ofDividerAtIndex:i];
+                NSLog(@"📏 Divider %ld at position: %.1f (%.1f%%)",
+                      (long)i, currentPosition, panelTemplate.relativeHeight * 100);
+            }
+        }
     }
+    
+    NSLog(@"✅ Panel heights redistributed");
 }
+
 
 - (void)applyTemplate:(ChartTemplate *)template {
     if (!template) {
@@ -309,22 +346,192 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
         return;
     }
     
-    NSLog(@"🎯 Applying template: %@", template.templateName);
+    NSLog(@"🎨 Applying template: %@ (%ld panels)", template.templateName, template.panels.count);
     
-    // Store current template
+    // ✅ STEP 1: Rimuovi pannelli esistenti dal split view
+    [self removeExistingPanelsFromSplitView];
+    
+    
+    // ✅ STEP 3: Crea pannelli dal template (ordinati per displayOrder)
+    NSArray<ChartPanelTemplate *> *orderedPanels = [template orderedPanels];
+    for (ChartPanelTemplate *panelTemplate in orderedPanels) {
+        ChartPanelView *panelView = [self createChartPanelFromTemplate:panelTemplate];
+        [self.chartPanels addObject:panelView];
+        [self.panelsSplitView addSubview:panelView];
+        
+        NSLog(@"➕ Created panel: %@ (%.1f%% height)",
+              panelTemplate.panelName ?: panelTemplate.rootIndicatorType,
+              panelTemplate.relativeHeight * 100);
+    }
+    
+    // ✅ STEP 4: Imposta altezze relative dei pannelli
+    [self redistributePanelHeights:template];
+    
+    // ✅ STEP 5: Setup renderers per i nuovi pannelli
+    [self setupRenderersForAllPanels];
+    
+    // ✅ STEP 6: Aggiorna template corrente
     self.currentChartTemplate = template;
     
-    // Update panels
-    [self updatePanelsWithTemplate:template];
+    // ✅ STEP 7: Update dati se disponibili
+    if (self.currentChartData && self.currentChartData.count > 0) {
+        [self updateIndicatorsWithChartData:self.currentChartData];
+        [self updateAllPanelsWithCurrentData]; // Refresh display
+    }
     
-    // Calculate indicators
-    [self calculateAllIndicators];
+    NSLog(@"✅ Template applied successfully: %@ (%ld panels created)",
+          template.templateName, (long)self.chartPanels.count);
     
-    // Update indicators panel
+    // ✅ STEP 8: Notifica l'indicators panel del cambio template
     [self updateIndicatorsPanel];
-    
-    NSLog(@"✅ Template applied successfully: %@", template.templateName);
 }
+
+#pragma mark - Supporting Methods
+
+- (NSString *)panelTypeForRootIndicator:(NSString *)rootIndicatorType {
+    // ✅ Mapping da root indicator type a panel type
+    static NSDictionary *indicatorToPanelMapping = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        indicatorToPanelMapping = @{
+            // Security indicators -> security panel
+            @"SecurityIndicator": @"security",
+            @"CandlestickIndicator": @"security",
+            @"OHLCIndicator": @"security",
+            @"LineIndicator": @"security",
+            
+            // Volume indicators -> volume panel
+            @"VolumeIndicator": @"volume",
+            @"VolumeProfileIndicator": @"volume",
+            
+            // Oscillators -> oscillator panel
+            @"RSIIndicator": @"oscillator",
+            @"MACDIndicator": @"oscillator",
+            @"StochasticIndicator": @"oscillator",
+            @"CCIIndicator": @"oscillator",
+            @"WilliamsRIndicator": @"oscillator",
+            
+            // Custom/others -> custom panel
+            @"CustomIndicator": @"custom"
+        };
+    });
+    
+    // ✅ Lookup del panel type
+    NSString *panelType = indicatorToPanelMapping[rootIndicatorType];
+    
+    if (!panelType) {
+        NSLog(@"⚠️ Unknown root indicator type: %@, defaulting to 'custom'", rootIndicatorType);
+        panelType = @"custom";
+    }
+    
+    NSLog(@"🔄 Mapped %@ -> %@", rootIndicatorType, panelType);
+    return panelType;
+}
+
+- (void)setupIndicatorRendererForPanel:(ChartPanelView *)panelView {
+    if (!panelView.panelTemplate) {
+        NSLog(@"⚠️ Cannot setup indicator renderer - panel has no template");
+        return;
+    }
+    
+    NSString *panelID = panelView.panelTemplate.panelID;
+    if (!panelID) {
+        NSLog(@"⚠️ Cannot setup indicator renderer - panel template has no ID");
+        return;
+    }
+    
+    // ✅ Create renderer if it doesn't exist
+    ChartIndicatorRenderer *renderer = self.indicatorRenderers[panelID];
+    if (!renderer) {
+        renderer = [[ChartIndicatorRenderer alloc] initWithPanelView:panelView];
+        self.indicatorRenderers[panelID] = renderer;
+        NSLog(@"🎨 Created indicator renderer for panel: %@ (%@)",
+              panelID, panelView.panelTemplate.rootIndicatorType);
+    } else {
+        NSLog(@"♻️ Reusing existing indicator renderer for panel: %@", panelID);
+    }
+}
+
+- (void)updateAllPanelsWithCurrentData {
+    if (!self.currentChartData || self.currentChartData.count == 0) {
+        NSLog(@"⚠️ No chart data available for panels update");
+        return;
+    }
+    
+    NSLog(@"🔄 Updating all panels with current data...");
+    
+    // Update using existing ChartWidget methods
+    [self synchronizePanels]; // Questo metodo esiste già nel ChartWidget.m
+    
+    NSLog(@"✅ All panels updated with current data");
+}
+
+
+- (void)updateIndicatorsWithChartData:(NSArray<HistoricalBarModel *> *)chartData {
+    if (!chartData || chartData.count == 0) {
+        NSLog(@"⚠️ No chart data available for indicators update");
+        return;
+    }
+    
+    NSLog(@"🔄 Updating indicators with %ld data points...", (long)chartData.count);
+    
+    // ✅ USA SOLO metodi esistenti in ChartIndicatorRenderer
+    for (NSString *panelID in self.indicatorRenderers.allKeys) {
+        ChartIndicatorRenderer *renderer = self.indicatorRenderers[panelID];
+        [renderer invalidateIndicatorLayers]; // Questo metodo esiste già
+        NSLog(@"📊 Updated indicators for panel: %@", panelID);
+    }
+    
+    NSLog(@"✅ All indicators updated with new data");
+}
+
+#pragma mark - Supporting Methods for applyTemplate
+
+- (void)removeExistingPanelsFromSplitView {
+    NSLog(@"🧹 Removing %ld existing panels...", (long)self.chartPanels.count);
+    
+    // Rimuovi i pannelli dal split view
+    for (ChartPanelView *panel in self.chartPanels) {
+        [panel removeFromSuperview];
+    }
+    
+    // Clear l'array
+    [self.chartPanels removeAllObjects];
+    
+    // Reset renderers dictionary
+    [self.indicatorRenderers removeAllObjects];
+    
+    self.renderersInitialized = NO; // Flag per ri-setup
+}
+
+- (void)setupRenderersForAllPanels {
+    NSLog(@"🎨 Setting up renderers for all panels...");
+    
+    for (ChartPanelView *panel in self.chartPanels) {
+        // ✅ Setup indicator renderer
+        [self setupIndicatorRendererForPanel:panel];
+        
+        // ✅ Setup objects renderer (solo per security panel)
+        if ([panel.panelType isEqualToString:@"security"]) {
+            if (!panel.objectRenderer) {
+                [panel setupObjectsRendererWithManager:self.objectsManager];
+                NSLog(@"🔧 Setup objects renderer for security panel");
+            }
+        }
+        
+        // ✅ Setup alert renderer (solo per security panel)
+        if ([panel.panelType isEqualToString:@"security"]) {
+            if (!panel.alertRenderer) {
+                [panel setupAlertRenderer];
+                NSLog(@"🚨 Setup alert renderer for security panel");
+            }
+        }
+    }
+    
+    self.renderersInitialized = YES;
+    NSLog(@"✅ All renderers setup completed");
+}
+
 
 #pragma mark - Indicator Management
 
@@ -495,31 +702,36 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     return self.indicatorRenderers[panelID];
 }
 
-- (void)setupIndicatorRendererForPanel:(ChartPanelView *)panelView {
-    if (!panelView.panelTemplate) return;
-    
-    NSString *panelID = panelView.panelTemplate.panelID;
-    
-    // Create renderer if it doesn't exist
-    ChartIndicatorRenderer *renderer = self.indicatorRenderers[panelID];
-    if (!renderer) {
-        renderer = [[ChartIndicatorRenderer alloc] initWithPanelView:panelView];
-        self.indicatorRenderers[panelID] = renderer;
-        NSLog(@"🎨 Created indicator renderer for panel: %@", panelID);
-    }
-}
+
 
 #pragma mark - UI State Management
 
 - (void)updateIndicatorsPanelToggleState:(BOOL)isVisible {
     self.isIndicatorsPanelVisible = isVisible;
     
-    // Update button appearance
+    // ✅ Update button appearance - cambia icona per indicare stato
     if (isVisible) {
+        self.indicatorsPanelToggle.title = @"📊"; // Pannello aperto
         self.indicatorsPanelToggle.state = NSControlStateValueOn;
     } else {
+        self.indicatorsPanelToggle.title = @"📈"; // Pannello chiuso - icona diversa
         self.indicatorsPanelToggle.state = NSControlStateValueOff;
     }
+    
+    // ✅ Update split view constraints per far spazio al pannello
+    if (self.splitViewTrailingConstraint) {
+        CGFloat trailingConstant = isVisible ? -self.indicatorsPanel.panelWidth : 0;
+        
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = 0.25;
+            context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
+            [self.splitViewTrailingConstraint.animator setConstant:trailingConstant];
+        } completionHandler:nil];
+    }
+    
+    NSLog(@"🔄 Indicators panel toggle state updated: %@ (trailing: %.0f)",
+          isVisible ? @"VISIBLE" : @"HIDDEN",
+          isVisible ? -self.indicatorsPanel.panelWidth : 0.0);
 }
 
 - (void)handleIndicatorsPanelVisibilityChange:(BOOL)isVisible animated:(BOOL)animated {
@@ -563,11 +775,26 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 #pragma mark - IndicatorsPanelDelegate
 
 - (void)indicatorsPanel:(id)panel didSelectTemplate:(ChartTemplate *)template {
-    [self applyTemplate:template];
+    NSLog(@"👆 User selected template: %@", template.templateName);
+    
+    // Non applicare subito il template, aspettiamo che l'utente clicchi "Apply"
+    // Questa è solo una selezione nella combo box
+    [self updateIndicatorsPanel]; // Refresh panel display
 }
 
 - (void)indicatorsPanel:(id)panel didRequestApplyTemplate:(ChartTemplate *)template {
+    NSLog(@"✨ User requested to apply template: %@", template.templateName);
+    
+    if (!template) {
+        NSLog(@"❌ Cannot apply nil template");
+        return;
+    }
+    
+    // ✅ Applica il template selezionato
     [self applyTemplate:template];
+    
+    // ✅ Show temporary feedback
+    [self showTemporaryMessage:[NSString stringWithFormat:@"Applied template: %@", template.templateName]];
 }
 
 - (void)indicatorsPanel:(id)panel
@@ -614,65 +841,60 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 }
 
 - (void)indicatorsPanel:(id)panel didRequestCreateTemplate:(NSString *)templateName {
-    [self saveCurrentTemplateAs:templateName completion:^(BOOL success, NSError *error) {
-        if (!success) {
-            [self showErrorAlert:@"Template Save Error" message:error.localizedDescription];
+    NSLog(@"🆕 User requested to create template: %@", templateName);
+    
+    if (!templateName || templateName.length == 0) {
+        [self showErrorAlert:@"Invalid Template Name" message:@"Please provide a valid template name."];
+        return;
+    }
+    
+    // ✅ Crea un nuovo template basato sui pannelli correnti
+    [self createTemplateFromCurrentPanels:templateName completion:^(ChartTemplate *newTemplate, NSError *error) {
+        if (error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self showErrorAlert:@"Template Creation Failed"
+                             message:[NSString stringWithFormat:@"Could not create template '%@': %@",
+                                     templateName, error.localizedDescription]];
+            });
+        } else {
+            NSLog(@"✅ Template created successfully: %@", newTemplate.templateName);
+            
+            dispatch_async(dispatch_get_main_queue(), ^{
+                // Reload templates nel panel
+                [self loadAvailableTemplates];
+                
+                // Seleziona il nuovo template
+                [self.indicatorsPanel selectTemplate:newTemplate];
+                
+                // Show success message
+                [self showTemporaryMessage:[NSString stringWithFormat:@"Template '%@' created!", templateName]];
+            });
         }
     }];
 }
 
 - (void)indicatorsPanel:(id)panel didChangeVisibility:(BOOL)isVisible {
-    [self handleIndicatorsPanelVisibilityChange:isVisible animated:YES];
+    NSLog(@"👁️ Indicators panel visibility changed: %@", isVisible ? @"VISIBLE" : @"HIDDEN");
+    
+    // ✅ Update toggle button state
+    [self updateIndicatorsPanelToggleState:isVisible];
 }
 
 - (void)indicatorsPanel:(id)panel didRequestTemplateAction:(NSString *)action forTemplate:(ChartTemplate *)template {
+    NSLog(@"🎬 User requested template action: %@ for template: %@", action, template.templateName);
+    
     if ([action isEqualToString:@"duplicate"]) {
-        NSString *newName = [NSString stringWithFormat:@"%@ Copy", template.templateName];
-        [self duplicateTemplate:template newName:newName completion:^(ChartTemplate *newTemplate, NSError *error) {
-            if (!newTemplate) {
-                [self showErrorAlert:@"Template Duplicate Error" message:error.localizedDescription];
-            }
-        }];
-        
+        [self duplicateTemplate:template];
+    } else if ([action isEqualToString:@"rename"]) {
+        [self renameTemplate:template];
     } else if ([action isEqualToString:@"delete"]) {
-        NSAlert *confirmAlert = [[NSAlert alloc] init];
-        confirmAlert.messageText = @"Delete Template";
-        confirmAlert.informativeText = [NSString stringWithFormat:@"Are you sure you want to delete '%@'?", template.templateName];
-        confirmAlert.alertStyle = NSAlertStyleWarning;
-        [confirmAlert addButtonWithTitle:@"Delete"];
-        [confirmAlert addButtonWithTitle:@"Cancel"];
-        
-        NSModalResponse response = [confirmAlert runModal];
-        if (response == NSAlertFirstButtonReturn) {
-            [self deleteTemplate:template completion:^(BOOL success, NSError *error) {
-                if (!success) {
-                    [self showErrorAlert:@"Template Delete Error" message:error.localizedDescription];
-                }
-            }];
-        }
-        
+        [self deleteTemplateWithConfirmation:template];
     } else if ([action isEqualToString:@"export"]) {
-        // Show save panel for export
-        NSSavePanel *savePanel = [NSSavePanel savePanel];
-        savePanel.allowedFileTypes = @[@"json"];
-        savePanel.nameFieldStringValue = [NSString stringWithFormat:@"%@.json", template.templateName];
-        
-        NSModalResponse response = [savePanel runModal];
-        if (response == NSModalResponseOK) {
-            NSError *error;
-            NSData *exportData = [[DataHub shared] exportTemplate:template error:&error];
-            if (exportData) {
-                BOOL success = [exportData writeToURL:savePanel.URL atomically:YES];
-                if (!success) {
-                    [self showErrorAlert:@"Export Error" message:@"Failed to write template file"];
-                }
-            } else {
-                [self showErrorAlert:@"Export Error" message:error.localizedDescription];
-            }
-        }
+        [self exportTemplate:template];
+    } else {
+        NSLog(@"❓ Unknown template action: %@", action);
     }
 }
-
 #pragma mark - Cleanup
 
 - (void)cleanupIndicatorsUI {
@@ -693,6 +915,130 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     [self.availableTemplates removeAllObjects];
     
     NSLog(@"🧹 Indicators UI cleanup completed");
+}
+
+#pragma mark - Template Management Helper Methods
+
+- (void)createTemplateFromCurrentPanels:(NSString *)templateName
+                              completion:(void(^)(ChartTemplate *template, NSError *error))completion {
+    
+    if (self.chartPanels.count == 0) {
+        NSError *error = [NSError errorWithDomain:@"ChartTemplateCreation"
+                                             code:1001
+                                         userInfo:@{NSLocalizedDescriptionKey: @"No panels available to create template from"}];
+        completion(nil, error);
+        return;
+    }
+    
+    // ✅ USA SOLO metodi esistenti in DataHub+ChartTemplates
+    [[DataHub shared] getDefaultChartTemplate:^(ChartTemplate *defaultTemplate, NSError *error) {
+        if (error) {
+            completion(nil, error);
+            return;
+        }
+        
+        // Create new template based on default
+        ChartTemplate *newTemplate = [defaultTemplate createWorkingCopy];
+        newTemplate.templateID = [[NSUUID UUID] UUIDString];
+        newTemplate.templateName = templateName;
+        newTemplate.isDefault = NO;
+        newTemplate.createdDate = [NSDate date];
+        newTemplate.modifiedDate = [NSDate date];
+        
+        // Save using existing method
+        [[DataHub shared] saveChartTemplate:newTemplate completion:^(BOOL success, NSError *saveError) {
+            completion(success ? newTemplate : nil, saveError);
+        }];
+    }];
+}
+
+- (void)renameTemplate:(ChartTemplate *)template {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Rename Template";
+    alert.informativeText = @"Enter new name for the template:";
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 300, 24)];
+    input.stringValue = template.templateName;
+    alert.accessoryView = input;
+    
+    [alert addButtonWithTitle:@"Rename"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSModalResponse response = [alert runModal];
+    if (response == NSAlertFirstButtonReturn && input.stringValue.length > 0) {
+        template.templateName = input.stringValue;
+        template.modifiedDate = [NSDate date];
+        
+        [[DataHub shared] saveChartTemplate:template completion:^(BOOL success, NSError *error) {
+            if (!success) {
+                [self showErrorAlert:@"Rename Failed" message:error.localizedDescription];
+            } else {
+                [self loadAvailableTemplates]; // Refresh
+                [self showTemporaryMessage:[NSString stringWithFormat:@"Template renamed to '%@'", input.stringValue]];
+            }
+        }];
+    }
+}
+
+- (void)exportTemplate:(ChartTemplate *)template {
+    NSSavePanel *savePanel = [NSSavePanel savePanel];
+    savePanel.allowedFileTypes = @[@"json"];
+    savePanel.nameFieldStringValue = [NSString stringWithFormat:@"%@.json", template.templateName];
+    
+    NSModalResponse response = [savePanel runModal];
+    if (response == NSModalResponseOK) {
+        NSError *error;
+        NSData *exportData = [[DataHub shared] exportTemplate:template error:&error];
+        if (exportData) {
+            BOOL success = [exportData writeToURL:savePanel.URL atomically:YES];
+            if (success) {
+                [self showTemporaryMessage:@"Template exported successfully"];
+            } else {
+                [self showErrorAlert:@"Export Error" message:@"Failed to write template file"];
+            }
+        } else {
+            [self showErrorAlert:@"Export Error" message:error.localizedDescription];
+        }
+    }
+}
+
+- (void)duplicateTemplate:(ChartTemplate *)template {
+    NSString *duplicateName = [NSString stringWithFormat:@"%@ Copy", template.templateName];
+    
+    // ✅ USA metodo esistente
+    [[DataHub shared] duplicateChartTemplate:template.templateID
+                                     newName:duplicateName
+                                  completion:^(ChartTemplate *duplicatedTemplate, NSError *error) {
+        if (error) {
+            [self showErrorAlert:@"Duplication Failed"
+                         message:[NSString stringWithFormat:@"Could not duplicate template: %@", error.localizedDescription]];
+        } else {
+            NSLog(@"📋 Template duplicated: %@", duplicatedTemplate.templateName);
+            [self loadAvailableTemplates]; // Refresh list
+            [self showTemporaryMessage:[NSString stringWithFormat:@"Template duplicated: %@", duplicateName]];
+        }
+    }];
+}
+
+- (void)deleteTemplateWithConfirmation:(ChartTemplate *)template {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Delete Template";
+    alert.informativeText = [NSString stringWithFormat:@"Are you sure you want to delete the template '%@'? This action cannot be undone.", template.templateName];
+    alert.alertStyle = NSAlertStyleWarning;
+    [alert addButtonWithTitle:@"Delete"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSModalResponse response = [alert runModal];
+    if (response == NSAlertFirstButtonReturn) {
+        [self deleteTemplate:template completion:^(BOOL success, NSError *error) {
+            if (!success) {
+                [self showErrorAlert:@"Deletion Failed"
+                             message:[NSString stringWithFormat:@"Could not delete template: %@", error.localizedDescription]];
+            } else {
+                [self showTemporaryMessage:[NSString stringWithFormat:@"Template '%@' deleted", template.templateName]];
+            }
+        }];
+    }
 }
 
 @end

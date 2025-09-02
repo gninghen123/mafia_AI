@@ -165,4 +165,6 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 - (void)loadDateRangeSegmentedDefaults;
 - (void)saveDateRangeSegmentedDefaults;
 
+- (void)showTemporaryMessage:(NSString *)message;
+
 @end

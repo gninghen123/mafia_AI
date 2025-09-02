@@ -45,7 +45,7 @@
             <fetchIndexElement property="objectUUID" type="Binary" order="ascending"/>
         </fetchIndex>
     </entity>
-    <entity name="ChartPanelTemplate" representedClassName="ChartPanelTemplate" syncable="YES" codeGenerationType="category">
+    <entity name="ChartPanelTemplate" representedClassName="ChartPanelTemplate" syncable="YES">
         <attribute name="childIndicatorsData" optional="YES" attributeType="Binary"/>
         <attribute name="displayOrder" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
         <attribute name="panelID" attributeType="String"/>
@@ -78,7 +78,7 @@
             </uniquenessConstraint>
         </uniquenessConstraints>
     </entity>
-    <entity name="ChartTemplate" representedClassName="ChartTemplate" syncable="YES" codeGenerationType="category">
+    <entity name="ChartTemplate" representedClassName="ChartTemplate" syncable="YES">
         <attribute name="createdDate" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="isDefault" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
         <attribute name="modifiedDate" attributeType="Date" usesScalarValueType="NO"/>

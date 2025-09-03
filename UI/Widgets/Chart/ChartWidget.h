@@ -2,7 +2,7 @@
 //  ChartWidget.h
 //  TradingApp
 //
-//  Chart widget with multiple coordinated panels
+//  Chart widget with multiple coordinated panels - XIB VERSION
 //
 
 #import "BaseWidget.h"
@@ -14,7 +14,7 @@
 
 
 @class ChartPanelView;
-@class HistoricalBarModel;       
+@class HistoricalBarModel;
 @class MarketQuoteModel;
 @class SharedXCoordinateContext;  // ✅ Forward declaration invece di import
 
@@ -45,25 +45,30 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 @property (nonatomic, assign) NSInteger cachedStartIndex;
 @property (nonatomic, assign) NSInteger cachedEndIndex;
 
-
-
 #pragma mark - Trading Hours Preferences
 @property (nonatomic, assign) ChartTradingHours tradingHoursMode;
 
+#pragma mark - UI Components (Interface Builder - IBOutlet references)
+@property (nonatomic, strong) IBOutlet NSTextField *symbolTextField;
+@property (nonatomic, strong) IBOutlet NSView *objectsPanelContainer;
+@property (nonatomic, strong) IBOutlet NSView *indicatorsPanelContainer;
+@property (nonatomic, strong) IBOutlet NSSegmentedControl *timeframeSegmented;
+@property (nonatomic, strong) IBOutlet NSPopUpButton *templatePopup;
+@property (nonatomic, strong) IBOutlet NSButton *preferencesButton;
+@property (nonatomic, strong) IBOutlet NSSplitView *panelsSplitView;
+@property (nonatomic, strong) IBOutlet NSSplitView *mainSplitView;
+@property (nonatomic, strong) IBOutlet NSSlider *panSlider;
+@property (nonatomic, strong) IBOutlet NSButton *zoomOutButton;
+@property (nonatomic, strong) IBOutlet NSButton *zoomInButton;
+@property (nonatomic, strong) IBOutlet NSButton *zoomAllButton;
 
-#pragma mark - UI Components (Programmatic - STRONG references)
-@property (nonatomic, strong) NSTextField *symbolTextField;
-@property (nonatomic, strong) NSSegmentedControl *timeframeSegmented;
-@property (nonatomic, strong) NSPopUpButton *templatePopup;
-@property (nonatomic, strong) NSButton *preferencesButton;
-@property (nonatomic, strong) NSSplitView *panelsSplitView;
-@property (nonatomic, strong) NSSlider *panSlider;
-@property (nonatomic, strong) NSButton *zoomOutButton;
-@property (nonatomic, strong) NSButton *zoomInButton;
-@property (nonatomic, strong) NSButton *zoomAllButton;
 // Objects UI
-@property (nonatomic, strong) NSSegmentedControl *dateRangeSegmented;
+@property (nonatomic, strong) IBOutlet NSSegmentedControl *dateRangeSegmented;
+@property (nonatomic, strong) IBOutlet NSButton *objectsPanelToggle;
+@property (nonatomic, strong) IBOutlet NSButton *objectsVisibilityToggle;
+@property (nonatomic, strong) IBOutlet NSButton *staticModeToggle;
 
+// Date Range Control Properties (non-UI)
 @property (nonatomic, assign) NSInteger currentDateRangeDays;
 @property (nonatomic, assign) NSInteger selectedDateRangeSegment; // 0=CUSTOM, 1=1M, 2=3M...
 
@@ -86,13 +91,11 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 @property (nonatomic, assign) NSInteger defaultVisibleForDaily;
 @property (nonatomic, assign) NSInteger defaultVisibleForWeekly;
 @property (nonatomic, assign) NSInteger defaultVisibleForMonthly;
-@property (nonatomic, strong) NSButton *objectsPanelToggle;
+
+// Objects Panel (programmatic creation, not IBOutlet)
 @property (nonatomic, strong) ObjectsPanel *objectsPanel;
 @property (nonatomic, strong) ChartObjectsManager *objectsManager;
 @property (nonatomic, assign) BOOL isObjectsPanelVisible;
-@property (nonatomic, strong) NSButton *objectsVisibilityToggle;
-
-@property (nonatomic, strong) NSButton *staticModeToggle;
 
 #pragma mark - Data Properties
 @property (nonatomic, strong, readwrite) NSString *currentSymbol;
@@ -107,10 +110,31 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 @property (nonatomic, assign, readwrite) NSInteger visibleStartIndex;
 @property (nonatomic, assign, readwrite) NSInteger visibleEndIndex;
 
+#pragma mark - IBAction Methods (Connected to XIB controls)
 
+// Symbol and Timeframe Actions
+- (IBAction)symbolFieldChanged:(NSTextField *)sender;
+- (IBAction)timeframeChanged:(NSSegmentedControl *)sender;
+- (IBAction)templatePopupChanged:(NSPopUpButton *)sender;
 
+// Navigation and Zoom Actions
+- (IBAction)panSliderChanged:(NSSlider *)sender;
+- (IBAction)zoomOutClicked:(NSButton *)sender;
+- (IBAction)zoomInClicked:(NSButton *)sender;
+- (IBAction)zoomAllClicked:(NSButton *)sender;
 
-// 🆕 NEW: Methods for date range management
+// Date Range Actions
+- (IBAction)dateRangeSegmentChanged:(NSSegmentedControl *)sender;
+
+// Object Panel Actions
+- (IBAction)toggleObjectsPanel:(NSButton *)sender;
+- (IBAction)toggleObjectsVisibility:(NSButton *)sender;
+
+// Mode Actions
+- (IBAction)toggleStaticMode:(NSButton *)sender;
+- (IBAction)showPreferences:(NSButton *)sender;
+
+#pragma mark - Date Range Management Methods
 - (void)updateDateRangeSliderForTimeframe:(ChartTimeframe)timeframe;
 - (void)dateRangeSliderChanged:(id)sender;
 - (NSInteger)getMinDaysForTimeframe:(ChartTimeframe)timeframe;
@@ -126,7 +150,7 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 - (void)zoomToRange:(NSInteger)startIndex endIndex:(NSInteger)endIndex;
 - (void)synchronizePanels;
 
-// Zoom methods for panels
+// Internal zoom methods (called by IBAction methods)
 - (void)zoomIn:(id)sender;
 - (void)zoomOut:(id)sender;
 - (void)zoomAll:(id)sender;
@@ -140,9 +164,7 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 
 - (void)updateWithHistoricalBars:(NSArray<HistoricalBarModel *> *)bars;
 
-
 - (void)setStaticMode:(BOOL)staticMode;
-- (void)toggleStaticMode:(id)sender;
 - (void)updateStaticModeUI;
 
 #pragma mark - Chart Data Access (for SaveData extension)
@@ -155,9 +177,7 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 - (void)loadDateRangeDefaults;
 - (void)saveDateRangeDefaults;
 
-
 - (void)setupDateRangeSegmentedControl;
-- (void)dateRangeSegmentChanged:(id)sender;
 - (void)updateDateRangeSegmentedForTimeframe:(ChartTimeframe)timeframe;
 - (void)updateCustomSegmentWithDays:(NSInteger)days;
 - (NSString *)formatDaysToAbbreviation:(NSInteger)days;

@@ -2,7 +2,7 @@
 //  ChartWidget.m
 //  TradingApp
 //
-//  Chart widget with multiple coordinated panels
+//  Chart widget with XIB-based UI architecture
 //
 
 #import "ChartWidget.h"
@@ -12,57 +12,43 @@
 #import "ChartWidget+ObjectsUI.h"
 #import "ChartObjectModels.h"
 #import "ChartObjectManagerWindow.h"
-#import "ChartWidget+ObjectsUI.h"
 #import "ChartWidget+SaveData.h"
 #import "Quartz/Quartz.h"
-#import "SharedXCoordinateContext.h"  // ✅ AGGIUNTO: Import necessario nel .m
+#import "SharedXCoordinateContext.h"
 #import "ChartWidget+ImageExport.h"
 #import "chartpatternmanager.h"
 #import "ChartWidget+IndicatorsUI.h"
-#import "DataHub+ChartTemplates.h"  // ✅ NUOVO - necessario per loadAllChartTemplates:
-
+#import "DataHub+ChartTemplates.h"
 
 #pragma mark - Smart Symbol Input Parameters
 
-// Structure per i parametri parsati dal simbolo
 typedef struct {
     NSString *symbol;
-    ChartTimeframe timeframe;
-    NSInteger daysToDownload;       // Sempre in giorni
+    BarTimeframe timeframe;
+    NSInteger daysToDownload;
     BOOL hasTimeframe;
     BOOL hasDaysSpecified;
-    NSDate *startDate;              // Calcolato dal parsing
-    NSDate *endDate;                // Sempre "domani" per includere oggi
+    NSDate *startDate;
+    NSDate *endDate;
 } SmartSymbolParameters;
 
-
-// Define constants locally instead of importing
+// Constants
 static NSString *const kWidgetChainUpdateNotification = @"WidgetChainUpdateNotification";
 static NSString *const kChainUpdateKey = @"update";
 static NSString *const kChainSenderKey = @"sender";
 
-// Import DataHub constants
 extern NSString *const DataHubDataLoadedNotification;
 
-@interface ChartWidget () <NSTextFieldDelegate,ObjectsPanelDelegate,IndicatorsPanelDelegate>
-
-@property (nonatomic, assign) double lastSliderValue;
-
-@property (nonatomic, assign) BOOL isUpdatingSlider;
+@interface ChartWidget ()
 
 // Internal data
 @property (nonatomic, strong) NSArray<HistoricalBarModel *> *chartData;
 
 // Interaction state
-@property (nonatomic, assign) BOOL isInPanMode;
 @property (nonatomic, assign) BOOL isInChartPortionSelectionMode;
 @property (nonatomic, assign) NSPoint dragStartPoint;
-@property (nonatomic, assign) NSPoint currentCrosshairPoint;
-@property (nonatomic, assign) BOOL crosshairVisible;
 
-@property (nonatomic, strong) ChartPreferencesWindow *preferencesWindowController;
-
-// === NUOVE PROPRIETÀ PRIVATE PER PLACEHOLDER ===
+// Placeholder components (created programmatically)
 @property (strong) NSView *placeholderView;
 @property (strong) NSTextField *placeholderLabel;
 
@@ -70,724 +56,342 @@ extern NSString *const DataHubDataLoadedNotification;
 
 @implementation ChartWidget
 
-#pragma mark - BaseWidget Override
+#pragma mark - Initialization
 
 - (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType {
     self = [super initWithType:type panelType:panelType];
     if (self) {
-        
         [self setupChartDefaults];
         [self registerForDataNotifications];
-        
-    
     }
     return self;
 }
 
-- (void)setupContentView {
-    [super setupContentView];
-    NSLog(@"🎯 Starting ChartWidget clean setup...");
+- (void)setupChartDefaults {
+    // Initialize default values
+    _currentTimeframe = ChartTimeframeDaily;
+    _currentDateRangeDays = 180;
+    _isObjectsPanelVisible = NO;
+    _isStaticMode = NO;
+    _chartPanels = [NSMutableArray array];
     
-    // 1. Cleanup iniziale
-    [self removeBaseWidgetPlaceholder];
+    // Initialize viewport
+    _visibleStartIndex = 0;
+    _visibleEndIndex = 100;
     
-    // 2. Crea tutti i controlli in ordine logico
-    [self createTopToolbar];
-    [self createMainContent];
-    [self createBottomToolbar];
+    // Initialize timeframe defaults
+    _defaultDaysFor1Min = 1;
+    _defaultDaysFor5Min = 7;
+    _defaultDaysForHourly = 30;
+    _defaultDaysForDaily = 180;
+    _defaultDaysForWeekly = 365;
+    _defaultDaysForMonthly = 1825;
     
-    // 3. Configura tutto insieme
-    [self configureAllControls];
+    _defaultVisibleFor1Min = 100;
+    _defaultVisibleFor5Min = 100;
+    _defaultVisibleForHourly = 100;
+    _defaultVisibleForDaily = 100;
+    _defaultVisibleForWeekly = 52;
+    _defaultVisibleForMonthly = 60;
     
-    // 4. Layout
-    [self setupConstraints];
+    // Date range defaults
+    _selectedDateRangeSegment = 0;
+    _customDateRangeDays = 180;
+    _customSegmentTitle = @"6M";
     
-    // 5. Carica dati iniziali
+    NSLog(@"📊 ChartWidget defaults initialized");
+}
+
+#pragma mark - XIB Loading and Setup
+
+- (void)awakeFromNib {
+    [super awakeFromNib];
+    
+    // Setup UI components that need programmatic configuration
+    [self setupTimeframeSegmentedControl];
+    [self setupDateRangeSegmentedControl];
+    [self setupPanelComponents];
+    [self setupPlaceholderView];
+    
+    // Initialize data
     [self loadInitialData];
     
-    NSLog(@"✅ ChartWidget clean setup completed!");
+    NSLog(@"✅ ChartWidget XIB setup completed");
 }
 
-
-
-
-#pragma mark - 1. CLEANUP INIZIALE
-
-- (void)removeBaseWidgetPlaceholder {
-    // Remove placeholder that BaseWidget adds
-    for (NSView *subview in self.contentView.subviews) {
-        if ([subview isKindOfClass:[NSTextField class]]) {
-            [subview removeFromSuperview];
-        }
+- (void)setupTimeframeSegmentedControl {
+    if (!self.timeframeSegmented) return;
+    
+    NSArray *timeframeLabels = @[@"1m", @"5m", @"15m", @"1h", @"4h", @"1D", @"1W", @"1M"];
+    
+    for (NSInteger i = 0; i < timeframeLabels.count && i < self.timeframeSegmented.segmentCount; i++) {
+        [self.timeframeSegmented setLabel:timeframeLabels[i] forSegment:i];
+        [self.timeframeSegmented setWidth:30 forSegment:i];
     }
     
-    // Ensure contentView has proper initial size
-    if (NSIsEmptyRect(self.contentView.frame)) {
-        self.contentView.frame = NSMakeRect(0, 0, 800, 400);
+    self.timeframeSegmented.selectedSegment = 5; // Default to 1D
+}
+
+- (void)setupDateRangeSegmentedControl {
+    if (!self.dateRangeSegmented) return;
+    
+    NSArray *dateRangeLabels = @[@"Cus", @"1M", @"3M", @"6M", @"1Y", @"5Y", @"10Y", @"MAX"];
+    
+    for (NSInteger i = 0; i < dateRangeLabels.count && i < self.dateRangeSegmented.segmentCount; i++) {
+        [self.dateRangeSegmented setLabel:dateRangeLabels[i] forSegment:i];
+        [self.dateRangeSegmented setWidth:35 forSegment:i];
     }
     
-    NSLog(@"🧹 Removed BaseWidget placeholder");
+    self.dateRangeSegmented.selectedSegment = 0; // Default to Custom
 }
 
-#pragma mark - 2. TOP TOOLBAR - TUTTI I CONTROLLI IN ORDINE
-
-- (void)createTopToolbar {
-    NSLog(@"🔧 Creating top toolbar controls in order...");
+- (void)setupPanelComponents {
+    // Create objects panel
+    self.objectsPanel = [[ObjectsPanel alloc] init];
+    self.objectsPanel.delegate = self;
+    self.objectsPanel.panelWidth = 180;
     
-    // 1. Objects Panel Toggle [📊]
-    self.objectsPanelToggle = [[NSButton alloc] init];
-    self.objectsPanelToggle.title = @"📊";
-    self.objectsPanelToggle.bezelStyle = NSBezelStyleRounded;
-    self.objectsPanelToggle.state = NSControlStateValueOff;
-    self.objectsPanelToggle.toolTip = @"Toggle Objects Panel";
-    [self.contentView addSubview:self.objectsPanelToggle];
+    // Create indicators panel
+    self.indicatorsPanel = [[IndicatorsPanel alloc] init];
+    self.indicatorsPanel.delegate = self;
+    self.indicatorsPanel.panelWidth = 280;
     
-    // 2. Symbol Text Field
-    self.symbolTextField = [[NSTextField alloc] init];
-    self.symbolTextField.stringValue = @"";
-    self.symbolTextField.placeholderString = @"Symbol";
-    [self.contentView addSubview:self.symbolTextField];
+    // Add panels to their containers
+    if (self.objectsPanelContainer) {
+        [self.objectsPanelContainer addSubview:self.objectsPanel];
+        [self.objectsPanel.topAnchor constraintEqualToAnchor:self.objectsPanelContainer.topAnchor].active = YES;
+        [self.objectsPanel.leadingAnchor constraintEqualToAnchor:self.objectsPanelContainer.leadingAnchor].active = YES;
+        [self.objectsPanel.trailingAnchor constraintEqualToAnchor:self.objectsPanelContainer.trailingAnchor].active = YES;
+        [self.objectsPanel.bottomAnchor constraintEqualToAnchor:self.objectsPanelContainer.bottomAnchor].active = YES;
+    }
     
-    // 3. Static Mode Toggle [📋]
-    self.staticModeToggle = [[NSButton alloc] init];
-    self.staticModeToggle.title = @"📋";
-    self.staticModeToggle.bezelStyle = NSBezelStyleRounded;
-    self.staticModeToggle.state = NSControlStateValueOff;
-    self.staticModeToggle.toolTip = @"Toggle Static Mode (No Data Updates)";
-    self.staticModeToggle.wantsLayer = YES;
-    [self.contentView addSubview:self.staticModeToggle];
+    if (self.indicatorsPanelContainer) {
+        [self.indicatorsPanelContainer addSubview:self.indicatorsPanel];
+        [self.indicatorsPanel.topAnchor constraintEqualToAnchor:self.indicatorsPanelContainer.topAnchor].active = YES;
+        [self.indicatorsPanel.leadingAnchor constraintEqualToAnchor:self.indicatorsPanelContainer.leadingAnchor].active = YES;
+        [self.indicatorsPanel.trailingAnchor constraintEqualToAnchor:self.indicatorsPanelContainer.trailingAnchor].active = YES;
+        [self.indicatorsPanel.bottomAnchor constraintEqualToAnchor:self.indicatorsPanelContainer.bottomAnchor].active = YES;
+    }
     
-    // 4. Objects Visibility Toggle [👁]
-    self.objectsVisibilityToggle = [[NSButton alloc] init];
-    self.objectsVisibilityToggle.title = @"👁";
-    self.objectsVisibilityToggle.bezelStyle = NSBezelStyleRounded;
-    self.objectsVisibilityToggle.state = NSControlStateValueOn;
-    self.objectsVisibilityToggle.toolTip = @"Toggle Objects Visibility";
-    [self.contentView addSubview:self.objectsVisibilityToggle];
+    // Initially remove both side panels from split view
+    if (self.objectsPanelContainer.superview) {
+        [self.mainSplitView removeArrangedSubview:self.objectsPanelContainer];
+        [self.objectsPanelContainer removeFromSuperview];
+    }
     
-    // 5. Timeframe Segmented Control [1m|5m|15m|1h|4h|1D|1W]
-    self.timeframeSegmented = [[NSSegmentedControl alloc] init];
-    self.timeframeSegmented.segmentCount = 8;
-    [self.contentView addSubview:self.timeframeSegmented];
-    
-    // 6. Date Range Segmented Control [Custom|1M|3M|6M|1Y|5Y|10Y|MAX]
-    [self createDateRangeSegmentedControl];
-    
-    // 7. Template Popup [Template▼]
-    self.templatePopup = [[NSPopUpButton alloc] init];
-    [self.contentView addSubview:self.templatePopup];
-    
-    // 8. Preferences Button [⚙️] - CREATO PRIMA di Indicators per dipendenza
-    self.preferencesButton = [[NSButton alloc] init];
-    self.preferencesButton.title = @"⚙️";
-    self.preferencesButton.bezelStyle = NSBezelStyleRounded;
-    self.preferencesButton.toolTip = @"Chart Preferences";
-    [self.contentView addSubview:self.preferencesButton];
-    
-    // 9. Indicators Panel Toggle [📈] - DOPO Preferences per positioning
-    self.indicatorsPanelToggle = [[NSButton alloc] init];
-    self.indicatorsPanelToggle.title = @"📈";
-    self.indicatorsPanelToggle.bezelStyle = NSBezelStyleRounded;
-    self.indicatorsPanelToggle.buttonType = NSButtonTypeMomentaryPushIn;
-    self.indicatorsPanelToggle.toolTip = @"Toggle Indicators Panel";
-    [self.contentView addSubview:self.indicatorsPanelToggle];
-    
-    NSLog(@"✅ Created all 9 top toolbar controls");
+    if (self.indicatorsPanelContainer.superview) {
+        [self.mainSplitView removeArrangedSubview:self.indicatorsPanelContainer];
+        [self.indicatorsPanelContainer removeFromSuperview];
+    }
 }
 
-- (void)createDateRangeSegmentedControl {
-    self.dateRangeSegmented = [[NSSegmentedControl alloc] init];
-    self.dateRangeSegmented.segmentCount = 8;
-    [self.contentView addSubview:self.dateRangeSegmented];
-}
-
-#pragma mark - 3. MAIN CONTENT - PANNELLI CHART
-
-- (void)createMainContent {
-    NSLog(@"🔧 Creating main chart content...");
+- (void)setupPlaceholderView {
+    if (!self.panelsSplitView) return;
     
-    // Setup objects UI (pannello laterale sinistro)
-    [self setupObjectsUI];
-    
-    // Split view principale per i pannelli chart
-    self.panelsSplitView = [[NSSplitView alloc] init];
-    self.panelsSplitView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.panelsSplitView.vertical = NO; // Divisione orizzontale
-    self.panelsSplitView.dividerStyle = NSSplitViewDividerStyleThin;
-    [self.contentView addSubview:self.panelsSplitView];
-    
-    // Setup pannelli di default (placeholder inizialmente)
-    [self createDefaultPanelsPlaceholder];
-    
-    // Setup indicators panel (pannello laterale destro)
-    [self setupIndicatorsPanelComponent];
-    
-    NSLog(@"✅ Created main content areas");
-}
-
-
-- (void)createDefaultPanelsPlaceholder {
-    // Crea placeholder view che sarà sostituita dai pannelli reali
+    // Create placeholder view
     self.placeholderView = [[NSView alloc] init];
     self.placeholderView.translatesAutoresizingMaskIntoConstraints = NO;
     self.placeholderView.wantsLayer = YES;
-    self.placeholderView.layer.backgroundColor = [[NSColor controlBackgroundColor] CGColor];
-
-    self.placeholderLabel = [[NSTextField alloc] init];
-    self.placeholderLabel.stringValue = @"Enter a symbol to load chart data";
-    self.placeholderLabel.bezeled = NO;
-    self.placeholderLabel.drawsBackground = NO;
-    self.placeholderLabel.editable = NO;
-    self.placeholderLabel.selectable = NO;
-    self.placeholderLabel.alignment = NSTextAlignmentCenter;
-    self.placeholderLabel.font = [NSFont boldSystemFontOfSize:18];
-    self.placeholderLabel.textColor = [NSColor secondaryLabelColor];
-    
-    // ✅ FIX: AGGIUNGI QUESTA LINEA MANCANTE!
-    self.placeholderLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    
-    [self.placeholderView addSubview:self.placeholderLabel];
+    self.placeholderView.layer.backgroundColor = [NSColor controlBackgroundColor].CGColor;
     [self.panelsSplitView addSubview:self.placeholderView];
     
-    // ✅ FIX: Constraints corretti - anchors devono essere paired, non con costanti
+    self.placeholderLabel = [[NSTextField alloc] init];
+    self.placeholderLabel.stringValue = @"Enter a symbol to load chart data";
+    self.placeholderLabel.editable = NO;
+    self.placeholderLabel.bordered = NO;
+    self.placeholderLabel.backgroundColor = [NSColor clearColor];
+    self.placeholderLabel.font = [NSFont systemFontOfSize:16];
+    self.placeholderLabel.textColor = [NSColor secondaryLabelColor];
+    self.placeholderLabel.alignment = NSTextAlignmentCenter;
+    self.placeholderLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.placeholderView addSubview:self.placeholderLabel];
+    
     [NSLayoutConstraint activateConstraints:@[
-        // Placeholder view riempie tutto il split view
         [self.placeholderView.topAnchor constraintEqualToAnchor:self.panelsSplitView.topAnchor],
         [self.placeholderView.leadingAnchor constraintEqualToAnchor:self.panelsSplitView.leadingAnchor],
         [self.placeholderView.trailingAnchor constraintEqualToAnchor:self.panelsSplitView.trailingAnchor],
         [self.placeholderView.bottomAnchor constraintEqualToAnchor:self.panelsSplitView.bottomAnchor],
         
-        // Label centrato nel placeholder (ANCHOR to ANCHOR, non constant!)
         [self.placeholderLabel.centerXAnchor constraintEqualToAnchor:self.placeholderView.centerXAnchor],
         [self.placeholderLabel.centerYAnchor constraintEqualToAnchor:self.placeholderView.centerYAnchor]
     ]];
-    
-    NSLog(@"📝 Created placeholder for chart panels - FIXED constraints");
 }
-- (void)setupIndicatorsPanelComponent {
-    // Crea indicators panel (nascosto inizialmente)
-    self.indicatorsPanel = [[IndicatorsPanel alloc] init];
-    self.indicatorsPanel.delegate = self;
-    self.indicatorsPanel.panelWidth = 280;
-    [self.view addSubview:self.indicatorsPanel];
-    
-    NSLog(@"📊 Created indicators panel component");
-}
-
-#pragma mark - 4. BOTTOM TOOLBAR - PAN SLIDER + BOTTONI
-
-- (void)createBottomToolbar {
-    NSLog(@"🔧 Creating bottom toolbar: [Pan Slider] [-] [+] [ALL]...");
-    
-    // Pan Slider (occupa tutto lo spazio disponibile)
-    self.panSlider = [[NSSlider alloc] init];
-    self.panSlider.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.contentView addSubview:self.panSlider];
-    
-    // Zoom Out Button [-]
-    self.zoomOutButton = [[NSButton alloc] init];
-    self.zoomOutButton.title = @"−";
-    self.zoomOutButton.bezelStyle = NSBezelStyleRounded;
-    self.zoomOutButton.toolTip = @"Zoom Out";
-    self.zoomOutButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.contentView addSubview:self.zoomOutButton];
-    
-    // Zoom In Button [+]
-    self.zoomInButton = [[NSButton alloc] init];
-    self.zoomInButton.title = @"+";
-    self.zoomInButton.bezelStyle = NSBezelStyleRounded;
-    self.zoomInButton.toolTip = @"Zoom In";
-    self.zoomInButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.contentView addSubview:self.zoomInButton];
-    
-    // Show All Button [ALL]
-    self.zoomAllButton = [[NSButton alloc] init];
-    self.zoomAllButton.title = @"ALL";
-    self.zoomAllButton.bezelStyle = NSBezelStyleRounded;
-    self.zoomAllButton.toolTip = @"Zoom All Data";
-    self.zoomAllButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.contentView addSubview:self.zoomAllButton];
-    
-    NSLog(@"✅ Created bottom toolbar: slider + 3 buttons");
-}
-
-#pragma mark - 5. CONFIGURAZIONE UNIFICATA
-
-- (void)configureAllControls {
-    NSLog(@"⚙️ Configuring all controls...");
-    
-    [self configureTimeframeSegmented];
-    [self configureDateRangeSegmented];
-    [self configureTemplatePopup];
-    [self configureTargetsAndActions];
-    [self configureDelegates];
-    [self configureInitialValues];
-    
-    NSLog(@"✅ All controls configured");
-}
-
-- (void)configureTimeframeSegmented {
-    // Configura etichette timeframe
-    [self.timeframeSegmented setLabel:@"1m" forSegment:0];
-    [self.timeframeSegmented setLabel:@"5m" forSegment:1];
-    [self.timeframeSegmented setLabel:@"15m" forSegment:2];
-    [self.timeframeSegmented setLabel:@"30m" forSegment:3];
-    [self.timeframeSegmented setLabel:@"1h" forSegment:4];
-    [self.timeframeSegmented setLabel:@"4h" forSegment:5];
-    [self.timeframeSegmented setLabel:@"1D" forSegment:6];
-    [self.timeframeSegmented setLabel:@"1W" forSegment:7];
-    [self.timeframeSegmented setSelectedSegment:6]; // Daily default
-    
-    NSLog(@"📅 Timeframe segmented configured with labels");
-}
-
-- (void)configureDateRangeSegmented {
-    // Configura etichette date range
-    [self.dateRangeSegmented setLabel:@"Custom" forSegment:0];  // Segmento custom
-    [self.dateRangeSegmented setLabel:@"1M" forSegment:1];      // 22 giorni
-    [self.dateRangeSegmented setLabel:@"3M" forSegment:2];      // 65 giorni
-    [self.dateRangeSegmented setLabel:@"6M" forSegment:3];      // 130 giorni
-    [self.dateRangeSegmented setLabel:@"1Y" forSegment:4];      // 250 giorni
-    [self.dateRangeSegmented setLabel:@"5Y" forSegment:5];      // 1250 giorni
-    [self.dateRangeSegmented setLabel:@"10Y" forSegment:6];     // 2500 giorni
-    [self.dateRangeSegmented setLabel:@"MAX" forSegment:7];     // limite API
-    
-    // Style custom segment
-    if (@available(macOS 10.14, *)) {
-        self.dateRangeSegmented.selectedSegmentBezelColor = [NSColor systemBlueColor];
-    }
-    
-    NSLog(@"📊 Date range segmented configured with labels");
-}
-
-- (void)configureTemplatePopup {
-    // Configura template popup
-    [self.templatePopup removeAllItems];
-    [self.templatePopup addItemsWithTitles:@[@"Default", @"Technical", @"Volume Analysis", @"Custom"]];
-    
-    NSLog(@"📋 Template popup configured");
-}
-
-- (void)configureTargetsAndActions {
-    // Toolbar buttons
-    self.objectsPanelToggle.target = self;
-    self.objectsPanelToggle.action = @selector(toggleObjectsPanel:);
-    
-    self.staticModeToggle.target = self;
-    self.staticModeToggle.action = @selector(toggleStaticMode:);
-    
-    self.objectsVisibilityToggle.target = self;
-    self.objectsVisibilityToggle.action = @selector(toggleAllObjectsVisibility:);
-    
-    self.indicatorsPanelToggle.target = self;
-    self.indicatorsPanelToggle.action = @selector(toggleIndicatorsPanel:);
-    
-    self.preferencesButton.target = self;
-    self.preferencesButton.action = @selector(showPreferences:);
-    
-    // Segmented controls
-    self.timeframeSegmented.target = self;
-    self.timeframeSegmented.action = @selector(timeframeChanged:);
-    
-    self.dateRangeSegmented.target = self;
-    self.dateRangeSegmented.action = @selector(dateRangeSegmentedChanged:);
-    
-    // Bottom controls
-    self.panSlider.target = self;
-    self.panSlider.action = @selector(panSliderChanged:);
-    
-    self.zoomOutButton.target = self;
-    self.zoomOutButton.action = @selector(zoomOut:);
-    
-    self.zoomInButton.target = self;
-    self.zoomInButton.action = @selector(zoomIn:);
-    
-    self.zoomAllButton.target = self;
-    self.zoomAllButton.action = @selector(zoomAll:);
-    
-    NSLog(@"🎯 All targets and actions configured");
-}
-
-- (void)configureDelegates {
-    // Symbol text field
-    self.symbolTextField.delegate = self;
-    self.symbolTextField.target = self;
-    self.symbolTextField.action = @selector(symbolChanged:);
-    
-    NSLog(@"👥 All delegates configured");
-}
-
-- (void)configureInitialValues {
-    // Pan slider
-    self.panSlider.minValue = 0;
-    self.panSlider.maxValue = 100;
-    self.panSlider.integerValue = 50;
-    
-    // Button sizes (uniform)
-    for (NSButton *btn in @[self.zoomOutButton, self.zoomInButton]) {
-        [btn.widthAnchor constraintEqualToConstant:30].active = YES;
-        [btn.heightAnchor constraintEqualToConstant:24].active = YES;
-    }
-    
-    [self.zoomAllButton.widthAnchor constraintEqualToConstant:40].active = YES;
-    [self.zoomAllButton.heightAnchor constraintEqualToConstant:24].active = YES;
-    
-    NSLog(@"🔢 Initial values configured");
-}
-
-#pragma mark - 6. CARICAMENTO DATI INIZIALI
 
 - (void)loadInitialData {
-    NSLog(@"📂 Loading initial data...");
-    
-    // Carica preferenze date range
+    // Load date range defaults
     [self loadDateRangeSegmentedDefaults];
     [self updateDateRangeSegmentedForTimeframe:self.currentTimeframe];
     
-    // Setup indicators UI (pannelli e template)
-    [self setupIndicatorsUIComponents];
-    
-    // Setup objects manager
+    // Initialize objects manager
     if (!self.objectsManager) {
         self.objectsManager = [ChartObjectsManager managerForSymbol:self.currentSymbol];
-    }
-    
-    // Initialize chart panels array
-    if (!self.chartPanels) {
-        self.chartPanels = [NSMutableArray array];
-    }
-    
-    NSLog(@"✅ Initial data loaded");
-}
-
-- (void)setupIndicatorsUIComponents {
-    // Setup indicators panel constraints
-    [NSLayoutConstraint activateConstraints:@[
-        [self.indicatorsPanel.topAnchor constraintEqualToAnchor:self.view.topAnchor],
-        [self.indicatorsPanel.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.indicatorsPanel.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
-    ]];
-    
-    // Setup trailing constraint for main content area
-    if (self.panelsSplitView) {
-        self.splitViewTrailingConstraint = [self.panelsSplitView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor];
-        self.splitViewTrailingConstraint.active = YES;
     }
     
     // Load available templates
     [self loadAvailableTemplates];
     [self ensureDefaultTemplateExists];
+    
+    NSLog(@"✅ Initial data loaded");
 }
 
-#pragma mark - CONSTRAINTS ORGANIZZATI PER AREA
+#pragma mark - XIB Actions - Top Toolbar
 
-- (void)setupConstraints {
-    NSLog(@"📏 Setting up all constraints with conflict prevention...");
+- (IBAction)toggleObjectsPanel:(id)sender {
+    NSButton *button = (NSButton *)sender;
+    BOOL shouldShow = (button.state == NSControlStateValueOn);
     
-    // ✅ STEP 1: Imposta dimensioni minime per evitare conflitti
-    [self setMinimumContentViewSize];
-    
-    // ✅ STEP 2: Setup constraints con priorità corrette
-    [self setupTopToolbarConstraintsWithPriority];
-    [self setupMainContentConstraintsWithPriority];
-    [self setupBottomToolbarConstraintsWithPriority];
-    
-    // Set content priorities for proper expansion
-    [self.contentView setContentHuggingPriority:NSLayoutPriorityDefaultLow
-                                forOrientation:NSLayoutConstraintOrientationVertical];
-    [self.contentView setContentCompressionResistancePriority:NSLayoutPriorityRequired
-                                              forOrientation:NSLayoutConstraintOrientationVertical];
-    
-    NSLog(@"✅ All constraints setup completed with conflict prevention");
-}
-
-- (void)setMinimumContentViewSize {
-    // ✅ Imposta dimensioni minime ragionevoli per evitare conflitti
-    CGFloat minWidth = 1000.0;  // Larghezza minima per tutti i controlli
-    CGFloat minHeight = 400.0;  // Altezza minima per toolbar + content + bottom
-    
-    // Imposta frame iniziale se troppo piccolo
-    NSRect currentFrame = self.contentView.frame;
-    if (currentFrame.size.width < minWidth || currentFrame.size.height < minHeight) {
-        NSRect newFrame = NSMakeRect(currentFrame.origin.x, currentFrame.origin.y,
-                                   MAX(currentFrame.size.width, minWidth),
-                                   MAX(currentFrame.size.height, minHeight));
-        self.contentView.frame = newFrame;
-        NSLog(@"📐 Updated contentView frame to: %@", NSStringFromRect(newFrame));
+    if (shouldShow && !self.isObjectsPanelVisible) {
+        // Add objects panel as first item in split view
+        [self.mainSplitView insertArrangedSubview:self.objectsPanelContainer atIndex:0];
+        self.isObjectsPanelVisible = YES;
+    } else if (!shouldShow && self.isObjectsPanelVisible) {
+        // Remove objects panel from split view
+        [self.mainSplitView removeArrangedSubview:self.objectsPanelContainer];
+        [self.objectsPanelContainer removeFromSuperview];
+        self.isObjectsPanelVisible = NO;
     }
     
-    // Aggiungi constraints per dimensioni minime
-    [NSLayoutConstraint activateConstraints:@[
-        [self.contentView.widthAnchor constraintGreaterThanOrEqualToConstant:minWidth],
-        [self.contentView.heightAnchor constraintGreaterThanOrEqualToConstant:minHeight]
-    ]];
-    
-    NSLog(@"📐 Set minimum content view size: %.0f x %.0f", minWidth, minHeight);
+    NSLog(@"🎨 Objects panel toggled: %@", self.isObjectsPanelVisible ? @"VISIBLE" : @"HIDDEN");
 }
 
-
-
-#pragma mark - TOP TOOLBAR CONSTRAINTS CON PRIORITÀ
-
-- (void)setupTopToolbarConstraintsWithPriority {
-    NSLog(@"📏 Setting up top toolbar constraints with priority management...");
+- (IBAction)symbolChanged:(id)sender {
+    NSString *symbol = [[self.symbolTextField.stringValue stringByTrimmingCharactersInSet:
+                        [NSCharacterSet whitespaceAndNewlineCharacterSet]] uppercaseString];
     
-    // Tutti i controlli hanno translatesAutoresizingMaskIntoConstraints = NO
-    NSArray *allTopControls = @[
-        self.objectsPanelToggle,
-        self.symbolTextField,
-        self.staticModeToggle,
-        self.objectsVisibilityToggle,
-        self.timeframeSegmented,
-        self.dateRangeSegmented,
-        self.templatePopup,
-        self.indicatorsPanelToggle,
-        self.preferencesButton
-    ];
+    if (symbol.length == 0) return;
     
-    for (NSView *control in allTopControls) {
-        control.translatesAutoresizingMaskIntoConstraints = NO;
-        
-        // ✅ Imposta content hugging priority più bassa per permettere compressione
-        [control setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
-        [control setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh forOrientation:NSLayoutConstraintOrientationHorizontal];
+    // Parse for smart symbol input
+    if ([symbol containsString:@","]) {
+        [self processSmartSymbolInput:symbol];
+        return;
     }
     
-    // Standard heights for toolbar
-    CGFloat toolbarHeight = 24.0;
-    CGFloat topMargin = 8.0;
-    CGFloat spacing = 4.0; // ✅ Ridotto spacing per evitare overflow
-    
-    // ✅ Constraints con priorità per evitare conflitti
-    NSMutableArray *constraints = [NSMutableArray array];
-    
-    // Objects toggle - primo a sinistra (alta priorità)
-    [constraints addObjectsFromArray:@[
-        [self.objectsPanelToggle.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:spacing],
-        [self.objectsPanelToggle.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:topMargin],
-        [self.objectsPanelToggle.widthAnchor constraintEqualToConstant:28], // ✅ Ridotto da 32
-        [self.objectsPanelToggle.heightAnchor constraintEqualToConstant:toolbarHeight]
-    ]];
-    
-    // Symbol field - dopo objects toggle (alta priorità)
-    [constraints addObjectsFromArray:@[
-        [self.symbolTextField.leadingAnchor constraintEqualToAnchor:self.objectsPanelToggle.trailingAnchor constant:spacing],
-        [self.symbolTextField.centerYAnchor constraintEqualToAnchor:self.objectsPanelToggle.centerYAnchor],
-        [self.symbolTextField.heightAnchor constraintEqualToConstant:toolbarHeight]
-    ]];
-    
-    // Symbol field width - priorità media (può comprimere)
-    NSLayoutConstraint *symbolWidthConstraint = [self.symbolTextField.widthAnchor constraintEqualToConstant:100];
-    symbolWidthConstraint.priority = NSLayoutPriorityDefaultHigh; // ✅ Non required
-    [constraints addObject:symbolWidthConstraint];
-    
-    // Static mode toggle
-    [constraints addObjectsFromArray:@[
-        [self.staticModeToggle.leadingAnchor constraintEqualToAnchor:self.symbolTextField.trailingAnchor constant:spacing],
-        [self.staticModeToggle.centerYAnchor constraintEqualToAnchor:self.objectsPanelToggle.centerYAnchor],
-        [self.staticModeToggle.widthAnchor constraintEqualToConstant:28],
-        [self.staticModeToggle.heightAnchor constraintEqualToConstant:toolbarHeight]
-    ]];
-    
-    // Objects visibility toggle
-    [constraints addObjectsFromArray:@[
-        [self.objectsVisibilityToggle.leadingAnchor constraintEqualToAnchor:self.staticModeToggle.trailingAnchor constant:spacing],
-        [self.objectsVisibilityToggle.centerYAnchor constraintEqualToAnchor:self.objectsPanelToggle.centerYAnchor],
-        [self.objectsVisibilityToggle.widthAnchor constraintEqualToConstant:28],
-        [self.objectsVisibilityToggle.heightAnchor constraintEqualToConstant:toolbarHeight]
-    ]];
-    
-    // Timeframe segmented - priorità media
-    [constraints addObjectsFromArray:@[
-        [self.timeframeSegmented.leadingAnchor constraintEqualToAnchor:self.objectsVisibilityToggle.trailingAnchor constant:spacing],
-        [self.timeframeSegmented.centerYAnchor constraintEqualToAnchor:self.objectsPanelToggle.centerYAnchor],
-        [self.timeframeSegmented.heightAnchor constraintEqualToConstant:toolbarHeight]
-    ]];
-    
-    // Date range segmented - priorità media
-    [constraints addObjectsFromArray:@[
-        [self.dateRangeSegmented.leadingAnchor constraintEqualToAnchor:self.timeframeSegmented.trailingAnchor constant:spacing],
-        [self.dateRangeSegmented.centerYAnchor constraintEqualToAnchor:self.objectsPanelToggle.centerYAnchor],
-        [self.dateRangeSegmented.heightAnchor constraintEqualToConstant:toolbarHeight]
-    ]];
-    
-    // Template popup - priorità media, può comprimere
-    NSLayoutConstraint *templateLeadingConstraint = [self.templatePopup.leadingAnchor constraintEqualToAnchor:self.dateRangeSegmented.trailingAnchor constant:spacing];
-    templateLeadingConstraint.priority = NSLayoutPriorityDefaultHigh;
-    [constraints addObject:templateLeadingConstraint];
-    
-    [constraints addObjectsFromArray:@[
-        [self.templatePopup.centerYAnchor constraintEqualToAnchor:self.objectsPanelToggle.centerYAnchor],
-        [self.templatePopup.heightAnchor constraintEqualToConstant:toolbarHeight]
-    ]];
-    
-    NSLayoutConstraint *templateWidthConstraint = [self.templatePopup.widthAnchor constraintEqualToConstant:100];
-    templateWidthConstraint.priority = NSLayoutPriorityDefaultHigh;
-    [constraints addObject:templateWidthConstraint];
-    
-    // ✅ BOTTONI A DESTRA - priorità alta (sempre visibili)
-    // PREFERENCES BUTTON - penultimo (importante per indicators positioning)
-    [constraints addObjectsFromArray:@[
-        [self.preferencesButton.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-spacing],
-        [self.preferencesButton.centerYAnchor constraintEqualToAnchor:self.objectsPanelToggle.centerYAnchor],
-        [self.preferencesButton.widthAnchor constraintEqualToConstant:28],
-        [self.preferencesButton.heightAnchor constraintEqualToConstant:toolbarHeight]
-    ]];
-    
-    // INDICATORS TOGGLE - prima di preferences (alta priorità)
-    [constraints addObjectsFromArray:@[
-        [self.indicatorsPanelToggle.trailingAnchor constraintEqualToAnchor:self.preferencesButton.leadingAnchor constant:-2],
-        [self.indicatorsPanelToggle.centerYAnchor constraintEqualToAnchor:self.objectsPanelToggle.centerYAnchor],
-        [self.indicatorsPanelToggle.widthAnchor constraintEqualToConstant:28],
-        [self.indicatorsPanelToggle.heightAnchor constraintEqualToConstant:toolbarHeight]
-    ]];
-    
-    // ✅ Attiva tutti i constraints
-    [NSLayoutConstraint activateConstraints:constraints];
-    
-    NSLog(@"✅ Top toolbar constraints: 9 controls positioned with priority management");
+    // Simple symbol change
+    [self loadSymbol:symbol];
 }
 
-#pragma mark - MAIN CONTENT CONSTRAINTS CON PRIORITÀ
-
-- (void)setupMainContentConstraintsWithPriority {
-    NSLog(@"📏 Setting up main content constraints with priority...");
+- (IBAction)toggleStaticMode:(id)sender {
+    NSButton *button = (NSButton *)sender;
+    self.isStaticMode = (button.state == NSControlStateValueOn);
     
-    // Main content area (split view) - prende tutto lo spazio tra toolbar e bottom controls
-    CGFloat topToolbarHeight = 36.0; // ✅ Aumentato per evitare overlap
-    CGFloat bottomToolbarHeight = 40.0; // ✅ Aumentato per evitare overlap
-    CGFloat spacing = 8.0;
-    
-    NSMutableArray *constraints = [NSMutableArray array];
-    
-    // Panels split view - area principale (priorità normale)
-    [constraints addObjectsFromArray:@[
-        [self.panelsSplitView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:topToolbarHeight],
-        [self.panelsSplitView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:spacing],
-        [self.panelsSplitView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-spacing],
-        [self.panelsSplitView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-bottomToolbarHeight]
-    ]];
-    
-    // Placeholder view - riempie tutto il split view inizialmente (bassa priorità)
-    NSLayoutConstraint *placeholderTopConstraint = [self.placeholderView.topAnchor constraintEqualToAnchor:self.panelsSplitView.topAnchor];
-    placeholderTopConstraint.priority = NSLayoutPriorityDefaultHigh;
-    
-    NSLayoutConstraint *placeholderLeadingConstraint = [self.placeholderView.leadingAnchor constraintEqualToAnchor:self.panelsSplitView.leadingAnchor];
-    placeholderLeadingConstraint.priority = NSLayoutPriorityDefaultHigh;
-    
-    NSLayoutConstraint *placeholderTrailingConstraint = [self.placeholderView.trailingAnchor constraintEqualToAnchor:self.panelsSplitView.trailingAnchor];
-    placeholderTrailingConstraint.priority = NSLayoutPriorityDefaultHigh;
-    
-    NSLayoutConstraint *placeholderBottomConstraint = [self.placeholderView.bottomAnchor constraintEqualToAnchor:self.panelsSplitView.bottomAnchor];
-    placeholderBottomConstraint.priority = NSLayoutPriorityDefaultHigh;
-    
-    [constraints addObjectsFromArray:@[
-        placeholderTopConstraint,
-        placeholderLeadingConstraint,
-        placeholderTrailingConstraint,
-        placeholderBottomConstraint
-    ]];
-    
-    [NSLayoutConstraint activateConstraints:constraints];
-    
-    NSLog(@"✅ Main content constraints: split view positioned with priority");
+    NSLog(@"📋 Static mode toggled: %@", self.isStaticMode ? @"ON" : @"OFF");
 }
 
-#pragma mark - BOTTOM TOOLBAR CONSTRAINTS CON PRIORITÀ
-
-- (void)setupBottomToolbarConstraintsWithPriority {
-    NSLog(@"📏 Setting up bottom toolbar with priority management...");
+- (IBAction)toggleObjectsVisibility:(id)sender {
+    NSButton *button = (NSButton *)sender;
+    self.objectsVisible = (button.state == NSControlStateValueOn);
     
-    // All bottom controls are already set to translatesAutoresizingMaskIntoConstraints = NO
-    CGFloat bottomMargin = 6.0; // ✅ Ridotto margine
-    CGFloat buttonSpacing = 2.0; // ✅ Ridotto spacing tra bottoni
-    CGFloat sliderSpacing = 6.0; // ✅ Ridotto spacing slider
-    
-    NSMutableArray *constraints = [NSMutableArray array];
-    
-    // ✅ BOTTONI A DESTRA (priorità alta - sempre visibili)
-    
-    // [ALL] - ultimo bottone a destra
-    [constraints addObjectsFromArray:@[
-        [self.zoomAllButton.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-sliderSpacing],
-        [self.zoomAllButton.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-bottomMargin],
-        [self.zoomAllButton.widthAnchor constraintEqualToConstant:35], // ✅ Ridotto
-        [self.zoomAllButton.heightAnchor constraintEqualToConstant:20]  // ✅ Ridotto
-    ]];
-    
-    // [+] - prima di ALL
-    [constraints addObjectsFromArray:@[
-        [self.zoomInButton.trailingAnchor constraintEqualToAnchor:self.zoomAllButton.leadingAnchor constant:-buttonSpacing],
-        [self.zoomInButton.centerYAnchor constraintEqualToAnchor:self.zoomAllButton.centerYAnchor],
-        [self.zoomInButton.widthAnchor constraintEqualToConstant:25], // ✅ Ridotto
-        [self.zoomInButton.heightAnchor constraintEqualToConstant:20]  // ✅ Ridotto
-    ]];
-    
-    // [-] - prima di +
-    [constraints addObjectsFromArray:@[
-        [self.zoomOutButton.trailingAnchor constraintEqualToAnchor:self.zoomInButton.leadingAnchor constant:-buttonSpacing],
-        [self.zoomOutButton.centerYAnchor constraintEqualToAnchor:self.zoomAllButton.centerYAnchor],
-        [self.zoomOutButton.widthAnchor constraintEqualToConstant:25], // ✅ Ridotto
-        [self.zoomOutButton.heightAnchor constraintEqualToConstant:20]  // ✅ Ridotto
-    ]];
-    
-    // PAN SLIDER - occupa tutto lo spazio rimanente (priorità media)
-    NSLayoutConstraint *sliderLeadingConstraint = [self.panSlider.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:sliderSpacing];
-    sliderLeadingConstraint.priority = NSLayoutPriorityDefaultHigh;
-    
-    NSLayoutConstraint *sliderTrailingConstraint = [self.panSlider.trailingAnchor constraintEqualToAnchor:self.zoomOutButton.leadingAnchor constant:-sliderSpacing];
-    sliderTrailingConstraint.priority = NSLayoutPriorityDefaultHigh;
-    
-    [constraints addObjectsFromArray:@[
-        sliderLeadingConstraint,
-        sliderTrailingConstraint,
-        [self.panSlider.centerYAnchor constraintEqualToAnchor:self.zoomAllButton.centerYAnchor],
-        [self.panSlider.heightAnchor constraintEqualToConstant:20] // ✅ Ridotto
-    ]];
-    
-    [NSLayoutConstraint activateConstraints:constraints];
-    
-    NSLog(@"✅ Bottom toolbar constraints: slider + 3 buttons with priority management");
-}
-
-#pragma mark - SUPPORTO PER PANNELLI DINAMICI
-
-- (void)updateMainContentConstraintsForObjectsPanel:(BOOL)visible {
-    // Aggiorna i vincoli quando il pannello oggetti viene mostrato/nascosto
-    self.splitViewLeadingConstraint.active = NO;
-    
-    if (visible && self.objectsPanel) {
-        // Split view inizia dopo il pannello oggetti
-        self.splitViewLeadingConstraint = [self.panelsSplitView.leadingAnchor
-                                         constraintEqualToAnchor:self.objectsPanel.trailingAnchor constant:8];
-    } else {
-        // Split view attaccato al bordo sinistro
-        self.splitViewLeadingConstraint = [self.panelsSplitView.leadingAnchor
-                                         constraintEqualToAnchor:self.contentView.leadingAnchor constant:8];
+    // Update all chart panels
+    for (ChartPanelView *panel in self.chartPanels) {
+        if (panel.objectRenderer) {
+            panel.objectRenderer.objectsVisible = self.objectsVisible;
+            [panel setNeedsDisplay:YES];
+        }
     }
     
-    self.splitViewLeadingConstraint.active = YES;
-    
-    // Anima il cambiamento
-    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-        context.duration = 0.25;
-        context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-        [self.contentView.animator layoutSubtreeIfNeeded];
-    } completionHandler:nil];
+    NSLog(@"👁 Objects visibility toggled: %@", self.objectsVisible ? @"VISIBLE" : @"HIDDEN");
 }
 
-- (void)updateMainContentConstraintsForIndicatorsPanel:(BOOL)visible {
-    // Aggiorna i vincoli quando il pannello indicatori viene mostrato/nascosto
-    if (self.splitViewTrailingConstraint) {
-        CGFloat trailingConstant = visible ? -self.indicatorsPanel.panelWidth : 0;
-        
-        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-            context.duration = 0.25;
-            context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-            [self.splitViewTrailingConstraint.animator setConstant:trailingConstant];
-        } completionHandler:nil];
+- (IBAction)timeframeChanged:(id)sender {
+    NSInteger selectedSegment = self.timeframeSegmented.selectedSegment;
+    ChartTimeframe timeframes[] = {
+        ChartTimeframe1Min, ChartTimeframe5Min, ChartTimeframe15Min,
+        ChartTimeframe1Hour, ChartTimeframe4Hour, ChartTimeframeDaily,
+        ChartTimeframeWeekly, ChartTimeframeMonthly
+    };
+    
+    if (selectedSegment >= 0 && selectedSegment < 8) {
+        self.currentTimeframe = timeframes[selectedSegment];
+        [self updateDateRangeSegmentedForTimeframe:self.currentTimeframe];
+        [self reloadDataForCurrentSymbol];
     }
 }
+
+- (IBAction)dateRangeSegmentedChanged:(id)sender {
+    NSInteger selectedSegment = self.dateRangeSegmented.selectedSegment;
+    
+    // Update current date range days based on selection
+    NSInteger dayValues[] = {180, 30, 90, 180, 365, 1825, 3650, 7300}; // Custom, 1M, 3M, 6M, 1Y, 5Y, 10Y, MAX
+    
+    if (selectedSegment >= 0 && selectedSegment < 8) {
+        self.selectedDateRangeSegment = selectedSegment;
+        self.currentDateRangeDays = dayValues[selectedSegment];
+        [self reloadDataForCurrentSymbol];
+    }
+}
+
+- (IBAction)templateChanged:(id)sender {
+    NSString *templateName = self.templatePopup.stringValue;
+    if (templateName.length > 0) {
+        [self loadChartTemplate:templateName];
+    }
+}
+
+- (IBAction)toggleIndicatorsPanel:(id)sender {
+    NSButton *button = (NSButton *)sender;
+    BOOL shouldShow = (button.state == NSControlStateValueOn);
+    
+    if (shouldShow && !self.isIndicatorsPanelVisible) {
+        // Add indicators panel as last item in split view
+        [self.mainSplitView addArrangedSubview:self.indicatorsPanelContainer];
+        self.isIndicatorsPanelVisible = YES;
+    } else if (!shouldShow && self.isIndicatorsPanelVisible) {
+        // Remove indicators panel from split view
+        [self.mainSplitView removeArrangedSubview:self.indicatorsPanelContainer];
+        [self.indicatorsPanelContainer removeFromSuperview];
+        self.isIndicatorsPanelVisible = NO;
+    }
+    
+    NSLog(@"📈 Indicators panel toggled: %@", self.isIndicatorsPanelVisible ? @"VISIBLE" : @"HIDDEN");
+}
+
+- (IBAction)showPreferences:(id)sender {
+    if (!self.preferencesWindowController) {
+        self.preferencesWindowController = [[ChartPreferencesWindow alloc] init];
+    }
+    [self.preferencesWindowController showWindow:self];
+}
+
+#pragma mark - XIB Actions - Bottom Toolbar
+
+- (IBAction)panSliderChanged:(id)sender {
+    if (self.isUpdatingSlider) return;
+    
+    double sliderValue = self.panSlider.doubleValue;
+    [self updateViewportFromSlider:sliderValue];
+}
+
+- (IBAction)zoomOut:(id)sender {
+    [self zoomByFactor:1.2]; // Zoom out 20%
+}
+
+- (IBAction)zoomIn:(id)sender {
+    [self zoomByFactor:0.8]; // Zoom in 20%
+}
+
+- (IBAction)zoomAll:(id)sender {
+    [self showAllData];
+}
+
+#pragma mark - Data Loading and Notifications
+
+- (void)registerForDataNotifications {
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(dataLoaded:)
+                                                 name:DataHubDataLoadedNotification
+                                               object:nil];
+}
+
+- (void)dataLoaded:(NSNotification *)notification {
+    NSString *symbol = notification.userInfo[@"symbol"];
+    NSArray<HistoricalBarModel *> *bars = notification.userInfo[@"bars"];
+    
+    if ([symbol isEqualToString:self.currentSymbol] && bars.count > 0) {
+        self.chartData = bars;
+        [self updateChartWithData:bars];
+    }
+}
+
 
 // =============================================================================
 // METODI DI AZIONE PER I NUOVI BOTTONI ZOOM

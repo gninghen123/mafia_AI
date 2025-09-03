@@ -959,7 +959,7 @@
                     
                     // Show the window
                     [chartWindow makeKeyAndOrderFront:self];
-                    [chartWidget resetToInitialView];
+                    // todo controllare !!! [chartWidget resetToInitialView];
                     
                     // Optional: Show brief success indicator
                     [self showBriefSuccessMessage:[NSString stringWithFormat:@"Opened %@ chart",

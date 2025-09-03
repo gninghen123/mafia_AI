@@ -591,6 +591,31 @@ extern NSString *const DataHubDataLoadedNotification;
     NSLog(@"✅ All renderers (objects, alerts, indicators) setup completed");
 }
 
+- (void)setupIndicatorRendererForPanel:(ChartPanelView *)panel {
+    if (!panel) {
+        NSLog(@"⚠️ Cannot setup indicator renderer - panel is nil");
+        return;
+    }
+    
+    // Generate unique key for this panel
+    NSString *panelKey = [NSString stringWithFormat:@"%@_%p", panel.panelType, (void *)panel];
+    
+    // Note: self.indicatorRenderers is managed by ChartWidget+IndicatorsUI
+    // We'll access it through the indicators extension
+    if ([self respondsToSelector:@selector(indicatorRenderers)]) {
+        NSMutableDictionary *renderers = [(ChartWidget *)self indicatorRenderers];
+        
+        ChartIndicatorRenderer *renderer = renderers[panelKey];
+        if (!renderer) {
+            renderer = [[ChartIndicatorRenderer alloc] initWithPanelView:panel];
+            renderers[panelKey] = renderer;
+            NSLog(@"🎨 Created indicator renderer for panel: %@", panel.panelType);
+        } else {
+            NSLog(@"♻️ Reusing existing indicator renderer for panel: %@", panel.panelType);
+        }
+    }
+}
+
 - (void)viewDidAppear {
     [super viewDidAppear];
     
@@ -608,30 +633,26 @@ extern NSString *const DataHubDataLoadedNotification;
 
 
 - (void)setupPanelsFromTemplateSystem {
-    NSLog(@"🎨 Setting up panels from template system...");
+    NSLog(@"🎨 Setting up panels from template system with runtime models...");
     
-    // Prima verifica che esista un template di default
-    [self ensureDefaultTemplateExists];
+    // ✅ Check if indicators extension is available
+    if (![self respondsToSelector:@selector(ensureDefaultTemplateExists)]) {
+        NSLog(@"⚠️ ChartWidget+IndicatorsUI not loaded, falling back to hardcoded panels");
+        [self setupDefaultPanels];
+        return;
+    }
     
-    // Poi carica e applica il template
+    // ✅ Use the indicators extension methods
+    [(ChartWidget *)self ensureDefaultTemplateExists];
     [self loadAndApplyDefaultTemplate];
 }
 
 - (void)loadAndApplyDefaultTemplate {
-    [[DataHub shared] loadAllChartTemplates:^(NSArray<ChartTemplate *> *templates, NSError *error) {
-        if (error) {
-            NSLog(@"❌ Failed to load templates, falling back to default panels: %@", error);
-            // Fallback ai pannelli hardcoded se i template falliscono
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self setupDefaultPanels];
-                [self ensureRenderersAreSetup];
-            });
-            return;
-        }
-        
-        // Trova il template di default
-        ChartTemplate *defaultTemplate = nil;
-        for (ChartTemplate *template in templates) {
+    // ✅ USA LA NUOVA API che ritorna ChartTemplateModel
+    [[DataHub shared] getAllChartTemplates:^(NSArray<ChartTemplateModel *> *templates) {
+        // Find default template
+        ChartTemplateModel *defaultTemplate = nil;
+        for (ChartTemplateModel *template in templates) {
             if (template.isDefault) {
                 defaultTemplate = template;
                 break;
@@ -640,10 +661,18 @@ extern NSString *const DataHubDataLoadedNotification;
         
         dispatch_async(dispatch_get_main_queue(), ^{
             if (defaultTemplate) {
-                NSLog(@"✅ Applying default template: %@", defaultTemplate.templateName);
-                [self applyTemplate:defaultTemplate];
-            }else{
-                [self createDefaultPanels];
+                NSLog(@"✅ Applying default runtime template: %@", defaultTemplate.templateName);
+                
+                // ✅ Check if we have the indicators extension methods
+                if ([self respondsToSelector:@selector(applyTemplate:)]) {
+                    [(ChartWidget *)self applyTemplate:defaultTemplate];
+                } else {
+                    NSLog(@"⚠️ ChartWidget+IndicatorsUI not loaded, falling back to default panels");
+                    [self setupDefaultPanels];
+                }
+            } else {
+                NSLog(@"⚠️ No default template found, creating default panels");
+                [self setupDefaultPanels];
             }
         });
     }];

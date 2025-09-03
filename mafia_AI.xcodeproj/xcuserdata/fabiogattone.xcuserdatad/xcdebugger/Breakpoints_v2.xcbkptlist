@@ -84,5 +84,83 @@
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "6997F2F4-2C4A-4A6C-AC36-553694CC142A"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "UI/Widgets/Chart/ChartWidget.m"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "647"
+            endingLineNumber = "647"
+            landmarkName = "-setupPanelsFromTemplateSystem"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "90CC7386-FA83-4E8A-8253-E073A7AA9010"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "UI/Widgets/Chart/ChartWidget+IndicatorsUI.m"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "150"
+            endingLineNumber = "150"
+            landmarkName = "-ensureDefaultTemplateExists"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "3CB18C94-C348-4A81-9F54-5D07AAC52093"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "UI/Widgets/Chart/ChartWidget.m"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "661"
+            endingLineNumber = "661"
+            landmarkName = "-loadAndApplyDefaultTemplate"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "3CB18C94-C348-4A81-9F54-5D07AAC52093 - e5e5477975879b3f"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "__42-[ChartWidget loadAndApplyDefaultTemplate]_block_invoke"
+                  moduleName = "mafia_AI"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/fabiogattone/Documents/coding/macmafia/mafia_AI/UI/Widgets/Chart/ChartWidget.m"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "662"
+                  endingLineNumber = "662">
+               </Location>
+               <Location
+                  uuid = "3CB18C94-C348-4A81-9F54-5D07AAC52093 - fbc16c457c720789"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "__42-[ChartWidget loadAndApplyDefaultTemplate]_block_invoke_2"
+                  moduleName = "mafia_AI"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/fabiogattone/Documents/coding/macmafia/mafia_AI/UI/Widgets/Chart/ChartWidget.m"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "663"
+                  endingLineNumber = "663">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
    </Breakpoints>
 </Bucket>

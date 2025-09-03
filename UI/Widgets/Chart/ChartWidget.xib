@@ -110,17 +110,12 @@
                             <rect key="frame" x="78" y="0.0" width="1115" height="659"/>
                             <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMinY="YES"/>
                             <subviews>
-                                <customView fixedFrame="YES" id="RCH-sP-6Rb">
-                                    <rect key="frame" x="0.0" y="0.0" width="1115" height="314"/>
-                                    <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
-                                </customView>
                                 <customView fixedFrame="YES" id="PdO-uk-703">
-                                    <rect key="frame" x="0.0" y="324" width="1115" height="335"/>
+                                    <rect key="frame" x="0.0" y="0.0" width="1115" height="659"/>
                                     <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
                                 </customView>
                             </subviews>
                             <holdingPriorities>
-                                <real value="250"/>
                                 <real value="250"/>
                             </holdingPriorities>
                         </splitView>

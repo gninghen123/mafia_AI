@@ -235,25 +235,29 @@
     ChartTemplate *defaultTemplate = [ChartTemplate createWithName:@"Default" context:context];
     defaultTemplate.isDefault = YES;
     
-    // Create Security Panel (66% height)
+    NSLog(@"🏗️ Creating default chart template with Security (80%) and Volume (20%) panels");
+    
+    // ✅ Create Security Panel (80% height)
     ChartPanelTemplate *securityPanel = [ChartPanelTemplate createWithRootIndicatorType:@"SecurityIndicator"
                                                                               parameters:@{}
                                                                                  context:context];
     securityPanel.panelName = @"Security";
-    securityPanel.relativeHeight = 0.66;
+    securityPanel.relativeHeight = 0.80;  // ✅ 80% per Security
     securityPanel.displayOrder = 0;
     [defaultTemplate addPanelsObject:securityPanel];
     
-    // Create Volume Panel (33% height)
+    // ✅ Create Volume Panel (20% height)
     ChartPanelTemplate *volumePanel = [ChartPanelTemplate createWithRootIndicatorType:@"VolumeIndicator"
                                                                             parameters:@{}
                                                                                context:context];
     volumePanel.panelName = @"Volume";
-    volumePanel.relativeHeight = 0.33;
+    volumePanel.relativeHeight = 0.20;  // ✅ 20% per Volume
     volumePanel.displayOrder = 1;
     [defaultTemplate addPanelsObject:volumePanel];
     
-    NSLog(@"✅ Created default chart template with Security and Volume panels");
+    NSLog(@"✅ Created default template: Security (80%) + Volume (20%)");
+    NSLog(@"   Security panel: %@ (%.0f%%)", securityPanel.panelName, securityPanel.relativeHeight * 100);
+    NSLog(@"   Volume panel: %@ (%.0f%%)", volumePanel.panelName, volumePanel.relativeHeight * 100);
     
     return defaultTemplate;
 }

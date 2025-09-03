@@ -623,7 +623,7 @@ extern NSString *const DataHubDataLoadedNotification;
             NSLog(@"❌ Failed to load templates, falling back to default panels: %@", error);
             // Fallback ai pannelli hardcoded se i template falliscono
             dispatch_async(dispatch_get_main_queue(), ^{
-               // [self setupDefaultPanels];
+                [self setupDefaultPanels];
                 [self ensureRenderersAreSetup];
             });
             return;
@@ -642,6 +642,8 @@ extern NSString *const DataHubDataLoadedNotification;
             if (defaultTemplate) {
                 NSLog(@"✅ Applying default template: %@", defaultTemplate.templateName);
                 [self applyTemplate:defaultTemplate];
+            }else{
+                [self createDefaultPanels];
             }
         });
     }];
@@ -935,6 +937,9 @@ extern NSString *const DataHubDataLoadedNotification;
           symbol, (long)self.currentTimeframe, needExtendedHours ? @"YES" : @"NO");
     
     if (!self.isStaticMode) {
+        if (!self.currentChartTemplate) {
+            [self setupPanelsFromTemplateSystem];
+        }
         // 🔧 FIX: Use loadDataWithCurrentSettings instead of barCount
         // This preserves visible range and uses start/end dates
         [self loadDataWithCurrentSettings];

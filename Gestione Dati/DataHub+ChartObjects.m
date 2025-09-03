@@ -15,25 +15,141 @@
 - (NSArray<ChartLayerModel *> *)getChartLayersForSymbol:(NSString *)symbol {
     if (!symbol || symbol.length == 0) return @[];
     
-    Symbol *symbolEntity = [self getSymbolWithName:symbol];
-    if (!symbolEntity) return @[];
-    
-    NSMutableArray<ChartLayerModel *> *layerModels = [NSMutableArray array];
-    if (!symbolEntity.chartLayers) {
-        NSLog(@"WARNING: Symbol exists but chartLayers is nil");
+    // ✅ STEP 1: Controllo del context
+    if (!self.mainContext) {
+        NSLog(@"❌ DataHub mainContext is nil");
         return @[];
     }
-    // Sort layers by orderIndex
-    NSSortDescriptor *orderSort = [NSSortDescriptor sortDescriptorWithKey:@"orderIndex" ascending:YES];
-    NSArray *sortedLayers = [symbolEntity.chartLayers sortedArrayUsingDescriptors:@[orderSort]];
     
-    for (ChartLayer *coreDataLayer in sortedLayers) {
-        ChartLayerModel *layerModel = [self layerModelFromCoreData:coreDataLayer];
-        [layerModels addObject:layerModel];
+    // ✅ STEP 2: Fetch diretto dal Core Data invece di usare cached entity
+    NSFetchRequest *symbolRequest = [NSFetchRequest fetchRequestWithEntityName:@"Symbol"];
+    symbolRequest.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbol.uppercaseString];
+    symbolRequest.fetchLimit = 1;
+    
+    // Include relationships per evitare faulting issues
+    symbolRequest.relationshipKeyPathsForPrefetching = @[@"chartLayers"];
+    
+    NSError *error;
+    NSArray<Symbol *> *results = [self.mainContext executeFetchRequest:symbolRequest error:&error];
+    
+    if (error) {
+        NSLog(@"❌ Error fetching symbol %@: %@", symbol, error.localizedDescription);
+        return @[];
     }
     
-    NSLog(@"📊 DataHub: Loaded %lu chart layers for symbol %@", (unsigned long)layerModels.count, symbol);
+    if (results.count == 0) {
+        NSLog(@"ℹ️  Symbol %@ not found", symbol);
+        return @[];
+    }
+    
+    Symbol *symbolEntity = results.firstObject;
+    
+    // ✅ STEP 3: Controllo che l'oggetto non sia faulted o corrotto
+    if (symbolEntity.isDeleted) {
+        NSLog(@"⚠️ Symbol %@ has been deleted", symbol);
+        return @[];
+    }
+    
+    if (symbolEntity.isFault) {
+        NSLog(@"🔄 Symbol %@ is fault, refreshing...", symbol);
+        [self.mainContext refreshObject:symbolEntity mergeChanges:YES];
+        
+        if (symbolEntity.isFault) {
+            NSLog(@"❌ Could not unfault symbol %@", symbol);
+            return @[];
+        }
+    }
+    
+    // ✅ STEP 4: Fetch diretto dei ChartLayer invece di usare la relazione
+    NSFetchRequest *layersRequest = [NSFetchRequest fetchRequestWithEntityName:@"ChartLayer"];
+    layersRequest.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbolEntity];
+    layersRequest.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"orderIndex" ascending:YES]];
+    
+    NSArray<ChartLayer *> *chartLayers = [self.mainContext executeFetchRequest:layersRequest error:&error];
+    
+    if (error) {
+        NSLog(@"❌ Error fetching chart layers for %@: %@", symbol, error.localizedDescription);
+        return @[];
+    }
+    
+    if (chartLayers.count == 0) {
+        NSLog(@"ℹ️  No chart layers found for symbol %@", symbol);
+        return @[];
+    }
+    
+    // ✅ STEP 5: Converti in layer models con controlli di sicurezza
+    NSMutableArray<ChartLayerModel *> *layerModels = [NSMutableArray array];
+    
+    for (ChartLayer *coreDataLayer in chartLayers) {
+        @try {
+            // Verifica che il layer sia valido
+            if (!coreDataLayer || coreDataLayer.isDeleted) {
+                NSLog(@"⚠️ Skipping invalid/deleted chart layer");
+                continue;
+            }
+            
+            if (coreDataLayer.isFault) {
+                [self.mainContext refreshObject:coreDataLayer mergeChanges:YES];
+                if (coreDataLayer.isFault) {
+                    NSLog(@"⚠️ Could not unfault chart layer, skipping");
+                    continue;
+                }
+            }
+            
+            ChartLayerModel *layerModel = [self layerModelFromCoreData:coreDataLayer];
+            if (layerModel) {
+                [layerModels addObject:layerModel];
+            } else {
+                NSLog(@"⚠️ Could not create layer model from core data layer");
+            }
+            
+        } @catch (NSException *exception) {
+            NSLog(@"❌ Exception processing chart layer: %@", exception.reason);
+            continue;
+        }
+    }
+    
+    NSLog(@"📊 DataHub: Successfully loaded %lu chart layers for symbol %@",
+          (unsigned long)layerModels.count, symbol);
+    
     return [layerModels copy];
+}
+
+- (void)validateChartLayersIntegrity {
+    NSLog(@"🔍 DataHub: Validating chart layers integrity...");
+    
+    NSFetchRequest *request = [NSFetchRequest fetchRequestWithEntityName:@"Symbol"];
+    NSError *error;
+    NSArray<Symbol *> *symbols = [self.mainContext executeFetchRequest:request error:&error];
+    
+    if (error) {
+        NSLog(@"❌ Error fetching symbols for validation: %@", error);
+        return;
+    }
+    
+    for (Symbol *symbol in symbols) {
+        @try {
+            NSSet *chartLayers = symbol.chartLayers;
+            if (chartLayers) {
+                NSLog(@"✅ Symbol %@ has %lu chart layers", symbol.symbol, (unsigned long)chartLayers.count);
+                
+                // Test conversion to array
+                NSArray *layersArray = [chartLayers allObjects];
+                NSLog(@"   - Successfully converted to array: %lu items", (unsigned long)layersArray.count);
+                
+                // Test sorting
+                NSSortDescriptor *sort = [NSSortDescriptor sortDescriptorWithKey:@"orderIndex" ascending:YES];
+                NSArray *sorted = [layersArray sortedArrayUsingDescriptors:@[sort]];
+                NSLog(@"   - Successfully sorted: %lu items", (unsigned long)sorted.count);
+            } else {
+                NSLog(@"ℹ️  Symbol %@ has no chart layers", symbol.symbol);
+            }
+        } @catch (NSException *exception) {
+            NSLog(@"❌ Exception validating symbol %@: %@", symbol.symbol, exception.reason);
+        }
+    }
+    
+    NSLog(@"✅ Chart layers integrity validation completed");
 }
 
 - (ChartLayerModel *)createChartLayerForSymbol:(NSString *)symbol name:(NSString *)name {
@@ -44,7 +160,10 @@
     coreDataLayer.layerID = [[NSUUID UUID] UUIDString];
     coreDataLayer.name = name;
     coreDataLayer.isVisible = YES;
-    coreDataLayer.orderIndex = (int16_t)[symbolEntity.chartLayers count]; // Add at end
+    NSFetchRequest *countRequest = [NSFetchRequest fetchRequestWithEntityName:@"ChartLayer"];
+    countRequest.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbolEntity];
+    NSUInteger existingLayersCount = [self.mainContext countForFetchRequest:countRequest error:nil];
+    coreDataLayer.orderIndex = (int16_t)existingLayersCount;
     coreDataLayer.creationDate = [NSDate date];
     coreDataLayer.symbol = symbolEntity;
     

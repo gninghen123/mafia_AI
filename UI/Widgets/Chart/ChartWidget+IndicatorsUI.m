@@ -234,18 +234,51 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     [self updateIndicatorsPanelToggleState:self.indicatorsPanel.isVisible];
 }
 
+
 - (void)updateIndicatorsPanel {
+    if (!self.indicatorsPanel) {
+        NSLog(@"⚠️ Indicators panel not available for update");
+        return;
+    }
+    
+    // ✅ Load available templates first usando metodo esistente
+    if (self.availableTemplates.count > 0) {
+        [self.indicatorsPanel loadAvailableTemplates:self.availableTemplates];
+    }
+    
+    // ✅ Select current template if available usando metodo esistente
     if (self.currentChartTemplate) {
         [self.indicatorsPanel selectTemplate:self.currentChartTemplate];
     }
+    
+    NSLog(@"🔄 Indicators panel updated with current template: %@",
+          self.currentChartTemplate.templateName ?: @"None");
 }
 
+
 - (void)refreshIndicatorsRendering {
+    if (self.indicatorRenderers.count == 0) {
+        NSLog(@"⚠️ No indicator renderers to refresh");
+        return;
+    }
+    
+    NSLog(@"🎨 Refreshing indicators rendering for %ld panels...", (long)self.indicatorRenderers.count);
+    
+    // ✅ Force refresh all indicator renderers usando solo metodi esistenti
     for (NSString *panelID in self.indicatorRenderers.allKeys) {
         ChartIndicatorRenderer *renderer = self.indicatorRenderers[panelID];
-        [renderer invalidateIndicatorLayers];
+        [renderer invalidateIndicatorLayers]; // ✅ Metodo esistente
+        NSLog(@"♻️ Refreshed rendering for panel: %@", panelID);
     }
+    
+    // ✅ Update all panel views
+    for (ChartPanelView *panel in self.chartPanels) {
+        [panel setNeedsDisplay:YES];
+    }
+    
+    NSLog(@"✅ Indicators rendering refreshed");
 }
+
 
 #pragma mark - Panel Management
 
@@ -457,18 +490,31 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 }
 
 - (void)updateAllPanelsWithCurrentData {
+    NSLog(@"🔄 Updating all panels with current chart data");
+    
     if (!self.currentChartData || self.currentChartData.count == 0) {
-        NSLog(@"⚠️ No chart data available for panels update");
+        NSLog(@"⚠️ No chart data available for panel update");
         return;
     }
     
-    NSLog(@"🔄 Updating all panels with current data...");
+    if (self.chartPanels.count == 0) {
+        NSLog(@"⚠️ No chart panels available for update");
+        return;
+    }
     
-    // Update using existing ChartWidget methods
-    [self synchronizePanels]; // Questo metodo esiste già nel ChartWidget.m
+    // ✅ Update each panel usando il metodo esistente synchronizePanels
+    // Questo metodo già esistente in ChartWidget si occupa di aggiornare tutti i pannelli
+    [self synchronizePanels];
     
-    NSLog(@"✅ All panels updated with current data");
+    // ✅ Calculate and update indicators for all panels
+    [self calculateAllIndicators];
+    
+    // ✅ Refresh all indicator renderers
+    [self refreshIndicatorsRendering];
+    
+    NSLog(@"✅ All panels updated with current data (%ld bars)", (long)self.currentChartData.count);
 }
+
 
 
 - (void)updateIndicatorsWithChartData:(NSArray<HistoricalBarModel *> *)chartData {
@@ -479,15 +525,19 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     
     NSLog(@"🔄 Updating indicators with %ld data points...", (long)chartData.count);
     
-    // ✅ USA SOLO metodi esistenti in ChartIndicatorRenderer
+    // ✅ Calculate all indicators with new data
+    [self calculateAllIndicators];
+    
+    // ✅ Update all indicator renderers usando solo metodi esistenti
     for (NSString *panelID in self.indicatorRenderers.allKeys) {
         ChartIndicatorRenderer *renderer = self.indicatorRenderers[panelID];
-        [renderer invalidateIndicatorLayers]; // Questo metodo esiste già
+        [renderer invalidateIndicatorLayers]; // ✅ Metodo esistente
         NSLog(@"📊 Updated indicators for panel: %@", panelID);
     }
     
     NSLog(@"✅ All indicators updated with new data");
 }
+
 
 #pragma mark - Supporting Methods for applyTemplate
 
@@ -509,33 +559,35 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 }
 
 - (void)setupRenderersForAllPanels {
-    NSLog(@"🎨 Setting up renderers for all panels...");
+    NSLog(@"🎨 Setting up renderers for all panels");
     
+    // Clear existing renderers first
+    for (ChartIndicatorRenderer *renderer in self.indicatorRenderers.allValues) {
+        [renderer cleanup];
+    }
+    [self.indicatorRenderers removeAllObjects];
+    
+    // Create renderers for each panel
     for (ChartPanelView *panel in self.chartPanels) {
-        // ✅ Setup indicator renderer
-        [self setupIndicatorRendererForPanel:panel];
-        
-        // ✅ Setup objects renderer (solo per security panel)
-        if ([panel.panelType isEqualToString:@"security"]) {
-            if (!panel.objectRenderer) {
-                [panel setupObjectsRendererWithManager:self.objectsManager];
-                NSLog(@"🔧 Setup objects renderer for security panel");
-            }
-        }
-        
-        // ✅ Setup alert renderer (solo per security panel)
-        if ([panel.panelType isEqualToString:@"security"]) {
-            if (!panel.alertRenderer) {
-                [panel setupAlertRenderer];
-                NSLog(@"🚨 Setup alert renderer for security panel");
+        if (panel.panelTemplate && panel.panelTemplate.rootIndicatorType) {
+            
+            NSString *rendererKey = [NSString stringWithFormat:@"%@_%@",
+                                   panel.panelTemplate.panelID,
+                                   panel.panelTemplate.rootIndicatorType];
+            
+            // Create indicator renderer for this panel
+            ChartIndicatorRenderer *renderer = [[ChartIndicatorRenderer alloc] initWithPanelView:panel];
+            if (renderer) {
+                self.indicatorRenderers[rendererKey] = renderer;
+                NSLog(@"📊 Created renderer for panel: %@ (%@)", panel.panelType, panel.panelTemplate.rootIndicatorType);
+            } else {
+                NSLog(@"⚠️ Failed to create renderer for panel: %@", panel.panelType);
             }
         }
     }
     
-    self.renderersInitialized = YES;
-    NSLog(@"✅ All renderers setup completed");
+    NSLog(@"✅ Setup completed: %ld renderers created", (long)self.indicatorRenderers.count);
 }
-
 
 #pragma mark - Indicator Management
 
@@ -606,26 +658,57 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 }
 
 - (void)calculateAllIndicators {
-    if (!self.currentChartTemplate || !self.currentChartData) return;
+    if (!self.currentChartTemplate || !self.currentChartData || self.currentChartData.count == 0) {
+        NSLog(@"⚠️ Cannot calculate indicators - missing template or data");
+        return;
+    }
     
-    for (ChartPanelTemplate *panelTemplate in self.currentChartTemplate.panels) {
+    NSLog(@"🔄 Calculating all indicators for template: %@", self.currentChartTemplate.templateName);
+    
+    NSArray<ChartPanelTemplate *> *orderedPanels = [self.currentChartTemplate orderedPanels];
+    for (ChartPanelTemplate *panelTemplate in orderedPanels) {
         [self calculateIndicatorsForPanel:panelTemplate];
     }
+    
+    NSLog(@"✅ All indicators calculated (%ld panels)", (long)orderedPanels.count);
 }
 
+
 - (void)calculateIndicatorsForPanel:(ChartPanelTemplate *)panelTemplate {
-    if (!panelTemplate.rootIndicator || !self.currentChartData) return;
-    
-    // Calculate the entire indicator tree for this panel
-    [panelTemplate.rootIndicator calculateIndicatorTree:self.currentChartData];
-    
-    // Update rendering
-    ChartIndicatorRenderer *renderer = [self getIndicatorRendererForPanel:panelTemplate.panelID];
-    if (renderer) {
-        [renderer renderIndicatorTree:panelTemplate.rootIndicator];
+    if (!panelTemplate) {
+        NSLog(@"⚠️ Cannot calculate indicators - panel template is nil");
+        return;
     }
     
-    NSLog(@"📊 Calculated indicators for panel: %@", panelTemplate.displayName);
+    if (!self.currentChartData || self.currentChartData.count == 0) {
+        NSLog(@"⚠️ Cannot calculate indicators - no chart data available");
+        return;
+    }
+    
+    // ✅ Get root indicator from template
+    TechnicalIndicatorBase *rootIndicator = panelTemplate.rootIndicator;
+    if (!rootIndicator) {
+        NSLog(@"⚠️ Panel has no root indicator to calculate");
+        return;
+    }
+    
+    NSLog(@"📊 Calculating indicators for panel: %@ (%@)",
+          panelTemplate.panelName ?: panelTemplate.panelID,
+          panelTemplate.rootIndicatorType);
+    
+    // ✅ Calculate the entire indicator tree for this panel
+    [rootIndicator calculateIndicatorTree:self.currentChartData];
+    
+    // ✅ Update rendering for this panel
+    ChartIndicatorRenderer *renderer = [self getIndicatorRendererForPanel:panelTemplate.panelID];
+    if (renderer) {
+        [renderer renderIndicatorTree:rootIndicator];
+        NSLog(@"🎨 Updated rendering for panel: %@", panelTemplate.panelID);
+    } else {
+        NSLog(@"⚠️ No renderer found for panel: %@", panelTemplate.panelID);
+    }
+    
+    NSLog(@"✅ Indicators calculated for panel: %@", panelTemplate.panelID);
 }
 
 #pragma mark - Template Actions
@@ -660,6 +743,56 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
         completion(success, error);
     }];
 }
+
+
+- (void)duplicateTemplate:(ChartTemplate *)template {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Duplicate Template";
+    alert.informativeText = @"Enter name for the duplicated template:";
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 300, 24)];
+    input.stringValue = [NSString stringWithFormat:@"%@ Copy", template.templateName];
+    alert.accessoryView = input;
+    
+    [alert addButtonWithTitle:@"Duplicate"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSModalResponse response = [alert runModal];
+    if (response == NSAlertFirstButtonReturn && input.stringValue.length > 0) {
+        
+        // ✅ Create working copy of the template
+        ChartTemplate *duplicatedTemplate = [template createWorkingCopy];
+        duplicatedTemplate.templateID = [[NSUUID UUID] UUIDString]; // New unique ID
+        duplicatedTemplate.templateName = input.stringValue;
+        duplicatedTemplate.isDefault = NO; // Duplicates are never default
+        duplicatedTemplate.createdDate = [NSDate date];
+        duplicatedTemplate.modifiedDate = [NSDate date];
+        
+        // ✅ Save the duplicated template
+        [[DataHub shared] saveChartTemplate:duplicatedTemplate completion:^(BOOL success, NSError *error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (!success) {
+                    [self showErrorAlert:@"Duplication Failed"
+                                 message:[NSString stringWithFormat:@"Could not duplicate template: %@",
+                                         error.localizedDescription]];
+                } else {
+                    NSLog(@"✅ Template duplicated successfully: %@", duplicatedTemplate.templateName);
+                    
+                    // Refresh template list
+                    [self loadAvailableTemplates];
+                    
+                    // Select the new duplicated template
+                    [self.indicatorsPanel selectTemplate:duplicatedTemplate];
+                    
+                    // Show success feedback
+                    [self showTemporaryMessage:[NSString stringWithFormat:@"Template '%@' duplicated!", input.stringValue]];
+                }
+            });
+        }];
+    }
+}
+
+
 
 - (void)duplicateTemplate:(ChartTemplate *)sourceTemplate
                   newName:(NSString *)newName
@@ -701,11 +834,19 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 #pragma mark - Data Flow
 
 
-
 - (ChartIndicatorRenderer *)getIndicatorRendererForPanel:(NSString *)panelID {
-    return self.indicatorRenderers[panelID];
+    if (!panelID) {
+        NSLog(@"⚠️ Cannot get renderer - panel ID is nil");
+        return nil;
+    }
+    
+    ChartIndicatorRenderer *renderer = self.indicatorRenderers[panelID];
+    if (!renderer) {
+        NSLog(@"⚠️ No renderer found for panel: %@", panelID);
+    }
+    
+    return renderer;
 }
-
 
 
 #pragma mark - UI State Management
@@ -761,10 +902,31 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 }
 
 - (void)handleTemplateApplicationError:(NSError *)error template:(ChartTemplate *)template {
-    NSString *title = @"Template Application Error";
-    NSString *message = [NSString stringWithFormat:@"Failed to apply template '%@': %@",
-                        template.templateName, error.localizedDescription];
-    [self showErrorAlert:title message:message];
+    NSLog(@"❌ Template application error for '%@': %@", template.templateName, error.localizedDescription);
+    
+    NSString *errorMessage;
+    if (error.code == 4001) {
+        errorMessage = @"Template validation failed. The template may be corrupted.";
+    } else if (error.code == 4002) {
+        errorMessage = @"Template is missing required panels.";
+    } else if (error.code == 4003) {
+        errorMessage = @"Template contains invalid indicator configurations.";
+    } else {
+        errorMessage = [NSString stringWithFormat:@"Failed to apply template: %@", error.localizedDescription];
+    }
+    
+    [self showErrorAlert:@"Template Application Failed" message:errorMessage];
+    
+    // ✅ Try to fallback to default template
+    [[DataHub shared] getDefaultChartTemplate:^(ChartTemplate *defaultTemplate, NSError *fallbackError) {
+        if (!fallbackError && defaultTemplate) {
+            NSLog(@"🔄 Falling back to default template");
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self applyTemplate:defaultTemplate];
+                [self showTemporaryMessage:@"Reverted to default template"];
+            });
+        }
+    }];
 }
 
 - (void)showErrorAlert:(NSString *)title message:(NSString *)message {
@@ -1006,43 +1168,57 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     }
 }
 
-- (void)duplicateTemplate:(ChartTemplate *)template {
-    NSString *duplicateName = [NSString stringWithFormat:@"%@ Copy", template.templateName];
-    
-    // ✅ USA metodo esistente
-    [[DataHub shared] duplicateChartTemplate:template.templateID
-                                     newName:duplicateName
-                                  completion:^(ChartTemplate *duplicatedTemplate, NSError *error) {
-        if (error) {
-            [self showErrorAlert:@"Duplication Failed"
-                         message:[NSString stringWithFormat:@"Could not duplicate template: %@", error.localizedDescription]];
-        } else {
-            NSLog(@"📋 Template duplicated: %@", duplicatedTemplate.templateName);
-            [self loadAvailableTemplates]; // Refresh list
-            [self showTemporaryMessage:[NSString stringWithFormat:@"Template duplicated: %@", duplicateName]];
-        }
-    }];
-}
 
 - (void)deleteTemplateWithConfirmation:(ChartTemplate *)template {
+    if (template.isDefault) {
+        [self showErrorAlert:@"Cannot Delete" message:@"Default templates cannot be deleted."];
+        return;
+    }
+    
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"Delete Template";
     alert.informativeText = [NSString stringWithFormat:@"Are you sure you want to delete the template '%@'? This action cannot be undone.", template.templateName];
     alert.alertStyle = NSAlertStyleWarning;
+    
     [alert addButtonWithTitle:@"Delete"];
     [alert addButtonWithTitle:@"Cancel"];
     
     NSModalResponse response = [alert runModal];
     if (response == NSAlertFirstButtonReturn) {
-        [self deleteTemplate:template completion:^(BOOL success, NSError *error) {
-            if (!success) {
-                [self showErrorAlert:@"Deletion Failed"
-                             message:[NSString stringWithFormat:@"Could not delete template: %@", error.localizedDescription]];
-            } else {
-                [self showTemporaryMessage:[NSString stringWithFormat:@"Template '%@' deleted", template.templateName]];
-            }
+        
+        // ✅ Delete the template
+        [[DataHub shared] deleteChartTemplate:template completion:^(BOOL success, NSError *error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (!success) {
+                    [self showErrorAlert:@"Deletion Failed"
+                                 message:[NSString stringWithFormat:@"Could not delete template: %@",
+                                         error.localizedDescription]];
+                } else {
+                    NSLog(@"✅ Template deleted successfully: %@", template.templateName);
+                    
+                    // If this was the current template, switch to default
+                    if (self.currentChartTemplate == template ||
+                        [self.currentChartTemplate.templateID isEqualToString:template.templateID]) {
+                        
+                        // Load default template
+                        [[DataHub shared] getDefaultChartTemplate:^(ChartTemplate *defaultTemplate, NSError *error) {
+                            if (!error && defaultTemplate) {
+                                [self applyTemplate:defaultTemplate];
+                            }
+                        }];
+                    }
+                    
+                    // Refresh template list
+                    [self loadAvailableTemplates];
+                    
+                    // Show success feedback
+                    [self showTemporaryMessage:[NSString stringWithFormat:@"Template '%@' deleted", template.templateName]];
+                }
+            });
         }];
     }
 }
+
+
 
 @end

@@ -50,13 +50,10 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 
 #pragma mark - UI Components (Interface Builder - IBOutlet references)
 @property (nonatomic, strong) IBOutlet NSTextField *symbolTextField;
-@property (nonatomic, strong) IBOutlet NSView *objectsPanelContainer;
-@property (nonatomic, strong) IBOutlet NSView *indicatorsPanelContainer;
 @property (nonatomic, strong) IBOutlet NSSegmentedControl *timeframeSegmented;
 @property (nonatomic, strong) IBOutlet NSPopUpButton *templatePopup;
 @property (nonatomic, strong) IBOutlet NSButton *preferencesButton;
 @property (nonatomic, strong) IBOutlet NSSplitView *panelsSplitView;
-@property (nonatomic, strong) IBOutlet NSSplitView *mainSplitView;
 @property (nonatomic, strong) IBOutlet NSSlider *panSlider;
 @property (nonatomic, strong) IBOutlet NSButton *zoomOutButton;
 @property (nonatomic, strong) IBOutlet NSButton *zoomInButton;
@@ -67,6 +64,12 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 @property (nonatomic, strong) IBOutlet NSButton *objectsPanelToggle;
 @property (nonatomic, strong) IBOutlet NSButton *objectsVisibilityToggle;
 @property (nonatomic, strong) IBOutlet NSButton *staticModeToggle;
+
+// Additional UI components from implementation
+@property (nonatomic, strong) IBOutlet NSSplitView *mainSplitView;
+@property (nonatomic, strong) IBOutlet NSView *indicatorsPanelContainer;
+@property (nonatomic, strong) IBOutlet NSView *objectsPanelContainer;
+
 
 // Date Range Control Properties (non-UI)
 @property (nonatomic, assign) NSInteger currentDateRangeDays;
@@ -97,6 +100,15 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 @property (nonatomic, strong) ChartObjectsManager *objectsManager;
 @property (nonatomic, assign) BOOL isObjectsPanelVisible;
 
+
+@property (nonatomic, assign) BOOL isUpdatingSlider;
+@property (nonatomic, assign) double lastSliderValue;
+
+// Additional properties needed by implementation
+@property (nonatomic, strong) ChartPreferencesWindow *preferencesWindowController;
+@property (nonatomic, assign) BOOL objectsVisible;
+@property (nonatomic, assign) BOOL isIndicatorsPanelVisible;
+
 #pragma mark - Data Properties
 @property (nonatomic, strong, readwrite) NSString *currentSymbol;
 @property (nonatomic, assign, readwrite) ChartTimeframe currentTimeframe;
@@ -116,6 +128,7 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 - (IBAction)symbolFieldChanged:(NSTextField *)sender;
 - (IBAction)timeframeChanged:(NSSegmentedControl *)sender;
 - (IBAction)templatePopupChanged:(NSPopUpButton *)sender;
+- (IBAction)templateChanged:(NSPopUpButton *)sender; // Alternative name used in implementation
 
 // Navigation and Zoom Actions
 - (IBAction)panSliderChanged:(NSSlider *)sender;
@@ -125,6 +138,7 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 
 // Date Range Actions
 - (IBAction)dateRangeSegmentChanged:(NSSegmentedControl *)sender;
+- (IBAction)dateRangeSegmentedChanged:(NSSegmentedControl *)sender; // Alternative name used in implementation
 
 // Object Panel Actions
 - (IBAction)toggleObjectsPanel:(NSButton *)sender;
@@ -133,6 +147,15 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 // Mode Actions
 - (IBAction)toggleStaticMode:(NSButton *)sender;
 - (IBAction)showPreferences:(NSButton *)sender;
+
+// Additional actions from implementation
+- (IBAction)toggleIndicatorsPanel:(NSButton *)sender;
+
+#pragma mark - Internal Methods (Called by IBActions and implementation)
+
+// Data loading methods
+- (void)reloadDataForCurrentSymbol;
+- (void)loadChartTemplate:(NSString *)templateName;
 
 #pragma mark - Date Range Management Methods
 - (void)updateDateRangeSliderForTimeframe:(ChartTimeframe)timeframe;

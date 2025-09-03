@@ -68,7 +68,74 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 
+- (void)loadView {
+    NSLog(@"🔧 ChartWidget: Loading XIB...");
+    
+    // Load ChartWidget.xib
+    NSArray *topLevelObjects = nil;
+    BOOL xibLoaded = [[NSBundle mainBundle] loadNibNamed:@"ChartWidget"
+                                                   owner:self
+                                         topLevelObjects:&topLevelObjects];
+    
+    if (!xibLoaded || !topLevelObjects) {
+        NSLog(@"❌ ChartWidget: Failed to load ChartWidget.xib");
+        @throw [NSException exceptionWithName:@"XIBLoadException"
+                                       reason:@"ChartWidget.xib could not be loaded"
+                                     userInfo:nil];
+    }
+    
+    // Find the main view from XIB
+    NSView *mainView = nil;
+    for (id object in topLevelObjects) {
+        if ([object isKindOfClass:[NSView class]]) {
+            mainView = (NSView *)object;
+            break;
+        }
+    }
+    
+    if (!mainView) {
+        NSLog(@"❌ ChartWidget: No NSView found in XIB");
+        @throw [NSException exceptionWithName:@"XIBLoadException"
+                                       reason:@"No NSView found in ChartWidget.xib"
+                                     userInfo:nil];
+    }
+    
+    // Set the XIB view as our main view
+    self.view = mainView;
+    
+    // Configure view properties
+    self.view.wantsLayer = YES;
+    
+    // Set minimum size constraints for chart widget
+   [self.view.widthAnchor constraintGreaterThanOrEqualToConstant:1800].active = YES;
+   [self.view.heightAnchor constraintGreaterThanOrEqualToConstant:1400].active = YES;
+    
+    NSLog(@"✅ ChartWidget: XIB loaded successfully");
+    NSLog(@"   - View frame: %@", NSStringFromRect(self.view.frame));
+    
+    // Verify outlets and setup
+ // [self setupAfterXIBLoad];
+}
 
+- (void)setupAfterXIBLoad {
+    NSLog(@"🔧 ChartWidget: Setting up after XIB load...");
+    
+    // Configure XIB controls
+   // [self configureXIBControls];
+    
+    // Initialize chart components
+   // [self initializeChartComponents];
+    
+    // Setup data handling
+    [self setupChartDefaults];
+    [self registerForDataNotifications];
+    
+    // Load saved preferences
+    [self loadDateRangeDefaults];
+    [self loadDateRangeSegmentedDefaults];
+    
+    NSLog(@"✅ ChartWidget: Setup completed");
+}
 #pragma mark - XIB Loading and Setup
 
 - (void)awakeFromNib {
@@ -293,7 +360,7 @@ extern NSString *const DataHubDataLoadedNotification;
     
     if ([symbol isEqualToString:self.currentSymbol] && bars.count > 0) {
         self.chartData = bars;
-        [self updateChartWithData:bars];
+        [self updateWithHistoricalBars:bars];
     }
 }
 
@@ -533,53 +600,13 @@ extern NSString *const DataHubDataLoadedNotification;
     
     // Setup renderers se non ancora fatto
     [self ensureRenderersAreSetup];
-    [self debugConstraintsState];
     
     NSLog(@"🎯 ChartWidget appeared - panels already created");
 }
 
 #pragma mark - DEBUG CONSTRAINTS
 
-- (void)debugConstraintsState {
-    NSLog(@"🔍 DEBUG: Constraints State");
-    NSLog(@"   contentView frame: %@", NSStringFromRect(self.contentView.frame));
-    NSLog(@"   panelsSplitView frame: %@", NSStringFromRect(self.panelsSplitView.frame));
-    NSLog(@"   panSlider frame: %@", NSStringFromRect(self.panSlider.frame));
-    
-    // Verifica che tutti i controlli siano posizionati correttamente
-    NSArray *topControls = @[
-        @{@"name": @"objectsToggle", @"view": self.objectsPanelToggle},
-        @{@"name": @"symbolField", @"view": self.symbolTextField},
-        @{@"name": @"staticToggle", @"view": self.staticModeToggle},
-        @{@"name": @"visibilityToggle", @"view": self.objectsVisibilityToggle},
-        @{@"name": @"timeframe", @"view": self.timeframeSegmented},
-        @{@"name": @"dateRange", @"view": self.dateRangeSegmented},
-        @{@"name": @"template", @"view": self.templatePopup},
-        @{@"name": @"indicators", @"view": self.indicatorsPanelToggle},
-        @{@"name": @"preferences", @"view": self.preferencesButton}
-    ];
-    
-    for (NSDictionary *control in topControls) {
-        NSView *view = control[@"view"];
-        NSRect frame = view ? view.frame : NSZeroRect;
-        BOOL hasSize = !NSIsEmptyRect(frame);
-        NSLog(@"   %@: %@ (%@)", control[@"name"], NSStringFromRect(frame), hasSize ? @"OK" : @"MISSING");
-    }
-    
-    NSArray *bottomControls = @[
-        @{@"name": @"panSlider", @"view": self.panSlider},
-        @{@"name": @"zoomOut", @"view": self.zoomOutButton},
-        @{@"name": @"zoomIn", @"view": self.zoomInButton},
-        @{@"name": @"showAll", @"view": self.zoomAllButton}
-    ];
-    
-    for (NSDictionary *control in bottomControls) {
-        NSView *view = control[@"view"];
-        NSRect frame = view ? view.frame : NSZeroRect;
-        BOOL hasSize = !NSIsEmptyRect(frame);
-        NSLog(@"   %@: %@ (%@)", control[@"name"], NSStringFromRect(frame), hasSize ? @"OK" : @"MISSING");
-    }
-}
+
 - (void)setupPanelsFromTemplateSystem {
     NSLog(@"🎨 Setting up panels from template system...");
     

@@ -67,40 +67,7 @@ extern NSString *const DataHubDataLoadedNotification;
     return self;
 }
 
-- (void)setupChartDefaults {
-    // Initialize default values
-    _currentTimeframe = ChartTimeframeDaily;
-    _currentDateRangeDays = 180;
-    _isObjectsPanelVisible = NO;
-    _isStaticMode = NO;
-    _chartPanels = [NSMutableArray array];
-    
-    // Initialize viewport
-    _visibleStartIndex = 0;
-    _visibleEndIndex = 100;
-    
-    // Initialize timeframe defaults
-    _defaultDaysFor1Min = 1;
-    _defaultDaysFor5Min = 7;
-    _defaultDaysForHourly = 30;
-    _defaultDaysForDaily = 180;
-    _defaultDaysForWeekly = 365;
-    _defaultDaysForMonthly = 1825;
-    
-    _defaultVisibleFor1Min = 100;
-    _defaultVisibleFor5Min = 100;
-    _defaultVisibleForHourly = 100;
-    _defaultVisibleForDaily = 100;
-    _defaultVisibleForWeekly = 52;
-    _defaultVisibleForMonthly = 60;
-    
-    // Date range defaults
-    _selectedDateRangeSegment = 0;
-    _customDateRangeDays = 180;
-    _customSegmentTitle = @"6M";
-    
-    NSLog(@"📊 ChartWidget defaults initialized");
-}
+
 
 #pragma mark - XIB Loading and Setup
 
@@ -254,28 +221,9 @@ extern NSString *const DataHubDataLoadedNotification;
     NSLog(@"🎨 Objects panel toggled: %@", self.isObjectsPanelVisible ? @"VISIBLE" : @"HIDDEN");
 }
 
-- (IBAction)symbolChanged:(id)sender {
-    NSString *symbol = [[self.symbolTextField.stringValue stringByTrimmingCharactersInSet:
-                        [NSCharacterSet whitespaceAndNewlineCharacterSet]] uppercaseString];
-    
-    if (symbol.length == 0) return;
-    
-    // Parse for smart symbol input
-    if ([symbol containsString:@","]) {
-        [self processSmartSymbolInput:symbol];
-        return;
-    }
-    
-    // Simple symbol change
-    [self loadSymbol:symbol];
-}
 
-- (IBAction)toggleStaticMode:(id)sender {
-    NSButton *button = (NSButton *)sender;
-    self.isStaticMode = (button.state == NSControlStateValueOn);
-    
-    NSLog(@"📋 Static mode toggled: %@", self.isStaticMode ? @"ON" : @"OFF");
-}
+
+
 
 - (IBAction)toggleObjectsVisibility:(id)sender {
     NSButton *button = (NSButton *)sender;
@@ -292,20 +240,7 @@ extern NSString *const DataHubDataLoadedNotification;
     NSLog(@"👁 Objects visibility toggled: %@", self.objectsVisible ? @"VISIBLE" : @"HIDDEN");
 }
 
-- (IBAction)timeframeChanged:(id)sender {
-    NSInteger selectedSegment = self.timeframeSegmented.selectedSegment;
-    ChartTimeframe timeframes[] = {
-        ChartTimeframe1Min, ChartTimeframe5Min, ChartTimeframe15Min,
-        ChartTimeframe1Hour, ChartTimeframe4Hour, ChartTimeframeDaily,
-        ChartTimeframeWeekly, ChartTimeframeMonthly
-    };
-    
-    if (selectedSegment >= 0 && selectedSegment < 8) {
-        self.currentTimeframe = timeframes[selectedSegment];
-        [self updateDateRangeSegmentedForTimeframe:self.currentTimeframe];
-        [self reloadDataForCurrentSymbol];
-    }
-}
+
 
 - (IBAction)dateRangeSegmentedChanged:(id)sender {
     NSInteger selectedSegment = self.dateRangeSegmented.selectedSegment;
@@ -345,42 +280,12 @@ extern NSString *const DataHubDataLoadedNotification;
     NSLog(@"📈 Indicators panel toggled: %@", self.isIndicatorsPanelVisible ? @"VISIBLE" : @"HIDDEN");
 }
 
-- (IBAction)showPreferences:(id)sender {
-    if (!self.preferencesWindowController) {
-        self.preferencesWindowController = [[ChartPreferencesWindow alloc] init];
-    }
-    [self.preferencesWindowController showWindow:self];
-}
 
-#pragma mark - XIB Actions - Bottom Toolbar
 
-- (IBAction)panSliderChanged:(id)sender {
-    if (self.isUpdatingSlider) return;
-    
-    double sliderValue = self.panSlider.doubleValue;
-    [self updateViewportFromSlider:sliderValue];
-}
 
-- (IBAction)zoomOut:(id)sender {
-    [self zoomByFactor:1.2]; // Zoom out 20%
-}
-
-- (IBAction)zoomIn:(id)sender {
-    [self zoomByFactor:0.8]; // Zoom in 20%
-}
-
-- (IBAction)zoomAll:(id)sender {
-    [self showAllData];
-}
 
 #pragma mark - Data Loading and Notifications
 
-- (void)registerForDataNotifications {
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(dataLoaded:)
-                                                 name:DataHubDataLoadedNotification
-                                               object:nil];
-}
 
 - (void)dataLoaded:(NSNotification *)notification {
     NSString *symbol = notification.userInfo[@"symbol"];
@@ -1375,17 +1280,6 @@ extern NSString *const DataHubDataLoadedNotification;
     [self toggleAllObjectsVisibility:self.objectsVisibilityToggle];
 }
 
-- (void)toggleObjectsPanel:(id)sender {
-    self.isObjectsPanelVisible = !self.isObjectsPanelVisible;
-    
-    self.objectsPanel.hidden = !self.isObjectsPanelVisible;
-    self.objectsPanelToggle.state = self.isObjectsPanelVisible ? NSControlStateValueOn : NSControlStateValueOff;
-    
-    // Update the split view constraint
-    [self updateSplitViewConstraintForObjectsPanel:self.isObjectsPanelVisible];
-    
-    NSLog(@"📊 Objects panel %@", self.isObjectsPanelVisible ? @"shown" : @"hidden");
-}
 
 #pragma mark - Alert Management
 

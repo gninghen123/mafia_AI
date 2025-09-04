@@ -10,6 +10,9 @@
 #import "DataHub+ChartTemplates.h"
 #import "IndicatorRegistry.h"
 #import "Quartz/Quartz.h"
+#import "TechnicalIndicatorBase+Hierarchy.h"  // ✅ AGGIUNTO: Questo risolve gli errori
+#import "TechnicalIndicatorBase.h"
+
 
 // Outline view item types
 static NSString *const kAddPanelItem = @"ADD_PANEL";
@@ -96,6 +99,8 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     self.templateComboBox.delegate = self;
     self.templateComboBox.hasVerticalScroller = YES;
     self.templateComboBox.numberOfVisibleItems = 10;
+    self.templateComboBox.usesDataSource = YES;
+    
     
     // Template settings button
     self.templateSettingsButton = [[NSButton alloc] init];
@@ -279,23 +284,39 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     self.originalTemplate = template;
     self.currentTemplate = [template createWorkingCopy];
     
-    // Update combo box selection - find template by ID
+    // ✅ CORREZIONE: Update combo box selection - find template by ID
     NSInteger index = NSNotFound;
+    
+    // ✅ AGGIUNTO: Verifica che ci siano templates disponibili
+    if (self.availableTemplates.count == 0) {
+        NSLog(@"⚠️ IndicatorsPanel: No available templates, cannot update combo box selection");
+        [self refreshTemplateDisplay];
+        [self updateButtonStates];
+        return;
+    }
+    
+    // Cerca il template per ID
     for (NSUInteger i = 0; i < self.availableTemplates.count; i++) {
-        ChartTemplateModel *availableTemplate = self.availableTemplates[i];
-        if ([availableTemplate.templateID isEqualToString:template.templateID]) {
+        ChartTemplateModel *tempTemplate = self.availableTemplates[i];
+        if ([tempTemplate.templateID isEqualToString:template.templateID]) {
             index = i;
             break;
         }
     }
     
-    // ✅ CORREZIONE: Solo seleziona se l'indice è valido
-    if (index != NSNotFound && index < (NSInteger)self.availableTemplates.count) {
+    // ✅ CORREZIONE CRITICA: Solo seleziona se l'indice è valido E l'array non è vuoto
+    if (index != NSNotFound &&
+        index >= 0 &&
+        index < (NSInteger)self.availableTemplates.count &&
+        self.availableTemplates.count > 0) {
+        
         [self.templateComboBox selectItemAtIndex:index];
-        NSLog(@"✅ IndicatorsPanel: Selected combo box item at index %ld", (long)index);
+        
     } else {
-        NSLog(@"⚠️ IndicatorsPanel: Template not found in available templates, clearing selection");
-        [self.templateComboBox selectItemAtIndex:-1];  // Clear selection
+   
+        
+        // ✅ SAFE FALLBACK: Non selezionare niente invece di crashare
+        [self.templateComboBox selectItemAtIndex:-1];  // Clear selection safely
     }
     
     [self refreshTemplateDisplay];
@@ -1135,24 +1156,8 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
 #pragma mark - Window Management
 
 - (NSWindow *)window {
-    NSView *view = self;
-    while (view && ![view isKindOfClass:[NSWindow class]]) {
-        view = view.superview;
-        if ([view isKindOfClass:[NSWindow class]]) {
-            return (NSWindow *)view;
-        }
-    }
-    
-    // If we can't find window through superview hierarchy, try through window property
-    NSView *currentView = self;
-    while (currentView) {
-        if (currentView.window) {
-            return currentView.window;
-        }
-        currentView = currentView.superview;
-    }
-    
-    return nil;
+    // La classe NSView ha già una proprietà window - usala direttamente
+    return [super window];
 }
 
 #pragma mark - Debugging & Logging

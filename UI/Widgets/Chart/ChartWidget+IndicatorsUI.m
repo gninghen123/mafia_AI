@@ -250,32 +250,59 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 }
 
 // ✅ AGGIORNATO per ChartTemplateModel
+// Updated: Use Auto Layout constraints for relative heights instead of manual frames
 - (void)redistributePanelHeights:(ChartTemplateModel *)template {
-    [self.panelsSplitView arrangedSubviews];
-    /*
-    NSArray<ChartPanelTemplateModel *> *orderedPanels = [template orderedPanels];
-    
-    if (orderedPanels.count != self.chartPanels.count) {
-        NSLog(@"⚠️ Panel count mismatch during height redistribution (%ld vs %ld)",
-              (long)orderedPanels.count, (long)self.chartPanels.count);
+    if (!template || !self.panelsSplitView) {
+        NSLog(@"❌ Cannot redistribute heights - missing template or split view");
         return;
     }
-    
-    NSLog(@"📏 Redistributing panel heights from runtime template...");
-    
-    // ✅ Set heights based on runtime model relative heights
+
+    NSArray<ChartPanelTemplateModel *> *orderedPanels = [template orderedPanels];
+    NSArray<NSView *> *splitSubviews = self.panelsSplitView.arrangedSubviews;
+
+    if (orderedPanels.count != splitSubviews.count) {
+        NSLog(@"⚠️ Panel count mismatch during height redistribution (%ld template vs %ld views)",
+              (long)orderedPanels.count, (long)splitSubviews.count);
+        return;
+    }
+
+    if (orderedPanels.count <= 1) {
+        NSLog(@"📏 Single panel - no dividers to adjust");
+        return;
+    }
+
+    NSLog(@"📏 Redistributing panel heights with Auto Layout constraints...");
+
+    // Remove any existing height constraints
+    for (NSView *panelView in splitSubviews) {
+        NSMutableArray *toRemove = [NSMutableArray array];
+        for (NSLayoutConstraint *constraint in panelView.constraints) {
+            if (constraint.firstAttribute == NSLayoutAttributeHeight) {
+                [toRemove addObject:constraint];
+            }
+        }
+        [panelView removeConstraints:toRemove];
+    }
+
+    // Set new height constraints based on relativeHeight
     for (NSUInteger i = 0; i < orderedPanels.count; i++) {
         ChartPanelTemplateModel *panelTemplate = orderedPanels[i];
-        
-        if (i < self.chartPanels.count) {
-            // For NSplitView, we need to handle height distribution differently
-            // This is a simplified approach - proper implementation would use NSplitView delegate methods
-            NSLog(@"📐 Panel %ld height: %.0f%%", (long)i, panelTemplate.relativeHeight * 100);
-        }
+        NSView *panelView = splitSubviews[i];
+
+        NSLayoutConstraint *heightConstraint =
+            [panelView.heightAnchor constraintEqualToAnchor:self.panelsSplitView.heightAnchor
+                                                 multiplier:panelTemplate.relativeHeight];
+        heightConstraint.active = YES;
+
+        NSLog(@"📐 Panel %lu (%@): set height constraint to %.0f%% of split view",
+              (unsigned long)i, [panelTemplate displayName], panelTemplate.relativeHeight * 100);
     }
-    
-    NSLog(@"✅ Panel heights redistributed");*/
+
+    [self.panelsSplitView layoutSubtreeIfNeeded];
+
+    NSLog(@"✅ Panel heights redistributed with constraints successfully");
 }
+
 
 #pragma mark - IndicatorsPanelDelegate - AGGIORNATO per runtime models
 

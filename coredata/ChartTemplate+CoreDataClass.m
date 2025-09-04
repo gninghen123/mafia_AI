@@ -132,13 +132,42 @@
     }
 }
 
+// Fix per ChartTemplate+CoreDataClass.m - metodo willSave
+
 - (void)willSave {
     [super willSave];
     
-    // Always update modification date when saving
+    // ✅ CORREZIONE: Solo aggiorna modifiedDate se ci sono altri cambiamenti oltre a modifiedDate stesso
     if (self.hasChanges && !self.isDeleted) {
-        self.modifiedDate = [NSDate date];
+        // Controlla se ci sono cambiamenti oltre a modifiedDate
+        NSArray *changedKeys = [[self changedValues] allKeys];  // Questo è un NSArray
+        
+        // Se gli unici cambiamenti sono su modifiedDate, NON aggiornare di nuovo
+        // per evitare loop infinito
+        if (changedKeys.count == 1 && [changedKeys.firstObject isEqualToString:@"modifiedDate"]) {
+            NSLog(@"⏭️ ChartTemplate: Skipping modifiedDate update to avoid infinite loop");
+            return;
+        }
+        
+        // Ci sono altri cambiamenti oltre a modifiedDate, quindi è sicuro aggiornarlo
+        NSDate *now = [NSDate date];
+        
+        // Controlla se modifiedDate è già uguale a "now" (per evitare micro-loop)
+        if (!self.modifiedDate || [self.modifiedDate timeIntervalSinceDate:now] < -1.0) {
+            self.modifiedDate = now;
+            NSLog(@"📝 ChartTemplate: Updated modifiedDate for template '%@'", self.templateName);
+        }
     }
+}
+
+// ✅ ALTERNATIVA PIÙ SICURA: Disabilitare completamente l'auto-update di modifiedDate
+- (void)willSave_SAFE_VERSION {
+    [super willSave];
+    
+    // NON aggiornare automaticamente modifiedDate in willSave
+    // Lasciamo che sia il codice application-level a gestire modifiedDate
+    // Questo previene loop infiniti
+    NSLog(@"💾 ChartTemplate: willSave called for template '%@' (no auto-update of modifiedDate)", self.templateName);
 }
 
 #pragma mark - Description

@@ -1,45 +1,33 @@
 //
-// IndicatorsPanel.h
+// IndicatorsPanel.h - UPDATED for Runtime Models
 // TradingApp
 //
 // Side panel for chart template and indicators management
+// ARCHITETTURA: Usa ChartTemplateModel (runtime models) invece di Core Data
 //
 
 #import <Cocoa/Cocoa.h>
-#import "ChartTemplate+CoreDataClass.h"
-#import "ChartPanelTemplate+CoreDataClass.h"
+#import "ChartTemplateModels.h"  // ✅ AGGIORNATO: Runtime models invece di Core Data
 #import "TechnicalIndicatorBase.h"
-#import "TechnicalIndicatorBase+Hierarchy.h"
 
 NS_ASSUME_NONNULL_BEGIN
+
+@class IndicatorsPanel;
+
+#pragma mark - Delegate Protocol - AGGIORNATO per runtime models
 
 @protocol IndicatorsPanelDelegate <NSObject>
 
 @required
-/// Called when user selects a different template
+/// Called when user selects a template
 /// @param panel The indicators panel instance
-/// @param template The selected template
-- (void)indicatorsPanel:(id)panel didSelectTemplate:(ChartTemplate *)template;
+/// @param template ChartTemplateModel (runtime model) that was selected
+- (void)indicatorsPanel:(id)panel didSelectTemplate:(ChartTemplateModel *)template;  // ✅ AGGIORNATO
 
-/// Called when user requests to apply current template changes
+/// Called when user requests to apply the selected template
 /// @param panel The indicators panel instance
-/// @param template The template to apply
-- (void)indicatorsPanel:(id)panel didRequestApplyTemplate:(ChartTemplate *)template;
-
-/// Called when user requests to add a new indicator
-/// @param panel The indicators panel instance
-/// @param indicatorType The type of indicator to add
-/// @param targetPanel The panel to add indicator to (or nil for new panel)
-/// @param parentIndicator The parent indicator (or nil for root level)
-- (void)indicatorsPanel:(id)panel
-     didRequestAddIndicator:(NSString *)indicatorType
-               toPanel:(ChartPanelTemplate * _Nullable)targetPanel
-          parentIndicator:(TechnicalIndicatorBase * _Nullable)parentIndicator;
-
-/// Called when user requests to remove an indicator
-/// @param panel The indicators panel instance
-/// @param indicator The indicator to remove
-- (void)indicatorsPanel:(id)panel didRequestRemoveIndicator:(TechnicalIndicatorBase *)indicator;
+/// @param template ChartTemplateModel (runtime model) to apply
+- (void)indicatorsPanel:(id)panel didRequestApplyTemplate:(ChartTemplateModel *)template;  // ✅ AGGIORNATO
 
 /// Called when user requests to configure an indicator
 /// @param panel The indicators panel instance
@@ -60,8 +48,8 @@ NS_ASSUME_NONNULL_BEGIN
 /// Called when user requests template management actions
 /// @param panel The indicators panel instance
 /// @param action The action type ("duplicate", "rename", "delete", "export")
-/// @param template The target template
-- (void)indicatorsPanel:(id)panel didRequestTemplateAction:(NSString *)action forTemplate:(ChartTemplate *)template;
+/// @param template ChartTemplateModel (runtime model) target template
+- (void)indicatorsPanel:(id)panel didRequestTemplateAction:(NSString *)action forTemplate:(ChartTemplateModel *)template;  // ✅ AGGIORNATO
 
 @end
 
@@ -82,10 +70,10 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, readonly) NSButton *resetButton;
 @property (nonatomic, strong, readonly) NSButton *saveAsButton;
 
-#pragma mark - Data Management
-@property (nonatomic, strong) NSArray<ChartTemplate *> *availableTemplates;
-@property (nonatomic, strong, nullable) ChartTemplate *currentTemplate;    // Working copy
-@property (nonatomic, strong, nullable) ChartTemplate *originalTemplate;   // Original reference
+#pragma mark - Data Management - AGGIORNATO per runtime models
+@property (nonatomic, strong) NSArray<ChartTemplateModel *> *availableTemplates;  // ✅ AGGIORNATO
+@property (nonatomic, strong, nullable) ChartTemplateModel *currentTemplate;     // ✅ AGGIORNATO: Working copy
+@property (nonatomic, strong, nullable) ChartTemplateModel *originalTemplate;    // ✅ AGGIORNATO: Original reference
 
 #pragma mark - Animation
 @property (nonatomic, strong) NSLayoutConstraint *widthConstraint;
@@ -104,13 +92,13 @@ NS_ASSUME_NONNULL_BEGIN
 /// @param animated Whether to animate the transition
 - (void)hideAnimated:(BOOL)animated;
 
-/// Load and display available templates
-/// @param templates Array of available templates
-- (void)loadAvailableTemplates:(NSArray<ChartTemplate *> *)templates;
+/// Load and display available templates - AGGIORNATO per runtime models
+/// @param templates Array of ChartTemplateModel (runtime models)
+- (void)loadAvailableTemplates:(NSArray<ChartTemplateModel *> *)templates;  // ✅ AGGIORNATO
 
-/// Select and display specific template
-/// @param template Template to select and display
-- (void)selectTemplate:(ChartTemplate *)template;
+/// Select and display specific template - AGGIORNATO per runtime models
+/// @param template ChartTemplateModel (runtime model) to select and display
+- (void)selectTemplate:(ChartTemplateModel *)template;  // ✅ AGGIORNATO
 
 /// Refresh the outline view display
 - (void)refreshTemplateDisplay;

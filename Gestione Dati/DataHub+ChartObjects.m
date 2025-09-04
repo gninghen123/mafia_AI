@@ -21,6 +21,14 @@
         return @[];
     }
     
+    // Thread safety fix
+     if (![NSThread isMainThread]) {
+         __block NSArray<ChartLayerModel *> *result;
+         dispatch_sync(dispatch_get_main_queue(), ^{
+             result = [self getChartLayersForSymbol:symbol];
+         });
+         return result;
+     }
     // ✅ STEP 2: Fetch diretto dal Core Data invece di usare cached entity
     NSFetchRequest *symbolRequest = [NSFetchRequest fetchRequestWithEntityName:@"Symbol"];
     symbolRequest.predicate = [NSPredicate predicateWithFormat:@"symbol == %@", symbol.uppercaseString];

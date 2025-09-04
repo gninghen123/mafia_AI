@@ -251,6 +251,8 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 
 // ✅ AGGIORNATO per ChartTemplateModel
 - (void)redistributePanelHeights:(ChartTemplateModel *)template {
+    [self.panelsSplitView arrangedSubviews];
+    /*
     NSArray<ChartPanelTemplateModel *> *orderedPanels = [template orderedPanels];
     
     if (orderedPanels.count != self.chartPanels.count) {
@@ -272,7 +274,7 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
         }
     }
     
-    NSLog(@"✅ Panel heights redistributed");
+    NSLog(@"✅ Panel heights redistributed");*/
 }
 
 #pragma mark - IndicatorsPanelDelegate - AGGIORNATO per runtime models
@@ -674,9 +676,15 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     // Reset renderers dictionary
     [self.indicatorRenderers removeAllObjects];
     
-    NSLog(@"✅ Existing panels removed from split view");
+    // ✅ ALTERNATIVE: Remove ALL subviews from split view to be sure
+    NSArray *allSubviews = [self.panelsSplitView.subviews copy];
+    for (NSView *subview in allSubviews) {
+        [subview removeFromSuperview];
+        NSLog(@"🧹 Removed subview: %@", NSStringFromClass(subview.class));
+    }
+    
+    NSLog(@"✅ Existing panels and placeholder removed from split view");
 }
-
 - (void)setupRenderersForAllPanels {
     NSLog(@"🎨 Setting up renderers for all panels...");
     

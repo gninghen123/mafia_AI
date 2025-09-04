@@ -4,6 +4,15 @@
 
 #import "IndicatorRegistry.h"
 #import "emaindicator.h"
+#import "atrindicator.h"
+#import "bollingerbandsindicator.h"
+#import "smaindicator.h"
+#import "rsiindicator.h"
+#import "securityIndicator.h"
+#import "volumeindicator.h"
+#import "RawDataSeriesIndicator.h"
+
+
 
 @interface IndicatorRegistry ()
 @property (nonatomic, strong) NSMutableDictionary<NSString *, Class> *hardcodedIndicators;
@@ -233,12 +242,13 @@
     // For now, just log that registry is ready
     NSLog(@"🔧 IndicatorRegistry: Ready for indicator registration");
     
-    // TODO: Register built-in indicators here:
-     [self registerIndicatorClass:[EMAIndicator class] withIdentifier:@"EMA"];
-    // [self registerIndicatorClass:[SMAIndicator class] withIdentifier:@"SMA"];
-    // [self registerIndicatorClass:[RSIIndicator class] withIdentifier:@"RSI"];
-    // [self registerIndicatorClass:[ATRIndicator class] withIdentifier:@"ATR"];
-    // [self registerIndicatorClass:[BollingerBandsIndicator class] withIdentifier:@"BB"];
+    [self registerIndicatorClass:[SecurityIndicator class] withIdentifier:@"SecurityIndicator"];
+       [self registerIndicatorClass:[VolumeIndicator class] withIdentifier:@"VolumeIndicator"];
+            [self registerIndicatorClass:[EMAIndicator class] withIdentifier:@"EMA"];
+     [self registerIndicatorClass:[SMAIndicator class] withIdentifier:@"SMA"];
+     [self registerIndicatorClass:[RSIIndicator class] withIdentifier:@"RSI"];
+     [self registerIndicatorClass:[ATRIndicator class] withIdentifier:@"ATR"];
+     [self registerIndicatorClass:[BollingerBandsIndicator class] withIdentifier:@"BB"];
     // [self registerIndicatorClass:[APTRIndicator class] withIdentifier:@"APTR"];
 }
 

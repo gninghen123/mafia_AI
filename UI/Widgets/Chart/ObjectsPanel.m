@@ -42,12 +42,10 @@
 
 - (void)commonInit {
     _panelWidth = 180;
-    _isVisible = NO;
     
     [self setupBackgroundView];
     [self setupLayout];
     [self createObjectButtons];
-    [self setupInitialState];
     
     NSLog(@"🎨 ObjectsPanel: Initialized with width %.1f", _panelWidth);
 }
@@ -296,13 +294,7 @@
     NSLog(@"🎨 ObjectsPanel: Created %lu object buttons including Channel and Target", (unsigned long)buttons.count);
 }
 
-- (void)setupInitialState {
-    // SIDEBAR PATTERN: Start nascosto senza conflitti di constraint
-    self.hidden = YES;
-    self.isVisible = NO;
-    
-    NSLog(@"🎨 ObjectsPanel: Initial state - hidden");
-}
+
 
 #pragma mark - Actions
 
@@ -410,17 +402,13 @@
     NSRect panelScreenFrame = [self.window convertRectToScreen:self.frame];
     NSRect managerFrame = self.objectManagerWindow.frame;
     
-    // Posiziona la finestra manager
-    if (self.isVisible) {
-        // Se il panel è visibile, posiziona a destra
-        managerFrame.origin.x = panelScreenFrame.origin.x + panelScreenFrame.size.width + 10;
-        managerFrame.origin.y = panelScreenFrame.origin.y;
-    } else {
+    
+   
         // Se il panel è nascosto, posiziona dove sarebbe stato il panel
         NSRect windowFrame = self.window.frame;
         managerFrame.origin.x = windowFrame.origin.x + 20; // Margine dal bordo
         managerFrame.origin.y = windowFrame.origin.y + windowFrame.size.height - managerFrame.size.height - 60; // Sotto la toolbar
-    }
+    
     
     // Assicurati che sia visibile sullo schermo
     NSRect screenFrame = [[NSScreen mainScreen] visibleFrame];
@@ -445,85 +433,8 @@
 }
 
 
-#pragma mark - Public Methods
 
-- (void)toggleVisibilityAnimated:(BOOL)animated {
-    if (self.isVisible) {
-        [self hideAnimated:animated];
-    } else {
-        [self showAnimated:animated];
-    }
-}
 
-- (void)showAnimated:(BOOL)animated {
-    if (self.isVisible) return;
-    
-    self.isVisible = YES;
-    
-    // SIDEBAR PATTERN: Solo show/hide, nessuna animazione width
-    if (animated) {
-        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-            context.duration = 0.25;
-            context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-            context.allowsImplicitAnimation = YES;
-            
-            self.hidden = NO;
-            
-        } completionHandler:^{
-            NSLog(@"🎨 ObjectsPanel: Show animation completed");
-            
-            if ([self.delegate respondsToSelector:@selector(objectsPanel:didChangeVisibility:)]) {
-                [self.delegate objectsPanel:self didChangeVisibility:YES];
-            }
-        }];
-    } else {
-        self.hidden = NO;
-        
-        if ([self.delegate respondsToSelector:@selector(objectsPanel:didChangeVisibility:)]) {
-            [self.delegate objectsPanel:self didChangeVisibility:YES];
-        }
-    }
-}
-
-- (void)hideAnimated:(BOOL)animated {
-    if (!self.isVisible) return;
-    
-    self.isVisible = NO;
-    
-    // SIDEBAR PATTERN: Solo show/hide, nessuna animazione width
-    if (animated) {
-        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-            context.duration = 0.25;
-            context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-            context.allowsImplicitAnimation = YES;
-            
-            self.hidden = YES;
-            
-        } completionHandler:^{
-            NSLog(@"🎨 ObjectsPanel: Hide animation completed");
-            
-            if ([self.delegate respondsToSelector:@selector(objectsPanel:didChangeVisibility:)]) {
-                [self.delegate objectsPanel:self didChangeVisibility:NO];
-            }
-        }];
-    } else {
-        self.hidden = YES;
-        
-        if ([self.delegate respondsToSelector:@selector(objectsPanel:didChangeVisibility:)]) {
-            [self.delegate objectsPanel:self didChangeVisibility:NO];
-        }
-    }
-}
-
-- (void)updateButtonStatesWithActiveType:(ChartObjectType)activeType {
-    for (NSButton *button in self.objectButtons) {
-        if (button.tag == activeType) {
-            button.state = NSControlStateValueOn;
-        } else {
-            button.state = NSControlStateValueOff;
-        }
-    }
-}
 
 #pragma mark - Private Methods
 

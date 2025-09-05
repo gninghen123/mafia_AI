@@ -8,10 +8,8 @@
         <customObject id="-2" userLabel="File's Owner" customClass="ChartWidget">
             <connections>
                 <outlet property="dateRangeSegmented" destination="rAc-lA-MOP" id="AGN-iO-7xq"/>
-                <outlet property="indicatorsPanelContainer" destination="8Nh-2f-dpr" id="4V6-iP-xdd"/>
                 <outlet property="indicatorsPanelToggle" destination="Po4-5B-WCZ" id="tc4-pV-jhU"/>
                 <outlet property="mainSplitView" destination="65j-Ye-ijW" id="mKi-CT-x9A"/>
-                <outlet property="objectsPanelContainer" destination="096-SE-gA4" id="tb0-J8-OSE"/>
                 <outlet property="objectsPanelToggle" destination="kUx-os-VYx" id="zxG-xW-T0R"/>
                 <outlet property="objectsVisibilityToggle" destination="p4z-uD-F0P" id="yjJ-Ev-iLX"/>
                 <outlet property="panSlider" destination="q9h-ca-HQ2" id="M4c-6h-vmG"/>
@@ -57,7 +55,7 @@
                 <button verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="Po4-5B-WCZ">
                     <rect key="frame" x="1165" y="698" width="53" height="32"/>
                     <buttonCell key="cell" type="push" title="Ind" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="hIA-14-WWr">
-                        <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
+                        <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES" changeBackground="YES" changeGray="YES"/>
                         <font key="font" metaFont="system"/>
                     </buttonCell>
                     <connections>
@@ -74,10 +72,10 @@
                         <action selector="showPreferences:" target="-2" id="mPB-lF-KU3"/>
                     </connections>
                 </button>
-                <switch horizontalHuggingPriority="750" verticalHuggingPriority="750" baseWritingDirection="leftToRight" alignment="left" translatesAutoresizingMaskIntoConstraints="NO" id="p4z-uD-F0P">
+                <switch horizontalHuggingPriority="750" verticalHuggingPriority="750" baseWritingDirection="leftToRight" alignment="left" state="on" translatesAutoresizingMaskIntoConstraints="NO" id="p4z-uD-F0P">
                     <rect key="frame" x="65" y="702" width="42" height="25"/>
                     <connections>
-                        <action selector="toggleObjectsVisibility:" target="-2" id="Wfb-mW-2bw"/>
+                        <action selector="toggleObjectsVisibility:" target="-2" id="XLb-i1-vqx"/>
                     </connections>
                 </switch>
                 <comboBox focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="uR2-IX-sMf">
@@ -97,22 +95,12 @@
                 <splitView dividerStyle="paneSplitter" vertical="YES" translatesAutoresizingMaskIntoConstraints="NO" id="65j-Ye-ijW">
                     <rect key="frame" x="0.0" y="37" width="1277" height="659"/>
                     <subviews>
-                        <customView fixedFrame="YES" id="096-SE-gA4">
-                            <rect key="frame" x="0.0" y="0.0" width="68" height="659"/>
-                            <autoresizingMask key="autoresizingMask"/>
-                        </customView>
                         <splitView fixedFrame="YES" dividerStyle="paneSplitter" id="Var-LY-gAA">
-                            <rect key="frame" x="78" y="0.0" width="1115" height="659"/>
+                            <rect key="frame" x="0.0" y="0.0" width="1277" height="659"/>
                             <autoresizingMask key="autoresizingMask"/>
                         </splitView>
-                        <customView fixedFrame="YES" id="8Nh-2f-dpr">
-                            <rect key="frame" x="1203" y="0.0" width="74" height="659"/>
-                            <autoresizingMask key="autoresizingMask"/>
-                        </customView>
                     </subviews>
                     <holdingPriorities>
-                        <real value="250"/>
-                        <real value="250"/>
                         <real value="250"/>
                     </holdingPriorities>
                 </splitView>

@@ -94,8 +94,8 @@
             filePath = "UI/Widgets/Chart/ChartWidget.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "780"
-            endingLineNumber = "780"
+            startingLineNumber = "676"
+            endingLineNumber = "676"
             landmarkName = "-setupPanelsFromTemplateSystem"
             landmarkType = "7">
          </BreakpointContent>
@@ -110,13 +110,13 @@
             filePath = "UI/Widgets/Chart/ChartWidget.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "794"
-            endingLineNumber = "794"
+            startingLineNumber = "690"
+            endingLineNumber = "690"
             landmarkName = "-loadAndApplyDefaultTemplate"
             landmarkType = "7">
             <Locations>
                <Location
-                  uuid = "3CB18C94-C348-4A81-9F54-5D07AAC52093 - e5e5477975846418"
+                  uuid = "3CB18C94-C348-4A81-9F54-5D07AAC52093 - e5e54779758796f0"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
@@ -126,11 +126,11 @@
                   urlString = "file:///Users/fabiogattone/Documents/coding/macmafia/mafia_AI/UI/Widgets/Chart/ChartWidget.m"
                   startingColumnNumber = "9223372036854775807"
                   endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "795"
-                  endingLineNumber = "795">
+                  startingLineNumber = "691"
+                  endingLineNumber = "691">
                </Location>
                <Location
-                  uuid = "3CB18C94-C348-4A81-9F54-5D07AAC52093 - fbc16c457c71f8ec"
+                  uuid = "3CB18C94-C348-4A81-9F54-5D07AAC52093 - fbc16c457c720a44"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
@@ -140,8 +140,8 @@
                   urlString = "file:///Users/fabiogattone/Documents/coding/macmafia/mafia_AI/UI/Widgets/Chart/ChartWidget.m"
                   startingColumnNumber = "9223372036854775807"
                   endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "796"
-                  endingLineNumber = "796">
+                  startingLineNumber = "692"
+                  endingLineNumber = "692">
                </Location>
             </Locations>
          </BreakpointContent>

@@ -60,7 +60,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 #pragma mark - Configuration
 @property (nonatomic, weak, nullable) id<ObjectsPanelDelegate> delegate;
-@property (nonatomic, assign) BOOL isVisible;
 @property (nonatomic, assign) CGFloat panelWidth;
 
 #pragma mark - UI Components

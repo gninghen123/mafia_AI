@@ -144,7 +144,10 @@ extern NSString *const DataHubDataLoadedNotification;
     // Setup UI components that need programmatic configuration
     [self setupTimeframeSegmentedControl];
     [self setupDateRangeSegmentedControl];
-    [self setupPanelComponents];
+    
+    // ✅ SOSTITUZIONE: Invece di setupPanelComponents, chiama il nuovo metodo
+    [self setupSidePanels];  // <-- NUOVO metodo semplificato
+    
     [self setupPlaceholderView];
     
     // Initialize data
@@ -152,7 +155,6 @@ extern NSString *const DataHubDataLoadedNotification;
     
     NSLog(@"✅ ChartWidget XIB setup completed");
 }
-
 - (void)setupTimeframeSegmentedControl {
     if (!self.timeframeSegmented) return;
     
@@ -179,45 +181,7 @@ extern NSString *const DataHubDataLoadedNotification;
     self.dateRangeSegmented.selectedSegment = 0; // Default to Custom
 }
 
-- (void)setupPanelComponents {
-    // Create objects panel
-    self.objectsPanel = [[ObjectsPanel alloc] init];
-    self.objectsPanel.delegate = self;
-    [self.objectsPanel setFrame:NSMakeRect(0, 0, 180, 1200)];
-    
-    // Create indicators panel
-    self.indicatorsPanel = [[IndicatorsPanel alloc] init];
-    self.indicatorsPanel.delegate = self;
-    self.indicatorsPanel.panelWidth = 280;
-    
-    // Add panels to their containers
-    if (self.objectsPanelContainer) {
-        [self.objectsPanelContainer addSubview:self.objectsPanel];
-        [self.objectsPanel.topAnchor constraintEqualToAnchor:self.objectsPanelContainer.topAnchor].active = YES;
-        [self.objectsPanel.leadingAnchor constraintEqualToAnchor:self.objectsPanelContainer.leadingAnchor].active = YES;
-        [self.objectsPanel.trailingAnchor constraintEqualToAnchor:self.objectsPanelContainer.trailingAnchor].active = YES;
-        [self.objectsPanel.bottomAnchor constraintEqualToAnchor:self.objectsPanelContainer.bottomAnchor].active = YES;
-    }
-    
-    if (self.indicatorsPanelContainer) {
-        [self.indicatorsPanelContainer addSubview:self.indicatorsPanel];
-        [self.indicatorsPanel.topAnchor constraintEqualToAnchor:self.indicatorsPanelContainer.topAnchor].active = YES;
-        [self.indicatorsPanel.leadingAnchor constraintEqualToAnchor:self.indicatorsPanelContainer.leadingAnchor].active = YES;
-        [self.indicatorsPanel.trailingAnchor constraintEqualToAnchor:self.indicatorsPanelContainer.trailingAnchor].active = YES;
-        [self.indicatorsPanel.bottomAnchor constraintEqualToAnchor:self.indicatorsPanelContainer.bottomAnchor].active = YES;
-    }
-    
-    // Initially remove both side panels from split view
-    if (self.objectsPanelContainer.superview) {
-        [self.mainSplitView removeArrangedSubview:self.objectsPanelContainer];
-        [self.objectsPanelContainer removeFromSuperview];
-    }
-    
-    if (self.indicatorsPanelContainer.superview) {
-        [self.mainSplitView removeArrangedSubview:self.indicatorsPanelContainer];
-        [self.indicatorsPanelContainer removeFromSuperview];
-    }
-}
+
 
 - (void)setupPlaceholderView {
     if (!self.panelsSplitView) return;
@@ -268,7 +232,72 @@ extern NSString *const DataHubDataLoadedNotification;
     NSLog(@"✅ Initial data loaded");
 }
 
-#pragma mark - XIB Actions - Top Toolbar
+// ✅ NUOVO: Metodo semplificato per creare i pannelli laterali
+- (void)setupSidePanels {
+    NSLog(@"🏗️ Setting up side panels (simplified)...");
+    
+    // ✅ STEP 1: Crea objectsPanelContainer se non esiste
+    if (!self.objectsPanelContainer) {
+        self.objectsPanelContainer = [[NSView alloc] init];
+        self.objectsPanelContainer.translatesAutoresizingMaskIntoConstraints = NO;
+        self.objectsPanelContainer.wantsLayer = YES;
+        self.objectsPanelContainer.layer.backgroundColor = [NSColor controlBackgroundColor].CGColor;
+        
+        // Set fixed width
+        [self.objectsPanelContainer.widthAnchor constraintEqualToConstant:180].active = YES;
+    }
+    
+    // ✅ STEP 2: Crea indicatorsPanelContainer se non esiste
+    if (!self.indicatorsPanelContainer) {
+        self.indicatorsPanelContainer = [[NSView alloc] init];
+        self.indicatorsPanelContainer.translatesAutoresizingMaskIntoConstraints = NO;
+        self.indicatorsPanelContainer.wantsLayer = YES;
+        self.indicatorsPanelContainer.layer.backgroundColor = [NSColor controlBackgroundColor].CGColor;
+        
+        // Set fixed width
+        [self.indicatorsPanelContainer.widthAnchor constraintEqualToConstant:280].active = YES;
+    }
+    
+    // ✅ STEP 3: Crea e aggiungi objectsPanel al suo container
+    if (!self.objectsPanel) {
+        self.objectsPanel = [[ObjectsPanel alloc] init];
+        self.objectsPanel.delegate = self;
+        self.objectsPanel.translatesAutoresizingMaskIntoConstraints = NO;
+    }
+    
+    if (self.objectsPanel.superview != self.objectsPanelContainer) {
+        [self.objectsPanelContainer addSubview:self.objectsPanel];
+        [NSLayoutConstraint activateConstraints:@[
+            [self.objectsPanel.topAnchor constraintEqualToAnchor:self.objectsPanelContainer.topAnchor],
+            [self.objectsPanel.leadingAnchor constraintEqualToAnchor:self.objectsPanelContainer.leadingAnchor],
+            [self.objectsPanel.trailingAnchor constraintEqualToAnchor:self.objectsPanelContainer.trailingAnchor],
+            [self.objectsPanel.bottomAnchor constraintEqualToAnchor:self.objectsPanelContainer.bottomAnchor]
+        ]];
+    }
+    
+    // ✅ STEP 4: Crea e aggiungi indicatorsPanel al suo container
+    if (!self.indicatorsPanel) {
+        self.indicatorsPanel = [[IndicatorsPanel alloc] init];
+        self.indicatorsPanel.delegate = self;
+        self.indicatorsPanel.panelWidth = 280;
+        self.indicatorsPanel.translatesAutoresizingMaskIntoConstraints = NO;
+    }
+    
+    if (self.indicatorsPanel.superview != self.indicatorsPanelContainer) {
+        [self.indicatorsPanelContainer addSubview:self.indicatorsPanel];
+        [NSLayoutConstraint activateConstraints:@[
+            [self.indicatorsPanel.topAnchor constraintEqualToAnchor:self.indicatorsPanelContainer.topAnchor],
+            [self.indicatorsPanel.leadingAnchor constraintEqualToAnchor:self.indicatorsPanelContainer.leadingAnchor],
+            [self.indicatorsPanel.trailingAnchor constraintEqualToAnchor:self.indicatorsPanelContainer.trailingAnchor],
+            [self.indicatorsPanel.bottomAnchor constraintEqualToAnchor:self.indicatorsPanelContainer.bottomAnchor]
+        ]];
+    }
+    
+    // ✅ IMPORTANTE: NON aggiungere i container al mainSplitView
+    // Rimangono "pronti" ma nascosti fino al toggle
+    
+    NSLog(@"✅ Side panels created and ready (not added to mainSplitView)");
+}
 
 - (IBAction)toggleObjectsPanel:(id)sender {
     NSButton *button = (NSButton *)sender;
@@ -277,21 +306,22 @@ extern NSString *const DataHubDataLoadedNotification;
     if (shouldShow && !self.isObjectsPanelVisible) {
         NSLog(@"🎨 Showing objects panel...");
         
-        // ✅ STRATEGIA CORRETTA: Rimuovi tutto e ricostruisci l'ordine corretto
-        [self.mainSplitView insertArrangedSubview:self.objectsPanelContainer atIndex:0];        self.isObjectsPanelVisible = YES;
+        // ✅ SEMPLICE: Insert al primo posto
+        [self.mainSplitView insertArrangedSubview:self.objectsPanelContainer atIndex:0];
+        self.isObjectsPanelVisible = YES;
         
     } else if (!shouldShow && self.isObjectsPanelVisible) {
         NSLog(@"🎨 Hiding objects panel...");
         
-        // ✅ STRATEGIA CORRETTA: Rimuovi tutto e ricostruisci senza objects panel
+        // ✅ SEMPLICE: Remove from superview
         [self.objectsPanelContainer removeFromSuperview];
         self.isObjectsPanelVisible = NO;
     }
-  //  [self.mainSplitView layoutSubtreeIfNeeded];
-   // [self.mainSplitView setNeedsDisplay:YES];
+    
     NSLog(@"🎨 Objects panel toggled: %@", self.isObjectsPanelVisible ? @"VISIBLE" : @"HIDDEN");
 }
-/*
+
+// ✅ TOGGLE INDICATORS PANEL - Versione semplificata
 - (IBAction)toggleIndicatorsPanel:(id)sender {
     NSButton *button = (NSButton *)sender;
     BOOL shouldShow = (button.state == NSControlStateValueOn);
@@ -299,163 +329,32 @@ extern NSString *const DataHubDataLoadedNotification;
     if (shouldShow && !self.isIndicatorsPanelVisible) {
         NSLog(@"📈 Showing indicators panel...");
         
-        // ✅ STRATEGIA CORRETTA: Rimuovi tutto e ricostruisci l'ordine corretto
-        [self rebuildMainSplitViewWithObjectsVisible:self.isObjectsPanelVisible indicatorsVisible:YES];
+        // ✅ SEMPLICE: Add all'ultimo posto
+        [self.mainSplitView addArrangedSubview:self.indicatorsPanelContainer];
         self.isIndicatorsPanelVisible = YES;
         
     } else if (!shouldShow && self.isIndicatorsPanelVisible) {
         NSLog(@"📈 Hiding indicators panel...");
         
-        // ✅ STRATEGIA CORRETTA: Rimuovi tutto e ricostruisci senza indicators panel
-        [self rebuildMainSplitViewWithObjectsVisible:self.isObjectsPanelVisible indicatorsVisible:NO];
+        // ✅ SEMPLICE: Remove from superview
+        [self.indicatorsPanelContainer removeFromSuperview];
         self.isIndicatorsPanelVisible = NO;
     }
     
     NSLog(@"📈 Indicators panel toggled: %@", self.isIndicatorsPanelVisible ? @"VISIBLE" : @"HIDDEN");
 }
 
-- (void)rebuildMainSplitViewWithObjectsVisible:(BOOL)objectsVisible indicatorsVisible:(BOOL)indicatorsVisible {
-    NSLog(@"🔧 Rebuilding mainSplitView - Objects: %@ | Indicators: %@",
-          objectsVisible ? @"YES" : @"NO",
-          indicatorsVisible ? @"YES" : @"NO");
-    self.mainSplitView insertArrangedSubview:<#(nonnull NSView *)#> atIndex:<#(NSInteger)#>
-    // ✅ STEP 1: Rimuovi tutti i subview mantenendo i reference
-    NSArray *currentSubviews = [self.mainSplitView.subviews copy];
-    for (NSView *subview in currentSubviews) {
-        [self.mainSplitView removeArrangedSubview:subview];
-        // NON rimuovere dalla superview per mantenere i constraints
-    }
-    
-    // ✅ STEP 2: Ricostruisci nell'ordine corretto
-    
-    // 2.1: Objects panel sempre PRIMO (se visibile)
-    if (objectsVisible && self.objectsPanelContainer) {
-        [self.mainSplitView addArrangedSubview:self.objectsPanelContainer];
-        NSLog(@"  ✅ Added objects panel as FIRST");
-    }
-    
-    // 2.2: Panels split view sempre al CENTRO (sempre presente)
-    if (self.panelsSplitView) {
-        [self.mainSplitView addArrangedSubview:self.panelsSplitView];
-        NSLog(@"  ✅ Added panels split view as CENTER");
-    } else {
-        NSLog(@"  ⚠️ panelsSplitView is nil!");
-    }
-    
-    // 2.3: Indicators panel sempre ULTIMO (se visibile)
-    if (indicatorsVisible && self.indicatorsPanelContainer) {
-        [self.mainSplitView addArrangedSubview:self.indicatorsPanelContainer];
-        NSLog(@"  ✅ Added indicators panel as LAST");
-    }
-    
-    // ✅ STEP 3: Forza layout update
-    [self.mainSplitView adjustSubviews];
-    [self.mainSplitView setNeedsDisplay:YES];
-    
-    // ✅ STEP 4: Log finale per debug
-    NSLog(@"🎯 Final mainSplitView structure: %ld subviews", (long)self.mainSplitView.subviews.count);
-    for (NSUInteger i = 0; i < self.mainSplitView.subviews.count; i++) {
-        NSView *subview = self.mainSplitView.subviews[i];
-        NSString *panelType = @"Unknown";
-        
-        if (subview == self.objectsPanelContainer) {
-            panelType = @"ObjectsPanel";
-        } else if (subview == self.panelsSplitView) {
-            panelType = @"ChartPanels";
-        } else if (subview == self.indicatorsPanelContainer) {
-            panelType = @"IndicatorsPanel";
-        }
-        
-        NSLog(@"  [%ld] %@ - Frame: %@", (long)i, panelType, NSStringFromRect(subview.frame));
-    }
-}
+#pragma mark - XIB Actions - Top Toolbar
 
-- (void)setupSidePanelsContainers {
-    NSLog(@"🏗️ Setting up side panels containers...");
-    
-    // ... (mantieni il codice esistente per creare i container) ...
-    
-    // ✅ IMPORTANTE: All'inizio, mantieni solo panelsSplitView nel mainSplitView
-    // Rimuovi entrambi i pannelli laterali
-    if (self.objectsPanelContainer.superview) {
-        [self.mainSplitView removeArrangedSubview:self.objectsPanelContainer];
-        [self.objectsPanelContainer removeFromSuperview];
-    }
-    
-    if (self.indicatorsPanelContainer.superview) {
-        [self.mainSplitView removeArrangedSubview:self.indicatorsPanelContainer];
-        [self.indicatorsPanelContainer removeFromSuperview];
-    }
-    
-    // ✅ Verifica che solo panelsSplitView sia presente
-    [self ensureCorrectInitialSplitViewStructure];
-}
-- (void)ensureCorrectInitialSplitViewStructure {
-    NSLog(@"🔍 Verifying initial mainSplitView structure...");
-    
-    // La struttura iniziale dovrebbe essere solo: [panelsSplitView]
-    NSArray *currentSubviews = self.mainSplitView.subviews;
-    BOOL needsRebuild = NO;
-    
-    if (currentSubviews.count != 1 || currentSubviews.firstObject != self.panelsSplitView) {
-        NSLog(@"⚠️ Initial structure is incorrect, rebuilding...");
-        needsRebuild = YES;
-    }
-    
-    if (needsRebuild) {
-        // Rimuovi tutto
-        for (NSView *subview in [currentSubviews copy]) {
-            [self.mainSplitView removeArrangedSubview:subview];
-        }
-        
-        // Aggiungi solo panelsSplitView
-        [self.mainSplitView addArrangedSubview:self.panelsSplitView];
-    }
-    
-    NSLog(@"✅ Initial structure verified: %ld subviews", (long)self.mainSplitView.subviews.count);
-}
-
-- (void)restorePanelVisibilityFromLayout:(NSDictionary *)layoutData {
-    if (!layoutData) return;
-    
-    BOOL objectsVisible = [layoutData[@"isObjectsPanelVisible"] boolValue];
-    BOOL indicatorsVisible = [layoutData[@"isIndicatorsPanelVisible"] boolValue];
-    
-    NSLog(@"🔄 Restoring panel visibility - Objects: %@ | Indicators: %@",
-          objectsVisible ? @"YES" : @"NO",
-          indicatorsVisible ? @"YES" : @"NO");
-    
-    // Usa il metodo corretto per ricostruire la struttura
-    [self rebuildMainSplitViewWithObjectsVisible:objectsVisible indicatorsVisible:indicatorsVisible];
-    
-    // Aggiorna gli stati dei toggle button
-    self.isObjectsPanelVisible = objectsVisible;
-    self.isIndicatorsPanelVisible = indicatorsVisible;
-    
-    // Aggiorna i button states se esistono
-    if (self.objectsPanelToggle) {
-        self.objectsPanelToggle.state = objectsVisible ? NSControlStateValueOn : NSControlStateValueOff;
-    }
-    
-    if (self.indicatorsPanelToggle) {
-        self.indicatorsPanelToggle.state = indicatorsVisible ? NSControlStateValueOn : NSControlStateValueOff;
-    }
-}
-*/
 
 - (IBAction)toggleObjectsVisibility:(id)sender {
-    NSButton *button = (NSButton *)sender;
-    self.objectsVisible = (button.state == NSControlStateValueOn);
-    
-    // Update all chart panels
+  // Update all chart panels
     for (ChartPanelView *panel in self.chartPanels) {
         if (panel.objectRenderer) {
-            panel.objectRenderer.objectsVisible = self.objectsVisible;
+            panel.objectRenderer.objectsVisible = [sender state];
             [panel setNeedsDisplay:YES];
         }
     }
-    
-    NSLog(@"👁 Objects visibility toggled: %@", self.objectsVisible ? @"VISIBLE" : @"HIDDEN");
 }
 
 
@@ -479,9 +378,6 @@ extern NSString *const DataHubDataLoadedNotification;
         [self loadChartTemplate:templateName];
     }
 }
-
-
-
 
 
 #pragma mark - Data Loading and Notifications
@@ -1411,32 +1307,7 @@ extern NSString *const DataHubDataLoadedNotification;
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
-- (void)toggleAllObjectsVisibility:(NSButton *)sender {
-    BOOL showObjects = (sender.state == NSControlStateValueOn);
-    
-    NSLog(@"🎨 Toggling objects visibility: %@", showObjects ? @"SHOW" : @"HIDE");
-    
-    // ✅ USA METODO PUBBLICO del renderer (più pulito)
-    for (ChartPanelView *panel in self.chartPanels) {
-        if (panel.objectRenderer) {
-            [panel.objectRenderer setObjectsVisible:showObjects];
-            
-            NSLog(@"🎯 Panel %@: objects visible = %@",
-                  panel.panelType, showObjects ? @"YES" : @"NO");
-        }
-    }
-    
-    // ✅ Feedback visivo sul button
-    sender.title = showObjects ? @"👁️" : @"🚫";
-    
-    // ✅ Optional: Feedback temporaneo all'utente
-    if (!showObjects) {
-        // Mostra briefly che gli oggetti sono nascosti
-        [self showTemporaryMessage:@"Objects hidden - focus on price action"];
-    }
-    
-    NSLog(@"✅ Objects visibility toggle completed: %@", showObjects ? @"VISIBLE" : @"HIDDEN");
-}
+
 
 - (void)showTemporaryMessage:(NSString *)message {
     // Crea label temporanea che scompare dopo 2 secondi
@@ -1471,7 +1342,6 @@ extern NSString *const DataHubDataLoadedNotification;
 
 - (void)setObjectsVisible:(BOOL)visible {
     self.objectsVisibilityToggle.state = visible ? NSControlStateValueOn : NSControlStateValueOff;
-    [self toggleAllObjectsVisibility:self.objectsVisibilityToggle];
 }
 
 

@@ -107,11 +107,6 @@
     }
 }
 
-- (void)invalidateIndicatorLayers {
-    for (CAShapeLayer *layer in self.indicatorLayers.allValues) {
-        [layer setNeedsDisplay];
-    }
-}
 
 - (void)invalidateIndicatorLayer:(NSString *)indicatorID {
     CAShapeLayer *layer = self.indicatorLayers[indicatorID];
@@ -574,4 +569,58 @@
     [self.indicatorsLayer removeFromSuperlayer];
 }
 
+
+#pragma mark - Visibility Management
+
+- (void)setChildIndicatorsVisible:(BOOL)visible {
+    if (!self.rootIndicator) {
+        NSLog(@"⚠️ No root indicator to modify children visibility");
+        return;
+    }
+    
+    NSLog(@"👁️ Setting child indicators visible: %@ for root: %@",
+          visible ? @"YES" : @"NO", self.rootIndicator.displayName);
+    
+    [self setVisibilityRecursively:self.rootIndicator.childIndicators visible:visible];
+    
+    // Trigger re-render
+    [self invalidateIndicatorLayers];
+    [self renderIndicatorTree:self.rootIndicator];
+}
+
+- (void)setVisibilityRecursively:(NSArray<TechnicalIndicatorBase *> *)indicators visible:(BOOL)visible {
+    for (TechnicalIndicatorBase *indicator in indicators) {
+        indicator.isVisible = visible;
+        indicator.needsRendering = YES;
+        
+        NSLog(@"  %@ %@", visible ? @"👁️" : @"🙈", indicator.displayName);
+        
+        // Ricorsivo per i figli dei figli
+        if (indicator.childIndicators.count > 0) {
+            [self setVisibilityRecursively:indicator.childIndicators visible:visible];
+        }
+    }
+}
+
+- (void)invalidateIndicatorLayers {
+    // ✅ MIGLIORAMENTO: Forza l'invalidazione di tutti i layer
+    for (NSString *indicatorID in self.indicatorLayers.allKeys) {
+        CAShapeLayer *layer = self.indicatorLayers[indicatorID];
+        layer.path = NULL; // Forza re-render
+    }
+    
+    NSLog(@"🔄 Invalidated %ld indicator layers", (long)self.indicatorLayers.count);
+}
+
+// ✅ PROPERTY IMPLEMENTATION
+- (TechnicalIndicatorBase *)rootIndicator {
+    // TODO: Implementare basandosi sulla tua architettura
+    // Questo potrebbe essere:
+    // 1. Una property separata che viene impostata durante l'init
+    // 2. Derivata dal panelType del ChartPanelView
+    // 3. Trovata attraverso il template system
+    
+    NSLog(@"⚠️ rootIndicator property needs implementation");
+    return nil; // Placeholder
+}
 @end

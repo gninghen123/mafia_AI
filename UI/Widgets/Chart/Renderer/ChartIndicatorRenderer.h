@@ -247,6 +247,14 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Remove all layers from superlayer
 - (void)removeAllLayers;
+#pragma mark - Visibility Management
+
+/// Toggle visibility of all child indicators (keeps root visible)
+/// @param visible Whether child indicators should be visible
+- (void)setChildIndicatorsVisible:(BOOL)visible;
+
+
+@property (nonatomic, strong, readonly) TechnicalIndicatorBase *rootIndicator;
 
 @end
 

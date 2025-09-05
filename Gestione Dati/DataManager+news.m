@@ -168,12 +168,18 @@
                 NSString *newsTypeString = [self newsTypeToString:newsType];
                 
                 // FIXED: Use NSInvocation since the method is optional and may not be in all adapters
-                @try {
-                    standardizedNews = [adapter performSelector:@selector(standardizeNewsData:forSymbol:newsType:)
-                                                      withObject:rawNews
-                                                      withObject:symbol
-                                                      withObject:newsTypeString];
-                } @catch (NSException *exception) {
+                if (adapter && [adapter respondsToSelector:@selector(standardizeNewsData:forSymbol:newsType:)]) {
+                    @try {
+                        // Chiamata diretta del metodo - più semplice e sicura
+                        standardizedNews = [adapter standardizeNewsData:rawNews
+                                                              forSymbol:symbol
+                                                               newsType:newsTypeString];
+                    } @catch (NSException *exception) {
+                        NSLog(@"⚠️ DataManager: Exception during news standardization: %@", exception.reason);
+                        standardizedNews = [NewsModel newsArrayFromDictionaries:rawNews];
+                    }
+                } else {
+                    // Fallback: Create NewsModel objects manually
                     NSLog(@"⚠️ DataManager: Adapter doesn't support news standardization, using fallback");
                     standardizedNews = [NewsModel newsArrayFromDictionaries:rawNews];
                 }

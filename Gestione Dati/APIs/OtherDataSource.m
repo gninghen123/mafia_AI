@@ -49,7 +49,7 @@ static NSString *const kGoogleFinanceNewsURL = @"https://www.google.com/finance/
 static NSString *const kSECEdgarFilingsURL = @"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=%@&type=&dateb=&owner=exclude&start=0&count=40&output=atom";
 
 // Yahoo Finance News RSS
-static NSString *const kYahooFinanceNewsURL = @"http://finance.yahoo.com/rss/headline?s=%@";
+static NSString *const kYahooFinanceNewsURL = @"https://finance.yahoo.com/rss/headline?s=%@";
 
 // Seeking Alpha RSS Feed
 static NSString *const kSeekingAlphaNewsURL = @"https://seekingalpha.com/api/sa/combined/%@.xml";

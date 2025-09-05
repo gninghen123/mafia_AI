@@ -98,6 +98,18 @@ NS_ASSUME_NONNULL_BEGIN
  */
 - (NSString *)sourceName;
 
+/**
+ * Convert raw news data from API to NewsModel runtime models
+ * This method is optional - not all adapters need to support news standardization
+ * @param rawData Raw API news data (array or dictionary)
+ * @param symbol Symbol identifier
+ * @param newsType Type of news ("news", "press_release", "filing", etc.)
+ * @return Array of NewsModel runtime models
+ */
+- (NSArray<NewsModel *> *)standardizeNewsData:(NSArray *)rawData
+                                    forSymbol:(NSString *)symbol
+                                     newsType:(NSString *)newsType;
+
 @end
 
 NS_ASSUME_NONNULL_END

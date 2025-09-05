@@ -7,6 +7,9 @@
 //
 
 #import "DownloadManager.h"
+#import "OtherDataSource.h"
+
+
 
 // Internal data source info
 @interface DataSourceInfo : NSObject
@@ -335,57 +338,10 @@
  * 📈 Classification: Check if request type is Market Data (allows automatic routing)
  */
 - (BOOL)isMarketDataRequestType:(DataRequestType)requestType {
-    switch (requestType) {
-        // Core market data (routing OK)
-        case DataRequestTypeQuote:
-        case DataRequestTypeBatchQuotes:
-        case DataRequestTypeHistoricalBars:
-        case DataRequestTypeOrderBook:
-        case DataRequestTypeTimeSales:
-        case DataRequestTypeOptionChain:
-        case DataRequestTypeNews:
-        case DataRequestTypeFundamentals:
-            
-        // Market lists and screeners (routing OK)
-        case DataRequestTypeMarketList:
-        case DataRequestTypeTopGainers:
-        case DataRequestTypeTopLosers:
-        case DataRequestTypeETFList:
-        case DataRequestType52WeekHigh:
-        case DataRequestType52WeekLow:
-        case DataRequestTypeStocksList:
-        case DataRequestTypeEarningsCalendar:
-        case DataRequestTypeEarningsSurprise:
-        case DataRequestTypeInstitutionalTx:
-        case DataRequestTypePMMovers:
-            
-        // Company specific data (routing OK)
-        case DataRequestTypeCompanyNews:
-        case DataRequestTypePressReleases:
-        case DataRequestTypeFinancials:
-        case DataRequestTypePEGRatio:
-        case DataRequestTypeShortInterest:
-        case DataRequestTypeInsiderTrades:
-        case DataRequestTypeInstitutional:
-        case DataRequestTypeSECFilings:
-        case DataRequestTypeRevenue:
-        case DataRequestTypePriceTarget:
-        case DataRequestTypeRatings:
-        case DataRequestTypeEarningsDate:
-        case DataRequestTypeEPS:
-        case DataRequestTypeEarningsForecast:
-        case DataRequestTypeAnalystMomentum:
-            
-        // External data sources (routing OK)
-        case DataRequestTypeFinvizStatements:
-        case DataRequestTypeZacksCharts:
-        case DataRequestTypeOpenInsider:
-            return YES;
-            
-        default:
-            return NO; // Account data, trading operations not allowed here
-    }
+    // Use the standardized function from CommonTypes.h instead of duplicating logic
+    return IsMarketDataRequestType(requestType);
 }
+
 
 /**
  * 📊 Get available sources for Market Data with automatic priority sorting
@@ -1726,7 +1682,7 @@
     
     NSString *symbol = parameters[@"symbol"];
     NSNumber *limitParam = parameters[@"limit"];
-    NSInteger limit = limitParam ? [limitParam integerValue] : 50; // Default limit
+    NSInteger limit = limitParam ? [limitParam integerValue] : 50;
     
     if (!symbol || symbol.length == 0) {
         NSError *error = [NSError errorWithDomain:@"DownloadManager"
@@ -1745,10 +1701,12 @@
         return;
     }
     
-    // Cast to OtherDataSource since only OtherDataSource supports these news methods
-    if (![dataSource isKindOfClass:[OtherDataSource class]]) {
-        NSLog(@"⚠️ DownloadManager: DataSource %@ doesn't support news request type %ld, trying next source",
-              dataSource.sourceName, (long)requestType);
+    // Check if this DataSource supports news requests
+    BOOL supportsNews = (dataSource.capabilities & DataSourceCapabilityNews) != 0;
+    
+    if (!supportsNews) {
+        NSLog(@"⚠️ DownloadManager: DataSource %@ doesn't support news capability, trying next source",
+              dataSource.sourceName);
         
         // Try next source
         [self executeRequestWithSources:sources
@@ -1760,19 +1718,62 @@
         return;
     }
     
-    OtherDataSource *otherDataSource = (OtherDataSource *)dataSource;
+    // Route based on DataSource type (future-proof for multiple news sources)
+    if ([dataSource isKindOfClass:[OtherDataSource class]]) {
+        [self executeOtherDataSourceNewsRequest:(OtherDataSource *)dataSource
+                                     parameters:parameters
+                                     sourceInfo:sourceInfo
+                                        sources:sources
+                                    sourceIndex:sourceIndex
+                                      requestID:requestID
+                                    requestType:requestType
+                                     completion:completion];
+    }
+    // Future: Add support for SchwabDataSource, PolygonDataSource, etc.
+    // else if ([dataSource isKindOfClass:[SchwabDataSource class]]) {
+    //     [self executeSchwabNewsRequest:...];
+    // }
+    else {
+        NSLog(@"⚠️ DownloadManager: DataSource %@ supports news capability but implementation not found, trying next source",
+              dataSource.sourceName);
+        
+        // Try next source
+        [self executeRequestWithSources:sources
+                             requestType:requestType
+                              parameters:parameters
+                               requestID:requestID
+                             sourceIndex:sourceIndex + 1
+                              completion:completion];
+    }
+}
+
+- (void)executeOtherDataSourceNewsRequest:(OtherDataSource *)otherDataSource
+                               parameters:(NSDictionary *)parameters
+                               sourceInfo:(DataSourceInfo *)sourceInfo
+                                  sources:(NSArray<DataSourceInfo *> *)sources
+                              sourceIndex:(NSInteger)sourceIndex
+                                requestID:(NSString *)requestID
+                              requestType:(DataRequestType)requestType
+                               completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    NSString *symbol = parameters[@"symbol"];
+    NSNumber *limitParam = parameters[@"limit"];
+    NSInteger limit = limitParam ? [limitParam integerValue] : 50;
+    
+    NSLog(@"📰 DownloadManager: Executing %@ news request for %@ on OtherDataSource",
+          DataRequestTypeToString(requestType), symbol);
     
     // Route to specific news method based on request type
     switch (requestType) {
         case DataRequestTypeNews:
-        case DataRequestTypeCompanyNews:
+        case DataRequestTypeCompanyNews: {
             // Use existing Nasdaq news method
             [otherDataSource fetchNewsForSymbol:symbol
                                            limit:limit
                                       completion:^(NSArray *news, NSError *error) {
                 [self handleGenericResponse:news
                                        error:error
-                                  dataSource:dataSource
+                                  dataSource:otherDataSource
                                   sourceInfo:sourceInfo
                                      sources:sources
                                  sourceIndex:sourceIndex
@@ -1782,15 +1783,16 @@
                                   completion:completion];
             }];
             break;
+        }
             
-        case DataRequestTypePressReleases:
+        case DataRequestTypePressReleases: {
             // Use existing Nasdaq press releases method
             [otherDataSource fetchPressReleasesForSymbol:symbol
                                                    limit:limit
                                               completion:^(NSArray *releases, NSError *error) {
                 [self handleGenericResponse:releases
                                        error:error
-                                  dataSource:dataSource
+                                  dataSource:otherDataSource
                                   sourceInfo:sourceInfo
                                      sources:sources
                                  sourceIndex:sourceIndex
@@ -1800,14 +1802,15 @@
                                   completion:completion];
             }];
             break;
+        }
             
-        case DataRequestTypeGoogleFinanceNews:
+        case DataRequestTypeGoogleFinanceNews: {
             // Use new Google Finance RSS method
             [otherDataSource fetchGoogleFinanceNewsForSymbol:symbol
                                                    completion:^(NSArray *news, NSError *error) {
                 [self handleGenericResponse:news
                                        error:error
-                                  dataSource:dataSource
+                                  dataSource:otherDataSource
                                   sourceInfo:sourceInfo
                                      sources:sources
                                  sourceIndex:sourceIndex
@@ -1817,14 +1820,15 @@
                                   completion:completion];
             }];
             break;
+        }
             
-        case DataRequestTypeSECFilings:
-            // Use new SEC EDGAR method
+        case DataRequestTypeSECFilings: {
+            // Use SEC EDGAR filings method
             [otherDataSource fetchSECFilingsForSymbol:symbol
                                            completion:^(NSArray *filings, NSError *error) {
                 [self handleGenericResponse:filings
                                        error:error
-                                  dataSource:dataSource
+                                  dataSource:otherDataSource
                                   sourceInfo:sourceInfo
                                      sources:sources
                                  sourceIndex:sourceIndex
@@ -1834,14 +1838,15 @@
                                   completion:completion];
             }];
             break;
+        }
             
-        case DataRequestTypeYahooFinanceNews:
-            // Use new Yahoo Finance RSS method
+        case DataRequestTypeYahooFinanceNews: {
+            // Use Yahoo Finance RSS method
             [otherDataSource fetchYahooFinanceNewsForSymbol:symbol
                                                   completion:^(NSArray *news, NSError *error) {
                 [self handleGenericResponse:news
                                        error:error
-                                  dataSource:dataSource
+                                  dataSource:otherDataSource
                                   sourceInfo:sourceInfo
                                      sources:sources
                                  sourceIndex:sourceIndex
@@ -1851,14 +1856,15 @@
                                   completion:completion];
             }];
             break;
+        }
             
-        case DataRequestTypeSeekingAlphaNews:
-            // Use new Seeking Alpha RSS method
+        case DataRequestTypeSeekingAlphaNews: {
+            // Use Seeking Alpha RSS method
             [otherDataSource fetchSeekingAlphaNewsForSymbol:symbol
                                                  completion:^(NSArray *news, NSError *error) {
                 [self handleGenericResponse:news
                                        error:error
-                                  dataSource:dataSource
+                                  dataSource:otherDataSource
                                   sourceInfo:sourceInfo
                                      sources:sources
                                  sourceIndex:sourceIndex
@@ -1868,24 +1874,21 @@
                                   completion:completion];
             }];
             break;
+        }
             
-        default:
-            // Unsupported news type
-            NSError *error = [NSError errorWithDomain:@"DownloadManager"
-                                                 code:400
-                                             userInfo:@{NSLocalizedDescriptionKey:
-                                                       [NSString stringWithFormat:@"Unsupported news request type: %ld", (long)requestType]}];
-            [self handleGenericResponse:nil
-                                   error:error
-                              dataSource:dataSource
-                              sourceInfo:sourceInfo
-                                 sources:sources
-                             sourceIndex:sourceIndex
-                              parameters:parameters
-                               requestID:requestID
-                             requestType:requestType
-                              completion:completion];
+        default: {
+            NSLog(@"⚠️ DownloadManager: Unsupported news request type %ld for OtherDataSource, trying next source",
+                  (long)requestType);
+            
+            // Try next source for unsupported news types
+            [self executeRequestWithSources:sources
+                                 requestType:requestType
+                                  parameters:parameters
+                                   requestID:requestID
+                                 sourceIndex:sourceIndex + 1
+                                  completion:completion];
             break;
+        }
     }
 }
 

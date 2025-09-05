@@ -209,6 +209,11 @@ static inline BOOL IsMarketDataRequestType(DataRequestType requestType) {
         case DataRequestTypeEarningsForecast:
         case DataRequestTypeAnalystMomentum:
             
+        // 📰 NEWS DATA SOURCES (AGGIUNTI) ✅
+        case DataRequestTypeGoogleFinanceNews:
+        case DataRequestTypeYahooFinanceNews:
+        case DataRequestTypeSeekingAlphaNews:
+            
         // External data sources (routing OK)
         case DataRequestTypeFinvizStatements:
         case DataRequestTypeZacksCharts:

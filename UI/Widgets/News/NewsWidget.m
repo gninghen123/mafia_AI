@@ -2,36 +2,192 @@
 //  NewsWidget.m
 //  TradingApp
 //
-//  Implementation of news widget with multiple source support
+//  Enhanced News Widget V2 - Clean Implementation
 //
 
 #import "NewsWidget.h"
+#import "NewsPreferencesWindowController.h"
 #import "DataHub.h"
 #import "DataHub+News.h"
+#import "DataHub+MarketData.h"
 #import "CommonTypes.h"
+
+// UserDefaults Keys
+static NSString *const kNewsWidgetEnabledSources = @"NewsWidget_EnabledSources";
+static NSString *const kNewsWidgetColorKeywords = @"NewsWidget_ColorKeywords";
+static NSString *const kNewsWidgetExcludeKeywords = @"NewsWidget_ExcludeKeywords";
+static NSString *const kNewsWidgetNewsLimit = @"NewsWidget_NewsLimit";
+static NSString *const kNewsWidgetAutoRefresh = @"NewsWidget_AutoRefresh";
+static NSString *const kNewsWidgetRefreshInterval = @"NewsWidget_RefreshInterval";
+
+// Default Colors (Hex Strings)
+static NSString *const kDefaultYellowColor = @"FFEB3B";
+static NSString *const kDefaultPinkColor = @"E91E63";
+static NSString *const kDefaultBlueColor = @"2196F3";
+static NSString *const kDefaultGreenColor = @"4CAF50";
+static NSString *const kDefaultRedColor = @"F44336";
 
 @interface NewsWidget ()
 @property (nonatomic, strong) NSTimer *refreshTimer;
+@property (nonatomic, strong) NSDateFormatter *dateFormatter;
+@property (nonatomic, strong) NSMutableDictionary<NSString *, NSNumber *> *symbolVariations;
 @end
 
 @implementation NewsWidget
+
+#pragma mark - BaseWidget Overrides
+
+- (void)updateContentForType:(NSString *)newType {
+    // NewsWidget doesn't change based on type
+}
+
+- (NSDictionary *)serializeState {
+    NSMutableDictionary *state = [[super serializeState] mutableCopy];
+    
+    state[@"currentSymbols"] = self.currentSymbols ?: @[];
+    state[@"searchInput"] = self.searchField.stringValue ?: @"";
+    
+    return state;
+}
+
+- (void)restoreState:(NSDictionary *)state {
+    [super restoreState:state];
+    
+    NSArray *savedSymbols = state[@"currentSymbols"];
+    if (savedSymbols && savedSymbols.count > 0) {
+        self.currentSymbols = savedSymbols;
+        self.searchField.stringValue = [savedSymbols componentsJoinedByString:@","];
+    }
+    
+    NSString *savedSearchInput = state[@"searchInput"];
+    if (savedSearchInput && savedSearchInput.length > 0) {
+        self.searchField.stringValue = savedSearchInput;
+    }
+    
+    if (self.currentSymbols.count > 0) {
+        [self loadNewsForSymbols:self.currentSymbols];
+    }
+}
+
+#pragma mark - Chain Integration
+
+- (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
+    NSLog(@"📰 NewsWidget: Received %lu symbols from chain", (unsigned long)symbols.count);
+    
+    if (symbols.count == 0) return;
+    
+    self.searchField.stringValue = [symbols componentsJoinedByString:@","];
+    [self searchForInput:self.searchField.stringValue];
+    
+    NSString *senderType = NSStringFromClass([sender class]);
+    [self showChainFeedback:[NSString stringWithFormat:@"📰 Loading news for %lu symbols from %@",
+                           (unsigned long)symbols.count, senderType]];
+}
+
+- (void)sendCurrentSymbolsToChain {
+    if (self.currentSymbols.count > 0) {
+        [self sendSymbolsToChain:self.currentSymbols];
+    }
+}
+
+#pragma mark - Utility Methods
+
+- (NSArray<NewsModel *> *)removeDuplicateNews:(NSArray<NewsModel *> *)news {
+    NSMutableArray<NewsModel *> *uniqueNews = [NSMutableArray array];
+    NSMutableSet<NSString *> *seenIdentifiers = [NSMutableSet set];
+    
+    for (NewsModel *newsItem in news) {
+        NSString *identifier;
+        if (newsItem.url && newsItem.url.length > 0) {
+            identifier = newsItem.url;
+        } else {
+            NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
+            dateFormatter.dateFormat = @"yyyy-MM-dd";
+            NSString *dateString = [dateFormatter stringFromDate:newsItem.publishedDate];
+            identifier = [NSString stringWithFormat:@"%@_%@_%@",
+                         newsItem.headline ?: @"",
+                         newsItem.symbol ?: @"",
+                         dateString];
+        }
+        
+        if (![seenIdentifiers containsObject:identifier]) {
+            [seenIdentifiers addObject:identifier];
+            [uniqueNews addObject:newsItem];
+        }
+    }
+    
+    return [uniqueNews copy];
+}
+
+- (void)showLoadingState:(BOOL)loading {
+    if (loading) {
+        self.progressIndicator.hidden = NO;
+        [self.progressIndicator startAnimation:nil];
+        self.refreshButton.enabled = NO;
+    } else {
+        self.progressIndicator.hidden = YES;
+        [self.progressIndicator stopAnimation:nil];
+        self.refreshButton.enabled = YES;
+    }
+    
+    self.isLoading = loading;
+}
+
+- (void)updateStatus:(NSString *)status {
+    self.statusLabel.stringValue = status ?: @"";
+}
+
+#pragma mark - Color Helper Methods
+
+- (NSColor *)colorFromHexString:(NSString *)hexString {
+    if (!hexString || hexString.length != 6) return nil;
+    
+    unsigned int hexValue;
+    NSScanner *scanner = [NSScanner scannerWithString:hexString];
+    if (![scanner scanHexInt:&hexValue]) return nil;
+    
+    CGFloat red = ((hexValue & 0xFF0000) >> 16) / 255.0;
+    CGFloat green = ((hexValue & 0x00FF00) >> 8) / 255.0;
+    CGFloat blue = (hexValue & 0x0000FF) / 255.0;
+    
+    return [NSColor colorWithRed:red green:green blue:blue alpha:1.0];
+}
+
+- (NSString *)hexStringFromColor:(NSColor *)color {
+    NSColor *rgbColor = [color colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
+    if (!rgbColor) return @"000000";
+    
+    int red = (int)(rgbColor.redComponent * 255);
+    int green = (int)(rgbColor.greenComponent * 255);
+    int blue = (int)(rgbColor.blueComponent * 255);
+    
+    return [NSString stringWithFormat:@"%02X%02X%02X", red, green, blue];
+}
 
 #pragma mark - Lifecycle
 
 - (void)setupContentView {
     [super setupContentView];
     
-    // Initialize defaults
-    self.newsLimit = 25;
-    self.autoRefresh = YES;
-    self.refreshInterval = 300; // 5 minutes
-    self.selectedSource = 0; // All sources
-    self.news = @[];
+    // Initialize date formatter
+    self.dateFormatter = [[NSDateFormatter alloc] init];
+    self.dateFormatter.dateStyle = NSDateFormatterShortStyle;
+    
+    // Load preferences first
+    [self loadPreferences];
+    
+    // Initialize data arrays
+    self.allNews = @[];
+    self.filteredNews = @[];
+    self.currentSymbols = @[];
+    self.symbolVariations = [NSMutableDictionary dictionary];
     
     [self createNewsUI];
+    [self setupTableView];
     [self startAutoRefreshIfEnabled];
     
-    NSLog(@"📰 NewsWidget: Initialized");
+    NSLog(@"📰 NewsWidget V2: Initialized with %lu enabled sources",
+          (unsigned long)self.enabledNewsSources.count);
 }
 
 - (void)dealloc {
@@ -41,236 +197,594 @@
 #pragma mark - UI Creation
 
 - (void)createNewsUI {
-    // Symbol input field
-    self.symbolField = [[NSTextField alloc] init];
-    self.symbolField.translatesAutoresizingMaskIntoConstraints = NO;
-    self.symbolField.placeholderString = @"Enter symbol (e.g., AAPL)";
-    self.symbolField.target = self;
-    self.symbolField.action = @selector(symbolChanged:);
-    [self.contentView addSubview:self.symbolField];
+    // Search Field
+    self.searchField = [[NSTextField alloc] init];
+    self.searchField.translatesAutoresizingMaskIntoConstraints = NO;
+    self.searchField.placeholderString = @"Enter symbols (AAPL,MSFT) or keywords";
+    self.searchField.target = self;
+    self.searchField.action = @selector(searchFieldChanged:);
+    [self.contentView addSubview:self.searchField];
     
-    // Refresh button
-    self.refreshButton = [NSButton buttonWithTitle:@"⟳" target:self action:@selector(refreshNews:)];
+    // Refresh Button
+    self.refreshButton = [NSButton buttonWithTitle:@"🔄" target:self action:@selector(refreshNews:)];
     self.refreshButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.refreshButton.bezelStyle = NSBezelStyleTexturedRounded;
     [self.contentView addSubview:self.refreshButton];
     
-    // Source selector
-    self.sourceControl = [[NSSegmentedControl alloc] init];
-    self.sourceControl.translatesAutoresizingMaskIntoConstraints = NO;
-    self.sourceControl.segmentCount = 5;
-    [self.sourceControl setLabel:@"All" forSegment:0];
-    [self.sourceControl setLabel:@"Google" forSegment:1];
-    [self.sourceControl setLabel:@"Yahoo" forSegment:2];
-    [self.sourceControl setLabel:@"SEC" forSegment:3];
-    [self.sourceControl setLabel:@"SA" forSegment:4]; // Seeking Alpha
-    self.sourceControl.selectedSegment = 0;
-    self.sourceControl.target = self;
-    self.sourceControl.action = @selector(sourceChanged:);
-    [self.contentView addSubview:self.sourceControl];
+    // Preferences Button
+    self.preferencesButton = [NSButton buttonWithTitle:@"⚙️" target:self action:@selector(showPreferences:)];
+    self.preferencesButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.preferencesButton.bezelStyle = NSBezelStyleTexturedRounded;
+    [self.contentView addSubview:self.preferencesButton];
     
-    // Status label
+    // Clear Filters Button
+    self.clearFiltersButton = [NSButton buttonWithTitle:@"Clear Filters" target:self action:@selector(clearAllFilters:)];
+    self.clearFiltersButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.clearFiltersButton.bezelStyle = NSBezelStyleTexturedRounded;
+    [self.contentView addSubview:self.clearFiltersButton];
+    
+    // Status Label
     self.statusLabel = [[NSTextField alloc] init];
     self.statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.statusLabel.stringValue = @"Enter a symbol to load news";
+    self.statusLabel.stringValue = @"Enter symbols or keywords to search news";
     self.statusLabel.editable = NO;
     self.statusLabel.bordered = NO;
     self.statusLabel.backgroundColor = [NSColor clearColor];
-    self.statusLabel.font = [NSFont systemFontOfSize:11];
     self.statusLabel.textColor = [NSColor secondaryLabelColor];
     [self.contentView addSubview:self.statusLabel];
     
-    // Create table view
-    [self createTableView];
-    [self setupConstraints];
-}
-
-- (void)createTableView {
+    // Progress Indicator
+    self.progressIndicator = [[NSProgressIndicator alloc] init];
+    self.progressIndicator.translatesAutoresizingMaskIntoConstraints = NO;
+    self.progressIndicator.style = NSProgressIndicatorStyleSpinning;
+    self.progressIndicator.hidden = YES;
+    [self.contentView addSubview:self.progressIndicator];
+    
     // Create table view
     self.tableView = [[NSTableView alloc] init];
     self.tableView.delegate = self;
     self.tableView.dataSource = self;
-    self.tableView.headerView = nil;
-    self.tableView.rowSizeStyle = NSTableViewRowSizeStyleDefault;
     self.tableView.allowsMultipleSelection = NO;
-    self.tableView.target = self;
-    self.tableView.doubleAction = @selector(openNewsItem:);
-    
-    // Create columns
-    NSTableColumn *column = [[NSTableColumn alloc] initWithIdentifier:@"news"];
-    column.title = @"News";
-    [self.tableView addTableColumn:column];
+    self.tableView.headerView = [[NSTableHeaderView alloc] init];
     
     // Create scroll view
     self.scrollView = [[NSScrollView alloc] init];
     self.scrollView.translatesAutoresizingMaskIntoConstraints = NO;
     self.scrollView.documentView = self.tableView;
     self.scrollView.hasVerticalScroller = YES;
-    self.scrollView.hasHorizontalScroller = NO;
+    self.scrollView.hasHorizontalScroller = YES;
     self.scrollView.autohidesScrollers = YES;
     [self.contentView addSubview:self.scrollView];
+    
+    [self setupConstraints];
+}
+
+- (void)setupTableView {
+    // Date Column
+    NSTableColumn *dateColumn = [[NSTableColumn alloc] initWithIdentifier:@"date"];
+    dateColumn.title = @"Date";
+    dateColumn.width = 100;
+    dateColumn.minWidth = 80;
+    [self.tableView addTableColumn:dateColumn];
+    
+    // Symbol Column
+    NSTableColumn *symbolColumn = [[NSTableColumn alloc] initWithIdentifier:@"symbol"];
+    symbolColumn.title = @"Symbol";
+    symbolColumn.width = 80;
+    symbolColumn.minWidth = 60;
+    [self.tableView addTableColumn:symbolColumn];
+    
+    // Title Column
+    NSTableColumn *titleColumn = [[NSTableColumn alloc] initWithIdentifier:@"title"];
+    titleColumn.title = @"Title";
+    titleColumn.width = 400;
+    titleColumn.minWidth = 200;
+    [self.tableView addTableColumn:titleColumn];
+    
+    // Color Indicators Column
+    NSTableColumn *colorColumn = [[NSTableColumn alloc] initWithIdentifier:@"colors"];
+    colorColumn.title = @"Type";
+    colorColumn.width = 80;
+    colorColumn.minWidth = 60;
+    [self.tableView addTableColumn:colorColumn];
+    
+    // Source Column
+    NSTableColumn *sourceColumn = [[NSTableColumn alloc] initWithIdentifier:@"source"];
+    sourceColumn.title = @"Source";
+    sourceColumn.width = 100;
+    sourceColumn.minWidth = 80;
+    [self.tableView addTableColumn:sourceColumn];
+    
+    // Variation % Column
+    NSTableColumn *variationColumn = [[NSTableColumn alloc] initWithIdentifier:@"variation"];
+    variationColumn.title = @"Var %";
+    variationColumn.width = 80;
+    variationColumn.minWidth = 60;
+    [self.tableView addTableColumn:variationColumn];
+    
+    // Priority/Strength Column
+    NSTableColumn *priorityColumn = [[NSTableColumn alloc] initWithIdentifier:@"priority"];
+    priorityColumn.title = @"Strength";
+    priorityColumn.width = 80;
+    priorityColumn.minWidth = 60;
+    [self.tableView addTableColumn:priorityColumn];
 }
 
 - (void)setupConstraints {
-    NSDictionary *views = @{
-        @"symbolField": self.symbolField,
-        @"refreshButton": self.refreshButton,
-        @"sourceControl": self.sourceControl,
-        @"statusLabel": self.statusLabel,
-        @"scrollView": self.scrollView
-    };
-    
-    // Horizontal constraints
-    [self.contentView addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|-8-[symbolField]-4-[refreshButton(30)]-8-|"
-                                                                             options:0
-                                                                             metrics:nil
-                                                                               views:views]];
-    
-    [self.contentView addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|-8-[sourceControl]-8-|"
-                                                                             options:0
-                                                                             metrics:nil
-                                                                               views:views]];
-    
-    [self.contentView addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|-8-[statusLabel]-8-|"
-                                                                             options:0
-                                                                             metrics:nil
-                                                                               views:views]];
-    
-    [self.contentView addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|-0-[scrollView]-0-|"
-                                                                             options:0
-                                                                             metrics:nil
-                                                                               views:views]];
-    
-    // Vertical constraints
-    [self.contentView addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|-8-[symbolField(22)]-4-[sourceControl(24)]-4-[statusLabel(16)]-4-[scrollView]-0-|"
-                                                                             options:0
-                                                                             metrics:nil
-                                                                               views:views]];
-    
-    // Align refresh button with symbol field
-    [self.contentView addConstraint:[NSLayoutConstraint constraintWithItem:self.refreshButton
-                                                                 attribute:NSLayoutAttributeCenterY
-                                                                 relatedBy:NSLayoutRelationEqual
-                                                                    toItem:self.symbolField
-                                                                 attribute:NSLayoutAttributeCenterY
-                                                                multiplier:1.0
-                                                                  constant:0.0]];
+    [NSLayoutConstraint activateConstraints:@[
+        // Search panel constraints
+        [self.searchField.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:8],
+        [self.searchField.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
+        [self.searchField.trailingAnchor constraintEqualToAnchor:self.refreshButton.leadingAnchor constant:-8],
+        
+        [self.refreshButton.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:8],
+        [self.refreshButton.widthAnchor constraintEqualToConstant:40],
+        [self.refreshButton.trailingAnchor constraintEqualToAnchor:self.preferencesButton.leadingAnchor constant:-4],
+        
+        [self.preferencesButton.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:8],
+        [self.preferencesButton.widthAnchor constraintEqualToConstant:40],
+        [self.preferencesButton.trailingAnchor constraintEqualToAnchor:self.clearFiltersButton.leadingAnchor constant:-4],
+        
+        [self.clearFiltersButton.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:8],
+        [self.clearFiltersButton.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
+        
+        // Status and progress constraints
+        [self.statusLabel.topAnchor constraintEqualToAnchor:self.searchField.bottomAnchor constant:8],
+        [self.statusLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
+        
+        [self.progressIndicator.centerYAnchor constraintEqualToAnchor:self.statusLabel.centerYAnchor],
+        [self.progressIndicator.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
+        
+        // Table view constraints
+        [self.scrollView.topAnchor constraintEqualToAnchor:self.statusLabel.bottomAnchor constant:8],
+        [self.scrollView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
+        [self.scrollView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
+        [self.scrollView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-8],
+    ]];
 }
 
-#pragma mark - Actions
+#pragma mark - Search and Loading
 
-- (IBAction)symbolChanged:(id)sender {
-    NSString *symbol = self.symbolField.stringValue;
-    if (symbol.length > 0) {
-        self.currentSymbol = symbol.uppercaseString;
-        [self loadNewsForCurrentSymbol];
-    }
+- (IBAction)searchFieldChanged:(id)sender {
+    NSString *searchInput = [self.searchField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    [self searchForInput:searchInput];
 }
 
 - (IBAction)refreshNews:(id)sender {
-    if (self.currentSymbol.length > 0) {
-        [self loadNewsForCurrentSymbol];
+    if (self.currentSymbols.count > 0) {
+        [self searchForInput:[self.currentSymbols componentsJoinedByString:@","]];
     }
 }
 
-- (IBAction)sourceChanged:(id)sender {
-    self.selectedSource = self.sourceControl.selectedSegment;
-    if (self.currentSymbol.length > 0) {
-        [self loadNewsForCurrentSymbol];
+- (IBAction)showPreferences:(id)sender {
+    [self showPreferences];
+}
+
+- (IBAction)clearAllFilters:(id)sender {
+    [self clearAllFilters];
+}
+
+- (void)searchForInput:(NSString *)searchInput {
+    if (!searchInput || searchInput.length == 0) {
+        [self updateStatus:@"Enter symbols or keywords to search"];
+        self.allNews = @[];
+        self.filteredNews = @[];
+        [self.tableView reloadData];
+        return;
+    }
+    
+    // Parse input - could be symbols separated by commas
+    NSArray<NSString *> *inputComponents = [self parseSearchInput:searchInput];
+    
+    // For now, treat all input as symbols
+    self.currentSymbols = inputComponents;
+    [self loadNewsForSymbols:inputComponents];
+}
+
+- (NSArray<NSString *> *)parseSearchInput:(NSString *)input {
+    NSArray<NSString *> *components = [input componentsSeparatedByString:@","];
+    NSMutableArray<NSString *> *cleanComponents = [NSMutableArray array];
+    
+    for (NSString *component in components) {
+        NSString *cleaned = [component stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].uppercaseString;
+        if (cleaned.length > 0) {
+            [cleanComponents addObject:cleaned];
+        }
+    }
+    
+    return [cleanComponents copy];
+}
+
+- (void)loadNewsForSymbols:(NSArray<NSString *> *)symbols {
+    self.isLoading = YES;
+    [self showLoadingState:YES];
+    [self updateStatus:[NSString stringWithFormat:@"Loading news for %lu symbols...", (unsigned long)symbols.count]];
+    
+    NSMutableArray<NewsModel *> *allNewsResults = [NSMutableArray array];
+    __block NSInteger remainingRequests = symbols.count;
+    
+    DataHub *dataHub = [DataHub shared];
+    
+    for (NSString *symbol in symbols) {
+        NSArray<NSNumber *> *enabledSources = [self getEnabledNewsSourceTypes];
+        
+        [dataHub getAggregatedNewsForSymbol:symbol
+                                fromSources:enabledSources
+                                 completion:^(NSArray<NewsModel *> *news, NSError * _Nullable error) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                remainingRequests--;
+                
+                if (news && !error) {
+                    [allNewsResults addObjectsFromArray:news];
+                }
+                
+                if (remainingRequests == 0) {
+                    [self handleMultiSymbolNewsResponse:allNewsResults];
+                }
+                
+                CGFloat progress = 1.0 - ((CGFloat)remainingRequests / symbols.count);
+                [self updateStatus:[NSString stringWithFormat:@"Loading... %.0f%%", progress * 100]];
+            });
+        }];
     }
 }
 
-- (IBAction)openNewsItem:(id)sender {
-    NSInteger row = self.tableView.clickedRow;
-    if (row >= 0 && row < self.news.count) {
-        NewsModel *newsItem = self.news[row];
+- (void)handleMultiSymbolNewsResponse:(NSArray<NewsModel *> *)allNews {
+    NSArray<NewsModel *> *uniqueNews = [self removeDuplicateNews:allNews];
+    NSArray<NewsModel *> *sortedNews = [uniqueNews sortedArrayUsingComparator:^NSComparisonResult(NewsModel *obj1, NewsModel *obj2) {
+        return [obj2.publishedDate compare:obj1.publishedDate];
+    }];
+    
+    NSInteger limit = self.newsLimit > 0 ? self.newsLimit : 50;
+    if (sortedNews.count > limit) {
+        sortedNews = [sortedNews subarrayWithRange:NSMakeRange(0, limit)];
+    }
+    
+    self.allNews = sortedNews;
+    [self applyFilters];
+    [self showLoadingState:NO];
+    [self updateStatus:[NSString stringWithFormat:@"Loaded %lu news items", (unsigned long)self.filteredNews.count]];
+}
+
+#pragma mark - Filtering
+
+- (void)applyFilters {
+    NSMutableArray<NewsModel *> *filtered = [NSMutableArray arrayWithArray:self.allNews];
+    
+    // Apply exclusion keywords filter
+    if (self.excludeKeywords.count > 0) {
+        [filtered filterUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NewsModel *news, NSDictionary *bindings) {
+            return ![self newsItem:news containsAnyExcludedKeywords:self.excludeKeywords];
+        }]];
+    }
+    
+    self.filteredNews = [filtered copy];
+    [self.tableView reloadData];
+}
+
+- (void)clearAllFilters {
+    self.filterDateFrom = nil;
+    self.filterDateTo = nil;
+    [self applyFilters];
+}
+
+#pragma mark - Color System
+
+- (NSColor *)colorForNewsItem:(NewsModel *)newsItem {
+    NSArray<NSColor *> *colors = [self allColorsForNewsItem:newsItem];
+    return colors.firstObject;
+}
+
+- (NSArray<NSColor *> *)allColorsForNewsItem:(NewsModel *)newsItem {
+    NSMutableArray<NSColor *> *matchingColors = [NSMutableArray array];
+    
+    for (NSString *colorHex in self.colorKeywordMapping.allKeys) {
+        NSString *keywords = self.colorKeywordMapping[colorHex];
+        if ([self newsItem:newsItem matchesKeywords:keywords]) {
+            NSColor *color = [self colorFromHexString:colorHex];
+            if (color) {
+                [matchingColors addObject:color];
+            }
+        }
+    }
+    
+    return [matchingColors copy];
+}
+
+- (BOOL)newsItem:(NewsModel *)newsItem matchesKeywords:(NSString *)keywords {
+    if (!keywords || keywords.length == 0) return NO;
+    
+    NSArray<NSString *> *keywordList = [keywords componentsSeparatedByString:@","];
+    NSString *searchText = [NSString stringWithFormat:@"%@ %@",
+                           newsItem.headline ?: @"",
+                           newsItem.summary ?: @""].lowercaseString;
+    
+    for (NSString *keyword in keywordList) {
+        NSString *trimmedKeyword = [keyword stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].lowercaseString;
+        if (trimmedKeyword.length > 0 && [searchText containsString:trimmedKeyword]) {
+            return YES;
+        }
+    }
+    
+    return NO;
+}
+
+- (BOOL)newsItem:(NewsModel *)newsItem containsAnyExcludedKeywords:(NSArray<NSString *> *)excludedKeywords {
+    NSString *searchText = [NSString stringWithFormat:@"%@ %@",
+                           newsItem.headline ?: @"",
+                           newsItem.summary ?: @""].lowercaseString;
+    
+    for (NSString *excludedKeyword in excludedKeywords) {
+        NSString *trimmedKeyword = [excludedKeyword stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].lowercaseString;
+        if (trimmedKeyword.length > 0 && [searchText containsString:trimmedKeyword]) {
+            return YES;
+        }
+    }
+    
+    return NO;
+}
+
+#pragma mark - Table View Data Source
+
+- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
+    return self.filteredNews.count;
+}
+
+- (id)tableView:(NSTableView *)tableView objectValueForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
+    if (row >= self.filteredNews.count) return nil;
+    
+    NewsModel *newsItem = self.filteredNews[row];
+    NSString *identifier = tableColumn.identifier;
+    
+    if ([identifier isEqualToString:@"date"]) {
+        return [self.dateFormatter stringFromDate:newsItem.publishedDate];
+    } else if ([identifier isEqualToString:@"symbol"]) {
+        return newsItem.symbol ?: @"";
+    } else if ([identifier isEqualToString:@"title"]) {
+        return newsItem.headline ?: @"";
+    } else if ([identifier isEqualToString:@"source"]) {
+        return newsItem.source ?: @"";
+    } else if ([identifier isEqualToString:@"variation"]) {
+        NSNumber *variation = self.symbolVariations[newsItem.symbol.uppercaseString];
+        if (variation) {
+            return [NSString stringWithFormat:@"%.2f%%", variation.doubleValue];
+        }
+        return @"--";
+    } else if ([identifier isEqualToString:@"priority"]) {
+        NSInteger priority = newsItem.priority > 0 ? newsItem.priority : 3;
+        NSMutableString *stars = [NSMutableString string];
+        for (NSInteger i = 0; i < priority && i < 5; i++) {
+            [stars appendString:@"⭐"];
+        }
+        return stars;
+    }
+    
+    return @"";
+}
+
+- (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
+    if (row >= self.filteredNews.count) return nil;
+    
+    NewsModel *newsItem = self.filteredNews[row];
+    NSString *identifier = tableColumn.identifier;
+    
+    if ([identifier isEqualToString:@"colors"]) {
+        return [self createColorIndicatorViewForNewsItem:newsItem];
+    } else if ([identifier isEqualToString:@"variation"]) {
+        return [self createVariationViewForNewsItem:newsItem];
+    }
+    
+    // Default text field view
+    NSTextField *textField = [tableView makeViewWithIdentifier:identifier owner:self];
+    if (!textField) {
+        textField = [[NSTextField alloc] init];
+        textField.identifier = identifier;
+        textField.bordered = NO;
+        textField.backgroundColor = [NSColor clearColor];
+        textField.editable = NO;
+    }
+    
+    textField.stringValue = [self tableView:tableView objectValueForTableColumn:tableColumn row:row] ?: @"";
+    
+    return textField;
+}
+
+- (NSView *)createColorIndicatorViewForNewsItem:(NewsModel *)newsItem {
+    NSView *containerView = [[NSView alloc] init];
+    containerView.identifier = @"colors";
+    
+    NSArray<NSColor *> *colors = [self allColorsForNewsItem:newsItem];
+    
+    if (colors.count == 0) return containerView;
+    
+    CGFloat squareSize = 12.0;
+    CGFloat spacing = 2.0;
+    
+    for (NSInteger i = 0; i < colors.count && i < 3; i++) {
+        NSView *colorSquare = [[NSView alloc] init];
+        colorSquare.wantsLayer = YES;
+        colorSquare.layer.backgroundColor = colors[i].CGColor;
+        colorSquare.layer.cornerRadius = 2.0;
+        colorSquare.translatesAutoresizingMaskIntoConstraints = NO;
+        
+        [containerView addSubview:colorSquare];
+        
+        [NSLayoutConstraint activateConstraints:@[
+            [colorSquare.widthAnchor constraintEqualToConstant:squareSize],
+            [colorSquare.heightAnchor constraintEqualToConstant:squareSize],
+            [colorSquare.centerYAnchor constraintEqualToAnchor:containerView.centerYAnchor],
+            [colorSquare.leadingAnchor constraintEqualToAnchor:containerView.leadingAnchor constant:i * (squareSize + spacing)]
+        ]];
+    }
+    
+    return containerView;
+}
+
+- (NSView *)createVariationViewForNewsItem:(NewsModel *)newsItem {
+    NSTextField *textField = [[NSTextField alloc] init];
+    textField.identifier = @"variation";
+    textField.bordered = NO;
+    textField.backgroundColor = [NSColor clearColor];
+    textField.editable = NO;
+    
+    NSNumber *variation = self.symbolVariations[newsItem.symbol.uppercaseString];
+    if (variation) {
+        double value = variation.doubleValue;
+        textField.stringValue = [NSString stringWithFormat:@"%.2f%%", value];
+        
+        if (value > 0) {
+            textField.textColor = [NSColor systemGreenColor];
+        } else if (value < 0) {
+            textField.textColor = [NSColor systemRedColor];
+        } else {
+            textField.textColor = [NSColor labelColor];
+        }
+    } else {
+        textField.stringValue = @"--";
+        textField.textColor = [NSColor secondaryLabelColor];
+    }
+    
+    return textField;
+}
+
+#pragma mark - Table View Delegate
+
+- (void)tableViewSelectionDidChange:(NSNotification *)notification {
+    NSInteger selectedRow = self.tableView.selectedRow;
+    if (selectedRow >= 0 && selectedRow < self.filteredNews.count) {
+        NewsModel *selectedNews = self.filteredNews[selectedRow];
+        NSLog(@"📰 Selected news: %@ - %@", selectedNews.symbol, selectedNews.headline);
+    }
+}
+
+- (void)tableView:(NSTableView *)tableView didDoubleClickOnRow:(NSInteger)row {
+    if (row >= 0 && row < self.filteredNews.count) {
+        NewsModel *newsItem = self.filteredNews[row];
         if (newsItem.url && newsItem.url.length > 0) {
             [[NSWorkspace sharedWorkspace] openURL:[NSURL URLWithString:newsItem.url]];
         }
     }
 }
 
-#pragma mark - News Loading
+#pragma mark - Preferences Management
 
-- (void)loadNewsForCurrentSymbol {
-    if (!self.currentSymbol || self.currentSymbol.length == 0) {
-        return;
+- (void)showPreferences {
+    if (!self.preferencesController) {
+        self.preferencesController = [[NewsPreferencesWindowController alloc] initWithNewsWidget:self];
     }
     
-    self.isLoading = YES;
-    [self updateStatus:@"Loading news..."];
+    [self.preferencesController.window makeKeyAndOrderFront:nil];
+    [self.preferencesController refreshUI];
+}
+
+- (void)savePreferences {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     
-    DataHub *dataHub = [DataHub shared];
+    [defaults setObject:self.enabledNewsSources forKey:kNewsWidgetEnabledSources];
+    [defaults setObject:self.colorKeywordMapping forKey:kNewsWidgetColorKeywords];
+    [defaults setObject:self.excludeKeywords forKey:kNewsWidgetExcludeKeywords];
+    [defaults setInteger:self.newsLimit forKey:kNewsWidgetNewsLimit];
+    [defaults setBool:self.autoRefresh forKey:kNewsWidgetAutoRefresh];
+    [defaults setDouble:self.refreshInterval forKey:kNewsWidgetRefreshInterval];
     
-    if (self.selectedSource == 0) {
-        // All sources - use aggregated method
-        NSArray *sources = @[
-            @(DataRequestTypeNews),
-            @(DataRequestTypeGoogleFinanceNews),
-            @(DataRequestTypeYahooFinanceNews),
-            @(DataRequestTypeSECFilings),
-            @(DataRequestTypeSeekingAlphaNews)
-        ];
-        
-        [dataHub getAggregatedNewsForSymbol:self.currentSymbol
-                                fromSources:sources
-                                 completion:^(NSArray<NewsModel *> *news, NSError * _Nullable error) {
-            [self handleNewsResponse:news error:error];
-        }];
+    [defaults synchronize];
+    
+    NSLog(@"📰 NewsWidget: Preferences saved");
+}
+
+- (void)loadPreferences {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    
+    NSDictionary *savedSources = [defaults objectForKey:kNewsWidgetEnabledSources];
+    if (savedSources) {
+        self.enabledNewsSources = [savedSources mutableCopy];
     } else {
-        // Specific source
-        DataRequestType newsType = [self dataRequestTypeForSource:self.selectedSource];
-        
-        [dataHub getNewsForSymbol:self.currentSymbol
-                         newsType:newsType
-                       completion:^(NSArray<NewsModel *> *news, BOOL isFresh, NSError * _Nullable error) {
-            [self handleNewsResponse:news error:error];
-        }];
+        [self resetNewsSourcesPreferencesToDefaults];
+    }
+    
+    NSDictionary *savedColors = [defaults objectForKey:kNewsWidgetColorKeywords];
+    if (savedColors) {
+        self.colorKeywordMapping = [savedColors mutableCopy];
+    } else {
+        [self resetColorMappingToDefaults];
+    }
+    
+    NSArray *savedExcludeKeywords = [defaults objectForKey:kNewsWidgetExcludeKeywords];
+    self.excludeKeywords = savedExcludeKeywords ?: @[];
+    
+    self.newsLimit = [defaults integerForKey:kNewsWidgetNewsLimit];
+    if (self.newsLimit <= 0) self.newsLimit = 50;
+    
+    self.autoRefresh = [defaults objectForKey:kNewsWidgetAutoRefresh] ? [defaults boolForKey:kNewsWidgetAutoRefresh] : YES;
+    
+    self.refreshInterval = [defaults doubleForKey:kNewsWidgetRefreshInterval];
+    if (self.refreshInterval <= 0) self.refreshInterval = 300;
+    
+    NSLog(@"📰 NewsWidget: Preferences loaded");
+}
+
+- (void)resetPreferencesToDefaults {
+    [self resetNewsSourcesPreferencesToDefaults];
+    [self resetColorMappingToDefaults];
+    
+    self.excludeKeywords = @[];
+    self.newsLimit = 50;
+    self.autoRefresh = YES;
+    self.refreshInterval = 300;
+    
+    [self savePreferences];
+}
+
+- (void)resetNewsSourcesPreferencesToDefaults {
+    self.enabledNewsSources = [NSMutableDictionary dictionary];
+    
+    NSArray<NSNumber *> *allNewsSources = @[
+        @(DataRequestTypeNews),
+        @(DataRequestTypeGoogleFinanceNews),
+        @(DataRequestTypeYahooFinanceNews),
+        @(DataRequestTypeSECFilings),
+        @(DataRequestTypeSeekingAlphaNews)
+    ];
+    
+    for (NSNumber *sourceType in allNewsSources) {
+        self.enabledNewsSources[sourceType] = @YES;
     }
 }
 
-- (DataRequestType)dataRequestTypeForSource:(NSInteger)source {
-    switch (source) {
-        case 1: return DataRequestTypeGoogleFinanceNews;
-        case 2: return DataRequestTypeYahooFinanceNews;
-        case 3: return DataRequestTypeSECFilings;
-        case 4: return DataRequestTypeSeekingAlphaNews;
-        default: return DataRequestTypeNews;
-    }
+- (void)resetColorMappingToDefaults {
+    self.colorKeywordMapping = [NSMutableDictionary dictionary];
+    
+    self.colorKeywordMapping[kDefaultYellowColor] = @"4-k,inside,insider";
+    self.colorKeywordMapping[kDefaultPinkColor] = @"private placement,pp,offering,secondary offering";
+    self.colorKeywordMapping[kDefaultBlueColor] = @"q1,q2,q3,q4,quarter,quarterly,earnings";
+    self.colorKeywordMapping[kDefaultGreenColor] = @"acquisition,merger,buyout,deal";
+    self.colorKeywordMapping[kDefaultRedColor] = @"lawsuit,investigation,sec,warning";
 }
 
-- (void)handleNewsResponse:(NSArray<NewsModel *> *)news error:(NSError *)error {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        self.isLoading = NO;
-        
-        if (error) {
-            NSLog(@"❌ NewsWidget: Error loading news: %@", error.localizedDescription);
-            [self updateStatus:[NSString stringWithFormat:@"Error: %@", error.localizedDescription]];
-            self.news = @[];
-        } else {
-            self.news = news;
-            [self updateStatus:[NSString stringWithFormat:@"Loaded %lu news items", (unsigned long)news.count]];
-            NSLog(@"✅ NewsWidget: Loaded %lu news items for %@", (unsigned long)news.count, self.currentSymbol);
+- (NSArray<NSNumber *> *)getEnabledNewsSourceTypes {
+    NSMutableArray<NSNumber *> *enabledSources = [NSMutableArray array];
+    
+    for (NSNumber *sourceType in self.enabledNewsSources.allKeys) {
+        if ([self.enabledNewsSources[sourceType] boolValue]) {
+            [enabledSources addObject:sourceType];
         }
-        
-        [self.tableView reloadData];
-    });
-}
-
-- (void)updateStatus:(NSString *)status {
-    self.statusLabel.stringValue = status;
+    }
+    
+    return [enabledSources copy];
 }
 
 #pragma mark - Auto Refresh
 
 - (void)startAutoRefreshIfEnabled {
-    if (self.autoRefresh && !self.refreshTimer) {
+    [self stopAutoRefresh];
+    
+    if (self.autoRefresh && self.refreshInterval > 0) {
         self.refreshTimer = [NSTimer scheduledTimerWithTimeInterval:self.refreshInterval
                                                              target:self
-                                                           selector:@selector(autoRefreshTimer:)
+                                                           selector:@selector(autoRefreshTriggered:)
                                                            userInfo:nil
                                                             repeats:YES];
-        NSLog(@"📰 NewsWidget: Started auto-refresh timer (%.0f seconds)", self.refreshInterval);
+        NSLog(@"📰 NewsWidget: Auto-refresh enabled (%.0f seconds)", self.refreshInterval);
     }
 }
 
@@ -278,106 +792,17 @@
     if (self.refreshTimer) {
         [self.refreshTimer invalidate];
         self.refreshTimer = nil;
-        NSLog(@"📰 NewsWidget: Stopped auto-refresh timer");
+        NSLog(@"📰 NewsWidget: Auto-refresh stopped");
     }
 }
 
-- (void)autoRefreshTimer:(NSTimer *)timer {
-    if (self.currentSymbol.length > 0 && !self.isLoading) {
-        NSLog(@"📰 NewsWidget: Auto-refreshing news for %@", self.currentSymbol);
-        [self loadNewsForCurrentSymbol];
+- (void)autoRefreshTriggered:(NSTimer *)timer {
+    if (self.currentSymbols.count > 0 && !self.isLoading) {
+        NSLog(@"📰 NewsWidget: Auto-refresh triggered");
+        [self refreshNews:nil];
     }
 }
 
-#pragma mark - NSTableViewDataSource
 
-- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
-    return self.news.count;
-}
-
-#pragma mark - NSTableViewDelegate
-
-- (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
-    if (row >= self.news.count) return nil;
-    
-    NewsModel *newsItem = self.news[row];
-    
-    static NSString *const kCellIdentifier = @"NewsCell";
-    NSTableCellView *cellView = [tableView makeViewWithIdentifier:kCellIdentifier owner:self];
-    
-    if (!cellView) {
-        cellView = [[NSTableCellView alloc] init];
-        cellView.identifier = kCellIdentifier;
-        
-        // Create text field for the cell
-        NSTextField *textField = [[NSTextField alloc] init];
-        textField.translatesAutoresizingMaskIntoConstraints = NO;
-        textField.editable = NO;
-        textField.bordered = NO;
-        textField.backgroundColor = [NSColor clearColor];
-        textField.lineBreakMode = NSLineBreakByWordWrapping;
-        textField.maximumNumberOfLines = 3;
-        [cellView addSubview:textField];
-        cellView.textField = textField;
-        
-        // Setup constraints
-        [cellView addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"H:|-4-[textField]-4-|"
-                                                                         options:0
-                                                                         metrics:nil
-                                                                           views:@{@"textField": textField}]];
-        [cellView addConstraints:[NSLayoutConstraint constraintsWithVisualFormat:@"V:|-2-[textField]-2-|"
-                                                                         options:0
-                                                                         metrics:nil
-                                                                           views:@{@"textField": textField}]];
-    }
-    
-    // Format news item display
-    NSMutableString *displayText = [NSMutableString string];
-    
-    // Add headline
-    [displayText appendString:newsItem.headline];
-    
-    // Add source and date
-    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-    formatter.dateStyle = NSDateFormatterShortStyle;
-    formatter.timeStyle = NSDateFormatterShortStyle;
-    NSString *dateString = [formatter stringFromDate:newsItem.publishedDate];
-    
-    [displayText appendFormat:@"\n%@ • %@", newsItem.source, dateString];
-    
-    // Add sentiment indicator
-    if (newsItem.sentiment > 0) {
-        [displayText appendString:@" 📈"];
-    } else if (newsItem.sentiment < 0) {
-        [displayText appendString:@" 📉"];
-    }
-    
-    cellView.textField.stringValue = displayText;
-    
-    // Set text color based on sentiment
-    if (newsItem.sentiment > 0) {
-        cellView.textField.textColor = [NSColor systemGreenColor];
-    } else if (newsItem.sentiment < 0) {
-        cellView.textField.textColor = [NSColor systemRedColor];
-    } else {
-        cellView.textField.textColor = [NSColor labelColor];
-    }
-    
-    return cellView;
-}
-
-- (CGFloat)tableView:(NSTableView *)tableView heightOfRow:(NSInteger)row {
-    return 50.0; // Fixed height for each news item
-}
-
-#pragma mark - Widget Configuration
-
-- (NSString *)widgetDisplayName {
-    return @"News";
-}
-
-- (NSString *)widgetDescription {
-    return @"Displays news and market sentiment from multiple sources";
-}
 
 @end

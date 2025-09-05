@@ -545,3 +545,143 @@
 }
 
 @end
+
+// =======================================
+// NEWS MODEL IMPLEMENTATION
+// =======================================
+
+@implementation NewsModel
+
+#pragma mark - Factory Methods
+
++ (instancetype)newsFromDictionary:(NSDictionary *)dict {
+    if (!dict) return nil;
+    
+    NewsModel *news = [[NewsModel alloc] init];
+    
+    // Basic info
+    news.symbol = dict[@"symbol"] ?: @"";
+    news.headline = dict[@"headline"] ?: dict[@"title"] ?: @"";
+    news.summary = dict[@"summary"] ?: dict[@"description"];
+    news.url = dict[@"url"] ?: dict[@"link"];
+    news.source = dict[@"source"] ?: @"";
+    
+    // Parse published date
+    if (dict[@"publishedDate"]) {
+        if ([dict[@"publishedDate"] isKindOfClass:[NSDate class]]) {
+            news.publishedDate = dict[@"publishedDate"];
+        } else if ([dict[@"publishedDate"] isKindOfClass:[NSString class]]) {
+            // Parse date string - try multiple formats
+            news.publishedDate = [self parseDate:dict[@"publishedDate"]];
+        }
+    }
+    
+    if (!news.publishedDate) {
+        news.publishedDate = [NSDate date]; // Default to now
+    }
+    
+    // Additional metadata
+    news.type = dict[@"type"] ?: @"news";
+    news.category = dict[@"category"];
+    news.author = dict[@"author"];
+    news.sentiment = dict[@"sentiment"] ? [dict[@"sentiment"] integerValue] : 0;
+    news.isBreaking = dict[@"isBreaking"] ? [dict[@"isBreaking"] boolValue] : NO;
+    news.priority = dict[@"priority"] ? [dict[@"priority"] integerValue] : 3; // Default medium priority
+    
+    return news;
+}
+
++ (NSArray<NewsModel *> *)newsArrayFromDictionaries:(NSArray<NSDictionary *> *)dictionaries {
+    if (!dictionaries) return @[];
+    
+    NSMutableArray<NewsModel *> *newsArray = [NSMutableArray array];
+    
+    for (NSDictionary *dict in dictionaries) {
+        if ([dict isKindOfClass:[NSDictionary class]]) {
+            NewsModel *news = [self newsFromDictionary:dict];
+            if (news) {
+                [newsArray addObject:news];
+            }
+        }
+    }
+    
+    // Sort by date (newest first)
+    [newsArray sortUsingComparator:^NSComparisonResult(NewsModel *obj1, NewsModel *obj2) {
+        return [obj2.publishedDate compare:obj1.publishedDate];
+    }];
+    
+    return [newsArray copy];
+}
+
+#pragma mark - Date Parsing Helper
+
++ (NSDate *)parseDate:(NSString *)dateString {
+    if (!dateString || dateString.length == 0) {
+        return nil;
+    }
+    
+    // Common date formats for news feeds
+    NSArray *dateFormats = @[
+        @"yyyy-MM-dd'T'HH:mm:ssZ",      // ISO 8601
+        @"yyyy-MM-dd'T'HH:mm:ss.SSSZ",  // ISO 8601 with milliseconds
+        @"EEE, dd MMM yyyy HH:mm:ss Z", // RSS format
+        @"yyyy-MM-dd HH:mm:ss",         // Simple format
+        @"yyyy-MM-dd",                  // Date only
+        @"MMM dd, yyyy",                // Mar 15, 2024
+        @"MM/dd/yyyy"                   // US format
+    ];
+    
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    formatter.locale = [NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];
+    
+    for (NSString *format in dateFormats) {
+        formatter.dateFormat = format;
+        NSDate *date = [formatter dateFromString:dateString];
+        if (date) {
+            return date;
+        }
+    }
+    
+    NSLog(@"⚠️ NewsModel: Could not parse date string: %@", dateString);
+    return nil;
+}
+
+#pragma mark - Conversion
+
+- (NSDictionary *)toDictionary {
+    NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+    
+    dict[@"symbol"] = self.symbol ?: @"";
+    dict[@"headline"] = self.headline ?: @"";
+    if (self.summary) dict[@"summary"] = self.summary;
+    if (self.url) dict[@"url"] = self.url;
+    dict[@"source"] = self.source ?: @"";
+    dict[@"publishedDate"] = self.publishedDate ?: [NSDate date];
+    
+    if (self.type) dict[@"type"] = self.type;
+    if (self.category) dict[@"category"] = self.category;
+    if (self.author) dict[@"author"] = self.author;
+    dict[@"sentiment"] = @(self.sentiment);
+    dict[@"isBreaking"] = @(self.isBreaking);
+    dict[@"priority"] = @(self.priority);
+    
+    return [dict copy];
+}
+
+#pragma mark - Comparison
+
+- (NSComparisonResult)compareByDate:(NewsModel *)otherNews {
+    if (!otherNews) return NSOrderedAscending;
+    
+    // Compare dates (newer first)
+    return [otherNews.publishedDate compare:self.publishedDate];
+}
+
+#pragma mark - Description
+
+- (NSString *)description {
+    return [NSString stringWithFormat:@"NewsModel{symbol=%@, headline=%@, source=%@, date=%@}",
+            self.symbol, self.headline, self.source, self.publishedDate];
+}
+
+@end

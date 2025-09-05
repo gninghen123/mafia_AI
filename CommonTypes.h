@@ -121,6 +121,9 @@ typedef NS_ENUM(NSInteger, DataRequestType) {
     DataRequestTypeEPS = 212,
     DataRequestTypeEarningsForecast = 213,
     DataRequestTypeAnalystMomentum = 214,
+    DataRequestTypeGoogleFinanceNews = 215,
+     DataRequestTypeYahooFinanceNews = 217,
+     DataRequestTypeSeekingAlphaNews = 218,
     
     // External data sources (routing OK)
     DataRequestTypeFinvizStatements = 300,
@@ -290,7 +293,10 @@ static inline NSString* DataRequestTypeToString(DataRequestType requestType) {
         case DataRequestTypeOrderBook: return @"OrderBook";
         case DataRequestTypeFundamentals: return @"Fundamentals";
         case DataRequestTypeNews: return @"News";
-        
+        case DataRequestTypeGoogleFinanceNews: return @"GoogleFinanceNews";
+               case DataRequestTypeSECFilings: return @"SECFilings";
+               case DataRequestTypeYahooFinanceNews: return @"YahooFinanceNews";
+               case DataRequestTypeSeekingAlphaNews: return @"SeekingAlphaNews";
         // Account Data
         case DataRequestTypePositions: return @"🛡️ Positions";
         case DataRequestTypeOrders: return @"🛡️ Orders";

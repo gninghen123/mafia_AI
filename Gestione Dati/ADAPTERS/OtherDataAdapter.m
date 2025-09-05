@@ -368,5 +368,243 @@
     return [[MarketData alloc] initWithDictionary:standardData];
 }
 
+#pragma mark - News Data Standardization (NEW)
+
+/**
+ * Convert raw news array to NewsModel runtime models (Protocol Method)
+ * @param rawData Raw news array from OtherDataSource methods
+ * @param symbol Symbol identifier
+ * @param newsType Type of news ("news", "press_release", "filing", etc.)
+ * @return Array of NewsModel runtime models
+ */
+- (NSArray<NewsModel *> *)standardizeNewsData:(NSArray *)rawData
+                                    forSymbol:(NSString *)symbol
+                                     newsType:(NSString *)newsType {
+    
+    if (!rawData || ![rawData isKindOfClass:[NSArray class]] || rawData.count == 0) {
+        NSLog(@"⚠️ OtherDataAdapter: No valid news data to standardize");
+        return @[];
+    }
+    
+    NSMutableArray<NewsModel *> *standardizedNews = [NSMutableArray array];
+    
+    for (NSDictionary *newsItem in rawData) {
+        if (![newsItem isKindOfClass:[NSDictionary class]]) {
+            continue;
+        }
+        
+        NewsModel *news = [self convertNewsItemToModel:newsItem symbol:symbol newsType:newsType];
+        if (news) {
+            [standardizedNews addObject:news];
+        }
+    }
+    
+    NSLog(@"✅ OtherDataAdapter: Standardized %lu news items for %@",
+          (unsigned long)standardizedNews.count, symbol);
+    
+    return [standardizedNews copy];
+}
+
+/**
+ * Convert single news item dictionary to NewsModel
+ */
+- (NewsModel *)convertNewsItemToModel:(NSDictionary *)newsItem
+                               symbol:(NSString *)symbol
+                             newsType:(NSString *)newsType {
+    
+    if (!newsItem || !symbol) {
+        return nil;
+    }
+    
+    NewsModel *news = [[NewsModel alloc] init];
+    
+    // Basic info
+    news.symbol = symbol;
+    news.headline = [self cleanString:newsItem[@"headline"]] ?: [self cleanString:newsItem[@"title"]] ?: @"";
+    news.summary = [self cleanString:newsItem[@"summary"]] ?: [self cleanString:newsItem[@"description"]];
+    news.url = [self cleanString:newsItem[@"url"]] ?: [self cleanString:newsItem[@"link"]];
+    news.source = [self cleanString:newsItem[@"source"]] ?: @"Unknown";
+    
+    // Parse published date
+    news.publishedDate = [self parseNewsDate:newsItem[@"publishedDate"]] ?: [NSDate date];
+    
+    // Metadata
+    news.type = newsType ?: @"news";
+    news.category = [self determineCategory:news.headline];
+    news.author = [self cleanString:newsItem[@"author"]];
+    news.sentiment = [self analyzeSentiment:news.headline];
+    news.isBreaking = [self isBreakingNews:news.headline];
+    news.priority = [self determinePriority:news.headline newsType:newsType];
+    
+    // Validation
+    if (news.headline.length == 0) {
+        NSLog(@"⚠️ OtherDataAdapter: Skipping news item with empty headline");
+        return nil;
+    }
+    
+    return news;
+}
+
+#pragma mark - Helper Methods for News Processing
+
+/**
+ * Clean and normalize string data
+ */
+- (NSString *)cleanString:(NSString *)string {
+    if (!string || ![string isKindOfClass:[NSString class]]) {
+        return nil;
+    }
+    
+    // Remove HTML tags
+    NSString *cleaned = [string stringByReplacingOccurrencesOfString:@"<[^>]*>"
+                                                          withString:@""
+                                                             options:NSRegularExpressionSearch
+                                                               range:NSMakeRange(0, string.length)];
+    
+    // Decode HTML entities
+    cleaned = [cleaned stringByReplacingOccurrencesOfString:@"&amp;" withString:@"&"];
+    cleaned = [cleaned stringByReplacingOccurrencesOfString:@"&lt;" withString:@"<"];
+    cleaned = [cleaned stringByReplacingOccurrencesOfString:@"&gt;" withString:@">"];
+    cleaned = [cleaned stringByReplacingOccurrencesOfString:@"&quot;" withString:@"\""];
+    cleaned = [cleaned stringByReplacingOccurrencesOfString:@"&#39;" withString:@"'"];
+    
+    // Trim whitespace
+    cleaned = [cleaned stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    
+    return cleaned.length > 0 ? cleaned : nil;
+}
+
+/**
+ * Parse news date from various formats
+ */
+- (NSDate *)parseNewsDate:(id)dateValue {
+    if (!dateValue) {
+        return nil;
+    }
+    
+    if ([dateValue isKindOfClass:[NSDate class]]) {
+        return dateValue;
+    }
+    
+    if ([dateValue isKindOfClass:[NSString class]]) {
+        return [NewsModel parseDate:dateValue]; // Use NewsModel's robust date parser
+    }
+    
+    return nil;
+}
+
+/**
+ * Determine news category from headline
+ */
+- (NSString *)determineCategory:(NSString *)headline {
+    if (!headline) return @"general";
+    
+    NSString *lowercaseHeadline = [headline lowercaseString];
+    
+    if ([lowercaseHeadline containsString:@"earnings"] ||
+        [lowercaseHeadline containsString:@"revenue"] ||
+        [lowercaseHeadline containsString:@"profit"]) {
+        return @"earnings";
+    }
+    
+    if ([lowercaseHeadline containsString:@"merger"] ||
+        [lowercaseHeadline containsString:@"acquisition"] ||
+        [lowercaseHeadline containsString:@"buyout"]) {
+        return @"merger";
+    }
+    
+    if ([lowercaseHeadline containsString:@"fda"] ||
+        [lowercaseHeadline containsString:@"approval"] ||
+        [lowercaseHeadline containsString:@"clinical"]) {
+        return @"regulatory";
+    }
+    
+    if ([lowercaseHeadline containsString:@"lawsuit"] ||
+        [lowercaseHeadline containsString:@"sec"] ||
+        [lowercaseHeadline containsString:@"investigation"]) {
+        return @"legal";
+    }
+    
+    return @"general";
+}
+
+/**
+ * Simple sentiment analysis based on keywords
+ */
+- (NSInteger)analyzeSentiment:(NSString *)headline {
+    if (!headline) return 0;
+    
+    NSString *lowercaseHeadline = [headline lowercaseString];
+    
+    // Positive keywords
+    NSArray *positiveWords = @[@"gains", @"rises", @"beats", @"exceeds", @"approval",
+                               @"growth", @"increase", @"strong", @"positive", @"up"];
+    
+    // Negative keywords
+    NSArray *negativeWords = @[@"falls", @"drops", @"misses", @"declines", @"loss",
+                               @"lawsuit", @"investigation", @"warning", @"down", @"weak"];
+    
+    NSInteger score = 0;
+    
+    for (NSString *word in positiveWords) {
+        if ([lowercaseHeadline containsString:word]) {
+            score += 1;
+        }
+    }
+    
+    for (NSString *word in negativeWords) {
+        if ([lowercaseHeadline containsString:word]) {
+            score -= 1;
+        }
+    }
+    
+    // Normalize to -1, 0, 1
+    if (score > 0) return 1;
+    if (score < 0) return -1;
+    return 0;
+}
+
+/**
+ * Determine if news is breaking
+ */
+- (BOOL)isBreakingNews:(NSString *)headline {
+    if (!headline) return NO;
+    
+    NSString *lowercaseHeadline = [headline lowercaseString];
+    
+    NSArray *breakingKeywords = @[@"breaking", @"urgent", @"alert", @"just in", @"developing"];
+    
+    for (NSString *keyword in breakingKeywords) {
+        if ([lowercaseHeadline containsString:keyword]) {
+            return YES;
+        }
+    }
+    
+    return NO;
+}
+
+/**
+ * Determine news priority (1-5, higher = more important)
+ */
+- (NSInteger)determinePriority:(NSString *)headline newsType:(NSString *)newsType {
+    if ([self isBreakingNews:headline]) {
+        return 5; // Highest priority for breaking news
+    }
+    
+    if ([newsType isEqualToString:@"filing"] || [newsType isEqualToString:@"press_release"]) {
+        return 4; // High priority for official filings/releases
+    }
+    
+    NSString *category = [self determineCategory:headline];
+    if ([category isEqualToString:@"earnings"] || [category isEqualToString:@"merger"]) {
+        return 4; // High priority for earnings/mergers
+    }
+    
+    if ([category isEqualToString:@"regulatory"] || [category isEqualToString:@"legal"]) {
+        return 3; // Medium-high priority
+    }
+    
+    return 2; // Default priority
+}
 
 @end

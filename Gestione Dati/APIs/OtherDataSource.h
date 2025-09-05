@@ -124,5 +124,37 @@
 - (void)fetchMarketListForType:(DataRequestType)listType
                     parameters:(NSDictionary *)parameters
                     completion:(void (^)(NSArray *results, NSError *error))completion;
+#pragma mark - Enhanced News Data Methods
 
+/**
+ * Fetch news from Google Finance RSS feed
+ * @param symbol Stock symbol
+ * @param completion Completion handler with parsed news array
+ */
+- (void)fetchGoogleFinanceNewsForSymbol:(NSString *)symbol
+                             completion:(void (^)(NSArray *news, NSError *error))completion;
+
+/**
+ * Fetch SEC EDGAR filings from Atom feed
+ * @param symbol Stock symbol (will be converted to CIK if needed)
+ * @param completion Completion handler with parsed filings array
+ */
+- (void)fetchSECFilingsForSymbol:(NSString *)symbol
+                      completion:(void (^)(NSArray *filings, NSError *error))completion;
+
+/**
+ * Fetch news from Yahoo Finance RSS feed
+ * @param symbol Stock symbol
+ * @param completion Completion handler with parsed news array
+ */
+- (void)fetchYahooFinanceNewsForSymbol:(NSString *)symbol
+                            completion:(void (^)(NSArray *news, NSError *error))completion;
+
+/**
+ * Fetch news from Seeking Alpha RSS feed
+ * @param symbol Stock symbol
+ * @param completion Completion handler with parsed news array
+ */
+- (void)fetchSeekingAlphaNewsForSymbol:(NSString *)symbol
+                            completion:(void (^)(NSArray *news, NSError *error))completion;
 @end

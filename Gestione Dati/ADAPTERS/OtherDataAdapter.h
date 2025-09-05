@@ -24,6 +24,18 @@ NS_ASSUME_NONNULL_BEGIN
 - (nullable SeasonalDataModel *)convertZacksChartToSeasonalModel:(NSDictionary *)rawData
                                                           symbol:(NSString *)symbol
                                                         dataType:(NSString *)dataType;
+#pragma mark - News Data Standardization (Runtime Models) - NEW
+
+/**
+ * Convert raw news array to NewsModel runtime models
+ * @param rawData Raw news array from API response
+ * @param symbol Symbol identifier
+ * @param newsType Type of news ("news", "press_release", "filing", etc.)
+ * @return Array of NewsModel runtime models
+ */
+- (NSArray<NewsModel *> *)standardizeNewsData:(NSArray *)rawData
+                                    forSymbol:(NSString *)symbol
+                                     newsType:(NSString *)newsType;
 
 @end
 

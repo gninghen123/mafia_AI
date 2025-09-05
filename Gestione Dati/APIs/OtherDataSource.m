@@ -42,6 +42,19 @@ static NSString *const kOpenInsiderURL = @"http://openinsider.com/ps_data.csv";
 // StockCatalyst Endpoints
 static NSString *const kStockCatalystURL = @"https://www.thestockcatalyst.com/NYSEPMMovers?ShowFloats=true";
 
+// Google Finance News RSS
+static NSString *const kGoogleFinanceNewsURL = @"https://www.google.com/finance/company_news?q=%@&output=rss";
+
+// SEC EDGAR Filings Atom Feed
+static NSString *const kSECEdgarFilingsURL = @"https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=%@&type=&dateb=&owner=exclude&start=0&count=40&output=atom";
+
+// Yahoo Finance News RSS
+static NSString *const kYahooFinanceNewsURL = @"http://finance.yahoo.com/rss/headline?s=%@";
+
+// Seeking Alpha RSS Feed
+static NSString *const kSeekingAlphaNewsURL = @"https://seekingalpha.com/api/sa/combined/%@.xml";
+
+
 @interface OtherDataSource ()
 @property (nonatomic, strong) NSURLSession *session;
 @property (nonatomic, strong) NSMutableDictionary *requestCount;
@@ -1428,5 +1441,329 @@ static NSString *const kStockCatalystURL = @"https://www.thestockcatalyst.com/NY
     formatter.dateFormat = @"yyyy-MM-dd";
     return [formatter stringFromDate:[NSDate date]];
 }
+
+#pragma mark - Enhanced News Data Methods
+
+/**
+ * Fetch news from Google Finance RSS feed
+ * @param symbol Stock symbol
+ * @param completion Completion handler with parsed news array
+ */
+- (void)fetchGoogleFinanceNewsForSymbol:(NSString *)symbol
+                             completion:(void (^)(NSArray *news, NSError *error))completion {
+    if (!symbol || symbol.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"OtherDataSource"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Symbol is required"}];
+        if (completion) completion(nil, error);
+        return;
+    }
+    
+    NSString *urlString = [NSString stringWithFormat:kGoogleFinanceNewsURL, symbol.uppercaseString];
+    
+    [self executeGenericRequest:urlString completion:^(id response, NSError *error) {
+        if (error) {
+            NSLog(@"❌ Google Finance News error for %@: %@", symbol, error.localizedDescription);
+            if (completion) completion(nil, error);
+            return;
+        }
+        
+        // Parse RSS XML response
+        NSArray *newsItems = [self parseRSSResponse:response forSymbol:symbol source:@"Google Finance"];
+        
+        NSLog(@"✅ Google Finance: Retrieved %lu news items for %@", (unsigned long)newsItems.count, symbol);
+        if (completion) completion(newsItems, nil);
+    }];
+}
+
+/**
+ * Fetch SEC EDGAR filings from Atom feed
+ * @param symbol Stock symbol (will be converted to CIK if needed)
+ * @param completion Completion handler with parsed filings array
+ */
+- (void)fetchSECFilingsForSymbol:(NSString *)symbol
+                      completion:(void (^)(NSArray *filings, NSError *error))completion {
+    if (!symbol || symbol.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"OtherDataSource"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Symbol is required"}];
+        if (completion) completion(nil, error);
+        return;
+    }
+    
+    // For now, use symbol directly - in future we might need CIK lookup
+    NSString *urlString = [NSString stringWithFormat:kSECEdgarFilingsURL, symbol.uppercaseString];
+    
+    [self executeGenericRequest:urlString completion:^(id response, NSError *error) {
+        if (error) {
+            NSLog(@"❌ SEC EDGAR error for %@: %@", symbol, error.localizedDescription);
+            if (completion) completion(nil, error);
+            return;
+        }
+        
+        // Parse Atom XML response
+        NSArray *filings = [self parseAtomResponse:response forSymbol:symbol source:@"SEC EDGAR"];
+        
+        NSLog(@"✅ SEC EDGAR: Retrieved %lu filings for %@", (unsigned long)filings.count, symbol);
+        if (completion) completion(filings, nil);
+    }];
+}
+
+/**
+ * Fetch news from Yahoo Finance RSS feed
+ * @param symbol Stock symbol
+ * @param completion Completion handler with parsed news array
+ */
+- (void)fetchYahooFinanceNewsForSymbol:(NSString *)symbol
+                            completion:(void (^)(NSArray *news, NSError *error))completion {
+    if (!symbol || symbol.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"OtherDataSource"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Symbol is required"}];
+        if (completion) completion(nil, error);
+        return;
+    }
+    
+    NSString *urlString = [NSString stringWithFormat:kYahooFinanceNewsURL, symbol.uppercaseString];
+    
+    [self executeGenericRequest:urlString completion:^(id response, NSError *error) {
+        if (error) {
+            NSLog(@"❌ Yahoo Finance News error for %@: %@", symbol, error.localizedDescription);
+            if (completion) completion(nil, error);
+            return;
+        }
+        
+        // Parse RSS XML response
+        NSArray *newsItems = [self parseRSSResponse:response forSymbol:symbol source:@"Yahoo Finance"];
+        
+        NSLog(@"✅ Yahoo Finance: Retrieved %lu news items for %@", (unsigned long)newsItems.count, symbol);
+        if (completion) completion(newsItems, nil);
+    }];
+}
+
+/**
+ * Fetch news from Seeking Alpha RSS feed
+ * @param symbol Stock symbol
+ * @param completion Completion handler with parsed news array
+ */
+- (void)fetchSeekingAlphaNewsForSymbol:(NSString *)symbol
+                            completion:(void (^)(NSArray *news, NSError *error))completion {
+    if (!symbol || symbol.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"OtherDataSource"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Symbol is required"}];
+        if (completion) completion(nil, error);
+        return;
+    }
+    
+    NSString *urlString = [NSString stringWithFormat:kSeekingAlphaNewsURL, symbol.uppercaseString];
+    
+    [self executeGenericRequest:urlString completion:^(id response, NSError *error) {
+        if (error) {
+            NSLog(@"❌ Seeking Alpha News error for %@: %@", symbol, error.localizedDescription);
+            if (completion) completion(nil, error);
+            return;
+        }
+        
+        // Parse XML response (Seeking Alpha uses custom XML format)
+        NSArray *newsItems = [self parseSeekingAlphaResponse:response forSymbol:symbol];
+        
+        NSLog(@"✅ Seeking Alpha: Retrieved %lu news items for %@", (unsigned long)newsItems.count, symbol);
+        if (completion) completion(newsItems, nil);
+    }];
+}
+
+#pragma mark - XML/RSS Parsing Helper Methods
+
+/**
+ * Parse RSS XML response to standardized news format
+ */
+- (NSArray *)parseRSSResponse:(NSString *)xmlString forSymbol:(NSString *)symbol source:(NSString *)source {
+    if (!xmlString || xmlString.length == 0) {
+        return @[];
+    }
+    
+    NSMutableArray *newsItems = [NSMutableArray array];
+    
+    // Basic RSS parsing - in a production app, you'd use NSXMLParser
+    // For now, we'll do simple string parsing as a proof of concept
+    
+    // Split by <item> tags
+    NSArray *itemStrings = [xmlString componentsSeparatedByString:@"<item>"];
+    
+    for (NSInteger i = 1; i < itemStrings.count; i++) { // Skip first (header)
+        NSString *itemString = itemStrings[i];
+        
+        // Extract title
+        NSString *title = [self extractXMLValue:@"title" fromString:itemString];
+        
+        // Extract description
+        NSString *description = [self extractXMLValue:@"description" fromString:itemString];
+        
+        // Extract link
+        NSString *link = [self extractXMLValue:@"link" fromString:itemString];
+        
+        // Extract pubDate
+        NSString *pubDate = [self extractXMLValue:@"pubDate" fromString:itemString];
+        
+        if (title && title.length > 0) {
+            NSDictionary *newsItem = @{
+                @"headline": title,
+                @"summary": description ?: @"",
+                @"url": link ?: @"",
+                @"publishedDate": pubDate ?: @"",
+                @"source": source,
+                @"symbol": symbol.uppercaseString
+            };
+            [newsItems addObject:newsItem];
+        }
+    }
+    
+    return [newsItems copy];
+}
+
+/**
+ * Parse Atom XML response to standardized news format
+ */
+- (NSArray *)parseAtomResponse:(NSString *)xmlString forSymbol:(NSString *)symbol source:(NSString *)source {
+    if (!xmlString || xmlString.length == 0) {
+        return @[];
+    }
+    
+    NSMutableArray *filings = [NSMutableArray array];
+    
+    // Split by <entry> tags for Atom feeds
+    NSArray *entryStrings = [xmlString componentsSeparatedByString:@"<entry>"];
+    
+    for (NSInteger i = 1; i < entryStrings.count; i++) { // Skip first (header)
+        NSString *entryString = entryStrings[i];
+        
+        // Extract title
+        NSString *title = [self extractXMLValue:@"title" fromString:entryString];
+        
+        // Extract summary
+        NSString *summary = [self extractXMLValue:@"summary" fromString:entryString];
+        
+        // Extract link href
+        NSString *link = [self extractAtomLink:entryString];
+        
+        // Extract updated date
+        NSString *updated = [self extractXMLValue:@"updated" fromString:entryString];
+        
+        if (title && title.length > 0) {
+            NSDictionary *filing = @{
+                @"headline": title,
+                @"summary": summary ?: @"",
+                @"url": link ?: @"",
+                @"publishedDate": updated ?: @"",
+                @"source": source,
+                @"symbol": symbol.uppercaseString,
+                @"type": @"filing"
+            };
+            [filings addObject:filing];
+        }
+    }
+    
+    return [filings copy];
+}
+
+/**
+ * Parse Seeking Alpha custom XML response
+ */
+- (NSArray *)parseSeekingAlphaResponse:(NSString *)xmlString forSymbol:(NSString *)symbol {
+    if (!xmlString || xmlString.length == 0) {
+        return @[];
+    }
+    
+    NSMutableArray *newsItems = [NSMutableArray array];
+    
+    // Seeking Alpha uses a custom XML format - adapt as needed
+    // This is a basic implementation that may need refinement
+    
+    NSArray *itemStrings = [xmlString componentsSeparatedByString:@"<item>"];
+    
+    for (NSInteger i = 1; i < itemStrings.count; i++) {
+        NSString *itemString = itemStrings[i];
+        
+        NSString *title = [self extractXMLValue:@"title" fromString:itemString];
+        NSString *description = [self extractXMLValue:@"description" fromString:itemString];
+        NSString *link = [self extractXMLValue:@"link" fromString:itemString];
+        NSString *pubDate = [self extractXMLValue:@"pubDate" fromString:itemString];
+        
+        if (title && title.length > 0) {
+            NSDictionary *newsItem = @{
+                @"headline": title,
+                @"summary": description ?: @"",
+                @"url": link ?: @"",
+                @"publishedDate": pubDate ?: @"",
+                @"source": @"Seeking Alpha",
+                @"symbol": symbol.uppercaseString
+            };
+            [newsItems addObject:newsItem];
+        }
+    }
+    
+    return [newsItems copy];
+}
+
+#pragma mark - XML Parsing Utilities
+
+/**
+ * Extract XML tag value from string
+ */
+- (NSString *)extractXMLValue:(NSString *)tagName fromString:(NSString *)xmlString {
+    NSString *openTag = [NSString stringWithFormat:@"<%@>", tagName];
+    NSString *closeTag = [NSString stringWithFormat:@"</%@>", tagName];
+    
+    NSRange openRange = [xmlString rangeOfString:openTag];
+    if (openRange.location == NSNotFound) {
+        return nil;
+    }
+    
+    NSRange searchRange = NSMakeRange(NSMaxRange(openRange), xmlString.length - NSMaxRange(openRange));
+    NSRange closeRange = [xmlString rangeOfString:closeTag options:0 range:searchRange];
+    if (closeRange.location == NSNotFound) {
+        return nil;
+    }
+    
+    NSRange valueRange = NSMakeRange(NSMaxRange(openRange), closeRange.location - NSMaxRange(openRange));
+    NSString *value = [xmlString substringWithRange:valueRange];
+    
+    // Clean up HTML entities and CDATA
+    value = [value stringByReplacingOccurrencesOfString:@"<![CDATA[" withString:@""];
+    value = [value stringByReplacingOccurrencesOfString:@"]]>" withString:@""];
+    value = [value stringByReplacingOccurrencesOfString:@"&lt;" withString:@"<"];
+    value = [value stringByReplacingOccurrencesOfString:@"&gt;" withString:@">"];
+    value = [value stringByReplacingOccurrencesOfString:@"&amp;" withString:@"&"];
+    value = [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    
+    return value;
+}
+
+/**
+ * Extract link href from Atom entry
+ */
+- (NSString *)extractAtomLink:(NSString *)entryString {
+    NSRange linkRange = [entryString rangeOfString:@"<link"];
+    if (linkRange.location == NSNotFound) {
+        return nil;
+    }
+    
+    NSRange hrefRange = [entryString rangeOfString:@"href=\"" options:0 range:NSMakeRange(linkRange.location, entryString.length - linkRange.location)];
+    if (hrefRange.location == NSNotFound) {
+        return nil;
+    }
+    
+    NSUInteger startPos = NSMaxRange(hrefRange);
+    NSRange quoteRange = [entryString rangeOfString:@"\"" options:0 range:NSMakeRange(startPos, entryString.length - startPos)];
+    if (quoteRange.location == NSNotFound) {
+        return nil;
+    }
+    
+    NSRange urlRange = NSMakeRange(startPos, quoteRange.location - startPos);
+    return [entryString substringWithRange:urlRange];
+}
+
+
 
 @end

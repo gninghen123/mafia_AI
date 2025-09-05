@@ -40,7 +40,7 @@
                         <font key="font" metaFont="system"/>
                     </buttonCell>
                     <connections>
-                        <action selector="toggleObjectsPanel:" target="-2" id="jWd-e4-Ajk"/>
+                        <action selector="toggleObjectsPanel:" target="-2" id="ou0-VF-0Qm"/>
                     </connections>
                 </button>
                 <textField focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="mRQ-t4-Qv9">
@@ -94,7 +94,7 @@
                         <action selector="templateChanged:" target="-2" id="mAp-Cb-AgO"/>
                     </connections>
                 </comboBox>
-                <splitView arrangesAllSubviews="NO" dividerStyle="paneSplitter" vertical="YES" translatesAutoresizingMaskIntoConstraints="NO" id="65j-Ye-ijW">
+                <splitView dividerStyle="paneSplitter" vertical="YES" translatesAutoresizingMaskIntoConstraints="NO" id="65j-Ye-ijW">
                     <rect key="frame" x="0.0" y="37" width="1277" height="659"/>
                     <subviews>
                         <customView fixedFrame="YES" id="096-SE-gA4">

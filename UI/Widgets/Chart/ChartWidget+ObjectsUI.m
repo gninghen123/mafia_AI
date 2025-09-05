@@ -211,60 +211,7 @@ static const void *kSplitViewLeadingConstraintKey = &kSplitViewLeadingConstraint
           self.splitViewLeadingConstraint.constant);
 }
 
-#pragma mark - Objects Panel Actions
 
-- (void)toggleObjectsPanel:(id)sender {
-    [self.objectsPanel toggleVisibilityAnimated:YES];
-    
-    // Update toggle button state
-    self.isObjectsPanelVisible = self.objectsPanel.isVisible;
-    
-    if (self.isObjectsPanelVisible) {
-        self.objectsPanelToggle.state = NSControlStateValueOn;
-    } else {
-        self.objectsPanelToggle.state = NSControlStateValueOff;
-    }
-    
-    // SIDEBAR PATTERN: Adjust main split view position
-    [self adjustMainSplitViewForObjectsPanel];
-    
-    NSLog(@"🎨 Objects panel toggled: %@", self.isObjectsPanelVisible ? @"VISIBLE" : @"HIDDEN");
-}
-
-- (void)adjustMainSplitViewForObjectsPanel {
-    // SIDEBAR PATTERN: Anima solo il leading constraint del content area
-  
-    if (!self.splitViewLeadingConstraint) {
-        return;
-    }
-    
-    CGFloat currentConstant = self.splitViewLeadingConstraint.constant;
-    CGFloat targetConstant = self.isObjectsPanelVisible ?
-        (8 + self.objectsPanel.panelWidth + 8) :  // Panel width + margins
-        14; // Original offset
-        
-    NSLog(@"🎬 Animating split view leading: %.1f -> %.1f (panel %@)",
-          currentConstant, targetConstant, self.isObjectsPanelVisible ? @"VISIBLE" : @"HIDDEN");
-    NSLog(@"🎬 Split view constraint: %@", self.splitViewLeadingConstraint);
-    NSLog(@"🎬 Split view frame before: %@", NSStringFromRect(self.panelsSplitView.frame));
-    
-    [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-        context.duration = 0.25;
-        context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-        context.allowsImplicitAnimation = YES;
-        
-        // Forza l'animazione del constraint
-        [[self.splitViewLeadingConstraint animator] setConstant:targetConstant];
-        
-        // Forza il layout update
-        [[self.contentView animator] layoutSubtreeIfNeeded];
-        
-    } completionHandler:^{
-        NSLog(@"🎬 Split view animation completed");
-        NSLog(@"🎬 Final constraint constant: %.1f", self.splitViewLeadingConstraint.constant);
-        NSLog(@"🎬 Final split view frame: %@", NSStringFromRect(self.panelsSplitView.frame));
-    }];
-}
 
 - (void)showObjectManager:(id)sender {
     NSLog(@"🎨 ChartWidget: Show Object Manager requested");

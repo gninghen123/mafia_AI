@@ -231,6 +231,41 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)shouldTriggerWithCurrentPrice:(double)currentPrice previousPrice:(double)previousPrice;
 
 @end
+// =======================================
+// NEWS MODEL - RUNTIME
+// =======================================
+
+@interface NewsModel : NSObject
+
+// Basic info
+@property (nonatomic, strong) NSString *symbol;
+@property (nonatomic, strong) NSString *headline;
+@property (nonatomic, strong, nullable) NSString *summary;
+@property (nonatomic, strong, nullable) NSString *url;
+@property (nonatomic, strong) NSString *source;
+@property (nonatomic, strong) NSDate *publishedDate;
+
+// Additional metadata
+@property (nonatomic, strong, nullable) NSString *type;        // "news", "filing", "press_release"
+@property (nonatomic, strong, nullable) NSString *category;    // "earnings", "merger", "general", etc.
+@property (nonatomic, strong, nullable) NSString *author;
+@property (nonatomic, assign) NSInteger sentiment;            // -1 negative, 0 neutral, 1 positive
+@property (nonatomic, assign) BOOL isBreaking;
+@property (nonatomic, assign) NSInteger priority;             // 1-5, higher = more important
+
+// Factory methods
++ (instancetype)newsFromDictionary:(NSDictionary *)dict;
++ (NSArray<NewsModel *> *)newsArrayFromDictionaries:(NSArray<NSDictionary *> *)dictionaries;
+
+// Conversion
+- (NSDictionary *)toDictionary;
+
+// Comparison
+- (NSComparisonResult)compareByDate:(NewsModel *)otherNews;
+
++ (NSDate *)parseDate:(NSString *)dateString;
+
+@end
 
 NS_ASSUME_NONNULL_END
 

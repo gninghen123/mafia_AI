@@ -474,6 +474,10 @@
         case DataRequestTypeNews:
         case DataRequestTypeCompanyNews:
         case DataRequestTypePressReleases:
+        case DataRequestTypeGoogleFinanceNews:      // NEW
+               case DataRequestTypeSECFilings:             // NEW
+               case DataRequestTypeYahooFinanceNews:       // NEW
+               case DataRequestTypeSeekingAlphaNews:       // NEW
             return (capabilities & DataSourceCapabilityNews) != 0;
             
         case DataRequestTypeOptionChain:
@@ -585,6 +589,22 @@
                                    requestID:requestID
                                   completion:completion];
             break;
+        case DataRequestTypeNews:
+             case DataRequestTypeCompanyNews:
+             case DataRequestTypePressReleases:
+             case DataRequestTypeGoogleFinanceNews:
+             case DataRequestTypeSECFilings:
+             case DataRequestTypeYahooFinanceNews:
+             case DataRequestTypeSeekingAlphaNews:
+                 [self executeNewsRequest:parameters
+                           withDataSource:dataSource
+                               sourceInfo:sourceInfo
+                                  sources:sources
+                              sourceIndex:sourceIndex
+                                requestID:requestID
+                              requestType:requestType
+                               completion:completion];
+                 break;
             
         default: {
             NSError *unsupportedError = [NSError errorWithDomain:@"DownloadManager"
@@ -600,6 +620,7 @@
 }
 
 #pragma mark - Specific Market Data Request Type Implementations
+
 
 - (void)executeQuoteRequest:(NSDictionary *)parameters
              withDataSource:(id<DataSource>)dataSource
@@ -1690,6 +1711,182 @@
     NSUInteger cancelledCount = self.activeRequests.count;
     [self.activeRequests removeAllObjects];
     NSLog(@"🚫 DownloadManager: Cancelled all %lu active requests", (unsigned long)cancelledCount);
+}
+
+#pragma mark - news request
+
+- (void)executeNewsRequest:(NSDictionary *)parameters
+            withDataSource:(id<DataSource>)dataSource
+                sourceInfo:(DataSourceInfo *)sourceInfo
+                   sources:(NSArray<DataSourceInfo *> *)sources
+               sourceIndex:(NSInteger)sourceIndex
+                 requestID:(NSString *)requestID
+               requestType:(DataRequestType)requestType
+                completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    NSString *symbol = parameters[@"symbol"];
+    NSNumber *limitParam = parameters[@"limit"];
+    NSInteger limit = limitParam ? [limitParam integerValue] : 50; // Default limit
+    
+    if (!symbol || symbol.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Symbol is required for news requests"}];
+        [self handleGenericResponse:nil
+                               error:error
+                          dataSource:dataSource
+                          sourceInfo:sourceInfo
+                             sources:sources
+                         sourceIndex:sourceIndex
+                          parameters:parameters
+                           requestID:requestID
+                         requestType:requestType
+                          completion:completion];
+        return;
+    }
+    
+    // Cast to OtherDataSource since only OtherDataSource supports these news methods
+    if (![dataSource isKindOfClass:[OtherDataSource class]]) {
+        NSLog(@"⚠️ DownloadManager: DataSource %@ doesn't support news request type %ld, trying next source",
+              dataSource.sourceName, (long)requestType);
+        
+        // Try next source
+        [self executeRequestWithSources:sources
+                             requestType:requestType
+                              parameters:parameters
+                               requestID:requestID
+                             sourceIndex:sourceIndex + 1
+                              completion:completion];
+        return;
+    }
+    
+    OtherDataSource *otherDataSource = (OtherDataSource *)dataSource;
+    
+    // Route to specific news method based on request type
+    switch (requestType) {
+        case DataRequestTypeNews:
+        case DataRequestTypeCompanyNews:
+            // Use existing Nasdaq news method
+            [otherDataSource fetchNewsForSymbol:symbol
+                                           limit:limit
+                                      completion:^(NSArray *news, NSError *error) {
+                [self handleGenericResponse:news
+                                       error:error
+                                  dataSource:dataSource
+                                  sourceInfo:sourceInfo
+                                     sources:sources
+                                 sourceIndex:sourceIndex
+                                  parameters:parameters
+                                   requestID:requestID
+                                 requestType:requestType
+                                  completion:completion];
+            }];
+            break;
+            
+        case DataRequestTypePressReleases:
+            // Use existing Nasdaq press releases method
+            [otherDataSource fetchPressReleasesForSymbol:symbol
+                                                   limit:limit
+                                              completion:^(NSArray *releases, NSError *error) {
+                [self handleGenericResponse:releases
+                                       error:error
+                                  dataSource:dataSource
+                                  sourceInfo:sourceInfo
+                                     sources:sources
+                                 sourceIndex:sourceIndex
+                                  parameters:parameters
+                                   requestID:requestID
+                                 requestType:requestType
+                                  completion:completion];
+            }];
+            break;
+            
+        case DataRequestTypeGoogleFinanceNews:
+            // Use new Google Finance RSS method
+            [otherDataSource fetchGoogleFinanceNewsForSymbol:symbol
+                                                   completion:^(NSArray *news, NSError *error) {
+                [self handleGenericResponse:news
+                                       error:error
+                                  dataSource:dataSource
+                                  sourceInfo:sourceInfo
+                                     sources:sources
+                                 sourceIndex:sourceIndex
+                                  parameters:parameters
+                                   requestID:requestID
+                                 requestType:requestType
+                                  completion:completion];
+            }];
+            break;
+            
+        case DataRequestTypeSECFilings:
+            // Use new SEC EDGAR method
+            [otherDataSource fetchSECFilingsForSymbol:symbol
+                                           completion:^(NSArray *filings, NSError *error) {
+                [self handleGenericResponse:filings
+                                       error:error
+                                  dataSource:dataSource
+                                  sourceInfo:sourceInfo
+                                     sources:sources
+                                 sourceIndex:sourceIndex
+                                  parameters:parameters
+                                   requestID:requestID
+                                 requestType:requestType
+                                  completion:completion];
+            }];
+            break;
+            
+        case DataRequestTypeYahooFinanceNews:
+            // Use new Yahoo Finance RSS method
+            [otherDataSource fetchYahooFinanceNewsForSymbol:symbol
+                                                  completion:^(NSArray *news, NSError *error) {
+                [self handleGenericResponse:news
+                                       error:error
+                                  dataSource:dataSource
+                                  sourceInfo:sourceInfo
+                                     sources:sources
+                                 sourceIndex:sourceIndex
+                                  parameters:parameters
+                                   requestID:requestID
+                                 requestType:requestType
+                                  completion:completion];
+            }];
+            break;
+            
+        case DataRequestTypeSeekingAlphaNews:
+            // Use new Seeking Alpha RSS method
+            [otherDataSource fetchSeekingAlphaNewsForSymbol:symbol
+                                                 completion:^(NSArray *news, NSError *error) {
+                [self handleGenericResponse:news
+                                       error:error
+                                  dataSource:dataSource
+                                  sourceInfo:sourceInfo
+                                     sources:sources
+                                 sourceIndex:sourceIndex
+                                  parameters:parameters
+                                   requestID:requestID
+                                 requestType:requestType
+                                  completion:completion];
+            }];
+            break;
+            
+        default:
+            // Unsupported news type
+            NSError *error = [NSError errorWithDomain:@"DownloadManager"
+                                                 code:400
+                                             userInfo:@{NSLocalizedDescriptionKey:
+                                                       [NSString stringWithFormat:@"Unsupported news request type: %ld", (long)requestType]}];
+            [self handleGenericResponse:nil
+                                   error:error
+                              dataSource:dataSource
+                              sourceInfo:sourceInfo
+                                 sources:sources
+                             sourceIndex:sourceIndex
+                              parameters:parameters
+                               requestID:requestID
+                             requestType:requestType
+                              completion:completion];
+            break;
+    }
 }
 
 @end

@@ -18,9 +18,10 @@
 #import "TickChartWidget.h"
 #import "StorageManagementWidget.h"
 #import "LegacyDataConverterWidget.h"
-#import "ChartPatternLibraryWidget.h"  // ✅ AGGIUNTO: Import per ChartPatternLibraryWidget
-#import "PortfolioWidget.h"  // ✅ NUOVO: Import per PortfolioWidget
+#import "ChartPatternLibraryWidget.h"
+#import "PortfolioWidget.h"  
 #import "IBKRTestWidget.h"
+#import "NewsWidget.h"
 
 
 @interface WidgetTypeManager ()
@@ -87,7 +88,7 @@
             @"Quote",
             @"Watchlist",
             @"General Market",
-            @"News Feed",
+            @"News",
             @"Economic Calendar",
             @"Market Overview",
             @"Symbol Info",
@@ -139,6 +140,7 @@
     typeToClass[@"Pattern Chart Library"] = [ChartPatternLibraryWidget class];
     typeToClass[@"Portfolio"] = [PortfolioWidget class];
     typeToClass[@"IBKR Test Widget"]= [IBKRTestWidget class];
+    typeToClass[@"News"] = [NewsWidget class];
 
     // Map all other types to BaseWidget for now
     for (NSArray *types in self.widgetCategories.allValues) {
@@ -175,6 +177,7 @@
         @"Pattern Chart Library": @"square.grid.3x3.bottomleft.fill",  // ✅ AGGIUNTO: Icona per ChartPatternLibrary
         @"Portfolio": @"briefcase.fill",  // ✅ NUOVO: Icona per Portfolio Widget
         @"IBKR Test Widget": @"testtube.2",
+        @"News": @"newspaper",
 
         @"Technical Indicators": @"waveform.path.ecg",
         @"Scanner": @"magnifyingglass",

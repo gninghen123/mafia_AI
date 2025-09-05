@@ -108,6 +108,7 @@
 - (void)requestZacksData:(NSDictionary *)parameters
               completion:(void (^)(SeasonalDataModel * _Nullable data, NSError * _Nullable error))completion;
 
+- (void)dataManager:(DataManager *)manager didUpdateNews:(NSArray<NewsModel *> *)news forSymbol:(NSString *)symbol;
 
 
 

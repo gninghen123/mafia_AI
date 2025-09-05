@@ -275,22 +275,173 @@ extern NSString *const DataHubDataLoadedNotification;
     BOOL shouldShow = (button.state == NSControlStateValueOn);
     
     if (shouldShow && !self.isObjectsPanelVisible) {
-        // Add objects panel as first item in split view
-        [self.mainSplitView insertArrangedSubview:self.objectsPanelContainer atIndex:0];
-        self.isObjectsPanelVisible = YES;
+        NSLog(@"🎨 Showing objects panel...");
+        
+        // ✅ STRATEGIA CORRETTA: Rimuovi tutto e ricostruisci l'ordine corretto
+        [self.mainSplitView insertArrangedSubview:self.objectsPanelContainer atIndex:0];        self.isObjectsPanelVisible = YES;
+        
     } else if (!shouldShow && self.isObjectsPanelVisible) {
-        // Remove objects panel from split view
-        [self.mainSplitView removeArrangedSubview:self.objectsPanelContainer];
+        NSLog(@"🎨 Hiding objects panel...");
+        
+        // ✅ STRATEGIA CORRETTA: Rimuovi tutto e ricostruisci senza objects panel
         [self.objectsPanelContainer removeFromSuperview];
         self.isObjectsPanelVisible = NO;
     }
-    
+    [self.mainSplitView layoutSubtreeIfNeeded];
+    [self.mainSplitView setNeedsDisplay:YES];
     NSLog(@"🎨 Objects panel toggled: %@", self.isObjectsPanelVisible ? @"VISIBLE" : @"HIDDEN");
 }
 
+- (IBAction)toggleIndicatorsPanel:(id)sender {
+  /*  NSButton *button = (NSButton *)sender;
+    BOOL shouldShow = (button.state == NSControlStateValueOn);
+    
+    if (shouldShow && !self.isIndicatorsPanelVisible) {
+        NSLog(@"📈 Showing indicators panel...");
+        
+        // ✅ STRATEGIA CORRETTA: Rimuovi tutto e ricostruisci l'ordine corretto
+        [self rebuildMainSplitViewWithObjectsVisible:self.isObjectsPanelVisible indicatorsVisible:YES];
+        self.isIndicatorsPanelVisible = YES;
+        
+    } else if (!shouldShow && self.isIndicatorsPanelVisible) {
+        NSLog(@"📈 Hiding indicators panel...");
+        
+        // ✅ STRATEGIA CORRETTA: Rimuovi tutto e ricostruisci senza indicators panel
+        [self rebuildMainSplitViewWithObjectsVisible:self.isObjectsPanelVisible indicatorsVisible:NO];
+        self.isIndicatorsPanelVisible = NO;
+    }
+    
+    NSLog(@"📈 Indicators panel toggled: %@", self.isIndicatorsPanelVisible ? @"VISIBLE" : @"HIDDEN");*/
+}
+/*
+- (void)rebuildMainSplitViewWithObjectsVisible:(BOOL)objectsVisible indicatorsVisible:(BOOL)indicatorsVisible {
+    NSLog(@"🔧 Rebuilding mainSplitView - Objects: %@ | Indicators: %@",
+          objectsVisible ? @"YES" : @"NO",
+          indicatorsVisible ? @"YES" : @"NO");
+    self.mainSplitView insertArrangedSubview:<#(nonnull NSView *)#> atIndex:<#(NSInteger)#>
+    // ✅ STEP 1: Rimuovi tutti i subview mantenendo i reference
+    NSArray *currentSubviews = [self.mainSplitView.subviews copy];
+    for (NSView *subview in currentSubviews) {
+        [self.mainSplitView removeArrangedSubview:subview];
+        // NON rimuovere dalla superview per mantenere i constraints
+    }
+    
+    // ✅ STEP 2: Ricostruisci nell'ordine corretto
+    
+    // 2.1: Objects panel sempre PRIMO (se visibile)
+    if (objectsVisible && self.objectsPanelContainer) {
+        [self.mainSplitView addArrangedSubview:self.objectsPanelContainer];
+        NSLog(@"  ✅ Added objects panel as FIRST");
+    }
+    
+    // 2.2: Panels split view sempre al CENTRO (sempre presente)
+    if (self.panelsSplitView) {
+        [self.mainSplitView addArrangedSubview:self.panelsSplitView];
+        NSLog(@"  ✅ Added panels split view as CENTER");
+    } else {
+        NSLog(@"  ⚠️ panelsSplitView is nil!");
+    }
+    
+    // 2.3: Indicators panel sempre ULTIMO (se visibile)
+    if (indicatorsVisible && self.indicatorsPanelContainer) {
+        [self.mainSplitView addArrangedSubview:self.indicatorsPanelContainer];
+        NSLog(@"  ✅ Added indicators panel as LAST");
+    }
+    
+    // ✅ STEP 3: Forza layout update
+    [self.mainSplitView adjustSubviews];
+    [self.mainSplitView setNeedsDisplay:YES];
+    
+    // ✅ STEP 4: Log finale per debug
+    NSLog(@"🎯 Final mainSplitView structure: %ld subviews", (long)self.mainSplitView.subviews.count);
+    for (NSUInteger i = 0; i < self.mainSplitView.subviews.count; i++) {
+        NSView *subview = self.mainSplitView.subviews[i];
+        NSString *panelType = @"Unknown";
+        
+        if (subview == self.objectsPanelContainer) {
+            panelType = @"ObjectsPanel";
+        } else if (subview == self.panelsSplitView) {
+            panelType = @"ChartPanels";
+        } else if (subview == self.indicatorsPanelContainer) {
+            panelType = @"IndicatorsPanel";
+        }
+        
+        NSLog(@"  [%ld] %@ - Frame: %@", (long)i, panelType, NSStringFromRect(subview.frame));
+    }
+}
 
+- (void)setupSidePanelsContainers {
+    NSLog(@"🏗️ Setting up side panels containers...");
+    
+    // ... (mantieni il codice esistente per creare i container) ...
+    
+    // ✅ IMPORTANTE: All'inizio, mantieni solo panelsSplitView nel mainSplitView
+    // Rimuovi entrambi i pannelli laterali
+    if (self.objectsPanelContainer.superview) {
+        [self.mainSplitView removeArrangedSubview:self.objectsPanelContainer];
+        [self.objectsPanelContainer removeFromSuperview];
+    }
+    
+    if (self.indicatorsPanelContainer.superview) {
+        [self.mainSplitView removeArrangedSubview:self.indicatorsPanelContainer];
+        [self.indicatorsPanelContainer removeFromSuperview];
+    }
+    
+    // ✅ Verifica che solo panelsSplitView sia presente
+    [self ensureCorrectInitialSplitViewStructure];
+}
+- (void)ensureCorrectInitialSplitViewStructure {
+    NSLog(@"🔍 Verifying initial mainSplitView structure...");
+    
+    // La struttura iniziale dovrebbe essere solo: [panelsSplitView]
+    NSArray *currentSubviews = self.mainSplitView.subviews;
+    BOOL needsRebuild = NO;
+    
+    if (currentSubviews.count != 1 || currentSubviews.firstObject != self.panelsSplitView) {
+        NSLog(@"⚠️ Initial structure is incorrect, rebuilding...");
+        needsRebuild = YES;
+    }
+    
+    if (needsRebuild) {
+        // Rimuovi tutto
+        for (NSView *subview in [currentSubviews copy]) {
+            [self.mainSplitView removeArrangedSubview:subview];
+        }
+        
+        // Aggiungi solo panelsSplitView
+        [self.mainSplitView addArrangedSubview:self.panelsSplitView];
+    }
+    
+    NSLog(@"✅ Initial structure verified: %ld subviews", (long)self.mainSplitView.subviews.count);
+}
 
-
+- (void)restorePanelVisibilityFromLayout:(NSDictionary *)layoutData {
+    if (!layoutData) return;
+    
+    BOOL objectsVisible = [layoutData[@"isObjectsPanelVisible"] boolValue];
+    BOOL indicatorsVisible = [layoutData[@"isIndicatorsPanelVisible"] boolValue];
+    
+    NSLog(@"🔄 Restoring panel visibility - Objects: %@ | Indicators: %@",
+          objectsVisible ? @"YES" : @"NO",
+          indicatorsVisible ? @"YES" : @"NO");
+    
+    // Usa il metodo corretto per ricostruire la struttura
+    [self rebuildMainSplitViewWithObjectsVisible:objectsVisible indicatorsVisible:indicatorsVisible];
+    
+    // Aggiorna gli stati dei toggle button
+    self.isObjectsPanelVisible = objectsVisible;
+    self.isIndicatorsPanelVisible = indicatorsVisible;
+    
+    // Aggiorna i button states se esistono
+    if (self.objectsPanelToggle) {
+        self.objectsPanelToggle.state = objectsVisible ? NSControlStateValueOn : NSControlStateValueOff;
+    }
+    
+    if (self.indicatorsPanelToggle) {
+        self.indicatorsPanelToggle.state = indicatorsVisible ? NSControlStateValueOn : NSControlStateValueOff;
+    }
+}
+*/
 
 - (IBAction)toggleObjectsVisibility:(id)sender {
     NSButton *button = (NSButton *)sender;
@@ -327,24 +478,6 @@ extern NSString *const DataHubDataLoadedNotification;
     if (templateName.length > 0) {
         [self loadChartTemplate:templateName];
     }
-}
-
-- (IBAction)toggleIndicatorsPanel:(id)sender {
-    NSButton *button = (NSButton *)sender;
-    BOOL shouldShow = (button.state == NSControlStateValueOn);
-    
-    if (shouldShow && !self.isIndicatorsPanelVisible) {
-        // Add indicators panel as last item in split view
-        [self.mainSplitView addArrangedSubview:self.indicatorsPanelContainer];
-        self.isIndicatorsPanelVisible = YES;
-    } else if (!shouldShow && self.isIndicatorsPanelVisible) {
-        // Remove indicators panel from split view
-        [self.mainSplitView removeArrangedSubview:self.indicatorsPanelContainer];
-        [self.indicatorsPanelContainer removeFromSuperview];
-        self.isIndicatorsPanelVisible = NO;
-    }
-    
-    NSLog(@"📈 Indicators panel toggled: %@", self.isIndicatorsPanelVisible ? @"VISIBLE" : @"HIDDEN");
 }
 
 

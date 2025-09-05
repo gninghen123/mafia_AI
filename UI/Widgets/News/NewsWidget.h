@@ -23,15 +23,13 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSButton *preferencesButton;
 @property (nonatomic, strong) NSButton *clearFiltersButton;
 
-// Results Table
+// Split View and Results
+@property (nonatomic, strong) NSSplitView *splitView;
 @property (nonatomic, strong) NSScrollView *scrollView;
 @property (nonatomic, strong) NSTableView *tableView;
+@property (nonatomic, strong) NSTextView *previewTextView;
+@property (nonatomic, strong) NSScrollView *previewScrollView;
 @property (nonatomic, strong) NSTextField *statusLabel;
-
-// Filter Controls
-@property (nonatomic, strong) NSTextField *dateFromField;
-@property (nonatomic, strong) NSTextField *dateToField;
-@property (nonatomic, strong) NSTextField *keywordFilterField;
 
 // Progress Indicator
 @property (nonatomic, strong) NSProgressIndicator *progressIndicator;

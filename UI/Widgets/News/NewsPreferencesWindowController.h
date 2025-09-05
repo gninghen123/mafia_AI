@@ -41,7 +41,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 #pragma mark - UI Creation
 
-- (void)createWindow;
+- (void)createUI;
 - (void)createTabView;
 - (void)createSourcesTab;
 - (void)createColorsTab;

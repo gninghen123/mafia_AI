@@ -183,7 +183,7 @@ extern NSString *const DataHubDataLoadedNotification;
     // Create objects panel
     self.objectsPanel = [[ObjectsPanel alloc] init];
     self.objectsPanel.delegate = self;
-    self.objectsPanel.panelWidth = 180;
+    [self.objectsPanel setFrame:NSMakeRect(0, 0, 180, 1200)];
     
     // Create indicators panel
     self.indicatorsPanel = [[IndicatorsPanel alloc] init];
@@ -287,13 +287,13 @@ extern NSString *const DataHubDataLoadedNotification;
         [self.objectsPanelContainer removeFromSuperview];
         self.isObjectsPanelVisible = NO;
     }
-    [self.mainSplitView layoutSubtreeIfNeeded];
-    [self.mainSplitView setNeedsDisplay:YES];
+  //  [self.mainSplitView layoutSubtreeIfNeeded];
+   // [self.mainSplitView setNeedsDisplay:YES];
     NSLog(@"🎨 Objects panel toggled: %@", self.isObjectsPanelVisible ? @"VISIBLE" : @"HIDDEN");
 }
-
+/*
 - (IBAction)toggleIndicatorsPanel:(id)sender {
-  /*  NSButton *button = (NSButton *)sender;
+    NSButton *button = (NSButton *)sender;
     BOOL shouldShow = (button.state == NSControlStateValueOn);
     
     if (shouldShow && !self.isIndicatorsPanelVisible) {
@@ -311,9 +311,9 @@ extern NSString *const DataHubDataLoadedNotification;
         self.isIndicatorsPanelVisible = NO;
     }
     
-    NSLog(@"📈 Indicators panel toggled: %@", self.isIndicatorsPanelVisible ? @"VISIBLE" : @"HIDDEN");*/
+    NSLog(@"📈 Indicators panel toggled: %@", self.isIndicatorsPanelVisible ? @"VISIBLE" : @"HIDDEN");
 }
-/*
+
 - (void)rebuildMainSplitViewWithObjectsVisible:(BOOL)objectsVisible indicatorsVisible:(BOOL)indicatorsVisible {
     NSLog(@"🔧 Rebuilding mainSplitView - Objects: %@ | Indicators: %@",
           objectsVisible ? @"YES" : @"NO",

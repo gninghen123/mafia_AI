@@ -12,22 +12,7 @@
 @implementation NewsPreferencesWindowController
 
 - (instancetype)initWithNewsWidget:(NewsWidget *)newsWidget {
-    self = [super initWithWindowNibName:nil];
-    if (self) {
-        self.newsWidget = newsWidget;
-        
-        // Initialize data arrays
-        self.sourcesList = [NSMutableArray array];
-        self.colorMappings = [NSMutableArray array];
-        
-        [self createWindow];
-        [self loadDataFromWidget];
-    }
-    return self;
-}
-
-- (void)createWindow {
-    // Create window
+    // Create the window first
     NSRect windowFrame = NSMakeRect(0, 0, 600, 500);
     NSWindow *window = [[NSWindow alloc] initWithContentRect:windowFrame
                                                    styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable
@@ -37,8 +22,22 @@
     window.minSize = NSMakeSize(500, 400);
     [window center];
     
-    self.window = window;
-    
+    // Initialize with the created window
+    self = [super initWithWindow:window];
+    if (self) {
+        self.newsWidget = newsWidget;
+        
+        // Initialize data arrays
+        self.sourcesList = [NSMutableArray array];
+        self.colorMappings = [NSMutableArray array];
+        
+        [self createUI];
+        [self loadDataFromWidget];
+    }
+    return self;
+}
+
+- (void)createUI {
     [self createTabView];
     [self createSourcesTab];
     [self createColorsTab];
@@ -670,7 +669,7 @@
         NSNumber *enabled = sourceData[@"enabled"];
         enabledSources[sourceType] = enabled;
     }
-    self.newsWidget.enabledNewsSources = enabledSources;
+    [self.newsWidget setEnabledNewsSources:enabledSources];
     
     // Save color mappings data
     NSMutableDictionary *colorKeywordMapping = [NSMutableDictionary dictionary];
@@ -681,7 +680,7 @@
             colorKeywordMapping[colorHex] = keywords;
         }
     }
-    self.newsWidget.colorKeywordMapping = colorKeywordMapping;
+    [self.newsWidget setColorKeywordMapping:colorKeywordMapping];
     
     // Save exclude keywords
     NSString *excludeKeywordsText = self.excludeKeywordsTextView.string;
@@ -693,20 +692,22 @@
             [cleanedKeywords addObject:trimmed];
         }
     }
-    self.newsWidget.excludeKeywords = [cleanedKeywords copy];
+    [self.newsWidget setExcludeKeywords:[cleanedKeywords copy]];
     
     // Save other settings
-    self.newsWidget.newsLimit = self.newsLimitField.integerValue > 0 ? self.newsLimitField.integerValue : 50;
+    NSInteger newsLimit = self.newsLimitField.integerValue > 0 ? self.newsLimitField.integerValue : 50;
+    [self.newsWidget setNewsLimit:newsLimit];
     
     // Use recursive search for tagged views
     NSButton *autoRefreshCheckbox = [self findViewWithTag:100 inView:self.window.contentView];
     if (autoRefreshCheckbox && [autoRefreshCheckbox isKindOfClass:[NSButton class]]) {
-        self.newsWidget.autoRefresh = (autoRefreshCheckbox.state == NSControlStateValueOn);
+        [self.newsWidget setAutoRefresh:(autoRefreshCheckbox.state == NSControlStateValueOn)];
     }
     
     NSTextField *refreshIntervalField = [self findViewWithTag:101 inView:self.window.contentView];
     if (refreshIntervalField && [refreshIntervalField isKindOfClass:[NSTextField class]]) {
-        self.newsWidget.refreshInterval = refreshIntervalField.doubleValue > 0 ? refreshIntervalField.doubleValue : 300;
+        NSTimeInterval interval = refreshIntervalField.doubleValue > 0 ? refreshIntervalField.doubleValue : 300;
+        [self.newsWidget setRefreshInterval:interval];
     }
     
     // Restart auto-refresh with new settings

@@ -347,9 +347,38 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
 - (BOOL)hasUnsavedChanges {
     if (!self.currentTemplate || !self.originalTemplate) return NO;
     
-    // Simple comparison - could be made more sophisticated
-    return ![self.currentTemplate.templateName isEqualToString:self.originalTemplate.templateName] ||
-    self.currentTemplate.panels.count != self.originalTemplate.panels.count;
+    // Check template name
+    if (![self.currentTemplate.templateName isEqualToString:self.originalTemplate.templateName]) {
+        return YES;
+    }
+    
+    // Check panel count
+    if (self.currentTemplate.panels.count != self.originalTemplate.panels.count) {
+        return YES;
+    }
+    
+    // ✅ AGGIUNTO: Check individual panel changes
+    NSArray<ChartPanelTemplateModel *> *currentPanels = [self.currentTemplate orderedPanels];
+    NSArray<ChartPanelTemplateModel *> *originalPanels = [self.originalTemplate orderedPanels];
+    
+    for (NSUInteger i = 0; i < currentPanels.count; i++) {
+        ChartPanelTemplateModel *currentPanel = currentPanels[i];
+        ChartPanelTemplateModel *originalPanel = originalPanels[i];
+        
+        // Check panel properties
+        if (![currentPanel.rootIndicatorType isEqualToString:originalPanel.rootIndicatorType] ||
+            fabs(currentPanel.relativeHeight - originalPanel.relativeHeight) > 0.01 ||
+            currentPanel.childIndicatorsData.count != originalPanel.childIndicatorsData.count) {
+            return YES;
+        }
+        
+        // ✅ IMPORTANTE: Check childIndicatorsData changes
+        if (![currentPanel.childIndicatorsData isEqualToArray:originalPanel.childIndicatorsData]) {
+            return YES;
+        }
+    }
+    
+    return NO;
 }
 
 #pragma mark - NSOutlineView DataSource - AGGIORNATO per runtime models
@@ -571,23 +600,19 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     NSMenu *menu = [[NSMenu alloc] init];
     
     if (item == nil) {
-        // ✅ ROOT LEVEL: Solo Add Panel
-        NSMenuItem *addPanelItem = [[NSMenuItem alloc] initWithTitle:@"Add Panel..."
-                                                              action:@selector(showAddPanelDialog:)
-                                                       keyEquivalent:@""];
-        addPanelItem.target = self;
+        // ✅ ROOT LEVEL: Add Panel
+        NSMenuItem *addPanelItem = [[NSMenuItem alloc] initWithTitle:@"Add Panel" action:nil keyEquivalent:@""];
+        NSMenu *panelSubmenu = [self createPanelTypesSubmenu];
+        addPanelItem.submenu = panelSubmenu;
         [menu addItem:addPanelItem];
-        
     } else if ([item isKindOfClass:[ChartPanelTemplateModel class]]) {
         ChartPanelTemplateModel *panel = item;
         
         // ✅ PANEL CONTEXT: Add Indicator, Configure, Remove
-        NSMenuItem *addIndicatorItem = [[NSMenuItem alloc] initWithTitle:@"Add Indicator..."
-                                                                  action:@selector(showAddIndicatorDialog:)
-                                                           keyEquivalent:@""];
-        addIndicatorItem.target = self;
-        addIndicatorItem.representedObject = panel;
-        [menu addItem:addIndicatorItem];
+        NSMenuItem *addIndicatorItem = [[NSMenuItem alloc] initWithTitle:@"Add Indicator" action:nil keyEquivalent:@""];
+            NSMenu *indicatorSubmenu = [self createHierarchicalIndicatorMenuForPanel:panel];
+            addIndicatorItem.submenu = indicatorSubmenu;
+            [menu addItem:addIndicatorItem];
         
         [menu addItem:[NSMenuItem separatorItem]];
         
@@ -699,53 +724,39 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     return submenu;
 }
 
-/// Crea submenu dinamico per tipi di pannelli basato su IndicatorRegistry
 - (NSMenu *)createPanelTypesSubmenu {
     NSMenu *submenu = [[NSMenu alloc] init];
     
-    // ✅ DYNAMIC: Query IndicatorRegistry for available indicators
     IndicatorRegistry *registry = [IndicatorRegistry sharedRegistry];
     NSArray<NSString *> *availableIndicators = [registry hardcodedIndicatorIdentifiers];
-    
-    // ✅ FILTER: Solo indicatori che possono essere root indicators per pannelli
     NSArray<NSString *> *panelSuitableIndicators = [self filterIndicatorsForPanelTypes:availableIndicators];
     
-    // Create menu items dynamically
     for (NSString *indicatorID in [panelSuitableIndicators sortedArrayUsingSelector:@selector(compare:)]) {
         NSDictionary *indicatorInfo = [registry indicatorInfoForIdentifier:indicatorID];
-        
-        // Create display name for panel
         NSString *panelName = [self panelNameForIndicator:indicatorID indicatorInfo:indicatorInfo];
-        double defaultHeight = [self defaultHeightForIndicator:indicatorID];
         
         NSMenuItem *panelItem = [[NSMenuItem alloc] initWithTitle:panelName
-                                                           action:@selector(addPanelDynamically:)
+                                                           action:@selector(addPanelFromMenu:)
                                                     keyEquivalent:@""];
         panelItem.target = self;
-        
-        // ✅ DYNAMIC DATA: Store indicator info for panel creation
-        NSDictionary *panelData = @{
-            @"name": panelName,
-            @"rootIndicator": indicatorID,
-            @"defaultHeight": @(defaultHeight),
-            @"indicatorInfo": indicatorInfo
+        panelItem.representedObject = @{
+            @"indicatorID": indicatorID,
+            @"panelName": panelName,
+            @"defaultHeight": @([self defaultHeightForIndicator:indicatorID])
         };
-        panelItem.representedObject = panelData;
         [submenu addItem:panelItem];
     }
     
-    // ✅ FUTURE: Add option for custom panel with indicator selection
-    if (submenu.itemArray.count > 0) {
-        [submenu addItem:[NSMenuItem separatorItem]];
-    }
-    
-    NSMenuItem *customPanelItem = [[NSMenuItem alloc] initWithTitle:@"Custom Panel..."
-                                                             action:@selector(showCustomPanelDialog:)
-                                                      keyEquivalent:@""];
-    customPanelItem.target = self;
-    [submenu addItem:customPanelItem];
-    
     return submenu;
+}
+
+- (void)addPanelFromMenu:(NSMenuItem *)sender {
+    NSDictionary *data = sender.representedObject;
+    NSString *indicatorID = data[@"indicatorID"];
+    NSString *panelName = data[@"panelName"];
+    double defaultHeight = [data[@"defaultHeight"] doubleValue];
+    
+    [self addPanelWithType:panelName rootIndicator:indicatorID defaultHeight:defaultHeight];
 }
 
 /// Crea submenu per contesto specifico (Add Indicator vs Add Child)

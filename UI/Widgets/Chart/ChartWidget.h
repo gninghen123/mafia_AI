@@ -100,6 +100,9 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 @property (nonatomic, strong) ChartObjectsManager *objectsManager;
 @property (nonatomic, assign) BOOL isObjectsPanelVisible;
 
+@property (nonatomic, assign) BOOL isSetupCompleted;  // ✅ NUOVO FLAG principale
+@property (nonatomic, assign) BOOL isTemplateSystemReady;  // ✅ FLAG per template system
+
 
 @property (nonatomic, assign) BOOL isUpdatingSlider;
 @property (nonatomic, assign) double lastSliderValue;

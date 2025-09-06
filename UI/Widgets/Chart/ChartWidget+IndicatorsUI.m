@@ -92,19 +92,33 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 #pragma mark - Setup and Initialization
 
 - (void)setupIndicatorsUI {
-    NSLog(@"🎨 Setting up indicators UI with runtime models...");
+    NSLog(@"🎨 Setting up indicators UI...");
     
-    // Setup indicators panel toggle button
     [self setupIndicatorsPanelToggle];
-    
-    // Setup indicators panel
     [self setupIndicatorsPanel];
     
-    // Load available templates and setup default
-    [self loadAvailableTemplates];
-    [self ensureDefaultTemplateExists];
+    // ✅ NON chiamare loadAvailableTemplates qui
+    // Sarà chiamato da initializeTemplateSystem con coordination
     
-    NSLog(@"✅ Indicators UI setup completed with runtime model architecture");
+    NSLog(@"✅ Indicators UI setup completed");
+}
+
+- (void)applyDefaultTemplate {
+    // Find default template
+    ChartTemplateModel *defaultTemplate = nil;
+    for (ChartTemplateModel *template in self.availableTemplates) {
+        if (template.isDefault) {
+            defaultTemplate = template;
+            break;
+        }
+    }
+    
+    if (defaultTemplate) {
+        NSLog(@"🎯 Applying default template: %@", defaultTemplate.templateName);
+        [self applyTemplate:defaultTemplate];
+    } else {
+        NSLog(@"⚠️ No default template found");
+    }
 }
 
 - (void)setupIndicatorsPanel {
@@ -120,50 +134,67 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 
 #pragma mark - Template Management - AGGIORNATO per runtime models
 
-- (void)loadAvailableTemplates {
-    // ✅ USA NUOVA API che ritorna ChartTemplateModel
+- (void)loadAvailableTemplates:(void(^)(BOOL success))completion {
+    // ✅ Controllo cache - evita ridondanze
+    if (self.availableTemplates && self.availableTemplates.count > 0) {
+        NSLog(@"♻️ Templates already loaded, using cached data");
+        if (completion) completion(YES);
+        return;
+    }
+    
+    NSLog(@"📋 Loading available templates from DataHub...");
+    
     [[DataHub shared] getAllChartTemplates:^(NSArray<ChartTemplateModel *> *templates) {
-        NSLog(@"📋 Loaded %ld chart templates (runtime models)", (long)templates.count);
-        
-        self.availableTemplates = [templates mutableCopy];
-        [self.indicatorsPanel loadAvailableTemplates:templates];
-        
-        // Load default template if none selected
-        if (!self.currentChartTemplate && templates.count > 0) {
-            ChartTemplateModel *defaultTemplate = nil;
-            for (ChartTemplateModel *template in templates) {
-                if (template.isDefault) {
-                    defaultTemplate = template;
-                    break;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (templates && templates.count > 0) {
+                self.availableTemplates = [templates mutableCopy];
+                
+                // Update indicators panel se esiste
+                if (self.indicatorsPanel) {
+                    [self.indicatorsPanel loadAvailableTemplates:templates];
                 }
+                
+                NSLog(@"✅ Loaded %ld templates", (long)templates.count);
+                if (completion) completion(YES);
+            } else {
+                NSLog(@"⚠️ No templates found");
+                if (completion) completion(NO);
             }
-            
-            if (defaultTemplate) {
-                NSLog(@"🎯 Auto-applying default template: %@", defaultTemplate.templateName);
-                [self applyTemplate:defaultTemplate];
-            }
-        }
-        
-        NSLog(@"✅ Template loading completed");
+        });
     }];
 }
 
-- (void)ensureDefaultTemplateExists {
-    // ✅ USA NUOVA API
+
+- (void)ensureDefaultTemplateExists:(void(^)(BOOL hasDefault))completion {
     [[DataHub shared] defaultTemplateExists:^(BOOL exists) {
-        if (!exists) {
-            NSLog(@"🏗️ No default template exists, creating one...");
+        if (exists) {
+            NSLog(@"✅ Default template exists");
+            if (completion) completion(YES);
+        } else {
+            NSLog(@"🏗️ Creating default template...");
             
             [[DataHub shared] getDefaultChartTemplate:^(ChartTemplateModel *defaultTemplate) {
-                if (defaultTemplate) {
-                    NSLog(@"✅ Default template created: %@", defaultTemplate.templateName);
-                    [self loadAvailableTemplates]; // Reload templates
-                } else {
-                    NSLog(@"❌ Failed to create default template");
-                }
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (defaultTemplate) {
+                        // Update cache
+                        if (!self.availableTemplates) {
+                            self.availableTemplates = [NSMutableArray array];
+                        }
+                        [self.availableTemplates addObject:defaultTemplate];
+                        
+                        // Update indicators panel
+                        if (self.indicatorsPanel) {
+                            [self.indicatorsPanel loadAvailableTemplates:self.availableTemplates];
+                        }
+                        
+                        NSLog(@"✅ Default template created: %@", defaultTemplate.templateName);
+                        if (completion) completion(YES);
+                    } else {
+                        NSLog(@"❌ Failed to create default template");
+                        if (completion) completion(NO);
+                    }
+                });
             }];
-        } else {
-            NSLog(@"✅ Default template already exists");
         }
     }];
 }

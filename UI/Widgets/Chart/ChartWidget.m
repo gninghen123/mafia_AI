@@ -141,20 +141,77 @@ extern NSString *const DataHubDataLoadedNotification;
 - (void)awakeFromNib {
     [super awakeFromNib];
     
-    // Setup UI components that need programmatic configuration
+    NSLog(@"🚀 Starting ChartWidget setup...");
+    
+    // ✅ Setup UI controls (sempre)
     [self setupTimeframeSegmentedControl];
     [self setupDateRangeSegmentedControl];
-    
-    // ✅ SOSTITUZIONE: Invece di setupPanelComponents, chiama il nuovo metodo
-    [self setupSidePanels];  // <-- NUOVO metodo semplificato
-    
     [self setupPlaceholderView];
     
-    // Initialize data
-    [self loadInitialData];
+    // ✅ Load preferences (senza template)
+    [self loadInitialPreferences];
+    
+    // ✅ Initialize template system (centralizzato)
+    [self initializeTemplateSystem];
     
     NSLog(@"✅ ChartWidget XIB setup completed");
 }
+
+/**
+ * Loads initial preferences from UserDefaults.
+ * Idempotent - safe to call multiple times.
+ */
+- (void)loadInitialPreferences {
+    NSLog(@"📝 Loading initial preferences...");
+    
+    // Date range defaults
+    [self loadDateRangeSegmentedDefaults];
+    [self updateDateRangeSegmentedForTimeframe:self.currentTimeframe];
+    
+    // Objects manager
+    if (!self.objectsManager) {
+        self.objectsManager = [ChartObjectsManager managerForSymbol:self.currentSymbol];
+    }
+    
+    // Chart defaults
+    [self setupChartDefaults];
+    
+    NSLog(@"✅ Initial preferences loaded");
+}
+
+/**
+ * Initializes the complete template system: loads templates, ensures default exists,
+ * and applies the default template. Safe to call multiple times.
+ */
+- (void)initializeTemplateSystem {
+    NSLog(@"🎨 Initializing template system...");
+    
+    // ✅ Check se IndicatorsUI extension è disponibile
+    if (![self respondsToSelector:@selector(loadAvailableTemplates)]) {
+        NSLog(@"⚠️ ChartWidget+IndicatorsUI not loaded, using fallback panels");
+        [self createFallbackPanels];
+        return;
+    }
+    
+    // ✅ Use indicators extension con callback coordination
+    [(ChartWidget *)self loadAvailableTemplates:^(BOOL success) {
+        if (success) {
+            [(ChartWidget *)self ensureDefaultTemplateExists:^(BOOL hasDefault) {
+                if (hasDefault) {
+                    [(ChartWidget *)self applyDefaultTemplate];
+                } else {
+                    [self createFallbackPanels];
+                }
+            }];
+        } else {
+            [self createFallbackPanels];
+        }
+    }];
+}
+
+
+
+
 - (void)setupTimeframeSegmentedControl {
     if (!self.timeframeSegmented) return;
     
@@ -215,89 +272,8 @@ extern NSString *const DataHubDataLoadedNotification;
     ]];
 }
 
-- (void)loadInitialData {
-    // Load date range defaults
-    [self loadDateRangeSegmentedDefaults];
-    [self updateDateRangeSegmentedForTimeframe:self.currentTimeframe];
-    
-    // Initialize objects manager
-    if (!self.objectsManager) {
-        self.objectsManager = [ChartObjectsManager managerForSymbol:self.currentSymbol];
-    }
-    
-    // Load available templates
-    [self loadAvailableTemplates];
-    [self ensureDefaultTemplateExists];
-    
-    NSLog(@"✅ Initial data loaded");
-}
 
-// ✅ NUOVO: Metodo semplificato per creare i pannelli laterali
-- (void)setupSidePanels {
-    NSLog(@"🏗️ Setting up side panels (simplified)...");
-    
-    // ✅ STEP 1: Crea objectsPanelContainer se non esiste
-    if (!self.objectsPanelContainer) {
-        self.objectsPanelContainer = [[NSView alloc] init];
-        self.objectsPanelContainer.translatesAutoresizingMaskIntoConstraints = NO;
-        self.objectsPanelContainer.wantsLayer = YES;
-        self.objectsPanelContainer.layer.backgroundColor = [NSColor controlBackgroundColor].CGColor;
-        
-        // Set fixed width
-        [self.objectsPanelContainer.widthAnchor constraintEqualToConstant:180].active = YES;
-    }
-    
-    // ✅ STEP 2: Crea indicatorsPanelContainer se non esiste
-    if (!self.indicatorsPanelContainer) {
-        self.indicatorsPanelContainer = [[NSView alloc] init];
-        self.indicatorsPanelContainer.translatesAutoresizingMaskIntoConstraints = NO;
-        self.indicatorsPanelContainer.wantsLayer = YES;
-        self.indicatorsPanelContainer.layer.backgroundColor = [NSColor controlBackgroundColor].CGColor;
-        
-        // Set fixed width
-        [self.indicatorsPanelContainer.widthAnchor constraintEqualToConstant:280].active = YES;
-    }
-    
-    // ✅ STEP 3: Crea e aggiungi objectsPanel al suo container
-    if (!self.objectsPanel) {
-        self.objectsPanel = [[ObjectsPanel alloc] init];
-        self.objectsPanel.delegate = self;
-        self.objectsPanel.translatesAutoresizingMaskIntoConstraints = NO;
-    }
-    
-    if (self.objectsPanel.superview != self.objectsPanelContainer) {
-        [self.objectsPanelContainer addSubview:self.objectsPanel];
-        [NSLayoutConstraint activateConstraints:@[
-            [self.objectsPanel.topAnchor constraintEqualToAnchor:self.objectsPanelContainer.topAnchor],
-            [self.objectsPanel.leadingAnchor constraintEqualToAnchor:self.objectsPanelContainer.leadingAnchor],
-            [self.objectsPanel.trailingAnchor constraintEqualToAnchor:self.objectsPanelContainer.trailingAnchor],
-            [self.objectsPanel.bottomAnchor constraintEqualToAnchor:self.objectsPanelContainer.bottomAnchor]
-        ]];
-    }
-    
-    // ✅ STEP 4: Crea e aggiungi indicatorsPanel al suo container
-    if (!self.indicatorsPanel) {
-        self.indicatorsPanel = [[IndicatorsPanel alloc] init];
-        self.indicatorsPanel.delegate = self;
-        self.indicatorsPanel.panelWidth = 280;
-        self.indicatorsPanel.translatesAutoresizingMaskIntoConstraints = NO;
-    }
-    
-    if (self.indicatorsPanel.superview != self.indicatorsPanelContainer) {
-        [self.indicatorsPanelContainer addSubview:self.indicatorsPanel];
-        [NSLayoutConstraint activateConstraints:@[
-            [self.indicatorsPanel.topAnchor constraintEqualToAnchor:self.indicatorsPanelContainer.topAnchor],
-            [self.indicatorsPanel.leadingAnchor constraintEqualToAnchor:self.indicatorsPanelContainer.leadingAnchor],
-            [self.indicatorsPanel.trailingAnchor constraintEqualToAnchor:self.indicatorsPanelContainer.trailingAnchor],
-            [self.indicatorsPanel.bottomAnchor constraintEqualToAnchor:self.indicatorsPanelContainer.bottomAnchor]
-        ]];
-    }
-    
-    // ✅ IMPORTANTE: NON aggiungere i container al mainSplitView
-    // Rimangono "pronti" ma nascosti fino al toggle
-    
-    NSLog(@"✅ Side panels created and ready (not added to mainSplitView)");
-}
+
 
 - (IBAction)toggleObjectsPanel:(id)sender {
     NSButton *button = (NSButton *)sender;
@@ -593,44 +569,38 @@ extern NSString *const DataHubDataLoadedNotification;
 
 
 
-- (void)ensureRenderersAreSetup {
-    if (self.renderersInitialized) return;
+- (void)setupRenderersForAllPanels {
+    if (self.renderersInitialized) {
+        NSLog(@"⚠️ Renderers already initialized, skipping");
+        return;
+    }
+    
+    NSLog(@"🎨 Setting up renderers for all panels...");
     
     for (ChartPanelView *panel in self.chartPanels) {
-        
-        // ✅ SETUP OBJECTS RENDERER: SOLO per il pannello security
+        // Objects renderer (solo security)
         if ([panel.panelType isEqualToString:@"security"]) {
             if (!panel.objectRenderer) {
                 [panel setupObjectsRendererWithManager:self.objectsManager];
-                NSLog(@"🔧 Setup objects renderer for SECURITY panel only");
-            }
-        } else {
-            if (panel.objectRenderer) {
-                panel.objectRenderer = nil;
-                NSLog(@"🚫 Removed objects renderer from %@ panel", panel.panelType);
             }
         }
         
-        // ✅ SETUP ALERT RENDERER: SOLO per il pannello security
+        // Alert renderer (solo security)
         if ([panel.panelType isEqualToString:@"security"]) {
             if (!panel.alertRenderer) {
                 [panel setupAlertRenderer];
-                NSLog(@"🚨 Setup alert renderer for SECURITY panel only");
-            }
-        } else {
-            if (panel.alertRenderer) {
-                panel.alertRenderer = nil;
-                NSLog(@"🚫 Removed alert renderer from %@ panel", panel.panelType);
             }
         }
         
-        // ✅ NUOVO: Setup indicator renderer per ogni pannello
+        // Indicator renderer (tutti i pannelli)
         [self setupIndicatorRendererForPanel:panel];
     }
     
     self.renderersInitialized = YES;
-    NSLog(@"✅ All renderers (objects, alerts, indicators) setup completed");
+    NSLog(@"✅ All renderers setup completed");
 }
+
+
 
 - (void)setupIndicatorRendererForPanel:(ChartPanelView *)panel {
     if (!panel) {
@@ -660,26 +630,38 @@ extern NSString *const DataHubDataLoadedNotification;
 - (void)viewDidAppear {
     [super viewDidAppear];
     
-    // I pannelli sono già stati creati in setupMainSplitView
-    // Ora impostiamo solo la posizione iniziale del divider
+    // ✅ Solo setup finale (pannelli già creati)
     [self setInitialDividerPosition];
+    [self setupFrameChangeNotifications];
     
-    // Setup renderers se non ancora fatto
-    [self ensureRenderersAreSetup];
-    
-    if (self.panelsSplitView) {
-           [[NSNotificationCenter defaultCenter] addObserver:self
-                                                    selector:@selector(splitViewFrameDidChange:)
-                                                        name:NSViewFrameDidChangeNotification
-                                                      object:self.panelsSplitView];
-           
-           self.panelsSplitView.postsFrameChangedNotifications = YES;
-       }
-    NSLog(@"🎯 ChartWidget appeared - panels already created");
+    NSLog(@"🎯 ChartWidget appeared - setup completed");
 }
 
-#pragma mark - DEBUG CONSTRAINTS
+// ✅ AGGIUNGI metodo separato per notifications
+- (void)setupFrameChangeNotifications {
+    if (self.panelsSplitView && !self.panelsSplitView.postsFrameChangedNotifications) {
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(splitViewFrameDidChange:)
+                                                     name:NSViewFrameDidChangeNotification
+                                                   object:self.panelsSplitView];
+        
+        self.panelsSplitView.postsFrameChangedNotifications = YES;
+    }
+}
 
+
+- (void)clearExistingPanels {
+    if (self.chartPanels && self.chartPanels.count > 0) {
+        NSLog(@"🗑️ Clearing existing panels...");
+        
+        for (ChartPanelView *panel in self.chartPanels) {
+            [panel removeFromSuperview];
+        }
+        
+        [self.chartPanels removeAllObjects];
+        self.renderersInitialized = NO;
+    }
+}
 
 - (void)setupPanelsFromTemplateSystem {
     NSLog(@"🎨 Setting up panels from template system with runtime models...");
@@ -696,37 +678,6 @@ extern NSString *const DataHubDataLoadedNotification;
     [self loadAndApplyDefaultTemplate];
 }
 
-- (void)loadAndApplyDefaultTemplate {
-    // ✅ USA LA NUOVA API che ritorna ChartTemplateModel
-    [[DataHub shared] getAllChartTemplates:^(NSArray<ChartTemplateModel *> *templates) {
-        // Find default template
-        ChartTemplateModel *defaultTemplate = nil;
-        for (ChartTemplateModel *template in templates) {
-            if (template.isDefault) {
-                defaultTemplate = template;
-                break;
-            }
-        }
-        
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (defaultTemplate) {
-                NSLog(@"✅ Applying default runtime template: %@", defaultTemplate.templateName);
-                
-                // ✅ Check if we have the indicators extension methods
-                if ([self respondsToSelector:@selector(applyTemplate:)]) {
-                    [(ChartWidget *)self applyTemplate:defaultTemplate];
-                } else {
-                    NSLog(@"⚠️ ChartWidget+IndicatorsUI not loaded, falling back to default panels");
-                    [self setupDefaultPanels];
-                }
-            } else {
-                NSLog(@"⚠️ No default template found, creating default panels");
-                [self setupDefaultPanels];
-            }
-        });
-    }];
-}
-
 
 - (void)viewDidLoad {
     [super viewDidLoad];
@@ -739,60 +690,36 @@ extern NSString *const DataHubDataLoadedNotification;
     self.view.postsFrameChangedNotifications = YES;
 }
 
-// Nuova implementazione setupDefaultPanels che gestisce il placeholder
-- (void)setupDefaultPanels {
-    self.renderersInitialized = NO;  // Reset flag
-
-    // Remove any existing panels
-    [self.chartPanels removeAllObjects];
-
-    // Clear existing subviews from split view
-    for (NSView *subview in [self.panelsSplitView.subviews copy]) {
-        [subview removeFromSuperview];
+- (void)createFallbackPanels {
+    NSLog(@"🔧 Creating fallback panels...");
+    
+    // Clear existing panels
+    [self clearExistingPanels];
+    
+    if (!self.chartPanels) {
+        self.chartPanels = [NSMutableArray array];
     }
-
-    // Placeholder view
-    self.placeholderView = [[NSView alloc] initWithFrame:NSMakeRect(0.0, 0.0, 1900.0, 1800.0)];
-    self.placeholderView.wantsLayer = YES;
-    self.placeholderView.layer.backgroundColor = [[NSColor clearColor] CGColor];
-    self.placeholderView.translatesAutoresizingMaskIntoConstraints = NO;
-
-    // Placeholder label
-    self.placeholderLabel = [[NSTextField alloc] init];
-    self.placeholderLabel.stringValue = @"! No symbol entered !";
-    self.placeholderLabel.bezeled = NO;
-    self.placeholderLabel.drawsBackground = NO;
-    self.placeholderLabel.editable = NO;
-    self.placeholderLabel.selectable = NO;
-    self.placeholderLabel.alignment = NSTextAlignmentCenter;
-    self.placeholderLabel.font = [NSFont boldSystemFontOfSize:18];
-    self.placeholderLabel.textColor = [NSColor secondaryLabelColor];
-    self.placeholderLabel.translatesAutoresizingMaskIntoConstraints = NO;
-
-    [self.placeholderView addSubview:self.placeholderLabel];
-
-    // Center label in placeholder view
-    [NSLayoutConstraint activateConstraints:@[
-        [self.placeholderLabel.centerXAnchor constraintEqualToAnchor:self.placeholderView.centerXAnchor],
-        [self.placeholderLabel.centerYAnchor constraintEqualToAnchor:self.placeholderView.centerYAnchor]
-    ]];
-
-    // Add placeholder to split view
-    [self.panelsSplitView addSubview:self.placeholderView];
-
-    // Make placeholder fill the split view
-    [NSLayoutConstraint activateConstraints:@[
-        [self.placeholderView.topAnchor constraintEqualToAnchor:self.panelsSplitView.topAnchor],
-        [self.placeholderView.bottomAnchor constraintEqualToAnchor:self.panelsSplitView.bottomAnchor],
-        [self.placeholderView.leadingAnchor constraintEqualToAnchor:self.panelsSplitView.leadingAnchor],
-        [self.placeholderView.trailingAnchor constraintEqualToAnchor:self.panelsSplitView.trailingAnchor],
-    ]];
-
-    // Initially show placeholder
-    self.placeholderView.hidden = NO;
-
-    NSLog(@"🎯 Default panels setup completed with placeholder");
+    
+    // Security panel (80%)
+    ChartPanelView *securityPanel = [[ChartPanelView alloc] initWithType:@"security"];
+    securityPanel.chartWidget = self;
+    securityPanel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.chartPanels addObject:securityPanel];
+    [self.panelsSplitView addSubview:securityPanel];
+    
+    // Volume panel (20%)
+    ChartPanelView *volumePanel = [[ChartPanelView alloc] initWithType:@"volume"];
+    volumePanel.chartWidget = self;
+    volumePanel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.chartPanels addObject:volumePanel];
+    [self.panelsSplitView addSubview:volumePanel];
+    
+    // Setup renderers
+    [self setupRenderersForAllPanels];
+    
+    NSLog(@"✅ Fallback panels created");
 }
+
 
 // Helper per aggiornare la visibilità del placeholder
 - (void)updatePlaceholderVisibility {

@@ -178,7 +178,6 @@ extern NSString *const DataHubDataLoadedNotification;
     NSLog(@"✅ Initial preferences loaded");
 }
 
-
 - (void)loadAndApplyLastUsedTemplate {
     NSLog(@"🎨 Loading and applying last used template...");
     
@@ -189,14 +188,16 @@ extern NSString *const DataHubDataLoadedNotification;
         return;
     }
     
-    // ✅ Load templates e applica last used
-    [(ChartWidget *)self loadAvailableTemplates:^(BOOL success) {
+    // ✅ SENZA CAST - lascia che il compilatore risolva automaticamente
+    [self loadAvailableTemplates:^(BOOL success) {
         if (success && self.availableTemplates.count > 0) {
             ChartTemplateModel *templateToApply = [self determineTemplateToApply];
             
             if (templateToApply) {
                 NSLog(@"🎯 Applying template: %@", templateToApply.templateName);
-                [(ChartWidget *)self applyTemplate:templateToApply];
+                
+                // ✅ SENZA CAST anche qui
+                [self applyTemplate:templateToApply];
                 
                 // ✅ Save as last used
                 [self saveLastUsedTemplate:templateToApply];
@@ -268,39 +269,6 @@ extern NSString *const DataHubDataLoadedNotification;
     NSLog(@"❌ No templates available");
     return nil;
 }
-
-/**
- * Initializes the complete template system: loads templates, ensures default exists,
- * and applies the default template. Safe to call multiple times.
- */
-- (void)initializeTemplateSystem {
-    NSLog(@"🎨 Initializing template system...");
-    
-    // ✅ Check se IndicatorsUI extension è disponibile
-    if (![self respondsToSelector:@selector(loadAvailableTemplates)]) {
-        NSLog(@"⚠️ ChartWidget+IndicatorsUI not loaded, using fallback panels");
-        [self createEmergencyFallbackPanels];
-        return;
-    }
-    
-    // ✅ Use indicators extension con callback coordination
-    [(ChartWidget *)self loadAvailableTemplates:^(BOOL success) {
-        if (success) {
-            [(ChartWidget *)self ensureDefaultTemplateExists:^(BOOL hasDefault) {
-                if (hasDefault) {
-                    [(ChartWidget *)self applyDefaultTemplate];
-                } else {
-                    [self createFallbackPanels];
-                }
-            }];
-        } else {
-            [self createFallbackPanels];
-        }
-    }];
-}
-
-
-
 
 - (void)setupTimeframeSegmentedControl {
     if (!self.timeframeSegmented) return;
@@ -551,10 +519,8 @@ extern NSString *const DataHubDataLoadedNotification;
     self.panelsSplitView.vertical = NO; // Divisione orizzontale
     self.panelsSplitView.dividerStyle = NSSplitViewDividerStyleThin;
     [self.contentView addSubview:self.panelsSplitView];
-    
-    // ✅ NUOVO: Crea i pannelli di default subito
-    [self setupDefaultPanels];
 }
+
 - (void)createDefaultPanels {
     // Inizializza l'array se non esiste
     if (!self.chartPanels) {
@@ -751,21 +717,6 @@ extern NSString *const DataHubDataLoadedNotification;
         [self.chartPanels removeAllObjects];
         self.renderersInitialized = NO;
     }
-}
-
-- (void)setupPanelsFromTemplateSystem {
-    NSLog(@"🎨 Setting up panels from template system with runtime models...");
-    
-    // ✅ Check if indicators extension is available
-    if (![self respondsToSelector:@selector(ensureDefaultTemplateExists)]) {
-        NSLog(@"⚠️ ChartWidget+IndicatorsUI not loaded, falling back to hardcoded panels");
-        [self setupDefaultPanels];
-        return;
-    }
-    
-    // ✅ Use the indicators extension methods
-    [(ChartWidget *)self ensureDefaultTemplateExists];
-    [self loadAndApplyDefaultTemplate];
 }
 
 
@@ -1044,7 +995,7 @@ extern NSString *const DataHubDataLoadedNotification;
     
     if (!self.isStaticMode) {
         if (!self.currentChartTemplate) {
-            [self setupPanelsFromTemplateSystem];
+            [self loadAndApplyLastUsedTemplate];
         }
         // 🔧 FIX: Use loadDataWithCurrentSettings instead of barCount
         // This preserves visible range and uses start/end dates

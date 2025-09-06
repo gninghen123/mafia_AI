@@ -148,6 +148,11 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     }];
 }
 
+- (void)loadAvailableTemplates {
+    NSLog(@"⚠️ Using legacy loadAvailableTemplates method");
+    [self loadAvailableTemplates:nil];
+}
+
 
 
 

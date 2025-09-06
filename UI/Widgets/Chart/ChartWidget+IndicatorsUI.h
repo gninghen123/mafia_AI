@@ -35,7 +35,10 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)setupIndicatorsUI;
 
 /// Load available templates from DataHub
+- (void)loadAvailableTemplates:(void(^)(BOOL success))completion;
+/// Load available templates from DataHub (legacy method)
 - (void)loadAvailableTemplates;
+
 
 /// Apply template to chart panels
 /// @param template ChartTemplateModel (runtime model) to apply

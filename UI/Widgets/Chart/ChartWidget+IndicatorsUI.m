@@ -712,6 +712,8 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     
     NSLog(@"✅ Existing panels and placeholder removed from split view");
 }
+
+
 - (void)setupRenderersForAllPanels {
     NSLog(@"🎨 Setting up renderers for all panels...");
     

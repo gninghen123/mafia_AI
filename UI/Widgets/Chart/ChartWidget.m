@@ -454,16 +454,6 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 
-/*
- 
- 
- 
- 
- 
- 
- */
-
-
 // ======== AGGIUNGI setupMainSplitView ========
 - (void)setupMainSplitView {
     // Split view principale per i pannelli
@@ -2624,7 +2614,7 @@ extern NSString *const DataHubDataLoadedNotification;
 
 #pragma mark - indicator visibility
 
-
+/*
 - (IBAction)toggleIndicatorsVisibility:(id)sender {
     // Update all chart panels
     for (ChartPanelView *panel in self.chartPanels) {
@@ -2634,8 +2624,6 @@ extern NSString *const DataHubDataLoadedNotification;
             [panel setNeedsDisplay:YES];
         }
     }
-    
-    NSLog(@"✅ Indicators children visibility toggled: %@", shouldShowChildren ? @"VISIBLE" : @"HIDDEN");
 }
 
 // ✅ METODO HELPER PER GESTIRE LA VISIBILITÀ
@@ -2708,5 +2696,5 @@ extern NSString *const DataHubDataLoadedNotification;
     NSLog(@"⚠️ getRootIndicatorForRenderer needs implementation");
     return nil; // TODO: Implementare
 }
-
+*/
 @end

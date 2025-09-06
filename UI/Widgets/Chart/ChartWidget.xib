@@ -106,7 +106,7 @@
                         <font key="font" metaFont="system"/>
                     </buttonCell>
                     <connections>
-                        <action selector="zoomAllClicked:" target="-2" id="kMZ-41-bDR"/>
+                        <action selector="zoomAll:" target="-2" id="DpR-B6-tNn"/>
                     </connections>
                 </button>
                 <button verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="N5U-79-1jH">
@@ -116,7 +116,7 @@
                         <font key="font" metaFont="system"/>
                     </buttonCell>
                     <connections>
-                        <action selector="zoomInClicked:" target="-2" id="tq6-Og-pdL"/>
+                        <action selector="zoomIn:" target="-2" id="zun-S7-rih"/>
                     </connections>
                 </button>
                 <button verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="q6v-oX-Foa">
@@ -126,7 +126,7 @@
                         <font key="font" metaFont="system"/>
                     </buttonCell>
                     <connections>
-                        <action selector="zoomOutClicked:" target="-2" id="w3g-Zl-nRI"/>
+                        <action selector="zoomOut:" target="-2" id="Pmr-gv-QbT"/>
                     </connections>
                 </button>
                 <button verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="6xA-al-JW4">

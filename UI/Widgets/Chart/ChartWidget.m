@@ -143,20 +143,19 @@ extern NSString *const DataHubDataLoadedNotification;
     
     NSLog(@"🚀 Starting ChartWidget setup...");
     
-    // ✅ Setup UI controls (sempre)
+    // ✅ Setup UI controls
     [self setupTimeframeSegmentedControl];
     [self setupDateRangeSegmentedControl];
     [self setupPlaceholderView];
     
-    // ✅ Load preferences (senza template)
+    // ✅ Load preferences
     [self loadInitialPreferences];
     
-    // ✅ Initialize template system (centralizzato)
-    [self initializeTemplateSystem];
+    // ✅ Setup template system (SEMPLIFICATO)
+    [self loadAndApplyLastUsedTemplate];
     
-    NSLog(@"✅ ChartWidget XIB setup completed");
+    NSLog(@"✅ ChartWidget setup completed");
 }
-
 /**
  * Loads initial preferences from UserDefaults.
  * Idempotent - safe to call multiple times.
@@ -178,6 +177,7 @@ extern NSString *const DataHubDataLoadedNotification;
     
     NSLog(@"✅ Initial preferences loaded");
 }
+
 
 /**
  * Initializes the complete template system: loads templates, ensures default exists,

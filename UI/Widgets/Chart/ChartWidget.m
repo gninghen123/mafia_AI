@@ -279,7 +279,7 @@ extern NSString *const DataHubDataLoadedNotification;
     // ✅ Check se IndicatorsUI extension è disponibile
     if (![self respondsToSelector:@selector(loadAvailableTemplates)]) {
         NSLog(@"⚠️ ChartWidget+IndicatorsUI not loaded, using fallback panels");
-        [self createFallbackPanels];
+        [self createEmergencyFallbackPanels];
         return;
     }
     

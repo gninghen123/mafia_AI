@@ -571,7 +571,6 @@ extern NSString *const DataHubDataLoadedNotification;
     
     // NUOVO: Default preferences
     self.tradingHoursMode = ChartTradingHoursRegularOnly;
-    self.barsToDownload = 1000;
     self.initialBarsToShow = 100;
     // 🆕 NEW: Load default preferences for date ranges
     [self loadDateRangeDefaults];
@@ -1623,7 +1622,6 @@ extern NSString *const DataHubDataLoadedNotification;
     
     state[@"timeframe"] = @(self.currentTimeframe);
     state[@"tradingHoursMode"] = @(self.tradingHoursMode);  // NUOVO
-    state[@"barsToDownload"] = @(self.barsToDownload);
     state[@"initialBarsToShow"] = @(self.initialBarsToShow);
     state[@"visibleStartIndex"] = @(self.visibleStartIndex);
     state[@"visibleEndIndex"] = @(self.visibleEndIndex);
@@ -1648,11 +1646,6 @@ extern NSString *const DataHubDataLoadedNotification;
     NSNumber *tradingHoursMode = state[@"tradingHoursMode"];
     if (tradingHoursMode) {
         self.tradingHoursMode = tradingHoursMode.integerValue;
-    }
-    
-    NSNumber *barsToDownload = state[@"barsToDownload"];
-    if (barsToDownload) {
-        self.barsToDownload = barsToDownload.integerValue;
     }
     
     NSNumber *initialBarsToShow = state[@"initialBarsToShow"];
@@ -1997,13 +1990,7 @@ extern NSString *const DataHubDataLoadedNotification;
             NSLog(@"✅ ChartWidget: Received %lu bars for %@ (%@)",
                   (unsigned long)data.count, params.symbol, isFresh ? @"fresh" : @"cached");
             
-            // Store the received data
-            self.chartData = data;
-            
-            // Update the barsToDownload to reflect actual bars received
-            self.barsToDownload = data.count;
-            
-         
+       
             // Update panels with new data
             [self updatePanelsWithData:data];
             

@@ -23,7 +23,6 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) CALayer *indicatorsLayer;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, CAShapeLayer *> *indicatorLayers;
 #pragma mark - Indicator Data Management
-@property (nonatomic, strong, nullable) NSArray<TechnicalIndicatorBase *> *allIndicators;
 @property (nonatomic, strong, nullable) TechnicalIndicatorBase *rootIndicator;
 
 /// Initialize renderer with panel view

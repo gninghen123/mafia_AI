@@ -223,7 +223,7 @@
     BOOL firstPoint = YES;
     
     for (IndicatorDataModel *point in dataPoints) {
-        if (isnan(point.value) || ![self isTimestampInVisibleRange:point.timestamp]) continue;
+      //  if (isnan(point.value) || ![self isTimestampInVisibleRange:point.timestamp]) continue;
         
         CGFloat x = [self xCoordinateForTimestamp:point.timestamp];
         CGFloat y = [self yCoordinateForValue:point.value];
@@ -235,7 +235,8 @@
             [path lineToPoint:NSMakePoint(x, y)];
         }
     }
-    
+    NSLog(@"✅ Path elements = %ld", path.elementCount);
+
     return path.isEmpty ? nil : path;
 }
 
@@ -358,7 +359,7 @@
 }
 
 - (NSInteger)barIndexForTimestamp:(NSDate *)timestamp {
-    NSArray<HistoricalBarModel *> *chartData = self.panelView.chartData;
+    NSArray<HistoricalBarModel *> *chartData = self.panelView.chartWidget.currentChartData;
     if (!chartData || !timestamp) return NSNotFound;
     
     NSInteger left = 0, right = chartData.count - 1;
@@ -612,15 +613,5 @@
     NSLog(@"🔄 Invalidated %ld indicator layers", (long)self.indicatorLayers.count);
 }
 
-// ✅ PROPERTY IMPLEMENTATION
-- (TechnicalIndicatorBase *)rootIndicator {
-    // TODO: Implementare basandosi sulla tua architettura
-    // Questo potrebbe essere:
-    // 1. Una property separata che viene impostata durante l'init
-    // 2. Derivata dal panelType del ChartPanelView
-    // 3. Trovata attraverso il template system
-    
-    NSLog(@"⚠️ rootIndicator property needs implementation");
-    return nil; // Placeholder
-}
+
 @end

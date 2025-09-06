@@ -112,7 +112,6 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 #pragma mark - Data Properties
 @property (nonatomic, strong, readwrite) NSString *currentSymbol;
 @property (nonatomic, assign, readwrite) ChartTimeframe currentTimeframe;
-@property (nonatomic, assign, readwrite) NSInteger barsToDownload;
 @property (nonatomic, assign, readwrite) NSInteger initialBarsToShow;
 
 #pragma mark - Chart Panels

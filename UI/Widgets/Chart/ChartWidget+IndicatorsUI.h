@@ -71,6 +71,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// @param template ChartTemplateModel with height specifications
 - (void)redistributePanelHeights:(ChartTemplateModel *)template;  // ✅ Runtime model
 
+
+
+- (void)recalculateAllIndicators;
+
 @end
 
 NS_ASSUME_NONNULL_END

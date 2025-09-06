@@ -64,37 +64,6 @@ static const void *kSplitViewLeadingConstraintKey = &kSplitViewLeadingConstraint
     objc_setAssociatedObject(self, kSplitViewLeadingConstraintKey, constraint, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
-#pragma mark - Objects UI Setup
-
-- (void)setupObjectsUI {
-    // Initialize objects manager
-    self.objectsManager = [ChartObjectsManager managerForSymbol:self.currentSymbol ?: @""];
-    
-    // Create toggle button next to symbol field
-    [self createObjectsPanelToggle];
-    
-    // Create objects panel
-    [self createObjectsPanel];
-    
-    // Setup constraints with sidebar pattern
-    [self setupObjectsUIConstraints];
-    
-    NSLog(@"🎨 ChartWidget: Objects UI setup completed");
-}
-
-- (void)createObjectsPanelToggle {
-    self.objectsPanelToggle = [NSButton buttonWithTitle:@"📐"
-                                                target:self
-                                                action:@selector(toggleObjectsPanel:)];
-    self.objectsPanelToggle.translatesAutoresizingMaskIntoConstraints = NO;
-    self.objectsPanelToggle.bezelStyle = NSBezelStyleRounded;
-    self.objectsPanelToggle.toolTip = @"Show/Hide Drawing Tools";
-    
-    // Style simile al preferences button
-    self.objectsPanelToggle.font = [NSFont systemFontOfSize:14];
-    
-    [self.contentView addSubview:self.objectsPanelToggle];
-}
 
 - (void)createObjectsPanel {
     self.objectsPanel = [[ObjectsPanel alloc] init];

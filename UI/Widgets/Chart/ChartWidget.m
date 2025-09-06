@@ -151,6 +151,9 @@ extern NSString *const DataHubDataLoadedNotification;
     // ✅ Load preferences
     [self loadInitialPreferences];
     
+    [self setupObjectsAndIndicatorsUI];
+
+    
     // ✅ Setup template system (SEMPLIFICATO)
     [self loadAndApplyLastUsedTemplate];
     
@@ -177,6 +180,23 @@ extern NSString *const DataHubDataLoadedNotification;
     
     NSLog(@"✅ Initial preferences loaded");
 }
+
+/**
+ * Setup coordinato dei pannelli UI per oggetti e indicatori.
+ * Questo metodo era mancante dopo il refactoring e causava la mancata
+ * inizializzazione dei pannelli laterali con i toggle buttons.
+ */
+- (void)setupObjectsAndIndicatorsUI {
+    
+   
+    [self createObjectsPanel];
+    
+    [self setupIndicatorsUI];
+    
+    
+   
+}
+
 
 - (void)loadAndApplyLastUsedTemplate {
     NSLog(@"🎨 Loading and applying last used template...");
@@ -341,14 +361,14 @@ extern NSString *const DataHubDataLoadedNotification;
         NSLog(@"🎨 Showing objects panel...");
         
         // ✅ SEMPLICE: Insert al primo posto
-        [self.mainSplitView insertArrangedSubview:self.objectsPanelContainer atIndex:0];
+        [self.mainSplitView insertArrangedSubview:self.objectsPanel atIndex:0];
         self.isObjectsPanelVisible = YES;
         
     } else if (!shouldShow && self.isObjectsPanelVisible) {
         NSLog(@"🎨 Hiding objects panel...");
         
         // ✅ SEMPLICE: Remove from superview
-        [self.objectsPanelContainer removeFromSuperview];
+        [self.objectsPanel removeFromSuperview];
         self.isObjectsPanelVisible = NO;
     }
     
@@ -364,14 +384,14 @@ extern NSString *const DataHubDataLoadedNotification;
         NSLog(@"📈 Showing indicators panel...");
         
         // ✅ SEMPLICE: Add all'ultimo posto
-        [self.mainSplitView addArrangedSubview:self.indicatorsPanelContainer];
+        [self.mainSplitView addArrangedSubview:self.indicatorsPanel];
         self.isIndicatorsPanelVisible = YES;
         
     } else if (!shouldShow && self.isIndicatorsPanelVisible) {
         NSLog(@"📈 Hiding indicators panel...");
         
         // ✅ SEMPLICE: Remove from superview
-        [self.indicatorsPanelContainer removeFromSuperview];
+        [self.indicatorsPanel removeFromSuperview];
         self.isIndicatorsPanelVisible = NO;
     }
     

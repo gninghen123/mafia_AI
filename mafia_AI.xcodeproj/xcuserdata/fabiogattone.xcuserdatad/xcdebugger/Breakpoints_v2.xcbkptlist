@@ -110,13 +110,13 @@
             filePath = "UI/Widgets/Chart/ChartWidget+IndicatorsUI.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "998"
-            endingLineNumber = "998"
+            startingLineNumber = "939"
+            endingLineNumber = "939"
             landmarkName = "-recalculateAllIndicators"
             landmarkType = "7">
             <Locations>
                <Location
-                  uuid = "68B3F964-5BB9-4A08-B849-636F8EC8C44B - 3cbf3642c7e20ee1"
+                  uuid = "68B3F964-5BB9-4A08-B849-636F8EC8C44B - 3cbf3642c7e2164a"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
@@ -126,11 +126,11 @@
                   urlString = "file:///Users/fabiogattone/Documents/coding/macmafia/mafia_AI/UI/Widgets/Chart/ChartWidget+IndicatorsUI.m"
                   startingColumnNumber = "9223372036854775807"
                   endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "998"
-                  endingLineNumber = "998">
+                  startingLineNumber = "939"
+                  endingLineNumber = "939">
                </Location>
                <Location
-                  uuid = "68B3F964-5BB9-4A08-B849-636F8EC8C44B - 3cbf3642c7e20ee1"
+                  uuid = "68B3F964-5BB9-4A08-B849-636F8EC8C44B - 3cbf3642c7e2164a"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
@@ -140,8 +140,8 @@
                   urlString = "file:///Users/fabiogattone/Documents/coding/macmafia/mafia_AI/UI/Widgets/Chart/ChartWidget+IndicatorsUI.m"
                   startingColumnNumber = "9223372036854775807"
                   endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "998"
-                  endingLineNumber = "998">
+                  startingLineNumber = "939"
+                  endingLineNumber = "939">
                </Location>
             </Locations>
          </BreakpointContent>

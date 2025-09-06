@@ -92,28 +92,10 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 #pragma mark - Setup and Initialization
 
 - (void)setupIndicatorsUI {
-    NSLog(@"🎨 Setting up indicators UI...");
-    
-    [self setupIndicatorsPanelToggle];
-    [self setupIndicatorsPanel];
-    
-    // ✅ NON chiamare loadAvailableTemplates qui
-    // Sarà chiamato da initializeTemplateSystem con coordination
-    
-    NSLog(@"✅ Indicators UI setup completed");
-}
-
-
-
-- (void)setupIndicatorsPanel {
     self.indicatorsPanel = [[IndicatorsPanel alloc] init];
     self.indicatorsPanel.delegate = self;
     self.indicatorsPanel.translatesAutoresizingMaskIntoConstraints = NO;
-    
-    [self.view addSubview:self.indicatorsPanel];
-    [self setupIndicatorsPanelConstraints];
-    
-    NSLog(@"📱 Indicators panel created and configured");
+    [self.indicatorsPanel setFrame:NSMakeRect(0, 0, 280, 1900)];
 }
 
 #pragma mark - Template Management - AGGIORNATO per runtime models
@@ -927,49 +909,8 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     NSLog(@"✅ All panels updated with current data (%ld bars)", (long)self.currentChartData.count);
 }
 
-- (void)setupIndicatorsPanelToggle {
-    NSLog(@"🔘 Setting up indicators panel toggle button...");
-    
-    // Create toggle button
-    self.indicatorsPanelToggle = [[NSButton alloc] init];
-    self.indicatorsPanelToggle.title = @"📊";
-    self.indicatorsPanelToggle.buttonType = NSButtonTypePushOnPushOff;
-    self.indicatorsPanelToggle.bezelStyle = NSBezelStyleRegularSquare;
-    self.indicatorsPanelToggle.translatesAutoresizingMaskIntoConstraints = NO;
-    self.indicatorsPanelToggle.target = self;
-    self.indicatorsPanelToggle.action = @selector(toggleIndicatorsPanel:);
-    
-    [self.view addSubview:self.indicatorsPanelToggle];
-    
-    // Position in top toolbar (implementation depends on your UI layout)
-    [NSLayoutConstraint activateConstraints:@[
-        [self.indicatorsPanelToggle.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor constant:-8],
-        [self.indicatorsPanelToggle.topAnchor constraintEqualToAnchor:self.view.topAnchor constant:8],
-        [self.indicatorsPanelToggle.widthAnchor constraintEqualToConstant:32],
-        [self.indicatorsPanelToggle.heightAnchor constraintEqualToConstant:24]
-    ]];
-    
-    NSLog(@"✅ Indicators panel toggle button created and positioned");
-}
 
-- (void)setupIndicatorsPanelConstraints {
-    NSLog(@"📐 Setting up indicators panel constraints...");
-    
-    // Panel positioned on the right side
-    [NSLayoutConstraint activateConstraints:@[
-        [self.indicatorsPanel.topAnchor constraintEqualToAnchor:self.view.topAnchor],
-        [self.indicatorsPanel.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
-        [self.indicatorsPanel.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor]
-    ]];
-    
-    // Setup trailing constraint for main content area
-    if (self.panelsSplitView) {
-        self.splitViewTrailingConstraint = [self.panelsSplitView.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor];
-        self.splitViewTrailingConstraint.active = YES;
-    }
-    
-    NSLog(@"✅ Indicators panel constraints configured");
-}
+
 
 #pragma mark - Cleanup
 

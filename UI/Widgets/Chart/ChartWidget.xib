@@ -78,7 +78,7 @@
                         <action selector="toggleObjectsVisibility:" target="-2" id="XLb-i1-vqx"/>
                     </connections>
                 </switch>
-                <splitView dividerStyle="paneSplitter" vertical="YES" translatesAutoresizingMaskIntoConstraints="NO" id="65j-Ye-ijW">
+                <splitView dividerStyle="thin" vertical="YES" translatesAutoresizingMaskIntoConstraints="NO" id="65j-Ye-ijW">
                     <rect key="frame" x="0.0" y="37" width="1277" height="659"/>
                     <subviews>
                         <splitView fixedFrame="YES" dividerStyle="paneSplitter" id="Var-LY-gAA">

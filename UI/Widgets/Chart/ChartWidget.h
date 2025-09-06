@@ -68,8 +68,6 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 
 // Additional UI components from implementation
 @property (nonatomic, strong) IBOutlet NSSplitView *mainSplitView;
-@property (nonatomic, strong) IBOutlet NSView *indicatorsPanelContainer;
-@property (nonatomic, strong) IBOutlet NSView *objectsPanelContainer;
 
 
 // Date Range Control Properties (non-UI)

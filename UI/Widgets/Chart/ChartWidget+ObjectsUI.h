@@ -21,7 +21,7 @@
 @property (nonatomic, strong) NSLayoutConstraint *splitViewLeadingConstraint;
 
 #pragma mark - Objects UI Methods
-- (void)setupObjectsUI;
+- (void)createObjectsPanel;
 - (void)toggleObjectsPanel:(id)sender;
 - (void)showObjectManager:(id)sender;
 

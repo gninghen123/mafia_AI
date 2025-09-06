@@ -1,5 +1,5 @@
 //
-// IndicatorsPanel.m - PARTE 1
+// IndicatorsPanel.m - PARTE 1/3
 // TradingApp
 //
 // Side panel implementation for chart template and indicators management
@@ -10,14 +10,8 @@
 #import "DataHub+ChartTemplates.h"
 #import "IndicatorRegistry.h"
 #import "Quartz/Quartz.h"
-#import "TechnicalIndicatorBase+Hierarchy.h"  // ✅ AGGIUNTO: Questo risolve gli errori
+#import "TechnicalIndicatorBase+Hierarchy.h"
 #import "TechnicalIndicatorBase.h"
-
-
-// Outline view item types
-static NSString *const kAddPanelItem = @"ADD_PANEL";
-static NSString *const kAddIndicatorItem = @"ADD_INDICATOR";
-static NSString *const kAddChildItem = @"ADD_CHILD";
 
 @interface IndicatorsPanel ()
 
@@ -101,7 +95,6 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     self.templateComboBox.numberOfVisibleItems = 10;
     self.templateComboBox.usesDataSource = YES;
     
-    
     // Template settings button
     self.templateSettingsButton = [[NSButton alloc] init];
     self.templateSettingsButton.translatesAutoresizingMaskIntoConstraints = NO;
@@ -123,13 +116,13 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     self.templateOutlineView.headerView = nil;
     self.templateOutlineView.rowSizeStyle = NSTableViewRowSizeStyleSmall;
     
-    
+    // ✅ FIX CRITICO: Aggiungere la NSTableColumn mancante
     NSTableColumn *templateColumn = [[NSTableColumn alloc] initWithIdentifier:@"TemplateColumn"];
-      templateColumn.title = @"Template Structure";
-      templateColumn.width = 250;  // Larghezza adeguata per il panel
-      templateColumn.minWidth = 180;
-      templateColumn.resizingMask = NSTableColumnUserResizingMask | NSTableColumnAutoresizingMask;
-      [self.templateOutlineView addTableColumn:templateColumn];
+    templateColumn.title = @"Template Structure";
+    templateColumn.width = 250;
+    templateColumn.minWidth = 180;
+    templateColumn.resizingMask = NSTableColumnUserResizingMask | NSTableColumnAutoresizingMask;
+    [self.templateOutlineView addTableColumn:templateColumn];
     
     // Create scroll view
     self.outlineScrollView = [[NSScrollView alloc] init];
@@ -188,97 +181,84 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
         [self.mainStackView.topAnchor constraintEqualToAnchor:self.backgroundView.topAnchor],
         [self.mainStackView.bottomAnchor constraintEqualToAnchor:self.backgroundView.bottomAnchor],
         
-        // Header constraints
+        // Header view constraints
+        [self.headerView.heightAnchor constraintEqualToConstant:32],
         [self.templateComboBox.leadingAnchor constraintEqualToAnchor:self.headerView.leadingAnchor],
-        [self.templateComboBox.trailingAnchor constraintEqualToAnchor:self.templateSettingsButton.leadingAnchor constant:-8],
         [self.templateComboBox.centerYAnchor constraintEqualToAnchor:self.headerView.centerYAnchor],
+        [self.templateComboBox.trailingAnchor constraintEqualToAnchor:self.templateSettingsButton.leadingAnchor constant:-8],
         [self.templateSettingsButton.trailingAnchor constraintEqualToAnchor:self.headerView.trailingAnchor],
         [self.templateSettingsButton.centerYAnchor constraintEqualToAnchor:self.headerView.centerYAnchor],
-        [self.templateSettingsButton.widthAnchor constraintEqualToConstant:30],
-        [self.headerView.heightAnchor constraintEqualToConstant:24],
+        [self.templateSettingsButton.widthAnchor constraintEqualToConstant:24],
         
-        // Outline scroll view
-        [self.outlineScrollView.heightAnchor constraintGreaterThanOrEqualToConstant:200],
-        
-        // Footer constraints
+        // Footer view constraints
+        [self.footerView.heightAnchor constraintEqualToConstant:32],
         [self.applyButton.leadingAnchor constraintEqualToAnchor:self.footerView.leadingAnchor],
-        [self.resetButton.centerXAnchor constraintEqualToAnchor:self.footerView.centerXAnchor],
-        [self.saveAsButton.trailingAnchor constraintEqualToAnchor:self.footerView.trailingAnchor],
         [self.applyButton.centerYAnchor constraintEqualToAnchor:self.footerView.centerYAnchor],
+        [self.resetButton.leadingAnchor constraintEqualToAnchor:self.applyButton.trailingAnchor constant:8],
         [self.resetButton.centerYAnchor constraintEqualToAnchor:self.footerView.centerYAnchor],
-        [self.saveAsButton.centerYAnchor constraintEqualToAnchor:self.footerView.centerYAnchor],
-        [self.footerView.heightAnchor constraintEqualToConstant:32]
+        [self.saveAsButton.trailingAnchor constraintEqualToAnchor:self.footerView.trailingAnchor],
+        [self.saveAsButton.centerYAnchor constraintEqualToAnchor:self.footerView.centerYAnchor]
     ]];
 }
 
-#pragma mark - Public Methods - AGGIORNATI per runtime models
+#pragma mark - Animation
 
 - (void)toggleVisibilityAnimated:(BOOL)animated {
-    if (self.isVisible) {
-        [self hideAnimated:animated];
+    self.isVisible = !self.isVisible;
+    
+    if (animated) {
+        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
+            context.duration = 0.25;
+            context.allowsImplicitAnimation = YES;
+            
+            if (self.widthConstraint) {
+                self.widthConstraint.constant = self.isVisible ? self.panelWidth : 0;
+            }
+            self.alphaValue = self.isVisible ? 1.0 : 0.0;
+            
+            [self.superview layoutSubtreeIfNeeded];
+        }];
     } else {
-        [self showAnimated:animated];
+        if (self.widthConstraint) {
+            self.widthConstraint.constant = self.isVisible ? self.panelWidth : 0;
+        }
+        self.alphaValue = self.isVisible ? 1.0 : 0.0;
+    }
+    
+    // Notify delegate
+    if ([self.delegate respondsToSelector:@selector(indicatorsPanel:didChangeVisibility:)]) {
+        [self.delegate indicatorsPanel:self didChangeVisibility:self.isVisible];
     }
 }
 
 - (void)showAnimated:(BOOL)animated {
-    if (self.isVisible) return;
-    
-    self.isVisible = YES;
-    
-    if (animated) {
-        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-            context.duration = 0.25;
-            context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-            [self.widthConstraint.animator setConstant:self.panelWidth];
-        } completionHandler:^{
-            if ([self.delegate respondsToSelector:@selector(indicatorsPanel:didChangeVisibility:)]) {
-                [self.delegate indicatorsPanel:self didChangeVisibility:YES];
-            }
-        }];
-    } else {
-        self.widthConstraint.constant = self.panelWidth;
-        if ([self.delegate respondsToSelector:@selector(indicatorsPanel:didChangeVisibility:)]) {
-            [self.delegate indicatorsPanel:self didChangeVisibility:YES];
-        }
+    if (!self.isVisible) {
+        [self toggleVisibilityAnimated:animated];
     }
 }
 
 - (void)hideAnimated:(BOOL)animated {
-    if (!self.isVisible) return;
-    
-    self.isVisible = NO;
-    
-    if (animated) {
-        [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
-            context.duration = 0.25;
-            context.timingFunction = [CAMediaTimingFunction functionWithName:kCAMediaTimingFunctionEaseInEaseOut];
-            [self.widthConstraint.animator setConstant:0];
-        } completionHandler:^{
-            if ([self.delegate respondsToSelector:@selector(indicatorsPanel:didChangeVisibility:)]) {
-                [self.delegate indicatorsPanel:self didChangeVisibility:NO];
-            }
-        }];
-    } else {
-        self.widthConstraint.constant = 0;
-        if ([self.delegate respondsToSelector:@selector(indicatorsPanel:didChangeVisibility:)]) {
-            [self.delegate indicatorsPanel:self didChangeVisibility:NO];
-        }
+    if (self.isVisible) {
+        [self toggleVisibilityAnimated:animated];
     }
 }
 
+#pragma mark - Template Management - AGGIORNATO per runtime models
+
 - (void)loadAvailableTemplates:(NSArray<ChartTemplateModel *> *)templates {
-    NSLog(@"📋 IndicatorsPanel: Loading %ld runtime templates", (long)templates.count);
+    self.isLoadingTemplates = YES;
+    self.availableTemplates = templates;
     
-    self.availableTemplates = [templates copy];
+    NSLog(@"📋 IndicatorsPanel: Loaded %ld runtime templates", (long)templates.count);
+    
     [self.templateComboBox reloadData];
     
     // Select first template if none selected
-    if (!self.currentTemplate && templates.count > 0) {
-        [self selectTemplate:templates.firstObject];
+    if (self.availableTemplates.count > 0 && !self.currentTemplate) {
+        [self selectTemplate:self.availableTemplates[0]];
     }
     
-    NSLog(@"✅ IndicatorsPanel: Templates loaded and combo box updated");
+    self.isLoadingTemplates = NO;
 }
 
 - (void)selectTemplate:(ChartTemplateModel *)template {
@@ -295,7 +275,6 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     // ✅ CORREZIONE: Update combo box selection - find template by ID
     NSInteger index = NSNotFound;
     
-    // ✅ AGGIUNTO: Verifica che ci siano templates disponibili
     if (self.availableTemplates.count == 0) {
         NSLog(@"⚠️ IndicatorsPanel: No available templates, cannot update combo box selection");
         [self refreshTemplateDisplay];
@@ -303,7 +282,6 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
         return;
     }
     
-    // Cerca il template per ID
     for (NSUInteger i = 0; i < self.availableTemplates.count; i++) {
         ChartTemplateModel *tempTemplate = self.availableTemplates[i];
         if ([tempTemplate.templateID isEqualToString:template.templateID]) {
@@ -312,7 +290,6 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
         }
     }
     
-    // ✅ CORREZIONE CRITICA: Solo seleziona se l'indice è valido E l'array non è vuoto
     if (index != NSNotFound &&
         index >= 0 &&
         index < (NSInteger)self.availableTemplates.count &&
@@ -321,10 +298,7 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
         [self.templateComboBox selectItemAtIndex:index];
         
     } else {
-   
-        
-        // ✅ SAFE FALLBACK: Non selezionare niente invece di crashare
-        [self.templateComboBox selectItemAtIndex:-1];  // Clear selection safely
+        [self.templateComboBox selectItemAtIndex:-1];
     }
     
     [self refreshTemplateDisplay];
@@ -333,7 +307,7 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
 
 - (void)refreshTemplateDisplay {
     [self.templateOutlineView reloadData];
-    [self.templateOutlineView expandItem:nil expandChildren:YES]; // Expand all by default
+    [self.templateOutlineView expandItem:nil expandChildren:YES];
 }
 
 - (void)resetToOriginalTemplate {
@@ -357,7 +331,7 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
         return YES;
     }
     
-    // ✅ AGGIUNTO: Check individual panel changes
+    // ✅ Check individual panel changes including childIndicatorsData
     NSArray<ChartPanelTemplateModel *> *currentPanels = [self.currentTemplate orderedPanels];
     NSArray<ChartPanelTemplateModel *> *originalPanels = [self.originalTemplate orderedPanels];
     
@@ -372,7 +346,7 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
             return YES;
         }
         
-        // ✅ IMPORTANTE: Check childIndicatorsData changes
+        // Check childIndicatorsData changes
         if (![currentPanel.childIndicatorsData isEqualToArray:originalPanel.childIndicatorsData]) {
             return YES;
         }
@@ -390,25 +364,25 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     }
     
     if (item == nil) {
-        // ✅ PULITO: Solo panels, nessun "+Add Panel" placeholder
+        // ✅ PULITO: Solo panels, nessun placeholder
         NSInteger count = self.currentTemplate.panels.count;
         NSLog(@"🔢 IndicatorsPanel: Root level children count: %ld", (long)count);
         return count;
     }
     
+    // ✅ AGGIORNATO: Usa ChartPanelTemplateModel
     if ([item isKindOfClass:[ChartPanelTemplateModel class]]) {
         ChartPanelTemplateModel *panel = item;
         
-        // ✅ MOSTRA CHILD INDICATORS DAI DATI DEL PANEL
+        // ✅ MOSTRA CHILD INDICATORS CREATI DAL CHILDINDICATORSDATA
         NSInteger childCount = panel.childIndicatorsData.count;
         NSLog(@"🔢 IndicatorsPanel: Panel '%@' children count: %ld", panel.displayName, (long)childCount);
         return childCount;
     }
     
-    // TODO: Implementare quando avremo TechnicalIndicatorBase nelle runtime models
+    // ✅ AGGIORNATO: TechnicalIndicatorBase reali
     if ([item isKindOfClass:[TechnicalIndicatorBase class]]) {
         TechnicalIndicatorBase *indicator = item;
-        // ✅ PULITO: Solo children reali, nessun "+Add Child" placeholder
         NSInteger childCount = indicator.childIndicators.count;
         NSLog(@"🔢 IndicatorsPanel: Indicator '%@' children count: %ld", indicator.shortName, (long)childCount);
         return childCount;
@@ -417,7 +391,6 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     NSLog(@"🔢 IndicatorsPanel: Unknown item type, returning 0 children");
     return 0;
 }
-
 
 - (id)outlineView:(NSOutlineView *)outlineView child:(NSInteger)index ofItem:(id)item {
     if (!self.currentTemplate) {
@@ -433,26 +406,40 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
             NSLog(@"📋 IndicatorsPanel: Root child %ld: Panel '%@'", (long)index, panel.displayName);
             return panel;
         }
-        // ✅ RIMOSSO: Nessun "Add Panel..." placeholder
         NSLog(@"❌ IndicatorsPanel: Invalid panel index %ld", (long)index);
         return nil;
     }
     
+    // ✅ AGGIORNATO: Crea TechnicalIndicatorBase dal childIndicatorsData
     if ([item isKindOfClass:[ChartPanelTemplateModel class]]) {
         ChartPanelTemplateModel *panel = item;
         
-        // ✅ RESTITUISCI CHILD INDICATORS DAI DATI
         if (index < panel.childIndicatorsData.count) {
             NSDictionary *childIndicatorData = panel.childIndicatorsData[index];
-            NSLog(@"📋 IndicatorsPanel: Panel '%@' child %ld: %@", panel.displayName, (long)index, childIndicatorData[@"indicatorID"]);
-            return childIndicatorData; // Restituiamo il dictionary con i dati
+            
+            // ✅ CONVERTIRE: Da dictionary a TechnicalIndicatorBase reale
+            NSString *indicatorID = childIndicatorData[@"indicatorID"];
+            NSDictionary *parameters = childIndicatorData[@"parameters"];
+            
+            IndicatorRegistry *registry = [IndicatorRegistry sharedRegistry];
+            TechnicalIndicatorBase *indicator = [registry createIndicatorWithIdentifier:indicatorID parameters:parameters];
+            
+            if (indicator) {
+                // Set additional properties from metadata
+                indicator.isVisible = [childIndicatorData[@"isVisible"] boolValue];
+                
+                NSLog(@"📋 IndicatorsPanel: Panel '%@' child %ld: %@ indicator", panel.displayName, (long)index, indicatorID);
+                return indicator;
+            } else {
+                NSLog(@"❌ IndicatorsPanel: Failed to create indicator %@ from registry", indicatorID);
+                return nil;
+            }
         }
-        
         NSLog(@"❌ IndicatorsPanel: Invalid indicator index %ld for panel '%@'", (long)index, panel.displayName);
         return nil;
     }
     
-    // TODO: Implementare quando avremo TechnicalIndicatorBase
+    // ✅ AGGIORNATO: TechnicalIndicatorBase children
     if ([item isKindOfClass:[TechnicalIndicatorBase class]]) {
         TechnicalIndicatorBase *indicator = item;
         if (index < indicator.childIndicators.count) {
@@ -460,7 +447,6 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
             NSLog(@"📋 IndicatorsPanel: Indicator '%@' child %ld: '%@'", indicator.shortName, (long)index, child.shortName);
             return child;
         }
-        // ✅ RIMOSSO: Nessun "Add Child..." placeholder
         NSLog(@"❌ IndicatorsPanel: Invalid child index %ld for indicator '%@'", (long)index, indicator.shortName);
         return nil;
     }
@@ -468,7 +454,6 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     NSLog(@"❌ IndicatorsPanel: Unknown item type for child at index %ld", (long)index);
     return nil;
 }
-
 
 - (BOOL)outlineView:(NSOutlineView *)outlineView isItemExpandable:(id)item {
     BOOL expandable = [self outlineView:outlineView numberOfChildrenOfItem:item] > 0;
@@ -510,29 +495,18 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
         ChartPanelTemplateModel *panel = item;
         NSString *panelTypeName = [self displayNameForPanelType:panel.rootIndicatorType];
         cellView.textField.stringValue = [NSString stringWithFormat:@"📊 %@ Panel (%.0f%%)",
-                                         panelTypeName, panel.relativeHeight * 100];
+                                          panelTypeName, panel.relativeHeight * 100];
         cellView.textField.textColor = [NSColor labelColor];
         NSLog(@"🎨 IndicatorsPanel: Configured cell for panel: %@", cellView.textField.stringValue);
         
-    }  else if ([item isKindOfClass:[TechnicalIndicatorBase class]]) {
+    } else if ([item isKindOfClass:[TechnicalIndicatorBase class]]) {
         TechnicalIndicatorBase *indicator = item;
         NSString *icon = indicator.isRootIndicator ? @"📈" : @"➖";
         cellView.textField.stringValue = [NSString stringWithFormat:@"%@ %@", icon, indicator.name ?: indicator.shortName];
         cellView.textField.textColor = indicator.isVisible ? [NSColor labelColor] : [NSColor secondaryLabelColor];
         NSLog(@"🎨 IndicatorsPanel: Configured cell for indicator: %@", cellView.textField.stringValue);
         
-    }  else if ([item isKindOfClass:[NSDictionary class]]) {
-        // ✅ NUOVO: Child indicator data
-        NSDictionary *indicatorData = item;
-        NSString *indicatorID = indicatorData[@"indicatorID"];
-        BOOL isVisible = [indicatorData[@"isVisible"] boolValue];
-        
-        NSString *displayName = [self displayNameForIndicator:indicatorID indicatorInfo:nil];
-        cellView.textField.stringValue = [NSString stringWithFormat:@"📈 %@", displayName];
-        cellView.textField.textColor = isVisible ? [NSColor labelColor] : [NSColor secondaryLabelColor];
-        NSLog(@"🎨 IndicatorsPanel: Configured cell for child indicator: %@", displayName);
     } else {
-        // ✅ RIMOSSO: Tutti i casi kAddPanelItem, kAddIndicatorItem, kAddChildItem
         cellView.textField.stringValue = [NSString stringWithFormat:@"? %@", [item description]];
         cellView.textField.textColor = [NSColor secondaryLabelColor];
         NSLog(@"⚠️ IndicatorsPanel: Unknown item type for cell: %@", [item description]);
@@ -566,35 +540,70 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     
     ChartTemplateModel *template = self.availableTemplates[index];
     NSString *displayName = template.isDefault ?
-        [NSString stringWithFormat:@"%@ (Default)", template.templateName] : template.templateName;
+    [NSString stringWithFormat:@"%@ (Default)", template.templateName] :
+    template.templateName;
     
-    NSLog(@"📋 IndicatorsPanel: ComboBox item %ld: %@", (long)index, displayName);
+    NSLog(@"📝 IndicatorsPanel: ComboBox item %ld: %@", (long)index, displayName);
     return displayName;
 }
 
 - (void)comboBoxSelectionDidChange:(NSNotification *)notification {
-    NSInteger selectedIndex = self.templateComboBox.indexOfSelectedItem;
+    if (self.isLoadingTemplates) {
+        NSLog(@"⏳ IndicatorsPanel: Ignoring combo box change during template loading");
+        return;
+    }
     
-    NSLog(@"🔄 IndicatorsPanel: ComboBox selection changed to index: %ld", (long)selectedIndex);
+    NSInteger selectedIndex = [self.templateComboBox indexOfSelectedItem];
+    NSLog(@"👆 IndicatorsPanel: ComboBox selection changed to index: %ld", (long)selectedIndex);
     
-    // ✅ CORREZIONE: Verifica che l'indice sia valido
     if (selectedIndex >= 0 && selectedIndex < (NSInteger)self.availableTemplates.count) {
         ChartTemplateModel *selectedTemplate = self.availableTemplates[selectedIndex];
-        NSLog(@"✅ IndicatorsPanel: Valid selection - template: %@", selectedTemplate.templateName);
         
-        [self selectTemplate:selectedTemplate];
-        
-        // Notify delegate
+        // Notify delegate of selection (not application)
         if ([self.delegate respondsToSelector:@selector(indicatorsPanel:didSelectTemplate:)]) {
             [self.delegate indicatorsPanel:self didSelectTemplate:selectedTemplate];
         }
-    } else {
-        NSLog(@"⚠️ IndicatorsPanel: Invalid selection index %ld (available: %ld)",
-              (long)selectedIndex, (long)self.availableTemplates.count);
+        
+        // Update current template for editing
+        [self selectTemplate:selectedTemplate];
     }
 }
 
-#pragma mark - Dynamic Context Menu System - SCALABILE
+#pragma mark - Button Actions
+
+- (void)templateSettingsAction:(NSButton *)sender {
+    NSLog(@"⚙️ IndicatorsPanel: Template settings action");
+    // TODO: Show template settings menu/popup
+}
+
+- (void)applyAction:(NSButton *)sender {
+    NSLog(@"✅ IndicatorsPanel: Apply action - requesting template application");
+    
+    if (self.currentTemplate && [self.delegate respondsToSelector:@selector(indicatorsPanel:didRequestApplyTemplate:)]) {
+        [self.delegate indicatorsPanel:self didRequestApplyTemplate:self.currentTemplate];
+    }
+}
+
+- (void)resetAction:(NSButton *)sender {
+    NSLog(@"🔄 IndicatorsPanel: Reset action");
+    [self resetToOriginalTemplate];
+}
+
+- (void)saveAsAction:(NSButton *)sender {
+    NSLog(@"💾 IndicatorsPanel: Save As action");
+    [self showSaveAsDialog];
+}
+
+- (void)updateButtonStates {
+    BOOL hasTemplate = (self.currentTemplate != nil);
+    BOOL hasChanges = [self hasUnsavedChanges];
+    
+    self.applyButton.enabled = hasTemplate && hasChanges;
+    self.resetButton.enabled = hasTemplate && hasChanges;
+    self.saveAsButton.enabled = hasTemplate;
+}
+
+#pragma mark - Context Menu - PULITO e SEMPLIFICATO
 
 - (NSMenu *)contextMenuForItem:(id)item {
     NSMenu *menu = [[NSMenu alloc] init];
@@ -605,14 +614,15 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
         NSMenu *panelSubmenu = [self createPanelTypesSubmenu];
         addPanelItem.submenu = panelSubmenu;
         [menu addItem:addPanelItem];
+        
     } else if ([item isKindOfClass:[ChartPanelTemplateModel class]]) {
         ChartPanelTemplateModel *panel = item;
         
-        // ✅ PANEL CONTEXT: Add Indicator, Configure, Remove
+        // ✅ PANEL CONTEXT UNIFICATO: Add Indicator (con submenu), Configure Panel, Remove Panel
         NSMenuItem *addIndicatorItem = [[NSMenuItem alloc] initWithTitle:@"Add Indicator" action:nil keyEquivalent:@""];
-            NSMenu *indicatorSubmenu = [self createHierarchicalIndicatorMenuForPanel:panel];
-            addIndicatorItem.submenu = indicatorSubmenu;
-            [menu addItem:addIndicatorItem];
+        NSMenu *indicatorSubmenu = [self createHierarchicalIndicatorMenuForPanel:panel];
+        addIndicatorItem.submenu = indicatorSubmenu;
+        [menu addItem:addIndicatorItem];
         
         [menu addItem:[NSMenuItem separatorItem]];
         
@@ -633,7 +643,7 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
         removePanelItem.representedObject = panel;
         [menu addItem:removePanelItem];
         
-    }  else if ([item isKindOfClass:[TechnicalIndicatorBase class]]) {
+    } else if ([item isKindOfClass:[TechnicalIndicatorBase class]]) {
         TechnicalIndicatorBase *indicator = item;
         
         // ✅ INDICATOR CONTEXT: Add Child (se supportato), Configure, Remove
@@ -666,63 +676,7 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     return menu.itemArray.count > 0 ? menu : nil;
 }
 
-
-#pragma mark - Dynamic Submenu Creation
-
-/// Crea submenu dinamico per indicatori basato su IndicatorRegistry
-- (NSMenu *)createIndicatorSubmenuForPanel:(ChartPanelTemplateModel *)panel {
-    NSMenu *submenu = [[NSMenu alloc] init];
-    
-    IndicatorRegistry *registry = [IndicatorRegistry sharedRegistry];
-    NSArray<NSString *> *availableIndicators = [registry hardcodedIndicatorIdentifiers];
-    
-    // ✅ CATEGORIZATION: Raggruppa per categorie
-    NSDictionary<NSString *, NSArray<NSString *> *> *categorizedIndicators = [self categorizeIndicators:availableIndicators];
-    
-    for (NSString *category in [categorizedIndicators.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
-        // Create category submenu
-        NSMenuItem *categoryItem = [[NSMenuItem alloc] initWithTitle:category action:nil keyEquivalent:@""];
-        NSMenu *categorySubmenu = [[NSMenu alloc] init];
-        
-        NSArray<NSString *> *indicatorsInCategory = categorizedIndicators[category];
-        for (NSString *indicatorID in [indicatorsInCategory sortedArrayUsingSelector:@selector(compare:)]) {
-            
-            // Get indicator info from registry
-            NSDictionary *indicatorInfo = [registry indicatorInfoForIdentifier:indicatorID];
-            NSString *displayName = indicatorInfo[@"displayName"] ?: indicatorID;
-            
-            NSMenuItem *indicatorItem = [[NSMenuItem alloc] initWithTitle:displayName
-                                                                   action:@selector(addIndicatorDynamically:)
-                                                            keyEquivalent:@""];
-            indicatorItem.target = self;
-            
-            // ✅ DYNAMIC DATA: Store all needed info in representedObject
-            NSDictionary *itemData = @{
-                @"action": @"addIndicator",
-                @"panel": panel ?: [NSNull null],
-                @"indicatorID": indicatorID,
-                @"indicatorInfo": indicatorInfo
-            };
-            indicatorItem.representedObject = itemData;
-            
-            [categorySubmenu addItem:indicatorItem];
-        }
-        
-        categoryItem.submenu = categorySubmenu;
-        [submenu addItem:categoryItem];
-    }
-    
-    // ✅ FUTURE: Add "Custom Indicators..." option
-    [submenu addItem:[NSMenuItem separatorItem]];
-    NSMenuItem *customItem = [[NSMenuItem alloc] initWithTitle:@"Custom Indicators..."
-                                                        action:@selector(showCustomIndicatorDialog:)
-                                                 keyEquivalent:@""];
-    customItem.target = self;
-    customItem.representedObject = @{@"action": @"showCustomDialog", @"panel": panel ?: [NSNull null]};
-    [submenu addItem:customItem];
-    
-    return submenu;
-}
+#pragma mark - Menu Creation Methods
 
 - (NSMenu *)createPanelTypesSubmenu {
     NSMenu *submenu = [[NSMenu alloc] init];
@@ -748,462 +702,6 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     }
     
     return submenu;
-}
-
-- (void)addPanelFromMenu:(NSMenuItem *)sender {
-    NSDictionary *data = sender.representedObject;
-    NSString *indicatorID = data[@"indicatorID"];
-    NSString *panelName = data[@"panelName"];
-    double defaultHeight = [data[@"defaultHeight"] doubleValue];
-    
-    [self addPanelWithType:panelName rootIndicator:indicatorID defaultHeight:defaultHeight];
-}
-
-/// Crea submenu per contesto specifico (Add Indicator vs Add Child)
-- (NSMenu *)createIndicatorSubmenuForContext:(NSString *)context {
-    // Same as createIndicatorSubmenuForPanel but without panel reference
-    return [self createIndicatorSubmenuForPanel:nil];
-}
-
-#pragma mark - Helper Menu Items
-
-- (NSMenuItem *)createRemovePanelMenuItemForPanel:(ChartPanelTemplateModel *)panel {
-    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:@"Remove Panel"
-                                                  action:@selector(removePanelDynamically:)
-                                           keyEquivalent:@""];
-    item.target = self;
-    item.representedObject = panel;
-    return item;
-}
-
-- (NSMenuItem *)createPanelSettingsMenuItemForPanel:(ChartPanelTemplateModel *)panel {
-    NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:@"Panel Settings..."
-                                                  action:@selector(configurePanelSettings:)
-                                           keyEquivalent:@""];
-    item.target = self;
-    item.representedObject = panel;
-    return item;
-}
-
-#pragma mark - Panel Type Helpers
-
-
-
-/// Verifica se un indicatore è adatto come root di un pannello
-- (BOOL)isIndicatorSuitableForPanel:(NSString *)indicatorID indicatorInfo:(NSDictionary *)info {
-    // ✅ LOGIC: La maggior parte degli indicatori può essere root di un pannello
-    // Per ora, accettiamo tutti gli indicatori disponibili
-    return YES;
-}
-
-
-#pragma mark - Indicator Categorization
-
-/// Categorizza indicatori per tipo (Moving Averages, Oscillators, etc.)
-- (NSDictionary<NSString *, NSArray<NSString *> *> *)categorizeIndicators:(NSArray<NSString *> *)indicators {
-    NSMutableDictionary<NSString *, NSMutableArray<NSString *> *> *categories = [NSMutableDictionary dictionary];
-    
-    // ✅ CATEGORIZATION RULES: Define categories based on indicator ID patterns
-    for (NSString *indicatorID in indicators) {
-        NSString *category = [self categoryForIndicator:indicatorID];
-        
-        if (!categories[category]) {
-            categories[category] = [NSMutableArray array];
-        }
-        [categories[category] addObject:indicatorID];
-    }
-    
-    // Convert mutable arrays to immutable
-    NSMutableDictionary<NSString *, NSArray<NSString *> *> *result = [NSMutableDictionary dictionary];
-    for (NSString *key in categories) {
-        result[key] = [categories[key] copy];
-    }
-    
-    return [result copy];
-}
-
-/// Determina categoria per indicatore
-- (NSString *)categoryForIndicator:(NSString *)indicatorID {
-    // ✅ PATTERN MATCHING: Categorize based on indicator type
-    if ([indicatorID containsString:@"MA"] || [indicatorID isEqualToString:@"EMA"] || [indicatorID isEqualToString:@"SMA"]) {
-        return @"Moving Averages";
-    } else if ([indicatorID isEqualToString:@"RSI"] || [indicatorID isEqualToString:@"Stochastic"] || [indicatorID containsString:@"CCI"]) {
-        return @"Oscillators";
-    } else if ([indicatorID isEqualToString:@"MACD"] || [indicatorID containsString:@"Signal"]) {
-        return @"Trend Indicators";
-    } else if ([indicatorID isEqualToString:@"VolumeIndicator"] || [indicatorID containsString:@"Volume"]) {
-        return @"Volume";
-    } else if ([indicatorID isEqualToString:@"SecurityIndicator"] || [indicatorID containsString:@"Price"]) {
-        return @"Price Action";
-    } else if ([indicatorID containsString:@"Bollinger"] || [indicatorID containsString:@"Band"]) {
-        return @"Bands & Channels";
-    } else {
-        return @"Other";
-    }
-}
-
-#pragma mark - Dynamic Action Methods - SCALABILI
-
-/// ✅ UNIVERSAL ACTION: Un solo metodo per aggiungere qualsiasi indicatore
-- (void)addIndicatorDynamically:(NSMenuItem *)sender {
-    NSDictionary *itemData = sender.representedObject;
-    
-    NSString *action = itemData[@"action"];
-    ChartPanelTemplateModel *panel = [itemData[@"panel"] isEqual:[NSNull null]] ? nil : itemData[@"panel"];
-    NSString *indicatorID = itemData[@"indicatorID"];
-    NSDictionary *indicatorInfo = itemData[@"indicatorInfo"];
-    
-    NSLog(@"✅ IndicatorsPanel: Adding indicator '%@' to panel '%@'",
-          indicatorID, panel.displayName ?: @"(none)");
-    
-    // TODO: Implementare l'aggiunta effettiva dell'indicatore
-    // Per ora solo log
-}
-
-/// ✅ UNIVERSAL ACTION: Un solo metodo per aggiungere qualsiasi pannello
-- (void)addPanelDynamically:(NSMenuItem *)sender {
-    NSDictionary *panelData = sender.representedObject;
-    
-    NSString *panelName = panelData[@"name"];
-    NSString *rootIndicator = panelData[@"rootIndicator"];
-    double defaultHeight = [panelData[@"defaultHeight"] doubleValue];
-    
-    NSLog(@"✅ IndicatorsPanel: Adding panel '%@' with root indicator '%@'",
-          panelName, rootIndicator);
-    
-    if (self.currentTemplate) {
-        ChartPanelTemplateModel *newPanel = [ChartPanelTemplateModel panelWithID:nil
-                                                                            name:[panelName stringByReplacingOccurrencesOfString:@" Panel" withString:@""]
-                                                                 rootIndicatorType:rootIndicator
-                                                                          height:defaultHeight
-                                                                           order:self.currentTemplate.panels.count];
-        
-        [self.currentTemplate addPanel:newPanel];
-        [self refreshTemplateDisplay];
-        [self updateButtonStates];
-    }
-}
-
-/// ✅ UNIVERSAL ACTION: Un solo metodo per rimuovere pannelli
-- (void)removePanelDynamically:(NSMenuItem *)sender {
-    ChartPanelTemplateModel *panel = sender.representedObject;
-    
-    NSLog(@"🗑️ IndicatorsPanel: Remove panel: %@", panel.displayName);
-    
-    if (self.currentTemplate && panel) {
-        [self.currentTemplate removePanel:panel];
-        [self refreshTemplateDisplay];
-        [self updateButtonStates];
-    }
-}
-
-#pragma mark - Button Actions & Helper Methods
-
-- (void)updateButtonStates {
-    BOOL hasTemplate = (self.currentTemplate != nil);
-    BOOL hasChanges = [self hasUnsavedChanges];
-    
-    self.applyButton.enabled = hasTemplate && hasChanges;
-    self.resetButton.enabled = hasTemplate && hasChanges;
-    self.saveAsButton.enabled = hasTemplate;
-}
-
-
-
-#pragma mark - NSOutlineView DataSource - AGGIORNATO per runtime models
-
-
-- (NSString *)displayNameForPanelType:(NSString *)panelType {
-    // Map root indicator types to display names
-    static NSDictionary *displayNames = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        displayNames = @{
-            @"SecurityIndicator": @"Security",
-            @"VolumeIndicator": @"Volume",
-            @"RSIIndicator": @"RSI",
-            @"MACDIndicator": @"MACD",
-            @"EMA": @"EMA",
-            @"SMA": @"SMA",
-            @"BollingerBands": @"Bollinger Bands",
-            @"Stochastic": @"Stochastic"
-        };
-    });
-    
-    NSString *displayName = displayNames[panelType];
-    return displayName ?: [panelType stringByReplacingOccurrencesOfString:@"Indicator" withString:@""];
-}
-
-#pragma mark - Action Methods - AGGIORNATI per runtime models
-
-- (IBAction)templateSettingsAction:(NSButton *)sender {
-    if (!self.currentTemplate) return;
-    
-    // Show template settings (rename, duplicate, delete, etc.)
-    NSMenu *menu = [[NSMenu alloc] init];
-    [menu addItemWithTitle:@"Rename..." action:@selector(renameTemplate:) keyEquivalent:@""];
-    [menu addItemWithTitle:@"Duplicate..." action:@selector(duplicateTemplate:) keyEquivalent:@""];
-    [menu addItemWithTitle:@"Export..." action:@selector(exportTemplate:) keyEquivalent:@""];
-    [menu addItem:[NSMenuItem separatorItem]];
-    [menu addItemWithTitle:@"Delete" action:@selector(deleteTemplate:) keyEquivalent:@""];
-    
-    [NSMenu popUpContextMenu:menu withEvent:[NSApp currentEvent] forView:sender];
-}
-
-- (IBAction)applyAction:(NSButton *)sender {
-    if (!self.currentTemplate) return;
-    
-    if ([self.delegate respondsToSelector:@selector(indicatorsPanel:didRequestApplyTemplate:)]) {
-        [self.delegate indicatorsPanel:self didRequestApplyTemplate:self.currentTemplate];
-    }
-}
-
-- (IBAction)resetAction:(NSButton *)sender {
-    [self resetToOriginalTemplate];
-}
-
-- (IBAction)saveAsAction:(NSButton *)sender {
-    if (!self.currentTemplate) return;
-    
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Save Template As";
-    alert.informativeText = @"Enter a name for the new template:";
-    alert.alertStyle = NSAlertStyleInformational;
-    [alert addButtonWithTitle:@"Save"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
-    input.stringValue = [NSString stringWithFormat:@"%@ Copy", self.currentTemplate.templateName];
-    alert.accessoryView = input;
-    
-    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
-        if (returnCode == NSAlertFirstButtonReturn) {
-            NSString *templateName = input.stringValue.length > 0 ? input.stringValue : @"Untitled Template";
-            
-            if ([self.delegate respondsToSelector:@selector(indicatorsPanel:didRequestCreateTemplate:)]) {
-                [self.delegate indicatorsPanel:self didRequestCreateTemplate:templateName];
-            }
-        }
-    }];
-}
-
-#pragma mark - Template Management Actions
-
-- (void)renameTemplate:(NSMenuItem *)sender {
-    if (!self.currentTemplate) return;
-    
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Rename Template";
-    alert.informativeText = @"Enter a new name for the template:";
-    alert.alertStyle = NSAlertStyleInformational;
-    [alert addButtonWithTitle:@"Rename"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
-    input.stringValue = self.currentTemplate.templateName;
-    alert.accessoryView = input;
-    
-    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
-        if (returnCode == NSAlertFirstButtonReturn && input.stringValue.length > 0) {
-            self.currentTemplate.templateName = input.stringValue;
-            self.currentTemplate.modifiedDate = [NSDate date];
-            [self updateButtonStates];
-            [self.templateComboBox reloadData];
-        }
-    }];
-}
-
-- (void)duplicateTemplate:(NSMenuItem *)sender {
-    if (!self.currentTemplate) return;
-    
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Duplicate Template";
-    alert.informativeText = @"Enter a name for the duplicate template:";
-    alert.alertStyle = NSAlertStyleInformational;
-    [alert addButtonWithTitle:@"Duplicate"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
-    input.stringValue = [NSString stringWithFormat:@"%@ Copy", self.currentTemplate.templateName];
-    alert.accessoryView = input;
-    
-    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
-        if (returnCode == NSAlertFirstButtonReturn && input.stringValue.length > 0) {
-            // Create duplicate template
-            ChartTemplateModel *duplicate = [self.currentTemplate createWorkingCopy];
-            duplicate.templateID = [[NSUUID UUID] UUIDString];
-            duplicate.templateName = input.stringValue;
-            duplicate.isDefault = NO;
-            duplicate.createdDate = [NSDate date];
-            duplicate.modifiedDate = [NSDate date];
-            
-            // Assign new IDs to all panels
-            for (ChartPanelTemplateModel *panel in duplicate.panels) {
-                panel.panelID = [[NSUUID UUID] UUIDString];
-            }
-            
-            if ([self.delegate respondsToSelector:@selector(indicatorsPanel:didRequestCreateTemplate:)]) {
-                [self.delegate indicatorsPanel:self didRequestCreateTemplate:duplicate.templateName];
-            }
-        }
-    }];
-}
-
-- (void)exportTemplate:(NSMenuItem *)sender {
-    if (!self.currentTemplate) return;
-    
-    NSLog(@"📤 IndicatorsPanel: Export template: %@", self.currentTemplate.templateName);
-    // TODO: Implement template export functionality
-}
-
-- (void)deleteTemplate:(NSMenuItem *)sender {
-    if (!self.currentTemplate) return;
-    
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Delete Template";
-    alert.informativeText = [NSString stringWithFormat:@"Are you sure you want to delete the template '%@'?", self.currentTemplate.templateName];
-    alert.alertStyle = NSAlertStyleCritical;
-    [alert addButtonWithTitle:@"Delete"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
-        if (returnCode == NSAlertFirstButtonReturn) {
-            NSLog(@"🗑️ IndicatorsPanel: Delete template: %@", self.currentTemplate.templateName);
-            // TODO: Implement template deletion via delegate
-        }
-    }];
-}
-
-#pragma mark - Placeholder Action Methods - Future Implementation
-
-
-
-- (void)showCustomIndicatorDialog:(NSMenuItem *)sender {
-    NSDictionary *itemData = sender.representedObject;
-    ChartPanelTemplateModel *panel = [itemData[@"panel"] isEqual:[NSNull null]] ? nil : itemData[@"panel"];
-    
-    NSLog(@"🔧 IndicatorsPanel: Show custom indicator dialog for panel: %@", panel.displayName ?: @"(none)");
-    
-    // TODO: Implementare custom indicator dialog
-    // - PineScript editor
-    // - Import from file
-    // - Indicator library browser
-}
-
-- (void)showAddPanelDialog:(NSMenuItem *)sender {
-    NSLog(@"🎯 IndicatorsPanel: Show Add Panel Dialog");
-    
-    // ✅ DYNAMIC: Usa IndicatorRegistry per ottenere indicatori disponibili
-    IndicatorRegistry *registry = [IndicatorRegistry sharedRegistry];
-    NSArray<NSString *> *availableIndicators = [registry hardcodedIndicatorIdentifiers];
-    NSArray<NSString *> *panelSuitableIndicators = [self filterIndicatorsForPanelTypes:availableIndicators];
-    
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Add Panel";
-    alert.informativeText = @"Select the type of panel to add:";
-    alert.alertStyle = NSAlertStyleInformational;
-    
-    // ✅ DYNAMIC: Aggiungi button per ogni indicatore disponibile
-    NSMutableArray<NSDictionary *> *panelOptions = [NSMutableArray array];
-    
-    for (NSString *indicatorID in [panelSuitableIndicators sortedArrayUsingSelector:@selector(compare:)]) {
-        NSDictionary *indicatorInfo = [registry indicatorInfoForIdentifier:indicatorID];
-        NSString *panelName = [self panelNameForIndicator:indicatorID indicatorInfo:indicatorInfo];
-        double defaultHeight = [self defaultHeightForIndicator:indicatorID];
-        
-        [alert addButtonWithTitle:panelName];
-        [panelOptions addObject:@{
-            @"indicatorID": indicatorID,
-            @"panelName": panelName,
-            @"defaultHeight": @(defaultHeight)
-        }];
-    }
-    
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
-        // ✅ DYNAMIC: Map button index to panel option
-        NSInteger optionIndex = returnCode - NSAlertFirstButtonReturn;
-        
-        if (optionIndex >= 0 && optionIndex < panelOptions.count) {
-            NSDictionary *selectedOption = panelOptions[optionIndex];
-            NSString *indicatorID = selectedOption[@"indicatorID"];
-            NSString *panelName = selectedOption[@"panelName"];
-            double defaultHeight = [selectedOption[@"defaultHeight"] doubleValue];
-            
-            [self addPanelWithType:panelName rootIndicator:indicatorID defaultHeight:defaultHeight];
-        }
-        // Else: Cancel button pressed
-    }];
-}
-
-#pragma mark - Right-Click Support - AGGIORNATO per runtime models
-
-// ✅ AGGIORNATO: Override per gestire right-click sull'outline view
-- (void)rightMouseDown:(NSEvent *)event {
-    NSPoint point = [self convertPoint:event.locationInWindow fromView:nil];
-    NSPoint outlinePoint = [self.templateOutlineView convertPoint:point fromView:self];
-    NSInteger row = [self.templateOutlineView rowAtPoint:outlinePoint];
-    
-    NSLog(@"🖱️ IndicatorsPanel: Right-click at row %ld", (long)row);
-    
-    if (row >= 0) {
-        // Select the row first
-        [self.templateOutlineView selectRowIndexes:[NSIndexSet indexSetWithIndex:row] byExtendingSelection:NO];
-        
-        // Get the item and show context menu
-        id item = [self.templateOutlineView itemAtRow:row];
-        NSMenu *contextMenu = [self contextMenuForItem:item];
-        
-        if (contextMenu) {
-            [NSMenu popUpContextMenu:contextMenu withEvent:event forView:self.templateOutlineView];
-        }
-    } else {
-        [super rightMouseDown:event];
-    }
-}
-
-#pragma mark - Window Management
-
-- (NSWindow *)window {
-    // La classe NSView ha già una proprietà window - usala direttamente
-    return [super window];
-}
-
-#pragma mark - Debugging & Logging
-
-- (NSString *)description {
-    return [NSString stringWithFormat:@"<%@ %p> Template: %@ (%ld panels), Visible: %@",
-            NSStringFromClass(self.class), self,
-            self.currentTemplate.templateName ?: @"None",
-            (long)self.currentTemplate.panels.count,
-            self.isVisible ? @"YES" : @"NO"];
-}
-
-#pragma mark - Cleanup
-
-- (void)dealloc {
-    NSLog(@"♻️ IndicatorsPanel: Deallocating");
-    
-    // Clear delegates
-    self.templateComboBox.dataSource = nil;
-    self.templateComboBox.delegate = nil;
-    self.templateOutlineView.dataSource = nil;
-    self.templateOutlineView.delegate = nil;
-}
-#pragma mark - Context Menu Actions - DA IMPLEMENTARE
-
-
-- (void)showAddIndicatorDialog:(NSMenuItem *)sender {
-    ChartPanelTemplateModel *panel = sender.representedObject;
-    NSLog(@"🎯 IndicatorsPanel: Show Add Indicator Menu for panel: %@", panel.displayName);
-    
-    // ✅ SOSTITUIRE: Crea menu gerarchico invece di dialog
-    NSMenu *indicatorMenu = [self createHierarchicalIndicatorMenuForPanel:panel];
-    
-    // Mostra menu al punto del click
-    NSEvent *currentEvent = [NSApp currentEvent];
-    [NSMenu popUpContextMenu:indicatorMenu withEvent:currentEvent forView:self.templateOutlineView];
 }
 
 - (NSMenu *)createHierarchicalIndicatorMenuForPanel:(ChartPanelTemplateModel *)panel {
@@ -1263,91 +761,6 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     return submenu;
 }
 
-- (NSDictionary<NSString *, NSArray<NSString *> *> *)categorizeIndicatorsForMenu:(NSArray<NSString *> *)indicators {
-    NSMutableDictionary<NSString *, NSMutableArray<NSString *> *> *categories = [NSMutableDictionary dictionary];
-    
-    // ✅ DEFINISCI CATEGORIE
-    categories[@"Moving Averages"] = [NSMutableArray array];
-    categories[@"Oscillators"] = [NSMutableArray array];
-    categories[@"Volume"] = [NSMutableArray array];
-    categories[@"Volatility"] = [NSMutableArray array];
-    categories[@"Price Action"] = [NSMutableArray array];
-    categories[@"Other"] = [NSMutableArray array];
-    
-    for (NSString *indicatorID in indicators) {
-        // ✅ LOGIC: Categorizza per nome
-        if ([indicatorID containsString:@"MA"] || [indicatorID isEqualToString:@"SMA"] || [indicatorID isEqualToString:@"EMA"]) {
-            [categories[@"Moving Averages"] addObject:indicatorID];
-        } else if ([indicatorID isEqualToString:@"RSI"] || [indicatorID containsString:@"MACD"] || [indicatorID containsString:@"Stoch"]) {
-            [categories[@"Oscillators"] addObject:indicatorID];
-        } else if ([indicatorID containsString:@"Volume"]) {
-            [categories[@"Volume"] addObject:indicatorID];
-        } else if ([indicatorID isEqualToString:@"ATR"] || [indicatorID containsString:@"BB"]) {
-            [categories[@"Volatility"] addObject:indicatorID];
-        } else if ([indicatorID isEqualToString:@"SecurityIndicator"]) {
-            [categories[@"Price Action"] addObject:indicatorID];
-        } else {
-            [categories[@"Other"] addObject:indicatorID];
-        }
-    }
-    
-    // ✅ REMOVE EMPTY CATEGORIES
-    NSMutableDictionary *result = [NSMutableDictionary dictionary];
-    for (NSString *categoryName in categories.allKeys) {
-        if (categories[categoryName].count > 0) {
-            result[categoryName] = [categories[categoryName] copy];
-        }
-    }
-    
-    return [result copy];
-}
-
-- (void)showAddChildIndicatorDialog:(NSMenuItem *)sender {
-    TechnicalIndicatorBase *parentIndicator = sender.representedObject;
-    NSLog(@"🎯 IndicatorsPanel: Show Add Child Indicator Dialog for parent: %@", parentIndicator.shortName);
-    
-    // ✅ DYNAMIC: Usa IndicatorRegistry per child indicators
-    IndicatorRegistry *registry = [IndicatorRegistry sharedRegistry];
-    NSArray<NSString *> *availableIndicators = [registry hardcodedIndicatorIdentifiers];
-    
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Add Child Indicator";
-    alert.informativeText = [NSString stringWithFormat:@"Add child indicator to %@:", parentIndicator.shortName];
-    alert.alertStyle = NSAlertStyleInformational;
-    
-    // ✅ DYNAMIC: Solo indicatori che possono essere children
-    NSMutableArray<NSDictionary *> *childOptions = [NSMutableArray array];
-    
-    for (NSString *indicatorID in [availableIndicators sortedArrayUsingSelector:@selector(compare:)]) {
-        // Filter: most indicators can be children, but exclude some like SecurityIndicator
-        if (![indicatorID isEqualToString:@"SecurityIndicator"]) {
-            NSDictionary *indicatorInfo = [registry indicatorInfoForIdentifier:indicatorID];
-            NSString *displayName = [self displayNameForIndicator:indicatorID indicatorInfo:indicatorInfo];
-            
-            [alert addButtonWithTitle:[NSString stringWithFormat:@"%@ on %@", displayName, parentIndicator.shortName]];
-            [childOptions addObject:@{
-                @"indicatorID": indicatorID,
-                @"displayName": displayName
-            }];
-        }
-    }
-    
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
-        NSInteger optionIndex = returnCode - NSAlertFirstButtonReturn;
-        
-        if (optionIndex >= 0 && optionIndex < childOptions.count) {
-            NSDictionary *selectedOption = childOptions[optionIndex];
-            NSString *childType = selectedOption[@"indicatorID"];
-            
-            NSLog(@"✅ Adding %@ as child of %@", childType, parentIndicator.shortName);
-            // TODO: Implementare aggiunta child indicator
-            [self refreshTemplateDisplay];
-        }
-    }];
-}
-
 - (NSMenu *)createCustomIndicatorSubmenu:(ChartPanelTemplateModel *)panel {
     NSMenu *submenu = [[NSMenu alloc] init];
     
@@ -1376,43 +789,16 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     return submenu;
 }
 
-// ✅ PLACEHOLDER METHODS per le azioni custom
-- (void)importCustomIndicator:(NSMenuItem *)sender {
-    NSLog(@"📁 Import custom indicator - not implemented yet");
-    // TODO: Implementare import da file
-}
+#pragma mark - Context Menu Actions
 
-- (void)showPineScriptEditor:(NSMenuItem *)sender {
-    NSLog(@"📝 PineScript editor - not implemented yet");
-    // TODO: Implementare editor PineScript
-}
-
-- (void)browseIndicatorLibrary:(NSMenuItem *)sender {
-    NSLog(@"📚 Browse indicator library - not implemented yet");
-    // TODO: Implementare browser libreria
-}
-
-- (void)configurePanelSettings:(NSMenuItem *)sender {
-    ChartPanelTemplateModel *panel = sender.representedObject;
-    NSLog(@"⚙️ IndicatorsPanel: Configure Panel Settings: %@", panel.displayName);
+- (void)addPanelFromMenu:(NSMenuItem *)sender {
+    NSDictionary *data = sender.representedObject;
+    NSString *indicatorID = data[@"indicatorID"];
+    NSString *panelName = data[@"panelName"];
+    double defaultHeight = [data[@"defaultHeight"] doubleValue];
     
-    [self showPanelConfigurationDialog:panel];
+    [self addPanelWithType:panelName rootIndicator:indicatorID defaultHeight:defaultHeight];
 }
-
-
-- (void)configureIndicator:(NSMenuItem *)sender {
-    TechnicalIndicatorBase *indicator = sender.representedObject;
-    NSLog(@"⚙️ IndicatorsPanel: Configure Indicator: %@", indicator.shortName);
-    
-    // TODO: Implementare dialog di configurazione per singoli indicatori
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Configure Indicator";
-    alert.informativeText = [NSString stringWithFormat:@"Configuration dialog for %@ not implemented yet", indicator.shortName];
-    alert.alertStyle = NSAlertStyleInformational;
-    [alert addButtonWithTitle:@"OK"];
-    [alert runModal];
-}
-
 
 - (void)addIndicatorToPanel:(NSMenuItem *)sender {
     NSDictionary *data = sender.representedObject;
@@ -1422,8 +808,7 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     
     NSLog(@"✅ Adding %@ indicator to panel: %@", indicatorID, panel.displayName);
     
-    // ✅ TODO: IMPLEMENTARE L'AGGIUNTA REALE
-    // Per ora aggiungiamo ai childIndicatorsData del panel
+    // ✅ AGGIUNTA REALE: Aggiungi ai childIndicatorsData del panel
     NSMutableArray *childIndicators = [panel.childIndicatorsData mutableCopy] ?: [NSMutableArray array];
     
     NSDictionary *newIndicator = @{
@@ -1441,7 +826,17 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     [self refreshTemplateDisplay];
     [self updateButtonStates];
     
+    // ✅ FORCE ENABLE Apply button
+    self.applyButton.enabled = YES;
+    self.resetButton.enabled = YES;
+    
     NSLog(@"✅ Indicator added to panel data. Panel now has %ld child indicators", (long)childIndicators.count);
+}
+
+- (void)configurePanelSettings:(NSMenuItem *)sender {
+    ChartPanelTemplateModel *panel = sender.representedObject;
+    NSLog(@"⚙️ IndicatorsPanel: Configure Panel Settings: %@", panel.displayName);
+    // TODO: Implementare Panel Settings Dialog (include anche root indicator config)
 }
 
 - (void)removePanelWithConfirmation:(NSMenuItem *)sender {
@@ -1467,6 +862,19 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     }
 }
 
+- (void)configureIndicator:(NSMenuItem *)sender {
+    TechnicalIndicatorBase *indicator = sender.representedObject;
+    NSLog(@"⚙️ IndicatorsPanel: Configure Indicator: %@", indicator.shortName);
+    
+    // TODO: Implementare dialog di configurazione per singoli indicatori
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Configure Indicator";
+    alert.informativeText = [NSString stringWithFormat:@"Configuration dialog for %@ not implemented yet", indicator.shortName];
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+}
+
 - (void)removeIndicator:(NSMenuItem *)sender {
     TechnicalIndicatorBase *indicator = sender.representedObject;
     NSLog(@"🗑️ IndicatorsPanel: Remove Indicator: %@", indicator.shortName);
@@ -1488,6 +896,37 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     }];
 }
 
+- (void)showAddChildIndicatorDialog:(NSMenuItem *)sender {
+    TechnicalIndicatorBase *parentIndicator = sender.representedObject;
+    NSLog(@"🎯 IndicatorsPanel: Show Add Child Indicator Dialog for parent: %@", parentIndicator.shortName);
+    
+    // TODO: Implementare aggiunta child indicator
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Add Child Indicator";
+    alert.informativeText = [NSString stringWithFormat:@"Add child indicator to %@ not implemented yet", parentIndicator.shortName];
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+}
+
+// ✅ PLACEHOLDER METHODS per le azioni custom
+- (void)importCustomIndicator:(NSMenuItem *)sender {
+    NSLog(@"📁 Import custom indicator - not implemented yet");
+    // TODO: Implementare import da file
+}
+
+- (void)showPineScriptEditor:(NSMenuItem *)sender {
+    NSLog(@"📝 PineScript editor - not implemented yet");
+    // TODO: Implementare editor PineScript
+}
+
+- (void)browseIndicatorLibrary:(NSMenuItem *)sender {
+    NSLog(@"📚 Browse indicator library - not implemented yet");
+    // TODO: Implementare browser libreria
+}
+
+#pragma mark - Panel Management with Height Redistribution
+
 - (void)addPanelWithType:(NSString *)panelType rootIndicator:(NSString *)rootIndicator defaultHeight:(double)defaultHeight {
     if (!self.currentTemplate) {
         NSLog(@"❌ Cannot add panel - no current template");
@@ -1495,10 +934,6 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     }
     
     NSLog(@"➕ Adding %@ panel with root indicator %@", panelType, rootIndicator);
-    
-    // ✅ STEP 1: Calcola nuove altezze con redistribuzione
-    NSUInteger currentPanelCount = self.currentTemplate.panels.count;
-    NSUInteger newPanelCount = currentPanelCount + 1;
     
     // ✅ STEP 2: Redistribuisci le altezze esistenti
     double remainingHeight = 1.0 - defaultHeight;
@@ -1511,7 +946,7 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
                                                                         name:panelType
                                                              rootIndicatorType:rootIndicator
                                                                       height:defaultHeight
-                                                                       order:currentPanelCount];
+                                                                       order:self.currentTemplate.panels.count];
     
     // ✅ STEP 4: Aggiungi al template
     [self.currentTemplate addPanel:newPanel];
@@ -1524,9 +959,7 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     [self updateButtonStates];
     
     NSLog(@"✅ Panel added successfully. Total height: %.3f", [self.currentTemplate totalHeight]);
-    [self logPanelHeights];
 }
-
 
 - (void)removePanel:(ChartPanelTemplateModel *)panel {
     if (!self.currentTemplate || !panel) {
@@ -1547,172 +980,14 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     [self updateButtonStates];
     
     NSLog(@"✅ Panel removed successfully. Total height: %.3f", [self.currentTemplate totalHeight]);
-    [self logPanelHeights];
 }
 
+#pragma mark - Helper Methods
 
-- (void)showPanelConfigurationDialog:(ChartPanelTemplateModel *)panel {
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Panel Configuration";
-    alert.informativeText = [NSString stringWithFormat:@"Configure %@ Panel", panel.displayName];
-    alert.alertStyle = NSAlertStyleInformational;
-    
-    // ✅ ACCESSORY VIEW: Crea form per configurazione
-    NSView *accessoryView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 300, 120)];
-    
-    // Panel Name
-    NSTextField *nameLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, 90, 80, 20)];
-    nameLabel.stringValue = @"Panel Name:";
-    nameLabel.editable = NO;
-    nameLabel.bordered = NO;
-    nameLabel.backgroundColor = [NSColor clearColor];
-    [accessoryView addSubview:nameLabel];
-    
-    NSTextField *nameField = [[NSTextField alloc] initWithFrame:NSMakeRect(100, 90, 180, 20)];
-    nameField.stringValue = panel.panelName ?: panel.displayName;
-    nameField.tag = 1001; // Per ritrovarlo dopo
-    [accessoryView addSubview:nameField];
-    
-    // Panel Height
-    NSTextField *heightLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, 60, 80, 20)];
-    heightLabel.stringValue = @"Height (%):";
-    heightLabel.editable = NO;
-    heightLabel.bordered = NO;
-    heightLabel.backgroundColor = [NSColor clearColor];
-    [accessoryView addSubview:heightLabel];
-    
-    NSTextField *heightField = [[NSTextField alloc] initWithFrame:NSMakeRect(100, 60, 80, 20)];
-    heightField.stringValue = [NSString stringWithFormat:@"%.0f", panel.relativeHeight * 100];
-    heightField.tag = 1002; // Per ritrovarlo dopo
-    [accessoryView addSubview:heightField];
-    
-    // Root Indicator Type
-    NSTextField *indicatorLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(10, 30, 80, 20)];
-    indicatorLabel.stringValue = @"Root Indicator:";
-    indicatorLabel.editable = NO;
-    indicatorLabel.bordered = NO;
-    indicatorLabel.backgroundColor = [NSColor clearColor];
-    [accessoryView addSubview:indicatorLabel];
-    
-    // ✅ DYNAMIC: Popola popup con indicatori da registry
-    NSPopUpButton *indicatorPopup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(100, 30, 180, 20)];
-    
-    IndicatorRegistry *registry = [IndicatorRegistry sharedRegistry];
-    NSArray<NSString *> *availableIndicators = [registry hardcodedIndicatorIdentifiers];
-    NSArray<NSString *> *panelSuitableIndicators = [self filterIndicatorsForPanelTypes:availableIndicators];
-    
-    // Aggiungi opzioni dinamicamente
-    for (NSString *indicatorID in [panelSuitableIndicators sortedArrayUsingSelector:@selector(compare:)]) {
-        NSDictionary *indicatorInfo = [registry indicatorInfoForIdentifier:indicatorID];
-        NSString *displayName = [self displayNameForIndicator:indicatorID indicatorInfo:indicatorInfo];
-        [indicatorPopup addItemWithTitle:displayName];
-        indicatorPopup.lastItem.representedObject = indicatorID; // Store the actual ID
-    }
-    
-    // ✅ SELECT CURRENT: Trova e seleziona l'indicatore corrente
-    for (NSInteger i = 0; i < indicatorPopup.numberOfItems; i++) {
-        NSMenuItem *item = [indicatorPopup itemAtIndex:i];
-        if ([item.representedObject isEqualToString:panel.rootIndicatorType]) {
-            [indicatorPopup selectItemAtIndex:i];
-            break;
-        }
-    }
-    
-    indicatorPopup.tag = 1003; // Per ritrovarlo dopo
-    [accessoryView addSubview:indicatorPopup];
-    
-    alert.accessoryView = accessoryView;
-    [alert addButtonWithTitle:@"Save"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
-        if (returnCode == NSAlertFirstButtonReturn) {
-            [self applyPanelConfiguration:panel fromAccessoryView:accessoryView];
-        }
-    }];
-}
-
-- (void)applyPanelConfiguration:(ChartPanelTemplateModel *)panel fromAccessoryView:(NSView *)accessoryView {
-    // ✅ RECUPERA VALORI dal form
-    NSTextField *nameField = [accessoryView viewWithTag:1001];
-    NSTextField *heightField = [accessoryView viewWithTag:1002];
-    NSPopUpButton *indicatorPopup = [accessoryView viewWithTag:1003];
-    
-    NSString *newName = nameField.stringValue;
-    double newHeightPercent = [heightField.stringValue doubleValue];
-    NSString *newRootIndicator = indicatorPopup.selectedItem.representedObject; // Get the actual ID
-    
-    // ✅ VALIDAZIONE
-    if (newHeightPercent < 5 || newHeightPercent > 95) {
-        NSAlert *errorAlert = [[NSAlert alloc] init];
-        errorAlert.messageText = @"Invalid Height";
-        errorAlert.informativeText = @"Panel height must be between 5% and 95%";
-        errorAlert.alertStyle = NSAlertStyleWarning;
-        [errorAlert runModal];
-        return;
-    }
-    
-    NSLog(@"💾 Applying panel configuration: %@ -> Name: %@, Height: %.0f%%, Root: %@",
-          panel.displayName, newName, newHeightPercent, newRootIndicator);
-    
-    // ✅ APPLICA MODIFICHE
-    panel.panelName = newName.length > 0 ? newName : nil;
-    panel.rootIndicatorType = newRootIndicator;
-    
-    // ✅ GESTIONE CAMBIO ALTEZZA con redistribuzione
-    double newHeight = newHeightPercent / 100.0;
-    double heightDifference = newHeight - panel.relativeHeight;
-    
-    if (fabs(heightDifference) > 0.01) { // Solo se cambio significativo
-        panel.relativeHeight = newHeight;
-        
-        // Redistribuisci la differenza sugli altri pannelli
-        NSArray<ChartPanelTemplateModel *> *otherPanels = [self.currentTemplate.panels filteredArrayUsingPredicate:
-                                                           [NSPredicate predicateWithFormat:@"panelID != %@", panel.panelID]];
-        
-        if (otherPanels.count > 0) {
-            double redistributeAmount = -heightDifference / otherPanels.count;
-            for (ChartPanelTemplateModel *otherPanel in otherPanels) {
-                otherPanel.relativeHeight += redistributeAmount;
-                otherPanel.relativeHeight = MAX(0.05, otherPanel.relativeHeight); // Minimo 5%
-            }
-        }
-        
-        // Normalizza per sicurezza
-        [self.currentTemplate normalizeHeights];
-    }
-    
-    // ✅ AGGIORNA UI
-    [self refreshTemplateDisplay];
-    [self updateButtonStates];
-    
-    NSLog(@"✅ Panel configuration applied successfully. Total height: %.3f", [self.currentTemplate totalHeight]);
-    [self logPanelHeights];
-}
-
-#pragma mark - Utility Methods
-
-- (void)logPanelHeights {
-    NSLog(@"📊 Current panel heights:");
-    for (ChartPanelTemplateModel *panel in [self.currentTemplate orderedPanels]) {
-        NSLog(@"   - %@: %.1f%%", panel.displayName, panel.relativeHeight * 100);
-    }
-    NSLog(@"   Total: %.3f", [self.currentTemplate totalHeight]);
-}
-
-
-#pragma mark - Dynamic Registry Helper Methods
-
-/// Filtra indicatori adatti per essere root indicators di pannelli
 - (NSArray<NSString *> *)filterIndicatorsForPanelTypes:(NSArray<NSString *> *)indicators {
     NSMutableArray<NSString *> *suitable = [NSMutableArray array];
     
-    // ✅ FILTER LOGIC: La maggior parte degli indicatori può essere root di un pannello
-    // Escludiamo solo alcuni che non hanno senso come panel root
-    NSSet<NSString *> *excludedIndicators = [NSSet setWithArray:@[
-        // Aggiungi qui indicatori che NON dovrebbero essere root di panel
-        // Es: @"UtilityIndicator", @"HelperIndicator"
-    ]];
+    NSSet<NSString *> *excludedIndicators = [NSSet setWithArray:@[]];
     
     for (NSString *indicatorID in indicators) {
         if (![excludedIndicators containsObject:indicatorID]) {
@@ -1723,9 +998,43 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     return [suitable copy];
 }
 
-/// Genera nome display per pannello basato su indicatore
+- (NSDictionary<NSString *, NSArray<NSString *> *> *)categorizeIndicatorsForMenu:(NSArray<NSString *> *)indicators {
+    NSMutableDictionary<NSString *, NSMutableArray<NSString *> *> *categories = [NSMutableDictionary dictionary];
+    
+    categories[@"Moving Averages"] = [NSMutableArray array];
+    categories[@"Oscillators"] = [NSMutableArray array];
+    categories[@"Volume"] = [NSMutableArray array];
+    categories[@"Volatility"] = [NSMutableArray array];
+    categories[@"Price Action"] = [NSMutableArray array];
+    categories[@"Other"] = [NSMutableArray array];
+    
+    for (NSString *indicatorID in indicators) {
+        if ([indicatorID containsString:@"MA"] || [indicatorID isEqualToString:@"SMA"] || [indicatorID isEqualToString:@"EMA"]) {
+            [categories[@"Moving Averages"] addObject:indicatorID];
+        } else if ([indicatorID isEqualToString:@"RSI"] || [indicatorID containsString:@"MACD"] || [indicatorID containsString:@"Stoch"]) {
+            [categories[@"Oscillators"] addObject:indicatorID];
+        } else if ([indicatorID containsString:@"Volume"]) {
+            [categories[@"Volume"] addObject:indicatorID];
+        } else if ([indicatorID isEqualToString:@"ATR"] || [indicatorID containsString:@"BB"]) {
+            [categories[@"Volatility"] addObject:indicatorID];
+        } else if ([indicatorID isEqualToString:@"SecurityIndicator"]) {
+            [categories[@"Price Action"] addObject:indicatorID];
+        } else {
+            [categories[@"Other"] addObject:indicatorID];
+        }
+    }
+    
+    NSMutableDictionary *result = [NSMutableDictionary dictionary];
+    for (NSString *categoryName in categories.allKeys) {
+        if (categories[categoryName].count > 0) {
+            result[categoryName] = [categories[categoryName] copy];
+        }
+    }
+    
+    return [result copy];
+}
+
 - (NSString *)panelNameForIndicator:(NSString *)indicatorID indicatorInfo:(NSDictionary *)indicatorInfo {
-    // Convert indicatorID to user-friendly panel name
     static NSDictionary *panelNames = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -1745,41 +1054,35 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
         return panelName;
     }
     
-    // Fallback: Generate from indicatorID
     NSString *cleanName = [indicatorID stringByReplacingOccurrencesOfString:@"Indicator" withString:@""];
     return [NSString stringWithFormat:@"%@ Panel", cleanName];
 }
 
-/// Altezza default per tipo di indicatore
 - (double)defaultHeightForIndicator:(NSString *)indicatorID {
-    // Panel heights based on common usage
     static NSDictionary *defaultHeights = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         defaultHeights = @{
-            @"SecurityIndicator": @0.6,  // 60% for main chart
-            @"VolumeIndicator": @0.2,    // 20% for volume
-            @"RSI": @0.15,               // 15% for oscillators
-            @"SMA": @0.0,                // 0% - should be overlay on existing panel
-            @"EMA": @0.0,                // 0% - should be overlay on existing panel
-            @"ATR": @0.15,               // 15% for volatility indicators
-            @"BB": @0.0                  // 0% - should be overlay on existing panel
+            @"SecurityIndicator": @0.6,
+            @"VolumeIndicator": @0.2,
+            @"RSI": @0.15,
+            @"SMA": @0.0,
+            @"EMA": @0.0,
+            @"ATR": @0.15,
+            @"BB": @0.0
         };
     });
     
     NSNumber *height = defaultHeights[indicatorID];
-    return height ? [height doubleValue] : 0.2; // Default 20%
+    return height ? [height doubleValue] : 0.2;
 }
 
-/// Display name per indicatore
 - (NSString *)displayNameForIndicator:(NSString *)indicatorID indicatorInfo:(NSDictionary *)indicatorInfo {
-    // Try to get display name from indicator info
     NSString *displayName = indicatorInfo[@"displayName"];
     if (displayName && displayName.length > 0) {
         return displayName;
     }
     
-    // Fallback: Pretty format the indicatorID
     static NSDictionary *displayNames = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -1795,8 +1098,105 @@ static NSString *const kAddChildItem = @"ADD_CHILD";
     });
     
     NSString *prettyName = displayNames[indicatorID];
-    return prettyName ?: indicatorID; // Ultimate fallback
+    return prettyName ?: indicatorID;
 }
 
+- (NSString *)displayNameForPanelType:(NSString *)panelType {
+    static NSDictionary *displayNames = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        displayNames = @{
+            @"SecurityIndicator": @"Security",
+            @"VolumeIndicator": @"Volume",
+            @"RSIIndicator": @"RSI",
+            @"MACDIndicator": @"MACD",
+            @"EMA": @"EMA",
+            @"SMA": @"SMA",
+            @"BollingerBands": @"Bollinger Bands",
+            @"Stochastic": @"Stochastic"
+        };
+    });
+    
+    NSString *displayName = displayNames[panelType];
+    return displayName ?: panelType;
+}
+
+- (void)showSaveAsDialog {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Save Template As";
+    alert.informativeText = @"Enter a name for the new template:";
+    alert.alertStyle = NSAlertStyleInformational;
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 300, 24)];
+    input.stringValue = [NSString stringWithFormat:@"%@ Copy", self.currentTemplate.templateName];
+    alert.accessoryView = input;
+    
+    [alert addButtonWithTitle:@"Save"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
+        if (returnCode == NSAlertFirstButtonReturn && input.stringValue.length > 0) {
+            ChartTemplateModel *duplicate = [self.currentTemplate createWorkingCopy];
+            duplicate.templateID = [[NSUUID UUID] UUIDString];
+            duplicate.templateName = input.stringValue;
+            duplicate.isDefault = NO;
+            duplicate.createdDate = [NSDate date];
+            duplicate.modifiedDate = [NSDate date];
+            
+            for (ChartPanelTemplateModel *panel in duplicate.panels) {
+                panel.panelID = [[NSUUID UUID] UUIDString];
+            }
+            
+            if ([self.delegate respondsToSelector:@selector(indicatorsPanel:didRequestCreateTemplate:)]) {
+                [self.delegate indicatorsPanel:self didRequestCreateTemplate:duplicate.templateName];
+            }
+        }
+    }];
+}
+
+#pragma mark - Right-Click Support
+
+- (void)rightMouseDown:(NSEvent *)event {
+    NSPoint point = [self convertPoint:event.locationInWindow fromView:nil];
+    NSPoint outlinePoint = [self.templateOutlineView convertPoint:point fromView:self];
+    NSInteger row = [self.templateOutlineView rowAtPoint:outlinePoint];
+    
+    NSLog(@"🖱️ IndicatorsPanel: Right-click at row %ld", (long)row);
+    
+    if (row >= 0) {
+        [self.templateOutlineView selectRowIndexes:[NSIndexSet indexSetWithIndex:row] byExtendingSelection:NO];
+        
+        id item = [self.templateOutlineView itemAtRow:row];
+        NSMenu *contextMenu = [self contextMenuForItem:item];
+        
+        if (contextMenu) {
+            [NSMenu popUpContextMenu:contextMenu withEvent:event forView:self.templateOutlineView];
+        }
+    } else {
+        id item = nil;
+        NSMenu *contextMenu = [self contextMenuForItem:item];
+        
+        if (contextMenu) {
+            [NSMenu popUpContextMenu:contextMenu withEvent:event forView:self.templateOutlineView];
+        }
+    }
+}
+
+#pragma mark - Window Management
+
+- (NSWindow *)window {
+    return [super window];
+}
+
+#pragma mark - Cleanup
+
+- (void)dealloc {
+    NSLog(@"♻️ IndicatorsPanel: Deallocating");
+    
+    self.templateComboBox.dataSource = nil;
+    self.templateComboBox.delegate = nil;
+    self.templateOutlineView.dataSource = nil;
+    self.templateOutlineView.delegate = nil;
+}
 
 @end

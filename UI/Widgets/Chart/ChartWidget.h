@@ -11,6 +11,7 @@
 #import "ChartObjectRenderer.h"
 #import "CommonTypes.h"          // Per BarTimeframe enum
 #import "ChartPreferencesWindow.h"
+#import "ChartTemplateModels.h"
 
 
 @class ChartPanelView;
@@ -211,5 +212,9 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 - (void)saveDateRangeSegmentedDefaults;
 
 - (void)showTemporaryMessage:(NSString *)message;
+
+
+- (void)saveLastUsedTemplate:(ChartTemplateModel *)template;
+
 
 @end

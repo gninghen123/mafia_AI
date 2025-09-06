@@ -103,23 +103,7 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     NSLog(@"✅ Indicators UI setup completed");
 }
 
-- (void)applyDefaultTemplate {
-    // Find default template
-    ChartTemplateModel *defaultTemplate = nil;
-    for (ChartTemplateModel *template in self.availableTemplates) {
-        if (template.isDefault) {
-            defaultTemplate = template;
-            break;
-        }
-    }
-    
-    if (defaultTemplate) {
-        NSLog(@"🎯 Applying default template: %@", defaultTemplate.templateName);
-        [self applyTemplate:defaultTemplate];
-    } else {
-        NSLog(@"⚠️ No default template found");
-    }
-}
+
 
 - (void)setupIndicatorsPanel {
     self.indicatorsPanel = [[IndicatorsPanel alloc] init];
@@ -165,39 +149,7 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 }
 
 
-- (void)ensureDefaultTemplateExists:(void(^)(BOOL hasDefault))completion {
-    [[DataHub shared] defaultTemplateExists:^(BOOL exists) {
-        if (exists) {
-            NSLog(@"✅ Default template exists");
-            if (completion) completion(YES);
-        } else {
-            NSLog(@"🏗️ Creating default template...");
-            
-            [[DataHub shared] getDefaultChartTemplate:^(ChartTemplateModel *defaultTemplate) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    if (defaultTemplate) {
-                        // Update cache
-                        if (!self.availableTemplates) {
-                            self.availableTemplates = [NSMutableArray array];
-                        }
-                        [self.availableTemplates addObject:defaultTemplate];
-                        
-                        // Update indicators panel
-                        if (self.indicatorsPanel) {
-                            [self.indicatorsPanel loadAvailableTemplates:self.availableTemplates];
-                        }
-                        
-                        NSLog(@"✅ Default template created: %@", defaultTemplate.templateName);
-                        if (completion) completion(YES);
-                    } else {
-                        NSLog(@"❌ Failed to create default template");
-                        if (completion) completion(NO);
-                    }
-                });
-            }];
-        }
-    }];
-}
+
 
 // ✅ METODO PRINCIPALE AGGIORNATO per ChartTemplateModel
 - (void)applyTemplate:(ChartTemplateModel *)template {
@@ -242,6 +194,11 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     
     // ✅ STEP 5: Set current template
     self.currentChartTemplate = template;
+    
+    // Save as last used quando applicato con successo
+       if (template && template.templateID) {
+           [self saveLastUsedTemplate:template];
+       }
     
     // ✅ STEP 6: Update with chart data if available
     if (self.currentChartData && self.currentChartData.count > 0) {

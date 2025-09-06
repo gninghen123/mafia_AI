@@ -179,6 +179,96 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 
+- (void)loadAndApplyLastUsedTemplate {
+    NSLog(@"🎨 Loading and applying last used template...");
+    
+    // ✅ Check se IndicatorsUI extension è disponibile
+    if (![self respondsToSelector:@selector(loadAvailableTemplates:)]) {
+        NSLog(@"⚠️ ChartWidget+IndicatorsUI not loaded, using emergency fallback");
+        [self createEmergencyFallbackPanels];
+        return;
+    }
+    
+    // ✅ Load templates e applica last used
+    [(ChartWidget *)self loadAvailableTemplates:^(BOOL success) {
+        if (success && self.availableTemplates.count > 0) {
+            ChartTemplateModel *templateToApply = [self determineTemplateToApply];
+            
+            if (templateToApply) {
+                NSLog(@"🎯 Applying template: %@", templateToApply.templateName);
+                [(ChartWidget *)self applyTemplate:templateToApply];
+                
+                // ✅ Save as last used
+                [self saveLastUsedTemplate:templateToApply];
+            } else {
+                NSLog(@"❌ No valid template found, using emergency fallback");
+                [self createEmergencyFallbackPanels];
+            }
+        } else {
+            NSLog(@"❌ Failed to load templates, using emergency fallback");
+            [self createEmergencyFallbackPanels];
+        }
+    }];
+}
+
+- (NSString *)getLastUsedTemplateFromUserDefaults {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    NSString *lastUsedID = [defaults stringForKey:@"ChartWidget_LastUsedTemplateID"];
+    
+    if (lastUsedID) {
+        NSLog(@"📋 Found last used template ID: %@", lastUsedID);
+    } else {
+        NSLog(@"📋 No last used template found (first time?)");
+    }
+    
+    return lastUsedID;
+}
+
+- (void)saveLastUsedTemplate:(ChartTemplateModel *)template {
+    if (template && template.templateID) {
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        [defaults setObject:template.templateID forKey:@"ChartWidget_LastUsedTemplateID"];
+        [defaults synchronize];
+        
+        NSLog(@"💾 Saved last used template: %@ (ID: %@)", template.templateName, template.templateID);
+    }
+}
+
+- (ChartTemplateModel *)findTemplateByID:(NSString *)templateID {
+    for (ChartTemplateModel *template in self.availableTemplates) {
+        if ([template.templateID isEqualToString:templateID]) {
+            return template;
+        }
+    }
+    return nil;
+}
+
+- (ChartTemplateModel *)determineTemplateToApply {
+    // ✅ STEP 1: Cerca last used da UserDefaults
+    NSString *lastUsedTemplateID = [self getLastUsedTemplateFromUserDefaults];
+    
+    if (lastUsedTemplateID) {
+        // ✅ STEP 2: Cerca template per ID
+        ChartTemplateModel *lastUsedTemplate = [self findTemplateByID:lastUsedTemplateID];
+        if (lastUsedTemplate) {
+            NSLog(@"♻️ Using last used template: %@", lastUsedTemplate.templateName);
+            return lastUsedTemplate;
+        } else {
+            NSLog(@"⚠️ Last used template '%@' not found", lastUsedTemplateID);
+        }
+    }
+    
+    // ✅ STEP 3: Fallback al primo disponibile (sarà default se prima volta)
+    ChartTemplateModel *firstTemplate = self.availableTemplates.firstObject;
+    if (firstTemplate) {
+        NSLog(@"🎯 Using first available template: %@", firstTemplate.templateName);
+        return firstTemplate;
+    }
+    
+    NSLog(@"❌ No templates available");
+    return nil;
+}
+
 /**
  * Initializes the complete template system: loads templates, ensures default exists,
  * and applies the default template. Safe to call multiple times.
@@ -690,7 +780,7 @@ extern NSString *const DataHubDataLoadedNotification;
     self.view.postsFrameChangedNotifications = YES;
 }
 
-- (void)createFallbackPanels {
+- (void)createEmergencyFallbackPanels {
     NSLog(@"🔧 Creating fallback panels...");
     
     // Clear existing panels

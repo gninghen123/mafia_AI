@@ -19,6 +19,8 @@
 #import "chartpatternmanager.h"
 #import "ChartWidget+IndicatorsUI.h"
 #import "DataHub+ChartTemplates.h"
+#import "ChartWidget+InteractionHandlers.h"  // ✅ ADD THIS LINE
+
 
 #pragma mark - Smart Symbol Input Parameters
 
@@ -413,38 +415,109 @@ extern NSString *const DataHubDataLoadedNotification;
 
 
 
-- (IBAction)dateRangeSegmentedChanged:(id)sender {
-    NSInteger selectedSegment = self.dateRangeSegmented.selectedSegment;
+- (IBAction)dateRangeSegmentedChanged:(NSSegmentedControl *)sender {
+    NSLog(@"🔄 IBAction: dateRangeSegmentedChanged");
     
-    // Update current date range days based on selection
-    NSInteger dayValues[] = {180, 30, 90, 180, 365, 1825, 3650, 7300}; // Custom, 1M, 3M, 6M, 1Y, 5Y, 10Y, MAX
+    NSInteger selectedSegment = sender.selectedSegment;
     
-    if (selectedSegment >= 0 && selectedSegment < 8) {
-        self.selectedDateRangeSegment = selectedSegment;
-        self.currentDateRangeDays = dayValues[selectedSegment];
-        [self loadDataWithCurrentSettings];
+    if (selectedSegment < 0) {
+        NSLog(@"⚠️ Invalid date range selection");
+        return;
     }
+    
+    // ✅ Calculate days for selected segment using existing method
+    NSInteger newDays = [self getDaysForSegment:selectedSegment];
+    
+    // ✅ Determine if this is an extension or new range
+    BOOL isExtension = (newDays > self.currentDateRangeDays);
+    
+    // ✅ Update persistence BEFORE handler call (handler might trigger data load)
+    self.selectedDateRangeSegment = selectedSegment;
+    [self saveDateRangeSegmentedDefaults];
+    
+    // ✅ USE HANDLER instead of legacy logic
+    [self handleDataRangeChange:newDays isExtension:isExtension];
+    
+    NSLog(@"✅ IBAction: dateRangeSegmentedChanged completed via handler (%ld days, extension: %@)",
+          (long)newDays, isExtension ? @"YES" : @"NO");
 }
 
-- (IBAction)templateChanged:(id)sender {
-    NSString *templateName = self.templatePopup.stringValue;
-    if (templateName.length > 0) {
-        [self loadChartTemplate:templateName];
+- (IBAction)templateChanged:(NSPopUpButton *)sender {
+    NSLog(@"🔄 IBAction: templateChanged");
+    
+    NSString *templateName = sender.titleOfSelectedItem;
+    
+    if (!templateName || templateName.length == 0) {
+        NSLog(@"⚠️ No template selected");
+        return;
     }
+    
+    // ✅ Find template model using existing method or KVC
+    ChartTemplateModel *templateModel = nil;
+    
+    // Try to get available templates
+    NSArray *availableTemplates = [self valueForKey:@"availableTemplates"];
+    if (availableTemplates) {
+        for (ChartTemplateModel *template in availableTemplates) {
+            if ([template.templateName isEqualToString:templateName]) {
+                templateModel = template;
+                break;
+            }
+        }
+    }
+    
+    if (!templateModel) {
+        NSLog(@"⚠️ Template '%@' not found in available templates", templateName);
+        
+        // ✅ FALLBACK: Try legacy method if available
+        if ([self respondsToSelector:@selector(loadChartTemplate:)]) {
+            NSLog(@"🔄 Using legacy loadChartTemplate method");
+            [self performSelector:@selector(loadChartTemplate:) withObject:templateName];
+            return;
+        } else {
+            NSLog(@"❌ No template loading method available");
+            return;
+        }
+    }
+    
+    // ✅ USE HANDLER instead of legacy logic
+    [self handleTemplateChange:templateModel];
+    
+    NSLog(@"✅ IBAction: templateChanged completed via handler");
 }
+
+- (IBAction)templatePopupChanged:(NSPopUpButton *)sender {
+    // Delegate to main template changed method
+    [self templateChanged:sender];
+}
+
 
 
 #pragma mark - Data Loading and Notifications
 
 
 - (void)dataLoaded:(NSNotification *)notification {
+    NSLog(@"🔄 Advanced: Data loaded notification received");
+    
     NSString *symbol = notification.userInfo[@"symbol"];
     NSArray<HistoricalBarModel *> *bars = notification.userInfo[@"bars"];
     
-    if ([symbol isEqualToString:self.currentSymbol] && bars.count > 0) {
-        self.chartData = bars;
-        [self updateWithHistoricalBars:bars];
+    // ✅ Validate notification data
+    if (!symbol || !bars || bars.count == 0) {
+        NSLog(@"⚠️ Invalid data in notification");
+        return;
     }
+    
+    // ✅ Only process if it's for current symbol
+    if ([symbol isEqualToString:self.currentSymbol]) {
+        NSLog(@"🔄 Notification: Processing data for current symbol via handler");
+        [self processNewHistoricalData:bars
+                         invalidations:ChartInvalidationData | ChartInvalidationIndicators | ChartInvalidationViewport];
+    } else {
+        NSLog(@"⏭️ Notification: Ignoring data for different symbol (%@ vs %@)", symbol, self.currentSymbol);
+    }
+    
+    NSLog(@"✅ Advanced: Data loaded notification completed");
 }
 
 
@@ -726,6 +799,48 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 
+- (void)setupNotificationCenterIntegration {
+    NSLog(@"🔗 Setting up NotificationCenter integration with handlers");
+    
+    // ✅ Data loading notifications
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(dataLoaded:)
+                                                 name:DataHubDataLoadedNotification
+                                               object:nil];
+    
+    // ✅ Widget chain notifications (if needed)
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(handleWidgetChainNotification:)
+                                                 name:@"WidgetChainUpdateNotification"
+                                               object:nil];
+    
+    NSLog(@"✅ NotificationCenter integration setup completed");
+}
+
+
+- (void)handleWidgetChainNotification:(NSNotification *)notification {
+    NSLog(@"🔗 Widget chain notification received");
+    
+    NSDictionary *userInfo = notification.userInfo;
+    NSString *updateType = userInfo[@"update"];
+    BaseWidget *sender = userInfo[@"sender"];
+    
+    if ([updateType isEqualToString:@"symbolChange"]) {
+        NSArray *symbols = userInfo[@"symbols"];
+        if (symbols && symbols.count > 0) {
+            [self handleSymbolsFromChain:symbols fromWidget:sender];
+        }
+    } else if ([updateType isEqualToString:@"chartPattern"]) {
+        NSDictionary *patternData = userInfo[@"data"];
+        if (patternData) {
+            [self loadChartPatternFromChainData:patternData fromWidget:sender];
+        }
+    }
+    
+    NSLog(@"✅ Widget chain notification processed");
+}
+
+
 - (void)clearExistingPanels {
     if (self.chartPanels && self.chartPanels.count > 0) {
         NSLog(@"🗑️ Clearing existing panels...");
@@ -864,47 +979,50 @@ extern NSString *const DataHubDataLoadedNotification;
 
 #pragma mark - Actions
 
-- (IBAction)symbolChanged:(id)sender {
-    NSString *symbol = [[self.symbolTextField.stringValue stringByTrimmingCharactersInSet:
-                        [NSCharacterSet whitespaceAndNewlineCharacterSet]] uppercaseString];
+- (IBAction)symbolChanged:(NSTextField *)sender {
+    NSString *inputText = sender.stringValue;
     
-    if (symbol.length == 0) return;
+    // Clean whitespace
+    inputText = [inputText stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     
-    // Parse for smart symbol input
-    if ([symbol containsString:@","]) {
-        [self processSmartSymbolInput:symbol];
+    if (inputText.length == 0) {
+        NSLog(@"⚠️ Empty symbol field");
         return;
     }
     
-    // 🔧 FIX: Simple symbol change preserva visible range
-    if (![symbol isEqualToString:self.currentSymbol]) {
-        [self loadSymbol:symbol];
-        [self broadcastSymbolToChain:symbol];
+    // ✅ CHECK FOR SMART INPUT (contains comma)
+    if ([inputText containsString:@","]) {
+        NSLog(@"🧠 Smart symbol input detected: %@", inputText);
+        [self processSmartSymbolInput:inputText];
+    } else {
+        // ✅ SIMPLE SYMBOL - use handler directly
+        NSString *cleanSymbol = inputText.uppercaseString;
+        NSLog(@"📊 Simple symbol input: %@", cleanSymbol);
+        [self handleSymbolChange:cleanSymbol forceReload:NO];
+        
+        // ✅ Broadcast to chain for simple symbol
+        if ([self respondsToSelector:@selector(broadcastSymbolToChain:)]) {
+            [self performSelector:@selector(broadcastSymbolToChain:) withObject:cleanSymbol];
+        }
     }
 }
 
 
-- (IBAction)timeframeChanged:(id)sender {
-    if (self.timeframeSegmented.selectedSegment >= 0) {
-        ChartTimeframe newTimeframe = (ChartTimeframe)self.timeframeSegmented.selectedSegment;
-        
-        if (newTimeframe != self.currentTimeframe) {
-            self.currentTimeframe = newTimeframe;
-            
-            // Update date range segmented control (usa preferences)
-            [self updateDateRangeSegmentedForTimeframe:newTimeframe];
-            
-            // 🆕 NEW: Reset visible range per il nuovo timeframe
-            [self resetVisibleRangeForTimeframe];
-            
-            // Reload data if we have a symbol
-            if (self.currentSymbol && self.currentSymbol.length > 0) {
-                [self loadDataWithCurrentSettings];
-            }
-            
-            NSLog(@"📊 Timeframe changed to: %ld, visible range will be reset", (long)newTimeframe);
-        }
+
+- (IBAction)timeframeChanged:(NSSegmentedControl *)sender {
+    NSLog(@"🔄 IBAction: timeframeChanged");
+    
+    if (sender.selectedSegment < 0) {
+        NSLog(@"⚠️ Invalid timeframe selection");
+        return;
     }
+    
+    ChartTimeframe newTimeframe = (ChartTimeframe)sender.selectedSegment;
+    
+    // ✅ USE HANDLER instead of legacy logic
+    [self handleTimeframeChange:newTimeframe];
+    
+    NSLog(@"✅ IBAction: timeframeChanged completed via handler");
 }
 
 #pragma mark - 🆕 NEW: Visible Range Management
@@ -998,47 +1116,7 @@ extern NSString *const DataHubDataLoadedNotification;
 #pragma mark - Public Methods
 
 
-- (void)loadSymbol:(NSString *)symbol {
-    if (!symbol || symbol.length == 0) return;
-    BOOL sameSymbol = NO;
-    if ([self.currentSymbol isEqualToString:symbol]) {
-        sameSymbol = YES;
-    }
-    self.currentSymbol = symbol;
-    self.symbolTextField.stringValue = symbol;
-    
-    // ✅ NUOVO: Determina se includere after-hours dalle preferenze
-    BOOL needExtendedHours = (self.tradingHoursMode == ChartTradingHoursWithAfterHours);
-    
-    NSLog(@"📊 ChartWidget: Loading %@ with date range (timeframe: %ld, after-hours: %@)",
-          symbol, (long)self.currentTimeframe, needExtendedHours ? @"YES" : @"NO");
-    
-    if (!self.isStaticMode) {
-        if (!self.currentChartTemplate) {
-            [self loadAndApplyLastUsedTemplate];
-        }
-        // 🔧 FIX: Use loadDataWithCurrentSettings instead of barCount
-        // This preserves visible range and uses start/end dates
-        [self loadDataWithCurrentSettings];
-        
-        [self refreshAlertsForCurrentSymbol];
-    } else {
-        [self showMicroscopeModeNotification];
-    }
 
-    // ✅ OGGETTI: Aggiorna manager per nuovo symbol e forza load
-    if (self.objectsManager) {
-        self.objectsManager.currentSymbol = symbol;
-        [self.objectsManager loadFromDataHub];
-        
-        NSLog(@"🔄 ChartWidget: Loading objects for symbol %@", symbol);
-        
-        if (self.objectsPanel && self.objectsPanel.objectManagerWindow) {
-            [self.objectsPanel.objectManagerWindow updateForSymbol:symbol];
-        }
-
-    }
-}
 
 - (void)showMicroscopeModeNotification {
     // Trova il primo panel per mostrare il messaggio
@@ -1089,18 +1167,6 @@ extern NSString *const DataHubDataLoadedNotification;
     }
     
     NSLog(@"🎨 Forced complete chart redraw");
-}
-
-- (void)setTimeframe:(ChartTimeframe)timeframe {
-    if (timeframe == self.currentTimeframe) return;
-    
-    self.currentTimeframe = timeframe;
-    [self.timeframeSegmented setSelectedSegment:timeframe];
-    
-    // Reload data with new timeframe
-    if (self.currentSymbol) {
-        [self loadSymbol:self.currentSymbol];
-    }
 }
 
 
@@ -1322,6 +1388,19 @@ extern NSString *const DataHubDataLoadedNotification;
 
 #pragma mark - Cleanup
 
+
+- (void)cleanupNotificationCenterIntegration {
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                     name:DataHubDataLoadedNotification
+                                                   object:nil];
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                     name:@"WidgetChainUpdateNotification"
+                                                   object:nil];
+    
+    NSLog(@"🧹 NotificationCenter integration cleaned up");
+}
+
+
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [[NSNotificationCenter defaultCenter] removeObserver:self
@@ -1393,28 +1472,31 @@ extern NSString *const DataHubDataLoadedNotification;
 
 
 - (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
-    NSLog(@"ChartWidget: Received %lu symbols from chain", (unsigned long)symbols.count);
+    NSLog(@"🔗 Advanced: Received %lu symbols from chain", (unsigned long)symbols.count);
     
-    
-    
-    // ChartWidget mostra un simbolo alla volta - prendi il primo
+    // ChartWidget shows one symbol at a time - take first
     NSString *newSymbol = symbols.firstObject;
-    if (!newSymbol || newSymbol.length == 0) return;
-    
-    // ✅ ENHANCED: Evita loop se è lo stesso simbolo + logging migliorato
-    if ([newSymbol.uppercaseString isEqualToString:self.currentSymbol]) {
-        NSLog(@"ChartWidget: Ignoring same symbol from chain: %@ (current: %@)", newSymbol, self.currentSymbol);
+    if (!newSymbol || newSymbol.length == 0) {
+        NSLog(@"⚠️ No valid symbol in chain data");
         return;
     }
     
-    // Carica il nuovo simbolo
-    [self loadSymbol:newSymbol];
+    // ✅ Early exit if same symbol
+    if ([newSymbol.uppercaseString isEqualToString:self.currentSymbol]) {
+        NSLog(@"⏭️ Ignoring same symbol from chain: %@ (current: %@)", newSymbol, self.currentSymbol);
+        return;
+    }
     
-    // ✅ NUOVO: Usa metodo BaseWidget standard per feedback
+    // ✅ USE HANDLER instead of legacy loadSymbol:
+    NSLog(@"🔄 Chain: Using handler for symbol change from %@", NSStringFromClass([sender class]));
+    [self handleSymbolChange:newSymbol forceReload:NO];
+    
+    // ✅ Show feedback
     NSString *senderType = NSStringFromClass([sender class]);
-    [self showChainFeedback:[NSString stringWithFormat:@"📈 Loaded %@ from %@", newSymbol, senderType]];
+    NSString *feedbackMessage = [NSString stringWithFormat:@"📈 Loaded %@ from %@", newSymbol, senderType];
+    [self showChainFeedback:feedbackMessage];
     
-    NSLog(@"ChartWidget: Loaded symbol '%@' from %@ chain", newSymbol, senderType);
+    NSLog(@"✅ Advanced: Chain symbol change completed via handler");
 }
 
 
@@ -1531,20 +1613,30 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 - (void)preferencesDidChange:(BOOL)needsDataReload {
-    // 🆕 NEW: Ricarica le preferenze di date range
+    NSLog(@"🔄 Advanced: Preferences changed (reload needed: %@)", needsDataReload ? @"YES" : @"NO");
+    
+    // ✅ Reload preferences
     [self loadDateRangeDefaults];
     
-    // 🆕 NEW: Se il timeframe corrente è cambiato nelle preferenze, aggiorna il segmented
-    // Ma solo se non è CUSTOM (lascia il custom inalterato)
+    // ✅ Update UI if not CUSTOM segment
     if (self.selectedDateRangeSegment != 0) {
         NSInteger preferenceDefault = [self getDefaultDaysForTimeframe:self.currentTimeframe];
-        [self updateCustomSegmentWithDays:preferenceDefault];
+        if ([self respondsToSelector:@selector(updateCustomSegmentWithDays:)]) {
+            [self performSelector:@selector(updateCustomSegmentWithDays:) withObject:@(preferenceDefault)];
+        }
     }
     
-    // Reload data if needed
-    if (needsDataReload && self.currentSymbol && self.currentSymbol.length > 0) {
-        [self loadDataWithCurrentSettings];
+    // ✅ USE HANDLER for trading hours change if data reload needed
+    if (needsDataReload) {
+        NSLog(@"🔄 Preferences: Using handler for trading hours change");
+        [self handleTradingHoursChange:self.tradingHoursMode];
+    } else {
+        // ✅ Only UI update needed
+        NSLog(@"🔄 Preferences: Only UI update needed");
+        [self processUIUpdate:ChartInvalidationUI];
     }
+    
+    NSLog(@"✅ Advanced: Preferences change completed via handler");
 }
 
 - (void)updateAllRenderersContext {
@@ -1666,29 +1758,101 @@ extern NSString *const DataHubDataLoadedNotification;
 - (void)processSmartSymbolInput:(NSString *)input {
     NSLog(@"📝 Processing smart symbol input: '%@'", input);
     
-    // Parse i parametri dall'input
+    // ✅ Parse parameters from input
     SmartSymbolParameters params = [self parseSmartSymbolInput:input];
     
-    // Validate symbol
+    // ✅ Validate symbol
     if (!params.symbol || params.symbol.length == 0) {
         NSLog(@"❌ Invalid symbol in input");
+        [self showTemporaryMessage:@"❌ Invalid symbol"];
         return;
     }
     
-    // ✅ APPLY PARAMETERS
-    [self applySmartSymbolParameters:params];
-    
-    // ✅ NUOVO: Usa direttamente le date con DataHub
-    [self loadSymbolWithDateRange:params];
-    
-    // Broadcast to chain
-    [self broadcastSymbolToChain:@[params.symbol]];
-    
-    // Update UI
-    [self updateUIAfterSmartSymbolInput:params];
+    // ✅ NEW: Use handlers for coordinated changes
+    [self processSmartSymbolParametersWithHandlers:params];
     
     NSLog(@"✅ Smart symbol processing completed for: %@", params.symbol);
 }
+
+- (void)processSmartSymbolParametersWithHandlers:(SmartSymbolParameters)params {
+    NSLog(@"🎯 Processing smart symbol parameters with handlers");
+    
+    // Determine what changed to call appropriate handlers
+    BOOL symbolChanged = ![params.symbol isEqualToString:self.currentSymbol];
+    BOOL timeframeChanged = params.hasTimeframe && (params.timeframe != self.currentTimeframe);
+    BOOL daysChanged = params.hasDaysSpecified && (params.daysToDownload != self.currentDateRangeDays);
+    
+    // ✅ STRATEGY: Process changes in logical order
+    
+    // 1️⃣ SYMBOL CHANGE (if any) - do this first as it affects everything
+    if (symbolChanged) {
+        NSLog(@"📊 Smart input: Symbol change to %@", params.symbol);
+        [self handleSymbolChange:params.symbol forceReload:NO];
+    }
+    
+    // 2️⃣ TIMEFRAME CHANGE (if any) - affects data range preferences
+    if (timeframeChanged) {
+        NSLog(@"⏰ Smart input: Timeframe change to %ld", (long)params.timeframe);
+        [self handleTimeframeChange:params.timeframe];
+    }
+    
+    // 3️⃣ DATA RANGE CHANGE (if any) - least impactful
+    if (daysChanged) {
+        NSLog(@"📅 Smart input: Data range change to %ld days", (long)params.daysToDownload);
+        
+        // ✅ Update custom segment to reflect the new days
+        if ([self respondsToSelector:@selector(updateCustomSegmentWithDays:)]) {
+            [self performSelector:@selector(updateCustomSegmentWithDays:) withObject:@(params.daysToDownload)];
+        }
+        
+        // Determine if extension
+        BOOL isExtension = (params.daysToDownload > self.currentDateRangeDays);
+        [self handleDataRangeChange:params.daysToDownload isExtension:isExtension];
+    }
+    
+    // 4️⃣ IF ONLY SYMBOL (no timeframe/days specified) - simple symbol change
+    if (symbolChanged && !timeframeChanged && !daysChanged) {
+        NSLog(@"📊 Smart input: Simple symbol change only");
+        // Already handled by handleSymbolChange above
+    }
+    
+    // ✅ UPDATE UI to show clean symbol (remove any parameters)
+    [self updateSymbolTextFieldAfterSmartInput:params];
+    
+    // ✅ BROADCAST to chain if symbol changed
+    if (symbolChanged) {
+        if ([self respondsToSelector:@selector(broadcastSymbolToChain:)]) {
+            [self performSelector:@selector(broadcastSymbolToChain:) withObject:params.symbol];
+        }
+    }
+    
+    NSLog(@"✅ Smart symbol parameters processed via handlers");
+}
+
+- (void)updateSymbolTextFieldAfterSmartInput:(SmartSymbolParameters)params {
+    // Show only the clean symbol in the text field
+    if (self.symbolTextField) {
+        self.symbolTextField.stringValue = params.symbol;
+    }
+    
+    // Show feedback about what was applied
+    NSMutableString *feedback = [NSMutableString stringWithFormat:@"📊 %@", params.symbol];
+    
+    if (params.hasTimeframe) {
+        [feedback appendFormat:@" • %@", [self timeframeToString:params.timeframe]];
+    }
+    
+    if (params.hasDaysSpecified) {
+        [feedback appendFormat:@" • %ld days", (long)params.daysToDownload];
+    }
+    
+    if ([self respondsToSelector:@selector(showTemporaryMessage:)]) {
+        [self performSelector:@selector(showTemporaryMessage:) withObject:feedback];
+    }
+    
+    NSLog(@"📱 Updated symbol text field: %@", feedback);
+}
+
 
 - (SmartSymbolParameters)parseSmartSymbolInput:(NSString *)input {
     SmartSymbolParameters params = {0};
@@ -1870,8 +2034,15 @@ extern NSString *const DataHubDataLoadedNotification;
     }
 }
 
-- (void)toggleStaticMode:(id)sender {
-    [self setStaticMode:!self.isStaticMode];
+- (IBAction)toggleStaticMode:(NSButton *)sender {
+    NSLog(@"🔄 IBAction: toggleStaticMode");
+    
+    BOOL newStaticMode = (sender.state == NSControlStateValueOn);
+    
+    // ✅ USE HANDLER instead of legacy logic
+    [self handleStaticModeToggle:newStaticMode];
+    
+    NSLog(@"✅ IBAction: toggleStaticMode completed via handler");
 }
 
 - (void)updateStaticModeUI {
@@ -1891,13 +2062,13 @@ extern NSString *const DataHubDataLoadedNotification;
     
     // Update content view border (blue highlight like microscope)
     if (self.isStaticMode) {
-        self.contentView.wantsLayer = YES;
-        self.contentView.layer.borderColor = [NSColor systemBlueColor].CGColor;
-        self.contentView.layer.borderWidth = 2.0;
-        self.contentView.layer.cornerRadius = 4.0;
+        self.mainSplitView.wantsLayer = YES;
+        self.mainSplitView.layer.borderColor = [NSColor systemBlueColor].CGColor;
+        self.mainSplitView.layer.borderWidth = 2.0;
+        self.mainSplitView.layer.cornerRadius = 4.0;
     } else {
-        self.contentView.layer.borderColor = [NSColor clearColor].CGColor;
-        self.contentView.layer.borderWidth = 0.0;
+        self.mainSplitView.layer.borderColor = [NSColor clearColor].CGColor;
+        self.mainSplitView.layer.borderWidth = 0.0;
     }
 }
 
@@ -1990,77 +2161,29 @@ extern NSString *const DataHubDataLoadedNotification;
 
 #pragma mark - Helper Methods
 
-- (void)applySmartSymbolParameters:(SmartSymbolParameters)params {
-    BOOL timeframeChanged = NO;
+- (void)loadSymbol:(NSString *)symbol {
+    NSLog(@"🔄 Advanced: Public loadSymbol called for '%@'", symbol);
     
-    // Apply timeframe if specified and different from current
-    if (params.hasTimeframe && params.timeframe != self.currentTimeframe) {
-        self.currentTimeframe = params.timeframe;
-        timeframeChanged = YES;
-        NSLog(@"⏰ Applied timeframe: %ld", (long)params.timeframe);
+    if (!symbol || symbol.length == 0) {
+        NSLog(@"⚠️ Cannot load empty symbol");
+        return;
     }
     
-    // Handle different combinations
-    if (timeframeChanged && params.hasDaysSpecified) {
-        // CASO 1: Ha sia timeframe che giorni → reset visible + custom segment
-        [self updateCustomSegmentWithDays:params.daysToDownload];
-        [self resetVisibleRangeForTimeframe];
-        
-        NSLog(@"📅 Smart symbol: timeframe + days → visible range reset + CUSTOM segment");
-        
-    } else if (timeframeChanged && !params.hasDaysSpecified) {
-        // CASO 2: Ha solo timeframe → reset visible + use preferences
-        [self updateDateRangeSegmentedForTimeframe:params.timeframe];
-        [self resetVisibleRangeForTimeframe];
-        
-        NSLog(@"📅 Smart symbol: timeframe only → visible range reset + preferences");
-        
-    } else if (!timeframeChanged && params.hasDaysSpecified) {
-        // CASO 3: Ha solo giorni → NO reset visible, solo custom segment
-        [self updateCustomSegmentWithDays:params.daysToDownload];
-        
-        NSLog(@"📅 Smart symbol: days only → visible range preserved + CUSTOM segment");
-        
-    } else {
-        // CASO 4: Solo simbolo → NO reset visible, mantieni tutto
-        NSLog(@"📅 Smart symbol: symbol only → everything preserved");
-    }
+    // ✅ USE HANDLER with force reload (public method should always reload)
+    [self handleSymbolChange:symbol forceReload:YES];
     
-    // Store current symbol
-    self.currentSymbol = params.symbol;
+    NSLog(@"✅ Advanced: Public loadSymbol completed via handler");
 }
 
-
-- (void)updateUIAfterSmartSymbolInput:(SmartSymbolParameters)params {
-    // Update symbol text field (show clean symbol only)
-    self.symbolTextField.stringValue = params.symbol;
+- (void)setTimeframe:(ChartTimeframe)timeframe {
+    NSLog(@"🔄 Advanced: Public setTimeframe called for %ld", (long)timeframe);
     
-    // 🔧 FIX: Update timeframe segmented control if changed
-    if (params.hasTimeframe && self.timeframeSegmented.segmentCount > params.timeframe) {
-        self.timeframeSegmented.selectedSegment = params.timeframe;
-    }
+    // ✅ USE HANDLER instead of legacy logic
+    [self handleTimeframeChange:timeframe];
     
-    // Show feedback about what was applied
-    NSMutableArray *appliedParams = [NSMutableArray array];
-    
-    if (params.hasTimeframe) {
-        [appliedParams addObject:[NSString stringWithFormat:@"TF: %@",
-                                 [self timeframeDisplayName:params.timeframe]]];
-    }
-    
-    if (params.hasDaysSpecified) {
-        // 🆕 NEW: Mostra il valore effettivo del segmented control
-        NSString *segmentLabel = [self.dateRangeSegmented labelForSegment:self.selectedDateRangeSegment];
-        [appliedParams addObject:[NSString stringWithFormat:@"Range: %@", segmentLabel]];
-    }
-    
-    if (appliedParams.count > 0) {
-        NSString *message = [NSString stringWithFormat:@"Applied: %@",
-                           [appliedParams componentsJoinedByString:@", "]];
-        NSLog(@"💬 %@", message);
-        // Potresti mostrare questo in una status bar o tooltip
-    }
+    NSLog(@"✅ Advanced: Public setTimeframe completed via handler");
 }
+
 
 - (NSString *)timeframeDisplayName:(ChartTimeframe)timeframe {
     switch (timeframe) {
@@ -2295,13 +2418,15 @@ extern NSString *const DataHubDataLoadedNotification;
 #pragma mark - Chart Pattern Loading (NUOVO)
 
 - (void)loadChartPatternFromChainData:(NSDictionary *)data fromWidget:(BaseWidget *)sender {
-    // Validazione dati in ingresso
+    NSLog(@"🔄 Advanced: Loading chart pattern from chain data");
+    
+    // ✅ Validation
     if (!data || ![data isKindOfClass:[NSDictionary class]]) {
-        NSLog(@"❌ ChartWidget: Invalid chart pattern data received from %@", NSStringFromClass([sender class]));
+        NSLog(@"❌ Invalid chart pattern data received from %@", NSStringFromClass([sender class]));
         return;
     }
     
-    // Estrazione dati del pattern
+    // ✅ Extract pattern data
     NSString *patternID = data[@"patternID"];
     NSString *symbol = data[@"symbol"];
     NSString *savedDataReference = data[@"savedDataReference"];
@@ -2310,78 +2435,71 @@ extern NSString *const DataHubDataLoadedNotification;
     NSNumber *timeframeNumber = data[@"timeframe"];
     NSString *patternType = data[@"patternType"];
     
-    // Validazione dati essenziali
+    // ✅ Validate essential data
     if (!patternID || !savedDataReference || !symbol) {
-        NSLog(@"❌ ChartWidget: Missing essential pattern data - patternID:%@ savedDataRef:%@ symbol:%@",
+        NSLog(@"❌ Missing essential pattern data - patternID:%@ savedDataRef:%@ symbol:%@",
               patternID, savedDataReference, symbol);
+        [self showChartPatternLoadError:@"Missing essential pattern data"];
         return;
     }
     
-    NSLog(@"🔗 ChartWidget: Loading chart pattern '%@' (%@) from %@",
+    NSLog(@"🔗 Loading chart pattern '%@' (%@) from %@",
           patternType ?: @"Unknown", symbol, NSStringFromClass([sender class]));
     
-    // Carica SavedChartData utilizzando ChartPatternManager
-    ChartPatternManager *patternManager = [ChartPatternManager shared];
+    // ✅ Load SavedChartData
     NSString *directory = [ChartWidget savedChartDataDirectory];
     NSString *filename = [NSString stringWithFormat:@"%@.chartdata", savedDataReference];
     NSString *filePath = [directory stringByAppendingPathComponent:filename];
     
     SavedChartData *savedData = [SavedChartData loadFromFile:filePath];
     if (!savedData || !savedData.isDataValid) {
-        NSLog(@"❌ ChartWidget: Failed to load SavedChartData for pattern %@", patternID);
+        NSLog(@"❌ Failed to load SavedChartData for pattern %@", patternID);
         [self showChartPatternLoadError:@"Could not load chart data for this pattern"];
         return;
     }
     
-    // ✅ CARICA I DATI NEL CHART WIDGET
-    [self loadChartPatternWithSavedData:savedData
-                        patternStartDate:patternStartDate
-                          patternEndDate:patternEndDate
-                             patternType:patternType
-                              fromSender:sender];
+    // ✅ USE HANDLERS for pattern loading instead of manual logic
+    [self loadChartPatternWithHandlers:savedData
+                       patternStartDate:patternStartDate
+                         patternEndDate:patternEndDate
+                            patternType:patternType
+                             fromSender:sender];
 }
 
-- (void)loadChartPatternWithSavedData:(SavedChartData *)savedData
-                      patternStartDate:(NSDate *)patternStartDate
-                        patternEndDate:(NSDate *)patternEndDate
-                           patternType:(NSString *)patternType
-                            fromSender:(BaseWidget *)sender {
+- (void)loadChartPatternWithHandlers:(SavedChartData *)savedData
+                     patternStartDate:(NSDate *)patternStartDate
+                       patternEndDate:(NSDate *)patternEndDate
+                          patternType:(NSString *)patternType
+                           fromSender:(BaseWidget *)sender {
     
     dispatch_async(dispatch_get_main_queue(), ^{
-        // 1️⃣ ATTIVA STATIC MODE per prevenire reload automatico
-        self.isStaticMode = YES;
-        [self updateStaticModeUI];
+        NSLog(@"🔄 Pattern: Loading with handler system");
         
-        // 2️⃣ AGGIORNA SIMBOLO E TIMEFRAME
-        self.currentSymbol = savedData.symbol;
-        self.currentTimeframe = savedData.timeframe;
+        // 1️⃣ ENABLE STATIC MODE using handler
+        [self handleStaticModeToggle:YES];
         
-        // Update UI controls
-        if (self.symbolTextField) {
-            self.symbolTextField.stringValue = savedData.symbol;
-        }
-        if (self.timeframeSegmented) {
-            self.timeframeSegmented.selectedSegment = savedData.timeframe;
-        }
+        // 2️⃣ UPDATE SYMBOL AND TIMEFRAME using handlers
+        [self handleSymbolChange:savedData.symbol forceReload:NO];
+        [self handleTimeframeChange:savedData.timeframe];
         
-        // 3️⃣ CARICA I DATI STORICI
-        [self updateWithHistoricalBars:savedData.historicalBars];
+        // 3️⃣ LOAD HISTORICAL DATA using common processing node
+        [self processNewHistoricalData:savedData.historicalBars
+                         invalidations:ChartInvalidationData | ChartInvalidationIndicators | ChartInvalidationViewport];
         
-        // 4️⃣ IMPOSTA RANGE VISIBILE SULLE DATE DEL PATTERN
+        // 4️⃣ SET VISIBLE RANGE TO PATTERN DATES
         if (patternStartDate && patternEndDate) {
             [self setVisibleRangeToPatternDates:patternStartDate
                                         endDate:patternEndDate
                                       chartData:savedData.historicalBars];
         }
         
-        // 5️⃣ FEEDBACK ALL'UTENTE
+        // 5️⃣ FEEDBACK TO USER
         NSString *senderType = NSStringFromClass([sender class]);
         NSString *feedbackMessage = [NSString stringWithFormat:@"📊 Loaded %@ pattern (%@)",
-                                    patternType ?: @"Chart Pattern", savedData.symbol];
-        [self showChainFeedback:feedbackMessage];
+                                    patternType ?: @"Unknown", senderType];
+        [self showTemporaryMessage:feedbackMessage];
         
-        NSLog(@"✅ ChartWidget: Successfully loaded chart pattern '%@' for %@ from %@",
-              patternType, savedData.symbol, senderType);
+        NSLog(@"✅ Pattern loaded via handler system: %@", feedbackMessage);
     });
 }
 
@@ -2458,25 +2576,20 @@ extern NSString *const DataHubDataLoadedNotification;
 
 
 - (void)updateWithHistoricalBars:(NSArray<HistoricalBarModel *> *)bars {
+    NSLog(@"🔄 Advanced: updateWithHistoricalBars with %ld bars", (long)bars.count);
+    
     if (!bars || bars.count == 0) {
-        NSLog(@"⚠️ ChartWidget: updateWithHistoricalBars called with no data");
+        NSLog(@"⚠️ updateWithHistoricalBars called with no data");
         return;
     }
     
-    // Aggiorna i dati del chart
-    self.chartData = bars;
+    // ✅ USE COMMON PROCESSING NODE with standard invalidations
+    [self processNewHistoricalData:bars
+                     invalidations:ChartInvalidationData | ChartInvalidationIndicators | ChartInvalidationViewport];
     
-  
-    [self recalculateAllIndicators];
-
-    // Imposta il viewport iniziale
-    [self updateViewport];
-    
-    // Sincronizza tutti i panel
-    [self synchronizePanels];
-    
-    NSLog(@"✅ ChartWidget: Updated with %ld historical bars", (long)bars.count);
+    NSLog(@"✅ Advanced: updateWithHistoricalBars completed via handler system");
 }
+
 
 #pragma mark - 🆕 NEW: Persistence Methods
 

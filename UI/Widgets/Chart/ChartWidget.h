@@ -18,6 +18,8 @@
 @class HistoricalBarModel;
 @class MarketQuoteModel;
 @class SharedXCoordinateContext;  // ✅ Forward declaration invece di import
+@class ChartTemplateModel;
+@class ChartObjectManagerWindow;
 
 #define CHART_Y_AXIS_WIDTH 60
 #define CHART_MARGIN_LEFT 10
@@ -46,6 +48,11 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 @property (nonatomic, assign) NSInteger cachedStartIndex;
 @property (nonatomic, assign) NSInteger cachedEndIndex;
 
+
+@property (nonatomic, strong) ChartTemplateModel *currentChartTemplate;
+@property (nonatomic, strong) NSMutableArray<ChartTemplateModel *> *availableTemplates;
+
+@property (nonatomic, strong, readonly) NSArray<HistoricalBarModel *> *chartData;
 #pragma mark - Trading Hours Preferences
 @property (nonatomic, assign) ChartTradingHours tradingHoursMode;
 
@@ -213,6 +220,43 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 
 
 - (void)saveLastUsedTemplate:(ChartTemplateModel *)template;
+
+/**
+ * Reset visible range for current timeframe using preferences
+ */
+- (void)resetVisibleRangeForTimeframe;
+
+/**
+ * Refresh alerts for current symbol
+ */
+- (void)refreshAlertsForCurrentSymbol;
+
+/**
+ * Load data with current settings (symbol, timeframe, date range)
+ */
+- (void)loadDataWithCurrentSettings;
+
+/**
+ * Update viewport and synchronize panels
+ */
+- (void)updateViewport;
+
+/**
+ * Broadcast symbol change to widget chain
+ */
+- (void)broadcastSymbolToChain:(NSString *)symbol;
+- (void)resetVisibleRangeForTimeframe;
+- (void)refreshAlertsForCurrentSymbol;
+- (void)loadDataWithCurrentSettings;
+- (void)updateViewport;
+- (void)broadcastSymbolToChain:(NSString *)symbol;
+
+// ✅ Conditional methods (check if exist before calling)
+- (void)recalculateAllIndicators;
+- (void)refreshIndicatorsRendering;
+- (void)applyChartTemplate:(ChartTemplateModel *)template;
+
+
 
 
 @end

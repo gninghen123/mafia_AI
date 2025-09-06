@@ -830,20 +830,24 @@ extern NSString *const DataHubDataLoadedNotification;
 
 - (void)handleHistoricalDataUpdate:(NSNotification *)notification {
     if (self.isStaticMode) {
-            NSLog(@"StaticMode: Ignoring DataHub update (static data mode)");
-            return;
-        }
+        NSLog(@"⚠️ StaticMode: Ignoring DataHub update (static data mode)");
+        return;
+    }
+
     NSDictionary *userInfo = notification.userInfo;
+
     NSString *symbol = userInfo[@"symbol"];
     
-    if ([symbol isEqualToString:self.currentSymbol]) {
-        NSArray<HistoricalBarModel *> *newData = userInfo[@"data"];
-        if (newData) {
-            self.chartData = newData;
-            [self updateViewport];
-            [self synchronizePanels];
-        }
+    if (![symbol isEqualToString:self.currentSymbol]) {
+        NSLog(@"💡 Ignoring data update for different symbol: %@ (current: %@)", symbol, self.currentSymbol);
+        return;
     }
+    
+    NSArray<HistoricalBarModel *> *bars = userInfo[@"bars"];
+    
+    
+    // Aggiorna la visualizzazione del chart
+    [self updateWithHistoricalBars:bars];
 }
 
 #pragma mark - Chain Notifications
@@ -2488,7 +2492,8 @@ extern NSString *const DataHubDataLoadedNotification;
     self.chartData = bars;
     
   
-    
+    [self recalculateAllIndicators];
+
     // Imposta il viewport iniziale
     [self updateViewport];
     

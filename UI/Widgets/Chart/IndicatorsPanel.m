@@ -646,18 +646,17 @@
     } else if ([item isKindOfClass:[TechnicalIndicatorBase class]]) {
         TechnicalIndicatorBase *indicator = item;
         
-        // ✅ INDICATOR CONTEXT: Add Child (se supportato), Configure, Remove
+        // ✅ MENU PRINCIPALE: Add Child Indicator (con submenu gerarchico)
         if ([indicator canHaveChildren]) {
-            NSMenuItem *addChildItem = [[NSMenuItem alloc] initWithTitle:@"Add Child Indicator..."
-                                                                  action:@selector(showAddChildIndicatorDialog:)
-                                                           keyEquivalent:@""];
-            addChildItem.target = self;
-            addChildItem.representedObject = indicator;
+            NSMenuItem *addChildItem = [[NSMenuItem alloc] initWithTitle:@"Add Child Indicator" action:nil keyEquivalent:@""];
+            NSMenu *childIndicatorSubmenu = [self createHierarchicalChildIndicatorMenuForIndicator:indicator];
+            addChildItem.submenu = childIndicatorSubmenu;
             [menu addItem:addChildItem];
             
             [menu addItem:[NSMenuItem separatorItem]];
         }
         
+        // ✅ CONFIGURAZIONE INDICATOR
         NSMenuItem *configureIndicatorItem = [[NSMenuItem alloc] initWithTitle:@"Configure Indicator..."
                                                                         action:@selector(configureIndicator:)
                                                                  keyEquivalent:@""];
@@ -665,6 +664,7 @@
         configureIndicatorItem.representedObject = indicator;
         [menu addItem:configureIndicatorItem];
         
+        // ✅ RIMOZIONE INDICATOR
         NSMenuItem *removeIndicatorItem = [[NSMenuItem alloc] initWithTitle:@"Remove Indicator"
                                                                      action:@selector(removeIndicator:)
                                                               keyEquivalent:@""];
@@ -1198,5 +1198,216 @@
     self.templateOutlineView.dataSource = nil;
     self.templateOutlineView.delegate = nil;
 }
+#pragma mark - child indicator
 
+
+- (NSMenu *)createHierarchicalChildIndicatorMenuForIndicator:(TechnicalIndicatorBase *)parentIndicator {
+    NSMenu *menu = [[NSMenu alloc] init];
+    
+    // ✅ HARDCODED CHILD INDICATORS SUBMENU
+    NSMenuItem *hardcodedItem = [[NSMenuItem alloc] initWithTitle:@"Hardcoded Indicators" action:nil keyEquivalent:@""];
+    NSMenu *hardcodedSubmenu = [self createCategorizedChildIndicatorSubmenuForIndicator:parentIndicator];
+    hardcodedItem.submenu = hardcodedSubmenu;
+    [menu addItem:hardcodedItem];
+    
+    [menu addItem:[NSMenuItem separatorItem]];
+    
+    // ✅ CUSTOM CHILD INDICATORS SUBMENU
+    NSMenuItem *customItem = [[NSMenuItem alloc] initWithTitle:@"Custom Indicators" action:nil keyEquivalent:@""];
+    NSMenu *customSubmenu = [self createCustomChildIndicatorSubmenuForIndicator:parentIndicator];
+    customItem.submenu = customSubmenu;
+    [menu addItem:customItem];
+    
+    return menu;
+}
+
+- (NSMenu *)createCategorizedChildIndicatorSubmenuForIndicator:(TechnicalIndicatorBase *)parentIndicator {
+    NSMenu *submenu = [[NSMenu alloc] init];
+    
+    IndicatorRegistry *registry = [IndicatorRegistry sharedRegistry];
+    NSArray<NSString *> *availableIndicators = [registry hardcodedIndicatorIdentifiers];
+    
+    // ✅ FILTER: Solo indicatori che possono essere figli di questo parent
+    NSArray<NSString *> *compatibleIndicators = [self filterIndicatorsCompatibleWithParent:availableIndicators parentIndicator:parentIndicator];
+    
+    // ✅ CATEGORIZE: Raggruppa per tipo (stesso metodo del panel)
+    NSDictionary<NSString *, NSArray<NSString *> *> *categories = [self categorizeIndicatorsForMenu:compatibleIndicators];
+    
+    for (NSString *categoryName in [categories.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
+        NSMenuItem *categoryItem = [[NSMenuItem alloc] initWithTitle:categoryName action:nil keyEquivalent:@""];
+        NSMenu *categorySubmenu = [[NSMenu alloc] init];
+        
+        NSArray<NSString *> *indicatorsInCategory = categories[categoryName];
+        for (NSString *indicatorID in [indicatorsInCategory sortedArrayUsingSelector:@selector(compare:)]) {
+            NSDictionary *indicatorInfo = [registry indicatorInfoForIdentifier:indicatorID];
+            NSString *displayName = [self displayNameForIndicator:indicatorID indicatorInfo:indicatorInfo];
+            
+            NSMenuItem *indicatorItem = [[NSMenuItem alloc] initWithTitle:displayName
+                                                                   action:@selector(addChildIndicatorToIndicator:)
+                                                            keyEquivalent:@""];
+            indicatorItem.target = self;
+            indicatorItem.representedObject = @{
+                @"parentIndicator": parentIndicator,
+                @"indicatorID": indicatorID,
+                @"indicatorInfo": indicatorInfo
+            };
+            [categorySubmenu addItem:indicatorItem];
+        }
+        
+        categoryItem.submenu = categorySubmenu;
+        [submenu addItem:categoryItem];
+    }
+    
+    return submenu;
+}
+
+- (NSMenu *)createCustomChildIndicatorSubmenuForIndicator:(TechnicalIndicatorBase *)parentIndicator {
+    NSMenu *submenu = [[NSMenu alloc] init];
+    
+    // ✅ CUSTOM CHILD INDICATOR OPTIONS
+    NSMenuItem *importItem = [[NSMenuItem alloc] initWithTitle:@"Import from File..."
+                                                        action:@selector(importCustomChildIndicator:)
+                                                 keyEquivalent:@""];
+    importItem.target = self;
+    importItem.representedObject = parentIndicator;
+    [submenu addItem:importItem];
+    
+    NSMenuItem *pineScriptItem = [[NSMenuItem alloc] initWithTitle:@"PineScript Editor..."
+                                                            action:@selector(showPineScriptEditorForChild:)
+                                                     keyEquivalent:@""];
+    pineScriptItem.target = self;
+    pineScriptItem.representedObject = parentIndicator;
+    [submenu addItem:pineScriptItem];
+    
+    NSMenuItem *libraryItem = [[NSMenuItem alloc] initWithTitle:@"Browse Library..."
+                                                         action:@selector(browseChildIndicatorLibrary:)
+                                                  keyEquivalent:@""];
+    libraryItem.target = self;
+    libraryItem.representedObject = parentIndicator;
+    [submenu addItem:libraryItem];
+    
+    return submenu;
+}
+
+#pragma mark - Child Indicator Actions
+
+- (void)addChildIndicatorToIndicator:(NSMenuItem *)sender {
+    NSDictionary *data = sender.representedObject;
+    TechnicalIndicatorBase *parentIndicator = data[@"parentIndicator"];
+    NSString *indicatorID = data[@"indicatorID"];
+    NSDictionary *indicatorInfo = data[@"indicatorInfo"];
+    
+    NSLog(@"✅ Adding %@ child indicator to parent: %@", indicatorID, parentIndicator.shortName);
+    
+    // ✅ TROVA IL PANEL CHE CONTIENE QUESTO INDICATOR
+    ChartPanelTemplateModel *containingPanel = [self findPanelContainingIndicator:parentIndicator];
+    if (!containingPanel) {
+        NSLog(@"❌ Could not find panel containing indicator: %@", parentIndicator.shortName);
+        return;
+    }
+    
+    // ✅ AGGIUNGI AI CHILD INDICATORS DATA
+    NSMutableArray *childIndicators = [containingPanel.childIndicatorsData mutableCopy] ?: [NSMutableArray array];
+    
+    NSDictionary *newChildIndicator = @{
+        @"indicatorID": indicatorID,
+        @"type": indicatorID,
+        @"parameters": indicatorInfo[@"defaultParameters"] ?: @{},
+        @"isVisible": @YES,
+        @"displayOrder": @(childIndicators.count),
+        @"parentIndicatorID": parentIndicator.indicatorID  // ✅ LINK al parent
+    };
+    
+    [childIndicators addObject:newChildIndicator];
+    containingPanel.childIndicatorsData = [childIndicators copy];
+    
+    // ✅ AGGIORNA UI
+    [self refreshTemplateDisplay];
+    [self updateButtonStates];
+    
+    // ✅ FORCE ENABLE Apply button
+    self.applyButton.enabled = YES;
+    self.resetButton.enabled = YES;
+    
+    NSLog(@"✅ Child indicator added. Panel now has %ld child indicators", (long)childIndicators.count);
+}
+
+#pragma mark - Helper Methods per Child Indicators
+
+- (NSArray<NSString *> *)filterIndicatorsCompatibleWithParent:(NSArray<NSString *> *)indicators
+                                               parentIndicator:(TechnicalIndicatorBase *)parentIndicator {
+    
+    NSMutableArray<NSString *> *compatibleIndicators = [[NSMutableArray alloc] init];
+    
+    // ✅ LOGICA DI COMPATIBILITÀ
+    NSString *parentType = NSStringFromClass([parentIndicator class]);
+    
+    for (NSString *indicatorID in indicators) {
+        // ✅ REGOLE DI COMPATIBILITÀ (esempi)
+        
+        // Moving averages possono avere oscillatori come figli
+        if ([parentType isEqualToString:@"EMAIndicator"] || [parentType isEqualToString:@"SMAIndicator"]) {
+            if ([indicatorID isEqualToString:@"RSI"] ||
+                [indicatorID isEqualToString:@"MACD"] ||
+                [indicatorID isEqualToString:@"Stochastic"]) {
+                [compatibleIndicators addObject:indicatorID];
+            }
+        }
+        
+        // Security indicator può avere qualsiasi figlio
+        if ([parentType isEqualToString:@"SecurityIndicator"]) {
+            [compatibleIndicators addObject:indicatorID];
+        }
+        
+        // Volume indicator può avere volume-based children
+        if ([parentType isEqualToString:@"VolumeIndicator"]) {
+            if ([indicatorID isEqualToString:@"VWAP"] ||
+                [indicatorID isEqualToString:@"VolumeProfile"]) {
+                [compatibleIndicators addObject:indicatorID];
+            }
+        }
+        
+        // ✅ DEFAULT: Se non ci sono regole specifiche, permetti tutto
+        if (compatibleIndicators.count == 0) {
+            [compatibleIndicators addObject:indicatorID];
+        }
+    }
+    
+    return [compatibleIndicators copy];
+}
+
+- (ChartPanelTemplateModel *)findPanelContainingIndicator:(TechnicalIndicatorBase *)indicator {
+    // ✅ CERCA NELL'ATTUALE TEMPLATE
+    if (!self.currentTemplate) return nil;
+    
+    for (ChartPanelTemplateModel *panel in self.currentTemplate.panels) {
+        // Check if it's the root indicator
+        if ([panel.rootIndicatorType isEqualToString:NSStringFromClass([indicator class])]) {
+            return panel;
+        }
+        
+        // Check if it's in child indicators
+        for (NSDictionary *childData in panel.childIndicatorsData) {
+            NSString *childIndicatorID = childData[@"indicatorID"];
+            if ([childIndicatorID isEqualToString:NSStringFromClass([indicator class])]) {
+                return panel;
+            }
+        }
+    }
+    
+    return nil;
+}
+
+// ✅ STUBS per azioni custom (implementare più tardi)
+- (void)importCustomChildIndicator:(NSMenuItem *)sender {
+    NSLog(@"📥 Import custom child indicator - TODO");
+}
+
+- (void)showPineScriptEditorForChild:(NSMenuItem *)sender {
+    NSLog(@"🌲 PineScript editor for child - TODO");
+}
+
+- (void)browseChildIndicatorLibrary:(NSMenuItem *)sender {
+    NSLog(@"📚 Browse child indicator library - TODO");
+}
 @end

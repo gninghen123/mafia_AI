@@ -21,6 +21,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) BOOL isIndicatorsPanelVisible;
 @property (nonatomic, strong) NSLayoutConstraint *splitViewTrailingConstraint;
 
+
 #pragma mark - Template Management - AGGIORNATO per runtime models
 @property (nonatomic, strong, nullable) ChartTemplateModel *currentChartTemplate;  // ✅ Runtime model
 @property (nonatomic, strong) NSMutableArray<ChartTemplateModel *> *availableTemplates;  // ✅ Runtime models

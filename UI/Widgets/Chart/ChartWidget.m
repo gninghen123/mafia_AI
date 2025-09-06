@@ -368,7 +368,7 @@ extern NSString *const DataHubDataLoadedNotification;
     if (selectedSegment >= 0 && selectedSegment < 8) {
         self.selectedDateRangeSegment = selectedSegment;
         self.currentDateRangeDays = dayValues[selectedSegment];
-        [self reloadDataForCurrentSymbol];
+        [self loadDataWithCurrentSettings];
     }
 }
 
@@ -394,39 +394,62 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 
-// =============================================================================
-// METODI DI AZIONE PER I NUOVI BOTTONI ZOOM
-// =============================================================================
 
 #pragma mark - NUOVE AZIONI ZOOM
 
 - (IBAction)zoomOut:(NSButton *)sender {
-    NSLog(@"🔍 Zoom Out requested");
+    NSLog(@"🔍 Zoom Out requested - expanding left from fixed end");
     
-    // Aumenta il range visibile (mostra più dati)
-    NSInteger currentRange = self.visibleEndIndex - self.visibleStartIndex;
-    NSInteger newRange = MIN(currentRange * 1.5, self.chartData.count);
+    if (!self.chartData || self.chartData.count == 0) {
+        NSLog(@"⚠️ No chart data for zoom");
+        return;
+    }
     
-    NSInteger centerIndex = (self.visibleStartIndex + self.visibleEndIndex) / 2;
+    // ✅ LOGIC: EndIndex resta fisso, aumentiamo il range verso sinistra
+    NSInteger currentRange = self.visibleEndIndex - self.visibleStartIndex + 1; // +1 per range inclusivo
+    NSInteger newRange = currentRange * 1.5; // Aumenta del 50%
     
-    self.visibleStartIndex = MAX(0, centerIndex - newRange / 2);
-    self.visibleEndIndex = MIN(self.chartData.count - 1, centerIndex + newRange / 2);
+    // Limita il nuovo range ai dati disponibili
+    NSInteger maxPossibleRange = self.visibleEndIndex + 1; // +1 perché partiamo da index 0
+    newRange = MIN(newRange, maxPossibleRange);
+    
+    // ✅ FIXED END: EndIndex non cambia mai
+    // ✅ MOVING START: StartIndex si sposta verso sinistra
+    self.visibleStartIndex = self.visibleEndIndex - newRange + 1;
+    self.visibleStartIndex = MAX(0, self.visibleStartIndex); // Non andare sotto 0
+    
+    NSLog(@"🔍 Zoom Out: range %ld→%ld, fixed end=%ld, new start=%ld",
+          (long)currentRange, (long)newRange,
+          (long)self.visibleEndIndex, (long)self.visibleStartIndex);
     
     [self updatePanSliderFromVisibleRange];
     [self synchronizePanels];
 }
 
 - (IBAction)zoomIn:(NSButton *)sender {
-    NSLog(@"🔍 Zoom In requested");
+    NSLog(@"🔍 Zoom In requested - contracting left from fixed end");
     
-    // Diminuisce il range visibile (mostra meno dati, più dettaglio)
-    NSInteger currentRange = self.visibleEndIndex - self.visibleStartIndex;
-    NSInteger newRange = MAX(currentRange * 0.7, 10); // Minimo 10 barre
+    if (!self.chartData || self.chartData.count == 0) {
+        NSLog(@"⚠️ No chart data for zoom");
+        return;
+    }
     
-    NSInteger centerIndex = (self.visibleStartIndex + self.visibleEndIndex) / 2;
+    // ✅ LOGIC: EndIndex resta fisso, riduciamo il range verso sinistra
+    NSInteger currentRange = self.visibleEndIndex - self.visibleStartIndex + 1; // +1 per range inclusivo
+    NSInteger newRange = currentRange * 0.7; // Riduci del 30%
     
-    self.visibleStartIndex = MAX(0, centerIndex - newRange / 2);
-    self.visibleEndIndex = MIN(self.chartData.count - 1, centerIndex + newRange / 2);
+    // Minimo range per evitare zoom eccessivo
+    NSInteger minRange = 10;
+    newRange = MAX(newRange, minRange);
+    
+    // ✅ FIXED END: EndIndex non cambia mai
+    // ✅ MOVING START: StartIndex si sposta verso destra (riducendo il range)
+    self.visibleStartIndex = self.visibleEndIndex - newRange + 1;
+    self.visibleStartIndex = MAX(0, self.visibleStartIndex); // Non andare sotto 0
+    
+    NSLog(@"🔍 Zoom In: range %ld→%ld, fixed end=%ld, new start=%ld",
+          (long)currentRange, (long)newRange,
+          (long)self.visibleEndIndex, (long)self.visibleStartIndex);
     
     [self updatePanSliderFromVisibleRange];
     [self synchronizePanels];
@@ -645,6 +668,14 @@ extern NSString *const DataHubDataLoadedNotification;
     // Setup renderers se non ancora fatto
     [self ensureRenderersAreSetup];
     
+    if (self.panelsSplitView) {
+           [[NSNotificationCenter defaultCenter] addObserver:self
+                                                    selector:@selector(splitViewFrameDidChange:)
+                                                        name:NSViewFrameDidChangeNotification
+                                                      object:self.panelsSplitView];
+           
+           self.panelsSplitView.postsFrameChangedNotifications = YES;
+       }
     NSLog(@"🎯 ChartWidget appeared - panels already created");
 }
 
@@ -700,6 +731,13 @@ extern NSString *const DataHubDataLoadedNotification;
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(chartViewFrameDidChange:)
+                                                 name:NSViewFrameDidChangeNotification
+                                               object:self.view];
+    
+    // ✅ Enable frame change notifications
+    self.view.postsFrameChangedNotifications = YES;
 }
 
 // Nuova implementazione setupDefaultPanels che gestisce il placeholder
@@ -1295,6 +1333,9 @@ extern NSString *const DataHubDataLoadedNotification;
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                     name:NSViewFrameDidChangeNotification
+                                                   object:nil];
 }
 
 
@@ -2612,6 +2653,91 @@ extern NSString *const DataHubDataLoadedNotification;
     }
 }
 
+
+#pragma mark - view resize update sharedX coord
+
+// ✅ SOLUZIONE CORRETTA: NSViewController methods per BaseWidget
+
+// 🎯 PROBLEMA: BaseWidget è NSViewController, non NSView!
+// Quindi devo usare i metodi del view controller lifecycle
+
+// ✅ FIX 1: In ChartWidget.m - Override viewDidLayout (NSViewController method)
+- (void)viewDidLayout {
+    [super viewDidLayout];
+    
+    // ✅ Questo viene chiamato ogni volta che il layout del view controller cambia
+    if (self.chartData && self.chartData.count > 0) {
+        [self updateSharedXContext];
+        [self synchronizePanels];
+        
+        NSLog(@"📐 ChartWidget viewDidLayout - SharedXContext updated");
+    }
+}
+
+// ✅ FIX 2: In ChartWidget.m - Override viewWillLayout per intercettare PRIMA del layout
+- (void)viewWillLayout {
+    [super viewWillLayout];
+    
+    // ✅ Store current width to detect changes
+    static CGFloat lastKnownWidth = 0;
+    CGFloat currentWidth = self.view.bounds.size.width;
+    
+    if (lastKnownWidth != 0 && fabs(lastKnownWidth - currentWidth) > 1.0) {
+        NSLog(@"📐 ChartWidget width will change: %.1f → %.1f", lastKnownWidth, currentWidth);
+    }
+    
+    lastKnownWidth = currentWidth;
+}
+
+
+- (void)chartViewFrameDidChange:(NSNotification *)notification {
+    // ✅ Questo viene chiamato quando il frame del view cambia
+    if (self.chartData && self.chartData.count > 0) {
+        [self updateSharedXContext];
+        [self synchronizePanels];
+        
+        NSLog(@"📐 ChartWidget frame changed via notification - coordinates updated");
+    }
+}
+
+
+
+- (void)splitViewFrameDidChange:(NSNotification *)notification {
+    // ✅ Questo viene chiamato quando il split view cambia dimensioni
+    if (self.chartData && self.chartData.count > 0) {
+        [self updateSharedXContext];
+        [self synchronizePanels];
+        
+        NSLog(@"📐 PanelsSplitView frame changed - coordinates updated");
+    }
+}
+
+
+
+
+
+
+
+// ✅ MIGLIORE PRATICA: Metodo centralizzato per update coordinate
+- (void)updateCoordinatesIfNeeded:(NSString *)source {
+    if (!self.chartData || self.chartData.count == 0) {
+        return;
+    }
+    
+    CGFloat currentSplitWidth = self.panelsSplitView.bounds.size.width;
+    CGFloat contextWidth = self.sharedXContext.containerWidth;
+    
+    // Solo se c'è una differenza significativa
+    if (fabs(currentSplitWidth - contextWidth) > 1.0) {
+        NSLog(@"📐 Coordinate update needed from %@ - Split: %.1f, Context: %.1f",
+              source, currentSplitWidth, contextWidth);
+        
+        [self updateSharedXContext];
+        [self synchronizePanels];
+    } else {
+        NSLog(@"📐 No coordinate update needed from %@ - widths match", source);
+    }
+}
 #pragma mark - indicator visibility
 
 /*

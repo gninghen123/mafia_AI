@@ -59,11 +59,14 @@ typedef NS_OPTIONS(NSUInteger, ChartLayerInvalidationOptions) {
 @class ChartWidget;
 @class ChartObjectRenderer;
 @class ChartObjectsManager;
+@class ChartIndicatorRenderer;
+
 
 @interface ChartPanelView : NSView
 
+@property (nonatomic, strong, nullable) ChartIndicatorRenderer *indicatorRenderer;
+
 @property (nonatomic, strong, nullable) ChartPanelTemplate *panelTemplate;
-@property (nonatomic, strong, nullable) TechnicalIndicatorBase *rootIndicator;
 
 @property (nonatomic, strong) CALayer *yAxisLayer;
 

@@ -47,7 +47,7 @@
     NSInteger relativeIndex = (screenX - CHART_MARGIN_LEFT) / totalBarWidth;
     NSInteger absoluteIndex = self.visibleStartIndex + relativeIndex;
     
-    return MAX(self.visibleStartIndex, MIN(absoluteIndex, self.visibleEndIndex - 1));
+    return MAX(self.visibleStartIndex, MIN(absoluteIndex, self.visibleEndIndex));
 }
 
 - (CGFloat)screenXForDate:(NSDate *)targetDate {

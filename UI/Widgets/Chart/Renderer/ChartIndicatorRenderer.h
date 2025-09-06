@@ -22,6 +22,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, weak) ChartPanelView *panelView;
 @property (nonatomic, strong) CALayer *indicatorsLayer;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, CAShapeLayer *> *indicatorLayers;
+#pragma mark - Indicator Data Management
+@property (nonatomic, strong, nullable) NSArray<TechnicalIndicatorBase *> *allIndicators;
+@property (nonatomic, strong, nullable) TechnicalIndicatorBase *rootIndicator;
 
 /// Initialize renderer with panel view
 /// @param panelView Parent chart panel view
@@ -253,8 +256,14 @@ NS_ASSUME_NONNULL_BEGIN
 /// @param visible Whether child indicators should be visible
 - (void)setChildIndicatorsVisible:(BOOL)visible;
 
+#pragma mark - Batch Rendering
+/// Render all indicators in the allIndicators array
+- (void)renderAllIndicators;
 
-@property (nonatomic, strong, readonly) TechnicalIndicatorBase *rootIndicator;
+/// Set all indicators for this renderer
+/// @param indicators Array of all indicators to manage
+/// @param rootIndicator Main indicator (should be in the array)
+- (void)setIndicators:(NSArray<TechnicalIndicatorBase *> *)indicators rootIndicator:(TechnicalIndicatorBase *)rootIndicator;
 
 @end
 

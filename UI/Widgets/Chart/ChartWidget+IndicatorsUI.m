@@ -9,6 +9,10 @@
 #import "DataHub+ChartTemplates.h"
 #import "ChartPanelView.h"
 #import <objc/runtime.h>
+#import "TechnicalIndicatorBase+Hierarchy.h"
+#import "ChartIndicatorRenderer.h"
+#import "IndicatorRegistry.h"
+
 
 #pragma mark - Associated Object Keys
 
@@ -221,14 +225,13 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     [self updateIndicatorsPanel];
 }
 
-// ✅ AGGIORNATO per ChartPanelTemplateModel
 - (ChartPanelView *)createChartPanelFromTemplate:(ChartPanelTemplateModel *)panelTemplate {
     if (!panelTemplate) {
         NSLog(@"❌ Cannot create panel from nil template");
         return nil;
     }
     
-    NSLog(@"🏗️ Creating panel from runtime model: %@ (%@)",
+    NSLog(@"🏗️ Creating panel from template: %@ (%@)",
           [panelTemplate displayName], panelTemplate.rootIndicatorType);
     
     // ✅ STEP 1: Determine panel type from root indicator
@@ -237,18 +240,188 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     // ✅ STEP 2: Create panel view
     ChartPanelView *panelView = [[ChartPanelView alloc] initWithType:panelType];
     panelView.translatesAutoresizingMaskIntoConstraints = NO;
-    
-    // ✅ STEP 3: Configure basic properties
     panelView.chartWidget = self;
     
-    // Note: panelView.panelTemplate expects Core Data entity, but we have runtime model
-    // We'll need to create a bridge or modify ChartPanelView to work with runtime models
-    // For now, we store essential info directly
+    // ✅ STEP 3: Create and configure root indicator
+    TechnicalIndicatorBase *rootIndicator = [self createRootIndicatorFromTemplate:panelTemplate];
+    if (!rootIndicator) {
+        NSLog(@"❌ Failed to create root indicator for panel: %@", panelTemplate.rootIndicatorType);
+        return nil;
+    }
     
-    NSLog(@"✅ Panel created: %@ -> %@", panelTemplate.rootIndicatorType, panelType);
+    // ✅ STEP 4: Create all indicators (root + children) as flat list
+    NSArray<TechnicalIndicatorBase *> *allIndicators = [self createAllIndicatorsFromTemplate:panelTemplate
+                                                                               rootIndicator:rootIndicator];
+    
+    // ✅ STEP 5: Create indicator renderer and give it ALL the indicators
+    ChartIndicatorRenderer *renderer = [[ChartIndicatorRenderer alloc] initWithPanelView:panelView];
+    renderer.allIndicators = allIndicators;      // ✅ RENDERER owns the indicators
+    renderer.rootIndicator = rootIndicator;     // ✅ RENDERER has main indicator reference
+    
+    // ✅ STEP 6: Set renderer on panel view (panel only has renderer reference)
+    panelView.indicatorRenderer = renderer;
+    
+    // ✅ STEP 7: Store renderer in ChartWidget dictionary with panel ID
+    if (!self.indicatorRenderers) {
+        self.indicatorRenderers = [[NSMutableDictionary alloc] init];
+    }
+    self.indicatorRenderers[panelTemplate.panelID] = renderer;
+    
+    // ✅ STEP 8: CRITICAL - Actually render the indicators if we have chart data!
+
+    if (self.currentChartData && self.currentChartData.count > 0) {
+        [self calculateAndRenderIndicatorsForRenderer:renderer withData:self.currentChartData];
+    }
+    NSLog(@"✅ Panel created successfully: %@ with %lu total indicators",
+          [panelTemplate displayName], (unsigned long)allIndicators.count);
+    
     return panelView;
 }
 
+- (void)calculateAndRenderIndicatorsForRenderer:(ChartIndicatorRenderer *)renderer
+                                       withData:(NSArray<HistoricalBarModel *> *)chartData {
+    
+    if (!renderer.allIndicators || renderer.allIndicators.count == 0) {
+        NSLog(@"⚠️ No indicators to calculate and render");
+        return;
+    }
+    
+    NSLog(@"🧮 Calculating and rendering %lu indicators with %lu data points",
+          (unsigned long)renderer.allIndicators.count, (unsigned long)chartData.count);
+    
+    // Calculate all indicators with chart data
+    for (TechnicalIndicatorBase *indicator in renderer.allIndicators) {
+        @try {
+            [indicator calculateWithBars:chartData];
+                      indicator.isCalculated = YES;
+                      indicator.needsRendering = YES;
+            
+            NSLog(@"✅ Calculated indicator: %@", indicator.shortName);
+        } @catch (NSException *exception) {
+            NSLog(@"❌ Failed to calculate indicator %@: %@", indicator.shortName, exception.reason);
+        }
+    }
+    
+    // Trigger rendering if we have a root indicator
+    if (renderer.rootIndicator) {
+        @try {
+            [renderer renderIndicatorTree:renderer.rootIndicator];
+            NSLog(@"✅ Rendered indicator tree for: %@", renderer.rootIndicator.shortName);
+        } @catch (NSException *exception) {
+            NSLog(@"❌ Failed to render indicators: %@", exception.reason);
+        }
+    }
+}
+
+#pragma mark - Helper Methods for Indicator Creation
+
+- (TechnicalIndicatorBase *)createRootIndicatorFromTemplate:(ChartPanelTemplateModel *)panelTemplate {
+    IndicatorRegistry *registry = [IndicatorRegistry sharedRegistry];
+    
+    // Create root indicator with its parameters
+    TechnicalIndicatorBase *rootIndicator = [registry createIndicatorWithIdentifier:panelTemplate.rootIndicatorType
+                                                                         parameters:panelTemplate.rootIndicatorParams];
+    
+    if (rootIndicator) {
+        // Set additional properties
+        rootIndicator.indicatorID = panelTemplate.panelID; // Use panel ID as root indicator ID
+        rootIndicator.isVisible = YES;
+        
+        NSLog(@"✅ Created root indicator: %@ (%@)",
+              rootIndicator.shortName, panelTemplate.rootIndicatorType);
+    } else {
+        NSLog(@"❌ Failed to create root indicator: %@", panelTemplate.rootIndicatorType);
+    }
+    
+    return rootIndicator;
+}
+
+
+- (NSArray<TechnicalIndicatorBase *> *)createAllIndicatorsFromTemplate:(ChartPanelTemplateModel *)panelTemplate
+                                                          rootIndicator:(TechnicalIndicatorBase *)rootIndicator {
+    
+    NSMutableArray<TechnicalIndicatorBase *> *allIndicators = [[NSMutableArray alloc] init];
+    
+    // Add root indicator first
+    [allIndicators addObject:rootIndicator];
+    
+    // Create child indicators from childIndicatorsData
+    if (panelTemplate.childIndicatorsData && panelTemplate.childIndicatorsData.count > 0) {
+        NSArray<TechnicalIndicatorBase *> *childIndicators = [self createChildIndicatorsFromData:panelTemplate.childIndicatorsData];
+        [allIndicators addObjectsFromArray:childIndicators];
+    }
+    
+    NSLog(@"📊 Created %lu total indicators for panel (%lu children)",
+          (unsigned long)allIndicators.count,
+          (unsigned long)(allIndicators.count - 1));
+    
+    return [allIndicators copy];
+}
+
+- (NSArray<TechnicalIndicatorBase *> *)createChildIndicatorsFromData:(NSArray<NSDictionary *> *)childIndicatorsData {
+    
+    if (!childIndicatorsData || childIndicatorsData.count == 0) {
+        NSLog(@"📝 No child indicators data to convert");
+        return @[];
+    }
+    
+    NSMutableArray<TechnicalIndicatorBase *> *childIndicators = [[NSMutableArray alloc] init];
+    IndicatorRegistry *registry = [IndicatorRegistry sharedRegistry];
+    
+    for (NSDictionary *childData in childIndicatorsData) {
+        NSString *indicatorID = childData[@"indicatorID"];
+        NSDictionary *parameters = childData[@"parameters"];
+        
+        if (!indicatorID) {
+            NSLog(@"⚠️ Skipping child indicator with missing indicatorID");
+            continue;
+        }
+        
+        // Create the indicator
+        TechnicalIndicatorBase *childIndicator = [registry createIndicatorWithIdentifier:indicatorID
+                                                                              parameters:parameters];
+        
+        if (childIndicator) {
+            // Set additional properties from metadata
+            childIndicator.indicatorID = childData[@"instanceID"] ?: [[NSUUID UUID] UUIDString];
+            childIndicator.isVisible = [childData[@"isVisible"] boolValue] ?: YES;
+            
+            // Set display properties if available
+            if (childData[@"displayColor"]) {
+                NSData *colorData = childData[@"displayColor"];
+                NSColor *color = [NSUnarchiver unarchiveObjectWithData:colorData];
+                if (color) {
+                    childIndicator.displayColor = color;
+                }
+            }
+            
+            if (childData[@"lineWidth"]) {
+                childIndicator.lineWidth = [childData[@"lineWidth"] floatValue];
+            }
+            
+            [childIndicators addObject:childIndicator];
+            NSLog(@"✅ Created child indicator: %@ from %@", childIndicator.shortName, indicatorID);
+        } else {
+            NSLog(@"❌ Failed to create child indicator: %@", indicatorID);
+        }
+    }
+    
+    NSLog(@"📊 Created %lu child indicators from data", (unsigned long)childIndicators.count);
+    return [childIndicators copy];
+}
+
+// ✅ HELPER: Determine panel type from root indicator type
+- (NSString *)panelTypeForRootIndicator:(NSString *)rootIndicatorType {
+    if ([rootIndicatorType isEqualToString:@"security"] ||
+        [rootIndicatorType isEqualToString:@"SecurityIndicator"]) {
+        return @"security";
+    } else if ([rootIndicatorType isEqualToString:@"volume"] ||
+               [rootIndicatorType isEqualToString:@"VolumeIndicator"]) {
+        return @"volume";
+    } else {
+        return @"oscillator"; // Default for all other indicators
+    }
+}
 // ✅ AGGIORNATO per ChartTemplateModel
 // Updated: Use Auto Layout constraints for relative heights instead of manual frames
 - (void)redistributePanelHeights:(ChartTemplateModel *)template {
@@ -475,35 +648,6 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 
 #pragma mark - Helper Methods - AGGIORNATI
 
-- (NSString *)panelTypeForRootIndicator:(NSString *)rootIndicatorType {
-    // ✅ Mapping da root indicator type a panel type
-    static NSDictionary *indicatorToPanelMapping = nil;
-    static dispatch_once_t onceToken;
-    dispatch_once(&onceToken, ^{
-        indicatorToPanelMapping = @{
-            @"SecurityIndicator": @"security",
-            @"CandlestickIndicator": @"security",
-            @"OHLCIndicator": @"security",
-            @"LineIndicator": @"security",
-            @"VolumeIndicator": @"volume",
-            @"VolumeProfileIndicator": @"volume",
-            @"RSIIndicator": @"oscillator",
-            @"MACDIndicator": @"oscillator",
-            @"StochasticIndicator": @"oscillator",
-            @"CCIIndicator": @"oscillator",
-            @"WilliamsRIndicator": @"oscillator",
-            @"CustomIndicator": @"custom"
-        };
-    });
-    
-    NSString *panelType = indicatorToPanelMapping[rootIndicatorType];
-    if (!panelType) {
-        NSLog(@"⚠️ Unknown root indicator type: %@, defaulting to 'custom'", rootIndicatorType);
-        panelType = @"custom";
-    }
-    
-    return panelType;
-}
 
 // ✅ AGGIORNATO per ChartTemplateModel
 - (void)createTemplateFromCurrentPanels:(NSString *)templateName

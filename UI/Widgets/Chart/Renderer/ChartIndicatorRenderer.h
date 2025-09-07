@@ -218,6 +218,32 @@ NS_ASSUME_NONNULL_BEGIN
 /// @param visible Whether indicators should be visible
 - (void)setVisibilityRecursively:(NSArray<TechnicalIndicatorBase *> *)indicators visible:(BOOL)visible;
 
+
+#pragma mark - Coordinate System (NEW - Uniformato agli altri renderer)
+
+/// ✅ NUOVO: Update coordinate contexts (per uniformità con ObjectRenderer/AlertRenderer)
+/// @param chartData Current chart data
+/// @param startIndex Visible start index
+/// @param endIndex Visible end index
+/// @param yMin Y-axis minimum value
+/// @param yMax Y-axis maximum value
+/// @param bounds Panel bounds
+- (void)updateCoordinateContext:(NSArray<HistoricalBarModel *> *)chartData
+                     startIndex:(NSInteger)startIndex
+                       endIndex:(NSInteger)endIndex
+                      yRangeMin:(double)yMin
+                      yRangeMax:(double)yMax
+                         bounds:(CGRect)bounds;
+
+/// Update shared X context reference (existing)
+/// @param sharedXContext Updated shared X coordinate context
+- (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext;
+
+/// Update panel Y context reference (existing)
+/// @param panelYContext Updated panel Y coordinate context
+- (void)updatePanelYContext:(PanelYCoordinateContext *)panelYContext;
+
+
 @end
 
 NS_ASSUME_NONNULL_END

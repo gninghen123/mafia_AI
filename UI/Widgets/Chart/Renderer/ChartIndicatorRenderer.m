@@ -687,15 +687,6 @@
     }
 }
 
-#pragma mark - Context Integration
-
-- (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext {
-    [self invalidateIndicatorLayers];
-}
-
-- (void)updatePanelYContext:(PanelYCoordinateContext *)panelYContext {
-    [self invalidateIndicatorLayers];
-}
 
 #pragma mark - Cleanup
 
@@ -753,6 +744,73 @@
     }
     
     NSLog(@"🔄 Invalidated %ld indicator layers", (long)self.indicatorLayers.count);
+}
+
+
+
+
+#pragma mark - Coordinate System (NEW - Uniformato agli altri renderer)
+
+- (void)updateCoordinateContext:(NSArray<HistoricalBarModel *> *)chartData
+                     startIndex:(NSInteger)startIndex
+                       endIndex:(NSInteger)endIndex
+                      yRangeMin:(double)yMin
+                      yRangeMax:(double)yMax
+                         bounds:(CGRect)bounds {
+    
+    // ✅ NUOVO: Metodo unificato che combina tutti gli update
+    
+    // Step 1: Update dei dati visibili (per future ottimizzazioni)
+    // Potremmo voler cachare startIndex/endIndex per rendering ottimizzato
+    
+    // Step 2: Update bounds dei layer (IMPORTANTE: usa bounds passato, non panelView.bounds)
+    [self updateLayerBoundsWithRect:bounds];
+    
+    // Step 3: Update Y coordinate context se l'IndicatorRenderer ne avrà bisogno
+    // Per ora, gli indicatori usano principalmente le coordinate del panel parent
+    // ma potremmo aggiungere un proprio PanelYCoordinateContext in futuro
+    
+    // Step 4: Invalida tutti i layer per forzare re-rendering con nuove coordinate
+    [self invalidateIndicatorLayers];
+    
+    NSLog(@"🔄 ChartIndicatorRenderer: Coordinate contexts updated - Y Range: %.2f-%.2f, Height: %.0f, Visible: [%ld-%ld]",
+          yMin, yMax, bounds.size.height, (long)startIndex, (long)endIndex);
+}
+
+- (void)updateLayerBoundsWithRect:(CGRect)bounds {
+    // Converte CGRect a NSRect per compatibility
+    NSRect boundsRect = NSRectFromCGRect(bounds);
+    
+    // Update del layer principale
+    self.indicatorsLayer.frame = boundsRect;
+    
+    // Update di tutti i layer degli indicatori
+    for (CAShapeLayer *layer in self.indicatorLayers.allValues) {
+        layer.frame = boundsRect;
+    }
+    
+    NSLog(@"📐 IndicatorRenderer: Updated layer bounds to %.0fx%.0f",
+          bounds.size.width, bounds.size.height);
+}
+
+// ✅ MANTIENI metodo esistente per backward compatibility
+- (void)updateLayerBounds {
+    [self updateLayerBoundsWithRect:self.panelView.bounds];
+}
+
+
+- (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext {
+    // ✅ ESISTENTE: Mantieni implementazione corrente
+    [self invalidateIndicatorLayers];
+    
+    NSLog(@"🔄 ChartIndicatorRenderer: SharedXContext updated");
+}
+
+- (void)updatePanelYContext:(PanelYCoordinateContext *)panelYContext {
+    // ✅ ESISTENTE: Mantieni implementazione corrente
+    [self invalidateIndicatorLayers];
+    
+    NSLog(@"🔄 ChartIndicatorRenderer: PanelYContext updated");
 }
 
 

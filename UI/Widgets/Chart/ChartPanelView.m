@@ -211,10 +211,10 @@
     self.visibleStartIndex = startIndex;
     self.visibleEndIndex = endIndex;
     
-    // ✅ NUOVO: Calcola il proprio Y range
+    // ✅ Calcola il proprio Y range
     [self calculateOwnYRange];
     
-    // ✅ NUOVO: Aggiorna panel Y context con i valori calcolati
+    // ✅ Aggiorna panel Y context con i valori calcolati
     if (!self.panelYContext) {
         self.panelYContext = [[PanelYCoordinateContext alloc] init];
         self.panelYContext.panelType = self.panelType;
@@ -224,7 +224,7 @@
     self.panelYContext.yRangeMax = self.yRangeMax;
     self.panelYContext.panelHeight = self.bounds.size.height;
     
-    // Update object renderer if present
+    // ✅ ESISTENTE: Update object renderer
     if (self.objectRenderer) {
         [self.objectRenderer updateCoordinateContext:data
                                           startIndex:startIndex
@@ -234,7 +234,7 @@
                                               bounds:self.bounds];
     }
     
-    // Update alert renderer if present
+    // ✅ ESISTENTE: Update alert renderer
     if (self.alertRenderer) {
         [self.alertRenderer updateCoordinateContext:data
                                          startIndex:startIndex
@@ -245,6 +245,19 @@
                                       currentSymbol:self.chartWidget.currentSymbol];
         [self.alertRenderer updateSharedXContext:self.sharedXContext];
     }
+    
+    // ✅ NUOVO: Update indicator renderer (ora uniformato agli altri)
+    if (self.indicatorRenderer) {
+        [self.indicatorRenderer updateCoordinateContext:data
+                                              startIndex:startIndex
+                                                endIndex:endIndex
+                                               yRangeMin:self.yRangeMin
+                                               yRangeMax:self.yRangeMax
+                                                  bounds:self.bounds];
+        [self.indicatorRenderer updateSharedXContext:self.sharedXContext];
+    }
+    
+    // ✅ ESISTENTE: Invalida layer dipendenti dalle coordinate
     [self invalidateCoordinateDependentLayersWithReason:@"data updated"];
 }
 
@@ -3126,11 +3139,13 @@
         [self.alertRenderer updateSharedXContext:self.sharedXContext];
     }
     
-    // ✅ NUOVO: Include anche IndicatorRenderer
+    // ✅ MIGLIORAMENTO: Ora usa il metodo unificato invece di solo invalidateIndicatorLayers
     if (self.indicatorRenderer) {
-        [self.indicatorRenderer invalidateIndicatorLayers];
+        [self.indicatorRenderer updateSharedXContext:self.sharedXContext];
+        // Note: updateSharedXContext già chiama invalidateIndicatorLayers internamente
     }
 }
+
 
 - (void)updateSharedXContextAndInvalidate:(SharedXCoordinateContext *)sharedXContext
                                    reason:(NSString *)reason {

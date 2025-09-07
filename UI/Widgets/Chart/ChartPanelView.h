@@ -3,7 +3,7 @@
 //  TradingApp
 //
 //  Individual chart panel for rendering specific indicators
-//  UPDATED: Includes ChartObjectRenderer integration
+//  ✅ CLEANED: Contains only methods that exist in .m file
 //
 
 #import <Cocoa/Cocoa.h>
@@ -18,7 +18,7 @@
 #import "TechnicalIndicatorBase.h"
 
 #pragma mark - Import ChartWidget for constants
-#import "ChartWidget.h"  // Per accedere a CHART_Y_AXIS_WIDTH, CHART_MARGIN_LEFT, CHART_MARGIN_RIGHT
+#import "ChartWidget.h"
 
 #pragma mark - Layer Invalidation Options
 
@@ -39,7 +39,7 @@ typedef NS_OPTIONS(NSUInteger, ChartLayerInvalidationOptions) {
     ChartLayerInvalidationAlertsEditing  = 1 << 7,  ///< Alert being dragged
     ChartLayerInvalidationIndicators     = 1 << 8,  ///< Technical indicators (SMA, RSI, etc.)
     
-    // ✅ AGGIORNATO: Convenience combinations che includono gli indicatori
+    // Convenience combinations
     ChartLayerInvalidationNativeAll      = (ChartLayerInvalidationChartContent |
                                             ChartLayerInvalidationYAxis |
                                             ChartLayerInvalidationCrosshair |
@@ -49,44 +49,35 @@ typedef NS_OPTIONS(NSUInteger, ChartLayerInvalidationOptions) {
                                             ChartLayerInvalidationObjectsEditing |
                                             ChartLayerInvalidationAlerts |
                                             ChartLayerInvalidationAlertsEditing |
-                                            ChartLayerInvalidationIndicators),  // ← AGGIUNTO
-                                            
-    // ✅ NUOVO: Combinazione per invalidare tutto il contenuto principale del chart
-    ChartLayerInvalidationContentAndData = (ChartLayerInvalidationChartContent |
-                                            ChartLayerInvalidationIndicators),   // ← NUOVA COMBO
+                                            ChartLayerInvalidationIndicators),
                                             
     ChartLayerInvalidationAll            = (ChartLayerInvalidationNativeAll |
                                             ChartLayerInvalidationExternalAll)
 };
 
-@class ChartPanelTemplate; // Forward declaration necessaria
-
+// Forward declarations
+@class ChartPanelTemplate;
 @class ChartAlertRenderer;
 @class ChartWidget;
 @class ChartObjectRenderer;
 @class ChartObjectsManager;
 @class ChartIndicatorRenderer;
 
-
 @interface ChartPanelView : NSView
 
+#pragma mark - Properties (from .m file)
 @property (nonatomic, strong, nullable) ChartIndicatorRenderer *indicatorRenderer;
-
 @property (nonatomic, strong, nullable) ChartPanelTemplate *panelTemplate;
-
 @property (nonatomic, strong) CALayer *yAxisLayer;
-
-@property (nonatomic, weak) SharedXCoordinateContext *sharedXContext;     // WEAK - shared
+@property (nonatomic, weak) SharedXCoordinateContext *sharedXContext;
 @property (nonatomic, strong) PanelYCoordinateContext *panelYContext;
-
 @property (nonatomic, weak) ChartObjectSettingsWindow *objectSettingsWindow;
-
 @property (nonatomic, strong) ChartAlertRenderer *alertRenderer;
 
 // Panel configuration
-@property (nonatomic, strong) NSString *panelType; // "security", "volume", etc.
+@property (nonatomic, strong) NSString *panelType;
 @property (nonatomic, weak) ChartWidget *chartWidget;
-@property (nonatomic, strong) NSButton *logScaleCheckbox;  // 🆕 NEW: Checkbox per scala logaritmica
+@property (nonatomic, strong) NSButton *logScaleCheckbox;
 
 // Data
 @property (nonatomic, strong) NSArray<HistoricalBarModel *> *chartData;
@@ -95,7 +86,6 @@ typedef NS_OPTIONS(NSUInteger, ChartLayerInvalidationOptions) {
 @property (nonatomic, assign) double yRangeMin;
 @property (nonatomic, assign) double yRangeMax;
 @property (nonatomic, assign) double dragThreshold;
-
 @property (nonatomic, assign) BOOL isDragging;
 
 // Interaction
@@ -107,67 +97,85 @@ typedef NS_OPTIONS(NSUInteger, ChartLayerInvalidationOptions) {
 @property (nonatomic, strong) CALayer *crosshairLayer;
 @property (nonatomic, strong) CALayer *chartPortionSelectionLayer;
 
-// NUOVO: Objects rendering
+// Objects rendering
 @property (nonatomic, strong) ChartObjectRenderer *objectRenderer;
-
 @property (nonatomic, strong, nullable) ChartObjectSettingsWindow *activeSettingsWindow;
 
-
-- (void)setupAlertRenderer;
-
-// NUOVO: Alert interaction
-- (void)startEditingAlertAtPoint:(NSPoint)point;
-- (void)stopEditingAlert;
-
-// Initialization
+#pragma mark - Initialization
+/// Initialize panel with type
+/// @param type Panel type ("security", "volume", etc.)
 - (instancetype)initWithType:(NSString *)type;
 
-// NUOVO: Setup with objects manager
+#pragma mark - Setup Methods
+/// Setup alert renderer
+- (void)setupAlertRenderer;
+
+/// Setup objects renderer with manager
+/// @param objectsManager Objects manager instance
 - (void)setupObjectsRendererWithManager:(ChartObjectsManager *)objectsManager;
 
-// Data update
+#pragma mark - Data Update Methods
+/// Update panel with new data and visible range
+/// @param data Chart data array
+/// @param startIndex Visible start index
+/// @param endIndex Visible end index
 - (void)updateWithData:(NSArray<HistoricalBarModel *> *)data
             startIndex:(NSInteger)startIndex
               endIndex:(NSInteger)endIndex;
 
-
-// Rendering
-- (void)setCrosshairPoint:(NSPoint)point visible:(BOOL)visible;
-
-// NUOVO: Objects interaction
-- (void)startCreatingObjectOfType:(ChartObjectType)objectType;
-- (void)startEditingObjectAtPoint:(NSPoint)point;
-- (void)stopEditingObject;
-
-- (void)drawYAxisContent;
-- (double)calculateOptimalTickStep:(double)range targetTicks:(NSInteger)targetTicks;
-
+/// Update shared X coordinate context
+/// @param sharedXContext Shared coordinate context
 - (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext;
 
+#pragma mark - Rendering Methods
+/// Set crosshair point and visibility
+/// @param point Crosshair position
+/// @param visible Whether crosshair should be visible
+- (void)setCrosshairPoint:(NSPoint)point visible:(BOOL)visible;
 
+/// Draw Y-axis content
+- (void)drawYAxisContent;
 
-// ============================================================
-// NUOVI METODI: Gestione Y Range autonoma
-// ============================================================
+/// Draw chart content (candlesticks, volume, etc.)
+- (void)drawChartContent;
 
-/// Calcola automaticamente il range Y in base al panelType e ai dati visibili
+/// Draw empty state when no data
+- (void)drawEmptyState;
+
+/// Draw candlesticks (for security panel)
+- (void)drawCandlesticks;
+
+/// Draw volume histogram (for volume panel)
+- (void)drawVolumeHistogram;
+
+/// Draw chart portion selection
+- (void)drawChartPortionSelection;
+
+/// Draw chart portion selection content
+- (void)drawChartPortionSelectionContent;
+
+#pragma mark - Y-Range Management
+/// Calculate automatic Y range based on panel type and visible data
 - (void)calculateOwnYRange;
 
-/// Calcola Y range per pannello security (prezzi OHLC)
+/// Calculate Y range for security panel (OHLC prices)
+/// @param startIdx Start index
+/// @param endIdx End index
 - (void)calculateSecurityYRange:(NSInteger)startIdx endIndex:(NSInteger)endIdx;
 
-/// Calcola Y range per pannello volume (0 - maxVolume)
+/// Calculate Y range for volume panel (0 - maxVolume)
+/// @param startIdx Start index
+/// @param endIdx End index
 - (void)calculateVolumeYRange:(NSInteger)startIdx endIndex:(NSInteger)endIdx;
 
-/// Esegue pan verticale locale (solo security panel)
+/// Perform vertical pan (security panel only)
+/// @param deltaY Pan delta in points
 - (void)panVerticallyWithDelta:(CGFloat)deltaY;
 
-/// Reset del pan verticale ai valori originali
+/// Reset vertical pan to original values
 - (void)resetYRangeOverride;
 
-
-#pragma mark - Unified Layer Management
-
+#pragma mark - Layer Management and Invalidation
 /// Primary method for layer invalidation with fine-grained control
 /// @param options Bitmask specifying which layers to invalidate
 /// @param updateSharedXContext Whether to update SharedXContext for external renderers
@@ -181,16 +189,84 @@ typedef NS_OPTIONS(NSUInteger, ChartLayerInvalidationOptions) {
 - (void)invalidateLayers:(ChartLayerInvalidationOptions)options;
 
 /// Specialized method for coordinate system changes (zoom/pan)
-/// Updates SharedXContext for external renderers and invalidates coordinate-dependent layers
 /// @param reason Debug string describing the coordinate change
 - (void)invalidateCoordinateDependentLayersWithReason:(NSString * _Nullable)reason;
 
 /// Lightweight method for mouse-driven updates (crosshair, hover effects)
-/// Only invalidates lightweight layers for optimal performance
 - (void)invalidateInteractionLayers;
 
 /// Emergency method to force redraw of everything
-/// Should be used sparingly, only when layer state is corrupted
 - (void)forceRedrawAllLayers;
+
+// Specific invalidation methods
+- (void)invalidateCrosshairIfVisible;
+- (void)invalidateObjectsEditingIfActive;
+- (void)invalidateAlertsEditingIfActive;
+
+#pragma mark - Object Interaction Methods
+/// Start creating object of specified type
+/// @param objectType Type of object to create
+- (void)startCreatingObjectOfType:(ChartObjectType)objectType;
+
+/// Start editing object at point
+/// @param point Point where user clicked
+- (void)startEditingObjectAtPoint:(NSPoint)point;
+
+/// Stop editing current object
+- (void)stopEditingObject;
+
+#pragma mark - Alert Interaction Methods
+/// Start editing alert at point
+/// @param point Point where user clicked
+- (void)startEditingAlertAtPoint:(NSPoint)point;
+
+/// Stop editing current alert
+- (void)stopEditingAlert;
+
+#pragma mark - Utility Methods
+/// Calculate optimal tick step for Y-axis
+/// @param range Y-axis range
+/// @param targetTicks Target number of ticks
+/// @return Optimal tick step value
+- (double)calculateOptimalTickStep:(double)range targetTicks:(NSInteger)targetTicks;
+
+/// Format numeric value for display
+/// @param value Numeric value to format
+/// @return Formatted string for display
+- (NSString *)formatNumericValueForDisplay:(double)value;
+
+/// Get visible start index from chart widget
+- (NSInteger)visibleStartIndex;
+
+/// Get visible end index from chart widget
+- (NSInteger)visibleEndIndex;
+
+#pragma mark - Internal Helper Methods
+/// Update external renderers shared X context
+- (void)updateExternalRenderersSharedXContext;
+
+/// Update shared X context and invalidate layers
+/// @param sharedXContext Shared coordinate context
+/// @param reason Reason for update
+- (void)updateSharedXContextAndInvalidate:(SharedXCoordinateContext *)sharedXContext
+                                   reason:(NSString *)reason;
+
+/// Get current creation type from object renderer
+- (ChartObjectType)getCurrentCreationTypeFromRenderer;
+
+/// Handle object settings applied
+/// @param object Object that had settings applied
+- (void)handleObjectSettingsApplied:(ChartObjectModel *)object;
+
+/// Check if point is near editing object
+/// @param point Point to check
+/// @param object Object being edited
+/// @param tolerance Hit test tolerance
+- (BOOL)isPoint:(NSPoint)point nearEditingObject:(ChartObjectModel *)object tolerance:(CGFloat)tolerance;
+
+/// Find object that owns a control point
+/// @param controlPoint Control point to search for
+/// @return Object that contains the control point
+- (ChartObjectModel *)findObjectOwningControlPoint:(ControlPointModel *)controlPoint;
 
 @end

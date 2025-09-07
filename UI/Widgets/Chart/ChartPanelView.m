@@ -21,7 +21,7 @@
 #import "ChartWidget+SaveData.h"
 #import "ChartWidget+ImageExport.h"
 #import "ChartWidget+Patterns.h"
-
+#import "ChartIndicatorRenderer.h"
 
 @interface ChartPanelView ()
 
@@ -3128,7 +3128,7 @@
     
     // ✅ NUOVO: Include anche IndicatorRenderer
     if (self.indicatorRenderer) {
-        [self.indicatorRenderer updateSharedXContext:self.sharedXContext];
+        [self.indicatorRenderer invalidateIndicatorLayers];
     }
 }
 

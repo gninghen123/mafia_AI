@@ -734,28 +734,6 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     });
 }
 
-- (void)refreshIndicatorsRendering {
-    if (self.indicatorRenderers.count == 0) {
-        NSLog(@"⚠️ No indicator renderers to refresh");
-        return;
-    }
-    
-    NSLog(@"🎨 Refreshing indicators rendering for %ld panels...", (long)self.indicatorRenderers.count);
-    
-    // ✅ Force refresh all indicator renderers
-    for (NSString *panelID in self.indicatorRenderers.allKeys) {
-        ChartIndicatorRenderer *renderer = self.indicatorRenderers[panelID];
-        [renderer invalidateIndicatorLayers];
-        NSLog(@"♻️ Refreshed rendering for panel: %@", panelID);
-    }
-    
-    // ✅ Update all panel views
-    for (ChartPanelView *panel in self.chartPanels) {
-        [panel setNeedsDisplay:YES];
-    }
-    
-    NSLog(@"✅ Indicators rendering refreshed");
-}
 
 // ✅ AGGIORNATO signature per ChartTemplateModel
 - (void)renameTemplate:(ChartTemplateModel *)template {
@@ -930,15 +908,15 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
         return;
     }
     
-    // ✅ Use existing ChartWidget method that updates all panels
+    // ✅ SIMPLIFIED: Use existing ChartWidget method that now handles indicators automatically
     [self synchronizePanels];
     
-    // ✅ Refresh indicator renderers
-    [self refreshIndicatorsRendering];
+    // ✅ REMOVED: Manual indicator refresh - now automatic
+    // ❌ LEGACY: [self refreshIndicatorsRendering]; // ← NOT NEEDED ANYMORE
     
-    NSLog(@"✅ All panels updated with current data (%ld bars)", (long)self.currentChartData.count);
+    NSLog(@"✅ All panels updated with current data (%ld bars) - indicators included automatically",
+          (long)self.currentChartData.count);
 }
-
 
 
 

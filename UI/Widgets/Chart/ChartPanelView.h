@@ -37,7 +37,8 @@ typedef NS_OPTIONS(NSUInteger, ChartLayerInvalidationOptions) {
     ChartLayerInvalidationObjectsEditing = 1 << 5,  ///< Object being edited/created
     ChartLayerInvalidationAlerts         = 1 << 6,  ///< Alert markers
     ChartLayerInvalidationAlertsEditing  = 1 << 7,  ///< Alert being dragged
-    
+    ChartLayerInvalidationIndicators     = 1 << 8,  ///< Technical indicators (SMA, RSI, etc.)
+
     // Convenience combinations
     ChartLayerInvalidationNativeAll      = (ChartLayerInvalidationChartContent |
                                             ChartLayerInvalidationYAxis |
@@ -45,9 +46,10 @@ typedef NS_OPTIONS(NSUInteger, ChartLayerInvalidationOptions) {
                                             ChartLayerInvalidationSelection),
                                             
     ChartLayerInvalidationExternalAll    = (ChartLayerInvalidationObjects |
-                                            ChartLayerInvalidationObjectsEditing |
-                                            ChartLayerInvalidationAlerts |
-                                            ChartLayerInvalidationAlertsEditing),
+                                               ChartLayerInvalidationObjectsEditing |
+                                               ChartLayerInvalidationAlerts |
+                                               ChartLayerInvalidationAlertsEditing |
+                                               ChartLayerInvalidationIndicators),  
                                             
     ChartLayerInvalidationAll            = (ChartLayerInvalidationNativeAll |
                                             ChartLayerInvalidationExternalAll)

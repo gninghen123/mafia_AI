@@ -137,8 +137,26 @@
         layer.fillColor = [NSColor clearColor].CGColor;
         layer.lineCap = kCALineCapRound;
         layer.lineJoin = kCALineJoinRound;
+        
+        // 🚨 FIX: Assicurati che venga aggiunto
         [self.indicatorsLayer addSublayer:layer];
+        
+        // 🔧 VERIFY: Check che sia stato aggiunto
+        if (![self.indicatorsLayer.sublayers containsObject:layer]) {
+            NSLog(@"🚨 ERROR: Layer not added to indicatorsLayer!");
+            [self.indicatorsLayer addSublayer:layer]; // Try again
+        }
+        
         self.indicatorLayers[indicatorID] = layer;
+        
+        NSLog(@"✅ Created layer for %@, now has %ld sublayers",
+              indicatorID, (long)self.indicatorsLayer.sublayers.count);
+    } else {
+        // 🔧 VERIFY: Check che esista ancora nella hierarchy
+        if (![self.indicatorsLayer.sublayers containsObject:layer]) {
+            NSLog(@"🚨 FIXING: Re-adding existing layer to indicatorsLayer");
+            [self.indicatorsLayer addSublayer:layer];
+        }
     }
     return layer;
 }
@@ -156,10 +174,18 @@
     NSArray<IndicatorDataModel *> *dataPoints = indicator.outputSeries;
     CGPathRef cgPath = [self createCGLinePathFromDataPoints:dataPoints];
     if (cgPath) {
-        layer.path = cgPath;
-        layer.fillColor = [NSColor clearColor].CGColor;
-        CGPathRelease(cgPath); // ✅ Memory management
-    }
+         layer.path = cgPath;
+         layer.fillColor = [NSColor clearColor].CGColor;
+         layer.strokeColor = [NSColor redColor].CGColor;
+         layer.lineWidth = 5.0;
+         layer.opacity = 1.0;
+         layer.hidden = NO;
+         
+         // 🚨 FIX: Remove interfering animations
+         [layer.superlayer removeAllAnimations];
+         
+         CGPathRelease(cgPath);
+     }
 }
 
 - (void)renderHistogramIndicator:(TechnicalIndicatorBase *)indicator layer:(CAShapeLayer *)layer {

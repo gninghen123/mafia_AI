@@ -3,7 +3,7 @@
 // TradingApp
 //
 // Renderer for technical indicators display in chart panels
-// ✅ CLEANED: Contains only methods that exist in .m file
+// ✅ UPDATED: Native CGPath support for macOS compatibility
 //
 
 #import <Cocoa/Cocoa.h>
@@ -18,7 +18,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface ChartIndicatorRenderer : NSObject
 
-#pragma mark - Properties (from .m file)
+#pragma mark - Properties
 @property (nonatomic, weak) ChartPanelView *panelView;
 @property (nonatomic, strong) CALayer *indicatorsLayer;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, CAShapeLayer *> *indicatorLayers;
@@ -60,6 +60,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// Update layer bounds when panel resizes
 - (void)updateLayerBounds;
 
+/// Update layer bounds with specific rect
+/// @param bounds New bounds for layers
+- (void)updateLayerBoundsWithRect:(CGRect)bounds;
+
 /// Get or create layer for indicator
 /// @param indicatorID Indicator identifier
 /// @return Shape layer for the indicator
@@ -96,23 +100,30 @@ NS_ASSUME_NONNULL_BEGIN
 /// @param layer Target layer
 - (void)renderBandsIndicator:(TechnicalIndicatorBase *)indicator layer:(CAShapeLayer *)layer;
 
-#pragma mark - Path Creation Helpers
-/// Create line path from indicator data points
+#pragma mark - Path Creation Helpers - UPDATED FOR CGPATH
+/// Create line CGPath from indicator data points
 /// @param dataPoints Array of IndicatorDataModel points
-/// @return Bezier path for line rendering
-- (NSBezierPath *)createLinePathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints;
+/// @return CGPathRef for line rendering (CALLER MUST RELEASE)
+- (CGPathRef)createCGLinePathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints CF_RETURNS_RETAINED;
 
-/// Create histogram bars path from data points
+/// Create histogram bars CGPath from data points
 /// @param dataPoints Array of IndicatorDataModel points
 /// @param baselineY Y coordinate for histogram baseline
-/// @return Bezier path for histogram rendering
-- (NSBezierPath *)createHistogramPathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints baselineY:(CGFloat)baselineY;
+/// @return CGPathRef for histogram rendering (CALLER MUST RELEASE)
+- (CGPathRef)createCGHistogramPathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints
+                                       baselineY:(CGFloat)baselineY CF_RETURNS_RETAINED;
 
-/// Create area path from data points
+/// Create area CGPath from data points
 /// @param dataPoints Array of IndicatorDataModel points
 /// @param baselineY Y coordinate for area baseline
-/// @return Bezier path for area rendering
-- (NSBezierPath *)createAreaPathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints baselineY:(CGFloat)baselineY;
+/// @return CGPathRef for area rendering (CALLER MUST RELEASE)
+- (CGPathRef)createCGAreaPathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints
+                                  baselineY:(CGFloat)baselineY CF_RETURNS_RETAINED;
+
+/// Create signal markers CGPath from data points
+/// @param dataPoints Array of IndicatorDataModel points
+/// @return CGPathRef for signal rendering (CALLER MUST RELEASE)
+- (CGPathRef)createCGSignalPathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints CF_RETURNS_RETAINED;
 
 #pragma mark - Coordinate Conversion
 /// Convert timestamp to X coordinate
@@ -152,6 +163,16 @@ NS_ASSUME_NONNULL_BEGIN
 /// @return YES if rendering update is needed
 - (BOOL)needsRenderingUpdate:(TechnicalIndicatorBase *)indicator;
 
+/// Check if path needs recalculation (legacy cache management)
+/// @param indicator Indicator to check
+/// @return YES if path needs recalculation
+- (BOOL)needsPathRecalculation:(TechnicalIndicatorBase *)indicator;
+
+/// Cache CGPath metadata for future reuse
+/// @param indicator Indicator to cache path for
+/// @param cgPath The CGPath to cache metadata for
+- (void)cacheCGPathForIndicator:(TechnicalIndicatorBase *)indicator cgPath:(CGPathRef)cgPath;
+
 /// Cache indicator rendering data for performance
 /// @param indicator Indicator to cache
 - (void)cacheRenderingDataForIndicator:(TechnicalIndicatorBase *)indicator;
@@ -163,6 +184,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// Batch render multiple indicators efficiently
 /// @param indicators Array of indicators to render
 - (void)batchRenderIndicators:(NSArray<TechnicalIndicatorBase *> *)indicators;
+
+/// Batch render visible indicators with optimization
+/// @param indicators Array of indicators to render in visible range
+- (void)batchRenderVisibleIndicators:(NSArray<TechnicalIndicatorBase *> *)indicators;
 
 #pragma mark - Animation Support
 /// Animate layer appearance
@@ -218,10 +243,15 @@ NS_ASSUME_NONNULL_BEGIN
 /// @param visible Whether indicators should be visible
 - (void)setVisibilityRecursively:(NSArray<TechnicalIndicatorBase *> *)indicators visible:(BOOL)visible;
 
+/// Mark all indicators for re-rendering (sets needsRendering flag)
+- (void)markAllIndicatorsForRerendering;
 
-#pragma mark - Coordinate System (NEW - Uniformato agli altri renderer)
+/// Mark indicators recursively for re-rendering
+/// @param indicators Array of indicators to mark
+- (void)markIndicatorsRecursively:(NSArray<TechnicalIndicatorBase *> *)indicators;
 
-/// ✅ NUOVO: Update coordinate contexts (per uniformità con ObjectRenderer/AlertRenderer)
+#pragma mark - Coordinate System - UPDATED FOR AUTO-RENDERING
+/// Update coordinate contexts with auto-rendering
 /// @param chartData Current chart data
 /// @param startIndex Visible start index
 /// @param endIndex Visible end index
@@ -235,14 +265,13 @@ NS_ASSUME_NONNULL_BEGIN
                       yRangeMax:(double)yMax
                          bounds:(CGRect)bounds;
 
-/// Update shared X context reference (existing)
+/// Update shared X context reference with auto-rendering
 /// @param sharedXContext Updated shared X coordinate context
 - (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext;
 
-/// Update panel Y context reference (existing)
+/// Update panel Y context reference with auto-rendering
 /// @param panelYContext Updated panel Y coordinate context
 - (void)updatePanelYContext:(PanelYCoordinateContext *)panelYContext;
-
 
 @end
 

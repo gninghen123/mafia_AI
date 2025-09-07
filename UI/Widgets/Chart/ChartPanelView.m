@@ -3115,4 +3115,12 @@
     return [[self.objectRenderer valueForKey:@"creationObjectType"] integerValue];
 }
 
+- (NSInteger)visibleStartIndex{
+    return self.chartWidget.visibleStartIndex;
+}
+
+- (NSInteger)visibleEndIndex{
+    return self.chartWidget.visibleEndIndex;
+}
+
 @end

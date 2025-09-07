@@ -24,16 +24,6 @@
 
 #pragma mark - Smart Symbol Input Parameters
 
-typedef struct {
-    NSString *symbol;
-    BarTimeframe timeframe;
-    NSInteger daysToDownload;
-    BOOL hasTimeframe;
-    BOOL hasDaysSpecified;
-    NSDate *startDate;
-    NSDate *endDate;
-} SmartSymbolParameters;
-
 // Constants
 static NSString *const kWidgetChainUpdateNotification = @"WidgetChainUpdateNotification";
 static NSString *const kChainUpdateKey = @"update";
@@ -158,6 +148,13 @@ extern NSString *const DataHubDataLoadedNotification;
     
     // ✅ Setup template system (SEMPLIFICATO)
     [self loadAndApplyLastUsedTemplate];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(chartViewFrameDidChange:)
+                                                 name:NSViewFrameDidChangeNotification
+                                               object:self.view];
+
+    // ✅ Enable frame change notifications
+    self.view.postsFrameChangedNotifications = YES;
     
     NSLog(@"✅ ChartWidget setup completed");
 }
@@ -855,16 +852,7 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(chartViewFrameDidChange:)
-                                                 name:NSViewFrameDidChangeNotification
-                                               object:self.view];
-    
-    // ✅ Enable frame change notifications
-    self.view.postsFrameChangedNotifications = YES;
-}
+
 
 - (void)createEmergencyFallbackPanels {
     NSLog(@"🔧 Creating fallback panels...");
@@ -893,6 +881,7 @@ extern NSString *const DataHubDataLoadedNotification;
     // Setup renderers
     [self setupRenderersForAllPanels];
     
+
     NSLog(@"✅ Fallback panels created");
 }
 
@@ -2034,6 +2023,7 @@ extern NSString *const DataHubDataLoadedNotification;
     }
 }
 
+
 - (IBAction)toggleStaticMode:(NSButton *)sender {
     NSLog(@"🔄 IBAction: toggleStaticMode");
     
@@ -2685,7 +2675,7 @@ extern NSString *const DataHubDataLoadedNotification;
     NSInteger preferenceDefault = [self getDefaultDaysForTimeframe:timeframe];
     
     // ✅ MANTIENI: Tutta questa logica esistente per disable/enable
-    BOOL isIntraday = (timeframe <= ChartTimeframe4Hour);
+    BOOL isIntraday = (timeframe < ChartTimeframeDaily);
     NSInteger maxDaysForTimeframe = [self getMaxDaysForTimeframe:timeframe];
     
     for (NSInteger i = 0; i < self.dateRangeSegmented.segmentCount; i++) {
@@ -2916,4 +2906,6 @@ extern NSString *const DataHubDataLoadedNotification;
     return nil; // TODO: Implementare
 }
 */
+
+
 @end

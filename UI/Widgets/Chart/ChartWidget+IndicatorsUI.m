@@ -224,13 +224,30 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
         return nil;
     }
     
-  
+    // ✅ STEP 4: **CRITICAL FIX** - Create CHILD INDICATORS from template data!
+    NSArray<TechnicalIndicatorBase *> *childIndicators = [self createChildIndicatorsFromData:panelTemplate.childIndicatorsData];
     
-    // ✅ STEP 5: Create indicator renderer and give it ALL the indicators
+    // ✅ STEP 4b: Add child indicators to root indicator
+    for (TechnicalIndicatorBase *childIndicator in childIndicators) {
+        NSLog(@"🔗 Adding child indicator %@ to parent %@", childIndicator.shortName, rootIndicator.shortName);
+        [rootIndicator addChildIndicator:childIndicator];
+        
+        // ✅ CRITICAL: Set the needsRendering flag!
+        childIndicator.needsRendering = YES;
+        NSLog(@"✅ Set needsRendering=YES for child indicator: %@", childIndicator.shortName);
+    }
+    
+    // ✅ STEP 4c: Also set needsRendering for root
+    rootIndicator.needsRendering = YES;
+    NSLog(@"✅ Set needsRendering=YES for root indicator: %@", rootIndicator.shortName);
+    
+    NSLog(@"📊 Created panel with %ld child indicators total", (long)childIndicators.count);
+    
+    // ✅ STEP 5: Create indicator renderer and give it the root indicator
     ChartIndicatorRenderer *renderer = [[ChartIndicatorRenderer alloc] initWithPanelView:panelView];
-    renderer.rootIndicator = rootIndicator;     // ✅ RENDERER has main indicator reference
+    renderer.rootIndicator = rootIndicator;
     
-    // ✅ STEP 6: Set renderer on panel view (panel only has renderer reference)
+    // ✅ STEP 6: Set renderer on panel view
     panelView.indicatorRenderer = renderer;
     
     // ✅ STEP 7: Store renderer in ChartWidget dictionary with panel ID
@@ -239,10 +256,12 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     }
     self.indicatorRenderers[panelTemplate.panelID] = renderer;
     
-    // ✅ STEP 8: CRITICAL - Actually render the indicators if we have chart data!
-
+    // ✅ STEP 8: Calculate and render indicators if we have chart data
     if (self.currentChartData && self.currentChartData.count > 0) {
+        NSLog(@"🧮 About to calculate indicators with %ld bars", (long)self.currentChartData.count);
         [self calculateAndRenderIndicatorsForRenderer:renderer withData:self.currentChartData];
+    } else {
+        NSLog(@"⚠️ No chart data available for calculation");
     }
     
     return panelView;
@@ -251,32 +270,43 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 - (void)calculateAndRenderIndicatorsForRenderer:(ChartIndicatorRenderer *)renderer
                                        withData:(NSArray<HistoricalBarModel *> *)chartData {
     
-    // ✅ SOSTITUISCI il check:
     if (!renderer.rootIndicator) {
         NSLog(@"⚠️ No root indicator to calculate and render");
         return;
     }
     
     NSLog(@"🧮 Calculating indicator tree with %lu data points", (unsigned long)chartData.count);
+    NSLog(@"🔍 Root indicator: %@, has %ld children",
+          renderer.rootIndicator.shortName,
+          (long)renderer.rootIndicator.childIndicators.count);
     
-    // ✅ SOSTITUISCI tutto il for loop con:
     @try {
+        // ✅ CALCULATE ROOT INDICATOR
         [renderer.rootIndicator calculateWithBars:chartData];
-        NSLog(@"✅ Calculated indicator tree: %@", renderer.rootIndicator.shortName);
+        NSLog(@"✅ Calculated root indicator: %@", renderer.rootIndicator.shortName);
+        
+        // ✅ CALCULATE ALL CHILD INDICATORS
+        for (TechnicalIndicatorBase *childIndicator in renderer.rootIndicator.childIndicators) {
+            NSLog(@"🧮 Calculating child indicator: %@", childIndicator.shortName);
+            [childIndicator calculateWithBars:chartData];
+            NSLog(@"✅ Calculated child indicator: %@", childIndicator.shortName);
+        }
+        
     } @catch (NSException *exception) {
         NSLog(@"❌ Failed to calculate indicator tree %@: %@", renderer.rootIndicator.shortName, exception.reason);
+        return;
     }
     
-    // ✅ RESTA UGUALE il rendering:
-    if (renderer.rootIndicator) {
-        @try {
-            [renderer renderIndicatorTree:renderer.rootIndicator];
-            NSLog(@"✅ Rendered indicator tree for: %@", renderer.rootIndicator.shortName);
-        } @catch (NSException *exception) {
-            NSLog(@"❌ Failed to render indicators: %@", exception.reason);
-        }
+    // ✅ RENDER THE ENTIRE TREE
+    @try {
+        [renderer renderIndicatorTree:renderer.rootIndicator];
+        NSLog(@"✅ Rendered indicator tree for: %@", renderer.rootIndicator.shortName);
+    } @catch (NSException *exception) {
+        NSLog(@"❌ Failed to render indicators: %@", exception.reason);
     }
 }
+
+
 #pragma mark - Helper Methods for Indicator Creation
 
 - (TechnicalIndicatorBase *)createRootIndicatorFromTemplate:(ChartPanelTemplateModel *)panelTemplate {

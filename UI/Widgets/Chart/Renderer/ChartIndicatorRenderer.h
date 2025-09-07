@@ -25,6 +25,10 @@ NS_ASSUME_NONNULL_BEGIN
 #pragma mark - Indicator Data Management
 @property (nonatomic, strong, nullable) TechnicalIndicatorBase *rootIndicator;
 
+@property (nonatomic, strong) NSMutableDictionary *cachedPathKeys;
+
+
+
 /// Initialize renderer with panel view
 /// @param panelView Parent chart panel view
 - (instancetype)initWithPanelView:(ChartPanelView *)panelView;

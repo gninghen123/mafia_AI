@@ -232,4 +232,8 @@
     // The base class will handle the parameter updates
 }
 
+- (BOOL)hasVisualOutput {
+    return NO; // ChartPanelView disegna già l'histogram del volume
+}
+
 @end

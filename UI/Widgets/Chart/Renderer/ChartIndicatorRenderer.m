@@ -216,17 +216,36 @@
 
 #pragma mark - Path Creation Helpers
 
+// 🚀 MODIFICA ChartIndicatorRenderer.m - Path Creation Methods OTTIMIZZATI
+
+#pragma mark - Path Creation Helpers - OTTIMIZZATI
+
 - (NSBezierPath *)createLinePathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints {
     if (!dataPoints || dataPoints.count == 0) return nil;
     
+    // ✅ VERIFICA coordinate contexts (architettura del progetto)
+    if (!self.panelView.sharedXContext || !self.panelView.panelYContext) {
+        NSLog(@"❌ Missing coordinate contexts - cannot render");
+        return nil;
+    }
+    
     NSBezierPath *path = [NSBezierPath bezierPath];
     BOOL firstPoint = YES;
+    NSInteger validPoints = 0;
     
-    for (IndicatorDataModel *point in dataPoints) {
-      //  if (isnan(point.value) || ![self isTimestampInVisibleRange:point.timestamp]) continue;
+    // ✅ OTTIMIZZAZIONE 2: Solo parte visibile
+    NSInteger startIndex = MAX(0, self.panelView.visibleStartIndex);
+    NSInteger endIndex = MIN(dataPoints.count - 1, self.panelView.visibleEndIndex);
+    
+    for (NSInteger i = startIndex; i <= endIndex; i++) {
+        IndicatorDataModel *point = dataPoints[i];
         
-        CGFloat x = [self xCoordinateForTimestamp:point.timestamp];
-        CGFloat y = [self yCoordinateForValue:point.value];
+        // ✅ OTTIMIZZAZIONE 1: Solo check NaN (assumiamo dati coerenti)
+        if (isnan(point.value)) continue;
+        
+        // ✅ OTTIMIZZAZIONE 3: Usa coordinate contexts DIRETTAMENTE
+        CGFloat x = [self.panelView.sharedXContext screenXForBarIndex:i];
+        CGFloat y = [self.panelView.panelYContext screenYForValue:point.value];
         
         if (firstPoint) {
             [path moveToPoint:NSMakePoint(x, y)];
@@ -234,23 +253,119 @@
         } else {
             [path lineToPoint:NSMakePoint(x, y)];
         }
+        validPoints++;
     }
-    NSLog(@"✅ Path elements = %ld", path.elementCount);
-
+    
     return path.isEmpty ? nil : path;
+}
+
+
+- (void)renderLineIndicatorOptimized:(TechnicalIndicatorBase *)indicator layer:(CAShapeLayer *)layer {
+    NSArray<IndicatorDataModel *> *dataPoints = indicator.outputSeries;
+    
+    if (!dataPoints || dataPoints.count == 0) {
+        NSLog(@"⚠️ No data points for indicator: %@", indicator.displayName);
+        return;
+    }
+    
+    // ✅ CHECK: Se il viewport non è cambiato, riusa il path esistente
+    if (![self needsPathRecalculation:indicator]) {
+        NSLog(@"♻️ Reusing cached path for %@", indicator.displayName);
+        return;
+    }
+    
+    // ✅ Calcola solo la parte visibile
+    NSBezierPath *linePath = [self createLinePathFromDataPoints:dataPoints];
+    if (linePath && !linePath.isEmpty) {
+        layer.path = linePath.CGPath;
+        layer.fillColor = [NSColor clearColor].CGColor;
+        
+        // ✅ Cache per riuso futuro
+        [self cachePathForIndicator:indicator path:linePath];
+        
+        NSLog(@"✅ OPTIMIZED rendering for: %@ (%ld elements)",
+              indicator.displayName, (long)linePath.elementCount);
+    }
+}
+
+// ✅ OTTIMIZZAZIONE 4: Cache management per path
+- (BOOL)needsPathRecalculation:(TechnicalIndicatorBase *)indicator {
+    // ✅ Controlla se viewport o dati sono cambiati
+    NSString *cacheKey = [NSString stringWithFormat:@"%@_%ld_%ld",
+                         indicator.indicatorID,
+                         (long)self.panelView.visibleStartIndex,
+                         (long)self.panelView.visibleEndIndex];
+    
+    NSString *lastCacheKey = self.cachedPathKeys[indicator.indicatorID];
+    
+    if ([cacheKey isEqualToString:lastCacheKey] && !indicator.needsRendering) {
+        return NO; // Riusa cache
+    }
+    
+    return YES; // Ricalcola
+}
+
+- (void)cachePathForIndicator:(TechnicalIndicatorBase *)indicator path:(NSBezierPath *)path {
+    NSString *cacheKey = [NSString stringWithFormat:@"%@_%ld_%ld",
+                         indicator.indicatorID,
+                         (long)self.panelView.visibleStartIndex,
+                         (long)self.panelView.visibleEndIndex];
+    
+    if (!self.cachedPathKeys) {
+        self.cachedPathKeys = [[NSMutableDictionary alloc] init];
+    }
+    
+    self.cachedPathKeys[indicator.indicatorID] = cacheKey;
+}
+
+// ✅ OTTIMIZZAZIONE 5: Batch rendering per performance
+- (void)batchRenderVisibleIndicators:(NSArray<TechnicalIndicatorBase *> *)indicators {
+    if (!indicators || indicators.count == 0) return;
+    
+    NSLog(@"🚀 BATCH rendering %ld indicators for visible range [%ld-%ld]",
+          (long)indicators.count,
+          (long)self.panelView.visibleStartIndex,
+          (long)self.panelView.visibleEndIndex);
+    
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES]; // Disabilita animazioni per performance
+    
+    for (TechnicalIndicatorBase *indicator in indicators) {
+        if (indicator.isVisible && indicator.hasVisualOutput) {
+            [self renderLineIndicatorOptimized:indicator
+                                         layer:[self getOrCreateLayerForIndicator:indicator.indicatorID]];
+        }
+    }
+    
+    [CATransaction commit];
+    
+    NSLog(@"✅ BATCH rendering completed");
 }
 
 - (NSBezierPath *)createHistogramPathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints baselineY:(CGFloat)baselineY {
     if (!dataPoints || dataPoints.count == 0) return nil;
     
-    NSBezierPath *path = [NSBezierPath bezierPath];
-    CGFloat barWidth = 2.0;
+    // ✅ VERIFICA coordinate contexts
+    if (!self.panelView.sharedXContext || !self.panelView.panelYContext) {
+        return nil;
+    }
     
-    for (IndicatorDataModel *point in dataPoints) {
-        if (isnan(point.value) || ![self isTimestampInVisibleRange:point.timestamp]) continue;
+    NSBezierPath *path = [NSBezierPath bezierPath];
+    CGFloat barWidth = [self.panelView.sharedXContext barWidth] * 0.8; // 80% della larghezza barra
+    
+    // ✅ Solo parte visibile
+    NSInteger startIndex = MAX(0, self.panelView.visibleStartIndex);
+    NSInteger endIndex = MIN(dataPoints.count - 1, self.panelView.visibleEndIndex);
+    
+    for (NSInteger i = startIndex; i <= endIndex; i++) {
+        IndicatorDataModel *point = dataPoints[i];
         
-        CGFloat x = [self xCoordinateForTimestamp:point.timestamp];
-        CGFloat y = [self yCoordinateForValue:point.value];
+        if (isnan(point.value)) continue;
+        
+        // ✅ Coordinate contexts diretti
+        CGFloat x = [self.panelView.sharedXContext screenXForBarIndex:i];
+        CGFloat y = [self.panelView.panelYContext screenYForValue:point.value];
+        
         NSRect barRect = NSMakeRect(x - barWidth/2, MIN(y, baselineY), barWidth, fabs(y - baselineY));
         [path appendBezierPathWithRect:barRect];
     }
@@ -258,21 +373,37 @@
     return path.isEmpty ? nil : path;
 }
 
+
 - (NSBezierPath *)createAreaPathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints baselineY:(CGFloat)baselineY {
     if (!dataPoints || dataPoints.count == 0) return nil;
+    
+    // ✅ VERIFICA coordinate contexts
+    if (!self.panelView.sharedXContext || !self.panelView.panelYContext) {
+        return nil;
+    }
     
     NSBezierPath *path = [NSBezierPath bezierPath];
     NSMutableArray<NSValue *> *points = [[NSMutableArray alloc] init];
     
-    for (IndicatorDataModel *point in dataPoints) {
-        if (isnan(point.value) || ![self isTimestampInVisibleRange:point.timestamp]) continue;
-        CGFloat x = [self xCoordinateForTimestamp:point.timestamp];
-        CGFloat y = [self yCoordinateForValue:point.value];
+    // ✅ Solo parte visibile
+    NSInteger startIndex = MAX(0, self.panelView.visibleStartIndex);
+    NSInteger endIndex = MIN(dataPoints.count - 1, self.panelView.visibleEndIndex);
+    
+    for (NSInteger i = startIndex; i <= endIndex; i++) {
+        IndicatorDataModel *point = dataPoints[i];
+        
+        if (isnan(point.value)) continue;
+        
+        // ✅ Coordinate contexts diretti
+        CGFloat x = [self.panelView.sharedXContext screenXForBarIndex:i];
+        CGFloat y = [self.panelView.panelYContext screenYForValue:point.value];
+        
         [points addObject:[NSValue valueWithPoint:NSMakePoint(x, y)]];
     }
     
     if (points.count == 0) return nil;
     
+    // Crea area path
     BOOL firstPoint = YES;
     for (NSValue *pointValue in points) {
         NSPoint point = [pointValue pointValue];
@@ -285,6 +416,7 @@
         }
     }
     
+    // Chiudi l'area
     NSPoint lastPoint = [[points lastObject] pointValue];
     NSPoint firstPoint_ = [[points firstObject] pointValue];
     [path lineToPoint:NSMakePoint(lastPoint.x, baselineY)];
@@ -294,94 +426,104 @@
     return path;
 }
 
+
 - (NSBezierPath *)createBandsPathFromUpperPoints:(NSArray<IndicatorDataModel *> *)upperPoints
                                      lowerPoints:(NSArray<IndicatorDataModel *> *)lowerPoints {
     // Implementation for bands path creation
     return [NSBezierPath bezierPath]; // Placeholder
 }
 
-#pragma mark - Reference Lines
+#pragma mark - Reference Lines - GENERICO
 
-- (void)drawRSIReferenceLinesInLayer:(CALayer *)parentLayer {
-    NSArray *levels = @[@30.0, @50.0, @70.0];
-    NSArray *colors = @[[NSColor systemRedColor], [NSColor systemGrayColor], [NSColor systemGreenColor]];
+/// Disegna linee orizzontali per oscillatori a livelli specifici
+/// @param parentLayer Layer contenitore
+/// @param levels Array di NSNumber con i livelli (es: @[@30, @50, @70] per RSI)
+/// @param colors Array di NSColor per ogni livello (opzionale, usa colori default se nil)
+/// @param lineStyle Stile linea (opzionale: @{@"width": @1.0, @"opacity": @0.5, @"dash": @[@2, @2]})
+- (void)drawHorizontalLinesForOscillatorAtLevels:(NSArray<NSNumber *> *)levels
+                                        inLayer:(CALayer *)parentLayer
+                                      withColors:(nullable NSArray<NSColor *> *)colors
+                                       lineStyle:(nullable NSDictionary *)lineStyle {
+    
+    if (!levels || levels.count == 0 || !parentLayer) return;
+    
+    // ✅ VERIFICA coordinate context
+    if (!self.panelView.panelYContext) {
+        NSLog(@"⚠️ No panelYContext available for oscillator lines");
+        return;
+    }
+    
+    // ✅ Colori di default se non forniti
+    NSArray<NSColor *> *defaultColors = @[
+        [NSColor systemRedColor],     // Primo livello (es: oversold/overbought)
+        [NSColor systemGrayColor],    // Livello centrale
+        [NSColor systemGreenColor],   // Ultimo livello
+        [NSColor systemOrangeColor],  // Livelli extra
+        [NSColor systemPurpleColor],
+        [NSColor systemBlueColor]
+    ];
+    
+    NSArray<NSColor *> *colorsToUse = colors ?: defaultColors;
+    
+    // ✅ Stile di default se non fornito
+    CGFloat lineWidth = lineStyle[@"width"] ? [lineStyle[@"width"] floatValue] : 0.5;
+    CGFloat opacity = lineStyle[@"opacity"] ? [lineStyle[@"opacity"] floatValue] : 0.5;
+    NSArray *dashPattern = lineStyle[@"dash"] ?: @[@2, @2];
+    
+    NSLog(@"📊 Drawing %ld oscillator reference lines", (long)levels.count);
     
     for (NSInteger i = 0; i < levels.count; i++) {
         CGFloat level = [levels[i] doubleValue];
-        NSColor *color = colors[i];
-        CGFloat y = [self yCoordinateForValue:level];
+        NSColor *color = (i < colorsToUse.count) ? colorsToUse[i] : [NSColor labelColor];
         
+        // ✅ Usa coordinate context direttamente
+        CGFloat y = [self.panelView.panelYContext screenYForValue:level];
+        
+        // ✅ Crea path per linea orizzontale
         NSBezierPath *linePath = [NSBezierPath bezierPath];
         [linePath moveToPoint:NSMakePoint(0, y)];
         [linePath lineToPoint:NSMakePoint(parentLayer.bounds.size.width, y)];
         
+        // ✅ Crea layer per la linea
         CAShapeLayer *refLayer = [CAShapeLayer layer];
         refLayer.frame = parentLayer.bounds;
         refLayer.path = linePath.CGPath;
         refLayer.strokeColor = color.CGColor;
-        refLayer.lineWidth = 0.5;
-        refLayer.opacity = 0.5;
-        refLayer.lineDashPattern = @[@2, @2];
-        [parentLayer addSublayer:refLayer];
-    }
-}
-
-#pragma mark - Coordinate Conversion
-
-- (CGFloat)xCoordinateForTimestamp:(NSDate *)timestamp {
-    // ✅ CORRETTO: Use panel's shared X coordinate context
-    if (self.panelView.sharedXContext) {
-        return [self.panelView.sharedXContext screenXForDate:timestamp];
-    }
-    
-    NSInteger barIndex = [self barIndexForTimestamp:timestamp];
-    if (barIndex == NSNotFound) return 0;
-    
-    CGFloat panelWidth = self.panelView.bounds.size.width;
-    CGFloat visibleBars = self.panelView.visibleEndIndex - self.panelView.visibleStartIndex;
-    CGFloat barWidth = panelWidth / visibleBars;
-    
-    return (barIndex - self.panelView.visibleStartIndex) * barWidth;
-}
-
-- (CGFloat)yCoordinateForValue:(double)value {
-    // ✅ CORRETTO: Use panel's Y coordinate context
-    if (self.panelView.panelYContext) {
-        return [self.panelView.panelYContext screenYForValue:value];
-    }
-    
-    CGFloat panelHeight = self.panelView.bounds.size.height;
-    double yRange = self.panelView.yRangeMax - self.panelView.yRangeMin;
-    if (yRange <= 0) return panelHeight / 2;
-    
-    double normalizedValue = (value - self.panelView.yRangeMin) / yRange;
-    return panelHeight - (normalizedValue * panelHeight);
-}
-
-- (NSInteger)barIndexForTimestamp:(NSDate *)timestamp {
-    NSArray<HistoricalBarModel *> *chartData = self.panelView.chartWidget.currentChartData;
-    if (!chartData || !timestamp) return NSNotFound;
-    
-    NSInteger left = 0, right = chartData.count - 1;
-    
-    while (left <= right) {
-        NSInteger mid = (left + right) / 2;
-        HistoricalBarModel *bar = chartData[mid];
-        NSComparisonResult comparison = [bar.date compare:timestamp];  // ✅ CORRETTO: .date non .timestamp
+        refLayer.lineWidth = lineWidth;
+        refLayer.opacity = opacity;
+        refLayer.lineDashPattern = dashPattern;
         
-        if (comparison == NSOrderedSame) return mid;
-        else if (comparison == NSOrderedAscending) left = mid + 1;
-        else right = mid - 1;
+        [parentLayer addSublayer:refLayer];
+        
+        NSLog(@"📏 Drew reference line at level %.1f (y=%.1f)", level, y);
     }
-    
-    return (right >= 0 && right < chartData.count) ? right : NSNotFound;
 }
 
-- (BOOL)isTimestampInVisibleRange:(NSDate *)timestamp {
-    NSInteger barIndex = [self barIndexForTimestamp:timestamp];
-    return barIndex != NSNotFound &&
-           barIndex >= self.panelView.visibleStartIndex &&
-           barIndex <= self.panelView.visibleEndIndex;
+/// Custom oscillator lines - per indicatori personalizzati
+/// @param levels Array di livelli personalizzati
+/// @param parentLayer Layer contenitore
+- (void)drawCustomOscillatorLines:(NSArray<NSNumber *> *)levels inLayer:(CALayer *)parentLayer {
+    [self drawHorizontalLinesForOscillatorAtLevels:levels
+                                           inLayer:parentLayer
+                                        withColors:nil  // Usa colori default
+                                         lineStyle:nil]; // Usa stile default
+}
+
+#pragma mark - Oscillator-Specific Convenience Methods
+
+/// RSI reference lines (30, 50, 70)
+- (void)drawRSIReferenceLinesInLayer:(CALayer *)parentLayer {
+    NSArray *levels = @[@30.0, @50.0, @70.0];
+    NSArray *colors = @[
+        [NSColor systemRedColor],    // 30 - Oversold
+        [NSColor systemGrayColor],   // 50 - Midline
+        [NSColor systemGreenColor]   // 70 - Overbought
+    ];
+    
+    [self drawHorizontalLinesForOscillatorAtLevels:levels
+                                           inLayer:parentLayer
+                                        withColors:colors
+                                         lineStyle:@{@"width": @0.5, @"opacity": @0.6}];
 }
 
 #pragma mark - Styling

@@ -25,6 +25,18 @@
 #define CHART_MARGIN_LEFT 10
 #define CHART_MARGIN_RIGHT 10
 
+
+typedef struct {
+    NSString *symbol;
+    BarTimeframe timeframe;
+    NSInteger daysToDownload;
+    BOOL hasTimeframe;
+    BOOL hasDaysSpecified;
+    NSDate *startDate;
+    NSDate *endDate;
+} SmartSymbolParameters;
+
+
 typedef NS_ENUM(NSInteger, ChartTimeframe) {
     ChartTimeframe1Min,
     ChartTimeframe5Min,

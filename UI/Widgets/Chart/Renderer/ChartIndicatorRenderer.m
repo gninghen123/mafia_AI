@@ -154,53 +154,49 @@
 
 - (void)renderLineIndicator:(TechnicalIndicatorBase *)indicator layer:(CAShapeLayer *)layer {
     NSArray<IndicatorDataModel *> *dataPoints = indicator.outputSeries;
-    NSBezierPath *linePath = [self createLinePathFromDataPoints:dataPoints];
-    if (linePath) {
-        layer.path = linePath.CGPath;
+    CGPathRef cgPath = [self createCGLinePathFromDataPoints:dataPoints];
+    if (cgPath) {
+        layer.path = cgPath;
         layer.fillColor = [NSColor clearColor].CGColor;
+        CGPathRelease(cgPath); // ✅ Memory management
     }
 }
 
 - (void)renderHistogramIndicator:(TechnicalIndicatorBase *)indicator layer:(CAShapeLayer *)layer {
     NSArray<IndicatorDataModel *> *dataPoints = indicator.outputSeries;
     CGFloat baselineY = [self yCoordinateForValue:0.0];
-    NSBezierPath *histogramPath = [self createHistogramPathFromDataPoints:dataPoints baselineY:baselineY];
-    if (histogramPath) {
-        layer.path = histogramPath.CGPath;
+    CGPathRef cgPath = [self createCGHistogramPathFromDataPoints:dataPoints baselineY:baselineY];
+    if (cgPath) {
+        layer.path = cgPath;
         layer.fillColor = [self defaultFillColorForIndicator:indicator].CGColor;
         layer.strokeColor = [NSColor clearColor].CGColor;
+        CGPathRelease(cgPath); // ✅ Memory management
     }
 }
 
 - (void)renderAreaIndicator:(TechnicalIndicatorBase *)indicator layer:(CAShapeLayer *)layer {
     NSArray<IndicatorDataModel *> *dataPoints = indicator.outputSeries;
     CGFloat baselineY = [self yCoordinateForValue:0.0];
-    NSBezierPath *areaPath = [self createAreaPathFromDataPoints:dataPoints baselineY:baselineY];
-    if (areaPath) {
-        layer.path = areaPath.CGPath;
+    CGPathRef cgPath = [self createCGAreaPathFromDataPoints:dataPoints baselineY:baselineY];
+    if (cgPath) {
+        layer.path = cgPath;
         layer.fillColor = [[self defaultFillColorForIndicator:indicator] colorWithAlphaComponent:0.3].CGColor;
         layer.strokeColor = [self defaultStrokeColorForIndicator:indicator].CGColor;
         layer.lineWidth = [self defaultLineWidthForIndicator:indicator];
+        CGPathRelease(cgPath); // ✅ Memory management
     }
 }
 
 - (void)renderSignalIndicator:(TechnicalIndicatorBase *)indicator layer:(CAShapeLayer *)layer {
     NSArray<IndicatorDataModel *> *dataPoints = indicator.outputSeries;
-    NSBezierPath *signalPath = [NSBezierPath bezierPath];
-    
-    for (IndicatorDataModel *point in dataPoints) {
-        if (!point.isSignal || isnan(point.value)) continue;
-        CGFloat x = [self xCoordinateForTimestamp:point.timestamp];
-        CGFloat y = [self yCoordinateForValue:point.value];
-        NSRect markerRect = NSMakeRect(x - 4, y - 4, 8, 8);
-        [signalPath appendBezierPathWithOvalInRect:markerRect];
+    CGPathRef cgPath = [self createCGSignalPathFromDataPoints:dataPoints];
+    if (cgPath) {
+        layer.path = cgPath;
+        layer.fillColor = [self defaultFillColorForIndicator:indicator].CGColor;
+        layer.strokeColor = [self defaultStrokeColorForIndicator:indicator].CGColor;
+        CGPathRelease(cgPath); // ✅ Memory management
     }
-    
-    layer.path = signalPath.CGPath;
-    layer.fillColor = [self defaultFillColorForIndicator:indicator].CGColor;
-    layer.strokeColor = [self defaultStrokeColorForIndicator:indicator].CGColor;
 }
-
 - (void)renderBandsIndicator:(TechnicalIndicatorBase *)indicator layer:(CAShapeLayer *)layer {
     // Implementation for bands rendering (Bollinger Bands, etc.)
     NSLog(@"🎨 Bands indicator rendering - placeholder implementation");
@@ -214,144 +210,65 @@
     }
 }
 
-#pragma mark - Path Creation Helpers
 
-// 🚀 MODIFICA ChartIndicatorRenderer.m - Path Creation Methods OTTIMIZZATI
-
-#pragma mark - Path Creation Helpers - OTTIMIZZATI
-
-- (NSBezierPath *)createLinePathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints {
-    if (!dataPoints || dataPoints.count == 0) return nil;
+- (CGPathRef)createCGLinePathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints {
+    if (!dataPoints || dataPoints.count == 0) return NULL;
     
-    // ✅ VERIFICA coordinate contexts (architettura del progetto)
+    // ✅ VERIFICA coordinate contexts
     if (!self.panelView.sharedXContext || !self.panelView.panelYContext) {
         NSLog(@"❌ Missing coordinate contexts - cannot render");
-        return nil;
+        return NULL;
     }
     
-    NSBezierPath *path = [NSBezierPath bezierPath];
+    CGMutablePathRef path = CGPathCreateMutable();
     BOOL firstPoint = YES;
     NSInteger validPoints = 0;
     
-    // ✅ OTTIMIZZAZIONE 2: Solo parte visibile
+    // ✅ Solo parte visibile
     NSInteger startIndex = MAX(0, self.panelView.visibleStartIndex);
     NSInteger endIndex = MIN(dataPoints.count - 1, self.panelView.visibleEndIndex);
     
     for (NSInteger i = startIndex; i <= endIndex; i++) {
         IndicatorDataModel *point = dataPoints[i];
         
-        // ✅ OTTIMIZZAZIONE 1: Solo check NaN (assumiamo dati coerenti)
+        // ✅ Skip NaN values
         if (isnan(point.value)) continue;
         
-        // ✅ OTTIMIZZAZIONE 3: Usa coordinate contexts DIRETTAMENTE
+        // ✅ Usa coordinate contexts DIRETTAMENTE
         CGFloat x = [self.panelView.sharedXContext screenXForBarIndex:i];
         CGFloat y = [self.panelView.panelYContext screenYForValue:point.value];
         
+        CGPoint cgPoint = CGPointMake(x, y);
+        
         if (firstPoint) {
-            [path moveToPoint:NSMakePoint(x, y)];
+            CGPathMoveToPoint(path, NULL, cgPoint.x, cgPoint.y);
             firstPoint = NO;
         } else {
-            [path lineToPoint:NSMakePoint(x, y)];
+            CGPathAddLineToPoint(path, NULL, cgPoint.x, cgPoint.y);
         }
         validPoints++;
     }
     
-    return path.isEmpty ? nil : path;
+    if (validPoints == 0) {
+        CGPathRelease(path);
+        return NULL;
+    }
+    
+    return path; // Caller must release
 }
 
-
-- (void)renderLineIndicatorOptimized:(TechnicalIndicatorBase *)indicator layer:(CAShapeLayer *)layer {
-    NSArray<IndicatorDataModel *> *dataPoints = indicator.outputSeries;
-    
-    if (!dataPoints || dataPoints.count == 0) {
-        NSLog(@"⚠️ No data points for indicator: %@", indicator.displayName);
-        return;
-    }
-    
-    // ✅ CHECK: Se il viewport non è cambiato, riusa il path esistente
-    if (![self needsPathRecalculation:indicator]) {
-        NSLog(@"♻️ Reusing cached path for %@", indicator.displayName);
-        return;
-    }
-    
-    // ✅ Calcola solo la parte visibile
-    NSBezierPath *linePath = [self createLinePathFromDataPoints:dataPoints];
-    if (linePath && !linePath.isEmpty) {
-        layer.path = linePath.CGPath;
-        layer.fillColor = [NSColor clearColor].CGColor;
-        
-        // ✅ Cache per riuso futuro
-        [self cachePathForIndicator:indicator path:linePath];
-        
-        NSLog(@"✅ OPTIMIZED rendering for: %@ (%ld elements)",
-              indicator.displayName, (long)linePath.elementCount);
-    }
-}
-
-// ✅ OTTIMIZZAZIONE 4: Cache management per path
-- (BOOL)needsPathRecalculation:(TechnicalIndicatorBase *)indicator {
-    // ✅ Controlla se viewport o dati sono cambiati
-    NSString *cacheKey = [NSString stringWithFormat:@"%@_%ld_%ld",
-                         indicator.indicatorID,
-                         (long)self.panelView.visibleStartIndex,
-                         (long)self.panelView.visibleEndIndex];
-    
-    NSString *lastCacheKey = self.cachedPathKeys[indicator.indicatorID];
-    
-    if ([cacheKey isEqualToString:lastCacheKey] && !indicator.needsRendering) {
-        return NO; // Riusa cache
-    }
-    
-    return YES; // Ricalcola
-}
-
-- (void)cachePathForIndicator:(TechnicalIndicatorBase *)indicator path:(NSBezierPath *)path {
-    NSString *cacheKey = [NSString stringWithFormat:@"%@_%ld_%ld",
-                         indicator.indicatorID,
-                         (long)self.panelView.visibleStartIndex,
-                         (long)self.panelView.visibleEndIndex];
-    
-    if (!self.cachedPathKeys) {
-        self.cachedPathKeys = [[NSMutableDictionary alloc] init];
-    }
-    
-    self.cachedPathKeys[indicator.indicatorID] = cacheKey;
-}
-
-// ✅ OTTIMIZZAZIONE 5: Batch rendering per performance
-- (void)batchRenderVisibleIndicators:(NSArray<TechnicalIndicatorBase *> *)indicators {
-    if (!indicators || indicators.count == 0) return;
-    
-    NSLog(@"🚀 BATCH rendering %ld indicators for visible range [%ld-%ld]",
-          (long)indicators.count,
-          (long)self.panelView.visibleStartIndex,
-          (long)self.panelView.visibleEndIndex);
-    
-    [CATransaction begin];
-    [CATransaction setDisableActions:YES]; // Disabilita animazioni per performance
-    
-    for (TechnicalIndicatorBase *indicator in indicators) {
-        if (indicator.isVisible && indicator.hasVisualOutput) {
-            [self renderLineIndicatorOptimized:indicator
-                                         layer:[self getOrCreateLayerForIndicator:indicator.indicatorID]];
-        }
-    }
-    
-    [CATransaction commit];
-    
-    NSLog(@"✅ BATCH rendering completed");
-}
-
-- (NSBezierPath *)createHistogramPathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints baselineY:(CGFloat)baselineY {
-    if (!dataPoints || dataPoints.count == 0) return nil;
+- (CGPathRef)createCGHistogramPathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints
+                                       baselineY:(CGFloat)baselineY {
+    if (!dataPoints || dataPoints.count == 0) return NULL;
     
     // ✅ VERIFICA coordinate contexts
     if (!self.panelView.sharedXContext || !self.panelView.panelYContext) {
-        return nil;
+        return NULL;
     }
     
-    NSBezierPath *path = [NSBezierPath bezierPath];
+    CGMutablePathRef path = CGPathCreateMutable();
     CGFloat barWidth = [self.panelView.sharedXContext barWidth] * 0.8; // 80% della larghezza barra
+    NSInteger validBars = 0;
     
     // ✅ Solo parte visibile
     NSInteger startIndex = MAX(0, self.panelView.visibleStartIndex);
@@ -366,23 +283,33 @@
         CGFloat x = [self.panelView.sharedXContext screenXForBarIndex:i];
         CGFloat y = [self.panelView.panelYContext screenYForValue:point.value];
         
-        NSRect barRect = NSMakeRect(x - barWidth/2, MIN(y, baselineY), barWidth, fabs(y - baselineY));
-        [path appendBezierPathWithRect:barRect];
+        CGRect barRect = CGRectMake(x - barWidth/2,
+                                   MIN(y, baselineY),
+                                   barWidth,
+                                   fabs(y - baselineY));
+        
+        CGPathAddRect(path, NULL, barRect);
+        validBars++;
     }
     
-    return path.isEmpty ? nil : path;
+    if (validBars == 0) {
+        CGPathRelease(path);
+        return NULL;
+    }
+    
+    return path; // Caller must release
 }
 
-
-- (NSBezierPath *)createAreaPathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints baselineY:(CGFloat)baselineY {
-    if (!dataPoints || dataPoints.count == 0) return nil;
+- (CGPathRef)createCGAreaPathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints
+                                  baselineY:(CGFloat)baselineY {
+    if (!dataPoints || dataPoints.count == 0) return NULL;
     
     // ✅ VERIFICA coordinate contexts
     if (!self.panelView.sharedXContext || !self.panelView.panelYContext) {
-        return nil;
+        return NULL;
     }
     
-    NSBezierPath *path = [NSBezierPath bezierPath];
+    CGMutablePathRef path = CGPathCreateMutable();
     NSMutableArray<NSValue *> *points = [[NSMutableArray alloc] init];
     
     // ✅ Solo parte visibile
@@ -401,36 +328,113 @@
         [points addObject:[NSValue valueWithPoint:NSMakePoint(x, y)]];
     }
     
-    if (points.count == 0) return nil;
+    if (points.count == 0) {
+        CGPathRelease(path);
+        return NULL;
+    }
     
     // Crea area path
     BOOL firstPoint = YES;
     for (NSValue *pointValue in points) {
         NSPoint point = [pointValue pointValue];
+        CGPoint cgPoint = NSPointToCGPoint(point);
+        
         if (firstPoint) {
-            [path moveToPoint:NSMakePoint(point.x, baselineY)];
-            [path lineToPoint:point];
+            CGPathMoveToPoint(path, NULL, cgPoint.x, baselineY);
+            CGPathAddLineToPoint(path, NULL, cgPoint.x, cgPoint.y);
             firstPoint = NO;
         } else {
-            [path lineToPoint:point];
+            CGPathAddLineToPoint(path, NULL, cgPoint.x, cgPoint.y);
         }
     }
     
     // Chiudi l'area
     NSPoint lastPoint = [[points lastObject] pointValue];
     NSPoint firstPoint_ = [[points firstObject] pointValue];
-    [path lineToPoint:NSMakePoint(lastPoint.x, baselineY)];
-    [path lineToPoint:NSMakePoint(firstPoint_.x, baselineY)];
-    [path closePath];
+    CGPathAddLineToPoint(path, NULL, lastPoint.x, baselineY);
+    CGPathAddLineToPoint(path, NULL, firstPoint_.x, baselineY);
+    CGPathCloseSubpath(path);
     
-    return path;
+    return path; // Caller must release
+}
+
+- (CGPathRef)createCGSignalPathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints {
+    if (!dataPoints || dataPoints.count == 0) return NULL;
+    
+    CGMutablePathRef path = CGPathCreateMutable();
+    NSInteger validSignals = 0;
+    
+    for (IndicatorDataModel *point in dataPoints) {
+        if (!point.isSignal || isnan(point.value)) continue;
+        
+        CGFloat x = [self xCoordinateForTimestamp:point.timestamp];
+        CGFloat y = [self yCoordinateForValue:point.value];
+        
+        CGRect markerRect = CGRectMake(x - 4, y - 4, 8, 8);
+        CGPathAddEllipseInRect(path, NULL, markerRect);
+        validSignals++;
+    }
+    
+    if (validSignals == 0) {
+        CGPathRelease(path);
+        return NULL;
+    }
+    
+    return path; // Caller must release
+}
+// ✅ OTTIMIZZAZIONE 4: Cache management per path
+- (BOOL)needsPathRecalculation:(TechnicalIndicatorBase *)indicator {
+    // ✅ Controlla se viewport o dati sono cambiati
+    NSString *cacheKey = [NSString stringWithFormat:@"%@_%ld_%ld",
+                         indicator.indicatorID,
+                         (long)self.panelView.visibleStartIndex,
+                         (long)self.panelView.visibleEndIndex];
+    
+    NSString *lastCacheKey = self.cachedPathKeys[indicator.indicatorID];
+    
+    if ([cacheKey isEqualToString:lastCacheKey] && !indicator.needsRendering) {
+        return NO; // Riusa cache
+    }
+    
+    return YES; // Ricalcola
+}
+
+// ✅ AGGIORNATO: Cache per CGPath invece di NSBezierPath
+- (void)cacheCGPathForIndicator:(TechnicalIndicatorBase *)indicator cgPath:(CGPathRef)cgPath {
+   NSString *cacheKey = [NSString stringWithFormat:@"cgpath_%@_%ld_%ld",
+                        indicator.indicatorID,
+                        (long)self.panelView.visibleStartIndex,
+                        (long)self.panelView.visibleEndIndex];
+   
+   if (!self.cachedPathKeys) {
+       self.cachedPathKeys = [[NSMutableDictionary alloc] init];
+   }
+   
+   self.cachedPathKeys[indicator.indicatorID] = cacheKey;
 }
 
 
-- (NSBezierPath *)createBandsPathFromUpperPoints:(NSArray<IndicatorDataModel *> *)upperPoints
-                                     lowerPoints:(NSArray<IndicatorDataModel *> *)lowerPoints {
-    // Implementation for bands path creation
-    return [NSBezierPath bezierPath]; // Placeholder
+- (void)batchRenderVisibleIndicators:(NSArray<TechnicalIndicatorBase *> *)indicators {
+   if (!indicators || indicators.count == 0) return;
+   
+   NSLog(@"🚀 BATCH rendering %ld indicators for visible range [%ld-%ld]",
+         (long)indicators.count,
+         (long)self.panelView.visibleStartIndex,
+         (long)self.panelView.visibleEndIndex);
+   
+   [CATransaction begin];
+   [CATransaction setDisableActions:YES]; // Disabilita animazioni per performance
+   
+   for (TechnicalIndicatorBase *indicator in indicators) {
+       if (indicator.isVisible && indicator.hasVisualOutput) {
+           // ✅ USA il nuovo metodo standard renderIndicator invece di quello obsoleto
+           [self renderIndicator:indicator];
+       }
+   }
+   
+   [CATransaction commit];
+   
+   NSLog(@"✅ BATCH rendering completed");
 }
 
 #pragma mark - Reference Lines - GENERICO
@@ -737,17 +741,43 @@
 }
 
 - (void)invalidateIndicatorLayers {
-    // ✅ MIGLIORAMENTO: Forza l'invalidazione di tutti i layer
+    // ✅ Step 1: Invalida i layer (come prima)
     for (NSString *indicatorID in self.indicatorLayers.allKeys) {
         CAShapeLayer *layer = self.indicatorLayers[indicatorID];
         layer.path = NULL; // Forza re-render
     }
     
-    NSLog(@"🔄 Invalidated %ld indicator layers", (long)self.indicatorLayers.count);
+    // ✅ Step 2: CRITICO - Setta needsRendering flag per tutti gli indicatori!
+    [self markAllIndicatorsForRerendering];
+    
+    NSLog(@"🔄 Invalidated %ld indicator layers + set needsRendering flags", (long)self.indicatorLayers.count);
 }
 
+- (void)markAllIndicatorsForRerendering {
+    if (!self.rootIndicator) {
+        NSLog(@"⚠️ No rootIndicator to mark for re-rendering");
+        return;
+    }
+    
+    // Marca il root
+    self.rootIndicator.needsRendering = YES;
+    
+    // Marca tutti i children ricorsivamente
+    [self markIndicatorsRecursively:self.rootIndicator.childIndicators];
+    
+    NSLog(@"🏁 Marked all indicators in tree for re-rendering");
+}
 
-
+- (void)markIndicatorsRecursively:(NSArray<TechnicalIndicatorBase *> *)indicators {
+    for (TechnicalIndicatorBase *indicator in indicators) {
+        indicator.needsRendering = YES;
+        
+        // Ricorsivo per i figli dei figli
+        if (indicator.childIndicators.count > 0) {
+            [self markIndicatorsRecursively:indicator.childIndicators];
+        }
+    }
+}
 
 #pragma mark - Coordinate System (NEW - Uniformato agli altri renderer)
 
@@ -757,8 +787,6 @@
                       yRangeMin:(double)yMin
                       yRangeMax:(double)yMax
                          bounds:(CGRect)bounds {
-    
-    // ✅ NUOVO: Metodo unificato che combina tutti gli update
     
     // Step 1: Update dei dati visibili (per future ottimizzazioni)
     // Potremmo voler cachare startIndex/endIndex per rendering ottimizzato
@@ -772,6 +800,14 @@
     
     // Step 4: Invalida tutti i layer per forzare re-rendering con nuove coordinate
     [self invalidateIndicatorLayers];
+    
+    // ✅ FIX CRITICO: Chiama esplicitamente il re-rendering dopo invalidation
+    if (self.rootIndicator) {
+        [self renderIndicatorTree:self.rootIndicator];
+        NSLog(@"🎨 IndicatorRenderer: Re-rendered after coordinate update");
+    } else {
+        NSLog(@"⚠️ IndicatorRenderer: No rootIndicator to re-render");
+    }
     
     NSLog(@"🔄 ChartIndicatorRenderer: Coordinate contexts updated - Y Range: %.2f-%.2f, Height: %.0f, Visible: [%ld-%ld]",
           yMin, yMax, bounds.size.height, (long)startIndex, (long)endIndex);
@@ -793,25 +829,32 @@
           bounds.size.width, bounds.size.height);
 }
 
-// ✅ MANTIENI metodo esistente per backward compatibility
-- (void)updateLayerBounds {
-    [self updateLayerBoundsWithRect:self.panelView.bounds];
-}
+
 
 
 - (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext {
-    // ✅ ESISTENTE: Mantieni implementazione corrente
-    [self invalidateIndicatorLayers];
+    // ✅ Invalida + marca per re-rendering
+    [self invalidateIndicatorLayers]; // ← Ora include markAllIndicatorsForRerendering!
+    
+    // ✅ FIX CRITICO: Aggiungi anche qui il re-rendering automatico
+    if (self.rootIndicator) {
+        [self renderIndicatorTree:self.rootIndicator];
+        NSLog(@"🎨 IndicatorRenderer: Re-rendered after SharedXContext update");
+    }
     
     NSLog(@"🔄 ChartIndicatorRenderer: SharedXContext updated");
 }
 
 - (void)updatePanelYContext:(PanelYCoordinateContext *)panelYContext {
-    // ✅ ESISTENTE: Mantieni implementazione corrente
-    [self invalidateIndicatorLayers];
+    // ✅ Invalida + marca per re-rendering
+    [self invalidateIndicatorLayers]; // ← Ora include markAllIndicatorsForRerendering!
+    
+    // ✅ FIX CRITICO: Aggiungi anche qui il re-rendering automatico
+    if (self.rootIndicator) {
+        [self renderIndicatorTree:self.rootIndicator];
+        NSLog(@"🎨 IndicatorRenderer: Re-rendered after PanelYContext update");
+    }
     
     NSLog(@"🔄 ChartIndicatorRenderer: PanelYContext updated");
 }
-
-
 @end

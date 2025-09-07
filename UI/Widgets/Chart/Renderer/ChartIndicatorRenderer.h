@@ -3,7 +3,7 @@
 // TradingApp
 //
 // Renderer for technical indicators display in chart panels
-// Based on ChartObjectRenderer architecture
+// ✅ CLEANED: Contains only methods that exist in .m file
 //
 
 #import <Cocoa/Cocoa.h>
@@ -18,23 +18,19 @@ NS_ASSUME_NONNULL_BEGIN
 
 @interface ChartIndicatorRenderer : NSObject
 
-#pragma mark - Initialization
+#pragma mark - Properties (from .m file)
 @property (nonatomic, weak) ChartPanelView *panelView;
 @property (nonatomic, strong) CALayer *indicatorsLayer;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, CAShapeLayer *> *indicatorLayers;
-#pragma mark - Indicator Data Management
 @property (nonatomic, strong, nullable) TechnicalIndicatorBase *rootIndicator;
-
 @property (nonatomic, strong) NSMutableDictionary *cachedPathKeys;
 
-
-
+#pragma mark - Initialization
 /// Initialize renderer with panel view
 /// @param panelView Parent chart panel view
 - (instancetype)initWithPanelView:(ChartPanelView *)panelView;
 
 #pragma mark - Rendering Management
-
 /// Render entire indicator tree
 /// @param rootIndicator Root indicator with child hierarchy
 - (void)renderIndicatorTree:(TechnicalIndicatorBase *)rootIndicator;
@@ -58,7 +54,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)invalidateIndicatorLayer:(NSString *)indicatorID;
 
 #pragma mark - Layer Management
-
 /// Setup indicators layer structure
 - (void)setupIndicatorsLayer;
 
@@ -76,7 +71,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)configureLayer:(CAShapeLayer *)layer forIndicator:(TechnicalIndicatorBase *)indicator;
 
 #pragma mark - Specialized Rendering Methods
-
 /// Render line-based indicator (SMA, EMA, etc.)
 /// @param indicator Line indicator to render
 /// @param layer Target layer
@@ -87,28 +81,22 @@ NS_ASSUME_NONNULL_BEGIN
 /// @param layer Target layer
 - (void)renderHistogramIndicator:(TechnicalIndicatorBase *)indicator layer:(CAShapeLayer *)layer;
 
-/// Render bands indicator (Bollinger Bands, Keltner Channels)
-/// @param indicator Bands indicator to render
+/// Render area fill indicator
+/// @param indicator Area indicator to render
 /// @param layer Target layer
-- (void)renderBandsIndicator:(TechnicalIndicatorBase *)indicator layer:(CAShapeLayer *)layer;
-
-/// Render oscillator indicator with reference lines (RSI, Stochastic)
-/// @param indicator Oscillator indicator to render
-/// @param layer Target layer
-- (void)renderOscillatorIndicator:(TechnicalIndicatorBase *)indicator layer:(CAShapeLayer *)layer;
+- (void)renderAreaIndicator:(TechnicalIndicatorBase *)indicator layer:(CAShapeLayer *)layer;
 
 /// Render signal markers (buy/sell arrows, crosses)
 /// @param indicator Signal indicator to render
 /// @param layer Target layer
 - (void)renderSignalIndicator:(TechnicalIndicatorBase *)indicator layer:(CAShapeLayer *)layer;
 
-/// Render area fill indicator
-/// @param indicator Area indicator to render
+/// Render bands indicator (Bollinger Bands, Keltner Channels)
+/// @param indicator Bands indicator to render
 /// @param layer Target layer
-- (void)renderAreaIndicator:(TechnicalIndicatorBase *)indicator layer:(CAShapeLayer *)layer;
+- (void)renderBandsIndicator:(TechnicalIndicatorBase *)indicator layer:(CAShapeLayer *)layer;
 
 #pragma mark - Path Creation Helpers
-
 /// Create line path from indicator data points
 /// @param dataPoints Array of IndicatorDataModel points
 /// @return Bezier path for line rendering
@@ -120,52 +108,33 @@ NS_ASSUME_NONNULL_BEGIN
 /// @return Bezier path for histogram rendering
 - (NSBezierPath *)createHistogramPathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints baselineY:(CGFloat)baselineY;
 
-/// Create filled area path from data points
+/// Create area path from data points
 /// @param dataPoints Array of IndicatorDataModel points
 /// @param baselineY Y coordinate for area baseline
-/// @return Bezier path for area fill
+/// @return Bezier path for area rendering
 - (NSBezierPath *)createAreaPathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints baselineY:(CGFloat)baselineY;
 
-/// Create bands path (upper and lower bounds with fill)
-/// @param upperPoints Upper band data points
-/// @param lowerPoints Lower band data points
-/// @return Bezier path for bands rendering
-- (NSBezierPath *)createBandsPathFromUpperPoints:(NSArray<IndicatorDataModel *> *)upperPoints
-                                     lowerPoints:(NSArray<IndicatorDataModel *> *)lowerPoints;
-
 #pragma mark - Coordinate Conversion
-
 /// Convert timestamp to X coordinate
 /// @param timestamp Data point timestamp
-/// @return X coordinate in panel view
+/// @return X coordinate in panel
 - (CGFloat)xCoordinateForTimestamp:(NSDate *)timestamp;
 
-/// Convert indicator value to Y coordinate
-/// @param value Indicator value
-/// @return Y coordinate in panel view
+/// Convert value to Y coordinate
+/// @param value Data point value
+/// @return Y coordinate in panel
 - (CGFloat)yCoordinateForValue:(double)value;
 
-/// Get bar index for timestamp
-/// @param timestamp Data point timestamp
-/// @return Bar index in chart data
-- (NSInteger)barIndexForTimestamp:(NSDate *)timestamp;
-
-/// Check if point is within visible range
-/// @param timestamp Data point timestamp
-/// @return YES if point should be rendered
-- (BOOL)isTimestampInVisibleRange:(NSDate *)timestamp;
-
-#pragma mark - Styling and Appearance
-
-/// Get default line width for indicator type
-/// @param indicator Indicator instance
-/// @return Default line width
-- (CGFloat)defaultLineWidthForIndicator:(TechnicalIndicatorBase *)indicator;
-
+#pragma mark - Style and Color Helpers
 /// Get default stroke color for indicator
 /// @param indicator Indicator instance
 /// @return Default stroke color
 - (NSColor *)defaultStrokeColorForIndicator:(TechnicalIndicatorBase *)indicator;
+
+/// Get default line width for indicator
+/// @param indicator Indicator instance
+/// @return Default line width
+- (CGFloat)defaultLineWidthForIndicator:(TechnicalIndicatorBase *)indicator;
 
 /// Get default fill color for indicator
 /// @param indicator Indicator instance
@@ -178,7 +147,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)applyVisualEffectsToLayer:(CAShapeLayer *)layer forIndicator:(TechnicalIndicatorBase *)indicator;
 
 #pragma mark - Performance Optimization
-
 /// Check if indicator needs re-rendering
 /// @param indicator Indicator to check
 /// @return YES if rendering update is needed
@@ -197,7 +165,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)batchRenderIndicators:(NSArray<TechnicalIndicatorBase *> *)indicators;
 
 #pragma mark - Animation Support
-
 /// Animate layer appearance
 /// @param layer Layer to animate
 /// @param duration Animation duration
@@ -215,7 +182,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)animateLayerRemoval:(CAShapeLayer *)layer completion:(void(^)(void))completion;
 
 #pragma mark - Error Handling and Validation
-
 /// Validate indicator data before rendering
 /// @param indicator Indicator to validate
 /// @param error Error pointer for validation failures
@@ -228,7 +194,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)handleRenderingError:(NSError *)error forIndicator:(TechnicalIndicatorBase *)indicator;
 
 #pragma mark - Recursive Rendering
-
 /// Render children indicators recursively
 /// @param parentIndicator Parent indicator with children
 - (void)renderChildrenRecursively:(TechnicalIndicatorBase *)parentIndicator;
@@ -236,37 +201,22 @@ NS_ASSUME_NONNULL_BEGIN
 /// Update Z-order for layered indicators
 - (void)updateIndicatorLayerZOrder;
 
-#pragma mark - Context Integration
-
-/// Update shared X coordinate context
-/// @param sharedXContext Shared X context from chart widget
-- (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext;
-
-/// Update panel Y coordinate context
-/// @param panelYContext Panel-specific Y context
-- (void)updatePanelYContext:(PanelYCoordinateContext *)panelYContext;
-
 #pragma mark - Cleanup
-
 /// Cleanup resources and remove layers
 - (void)cleanup;
 
 /// Remove all layers from superlayer
 - (void)removeAllLayers;
-#pragma mark - Visibility Management
 
+#pragma mark - Visibility Management
 /// Toggle visibility of all child indicators (keeps root visible)
 /// @param visible Whether child indicators should be visible
 - (void)setChildIndicatorsVisible:(BOOL)visible;
 
-#pragma mark - Batch Rendering
-/// Render all indicators in the allIndicators array
-- (void)renderAllIndicators;
-
-/// Set all indicators for this renderer
-/// @param indicators Array of all indicators to manage
-/// @param rootIndicator Main indicator (should be in the array)
-- (void)setIndicators:(NSArray<TechnicalIndicatorBase *> *)indicators rootIndicator:(TechnicalIndicatorBase *)rootIndicator;
+/// Set visibility recursively for indicators
+/// @param indicators Array of indicators to modify
+/// @param visible Whether indicators should be visible
+- (void)setVisibilityRecursively:(NSArray<TechnicalIndicatorBase *> *)indicators visible:(BOOL)visible;
 
 @end
 

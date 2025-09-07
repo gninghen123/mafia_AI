@@ -2947,6 +2947,13 @@
         [self updateExternalRenderersSharedXContext];
     }
     
+    // ✅ UNIFICAZIONE: Quando ChartContent viene invalidato, invalida AUTOMATICAMENTE anche gli Indicators
+    if (options & ChartLayerInvalidationChartContent) {
+        // Forza l'invalidazione degli indicatori insieme ai candlestick/volume
+        options |= ChartLayerInvalidationIndicators;
+        NSLog(@"🔗 Auto-invalidating indicators along with chart content");
+    }
+    
     // Step 2: Invalidate native layers (ChartPanelView owns these)
     if (options & ChartLayerInvalidationChartContent) {
         [self.chartContentLayer setNeedsDisplay];
@@ -2996,25 +3003,43 @@
             [invalidatedLayers addObject:@"alertsEditing"];
         }
     }
+    
+    // ✅ NUOVO: Gestione unificata degli Indicators
+    if (options & ChartLayerInvalidationIndicators) {
+        if (self.indicatorRenderer) {
+            [self.indicatorRenderer invalidateIndicatorLayers];
+            [invalidatedLayers addObject:@"indicators"];
+        }
+    }
+    
+    // Step 4: Log invalidation for debugging
+    if (invalidatedLayers.count > 0) {
+        NSLog(@"🎨 ChartPanelView (%@): Invalidated layers: [%@] - %@",
+              self.panelType,
+              [invalidatedLayers componentsJoinedByString:@", "],
+              reason ?: @"no reason");
+    }
 }
+
 
 - (void)invalidateLayers:(ChartLayerInvalidationOptions)options {
     [self invalidateLayers:options updateSharedXContext:NO reason:nil];
 }
 
-- (void)invalidateCoordinateDependentLayersWithReason:(NSString *)reason {
-    // These layers depend on coordinate system and need SharedXContext update
-    // ✅ ASSUMERE: che i contexts siano già stati aggiornati dal caller
 
+- (void)invalidateCoordinateDependentLayersWithReason:(NSString *)reason {
+    // ✅ AGGIORNATO: Include automaticamente gli indicatori nelle invalidazioni coordinate-dipendenti
     ChartLayerInvalidationOptions coordinateDependent = (ChartLayerInvalidationChartContent |
                                                           ChartLayerInvalidationYAxis |
                                                           ChartLayerInvalidationObjects |
-                                                          ChartLayerInvalidationAlerts);
+                                                          ChartLayerInvalidationAlerts |
+                                                          ChartLayerInvalidationIndicators);  // ← AGGIUNTO
      
-     [self invalidateLayers:coordinateDependent
-       updateSharedXContext:NO  // ← CAMBIATO DA YES A NO
-                     reason:reason ?: @"coordinate system change"];
+    [self invalidateLayers:coordinateDependent
+      updateSharedXContext:NO
+                    reason:reason ?: @"coordinate system change"];
 }
+
 
 - (void)invalidateInteractionLayers {
     NSMutableArray *layersToInvalidate = [NSMutableArray array];
@@ -3099,6 +3124,11 @@
     
     if (self.alertRenderer) {
         [self.alertRenderer updateSharedXContext:self.sharedXContext];
+    }
+    
+    // ✅ NUOVO: Include anche IndicatorRenderer
+    if (self.indicatorRenderer) {
+        [self.indicatorRenderer updateSharedXContext:self.sharedXContext];
     }
 }
 

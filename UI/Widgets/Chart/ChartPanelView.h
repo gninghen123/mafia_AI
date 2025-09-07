@@ -38,18 +38,22 @@ typedef NS_OPTIONS(NSUInteger, ChartLayerInvalidationOptions) {
     ChartLayerInvalidationAlerts         = 1 << 6,  ///< Alert markers
     ChartLayerInvalidationAlertsEditing  = 1 << 7,  ///< Alert being dragged
     ChartLayerInvalidationIndicators     = 1 << 8,  ///< Technical indicators (SMA, RSI, etc.)
-
-    // Convenience combinations
+    
+    // ✅ AGGIORNATO: Convenience combinations che includono gli indicatori
     ChartLayerInvalidationNativeAll      = (ChartLayerInvalidationChartContent |
                                             ChartLayerInvalidationYAxis |
                                             ChartLayerInvalidationCrosshair |
                                             ChartLayerInvalidationSelection),
                                             
     ChartLayerInvalidationExternalAll    = (ChartLayerInvalidationObjects |
-                                               ChartLayerInvalidationObjectsEditing |
-                                               ChartLayerInvalidationAlerts |
-                                               ChartLayerInvalidationAlertsEditing |
-                                               ChartLayerInvalidationIndicators),  
+                                            ChartLayerInvalidationObjectsEditing |
+                                            ChartLayerInvalidationAlerts |
+                                            ChartLayerInvalidationAlertsEditing |
+                                            ChartLayerInvalidationIndicators),  // ← AGGIUNTO
+                                            
+    // ✅ NUOVO: Combinazione per invalidare tutto il contenuto principale del chart
+    ChartLayerInvalidationContentAndData = (ChartLayerInvalidationChartContent |
+                                            ChartLayerInvalidationIndicators),   // ← NUOVA COMBO
                                             
     ChartLayerInvalidationAll            = (ChartLayerInvalidationNativeAll |
                                             ChartLayerInvalidationExternalAll)

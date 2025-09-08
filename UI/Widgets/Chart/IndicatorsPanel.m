@@ -13,7 +13,7 @@
 #import "TechnicalIndicatorBase+Hierarchy.h"
 #import "TechnicalIndicatorBase.h"
 
-@interface IndicatorsPanel ()
+@interface IndicatorsPanel () <NSComboBoxDataSource, NSComboBoxDelegate>
 
 @property (nonatomic, strong) NSVisualEffectView *backgroundView;
 @property (nonatomic, strong) NSView *headerView;
@@ -21,7 +21,6 @@
 @property (nonatomic, strong) NSStackView *mainStackView;
 
 // UI Components (readwrite for internal use)
-@property (nonatomic, strong, readwrite) NSComboBox *templateComboBox;
 @property (nonatomic, strong, readwrite) NSButton *templateSettingsButton;
 @property (nonatomic, strong, readwrite) NSButton *templateSaveButton;
 @property (nonatomic, strong, readwrite) NSOutlineView *templateOutlineView;
@@ -43,11 +42,16 @@
     self = [super init];
     if (self) {
         [self setupDefaults];
-        [self setupUI];
-        [self setupConstraints];
+  
     }
     return self;
 }
+
+- (void)viewWillDraw{
+    [self setupUI];
+    [self setupConstraints];
+}
+
 
 - (void)setupDefaults {
     self.isVisible = NO;
@@ -200,6 +204,8 @@
         [self.saveAsButton.centerYAnchor constraintEqualToAnchor:self.footerView.centerYAnchor]
     ]];
 }
+
+
 
 #pragma mark - Animation
 
@@ -835,9 +841,38 @@
 
 - (void)configurePanelSettings:(NSMenuItem *)sender {
     ChartPanelTemplateModel *panel = sender.representedObject;
-    NSLog(@"⚙️ IndicatorsPanel: Configure Panel Settings: %@", panel.displayName);
-    // TODO: Implementare Panel Settings Dialog (include anche root indicator config)
+    NSLog(@"⚙️ IndicatorsPanel: Opening Panel Settings for: %@", panel.displayName);
+    
+    [PanelSettingsDialog showSettingsForPanel:panel
+                                  parentWindow:self.window
+                                    completion:^(BOOL saved, ChartPanelTemplateModel *updatedPanel) {
+        if (saved && updatedPanel) {
+            NSLog(@"✅ Panel settings updated: %@", updatedPanel.displayName);
+            
+            // Find and replace the panel in current template
+            NSMutableArray *panels = [self.currentTemplate.panels mutableCopy];
+            for (NSUInteger i = 0; i < panels.count; i++) {
+                ChartPanelTemplateModel *existingPanel = panels[i];
+                if ([existingPanel.panelID isEqualToString:panel.panelID]) {
+                    panels[i] = updatedPanel;
+                    break;
+                }
+            }
+            
+            // Update template
+            self.currentTemplate.panels = [panels copy];
+            
+            // Refresh UI
+            [self refreshTemplateDisplay];
+            [self updateButtonStates];
+            
+            // Enable apply button
+            self.applyButton.enabled = YES;
+            self.resetButton.enabled = YES;
+        }
+    }];
 }
+
 
 - (void)removePanelWithConfirmation:(NSMenuItem *)sender {
     ChartPanelTemplateModel *panel = sender.representedObject;
@@ -864,22 +899,35 @@
 
 - (void)configureIndicator:(NSMenuItem *)sender {
     TechnicalIndicatorBase *indicator = sender.representedObject;
-    NSLog(@"⚙️ IndicatorsPanel: Configure Indicator: %@", indicator.shortName);
+    NSLog(@"⚙️ IndicatorsPanel: Opening Indicator Configuration for: %@", indicator.shortName);
     
-    // TODO: Implementare dialog di configurazione per singoli indicatori
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Configure Indicator";
-    alert.informativeText = [NSString stringWithFormat:@"Configuration dialog for %@ not implemented yet", indicator.shortName];
-    alert.alertStyle = NSAlertStyleInformational;
-    [alert addButtonWithTitle:@"OK"];
-    [alert runModal];
+    [IndicatorConfigurationDialog showConfigurationForIndicator:indicator
+                                                   parentWindow:self.window
+                                                     completion:^(BOOL saved, NSDictionary *updatedParameters) {
+        if (saved && updatedParameters) {
+            NSLog(@"✅ Indicator parameters updated: %@", indicator.shortName);
+            
+            // Apply updated parameters to indicator
+            indicator.parameters = updatedParameters;
+            
+            // If this is a child indicator, update the childIndicatorsData
+            [self updateChildIndicatorDataForIndicator:indicator withParameters:updatedParameters];
+            
+            // Refresh UI
+            [self refreshTemplateDisplay];
+            [self updateButtonStates];
+            
+            // Enable apply button
+            self.applyButton.enabled = YES;
+            self.resetButton.enabled = YES;
+        }
+    }];
 }
 
 - (void)removeIndicator:(NSMenuItem *)sender {
     TechnicalIndicatorBase *indicator = sender.representedObject;
     NSLog(@"🗑️ IndicatorsPanel: Remove Indicator: %@", indicator.shortName);
     
-    // TODO: Implementare rimozione indicator con conferma
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"Remove Indicator";
     alert.informativeText = [NSString stringWithFormat:@"Are you sure you want to remove %@?", indicator.shortName];
@@ -889,24 +937,56 @@
     
     [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
         if (returnCode == NSAlertFirstButtonReturn) {
-            NSLog(@"✅ Removing indicator: %@", indicator.shortName);
-            // TODO: Implementare rimozione effettiva
-            [self refreshTemplateDisplay];
+            // Perform actual removal
+            BOOL removed = [self removeIndicatorFromTemplateData:indicator];
+            
+            if (removed) {
+                NSLog(@"✅ Indicator removed: %@", indicator.shortName);
+                [self refreshTemplateDisplay];
+                [self updateButtonStates];
+                
+                // Enable apply button
+                self.applyButton.enabled = YES;
+                self.resetButton.enabled = YES;
+            } else {
+                NSLog(@"❌ Failed to remove indicator: %@", indicator.shortName);
+            }
         }
     }];
 }
 
+- (BOOL)removeIndicatorFromTemplateData:(TechnicalIndicatorBase *)indicator {
+    for (ChartPanelTemplateModel *panel in self.currentTemplate.panels) {
+        NSMutableArray *childIndicators = [panel.childIndicatorsData mutableCopy];
+        
+        for (NSUInteger i = 0; i < childIndicators.count; i++) {
+            NSDictionary *childData = childIndicators[i];
+            
+            // Match by instance ID or class name
+            if ([childData[@"instanceID"] isEqualToString:indicator.indicatorID] ||
+                [childData[@"indicatorID"] isEqualToString:NSStringFromClass([indicator class])]) {
+                
+                // Remove from array
+                [childIndicators removeObjectAtIndex:i];
+                
+                // Update panel
+                panel.childIndicatorsData = [childIndicators copy];
+                
+                return YES;
+            }
+        }
+    }
+    
+    return NO;
+}
+
+
 - (void)showAddChildIndicatorDialog:(NSMenuItem *)sender {
     TechnicalIndicatorBase *parentIndicator = sender.representedObject;
-    NSLog(@"🎯 IndicatorsPanel: Show Add Child Indicator Dialog for parent: %@", parentIndicator.shortName);
+    NSLog(@"🎯 IndicatorsPanel: Opening Add Child Indicator Dialog for parent: %@", parentIndicator.shortName);
     
-    // TODO: Implementare aggiunta child indicator
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Add Child Indicator";
-    alert.informativeText = [NSString stringWithFormat:@"Add child indicator to %@ not implemented yet", parentIndicator.shortName];
-    alert.alertStyle = NSAlertStyleInformational;
-    [alert addButtonWithTitle:@"OK"];
-    [alert runModal];
+    // Create and show selection dialog
+    [self showChildIndicatorSelectionDialogForParent:parentIndicator];
 }
 
 // ✅ PLACEHOLDER METHODS per le azioni custom
@@ -1407,7 +1487,166 @@
     NSLog(@"🌲 PineScript editor for child - TODO");
 }
 
+- (void)showChildIndicatorSelectionDialogForParent:(TechnicalIndicatorBase *)parentIndicator {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Add Child Indicator";
+    alert.informativeText = [NSString stringWithFormat:@"Select an indicator to add as child of %@:", parentIndicator.shortName];
+    alert.alertStyle = NSAlertStyleInformational;
+    
+    // Create popup for indicator selection
+    NSPopUpButton *indicatorPopup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 0, 250, 24)];
+    
+    // Get compatible indicators
+    IndicatorRegistry *registry = [IndicatorRegistry sharedRegistry];
+    NSArray<NSString *> *availableIndicators = [registry getAllIndicatorIdentifiers];
+    NSArray<NSString *> *compatibleIndicators = [self filterIndicatorsCompatibleWithParent:availableIndicators
+                                                                          parentIndicator:parentIndicator];
+    
+    // Populate popup
+    for (NSString *indicatorID in compatibleIndicators) {
+        NSString *displayName = [self friendlyNameForIndicatorType:indicatorID];
+        [indicatorPopup addItemWithTitle:displayName];
+        indicatorPopup.lastItem.representedObject = indicatorID;
+    }
+    
+    if (compatibleIndicators.count == 0) {
+        [indicatorPopup addItemWithTitle:@"No compatible indicators available"];
+        indicatorPopup.enabled = NO;
+    }
+    
+    alert.accessoryView = indicatorPopup;
+    [alert addButtonWithTitle:@"Add"];
+    [alert addButtonWithTitle:@"Configure & Add"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
+        if (returnCode == NSAlertFirstButtonReturn) {
+            // Add with default parameters
+            NSString *selectedIndicatorID = indicatorPopup.selectedItem.representedObject;
+            if (selectedIndicatorID) {
+                [self addChildIndicator:selectedIndicatorID toParent:parentIndicator withParameters:@{}];
+            }
+        } else if (returnCode == NSAlertSecondButtonReturn) {
+            // Configure then add
+            NSString *selectedIndicatorID = indicatorPopup.selectedItem.representedObject;
+            if (selectedIndicatorID) {
+                [self configureAndAddChildIndicator:selectedIndicatorID toParent:parentIndicator];
+            }
+        }
+    }];
+}
+
+- (void)configureAndAddChildIndicator:(NSString *)indicatorID toParent:(TechnicalIndicatorBase *)parentIndicator {
+    // Create temporary indicator for configuration
+    IndicatorRegistry *registry = [IndicatorRegistry sharedRegistry];
+    TechnicalIndicatorBase *tempIndicator = [registry createIndicatorWithIdentifier:indicatorID parameters:@{}];
+    
+    if (tempIndicator) {
+        [IndicatorConfigurationDialog showConfigurationForIndicator:tempIndicator
+                                                       parentWindow:self.window
+                                                         completion:^(BOOL saved, NSDictionary *updatedParameters) {
+            if (saved) {
+                [self addChildIndicator:indicatorID
+                               toParent:parentIndicator
+                         withParameters:updatedParameters ?: @{}];
+            }
+        }];
+    } else {
+        // Fallback to default parameters
+        [self addChildIndicator:indicatorID toParent:parentIndicator withParameters:@{}];
+    }
+}
+
+
 - (void)browseChildIndicatorLibrary:(NSMenuItem *)sender {
     NSLog(@"📚 Browse child indicator library - TODO");
 }
+
+- (void)addChildIndicator:(NSString *)indicatorID
+                 toParent:(TechnicalIndicatorBase *)parentIndicator
+           withParameters:(NSDictionary *)parameters {
+    
+    // Find the panel containing the parent indicator
+    ChartPanelTemplateModel *containingPanel = [self findPanelContainingIndicator:parentIndicator];
+    if (!containingPanel) {
+        NSLog(@"❌ Could not find panel containing parent indicator: %@", parentIndicator.shortName);
+        return;
+    }
+    
+    // Create new child indicator data
+    NSMutableArray *childIndicators = [containingPanel.childIndicatorsData mutableCopy] ?: [NSMutableArray array];
+    
+    NSDictionary *newChildIndicator = @{
+        @"indicatorID": indicatorID,
+        @"instanceID": [[NSUUID UUID] UUIDString],
+        @"parameters": parameters,
+        @"isVisible": @YES,
+        @"displayOrder": @(childIndicators.count),
+        @"parentIndicatorID": parentIndicator.indicatorID
+    };
+    
+    [childIndicators addObject:newChildIndicator];
+    containingPanel.childIndicatorsData = [childIndicators copy];
+    
+    // Update UI
+    [self refreshTemplateDisplay];
+    [self updateButtonStates];
+    
+    // Force enable Apply button
+    self.applyButton.enabled = YES;
+    self.resetButton.enabled = YES;
+    
+    NSLog(@"✅ Added child indicator %@ to parent %@. Panel now has %ld child indicators",
+          indicatorID, parentIndicator.shortName, (long)childIndicators.count);
+}
+
+// ✅ NUOVO METODO: Update child indicator data
+- (void)updateChildIndicatorDataForIndicator:(TechnicalIndicatorBase *)indicator
+                              withParameters:(NSDictionary *)parameters {
+    
+    // Find the panel and child indicator data to update
+    for (ChartPanelTemplateModel *panel in self.currentTemplate.panels) {
+        NSMutableArray *childIndicators = [panel.childIndicatorsData mutableCopy];
+        
+        for (NSUInteger i = 0; i < childIndicators.count; i++) {
+            NSMutableDictionary *childData = [childIndicators[i] mutableCopy];
+            
+            // Match by instance ID or indicator ID
+            if ([childData[@"instanceID"] isEqualToString:indicator.indicatorID] ||
+                [childData[@"indicatorID"] isEqualToString:NSStringFromClass([indicator class])]) {
+                
+                // Update parameters
+                childData[@"parameters"] = parameters;
+                childIndicators[i] = [childData copy];
+                
+                // Update panel
+                panel.childIndicatorsData = [childIndicators copy];
+                
+                NSLog(@"✅ Updated child indicator data for: %@", indicator.shortName);
+                return;
+            }
+        }
+    }
+}
+
+// ✅ NUOVO METODO: Helper per nomi friendly
+- (NSString *)friendlyNameForIndicatorType:(NSString *)indicatorType {
+    // Remove "Indicator" suffix and add spaces
+    NSString *name = [indicatorType stringByReplacingOccurrencesOfString:@"Indicator" withString:@""];
+    
+    // Add spaces before capital letters
+    NSMutableString *friendlyName = [[NSMutableString alloc] init];
+    for (NSUInteger i = 0; i < name.length; i++) {
+        unichar c = [name characterAtIndex:i];
+        
+        if (i > 0 && [[NSCharacterSet uppercaseLetterCharacterSet] characterIsMember:c]) {
+            [friendlyName appendString:@" "];
+        }
+        
+        [friendlyName appendString:[NSString stringWithCharacters:&c length:1]];
+    }
+    
+    return [friendlyName copy];
+}
+
 @end

@@ -1,33 +1,37 @@
 //
-// IndicatorsPanel.h - UPDATED for Runtime Models
-// TradingApp
+//  IndicatorsPanel.h
+//  TradingApp
 //
-// Side panel for chart template and indicators management
-// ARCHITETTURA: Usa ChartTemplateModel (runtime models) invece di Core Data
+//  Side panel for chart template and indicators management
+//  CLEANED: Contains only methods actually implemented in .m file
+//  ARCHITETTURA: Usa ChartTemplateModel (runtime models)
 //
 
 #import <Cocoa/Cocoa.h>
-#import "ChartTemplateModels.h"  // ✅ AGGIORNATO: Runtime models invece di Core Data
+#import "ChartTemplateModels.h"
 #import "TechnicalIndicatorBase.h"
+#import "IndicatorConfigurationDialog.h"
+#import "PanelSettingsDialog.h"
+#import "IndicatorRegistry.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
 @class IndicatorsPanel;
 
-#pragma mark - Delegate Protocol - AGGIORNATO per runtime models
+#pragma mark - Delegate Protocol
 
 @protocol IndicatorsPanelDelegate <NSObject>
 
 @required
 /// Called when user selects a template
 /// @param panel The indicators panel instance
-/// @param template ChartTemplateModel (runtime model) that was selected
-- (void)indicatorsPanel:(id)panel didSelectTemplate:(ChartTemplateModel *)template;  // ✅ AGGIORNATO
+/// @param template ChartTemplateModel that was selected
+- (void)indicatorsPanel:(id)panel didSelectTemplate:(ChartTemplateModel *)template;
 
 /// Called when user requests to apply the selected template
 /// @param panel The indicators panel instance
-/// @param template ChartTemplateModel (runtime model) to apply
-- (void)indicatorsPanel:(id)panel didRequestApplyTemplate:(ChartTemplateModel *)template;  // ✅ AGGIORNATO
+/// @param template ChartTemplateModel to apply
+- (void)indicatorsPanel:(id)panel didRequestApplyTemplate:(ChartTemplateModel *)template;
 
 /// Called when user requests to configure an indicator
 /// @param panel The indicators panel instance
@@ -48,8 +52,8 @@ NS_ASSUME_NONNULL_BEGIN
 /// Called when user requests template management actions
 /// @param panel The indicators panel instance
 /// @param action The action type ("duplicate", "rename", "delete", "export")
-/// @param template ChartTemplateModel (runtime model) target template
-- (void)indicatorsPanel:(id)panel didRequestTemplateAction:(NSString *)action forTemplate:(ChartTemplateModel *)template;  // ✅ AGGIORNATO
+/// @param template ChartTemplateModel target template
+- (void)indicatorsPanel:(id)panel didRequestTemplateAction:(NSString *)action forTemplate:(ChartTemplateModel *)template;
 
 @end
 
@@ -59,8 +63,9 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, weak, nullable) id<IndicatorsPanelDelegate> delegate;
 @property (nonatomic, assign) BOOL isVisible;
 @property (nonatomic, assign) CGFloat panelWidth;
+@property (nonatomic, strong) NSLayoutConstraint *widthConstraint;
 
-#pragma mark - UI Components
+#pragma mark - UI Components (readonly)
 @property (nonatomic, strong, readonly) NSComboBox *templateComboBox;
 @property (nonatomic, strong, readonly) NSButton *templateSettingsButton;
 @property (nonatomic, strong, readonly) NSButton *templateSaveButton;
@@ -70,55 +75,102 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, readonly) NSButton *resetButton;
 @property (nonatomic, strong, readonly) NSButton *saveAsButton;
 
-#pragma mark - Data Management - AGGIORNATO per runtime models
-@property (nonatomic, strong) NSArray<ChartTemplateModel *> *availableTemplates;  // ✅ AGGIORNATO
-@property (nonatomic, strong, nullable) ChartTemplateModel *currentTemplate;     // ✅ AGGIORNATO: Working copy
-@property (nonatomic, strong, nullable) ChartTemplateModel *originalTemplate;    // ✅ AGGIORNATO: Original reference
+#pragma mark - Data Management
+@property (nonatomic, strong) NSArray<ChartTemplateModel *> *availableTemplates;
+@property (nonatomic, strong, nullable) ChartTemplateModel *currentTemplate;     // Working copy
+@property (nonatomic, strong, nullable) ChartTemplateModel *originalTemplate;   // Original for comparison
 
-#pragma mark - Animation
-@property (nonatomic, strong) NSLayoutConstraint *widthConstraint;
+#pragma mark - State
+@property (nonatomic, assign) BOOL isLoadingTemplates;
 
-#pragma mark - Public Methods
+#pragma mark - Initialization
+- (instancetype)init;
 
-/// Toggle panel visibility with animation
-/// @param animated Whether to animate the transition
+#pragma mark - Setup Methods (Internal)
+- (void)setupDefaults;
+- (void)setupUI;
+- (void)setupHeader;
+- (void)setupTemplateOutlineView;
+- (void)setupFooter;
+- (void)setupConstraints;
+
+#pragma mark - Visibility Management
 - (void)toggleVisibilityAnimated:(BOOL)animated;
-
-/// Show panel with animation
-/// @param animated Whether to animate the transition
 - (void)showAnimated:(BOOL)animated;
-
-/// Hide panel with animation
-/// @param animated Whether to animate the transition
 - (void)hideAnimated:(BOOL)animated;
 
-/// Load and display available templates - AGGIORNATO per runtime models
-/// @param templates Array of ChartTemplateModel (runtime models)
-- (void)loadAvailableTemplates:(NSArray<ChartTemplateModel *> *)templates;  // ✅ AGGIORNATO
-
-/// Select and display specific template - AGGIORNATO per runtime models
-/// @param template ChartTemplateModel (runtime model) to select and display
-- (void)selectTemplate:(ChartTemplateModel *)template;  // ✅ AGGIORNATO
-
-/// Refresh the outline view display
+#pragma mark - Template Management
+- (void)loadAvailableTemplates:(NSArray<ChartTemplateModel *> *)templates;
+- (void)selectTemplate:(ChartTemplateModel *)template;
 - (void)refreshTemplateDisplay;
-
-/// Reset current template to original state
 - (void)resetToOriginalTemplate;
-
-/// Check if current template has unsaved changes
-/// @return YES if there are unsaved changes
 - (BOOL)hasUnsavedChanges;
 
-/// Get display name for panel type
-/// @param panelType The panel type identifier
-/// @return Human-readable panel name
-- (NSString *)displayNameForPanelType:(NSString *)panelType;
+#pragma mark - Dialog Methods
+- (void)showSaveAsDialog;
 
-/// Create context menu for outline view items
-/// @param item The clicked item
-/// @return Context menu for the item
-- (NSMenu *)contextMenuForItem:(id)item;
+#pragma mark - Button Actions
+- (void)templateSettingsAction:(NSButton *)sender;
+- (void)applyAction:(NSButton *)sender;
+- (void)resetAction:(NSButton *)sender;
+- (void)saveAsAction:(NSButton *)sender;
+- (void)updateButtonStates;
+
+#pragma mark - NSOutlineView DataSource & Delegate
+- (NSInteger)outlineView:(NSOutlineView *)outlineView numberOfChildrenOfItem:(nullable id)item;
+- (id)outlineView:(NSOutlineView *)outlineView child:(NSInteger)index ofItem:(nullable id)item;
+- (BOOL)outlineView:(NSOutlineView *)outlineView isItemExpandable:(id)item;
+- (NSView *)outlineView:(NSOutlineView *)outlineView viewForTableColumn:(nullable NSTableColumn *)tableColumn item:(id)item;
+- (void)outlineViewSelectionDidChange:(NSNotification *)notification;
+
+#pragma mark - NSComboBox DataSource & Delegate
+- (NSInteger)numberOfItemsInComboBox:(NSComboBox *)comboBox;
+- (nullable id)comboBox:(NSComboBox *)comboBox objectValueForItemAtIndex:(NSInteger)index;
+- (void)comboBoxSelectionDidChange:(NSNotification *)notification;
+
+#pragma mark - Context Menu
+- (NSMenu *)contextMenuForItem:(nullable id)item;
+- (NSMenu *)createAddPanelSubmenu;
+- (NSMenu *)createAddIndicatorSubmenuForPanel:(ChartPanelTemplateModel *)panel;
+- (NSMenu *)createCustomIndicatorSubmenuForPanel:(ChartPanelTemplateModel *)panel;
+- (NSMenu *)createHierarchicalChildIndicatorMenuForIndicator:(TechnicalIndicatorBase *)parentIndicator;
+- (NSMenu *)createCategorizedChildIndicatorSubmenuForIndicator:(TechnicalIndicatorBase *)parentIndicator;
+- (NSMenu *)createCustomChildIndicatorSubmenuForIndicator:(TechnicalIndicatorBase *)parentIndicator;
+
+#pragma mark - Context Menu Actions
+- (void)addPanelFromMenu:(NSMenuItem *)sender;
+- (void)addIndicatorToPanel:(NSMenuItem *)sender;
+- (void)configurePanelSettings:(NSMenuItem *)sender;
+- (void)removePanelWithConfirmation:(NSMenuItem *)sender;
+- (void)configureIndicator:(NSMenuItem *)sender;
+- (void)removeIndicator:(NSMenuItem *)sender;
+- (void)showAddChildIndicatorDialog:(NSMenuItem *)sender;
+- (void)addChildIndicatorToIndicator:(NSMenuItem *)sender;
+
+#pragma mark - Placeholder Actions (TODO)
+- (void)importCustomIndicator:(NSMenuItem *)sender;
+- (void)showPineScriptEditor:(NSMenuItem *)sender;
+- (void)browseIndicatorLibrary:(NSMenuItem *)sender;
+- (void)importCustomChildIndicator:(NSMenuItem *)sender;
+- (void)showPineScriptEditorForChild:(NSMenuItem *)sender;
+- (void)browseChildIndicatorLibrary:(NSMenuItem *)sender;
+
+#pragma mark - Panel Management
+- (void)addPanelWithType:(NSString *)panelType rootIndicator:(NSString *)rootIndicator defaultHeight:(double)defaultHeight;
+- (void)removePanel:(ChartPanelTemplateModel *)panel;
+
+#pragma mark - Child Indicator Helpers
+- (NSArray<NSString *> *)filterIndicatorsCompatibleWithParent:(NSArray<NSString *> *)indicators parentIndicator:(TechnicalIndicatorBase *)parentIndicator;
+- (ChartPanelTemplateModel *)findPanelContainingIndicator:(TechnicalIndicatorBase *)indicator;
+
+#pragma mark - Right-Click Support
+- (void)rightMouseDown:(NSEvent *)event;
+
+#pragma mark - Window Management
+- (NSWindow *)window;
+
+#pragma mark - Cleanup
+- (void)dealloc;
 
 @end
 

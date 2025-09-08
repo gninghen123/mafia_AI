@@ -655,31 +655,128 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
         return;
     }
     
+    NSLog(@"🎨 Creating template '%@' from %ld current panels", templateName, (long)self.chartPanels.count);
+    
     // ✅ Create template from current panel configuration using runtime models
     ChartTemplateModel *newTemplate = [ChartTemplateModel templateWithName:templateName];
     newTemplate.isDefault = NO;
     
-    // Convert current panels to panel templates (simplified - would need more sophisticated conversion)
+    // ✅ CRITICAL FIX: Extract ACTUAL panel configuration with child indicators
     for (NSUInteger i = 0; i < self.chartPanels.count; i++) {
-        ChartPanelView *panel = self.chartPanels[i];
+        ChartPanelView *panelView = self.chartPanels[i];
         
-        // Create panel template from panel view (simplified)
-        ChartPanelTemplateModel *panelTemplate;
-        if ([panel.panelType isEqualToString:@"security"]) {
-            panelTemplate = [ChartPanelTemplateModel securityPanelWithHeight:(1.0 / self.chartPanels.count) order:i];
-        } else if ([panel.panelType isEqualToString:@"volume"]) {
-            panelTemplate = [ChartPanelTemplateModel volumePanelWithHeight:(1.0 / self.chartPanels.count) order:i];
-        } else {
-            panelTemplate = [ChartPanelTemplateModel oscillatorPanelWithHeight:(1.0 / self.chartPanels.count) order:i];
+        NSLog(@"🔍 Processing panel %ld: type='%@'", (long)i, panelView.panelType);
+        
+        // ✅ STEP 1: Calculate relative height based on actual panel size
+        CGFloat totalHeight = self.panelsSplitView.bounds.size.height;
+        CGFloat panelHeight = panelView.bounds.size.height;
+        CGFloat relativeHeight = (totalHeight > 0) ? (panelHeight / totalHeight) : (1.0 / self.chartPanels.count);
+        
+        NSLog(@"📐 Panel height: %.0f / %.0f = %.2f%%", panelHeight, totalHeight, relativeHeight * 100);
+        
+        // ✅ STEP 2: Determine root indicator type from panel type
+        NSString *rootIndicatorType = [self rootIndicatorTypeForPanelType:panelView.panelType];
+        
+        // ✅ STEP 3: Create panel template with basic info
+        ChartPanelTemplateModel *panelTemplate = [[ChartPanelTemplateModel alloc] init];
+        panelTemplate.panelID = [[NSUUID UUID] UUIDString];
+        panelTemplate.rootIndicatorType = rootIndicatorType;
+        panelTemplate.relativeHeight = relativeHeight;
+        panelTemplate.displayOrder = i;
+        
+        // ✅ STEP 4: **CRITICAL FIX** - Extract child indicators from actual panel!
+        NSArray<NSDictionary *> *childIndicatorsData = [self extractChildIndicatorsFromPanel:panelView];
+        panelTemplate.childIndicatorsData = childIndicatorsData;
+        
+        NSLog(@"✅ Panel %ld: %@ with %ld child indicators",
+              (long)i, rootIndicatorType, (long)childIndicatorsData.count);
+        
+        // Log each child indicator
+        for (NSDictionary *childData in childIndicatorsData) {
+            NSLog(@"   📊 Child: %@ (%@)",
+                  childData[@"indicatorID"], childData[@"instanceID"]);
         }
         
         [newTemplate addPanel:panelTemplate];
     }
     
+    NSLog(@"🏗️ Template created with %ld panels, saving...", (long)newTemplate.panels.count);
+    
     // ✅ Save using new API
     [[DataHub shared] saveChartTemplate:newTemplate completion:^(BOOL success, ChartTemplateModel *savedTemplate) {
-        completion(success ? savedTemplate : nil, success ? nil : [NSError errorWithDomain:@"ChartTemplateCreation" code:1002 userInfo:@{NSLocalizedDescriptionKey: @"Failed to save template"}]);
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (success && savedTemplate) {
+                NSLog(@"✅ Template '%@' saved successfully", savedTemplate.templateName);
+                completion(savedTemplate, nil);
+            } else {
+                NSLog(@"❌ Failed to save template '%@'", templateName);
+                NSError *error = [NSError errorWithDomain:@"ChartTemplateCreation"
+                                                     code:1002
+                                                 userInfo:@{NSLocalizedDescriptionKey: @"Failed to save template"}];
+                completion(nil, error);
+            }
+        });
     }];
+}
+
+- (NSArray<NSDictionary *> *)extractChildIndicatorsFromPanel:(ChartPanelView *)panelView {
+    
+    // ✅ STEP 1: Get indicator renderer from panel
+    ChartIndicatorRenderer *renderer = panelView.indicatorRenderer;
+    if (!renderer) {
+        NSLog(@"⚠️ No indicator renderer found in panel %@", panelView.panelType);
+        return @[];
+    }
+    
+    // ✅ STEP 2: Get root indicator from renderer
+    TechnicalIndicatorBase *rootIndicator = renderer.rootIndicator;
+    if (!rootIndicator) {
+        NSLog(@"⚠️ No root indicator found in renderer for panel %@", panelView.panelType);
+        return @[];
+    }
+    
+    // ✅ STEP 3: Extract child indicators from root indicator
+    NSArray<TechnicalIndicatorBase *> *childIndicators = rootIndicator.childIndicators;
+    if (!childIndicators || childIndicators.count == 0) {
+        NSLog(@"📝 No child indicators found in panel %@", panelView.panelType);
+        return @[];
+    }
+    
+    NSLog(@"🔍 Found %ld child indicators in panel %@",
+          (long)childIndicators.count, panelView.panelType);
+    
+    // ✅ STEP 4: Convert child indicators to serializable data
+    NSMutableArray<NSDictionary *> *childIndicatorsData = [[NSMutableArray alloc] init];
+    
+    for (TechnicalIndicatorBase *childIndicator in childIndicators) {
+        // ✅ Create serializable dictionary for each child indicator
+        NSDictionary *childData = @{
+            @"indicatorID": NSStringFromClass([childIndicator class]),
+            @"instanceID": childIndicator.indicatorID ?: [[NSUUID UUID] UUIDString],
+            @"parameters": childIndicator.parameters ?: @{},
+            @"isVisible": @(childIndicator.isVisible),
+            @"displayOrder": @([childIndicators indexOfObject:childIndicator])
+        };
+        
+        [childIndicatorsData addObject:childData];
+        
+        NSLog(@"   💾 Serialized child: %@ (visible: %@)",
+              childData[@"indicatorID"], childData[@"isVisible"]);
+    }
+    
+    return [childIndicatorsData copy];
+}
+
+- (NSString *)rootIndicatorTypeForPanelType:(NSString *)panelType {
+    if ([panelType isEqualToString:@"security"]) {
+        return @"SecurityIndicator";
+    } else if ([panelType isEqualToString:@"volume"]) {
+        return @"VolumeIndicator";
+    } else {
+        // Per altri tipi di pannello, potrebbe essere necessario determinare
+        // il tipo di root indicator dalla configurazione esistente
+        return @"OscillatorIndicator";
+    }
 }
 
 // ✅ AGGIORNATO per ChartTemplateModel

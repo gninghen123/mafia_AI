@@ -439,55 +439,6 @@ extern NSString *const DataHubDataLoadedNotification;
           (long)newDays, isExtension ? @"YES" : @"NO");
 }
 
-- (IBAction)templateChanged:(NSPopUpButton *)sender {
-    NSLog(@"🔄 IBAction: templateChanged");
-    
-    NSString *templateName = sender.titleOfSelectedItem;
-    
-    if (!templateName || templateName.length == 0) {
-        NSLog(@"⚠️ No template selected");
-        return;
-    }
-    
-    // ✅ Find template model using existing method or KVC
-    ChartTemplateModel *templateModel = nil;
-    
-    // Try to get available templates
-    NSArray *availableTemplates = [self valueForKey:@"availableTemplates"];
-    if (availableTemplates) {
-        for (ChartTemplateModel *template in availableTemplates) {
-            if ([template.templateName isEqualToString:templateName]) {
-                templateModel = template;
-                break;
-            }
-        }
-    }
-    
-    if (!templateModel) {
-        NSLog(@"⚠️ Template '%@' not found in available templates", templateName);
-        
-        // ✅ FALLBACK: Try legacy method if available
-        if ([self respondsToSelector:@selector(loadChartTemplate:)]) {
-            NSLog(@"🔄 Using legacy loadChartTemplate method");
-            [self performSelector:@selector(loadChartTemplate:) withObject:templateName];
-            return;
-        } else {
-            NSLog(@"❌ No template loading method available");
-            return;
-        }
-    }
-    
-    // ✅ USE HANDLER instead of legacy logic
-    [self handleTemplateChange:templateModel];
-    
-    NSLog(@"✅ IBAction: templateChanged completed via handler");
-}
-
-- (IBAction)templatePopupChanged:(NSPopUpButton *)sender {
-    // Delegate to main template changed method
-    [self templateChanged:sender];
-}
-
 
 
 #pragma mark - Data Loading and Notifications

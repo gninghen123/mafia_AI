@@ -325,20 +325,6 @@
         [self.timeframeSegmented setSelectedSegment:self.currentTimeframe];
     }
     
-    // ✅ UPDATE TEMPLATE POPUP - safely
-    if (self.templatePopup) {
-        ChartTemplateModel *currentTemplate = [self valueForKey:@"currentChartTemplate"];
-        if (currentTemplate) {
-            // Find and select current template in popup
-            for (NSInteger i = 0; i < self.templatePopup.numberOfItems; i++) {
-                NSMenuItem *item = [self.templatePopup itemAtIndex:i];
-                if ([item.title isEqualToString:currentTemplate.templateName]) {
-                    [self.templatePopup selectItemAtIndex:i];
-                    break;
-                }
-            }
-        }
-    }
     
     // ✅ UPDATE DATE RANGE CONTROLS
     if ([self respondsToSelector:@selector(updateDateRangeLabel)]) {

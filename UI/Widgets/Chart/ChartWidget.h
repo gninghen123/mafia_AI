@@ -2,273 +2,208 @@
 //  ChartWidget.h
 //  TradingApp
 //
-//  Chart widget with multiple coordinated panels - XIB VERSION
+//  Chart widget with XIB-based UI architecture
+//  CLEANED: Contains only methods actually implemented in .m file
 //
 
 #import "BaseWidget.h"
-#import "ObjectsPanel.h"
+#import "HistoricalBarModel.h"
+#import "ChartPanelView.h"
 #import "ChartObjectsManager.h"
-#import "ChartObjectRenderer.h"
-#import "CommonTypes.h"          // Per BarTimeframe enum
-#import "ChartPreferencesWindow.h"
-#import "ChartTemplateModels.h"
+#import "SharedXCoordinateContext.h"
 
+@class ObjectsPanel;
+@class ChartPreferencesWindow;
 
-@class ChartPanelView;
-@class HistoricalBarModel;
-@class MarketQuoteModel;
-@class SharedXCoordinateContext;  // ✅ Forward declaration invece di import
-@class ChartTemplateModel;
-@class ChartObjectManagerWindow;
+NS_ASSUME_NONNULL_BEGIN
 
-#define CHART_Y_AXIS_WIDTH 60
-#define CHART_MARGIN_LEFT 10
-#define CHART_MARGIN_RIGHT 10
-
+// Enums
+typedef NS_ENUM(NSInteger, ChartTimeframe) {
+    ChartTimeframe1Min = 0,
+    ChartTimeframe5Min = 1,
+    ChartTimeframe15Min = 2,
+    ChartTimeframe30Min = 3,
+    ChartTimeframe1Hour = 4,
+    ChartTimeframe4Hour = 5,
+    ChartTimeframeDaily = 6,
+    ChartTimeframeWeekly = 7,
+    ChartTimeframeMonthly = 8
+};
 
 typedef struct {
     NSString *symbol;
-    BarTimeframe timeframe;
+    ChartTimeframe timeframe;
     NSInteger daysToDownload;
-    BOOL hasTimeframe;
-    BOOL hasDaysSpecified;
     NSDate *startDate;
     NSDate *endDate;
+    BOOL hasTimeframe;
+    BOOL hasDaysSpecified;
 } SmartSymbolParameters;
-
-
-typedef NS_ENUM(NSInteger, ChartTimeframe) {
-    ChartTimeframe1Min,
-    ChartTimeframe5Min,
-    ChartTimeframe15Min,
-    ChartTimeframe30Min,
-    ChartTimeframe1Hour,
-    ChartTimeframe4Hour,
-    ChartTimeframeDaily,
-    ChartTimeframeWeekly,
-    ChartTimeframeMonthly
-};
 
 @interface ChartWidget : BaseWidget
 
-@property (nonatomic, strong) SharedXCoordinateContext *  sharedXContext;
+#pragma mark - XIB Outlets
+@property (weak) IBOutlet NSTextField *symbolTextField;
+@property (weak) IBOutlet NSSegmentedControl *timeframeSegmented;
+@property (weak) IBOutlet NSSegmentedControl *dateRangeSegmented;
+@property (weak) IBOutlet NSPopUpButton *templatePopup;
+@property (weak) IBOutlet NSSplitView *panelsSplitView;
+@property (weak) IBOutlet NSButton *objectsVisibilityToggle;
+@property (weak) IBOutlet NSButton *staticModeToggle;
+@property (weak) IBOutlet NSButton *objectsPanelToggle;
+@property (weak) IBOutlet NSButton *indicatorsPanelToggle;
 
-@property (nonatomic, assign) BOOL isStaticMode;
-@property (nonatomic, assign) BOOL renderersInitialized;
-
-@property (nonatomic, assign) BOOL yRangeCacheValid;
-@property (nonatomic, assign) NSInteger cachedStartIndex;
-@property (nonatomic, assign) NSInteger cachedEndIndex;
-
-
-@property (nonatomic, strong) ChartTemplateModel *currentChartTemplate;
-@property (nonatomic, strong) NSMutableArray<ChartTemplateModel *> *availableTemplates;
-
+#pragma mark - Chart Data Properties
 @property (nonatomic, strong, readonly) NSArray<HistoricalBarModel *> *chartData;
-#pragma mark - Trading Hours Preferences
-@property (nonatomic, assign) ChartTradingHours tradingHoursMode;
-
-#pragma mark - UI Components (Interface Builder - IBOutlet references)
-@property (nonatomic, strong) IBOutlet NSTextField *symbolTextField;
-@property (nonatomic, strong) IBOutlet NSSegmentedControl *timeframeSegmented;
-@property (nonatomic, strong) IBOutlet NSPopUpButton *templatePopup;
-@property (nonatomic, strong) IBOutlet NSButton *preferencesButton;
-@property (nonatomic, strong) IBOutlet NSSplitView *panelsSplitView;
-@property (nonatomic, strong) IBOutlet NSSlider *panSlider;
-@property (nonatomic, strong) IBOutlet NSButton *zoomOutButton;
-@property (nonatomic, strong) IBOutlet NSButton *zoomInButton;
-@property (nonatomic, strong) IBOutlet NSButton *zoomAllButton;
-
-// Objects UI
-@property (nonatomic, strong) IBOutlet NSSegmentedControl *dateRangeSegmented;
-@property (nonatomic, strong) IBOutlet NSButton *objectsPanelToggle;
-@property (nonatomic, strong) IBOutlet NSButton *objectsVisibilityToggle;
-@property (nonatomic, strong) IBOutlet NSButton *staticModeToggle;
-
-// Additional UI components from implementation
-@property (nonatomic, strong) IBOutlet NSSplitView *mainSplitView;
-
-
-// Date Range Control Properties (non-UI)
-@property (nonatomic, assign) NSInteger currentDateRangeDays;
-@property (nonatomic, assign) NSInteger selectedDateRangeSegment; // 0=CUSTOM, 1=1M, 2=3M...
-
-// Custom segment persistence
-@property (nonatomic, assign) NSInteger customDateRangeDays;     // Ultimo valore custom inserito
-@property (nonatomic, strong) NSString *customSegmentTitle;
-
-// 🆕 NEW: Default preferences for each timeframe group
-@property (nonatomic, assign) NSInteger defaultDaysFor1Min;        // 20
-@property (nonatomic, assign) NSInteger defaultDaysFor5Min;        // 40
-@property (nonatomic, assign) NSInteger defaultDaysForHourly;      // max available
-@property (nonatomic, assign) NSInteger defaultDaysForDaily;       // 180 (6 months)
-@property (nonatomic, assign) NSInteger defaultDaysForWeekly;      // 365 (1 year)
-@property (nonatomic, assign) NSInteger defaultDaysForMonthly;     // 1825 (5 years)
-
-// 🆕 NEW: Default visible bars for each timeframe group
-@property (nonatomic, assign) NSInteger defaultVisibleFor1Min;     // days to show initially
-@property (nonatomic, assign) NSInteger defaultVisibleFor5Min;
-@property (nonatomic, assign) NSInteger defaultVisibleForHourly;
-@property (nonatomic, assign) NSInteger defaultVisibleForDaily;
-@property (nonatomic, assign) NSInteger defaultVisibleForWeekly;
-@property (nonatomic, assign) NSInteger defaultVisibleForMonthly;
-
-// Objects Panel (programmatic creation, not IBOutlet)
-@property (nonatomic, strong) ObjectsPanel *objectsPanel;
-@property (nonatomic, strong) ChartObjectsManager *objectsManager;
-@property (nonatomic, assign) BOOL isObjectsPanelVisible;
-
-@property (nonatomic, assign) BOOL isSetupCompleted;  // ✅ NUOVO FLAG principale
-@property (nonatomic, assign) BOOL isTemplateSystemReady;  // ✅ FLAG per template system
-
-
-@property (nonatomic, assign) BOOL isUpdatingSlider;
-@property (nonatomic, assign) double lastSliderValue;
-
-// Additional properties needed by implementation
-@property (nonatomic, strong) ChartPreferencesWindow *preferencesWindowController;
-@property (nonatomic, assign) BOOL objectsVisible;
-@property (nonatomic, assign) BOOL isIndicatorsPanelVisible;
-
-#pragma mark - Data Properties
 @property (nonatomic, strong, readwrite) NSString *currentSymbol;
 @property (nonatomic, assign, readwrite) ChartTimeframe currentTimeframe;
 @property (nonatomic, assign, readwrite) NSInteger initialBarsToShow;
 
 #pragma mark - Chart Panels
 @property (nonatomic, strong, readwrite) NSMutableArray<ChartPanelView *> *chartPanels;
+@property (nonatomic, strong) SharedXCoordinateContext *sharedXContext;
 
-#pragma mark - Viewport State (for ChartPanelView access)
+#pragma mark - Viewport State
 @property (nonatomic, assign, readwrite) NSInteger visibleStartIndex;
 @property (nonatomic, assign, readwrite) NSInteger visibleEndIndex;
 
-#pragma mark - IBAction Methods (Connected to XIB controls)
+#pragma mark - Date Range Management
+@property (nonatomic, assign) NSInteger currentDateRangeDays;
+@property (nonatomic, assign) NSInteger selectedDateRangeSegment;
+@property (nonatomic, assign) NSInteger customDateRangeDays;
+@property (nonatomic, strong) NSString *customSegmentTitle;
 
-// Symbol and Timeframe Actions
+// Download defaults per timeframe
+@property (nonatomic, assign) NSInteger defaultDaysFor1Min;
+@property (nonatomic, assign) NSInteger defaultDaysFor5Min;
+@property (nonatomic, assign) NSInteger defaultDaysForHourly;
+@property (nonatomic, assign) NSInteger defaultDaysForDaily;
+@property (nonatomic, assign) NSInteger defaultDaysForWeekly;
+@property (nonatomic, assign) NSInteger defaultDaysForMonthly;
+
+// Visible defaults per timeframe
+@property (nonatomic, assign) NSInteger defaultVisibleFor1Min;
+@property (nonatomic, assign) NSInteger defaultVisibleFor5Min;
+@property (nonatomic, assign) NSInteger defaultVisibleForHourly;
+@property (nonatomic, assign) NSInteger defaultVisibleForDaily;
+@property (nonatomic, assign) NSInteger defaultVisibleForWeekly;
+@property (nonatomic, assign) NSInteger defaultVisibleForMonthly;
+
+#pragma mark - Objects and UI Panels
+@property (nonatomic, strong) ObjectsPanel *objectsPanel;
+@property (nonatomic, strong) ChartObjectsManager *objectsManager;
+@property (nonatomic, assign) BOOL isObjectsPanelVisible;
+@property (nonatomic, assign) BOOL isIndicatorsPanelVisible;
+
+#pragma mark - State Flags
+@property (nonatomic, assign) BOOL isSetupCompleted;
+@property (nonatomic, assign) BOOL isTemplateSystemReady;
+@property (nonatomic, assign) BOOL isStaticMode;
+@property (nonatomic, assign) BOOL objectsVisible;
+@property (nonatomic, assign) BOOL isUpdatingSlider;
+@property (nonatomic, assign) double lastSliderValue;
+
+#pragma mark - Additional Properties
+@property (nonatomic, strong) ChartPreferencesWindow *preferencesWindowController;
+
+#pragma mark - Initialization
+- (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType;
+
+#pragma mark - XIB Actions - Symbol and Timeframe
 - (IBAction)symbolFieldChanged:(NSTextField *)sender;
+- (IBAction)symbolChanged:(NSTextField *)sender;
 - (IBAction)timeframeChanged:(NSSegmentedControl *)sender;
-- (IBAction)templatePopupChanged:(NSPopUpButton *)sender;
-- (IBAction)templateChanged:(NSPopUpButton *)sender; // Alternative name used in implementation
 
-// Navigation and Zoom Actions
-- (IBAction)panSliderChanged:(NSSlider *)sender;
-- (IBAction)zoomOutClicked:(NSButton *)sender;
-- (IBAction)zoomInClicked:(NSButton *)sender;
-- (IBAction)zoomAllClicked:(NSButton *)sender;
 
-// Date Range Actions
-- (IBAction)dateRangeSegmentChanged:(NSSegmentedControl *)sender;
-- (IBAction)dateRangeSegmentedChanged:(NSSegmentedControl *)sender; // Alternative name used in implementation
-
-// Object Panel Actions
-- (IBAction)toggleObjectsPanel:(NSButton *)sender;
+#pragma mark - XIB Actions - Date Range and Controls
+- (IBAction)dateRangeSegmentedChanged:(NSSegmentedControl *)sender;
 - (IBAction)toggleObjectsVisibility:(NSButton *)sender;
-
-// Mode Actions
-- (IBAction)toggleStaticMode:(NSButton *)sender;
-- (IBAction)showPreferences:(NSButton *)sender;
-
-// Additional actions from implementation
+- (IBAction)toggleObjectsPanel:(NSButton *)sender;
 - (IBAction)toggleIndicatorsPanel:(NSButton *)sender;
 
-#pragma mark - Internal Methods (Called by IBActions and implementation)
+#pragma mark - XIB Actions - Zoom
+- (IBAction)zoomOut:(NSButton *)sender;
+- (IBAction)zoomIn:(NSButton *)sender;
 
-// Data loading methods
-- (void)reloadDataForCurrentSymbol;
-- (void)loadChartTemplate:(NSString *)templateName;
-
-#pragma mark - Date Range Management Methods
-- (void)updateDateRangeSliderForTimeframe:(ChartTimeframe)timeframe;
-- (void)dateRangeSliderChanged:(id)sender;
-- (NSInteger)getMinDaysForTimeframe:(ChartTimeframe)timeframe;
-- (NSInteger)getMaxDaysForTimeframe:(ChartTimeframe)timeframe;
-- (NSInteger)getDefaultDaysForTimeframe:(ChartTimeframe)timeframe;
-- (NSInteger)getDefaultVisibleDaysForTimeframe:(ChartTimeframe)timeframe;
-- (void)updateDateRangeLabel;
-- (NSString *)formatDaysToDisplayString:(NSInteger)days;
-
-#pragma mark - Public Methods
+#pragma mark - Data Loading
 - (void)loadSymbol:(NSString *)symbol;
-- (void)setTimeframe:(ChartTimeframe)timeframe;
-- (void)zoomToRange:(NSInteger)startIndex endIndex:(NSInteger)endIndex;
-- (void)synchronizePanels;
-
-// Internal zoom methods (called by IBAction methods)
-- (void)zoomIn:(id)sender;
-- (void)zoomOut:(id)sender;
-- (void)zoomAll:(id)sender;
-
-#pragma mark - Preferences Management
-- (void)preferencesDidChange:(BOOL)needsDataReload;
-
-#pragma mark - Trading Hours Calculation (Public for ChartObjectRenderer)
-- (NSInteger)barsPerDayForCurrentTimeframe;
-- (NSInteger)getCurrentTimeframeInMinutes;
-
+- (void)loadDataWithCurrentSettings;
 - (void)updateWithHistoricalBars:(NSArray<HistoricalBarModel *> *)bars;
 
-- (void)setStaticMode:(BOOL)staticMode;
-- (void)updateStaticModeUI;
-
-#pragma mark - Chart Data Access (for SaveData extension)
-
-/// Get current chart data (accessor for private chartData property)
-/// @return Array of current historical bars, or nil if no data loaded
-- (NSArray<HistoricalBarModel *> * _Nullable)currentChartData;
-
--(void)resetToInitialView;
-- (void)loadDateRangeDefaults;
-- (void)saveDateRangeDefaults;
-
+#pragma mark - Setup Methods
+- (void)setupChartDefaults;
+- (void)setupTimeframeSegmentedControl;
 - (void)setupDateRangeSegmentedControl;
-- (void)updateDateRangeSegmentedForTimeframe:(ChartTimeframe)timeframe;
-- (void)updateCustomSegmentWithDays:(NSInteger)days;
-- (NSString *)formatDaysToAbbreviation:(NSInteger)days;
-- (NSInteger)getDaysForSegment:(NSInteger)segment;
+- (void)setupPlaceholderView;
+- (void)setupFrameChangeNotifications;
+- (void)setupObjectsAndIndicatorsUI;
+- (void)loadAndApplyLastUsedTemplate;
+
+#pragma mark - Preferences Management
+- (void)loadInitialPreferences;
+- (void)loadDateRangeDefaults;
 - (void)loadDateRangeSegmentedDefaults;
 - (void)saveDateRangeSegmentedDefaults;
+- (void)updateDateRangeSegmentedForTimeframe:(ChartTimeframe)timeframe;
 
-- (void)showTemporaryMessage:(NSString *)message;
+#pragma mark - Date Range Helpers
+- (NSInteger)getDaysForSegment:(NSInteger)segment;
+- (NSInteger)getDefaultDaysForTimeframe:(ChartTimeframe)timeframe;
+- (NSInteger)getDefaultVisibleDaysForTimeframe:(ChartTimeframe)timeframe;
+- (NSInteger)convertDaysToBarsForTimeframe:(NSInteger)days timeframe:(ChartTimeframe)timeframe;
 
-
-- (void)saveLastUsedTemplate:(ChartTemplateModel *)template;
-
-/**
- * Reset visible range for current timeframe using preferences
- */
+#pragma mark - Visible Range Management
 - (void)resetVisibleRangeForTimeframe;
+- (void)updateVisibleRange;
+- (void)setVisibleStartIndex:(NSInteger)startIndex endIndex:(NSInteger)endIndex;
 
-/**
- * Refresh alerts for current symbol
- */
+#pragma mark - Panel Management
+- (void)updatePanelsWithData:(NSArray<HistoricalBarModel *> *)data;
+- (void)synchronizePanels;
+- (void)clearExistingPanels;
+- (void)setupPanelsFromTemplateSystem;
+- (void)setInitialDividerPosition;
+
+#pragma mark - Coordinate Context
+- (void)updateSharedXContext;
+
+#pragma mark - Data Notifications
+- (void)registerForDataNotifications;
+- (void)dataLoaded:(NSNotification *)notification;
+
+#pragma mark - Smart Symbol Input
+- (void)processSmartSymbolInput:(NSString *)inputText;
+- (void)applySmartSymbolParameters:(SmartSymbolParameters)params;
+- (void)updateUIAfterSmartSymbolInput:(SmartSymbolParameters)params;
+
+#pragma mark - Symbol Coordination
+- (void)setCurrentSymbol:(NSString *)currentSymbol;
 - (void)refreshAlertsForCurrentSymbol;
-
-/**
- * Load data with current settings (symbol, timeframe, date range)
- */
-- (void)loadDataWithCurrentSettings;
-
-/**
- * Update viewport and synchronize panels
- */
-- (void)updateViewport;
-
-/**
- * Broadcast symbol change to widget chain
- */
-- (void)broadcastSymbolToChain:(NSString *)symbol;
-- (void)resetVisibleRangeForTimeframe;
-- (void)refreshAlertsForCurrentSymbol;
-- (void)loadDataWithCurrentSettings;
-- (void)updateViewport;
 - (void)broadcastSymbolToChain:(NSString *)symbol;
 
-// ✅ Conditional methods (check if exist before calling)
-- (void)recalculateAllIndicators;
-- (void)refreshIndicatorsRendering;
-- (void)applyChartTemplate:(ChartTemplateModel *)template;
+#pragma mark - Chain Handling
+- (void)handleChainAction:(NSString *)action withData:(id)data fromWidget:(BaseWidget *)sender;
+- (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender;
+- (void)loadChartPatternFromChainData:(NSDictionary *)data fromWidget:(BaseWidget *)sender;
 
+#pragma mark - UI Feedback
+- (void)showChainFeedback:(NSString *)message;
+- (void)showMicroscopeModeNotification;
 
+#pragma mark - View Lifecycle
+- (void)viewDidLayout;
+- (void)viewWillLayout;
+- (void)viewDidAppear;
+- (void)chartViewFrameDidChange:(NSNotification *)notification;
+- (void)splitViewFrameDidChange:(NSNotification *)notification;
 
+#pragma mark - Helper Methods
+- (NSString *)timeframeDisplayName:(ChartTimeframe)timeframe;
+- (NSString *)timeframeDisplayStringForTimeframe:(ChartTimeframe)timeframe;
+- (ChartPanelView *)findMainChartPanel;
+- (BOOL)areObjectsVisible;
+- (void)setObjectsVisible:(BOOL)visible;
 
 @end
+
+NS_ASSUME_NONNULL_END

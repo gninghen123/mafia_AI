@@ -195,7 +195,7 @@
         
         NSFetchRequest *request = [ChartTemplate fetchRequest];
         request.predicate = [NSPredicate predicateWithFormat:@"templateID == %@", templateID];
-        request.fetchLimit = 1;
+        request.fetchLimit = 10;
         
         NSError *error;
         NSArray<ChartTemplate *> *results = [context executeFetchRequest:request error:&error];

@@ -588,10 +588,13 @@
         // ✅ Reset flag after updating
         self.isUpdatingComboBoxSelection = NO;
 
+        /*
         // Notify delegate of selection (but don't apply yet)
+        !!!!!!! commentatta perche riazzera la selezione del templatecombobox
         if ([self.delegate respondsToSelector:@selector(indicatorsPanel:didSelectTemplate:)]) {
           //  [self.delegate indicatorsPanel:self didSelectTemplate:selectedTemplate];
         }
+         */
     }
 }
 
@@ -805,6 +808,9 @@
         dispatch_async(dispatch_get_main_queue(), ^{
             if (success) {
                 NSLog(@"✅ Template deleted successfully");
+                NSMutableArray *mutableTemplates = [self.availableTemplates mutableCopy];
+                   [mutableTemplates removeObject:template];
+                   self.availableTemplates = [mutableTemplates copy];
                 
                 // Reload templates and select next available
                 [self reloadTemplatesAndSelect:nextTemplate];

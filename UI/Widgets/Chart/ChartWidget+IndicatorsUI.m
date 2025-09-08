@@ -101,12 +101,7 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 #pragma mark - Template Management - AGGIORNATO per runtime models
 
 - (void)loadAvailableTemplates:(void(^)(BOOL success))completion {
-    // Check cache first
-    if (self.availableTemplates && self.availableTemplates.count > 0) {
-        NSLog(@"♻️ Templates already loaded, using cached data");
-        if (completion) completion(YES);
-        return;
-    }
+  
     
     NSLog(@"📋 Loading available templates from DataHub...");
     
@@ -460,7 +455,7 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
               (unsigned long)i, [panelTemplate displayName], panelTemplate.relativeHeight * 100);
     }
 
-    [self.panelsSplitView layoutSubtreeIfNeeded];
+//    [self.panelsSplitView layoutSubtreeIfNeeded];
 
     NSLog(@"✅ Panel heights redistributed with constraints successfully");
 }

@@ -985,9 +985,108 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 
 
 - (void)recalculateAllIndicators {
+    NSLog(@"🧮 Starting indicator recalculation for all panels");
+    
+    // ✅ STEP 1: Ottieni i dati correnti (potrebbero essere appena cambiati)
+    NSArray<HistoricalBarModel *> *currentData = [self valueForKey:@"chartData"]; // Usa KVC per accedere ai dati privati
+    
+    if (!currentData || currentData.count == 0) {
+        NSLog(@"⚠️ No chart data available for indicator recalculation");
+        return;
+    }
+    
+    NSLog(@"📊 Recalculating indicators with %ld bars of data", (long)currentData.count);
+    
+    // ✅ STEP 2: Recalcola TUTTI gli indicatori per ogni panel
+    NSInteger recalculatedCount = 0;
+    
     for (NSString *panelID in self.indicatorRenderers.allKeys) {
         ChartIndicatorRenderer *renderer = self.indicatorRenderers[panelID];
-        [renderer.rootIndicator calculateWithBars:[self currentChartData]];
+        
+        if (!renderer.rootIndicator) {
+            NSLog(@"⚠️ Panel %@ has no root indicator to recalculate", panelID);
+            continue;
+        }
+        
+        NSLog(@"🧮 Recalculating indicators for panel: %@", panelID);
+        
+        @try {
+            // ✅ RECALCULATE ROOT INDICATOR con i nuovi dati
+            [renderer.rootIndicator calculateWithBars:currentData];
+            NSLog(@"✅ Recalculated root indicator: %@", renderer.rootIndicator.shortName);
+            
+            // ✅ RECALCULATE ALL CHILD INDICATORS ricorsivamente
+            for (TechnicalIndicatorBase *childIndicator in renderer.rootIndicator.childIndicators) {
+                [self recalculateIndicatorRecursively:childIndicator withData:currentData];
+            }
+            
+            // ✅ STEP 3: Marca che serve re-rendering
+            [renderer markAllIndicatorsForRerendering];
+            
+            // ✅ STEP 4: Force immediate re-rendering
+            [renderer renderIndicatorTree:renderer.rootIndicator];
+            
+            recalculatedCount++;
+            NSLog(@"✅ Panel %@ indicators recalculated and re-rendered", panelID);
+            
+        } @catch (NSException *exception) {
+            NSLog(@"❌ Failed to recalculate indicators for panel %@: %@", panelID, exception.reason);
+        }
+    }
+    
+    NSLog(@"🎯 Indicator recalculation completed - %ld panels processed", (long)recalculatedCount);
+}
+
+- (void)recalculateIndicatorRecursively:(TechnicalIndicatorBase *)indicator
+                                withData:(NSArray<HistoricalBarModel *> *)chartData {
+    @try {
+        // Calcola l'indicatore figlio
+        [indicator calculateWithBars:chartData];
+        NSLog(@"  ✅ Recalculated child indicator: %@", indicator.shortName);
+        
+        // Ricorsivo per i suoi figli
+        for (TechnicalIndicatorBase *grandChild in indicator.childIndicators) {
+            [self recalculateIndicatorRecursively:grandChild withData:chartData];
+        }
+        
+    } @catch (NSException *exception) {
+        NSLog(@"  ❌ Failed to recalculate child indicator %@: %@", indicator.shortName, exception.reason);
+    }
+}
+
+
+// ✅ METODO AGGIUNTIVO: Per forzare recalcolo con dati specifici
+- (void)recalculateAllIndicatorsWithNewData:(NSArray<HistoricalBarModel *> *)newData {
+    if (!newData || newData.count == 0) {
+        NSLog(@"⚠️ No data provided for indicator recalculation");
+        return;
+    }
+    
+    NSLog(@"🧮 Force recalculating indicators with %ld new bars", (long)newData.count);
+    
+    for (NSString *panelID in self.indicatorRenderers.allKeys) {
+        ChartIndicatorRenderer *renderer = self.indicatorRenderers[panelID];
+        
+        if (renderer.rootIndicator) {
+            @try {
+                // Calcola con i nuovi dati
+                [renderer.rootIndicator calculateWithBars:newData];
+                
+                // Calcola i figli
+                for (TechnicalIndicatorBase *child in renderer.rootIndicator.childIndicators) {
+                    [self recalculateIndicatorRecursively:child withData:newData];
+                }
+                
+                // Re-render
+                [renderer markAllIndicatorsForRerendering];
+                [renderer renderIndicatorTree:renderer.rootIndicator];
+                
+                NSLog(@"✅ Panel %@ recalculated with new data", panelID);
+                
+            } @catch (NSException *exception) {
+                NSLog(@"❌ Failed to recalculate panel %@ with new data: %@", panelID, exception.reason);
+            }
+        }
     }
 }
 

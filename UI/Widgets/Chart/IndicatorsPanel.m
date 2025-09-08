@@ -250,17 +250,28 @@
 
 #pragma mark - Template Management - AGGIORNATO per runtime models
 
+// Versione aggiornata che mantiene la selezione corrente della ComboBox invece di forzare sempre il primo template
 - (void)loadAvailableTemplates:(NSArray<ChartTemplateModel *> *)templates {
     self.isLoadingTemplates = YES;
     self.availableTemplates = templates;
     
     NSLog(@"📋 IndicatorsPanel: Loaded %ld runtime templates", (long)templates.count);
     
-    [self.templateComboBox reloadData];
+   
     
-    // Select first template if none selected
-    if (self.availableTemplates.count > 0 && !self.currentTemplate) {
-        [self selectTemplate:self.availableTemplates[0]];
+    // Mantieni la selezione corrente se esiste
+    NSInteger indexToSelect = 0; // default
+    if (self.currentTemplate) {
+        for (NSUInteger i = 0; i < self.availableTemplates.count; i++) {
+            if ([self.availableTemplates[i].templateID isEqualToString:self.currentTemplate.templateID]) {
+                indexToSelect = i;
+                break;
+            }
+        }
+    }
+    [self.templateComboBox reloadData];
+    if (self.availableTemplates.count > 0) {
+        [self selectTemplate:self.availableTemplates[indexToSelect]];
     }
     
     self.isLoadingTemplates = NO;
@@ -557,25 +568,29 @@
               self.isUpdatingComboBoxSelection ? @"YES" : @"NO");
         return;
     }
-    
+
     NSInteger selectedIndex = [self.templateComboBox indexOfSelectedItem];
     NSLog(@"👆 IndicatorsPanel: ComboBox selection changed to index: %ld", (long)selectedIndex);
-    
+
     if (selectedIndex >= 0 && selectedIndex < (NSInteger)self.availableTemplates.count) {
         ChartTemplateModel *selectedTemplate = self.availableTemplates[selectedIndex];
-        
+
+        // ✅ Set flag before updating currentTemplate
+        self.isUpdatingComboBoxSelection = YES;
         // ✅ FIXED: Update current template but keep original unchanged
         // This allows the Apply button to be enabled when a different template is selected
         self.currentTemplate = [selectedTemplate createWorkingCopy];
         // NOTE: self.originalTemplate stays the same (the currently applied template)
-        
+
         // ✅ Update UI displays
         [self refreshTemplateDisplay];
         [self updateButtonStates]; // ✅ This will now enable Apply/Reset buttons
-        
+        // ✅ Reset flag after updating
+        self.isUpdatingComboBoxSelection = NO;
+
         // Notify delegate of selection (but don't apply yet)
         if ([self.delegate respondsToSelector:@selector(indicatorsPanel:didSelectTemplate:)]) {
-            [self.delegate indicatorsPanel:self didSelectTemplate:selectedTemplate];
+          //  [self.delegate indicatorsPanel:self didSelectTemplate:selectedTemplate];
         }
     }
 }

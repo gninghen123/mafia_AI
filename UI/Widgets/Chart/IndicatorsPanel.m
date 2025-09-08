@@ -18,9 +18,13 @@
 @property (nonatomic, strong) NSVisualEffectView *backgroundView;
 @property (nonatomic, strong) NSView *headerView;
 @property (nonatomic, strong) NSView *footerView;
+
 @property (nonatomic, strong) NSStackView *mainStackView;
 
 // UI Components (readwrite for internal use)
+@property (nonatomic, assign) BOOL isUpdatingComboBoxSelection;
+
+@property (nonatomic, strong, readwrite) NSComboBox *templateComboBox;          // ✅ FIXED: readwrite
 @property (nonatomic, strong, readwrite) NSButton *templateSettingsButton;
 @property (nonatomic, strong, readwrite) NSButton *templateSaveButton;
 @property (nonatomic, strong, readwrite) NSOutlineView *templateOutlineView;
@@ -87,12 +91,12 @@
     
     // Template combo box
     self.templateComboBox = [[NSComboBox alloc] init];
+    self.templateComboBox.usesDataSource = YES;
     self.templateComboBox.translatesAutoresizingMaskIntoConstraints = NO;
     self.templateComboBox.dataSource = self;
     self.templateComboBox.delegate = self;
     self.templateComboBox.hasVerticalScroller = YES;
     self.templateComboBox.numberOfVisibleItems = 10;
-    self.templateComboBox.usesDataSource = YES;
     
     // Template settings button
     self.templateSettingsButton = [[NSButton alloc] init];
@@ -273,16 +277,11 @@
     self.originalTemplate = template;
     self.currentTemplate = [template createWorkingCopy];
     
-    // ✅ CORREZIONE: Update combo box selection - find template by ID
+    // ✅ FIXED: Usa flag per prevenire loop
+    self.isUpdatingComboBoxSelection = YES;
+    
+    // Find template by ID and update combo box
     NSInteger index = NSNotFound;
-    
-    if (self.availableTemplates.count == 0) {
-        NSLog(@"⚠️ IndicatorsPanel: No available templates, cannot update combo box selection");
-        [self refreshTemplateDisplay];
-        [self updateButtonStates];
-        return;
-    }
-    
     for (NSUInteger i = 0; i < self.availableTemplates.count; i++) {
         ChartTemplateModel *tempTemplate = self.availableTemplates[i];
         if ([tempTemplate.templateID isEqualToString:template.templateID]) {
@@ -291,16 +290,14 @@
         }
     }
     
-    if (index != NSNotFound &&
-        index >= 0 &&
-        index < (NSInteger)self.availableTemplates.count &&
-        self.availableTemplates.count > 0) {
-        
+    if (index != NSNotFound && index >= 0 && index < (NSInteger)self.availableTemplates.count) {
         [self.templateComboBox selectItemAtIndex:index];
-        
     } else {
         [self.templateComboBox selectItemAtIndex:-1];
     }
+    
+    // ✅ RESET flag
+    self.isUpdatingComboBoxSelection = NO;
     
     [self refreshTemplateDisplay];
     [self updateButtonStates];
@@ -319,36 +316,38 @@
     [self updateButtonStates];
 }
 
-- (BOOL)hasUnsavedChanges {
-    if (!self.currentTemplate || !self.originalTemplate) return NO;
+
+- (BOOL)hasChangesToApply {
+    if (!self.currentTemplate || !self.originalTemplate) {
+        return NO;
+    }
     
-    // Check template name
+    // ✅ MAIN CASE: Different template selected from ComboBox
+    if (![self.currentTemplate.templateID isEqualToString:self.originalTemplate.templateID]) {
+        NSLog(@"📝 Different template selected: current='%@' vs original='%@'",
+              self.currentTemplate.templateName, self.originalTemplate.templateName);
+        return YES;
+    }
+    
+    // ✅ SECONDARY CASE: Same template but modified content
     if (![self.currentTemplate.templateName isEqualToString:self.originalTemplate.templateName]) {
         return YES;
     }
     
-    // Check panel count
+    // ✅ Check if panels structure changed
     if (self.currentTemplate.panels.count != self.originalTemplate.panels.count) {
         return YES;
     }
     
-    // ✅ Check individual panel changes including childIndicatorsData
-    NSArray<ChartPanelTemplateModel *> *currentPanels = [self.currentTemplate orderedPanels];
-    NSArray<ChartPanelTemplateModel *> *originalPanels = [self.originalTemplate orderedPanels];
-    
-    for (NSUInteger i = 0; i < currentPanels.count; i++) {
-        ChartPanelTemplateModel *currentPanel = currentPanels[i];
-        ChartPanelTemplateModel *originalPanel = originalPanels[i];
+    // ✅ Check if individual panels changed
+    for (NSUInteger i = 0; i < self.currentTemplate.panels.count; i++) {
+        ChartPanelTemplateModel *currentPanel = self.currentTemplate.panels[i];
+        ChartPanelTemplateModel *originalPanel = self.originalTemplate.panels[i];
         
-        // Check panel properties
-        if (![currentPanel.rootIndicatorType isEqualToString:originalPanel.rootIndicatorType] ||
-            fabs(currentPanel.relativeHeight - originalPanel.relativeHeight) > 0.01 ||
-            currentPanel.childIndicatorsData.count != originalPanel.childIndicatorsData.count) {
-            return YES;
-        }
-        
-        // Check childIndicatorsData changes
-        if (![currentPanel.childIndicatorsData isEqualToArray:originalPanel.childIndicatorsData]) {
+        if (![currentPanel.panelID isEqualToString:originalPanel.panelID] ||
+            ![currentPanel.rootIndicatorType isEqualToString:originalPanel.rootIndicatorType] ||
+            currentPanel.relativeHeight != originalPanel.relativeHeight ||
+            currentPanel.displayOrder != originalPanel.displayOrder) {
             return YES;
         }
     }
@@ -356,6 +355,9 @@
     return NO;
 }
 
+- (BOOL)hasUnsavedChanges {
+    return [self hasChangesToApply];
+}
 #pragma mark - NSOutlineView DataSource - AGGIORNATO per runtime models
 
 - (NSInteger)outlineView:(NSOutlineView *)outlineView numberOfChildrenOfItem:(id)item {
@@ -549,8 +551,10 @@
 }
 
 - (void)comboBoxSelectionDidChange:(NSNotification *)notification {
-    if (self.isLoadingTemplates) {
-        NSLog(@"⏳ IndicatorsPanel: Ignoring combo box change during template loading");
+    if (self.isLoadingTemplates || self.isUpdatingComboBoxSelection) {
+        NSLog(@"⏳ IndicatorsPanel: Ignoring combo box change (loading:%@ updating:%@)",
+              self.isLoadingTemplates ? @"YES" : @"NO",
+              self.isUpdatingComboBoxSelection ? @"YES" : @"NO");
         return;
     }
     
@@ -560,21 +564,325 @@
     if (selectedIndex >= 0 && selectedIndex < (NSInteger)self.availableTemplates.count) {
         ChartTemplateModel *selectedTemplate = self.availableTemplates[selectedIndex];
         
-        // Notify delegate of selection (not application)
+        // ✅ FIXED: Update current template but keep original unchanged
+        // This allows the Apply button to be enabled when a different template is selected
+        self.currentTemplate = [selectedTemplate createWorkingCopy];
+        // NOTE: self.originalTemplate stays the same (the currently applied template)
+        
+        // ✅ Update UI displays
+        [self refreshTemplateDisplay];
+        [self updateButtonStates]; // ✅ This will now enable Apply/Reset buttons
+        
+        // Notify delegate of selection (but don't apply yet)
         if ([self.delegate respondsToSelector:@selector(indicatorsPanel:didSelectTemplate:)]) {
             [self.delegate indicatorsPanel:self didSelectTemplate:selectedTemplate];
         }
-        
-        // Update current template for editing
-        [self selectTemplate:selectedTemplate];
     }
 }
 
-#pragma mark - Button Actions
+
+#pragma mark - Button Actions - UPDATED with Template Settings Menu
 
 - (void)templateSettingsAction:(NSButton *)sender {
     NSLog(@"⚙️ IndicatorsPanel: Template settings action");
-    // TODO: Show template settings menu/popup
+    
+    if (!self.currentTemplate) {
+        NSLog(@"⚠️ No current template for settings");
+        return;
+    }
+    
+    // ✅ Create template settings menu
+    NSMenu *settingsMenu = [self createTemplateSettingsMenu];
+    
+    // ✅ Show popup menu below the button
+    NSRect buttonFrame = sender.frame;
+    NSPoint menuOrigin = NSMakePoint(NSMinX(buttonFrame), NSMinY(buttonFrame));
+    
+    [settingsMenu popUpMenuPositioningItem:nil atLocation:menuOrigin inView:sender.superview];
+}
+
+// ✅ NEW: Create template settings menu
+- (NSMenu *)createTemplateSettingsMenu {
+    NSMenu *menu = [[NSMenu alloc] init];
+    
+    BOOL isDefault = self.currentTemplate.isDefault;
+    BOOL canDelete = !isDefault && self.availableTemplates.count > 1;
+    
+    // ✅ Rename Template
+    NSMenuItem *renameItem = [[NSMenuItem alloc] initWithTitle:@"Rename Template..."
+                                                        action:@selector(renameCurrentTemplate:)
+                                                 keyEquivalent:@""];
+    renameItem.target = self;
+    renameItem.enabled = !isDefault; // Can't rename default template
+    [menu addItem:renameItem];
+    
+    // ✅ Duplicate Template
+    NSMenuItem *duplicateItem = [[NSMenuItem alloc] initWithTitle:@"Duplicate Template..."
+                                                           action:@selector(duplicateCurrentTemplate:)
+                                                    keyEquivalent:@""];
+    duplicateItem.target = self;
+    [menu addItem:duplicateItem];
+    
+    [menu addItem:[NSMenuItem separatorItem]];
+    
+    // ✅ Delete Template
+    NSMenuItem *deleteItem = [[NSMenuItem alloc] initWithTitle:@"Delete Template..."
+                                                        action:@selector(deleteCurrentTemplate:)
+                                                 keyEquivalent:@""];
+    deleteItem.target = self;
+    deleteItem.enabled = canDelete;
+    if (!canDelete) {
+        if (isDefault) {
+            deleteItem.title = @"Delete Template (Cannot delete default)";
+        } else {
+            deleteItem.title = @"Delete Template (Last template)";
+        }
+    }
+    [menu addItem:deleteItem];
+    
+    return menu;
+}
+
+#pragma mark - Template Management Actions - NEW
+
+// ✅ NEW: Rename current template
+- (void)renameCurrentTemplate:(NSMenuItem *)sender {
+    if (!self.currentTemplate || self.currentTemplate.isDefault) {
+        NSLog(@"❌ Cannot rename default template");
+        return;
+    }
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Rename Template";
+    alert.informativeText = @"Enter a new name for the template:";
+    alert.alertStyle = NSAlertStyleInformational;
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 300, 24)];
+    input.stringValue = self.currentTemplate.templateName;
+    alert.accessoryView = input;
+    
+    [alert addButtonWithTitle:@"Rename"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
+        if (returnCode == NSAlertFirstButtonReturn && input.stringValue.length > 0) {
+            [self performRenameTemplate:self.currentTemplate newName:input.stringValue];
+        }
+    }];
+}
+
+// ✅ NEW: Duplicate current template
+- (void)duplicateCurrentTemplate:(NSMenuItem *)sender {
+    if (!self.currentTemplate) {
+        NSLog(@"❌ No current template to duplicate");
+        return;
+    }
+    
+    // ✅ Generate unique name with "Copy #N" pattern
+    NSString *baseName = self.currentTemplate.templateName;
+    NSString *newName = [self generateUniqueCopyName:baseName];
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Duplicate Template";
+    alert.informativeText = @"Enter a name for the duplicate template:";
+    alert.alertStyle = NSAlertStyleInformational;
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 300, 24)];
+    input.stringValue = newName;
+    alert.accessoryView = input;
+    
+    [alert addButtonWithTitle:@"Duplicate"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
+        if (returnCode == NSAlertFirstButtonReturn && input.stringValue.length > 0) {
+            [self performDuplicateTemplate:self.currentTemplate newName:input.stringValue];
+        }
+    }];
+}
+
+// ✅ NEW: Delete current template
+- (void)deleteCurrentTemplate:(NSMenuItem *)sender {
+    if (!self.currentTemplate || self.currentTemplate.isDefault || self.availableTemplates.count <= 1) {
+        NSLog(@"❌ Cannot delete template: default=%@ count=%ld",
+              self.currentTemplate.isDefault ? @"YES" : @"NO",
+              (long)self.availableTemplates.count);
+        return;
+    }
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Delete Template";
+    alert.informativeText = [NSString stringWithFormat:@"Are you sure you want to delete the template '%@'? This action cannot be undone.",
+                            self.currentTemplate.templateName];
+    alert.alertStyle = NSAlertStyleWarning;
+    
+    [alert addButtonWithTitle:@"Delete"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
+        if (returnCode == NSAlertFirstButtonReturn) {
+            [self performDeleteTemplate:self.currentTemplate];
+        }
+    }];
+}
+
+#pragma mark - Template Operations Implementation - NEW
+
+// ✅ NEW: Perform rename operation
+- (void)performRenameTemplate:(ChartTemplateModel *)template newName:(NSString *)newName {
+    NSLog(@"📝 Renaming template '%@' to '%@'", template.templateName, newName);
+    
+    // Update template name
+    template.templateName = newName;
+    template.modifiedDate = [NSDate date];
+    
+    // Save via DataHub
+    [[DataHub shared] saveChartTemplate:template completion:^(BOOL success, ChartTemplateModel *savedTemplate) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (success && savedTemplate) {
+                NSLog(@"✅ Template renamed successfully");
+                
+                // Reload templates and maintain selection
+                [self reloadTemplatesAndSelect:savedTemplate];
+                
+            } else {
+                NSLog(@"❌ Failed to rename template");
+                [self showErrorAlert:@"Rename Failed"
+                             message:@"Could not rename the template. Please try again."];
+            }
+        });
+    }];
+}
+
+// ✅ NEW: Perform duplicate operation
+- (void)performDuplicateTemplate:(ChartTemplateModel *)sourceTemplate newName:(NSString *)newName {
+    NSLog(@"📋 Duplicating template '%@' as '%@'", sourceTemplate.templateName, newName);
+    
+    // Use DataHub's duplicate method
+    [[DataHub shared] duplicateChartTemplate:sourceTemplate.templateID
+                                     newName:newName
+                                  completion:^(BOOL success, ChartTemplateModel *newTemplate) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (success && newTemplate) {
+                NSLog(@"✅ Template duplicated successfully");
+                
+                // Reload templates and select the new duplicate
+                [self reloadTemplatesAndSelect:newTemplate];
+                
+            } else {
+                NSLog(@"❌ Failed to duplicate template");
+                [self showErrorAlert:@"Duplicate Failed"
+                             message:@"Could not duplicate the template. Please try again."];
+            }
+        });
+    }];
+}
+
+// ✅ NEW: Perform delete operation
+- (void)performDeleteTemplate:(ChartTemplateModel *)template {
+    NSLog(@"🗑️ Deleting template '%@'", template.templateName);
+    
+    // Find next template to select after deletion
+    ChartTemplateModel *nextTemplate = [self findNextTemplateAfterDeleting:template];
+    
+    // Delete via DataHub
+    [[DataHub shared] deleteChartTemplate:template.templateID completion:^(BOOL success) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (success) {
+                NSLog(@"✅ Template deleted successfully");
+                
+                // Reload templates and select next available
+                [self reloadTemplatesAndSelect:nextTemplate];
+                
+            } else {
+                NSLog(@"❌ Failed to delete template");
+                [self showErrorAlert:@"Delete Failed"
+                             message:@"Could not delete the template. Please try again."];
+            }
+        });
+    }];
+}
+
+#pragma mark - Helper Methods - NEW
+
+// ✅ NEW: Generate unique copy name with "Copy #N" pattern
+- (NSString *)generateUniqueCopyName:(NSString *)baseName {
+    NSString *copyName = [NSString stringWithFormat:@"%@ Copy", baseName];
+    
+    // Check if base copy name exists
+    if (![self templateNameExists:copyName]) {
+        return copyName;
+    }
+    
+    // Find next available number
+    NSInteger copyNumber = 2;
+    NSString *numberedCopyName;
+    
+    do {
+        numberedCopyName = [NSString stringWithFormat:@"%@ Copy %ld", baseName, (long)copyNumber];
+        copyNumber++;
+    } while ([self templateNameExists:numberedCopyName] && copyNumber < 100); // Safety limit
+    
+    return numberedCopyName;
+}
+
+// ✅ NEW: Check if template name exists
+- (BOOL)templateNameExists:(NSString *)name {
+    for (ChartTemplateModel *template in self.availableTemplates) {
+        if ([template.templateName isEqualToString:name]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+// ✅ NEW: Find next template to select after deletion
+- (ChartTemplateModel *)findNextTemplateAfterDeleting:(ChartTemplateModel *)templateToDelete {
+    NSInteger currentIndex = [self.availableTemplates indexOfObject:templateToDelete];
+    
+    if (currentIndex == NSNotFound) {
+        return self.availableTemplates.firstObject;
+    }
+    
+    // Try next template first
+    if (currentIndex + 1 < self.availableTemplates.count) {
+        return self.availableTemplates[currentIndex + 1];
+    }
+    
+    // Try previous template
+    if (currentIndex > 0) {
+        return self.availableTemplates[currentIndex - 1];
+    }
+    
+    // Fallback to first available (shouldn't happen if we have > 1 template)
+    return self.availableTemplates.firstObject;
+}
+
+// ✅ NEW: Reload templates and select specific one
+- (void)reloadTemplatesAndSelect:(ChartTemplateModel *)templateToSelect {
+    if ([self.delegate respondsToSelector:@selector(indicatorsPanel:didRequestTemplateAction:forTemplate:)]) {
+        // Use the optional delegate method if available
+        [self.delegate indicatorsPanel:self didRequestTemplateAction:@"reload" forTemplate:templateToSelect];
+    } else {
+        // Fallback: Ask delegate to reload via ChartWidget
+        NSLog(@"🔄 Requesting template reload from delegate");
+        // The ChartWidget will call loadAvailableTemplates again
+    }
+}
+
+// ✅ NEW: Show error alert
+- (void)showErrorAlert:(NSString *)title message:(NSString *)message {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = title;
+    alert.informativeText = message;
+    alert.alertStyle = NSAlertStyleWarning;
+    [alert addButtonWithTitle:@"OK"];
+    
+    if (self.window) {
+        [alert beginSheetModalForWindow:self.window completionHandler:nil];
+    } else {
+        [alert runModal];
+    }
 }
 
 - (void)applyAction:(NSButton *)sender {
@@ -582,13 +890,44 @@
     
     if (self.currentTemplate && [self.delegate respondsToSelector:@selector(indicatorsPanel:didRequestApplyTemplate:)]) {
         [self.delegate indicatorsPanel:self didRequestApplyTemplate:self.currentTemplate];
+        
+        // ✅ AFTER successful apply, sync the originalTemplate
+        // This will disable the Apply/Reset buttons until next change
+        self.originalTemplate = [self.currentTemplate createWorkingCopy];
+        [self updateButtonStates];
     }
 }
-
 - (void)resetAction:(NSButton *)sender {
     NSLog(@"🔄 IndicatorsPanel: Reset action");
-    [self resetToOriginalTemplate];
+    
+    if (!self.originalTemplate) return;
+    
+    // ✅ Reset to original template (the one currently applied)
+    self.currentTemplate = [self.originalTemplate createWorkingCopy];
+    
+    // ✅ Update ComboBox selection to match the reset template
+    self.isUpdatingComboBoxSelection = YES;
+    
+    NSInteger index = NSNotFound;
+    for (NSUInteger i = 0; i < self.availableTemplates.count; i++) {
+        ChartTemplateModel *template = self.availableTemplates[i];
+        if ([template.templateID isEqualToString:self.originalTemplate.templateID]) {
+            index = i;
+            break;
+        }
+    }
+    
+    if (index != NSNotFound) {
+        [self.templateComboBox selectItemAtIndex:index];
+    }
+    
+    self.isUpdatingComboBoxSelection = NO;
+    
+    // ✅ Update UI
+    [self refreshTemplateDisplay];
+    [self updateButtonStates]; // This will disable Apply/Reset buttons
 }
+
 
 - (void)saveAsAction:(NSButton *)sender {
     NSLog(@"💾 IndicatorsPanel: Save As action");
@@ -597,13 +936,18 @@
 
 - (void)updateButtonStates {
     BOOL hasTemplate = (self.currentTemplate != nil);
-    BOOL hasChanges = [self hasUnsavedChanges];
+    BOOL hasChanges = [self hasChangesToApply]; // ✅ NEW: Different logic
     
     self.applyButton.enabled = hasTemplate && hasChanges;
     self.resetButton.enabled = hasTemplate && hasChanges;
     self.saveAsButton.enabled = hasTemplate;
+    
+    NSLog(@"🔘 Button states: hasTemplate=%@ hasChanges=%@ → Apply=%@ Reset=%@",
+          hasTemplate ? @"YES" : @"NO",
+          hasChanges ? @"YES" : @"NO",
+          self.applyButton.enabled ? @"ON" : @"OFF",
+          self.resetButton.enabled ? @"ON" : @"OFF");
 }
-
 #pragma mark - Context Menu - PULITO e SEMPLIFICATO
 
 - (NSMenu *)contextMenuForItem:(id)item {
@@ -1197,6 +1541,13 @@
 }
 
 - (void)showSaveAsDialog {
+    NSLog(@"💾 IndicatorsPanel: Opening Save As dialog");
+    
+    if (!self.currentTemplate) {
+        NSLog(@"❌ No current template to save");
+        return;
+    }
+    
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"Save Template As";
     alert.informativeText = @"Enter a name for the new template:";
@@ -1211,19 +1562,28 @@
     
     [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
         if (returnCode == NSAlertFirstButtonReturn && input.stringValue.length > 0) {
-            ChartTemplateModel *duplicate = [self.currentTemplate createWorkingCopy];
-            duplicate.templateID = [[NSUUID UUID] UUIDString];
-            duplicate.templateName = input.stringValue;
-            duplicate.isDefault = NO;
-            duplicate.createdDate = [NSDate date];
-            duplicate.modifiedDate = [NSDate date];
             
-            for (ChartPanelTemplateModel *panel in duplicate.panels) {
+            // ✅ FIXED: Create complete template with all data
+            ChartTemplateModel *templateToSave = [self.currentTemplate createWorkingCopy];
+            templateToSave.templateID = [[NSUUID UUID] UUIDString];
+            templateToSave.templateName = input.stringValue;
+            templateToSave.isDefault = NO;
+            templateToSave.createdDate = [NSDate date];
+            templateToSave.modifiedDate = [NSDate date];
+            
+            // Assign new IDs to all panels to avoid conflicts
+            for (ChartPanelTemplateModel *panel in templateToSave.panels) {
                 panel.panelID = [[NSUUID UUID] UUIDString];
             }
             
-            if ([self.delegate respondsToSelector:@selector(indicatorsPanel:didRequestCreateTemplate:)]) {
-                [self.delegate indicatorsPanel:self didRequestCreateTemplate:duplicate.templateName];
+            NSLog(@"💾 Saving complete template: %@ (ID: %@)",
+                  templateToSave.templateName, templateToSave.templateID);
+            
+            // ✅ FIXED: Call new delegate method with complete template instead of didRequestCreateTemplate
+            if ([self.delegate respondsToSelector:@selector(indicatorsPanel:didRequestSaveTemplate:)]) {
+                [self.delegate indicatorsPanel:self didRequestSaveTemplate:templateToSave];
+            } else {
+                NSLog(@"❌ Delegate does not implement didRequestSaveTemplate:");
             }
         }
     }];

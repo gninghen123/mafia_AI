@@ -101,7 +101,7 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 #pragma mark - Template Management - AGGIORNATO per runtime models
 
 - (void)loadAvailableTemplates:(void(^)(BOOL success))completion {
-    // ✅ Controllo cache - evita ridondanze
+    // Check cache first
     if (self.availableTemplates && self.availableTemplates.count > 0) {
         NSLog(@"♻️ Templates already loaded, using cached data");
         if (completion) completion(YES);
@@ -115,7 +115,7 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
             if (templates && templates.count > 0) {
                 self.availableTemplates = [templates mutableCopy];
                 
-                // Update indicators panel se esiste
+                // Update indicators panel if exists
                 if (self.indicatorsPanel) {
                     [self.indicatorsPanel loadAvailableTemplates:templates];
                 }
@@ -128,11 +128,6 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
             }
         });
     }];
-}
-
-- (void)loadAvailableTemplates {
-    NSLog(@"⚠️ Using legacy loadAvailableTemplates method");
-    [self loadAvailableTemplates:nil];
 }
 
 
@@ -473,6 +468,46 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 
 #pragma mark - IndicatorsPanelDelegate - AGGIORNATO per runtime models
 
+- (void)indicatorsPanel:(id)panel didRequestTemplateAction:(NSString *)action forTemplate:(ChartTemplateModel *)template {
+    NSLog(@"🔧 Template action requested: %@ for template: %@", action, template.templateName ?: @"nil");
+    
+    if ([action isEqualToString:@"reload"]) {
+        // ✅ Reload templates and select specific one
+        [self loadAvailableTemplates:^(BOOL success) {
+            if (success && template) {
+                // Find template by ID in reloaded list
+                ChartTemplateModel *reloadedTemplate = nil;
+                for (ChartTemplateModel *t in self.availableTemplates) {
+                    if ([t.templateID isEqualToString:template.templateID]) {
+                        reloadedTemplate = t;
+                        break;
+                    }
+                }
+                
+                if (reloadedTemplate) {
+                    [self.indicatorsPanel selectTemplate:reloadedTemplate];
+                } else if (self.availableTemplates.count > 0) {
+                    // Template was deleted, select first available
+                    [self.indicatorsPanel selectTemplate:self.availableTemplates.firstObject];
+                }
+            }
+        }];
+        
+    } else if ([action isEqualToString:@"delete"]) {
+        // ✅ Handle template deletion
+        NSLog(@"🗑️ Handling template deletion via delegate");
+        // The actual deletion is handled in IndicatorsPanel, this is just notification
+        
+    } else if ([action isEqualToString:@"duplicate"] || [action isEqualToString:@"rename"]) {
+        // ✅ Handle template modification
+        NSLog(@"📝 Handling template modification via delegate");
+        // The actual operation is handled in IndicatorsPanel, this is just notification
+        
+    } else {
+        NSLog(@"⚠️ Unknown template action: %@", action);
+    }
+}
+
 // ✅ AGGIORNATO signature per ChartTemplateModel
 - (void)indicatorsPanel:(id)panel didSelectTemplate:(ChartTemplateModel *)template {
     NSLog(@"👆 User selected runtime template: %@", template.templateName);
@@ -497,53 +532,41 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     [self showTemporaryMessage:[NSString stringWithFormat:@"Applied template: %@", template.templateName]];
 }
 
-- (void)indicatorsPanel:(id)panel didRequestCreateTemplate:(NSString *)templateName {
-    NSLog(@"🆕 User requested to create runtime template: %@", templateName);
+- (void)indicatorsPanel:(id)panel didRequestSaveTemplate:(ChartTemplateModel *)template {
+    NSLog(@"💾 User requested to save complete template: %@", template.templateName);
     
-    if (!templateName || templateName.length == 0) {
-        [self showErrorAlert:@"Invalid Template Name" message:@"Please provide a valid template name."];
+    if (!template) {
+        NSLog(@"❌ Cannot save nil template");
+        [self showErrorAlert:@"Save Failed" message:@"No template data to save."];
         return;
     }
     
-    // ✅ Create template from current panels using runtime models
-    [self createTemplateFromCurrentPanels:templateName completion:^(ChartTemplateModel *newTemplate, NSError *error) {
+    // ✅ Direct save to DataHub - no need to recreate from panels
+    [[DataHub shared] saveChartTemplate:template completion:^(BOOL success, ChartTemplateModel *savedTemplate) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (error) {
-                [self showErrorAlert:@"Template Creation Failed"
-                             message:[NSString stringWithFormat:@"Could not create template '%@': %@",
-                                     templateName, error.localizedDescription]];
+            if (success && savedTemplate) {
+                NSLog(@"✅ Template saved successfully: %@", savedTemplate.templateName);
+                
+                // Reload templates to include the new one
+                [self loadAvailableTemplates:^(BOOL loadSuccess) {
+                    if (loadSuccess) {
+                        // Select the newly saved template
+                        [self.indicatorsPanel selectTemplate:savedTemplate];
+                        
+                        // Show success message
+                        [self showTemporaryMessage:[NSString stringWithFormat:@"Template '%@' saved!", savedTemplate.templateName]];
+                    }
+                }];
+                
             } else {
-                NSLog(@"✅ Runtime template created successfully: %@", newTemplate.templateName);
-                
-                // Reload templates
-                [self loadAvailableTemplates];
-                
-                // Select the new template
-                [self.indicatorsPanel selectTemplate:newTemplate];
-                
-                // Show success message
-                [self showTemporaryMessage:[NSString stringWithFormat:@"Template '%@' created!", templateName]];
+                NSLog(@"❌ Failed to save template: %@", template.templateName);
+                [self showErrorAlert:@"Save Failed"
+                             message:[NSString stringWithFormat:@"Could not save template '%@'. Please try again.", template.templateName]];
             }
         });
     }];
 }
 
-// ✅ AGGIORNATO per ChartTemplateModel
-- (void)indicatorsPanel:(id)panel didRequestTemplateAction:(NSString *)action forTemplate:(ChartTemplateModel *)template {
-    NSLog(@"🎬 User requested template action: %@ for runtime template: %@", action, template.templateName);
-    
-    if ([action isEqualToString:@"duplicate"]) {
-        [self duplicateTemplate:template];
-    } else if ([action isEqualToString:@"rename"]) {
-        [self renameTemplate:template];
-    } else if ([action isEqualToString:@"delete"]) {
-        [self deleteTemplateWithConfirmation:template];
-    } else if ([action isEqualToString:@"export"]) {
-        [self exportTemplate:template];
-    } else {
-        NSLog(@"❓ Unknown template action: %@", action);
-    }
-}
 
 #pragma mark - Template Actions - AGGIORNATI per runtime models
 
@@ -643,81 +666,7 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 #pragma mark - Helper Methods - AGGIORNATI
 
 
-// ✅ AGGIORNATO per ChartTemplateModel
-- (void)createTemplateFromCurrentPanels:(NSString *)templateName
-                              completion:(void(^)(ChartTemplateModel *template, NSError *error))completion {
-    
-    if (self.chartPanels.count == 0) {
-        NSError *error = [NSError errorWithDomain:@"ChartTemplateCreation"
-                                             code:1001
-                                         userInfo:@{NSLocalizedDescriptionKey: @"No panels available to create template from"}];
-        completion(nil, error);
-        return;
-    }
-    
-    NSLog(@"🎨 Creating template '%@' from %ld current panels", templateName, (long)self.chartPanels.count);
-    
-    // ✅ Create template from current panel configuration using runtime models
-    ChartTemplateModel *newTemplate = [ChartTemplateModel templateWithName:templateName];
-    newTemplate.isDefault = NO;
-    
-    // ✅ CRITICAL FIX: Extract ACTUAL panel configuration with child indicators
-    for (NSUInteger i = 0; i < self.chartPanels.count; i++) {
-        ChartPanelView *panelView = self.chartPanels[i];
-        
-        NSLog(@"🔍 Processing panel %ld: type='%@'", (long)i, panelView.panelType);
-        
-        // ✅ STEP 1: Calculate relative height based on actual panel size
-        CGFloat totalHeight = self.panelsSplitView.bounds.size.height;
-        CGFloat panelHeight = panelView.bounds.size.height;
-        CGFloat relativeHeight = (totalHeight > 0) ? (panelHeight / totalHeight) : (1.0 / self.chartPanels.count);
-        
-        NSLog(@"📐 Panel height: %.0f / %.0f = %.2f%%", panelHeight, totalHeight, relativeHeight * 100);
-        
-        // ✅ STEP 2: Determine root indicator type from panel type
-        NSString *rootIndicatorType = [self rootIndicatorTypeForPanelType:panelView.panelType];
-        
-        // ✅ STEP 3: Create panel template with basic info
-        ChartPanelTemplateModel *panelTemplate = [[ChartPanelTemplateModel alloc] init];
-        panelTemplate.panelID = [[NSUUID UUID] UUIDString];
-        panelTemplate.rootIndicatorType = rootIndicatorType;
-        panelTemplate.relativeHeight = relativeHeight;
-        panelTemplate.displayOrder = i;
-        
-        // ✅ STEP 4: **CRITICAL FIX** - Extract child indicators from actual panel!
-        NSArray<NSDictionary *> *childIndicatorsData = [self extractChildIndicatorsFromPanel:panelView];
-        panelTemplate.childIndicatorsData = childIndicatorsData;
-        
-        NSLog(@"✅ Panel %ld: %@ with %ld child indicators",
-              (long)i, rootIndicatorType, (long)childIndicatorsData.count);
-        
-        // Log each child indicator
-        for (NSDictionary *childData in childIndicatorsData) {
-            NSLog(@"   📊 Child: %@ (%@)",
-                  childData[@"indicatorID"], childData[@"instanceID"]);
-        }
-        
-        [newTemplate addPanel:panelTemplate];
-    }
-    
-    NSLog(@"🏗️ Template created with %ld panels, saving...", (long)newTemplate.panels.count);
-    
-    // ✅ Save using new API
-    [[DataHub shared] saveChartTemplate:newTemplate completion:^(BOOL success, ChartTemplateModel *savedTemplate) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (success && savedTemplate) {
-                NSLog(@"✅ Template '%@' saved successfully", savedTemplate.templateName);
-                completion(savedTemplate, nil);
-            } else {
-                NSLog(@"❌ Failed to save template '%@'", templateName);
-                NSError *error = [NSError errorWithDomain:@"ChartTemplateCreation"
-                                                     code:1002
-                                                 userInfo:@{NSLocalizedDescriptionKey: @"Failed to save template"}];
-                completion(nil, error);
-            }
-        });
-    }];
-}
+
 
 - (NSArray<NSDictionary *> *)extractChildIndicatorsFromPanel:(ChartPanelView *)panelView {
     

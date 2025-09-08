@@ -71,9 +71,33 @@
 }
 
 - (void)addDefaultWidget {
-    BaseWidget *defaultWidget = [[BaseWidget alloc] initWithType:@"Empty Widget"
-                                                      panelType:self.panelType];
+    BaseWidget *defaultWidget;
+    
+    if (self.panelType == PanelTypeCenter) {
+        // ✅ STEP 1: Crea direttamente un ChartWidget
+        Class chartWidgetClass = [[WidgetTypeManager sharedManager] classForWidgetType:@"Chart Widget"];
+        
+        if (chartWidgetClass) {
+            defaultWidget = [[chartWidgetClass alloc] initWithType:@"Chart Widget"
+                                                        panelType:self.panelType];
+        } else {
+            // Fallback se non trova la classe
+            defaultWidget = [[BaseWidget alloc] initWithType:@"Chart Widget"
+                                                  panelType:self.panelType];
+        }
+    } else {
+        // Per altri pannelli usa Empty Widget
+        defaultWidget = [[BaseWidget alloc] initWithType:@"Empty Widget"
+                                              panelType:self.panelType];
+    }
+    
+    // ✅ STEP 2: Aggiungi il widget (configura automaticamente i callback)
     [self addWidget:defaultWidget];
+    
+    // ✅ STEP 3: Forza loadView se necessario
+    if (!defaultWidget.view) {
+        [defaultWidget loadView];
+    }
 }
 
 #pragma mark - Widget Management

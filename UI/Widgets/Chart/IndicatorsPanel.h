@@ -3,7 +3,7 @@
 //  TradingApp
 //
 //  Side panel for chart template and indicators management
-//  CLEANED: Contains only methods actually implemented in .m file
+//  FIXED: Nuovo metodo delegate per salvare template completo + removed legacy
 //  ARCHITETTURA: Usa ChartTemplateModel (runtime models)
 //
 
@@ -17,7 +17,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 @class IndicatorsPanel;
 
-#pragma mark - Delegate Protocol
+#pragma mark - Delegate Protocol - UPDATED
 
 @protocol IndicatorsPanelDelegate <NSObject>
 
@@ -37,10 +37,10 @@ NS_ASSUME_NONNULL_BEGIN
 /// @param indicator The indicator to configure
 - (void)indicatorsPanel:(id)panel didRequestConfigureIndicator:(TechnicalIndicatorBase *)indicator;
 
-/// Called when user requests to create a new template
+/// ✅ NEW: Called when user wants to save a complete template
 /// @param panel The indicators panel instance
-/// @param templateName The name for the new template
-- (void)indicatorsPanel:(id)panel didRequestCreateTemplate:(NSString *)templateName;
+/// @param template Complete ChartTemplateModel to save (replaces didRequestCreateTemplate)
+- (void)indicatorsPanel:(id)panel didRequestSaveTemplate:(ChartTemplateModel *)template;
 
 @optional
 /// Called when panel visibility changes
@@ -50,9 +50,11 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Called when user requests template management actions
 /// @param panel The indicators panel instance
-/// @param action The action type ("duplicate", "rename", "delete", "export")
-/// @param template ChartTemplateModel target template
+/// @param action The action type ("reload", "duplicate", "rename", "delete")
+/// @param template ChartTemplateModel target template (nil for reload all)
 - (void)indicatorsPanel:(id)panel didRequestTemplateAction:(NSString *)action forTemplate:(ChartTemplateModel *)template;
+
+// ❌ REMOVED: didRequestCreateTemplate - replaced by didRequestSaveTemplate
 
 @end
 
@@ -65,7 +67,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSLayoutConstraint *widthConstraint;
 
 #pragma mark - UI Components (readonly)
-@property (nonatomic, strong, readwrite) NSComboBox *templateComboBox;
+@property (nonatomic, strong, readonly) NSComboBox *templateComboBox;
 @property (nonatomic, strong, readonly) NSButton *templateSettingsButton;
 @property (nonatomic, strong, readonly) NSButton *templateSaveButton;
 @property (nonatomic, strong, readonly) NSOutlineView *templateOutlineView;
@@ -106,6 +108,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)hasUnsavedChanges;
 
 #pragma mark - Dialog Methods
+/// ✅ UPDATED: Now creates and saves complete template
 - (void)showSaveAsDialog;
 
 #pragma mark - Button Actions
@@ -132,44 +135,6 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSMenu *)createAddPanelSubmenu;
 - (NSMenu *)createAddIndicatorSubmenuForPanel:(ChartPanelTemplateModel *)panel;
 - (NSMenu *)createCustomIndicatorSubmenuForPanel:(ChartPanelTemplateModel *)panel;
-- (NSMenu *)createHierarchicalChildIndicatorMenuForIndicator:(TechnicalIndicatorBase *)parentIndicator;
-- (NSMenu *)createCategorizedChildIndicatorSubmenuForIndicator:(TechnicalIndicatorBase *)parentIndicator;
-- (NSMenu *)createCustomChildIndicatorSubmenuForIndicator:(TechnicalIndicatorBase *)parentIndicator;
-
-#pragma mark - Context Menu Actions
-- (void)addPanelFromMenu:(NSMenuItem *)sender;
-- (void)addIndicatorToPanel:(NSMenuItem *)sender;
-- (void)configurePanelSettings:(NSMenuItem *)sender;
-- (void)removePanelWithConfirmation:(NSMenuItem *)sender;
-- (void)configureIndicator:(NSMenuItem *)sender;
-- (void)removeIndicator:(NSMenuItem *)sender;
-- (void)showAddChildIndicatorDialog:(NSMenuItem *)sender;
-- (void)addChildIndicatorToIndicator:(NSMenuItem *)sender;
-
-#pragma mark - Placeholder Actions (TODO)
-- (void)importCustomIndicator:(NSMenuItem *)sender;
-- (void)showPineScriptEditor:(NSMenuItem *)sender;
-- (void)browseIndicatorLibrary:(NSMenuItem *)sender;
-- (void)importCustomChildIndicator:(NSMenuItem *)sender;
-- (void)showPineScriptEditorForChild:(NSMenuItem *)sender;
-- (void)browseChildIndicatorLibrary:(NSMenuItem *)sender;
-
-#pragma mark - Panel Management
-- (void)addPanelWithType:(NSString *)panelType rootIndicator:(NSString *)rootIndicator defaultHeight:(double)defaultHeight;
-- (void)removePanel:(ChartPanelTemplateModel *)panel;
-
-#pragma mark - Child Indicator Helpers
-- (NSArray<NSString *> *)filterIndicatorsCompatibleWithParent:(NSArray<NSString *> *)indicators parentIndicator:(TechnicalIndicatorBase *)parentIndicator;
-- (ChartPanelTemplateModel *)findPanelContainingIndicator:(TechnicalIndicatorBase *)indicator;
-
-#pragma mark - Right-Click Support
-- (void)rightMouseDown:(NSEvent *)event;
-
-#pragma mark - Window Management
-- (NSWindow *)window;
-
-#pragma mark - Cleanup
-- (void)dealloc;
 
 @end
 

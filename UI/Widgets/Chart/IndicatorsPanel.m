@@ -29,8 +29,6 @@
 @property (nonatomic, strong, readwrite) NSButton *resetButton;
 @property (nonatomic, strong, readwrite) NSButton *saveAsButton;
 
-// State
-@property (nonatomic, assign) BOOL isLoadingTemplates;
 
 @end
 
@@ -42,15 +40,12 @@
     self = [super init];
     if (self) {
         [self setupDefaults];
-  
+        [self setupUI];
+        [self setupConstraints];
     }
     return self;
 }
 
-- (void)viewWillDraw{
-    [self setupUI];
-    [self setupConstraints];
-}
 
 
 - (void)setupDefaults {
@@ -840,7 +835,7 @@
 }
 
 - (void)configurePanelSettings:(NSMenuItem *)sender {
-    ChartPanelTemplateModel *panel = sender.representedObject;
+   /* ChartPanelTemplateModel *panel = sender.representedObject;
     NSLog(@"⚙️ IndicatorsPanel: Opening Panel Settings for: %@", panel.displayName);
     
     [PanelSettingsDialog showSettingsForPanel:panel
@@ -870,7 +865,7 @@
             self.applyButton.enabled = YES;
             self.resetButton.enabled = YES;
         }
-    }];
+    }];*/
 }
 
 
@@ -1498,7 +1493,7 @@
     
     // Get compatible indicators
     IndicatorRegistry *registry = [IndicatorRegistry sharedRegistry];
-    NSArray<NSString *> *availableIndicators = [registry getAllIndicatorIdentifiers];
+    NSArray<NSString *> *availableIndicators = [registry allIndicatorIdentifiers];
     NSArray<NSString *> *compatibleIndicators = [self filterIndicatorsCompatibleWithParent:availableIndicators
                                                                           parentIndicator:parentIndicator];
     

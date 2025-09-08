@@ -7,8 +7,7 @@
 
 #import <Cocoa/Cocoa.h>
 #import "TechnicalIndicatorBase.h"
-
-NS_ASSUME_NONNULL_BEGIN
+#import "TechnicalIndicatorBase+Hierarchy.h"
 
 typedef void(^IndicatorConfigurationCompletionBlock)(BOOL saved, NSDictionary * _Nullable updatedParameters);
 

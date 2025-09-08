@@ -11,7 +11,6 @@
 #import "ChartTemplateModels.h"
 #import "TechnicalIndicatorBase.h"
 #import "IndicatorConfigurationDialog.h"
-#import "PanelSettingsDialog.h"
 #import "IndicatorRegistry.h"
 
 NS_ASSUME_NONNULL_BEGIN
@@ -66,7 +65,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSLayoutConstraint *widthConstraint;
 
 #pragma mark - UI Components (readonly)
-@property (nonatomic, strong, readonly) NSComboBox *templateComboBox;
+@property (nonatomic, strong, readwrite) NSComboBox *templateComboBox;
 @property (nonatomic, strong, readonly) NSButton *templateSettingsButton;
 @property (nonatomic, strong, readonly) NSButton *templateSaveButton;
 @property (nonatomic, strong, readonly) NSOutlineView *templateOutlineView;

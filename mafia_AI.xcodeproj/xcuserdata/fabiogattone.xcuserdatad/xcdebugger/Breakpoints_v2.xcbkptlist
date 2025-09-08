@@ -126,8 +126,8 @@
             filePath = "UI/Widgets/Chart/IndicatorsPanel.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "536"
-            endingLineNumber = "536"
+            startingLineNumber = "531"
+            endingLineNumber = "531"
             landmarkName = "-numberOfItemsInComboBox:"
             landmarkType = "7">
          </BreakpointContent>
@@ -136,22 +136,6 @@
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
             uuid = "C7E2953C-F63F-4DD0-B14E-9AC39CF076A4"
-            shouldBeEnabled = "Yes"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "UI/Widgets/Chart/IndicatorsPanel.m"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "547"
-            endingLineNumber = "547"
-            landmarkName = "-comboBox:objectValueForItemAtIndex:"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "B5015B6B-CF4E-4227-8447-A31BD7E4938B"
             shouldBeEnabled = "Yes"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
@@ -167,6 +151,22 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
+            uuid = "B5015B6B-CF4E-4227-8447-A31BD7E4938B"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "UI/Widgets/Chart/IndicatorsPanel.m"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "537"
+            endingLineNumber = "537"
+            landmarkName = "-comboBox:objectValueForItemAtIndex:"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
             uuid = "9828032B-1DB9-41DB-B20E-AE2D5ECBA5A3"
             shouldBeEnabled = "Yes"
             ignoreCount = "0"
@@ -174,8 +174,8 @@
             filePath = "UI/Widgets/Chart/IndicatorsPanel.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "557"
-            endingLineNumber = "557"
+            startingLineNumber = "552"
+            endingLineNumber = "552"
             landmarkName = "-comboBoxSelectionDidChange:"
             landmarkType = "7">
          </BreakpointContent>
@@ -190,8 +190,8 @@
             filePath = "UI/Widgets/Chart/IndicatorsPanel.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "546"
-            endingLineNumber = "546"
+            startingLineNumber = "541"
+            endingLineNumber = "541"
             landmarkName = "-comboBox:objectValueForItemAtIndex:"
             landmarkType = "7">
          </BreakpointContent>

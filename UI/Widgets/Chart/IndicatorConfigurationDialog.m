@@ -52,7 +52,7 @@
 
 - (void)setupUI {
     // Set window title
-    self.window.title = [NSString stringWithFormat:@"Configure %@", self.indicator.displayName];
+    self.window.title = [NSString stringWithFormat:@"Configure %@", self.indicator.shortName];
     
     // Setup basic info
     self.indicatorNameLabel.stringValue = self.indicator.displayName ?: @"Unknown Indicator";

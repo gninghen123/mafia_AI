@@ -67,6 +67,9 @@ typedef NS_ENUM(NSInteger, VisualizationType) {
 /// @return Default visualization type
 - (VisualizationType)defaultVisualizationType;
 
+
+- (BOOL)hasVisualOutput;
+
 #pragma mark - Utility Methods
 
 /// Convert VisualizationType to IndicatorSeriesType for rendering
@@ -83,6 +86,8 @@ typedef NS_ENUM(NSInteger, VisualizationType) {
 /// @param dataType Raw data type
 /// @return Human-readable name
 + (NSString *)displayNameForDataType:(RawDataType)dataType;
+
+
 
 @end
 

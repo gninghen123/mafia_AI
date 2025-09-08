@@ -2088,17 +2088,27 @@ extern NSString *const DataHubDataLoadedNotification;
             }
             
             NSLog(@"✅ ChartWidget: Received %lu bars for %@ (%@)",
-                  (unsigned long)data.count, params.symbol, isFresh ? @"fresh" : @"cached");
+                  (unsigned long)data.count, params.symbol, isFresh ? @"FRESH" : @"CACHED");
             
-       
-            // Update panels with new data
-            [self updatePanelsWithData:data];
+            // ✅ FIX CRITICO: Simula una notification per entrare nel flusso corretto
+            NSDictionary *userInfo = @{
+                @"symbol": params.symbol,
+                @"bars": data,
+                @"isFresh": @(isFresh),
+                @"source": @"loadSymbolWithDateRange"  // Per debug
+            };
             
-      
+            NSNotification *syntheticNotification = [NSNotification notificationWithName:DataHubDataLoadedNotification
+                                                                                   object:self  // Passiamo self come object
+                                                                                 userInfo:userInfo];
+            
+            NSLog(@"🔄 Calling handleHistoricalDataUpdate via synthetic notification");
+            [self handleHistoricalDataUpdate:syntheticNotification];
+            
+            NSLog(@"✅ Data processing completed via unified pipeline");
         });
     }];
 }
-
 
 #pragma mark - Helper Methods
 

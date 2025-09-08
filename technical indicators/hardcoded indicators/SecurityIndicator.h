@@ -48,6 +48,8 @@ NS_ASSUME_NONNULL_BEGIN
 /// @return YES if close > open
 - (BOOL)isCurrentBarBullish;
 
+- (BOOL)hasVisualOutput;
+
 /// Get OHLC values for latest bar
 /// @return Dictionary with open, high, low, close keys
 - (NSDictionary<NSString *, NSNumber *> *)currentOHLC;

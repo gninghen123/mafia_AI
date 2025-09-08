@@ -55,6 +55,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// @return Positive for increasing, negative for decreasing, 0 for flat
 - (double)volumeTrend:(NSInteger)period;
 
+- (BOOL)hasVisualOutput;
+
+
 #pragma mark - Display Configuration
 
 /// Configure for histogram display with volume-based coloring

@@ -254,19 +254,14 @@
         return;
     }
     
-    // ✅ UPDATE VIEWPORT
-    if ([self respondsToSelector:@selector(updateViewport)]) {
-        [self updateViewport];
-    }
-    
-    // ✅ SYNCHRONIZE ALL PANELS
-    if ([self respondsToSelector:@selector(synchronizePanels)]) {
-        [self synchronizePanels];
+    // ✅ SINGLE CALL: resetToInitialView handles everything
+    if ([self respondsToSelector:@selector(resetToInitialView)]) {
+        [self resetToInitialView]; // Questo già fa updateViewport + synchronizePanels
+        NSLog(@"✅ Viewport reset completed (includes update + sync)");
     }
     
     NSLog(@"✅ Viewport update processed");
 }
-
 - (void)processUIUpdate:(ChartInvalidationFlags)flags {
     NSLog(@"🔄 Processing UI update with flags: %lu", (unsigned long)flags);
     

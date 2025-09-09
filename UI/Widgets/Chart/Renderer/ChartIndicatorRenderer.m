@@ -321,10 +321,15 @@
     BOOL isFirstPoint = YES;
     
     for (IndicatorDataModel *dataPoint in dataPoints) {
+        // ✅ CRITICAL FIX: Skip NaN values FIRST before any coordinate conversion
+        if (isnan(dataPoint.value)) {
+            continue;
+        }
+        
         CGFloat x = [self xCoordinateForTimestamp:dataPoint.timestamp];
         CGFloat y = [self yCoordinateForValue:dataPoint.value];
         
-        // Skip invalid coordinates
+        // Skip invalid coordinates (coordinate conversion problems)
         if (x < -9999 || y < -9999) continue;
         
         NSPoint point = NSMakePoint(x, y);
@@ -348,6 +353,9 @@
     CGFloat barWidth = [self.sharedXContext barWidth] * 0.8; // Slightly smaller than candle width
     
     for (IndicatorDataModel *dataPoint in dataPoints) {
+        // ✅ SKIP NaN VALUES
+        if (isnan(dataPoint.value)) continue;
+        
         CGFloat x = [self xCoordinateForTimestamp:dataPoint.timestamp];
         CGFloat y = [self yCoordinateForValue:dataPoint.value];
         
@@ -372,8 +380,11 @@
     NSBezierPath *path = [NSBezierPath bezierPath];
     NSMutableArray *validPoints = [NSMutableArray array];
     
-    // Collect valid points
+    // Collect valid points (skip NaN values)
     for (IndicatorDataModel *dataPoint in dataPoints) {
+        // ✅ SKIP NaN VALUES
+        if (isnan(dataPoint.value)) continue;
+        
         CGFloat x = [self xCoordinateForTimestamp:dataPoint.timestamp];
         CGFloat y = [self yCoordinateForValue:dataPoint.value];
         

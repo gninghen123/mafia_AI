@@ -22,6 +22,8 @@
 #import "ibkrdatasource.h"
 #import "ibkrconfiguration.h"
 #import "yahooDataSource.h"
+#import "StorageSystemInitializer.h"  // ← AGGIUNGI QUESTA RIGA
+
 
 @interface AppDelegate ()
 @property (nonatomic, strong) MainWindowController *mainWindowController;
@@ -38,6 +40,15 @@
     [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"NSCloseAlwaysConfirmsChanges"];
     
     [DataHub shared];
+    
+    // 🎯 FIX: Inizializza il sistema di storage automatico
+       [[StorageSystemInitializer sharedInitializer] initializeStorageSystemWithCompletion:^(BOOL success, NSError *error) {
+           if (success) {
+               NSLog(@"✅ Storage system initialized successfully at app startup");
+           } else {
+               NSLog(@"❌ Failed to initialize storage system: %@", error.localizedDescription);
+           }
+       }];
     
     [self registerDataSources];
     self.floatingWindows = [[NSMutableArray alloc] init];

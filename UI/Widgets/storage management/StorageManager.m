@@ -590,15 +590,15 @@
 
 - (NSString *)timeframeToString:(BarTimeframe)timeframe {
     switch (timeframe) {
-        case ChartTimeframe1Min: return @"1min";
-        case ChartTimeframe5Min: return @"5min";
-        case ChartTimeframe15Min: return @"15min";
-        case ChartTimeframe30Min: return @"30min";
-        case ChartTimeframe1Hour: return @"1hour";
-        case ChartTimeframe4Hour: return @"4hour";
-        case ChartTimeframeDaily: return @"daily";
-        case ChartTimeframeWeekly: return @"weekly";
-        case ChartTimeframeMonthly: return @"monthly";
+        case BarTimeframe1Min: return @"1min";
+        case BarTimeframe5Min: return @"5min";
+        case BarTimeframe15Min: return @"15min";
+        case BarTimeframe30Min: return @"30min";
+        case BarTimeframe1Hour: return @"1hour";
+        case BarTimeframe4Hour: return @"4hour";
+        case BarTimeframeDaily: return @"daily";
+        case BarTimeframeWeekly: return @"weekly";
+        case BarTimeframeMonthly: return @"monthly";
         default: return @"unknown";
     }
 }

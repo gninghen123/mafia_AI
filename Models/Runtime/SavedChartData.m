@@ -330,15 +330,15 @@
 
 - (NSString *)timeframeDescription {
     switch (self.timeframe) {
-        case ChartTimeframe1Min: return @"1min";
-        case ChartTimeframe5Min: return @"5min";
-        case ChartTimeframe15Min: return @"15min";
-        case ChartTimeframe30Min: return @"30min";
-        case ChartTimeframe1Hour: return @"1hour";
-        case ChartTimeframe4Hour: return @"4hour";
-        case ChartTimeframeDaily: return @"daily";
-        case ChartTimeframeWeekly: return @"weekly";
-        case ChartTimeframeMonthly: return @"monthly";
+        case BarTimeframe1Min: return @"1min";
+        case BarTimeframe5Min: return @"5min";
+        case BarTimeframe15Min: return @"15min";
+        case BarTimeframe30Min: return @"30min";
+        case BarTimeframe1Hour: return @"1hour";
+        case BarTimeframe4Hour: return @"4hour";
+        case BarTimeframeDaily: return @"daily";
+        case BarTimeframeWeekly: return @"weekly";
+        case BarTimeframeMonthly: return @"monthly";
         default: return @"unknown";
     }
 }
@@ -373,7 +373,7 @@
     NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
     
     // Choose format based on timeframe
-    if (self.timeframe <= ChartTimeframe1Hour) {
+    if (self.timeframe <= BarTimeframe1Hour) {
         // Intraday: show date and time
         formatter.dateFormat = @"MMM d, HH:mm";
     } else {
@@ -408,7 +408,7 @@
     
     // Check timeframe compatibility
     BarTimeframe newBarTimeframe = firstNewBar.timeframe;
-    BarTimeframe expectedTimeframe = [self chartTimeframeToBarTimeframe:self.timeframe];
+    BarTimeframe expectedTimeframe = [self BarTimeframeToBarTimeframe:self.timeframe];
     
     if (newBarTimeframe != expectedTimeframe) {
         NSLog(@"❌ Incompatible: Timeframe mismatch (%ld vs %ld)", (long)newBarTimeframe, (long)expectedTimeframe);
@@ -423,14 +423,14 @@
     
     NSInteger limitDays;
     switch (self.timeframe) {
-        case ChartTimeframe1Min:
+        case BarTimeframe1Min:
             limitDays = 45; // ~1.5 months
             break;
-        case ChartTimeframe5Min:
-        case ChartTimeframe15Min:
-        case ChartTimeframe30Min:
-        case ChartTimeframe1Hour:
-        case ChartTimeframe4Hour:
+        case BarTimeframe5Min:
+        case BarTimeframe15Min:
+        case BarTimeframe30Min:
+        case BarTimeframe1Hour:
+        case BarTimeframe4Hour:
             limitDays = 255; // ~8.5 months
             break;
         default:
@@ -450,14 +450,14 @@
     
     NSInteger bufferDays;
     switch (self.timeframe) {
-        case ChartTimeframe1Min:
+        case BarTimeframe1Min:
             bufferDays = 30; // Aggressive: 30 days (15 days safety buffer)
             break;
-        case ChartTimeframe5Min:
-        case ChartTimeframe15Min:
-        case ChartTimeframe30Min:
-        case ChartTimeframe1Hour:
-        case ChartTimeframe4Hour:
+        case BarTimeframe5Min:
+        case BarTimeframe15Min:
+        case BarTimeframe30Min:
+        case BarTimeframe1Hour:
+        case BarTimeframe4Hour:
             bufferDays = 241; // Conservative: 241 days (14 days safety buffer)
             break;
         default:
@@ -467,17 +467,17 @@
     return [self.lastSuccessfulUpdate dateByAddingTimeInterval:bufferDays * 24 * 60 * 60];
 }
 
-- (BarTimeframe)chartTimeframeToBarTimeframe:(ChartTimeframe)chartTimeframe {
-    switch (chartTimeframe) {
-        case ChartTimeframe1Min: return BarTimeframe1Min;
-        case ChartTimeframe5Min: return BarTimeframe5Min;
-        case ChartTimeframe15Min: return BarTimeframe15Min;
-        case ChartTimeframe30Min: return BarTimeframe30Min;
-        case ChartTimeframe1Hour: return BarTimeframe1Hour;
-        case ChartTimeframe4Hour: return BarTimeframe4Hour;
-        case ChartTimeframeDaily: return BarTimeframeDaily;
-        case ChartTimeframeWeekly: return BarTimeframeWeekly;
-        case ChartTimeframeMonthly: return BarTimeframeMonthly;
+- (BarTimeframe)BarTimeframeToBarTimeframe:(BarTimeframe)BarTimeframe {
+    switch (BarTimeframe) {
+        case BarTimeframe1Min: return BarTimeframe1Min;
+        case BarTimeframe5Min: return BarTimeframe5Min;
+        case BarTimeframe15Min: return BarTimeframe15Min;
+        case BarTimeframe30Min: return BarTimeframe30Min;
+        case BarTimeframe1Hour: return BarTimeframe1Hour;
+        case BarTimeframe4Hour: return BarTimeframe4Hour;
+        case BarTimeframeDaily: return BarTimeframeDaily;
+        case BarTimeframeWeekly: return BarTimeframeWeekly;
+        case BarTimeframeMonthly: return BarTimeframeMonthly;
         default: return BarTimeframeDaily;
     }
 }

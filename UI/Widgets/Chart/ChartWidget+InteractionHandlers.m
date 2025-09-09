@@ -42,7 +42,7 @@
     NSLog(@"✅ Handler: Symbol change from '%@' to '%@' initiated", previousSymbol ?: @"(none)", newSymbol);
 }
 
-- (void)handleTimeframeChange:(ChartTimeframe)newTimeframe {
+- (void)handleTimeframeChange:(BarTimeframe)newTimeframe {
     NSLog(@"🔄 Handler: Timeframe change to %ld", (long)newTimeframe);
     
     if (newTimeframe == self.currentTimeframe) {
@@ -50,7 +50,7 @@
         return;
     }
     
-    ChartTimeframe previousTimeframe = self.currentTimeframe;
+    BarTimeframe previousTimeframe = self.currentTimeframe;
     
     // ✅ UPDATE TIMEFRAME
     self.currentTimeframe = newTimeframe;

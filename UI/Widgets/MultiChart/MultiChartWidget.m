@@ -46,7 +46,7 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
 - (void)setupMultiChartDefaults {
     // Default configuration
     _chartType = MiniChartTypeLine;
-    _timeframe = MiniChartTimeframeDaily;
+    _timeframe = MiniBarTimeframeDaily;
     _scaleType = MiniChartScaleLinear;
     _maxBars = 100;
     _showVolume = YES;
@@ -452,23 +452,23 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
     }];
 }
 
-- (BarTimeframe)convertToBarTimeframe:(MiniChartTimeframe)timeframe {
+- (BarTimeframe)convertToBarTimeframe:(MiniBarTimeframe)timeframe {
     switch (timeframe) {
-        case MiniChartTimeframe1Min:
+        case MiniBarTimeframe1Min:
             return BarTimeframe1Min;
-        case MiniChartTimeframe5Min:
+        case MiniBarTimeframe5Min:
             return BarTimeframe5Min;
-        case MiniChartTimeframe15Min:
+        case MiniBarTimeframe15Min:
             return BarTimeframe15Min;
-        case MiniChartTimeframe30Min:
+        case MiniBarTimeframe30Min:
             return BarTimeframe30Min;
-        case MiniChartTimeframe1Hour:
+        case MiniBarTimeframe1Hour:
             return BarTimeframe1Hour;
-        case MiniChartTimeframeDaily:
+        case MiniBarTimeframeDaily:
             return BarTimeframeDaily;
-        case MiniChartTimeframeWeekly:
+        case MiniBarTimeframeWeekly:
             return BarTimeframeWeekly;
-        case MiniChartTimeframeMonthly:
+        case MiniBarTimeframeMonthly:
             return BarTimeframeMonthly;
     }
 }
@@ -919,7 +919,7 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
 
 - (void)timeframeChanged:(id)sender {
     NSInteger index = self.timeframePopup.indexOfSelectedItem;
-    self.timeframe = (MiniChartTimeframe)index;
+    self.timeframe = (MiniBarTimeframe)index;
     
     // Update all charts and reload data
     for (MiniChart *chart in self.miniCharts) {
@@ -1183,7 +1183,7 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
 
 // Keys per NSUserDefaults - prefisso per evitare conflitti
 static NSString *const kMultiChartChartTypeKey = @"MultiChart_ChartType";
-static NSString *const kMultiChartTimeframeKey = @"MultiChart_Timeframe";
+static NSString *const kMultiBarTimeframeKey = @"MultiChart_Timeframe";
 static NSString *const kMultiChartScaleTypeKey = @"MultiChart_ScaleType";
 static NSString *const kMultiChartMaxBarsKey = @"MultiChart_MaxBars";
 static NSString *const kMultiChartShowVolumeKey = @"MultiChart_ShowVolume";
@@ -1197,7 +1197,7 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     
     // Carica le impostazioni salvate o usa i default
     NSInteger savedChartType = [defaults integerForKey:kMultiChartChartTypeKey];
-    NSInteger savedTimeframe = [defaults integerForKey:kMultiChartTimeframeKey];
+    NSInteger savedTimeframe = [defaults integerForKey:kMultiBarTimeframeKey];
     NSInteger savedScaleType = [defaults integerForKey:kMultiChartScaleTypeKey];
     NSInteger savedMaxBars = [defaults integerForKey:kMultiChartMaxBarsKey];
     BOOL savedShowVolume = [defaults boolForKey:kMultiChartShowVolumeKey];
@@ -1217,10 +1217,10 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     }
     
     // Timeframe (default: Daily se non salvato)
-    if (savedTimeframe >= MiniChartTimeframe5Min && savedTimeframe <= MiniChartTimeframeMonthly) {
-        self.timeframe = (MiniChartTimeframe)savedTimeframe;
+    if (savedTimeframe >= MiniBarTimeframe5Min && savedTimeframe <= MiniBarTimeframeMonthly) {
+        self.timeframe = (MiniBarTimeframe)savedTimeframe;
     } else {
-        self.timeframe = MiniChartTimeframeDaily; // Default
+        self.timeframe = MiniBarTimeframeDaily; // Default
     }
     
     // Scale Type (default: Linear se non salvato)
@@ -1272,7 +1272,7 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     
     // Salva tutte le impostazioni correnti
     [defaults setInteger:self.chartType forKey:kMultiChartChartTypeKey];
-    [defaults setInteger:self.timeframe forKey:kMultiChartTimeframeKey];
+    [defaults setInteger:self.timeframe forKey:kMultiBarTimeframeKey];
     [defaults setInteger:self.scaleType forKey:kMultiChartScaleTypeKey];
     [defaults setInteger:self.maxBars forKey:kMultiChartMaxBarsKey];
     [defaults setBool:self.showVolume forKey:kMultiChartShowVolumeKey];

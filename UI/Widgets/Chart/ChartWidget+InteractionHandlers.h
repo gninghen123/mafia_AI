@@ -47,7 +47,7 @@ typedef NS_OPTIONS(NSUInteger, ChartInvalidationFlags) {
  * Handle timeframe change
  * @param newTimeframe The new timeframe
  */
-- (void)handleTimeframeChange:(ChartTimeframe)newTimeframe;
+- (void)handleTimeframeChange:(BarTimeframe)newTimeframe;
 
 /**
  * Handle data range change

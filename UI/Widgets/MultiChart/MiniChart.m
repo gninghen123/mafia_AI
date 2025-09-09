@@ -46,7 +46,7 @@
 
 + (instancetype)miniChartWithSymbol:(NSString *)symbol
                           chartType:(MiniChartType)chartType
-                          timeframe:(MiniChartTimeframe)timeframe
+                          timeframe:(MiniBarTimeframe)timeframe
                           scaleType:(MiniChartScaleType)scaleType
                             maxBars:(NSInteger)maxBars
                          showVolume:(BOOL)showVolume {
@@ -66,7 +66,7 @@
     _maxBars = 100;
     _showVolume = YES;
     _chartType = MiniChartTypeLine;
-    _timeframe = MiniChartTimeframeDaily;
+    _timeframe = MiniBarTimeframeDaily;
     _scaleType = MiniChartScaleLinear;
     
     // Default colors

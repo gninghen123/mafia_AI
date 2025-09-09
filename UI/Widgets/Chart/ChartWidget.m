@@ -136,8 +136,6 @@ extern NSString *const DataHubDataLoadedNotification;
     NSLog(@"🚀 Starting ChartWidget setup...");
     
     // ✅ Setup UI controls
-    [self setupTimeframeSegmentedControl];
-    [self setupDateRangeSegmentedControl];
     [self setupPlaceholderView];
     
     // ✅ Load preferences
@@ -287,32 +285,6 @@ extern NSString *const DataHubDataLoadedNotification;
     
     NSLog(@"❌ No templates available");
     return nil;
-}
-
-- (void)setupTimeframeSegmentedControl {
-    if (!self.timeframeSegmented) return;
-    
-    NSArray *timeframeLabels = @[@"1m", @"5m", @"15m", @"1h", @"4h", @"1D", @"1W", @"1M"];
-    
-    for (NSInteger i = 0; i < timeframeLabels.count && i < self.timeframeSegmented.segmentCount; i++) {
-        [self.timeframeSegmented setLabel:timeframeLabels[i] forSegment:i];
-        [self.timeframeSegmented setWidth:30 forSegment:i];
-    }
-    
-    self.timeframeSegmented.selectedSegment = 5; // Default to 1D
-}
-
-- (void)setupDateRangeSegmentedControl {
-    if (!self.dateRangeSegmented) return;
-    
-    NSArray *dateRangeLabels = @[@"Cus", @"1M", @"3M", @"6M", @"1Y", @"5Y", @"10Y", @"MAX"];
-    
-    for (NSInteger i = 0; i < dateRangeLabels.count && i < self.dateRangeSegmented.segmentCount; i++) {
-        [self.dateRangeSegmented setLabel:dateRangeLabels[i] forSegment:i];
-        [self.dateRangeSegmented setWidth:35 forSegment:i];
-    }
-    
-    self.dateRangeSegmented.selectedSegment = 0; // Default to Custom
 }
 
 
@@ -640,7 +612,7 @@ extern NSString *const DataHubDataLoadedNotification;
 
 - (void)setupChartDefaults {
     self.currentSymbol = @"";
-    self.currentTimeframe = ChartTimeframeDaily;
+    self.currentTimeframe = BarTimeframeDaily;
     
     // NUOVO: Default preferences
     self.tradingHoursMode = ChartTradingHoursRegularOnly;
@@ -649,7 +621,7 @@ extern NSString *const DataHubDataLoadedNotification;
     [self loadDateRangeDefaults];
     
     // 🆕 NEW: Set initial date range for default timeframe (Daily)
-    self.currentDateRangeDays = [self getDefaultDaysForTimeframe:ChartTimeframeDaily];
+    self.currentDateRangeDays = [self getDefaultDaysForTimeframe:BarTimeframeDaily];
     self.sharedXContext = [[SharedXCoordinateContext alloc] init];
 
 
@@ -947,22 +919,63 @@ extern NSString *const DataHubDataLoadedNotification;
     }
 }
 
+#pragma mark - Timeframe Mapping (UNIFIED)
 
-
-- (IBAction)timeframeChanged:(NSSegmentedControl *)sender {
-    NSLog(@"🔄 IBAction: timeframeChanged");
-    
-    if (sender.selectedSegment < 0) {
-        NSLog(@"⚠️ Invalid timeframe selection");
-        return;
+- (BarTimeframe)segmentIndexToBarTimeframe:(NSInteger)segmentIndex {
+    switch (segmentIndex) {
+        case 0: return BarTimeframe1Min;      // Segment 0 → 1 min
+        case 1: return BarTimeframe5Min;      // Segment 1 → 5 min
+        case 2: return BarTimeframe30Min;
+        case 3: return BarTimeframe1Hour;
+        case 4: return BarTimeframe4Hour;
+        case 5: return BarTimeframeDaily;
+        case 6: return BarTimeframeWeekly;
+        case 7: return BarTimeframeMonthly;
+        default:
+            NSLog(@"⚠️ Invalid timeframe segment: %ld", (long)segmentIndex);
+            return BarTimeframeDaily;         // Fallback
     }
-    
-    ChartTimeframe newTimeframe = (ChartTimeframe)sender.selectedSegment;
-    
-    // ✅ USE HANDLER instead of legacy logic
-    [self handleTimeframeChange:newTimeframe];
-    
-    NSLog(@"✅ IBAction: timeframeChanged completed via handler");
+}
+
+- (NSInteger)barTimeframeToSegmentIndex:(BarTimeframe)timeframe {
+    switch (timeframe) {
+        case BarTimeframe1Min: return 0;      // 1 min → Segment 0
+        case BarTimeframe5Min: return 1;      // 5 min → Segment 1
+        case BarTimeframe30Min: return 2;     // 30 min → Segment 3
+        case BarTimeframe1Hour: return 3;     // 1 hour → Segment 4
+        case BarTimeframe4Hour: return 4;     // 4 hour → Segment 5
+        case BarTimeframeDaily: return 5;     // Daily → Segment 6
+        case BarTimeframeWeekly: return 6;    // Weekly → Segment 7
+        case BarTimeframeMonthly: return 7;   // Monthly → Segment 8
+        default:
+            NSLog(@"⚠️ Unsupported timeframe: %ld", (long)timeframe);
+            return 6;                         // Fallback to Daily segment
+    }
+}
+
+- (IBAction)timeframeChanged:(id)sender {
+    if (self.timeframeSegmented.selectedSegment >= 0) {
+        // ✅ FIXED: Use mapping function instead of direct cast
+        BarTimeframe newTimeframe = [self segmentIndexToBarTimeframe:self.timeframeSegmented.selectedSegment];
+        
+        if (newTimeframe != self.currentTimeframe) {
+            self.currentTimeframe = newTimeframe;
+            
+            // Update date range segmented control (usa preferences)
+            [self updateDateRangeSegmentedForTimeframe:newTimeframe];
+            
+            // Reset visible range per il nuovo timeframe
+            [self resetVisibleRangeForTimeframe];
+            
+            // Reload data if we have a symbol
+            if (self.currentSymbol && self.currentSymbol.length > 0) {
+                [self loadDataWithCurrentSettings];
+            }
+            
+            NSLog(@"📊 Timeframe changed to: %ld (%@), visible range will be reset",
+                  (long)newTimeframe, [self timeframeDisplayName:newTimeframe]);
+        }
+    }
 }
 
 #pragma mark - 🆕 NEW: Visible Range Management
@@ -987,41 +1000,54 @@ extern NSString *const DataHubDataLoadedNotification;
           (long)self.currentTimeframe, (long)barsToShow, (long)defaultVisible);
 }
 
-- (NSInteger)convertDaysToBarsForTimeframe:(NSInteger)days timeframe:(ChartTimeframe)timeframe {
-    // Converte giorni di trading in numero approssimativo di barre
+- (NSInteger)convertDaysToBarsForTimeframe:(NSInteger)days timeframe:(BarTimeframe)timeframe {
+    if (days <= 0) return 0;
+    
+    NSInteger barsPerDay = 0;
+    
     switch (timeframe) {
-        case ChartTimeframe1Min:
-            return days * 390; // ~390 barre per giorno di trading (6.5 ore)
+        case BarTimeframe1Min:
+        case BarTimeframe2Min:
+        case BarTimeframe5Min:
+        case BarTimeframe10Min:
+        case BarTimeframe15Min:
+        case BarTimeframe20Min:
+        case BarTimeframe30Min:
+        case BarTimeframe1Hour:
+        case BarTimeframe90Min:
+        case BarTimeframe2Hour:
+        case BarTimeframe4Hour: {
+            // Base: trading hours regolari (9:30 - 16:00 → 6.5h = 390 minuti)
+            NSInteger minutesPerDay = 390;
             
-        case ChartTimeframe5Min:
-            return days * 78;  // ~78 barre per giorno di trading
+            // Se extended hours → includi pre-market (4:00–9:30 = 5.5h) e after (16:00–20:00 = 4h)
+            if (self.tradingHoursMode == ChartTradingHoursWithAfterHours) {
+                minutesPerDay = 390 + 330 + 240; // 960 minuti = 16h
+            }
             
-        case ChartTimeframe15Min:
-            return days * 26;  // ~26 barre per giorno di trading
+            barsPerDay = minutesPerDay / timeframe;
+            break;
+        }
             
-        case ChartTimeframe30Min:
-            return days * 13;  // ~13 barre per giorno di trading
+        case BarTimeframeDaily:
+            barsPerDay = 1;
+            break;
             
-        case ChartTimeframe1Hour:
-            return days * 7;   // ~7 barre per giorno di trading
+        case BarTimeframeWeekly:
+            barsPerDay = 5; // trading days in una settimana
+            break;
             
-        case ChartTimeframe4Hour:
-            return days * 2;   // ~2 barre per giorno di trading (mattina + pomeriggio)
+        case BarTimeframeMonthly:
+            barsPerDay = 21; // trading days medi in un mese
+            break;
             
-        case ChartTimeframeDaily:
-            return days;       // 1 barra = 1 giorno
-            
-        case ChartTimeframeWeekly:
-            return days / 5;   // 1 barra = ~5 giorni
-            
-        case ChartTimeframeMonthly:
-            return days / 22;  // 1 barra = ~22 giorni di trading
-            
-        default:
-            return MAX(50, days); // Fallback ragionevole
+        case BarTimeframeQuarterly:
+            barsPerDay = 63; // ~3 mesi
+            break;
     }
+    
+    return days * barsPerDay;
 }
-
 
 
 - (void)panSliderChanged:(NSSlider *)sender {
@@ -1224,32 +1250,18 @@ extern NSString *const DataHubDataLoadedNotification;
     self.sharedXContext.includesExtendedHours = self.tradingHoursMode;
 }
 
-- (BarTimeframe)chartTimeframeToBarTimeframe:(ChartTimeframe)chartTimeframe {
-    switch (chartTimeframe) {
-        case ChartTimeframe1Min: return BarTimeframe1Min;
-        case ChartTimeframe5Min: return BarTimeframe5Min;
-        case ChartTimeframe15Min: return BarTimeframe15Min;
-        case ChartTimeframe30Min: return BarTimeframe30Min;
-        case ChartTimeframe1Hour: return BarTimeframe1Hour;
-        case ChartTimeframe4Hour: return BarTimeframe4Hour;
-        case ChartTimeframeDaily: return BarTimeframeDaily;
-        case ChartTimeframeWeekly: return BarTimeframeWeekly;
-        case ChartTimeframeMonthly: return BarTimeframeMonthly;
-        default: return BarTimeframeDaily;
-    }
-}
 
-- (NSString *)timeframeToString:(ChartTimeframe)timeframe {
+- (NSString *)timeframeToString:(BarTimeframe)timeframe {
     switch (timeframe) {
-        case ChartTimeframe1Min: return @"1m";
-        case ChartTimeframe5Min: return @"5m";
-        case ChartTimeframe15Min: return @"15m";
-        case ChartTimeframe30Min: return @"30m";
-        case ChartTimeframe1Hour: return @"1h";
-        case ChartTimeframe4Hour: return @"4h";
-        case ChartTimeframeDaily: return @"1d";
-        case ChartTimeframeWeekly: return @"1w";
-        case ChartTimeframeMonthly: return @"1M";
+        case BarTimeframe1Min: return @"1m";
+        case BarTimeframe5Min: return @"5m";
+        case BarTimeframe15Min: return @"15m";
+        case BarTimeframe30Min: return @"30m";
+        case BarTimeframe1Hour: return @"1h";
+        case BarTimeframe4Hour: return @"4h";
+        case BarTimeframeDaily: return @"1d";
+        case BarTimeframeWeekly: return @"1w";
+        case BarTimeframeMonthly: return @"1M";
         default: return @"1d";
     }
 }
@@ -1593,7 +1605,7 @@ extern NSString *const DataHubDataLoadedNotification;
     NSInteger timeframeMinutes = [self getCurrentTimeframeInMinutes];
     
     // ✅ FIX: Gestione speciale per timeframe Daily+
-    if (self.currentTimeframe >= ChartTimeframeDaily) {
+    if (self.currentTimeframe >= BarTimeframeDaily) {
         return 1; // 1 barra per giorno di trading
     }
     
@@ -1614,17 +1626,17 @@ extern NSString *const DataHubDataLoadedNotification;
 
 - (NSInteger)getCurrentTimeframeInMinutes {
     switch (self.currentTimeframe) {
-        case ChartTimeframe1Min: return 1;
-        case ChartTimeframe5Min: return 5;
-        case ChartTimeframe15Min: return 15;
-        case ChartTimeframe30Min: return 30;
-        case ChartTimeframe1Hour: return 60;
-        case ChartTimeframe4Hour: return 240;
+        case BarTimeframe1Min: return 1;
+        case BarTimeframe5Min: return 5;
+        case BarTimeframe15Min: return 15;
+        case BarTimeframe30Min: return 30;
+        case BarTimeframe1Hour: return 60;
+        case BarTimeframe4Hour: return 240;
         
         // ✅ FIX: Per Daily+ restituisci valori che hanno senso per i calcoli
-        case ChartTimeframeDaily: return 390;    // Trading minutes in a day
-        case ChartTimeframeWeekly: return 1950;  // Trading minutes in a week (5 * 390)
-        case ChartTimeframeMonthly: return 8190; // Trading minutes in a month (~21 * 390)
+        case BarTimeframeDaily: return 390;    // Trading minutes in a day
+        case BarTimeframeWeekly: return 1950;  // Trading minutes in a week (5 * 390)
+        case BarTimeframeMonthly: return 8190; // Trading minutes in a month (~21 * 390)
         
         default: return 390; // Default to daily trading minutes
     }
@@ -1815,7 +1827,7 @@ extern NSString *const DataHubDataLoadedNotification;
     if (components.count >= 2) {
         NSString *timeframeStr = [components[1] stringByTrimmingCharactersInSet:
                                   [NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        ChartTimeframe parsedTimeframe = [self parseTimeframeString:timeframeStr];
+        BarTimeframe parsedTimeframe = [self parseTimeframeString:timeframeStr];
         if (parsedTimeframe != -1) {
             params.timeframe = parsedTimeframe;
             params.hasTimeframe = YES;
@@ -1846,7 +1858,7 @@ extern NSString *const DataHubDataLoadedNotification;
     return params;
 }
 
-- (ChartTimeframe)parseTimeframeString:(NSString *)timeframeStr {
+- (BarTimeframe)parseTimeframeString:(NSString *)timeframeStr {
     if (!timeframeStr || timeframeStr.length == 0) return -1;
     
     NSString *tf = timeframeStr.lowercaseString;
@@ -1856,12 +1868,12 @@ extern NSString *const DataHubDataLoadedNotification;
     if ([tf rangeOfCharacterFromSet:nonDigits].location == NSNotFound) {
         NSInteger minutes = tf.integerValue;
         switch (minutes) {
-            case 1: return ChartTimeframe1Min;
-            case 5: return ChartTimeframe5Min;
-            case 15: return ChartTimeframe15Min;
-            case 30: return ChartTimeframe30Min;
-            case 60: return ChartTimeframe1Hour;
-            case 240: return ChartTimeframe4Hour;
+            case 1: return BarTimeframe1Min;
+            case 5: return BarTimeframe5Min;
+            case 15: return BarTimeframe15Min;
+            case 30: return BarTimeframe30Min;
+            case 60: return BarTimeframe1Hour;
+            case 240: return BarTimeframe4Hour;
             default:
                 NSLog(@"⚠️ Unsupported numeric timeframe: %ld minutes", (long)minutes);
                 return -1;
@@ -1879,10 +1891,10 @@ extern NSString *const DataHubDataLoadedNotification;
         
         NSInteger minutes = numberPart.integerValue;
         switch (minutes) {
-            case 1: return ChartTimeframe1Min;
-            case 5: return ChartTimeframe5Min;
-            case 15: return ChartTimeframe15Min;
-            case 30: return ChartTimeframe30Min;
+            case 1: return BarTimeframe1Min;
+            case 5: return BarTimeframe5Min;
+            case 15: return BarTimeframe15Min;
+            case 30: return BarTimeframe30Min;
             default:
                 NSLog(@"⚠️ Unsupported minute timeframe: %ldm", (long)minutes);
                 return -1;
@@ -1894,8 +1906,8 @@ extern NSString *const DataHubDataLoadedNotification;
         NSString *hourPart = [tf substringToIndex:tf.length - 1];
         NSInteger hours = hourPart.integerValue;
         switch (hours) {
-            case 1: return ChartTimeframe1Hour;
-            case 4: return ChartTimeframe4Hour;
+            case 1: return BarTimeframe1Hour;
+            case 4: return BarTimeframe4Hour;
             default:
                 NSLog(@"⚠️ Unsupported hour timeframe: %ldh", (long)hours);
                 return -1;
@@ -1903,9 +1915,9 @@ extern NSString *const DataHubDataLoadedNotification;
     }
     
     // ✅ DAILY+ TIMEFRAMES (single letter or full word)
-    if ([tf isEqualToString:@"d"] || [tf isEqualToString:@"daily"]) return ChartTimeframeDaily;
-    if ([tf isEqualToString:@"w"] || [tf isEqualToString:@"weekly"]) return ChartTimeframeWeekly;
-    if ([tf isEqualToString:@"m"] || [tf isEqualToString:@"monthly"]) return ChartTimeframeMonthly;
+    if ([tf isEqualToString:@"d"] || [tf isEqualToString:@"daily"]) return BarTimeframeDaily;
+    if ([tf isEqualToString:@"w"] || [tf isEqualToString:@"weekly"]) return BarTimeframeWeekly;
+    if ([tf isEqualToString:@"m"] || [tf isEqualToString:@"monthly"]) return BarTimeframeMonthly;
     
     NSLog(@"⚠️ Unrecognized timeframe: %@", timeframeStr);
     return -1;
@@ -2059,15 +2071,13 @@ extern NSString *const DataHubDataLoadedNotification;
 #pragma mark - New Loading Method with Date Range
 
 - (void)loadSymbolWithDateRange:(SmartSymbolParameters)params {
-    // Convert ChartTimeframe to BarTimeframe
-    BarTimeframe barTimeframe = [self chartTimeframeToBarTimeframe:params.timeframe];
     
     // Determine if we need extended hours
     BOOL needExtendedHours = (self.tradingHoursMode == ChartTradingHoursWithAfterHours);
     
     NSLog(@"📊 ChartWidget: Loading %@ from %@ to %@ (timeframe: %ld, after-hours: %@)",
           params.symbol, params.startDate, params.endDate,
-          (long)barTimeframe, needExtendedHours ? @"YES" : @"NO");
+          (long)params.timeframe, needExtendedHours ? @"YES" : @"NO");
     
     if (self.isStaticMode) {
         NSLog(@"⚠️ Chart in static mode, skipping data load");
@@ -2076,7 +2086,7 @@ extern NSString *const DataHubDataLoadedNotification;
     
     // ✅ USA IL METODO DataHub CON DATE DIRETTE!
     [[DataHub shared] getHistoricalBarsForSymbol:params.symbol
-                                       timeframe:barTimeframe
+                                       timeframe:params.timeframe
                                        startDate:params.startDate
                                          endDate:params.endDate
                               needExtendedHours:needExtendedHours
@@ -2126,7 +2136,7 @@ extern NSString *const DataHubDataLoadedNotification;
     NSLog(@"✅ Advanced: Public loadSymbol completed via handler");
 }
 
-- (void)setTimeframe:(ChartTimeframe)timeframe {
+- (void)setTimeframe:(BarTimeframe)timeframe {
     NSLog(@"🔄 Advanced: Public setTimeframe called for %ld", (long)timeframe);
     
     // ✅ USE HANDLER instead of legacy logic
@@ -2136,17 +2146,17 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 
-- (NSString *)timeframeDisplayName:(ChartTimeframe)timeframe {
+- (NSString *)timeframeDisplayName:(BarTimeframe)timeframe {
     switch (timeframe) {
-        case ChartTimeframe1Min: return @"1min";
-        case ChartTimeframe5Min: return @"5min";
-        case ChartTimeframe15Min: return @"15min";
-        case ChartTimeframe30Min: return @"30min";
-        case ChartTimeframe1Hour: return @"1H";
-        case ChartTimeframe4Hour: return @"4H";
-        case ChartTimeframeDaily: return @"Daily";
-        case ChartTimeframeWeekly: return @"Weekly";
-        case ChartTimeframeMonthly: return @"Monthly";
+        case BarTimeframe1Min: return @"1min";
+        case BarTimeframe5Min: return @"5min";
+        case BarTimeframe15Min: return @"15min";
+        case BarTimeframe30Min: return @"30min";
+        case BarTimeframe1Hour: return @"1H";
+        case BarTimeframe4Hour: return @"4H";
+        case BarTimeframeDaily: return @"Daily";
+        case BarTimeframeWeekly: return @"Weekly";
+        case BarTimeframeMonthly: return @"Monthly";
         default: return @"Unknown";
     }
 }
@@ -2223,91 +2233,91 @@ extern NSString *const DataHubDataLoadedNotification;
     NSLog(@"💾 Saved date range defaults to User Defaults");
 }
 
-- (NSInteger)getMinDaysForTimeframe:(ChartTimeframe)timeframe {
+- (NSInteger)getMinDaysForTimeframe:(BarTimeframe)timeframe {
     switch (timeframe) {
-        case ChartTimeframe1Min:
-        case ChartTimeframe5Min:
-        case ChartTimeframe15Min:
-        case ChartTimeframe30Min:
-        case ChartTimeframe1Hour:
-        case ChartTimeframe4Hour:
+        case BarTimeframe1Min:
+        case BarTimeframe5Min:
+        case BarTimeframe15Min:
+        case BarTimeframe30Min:
+        case BarTimeframe1Hour:
+        case BarTimeframe4Hour:
             return 1; // Minimum 1 day for intraday
             
-        case ChartTimeframeDaily:
-        case ChartTimeframeWeekly:
-        case ChartTimeframeMonthly:
+        case BarTimeframeDaily:
+        case BarTimeframeWeekly:
+        case BarTimeframeMonthly:
         default:
             return 10; // Minimum 10 days for daily+
     }
 }
 
-- (NSInteger)getMaxDaysForTimeframe:(ChartTimeframe)timeframe {
+- (NSInteger)getMaxDaysForTimeframe:(BarTimeframe)timeframe {
     switch (timeframe) {
-        case ChartTimeframe1Min:
+        case BarTimeframe1Min:
             return 60;
             
-        case ChartTimeframe5Min:
-        case ChartTimeframe15Min:
-        case ChartTimeframe30Min:
-        case ChartTimeframe1Hour:
-        case ChartTimeframe4Hour:
+        case BarTimeframe5Min:
+        case BarTimeframe15Min:
+        case BarTimeframe30Min:
+        case BarTimeframe1Hour:
+        case BarTimeframe4Hour:
             return 300;
             
-        case ChartTimeframeDaily:
-        case ChartTimeframeWeekly:
-        case ChartTimeframeMonthly:
+        case BarTimeframeDaily:
+        case BarTimeframeWeekly:
+        case BarTimeframeMonthly:
         default:
-            return 99999;
+            return 99999999;
     }
 }
 
-- (NSInteger)getDefaultDaysForTimeframe:(ChartTimeframe)timeframe {
+- (NSInteger)getDefaultDaysForTimeframe:(BarTimeframe)timeframe {
     switch (timeframe) {
-        case ChartTimeframe1Min:
+        case BarTimeframe1Min:
             return self.defaultDaysFor1Min;
             
-        case ChartTimeframe5Min:
-        case ChartTimeframe15Min:
-        case ChartTimeframe30Min:
+        case BarTimeframe5Min:
+        case BarTimeframe15Min:
+        case BarTimeframe30Min:
             return self.defaultDaysFor5Min;
             
-        case ChartTimeframe1Hour:
-        case ChartTimeframe4Hour:
+        case BarTimeframe1Hour:
+        case BarTimeframe4Hour:
             return self.defaultDaysForHourly;
             
-        case ChartTimeframeDaily:
+        case BarTimeframeDaily:
             return self.defaultDaysForDaily;
             
-        case ChartTimeframeWeekly:
+        case BarTimeframeWeekly:
             return self.defaultDaysForWeekly;
             
-        case ChartTimeframeMonthly:
+        case BarTimeframeMonthly:
         default:
             return self.defaultDaysForMonthly;
     }
 }
 
-- (NSInteger)getDefaultVisibleDaysForTimeframe:(ChartTimeframe)timeframe {
+- (NSInteger)getDefaultVisibleDaysForTimeframe:(BarTimeframe)timeframe {
     switch (timeframe) {
-        case ChartTimeframe1Min:
+        case BarTimeframe1Min:
             return self.defaultVisibleFor1Min;
             
-        case ChartTimeframe5Min:
-        case ChartTimeframe15Min:
-        case ChartTimeframe30Min:
+        case BarTimeframe5Min:
+        case BarTimeframe15Min:
+        case BarTimeframe30Min:
             return self.defaultVisibleFor5Min;
             
-        case ChartTimeframe1Hour:
-        case ChartTimeframe4Hour:
+        case BarTimeframe1Hour:
+        case BarTimeframe4Hour:
             return self.defaultVisibleForHourly;
             
-        case ChartTimeframeDaily:
+        case BarTimeframeDaily:
             return self.defaultVisibleForDaily;
             
-        case ChartTimeframeWeekly:
+        case BarTimeframeWeekly:
             return self.defaultVisibleForWeekly;
             
-        case ChartTimeframeMonthly:
+        case BarTimeframeMonthly:
         default:
             return self.defaultVisibleForMonthly;
     }
@@ -2631,12 +2641,12 @@ extern NSString *const DataHubDataLoadedNotification;
     }
 }
 
-- (void)updateDateRangeSegmentedForTimeframe:(ChartTimeframe)timeframe {
+- (void)updateDateRangeSegmentedForTimeframe:(BarTimeframe)timeframe {
     // 🆕 NEW: Ottieni il valore di default dalle preferenze
     NSInteger preferenceDefault = [self getDefaultDaysForTimeframe:timeframe];
     
     // ✅ MANTIENI: Tutta questa logica esistente per disable/enable
-    BOOL isIntraday = (timeframe < ChartTimeframeDaily);
+    BOOL isIntraday = (timeframe < BarTimeframeDaily);
     NSInteger maxDaysForTimeframe = [self getMaxDaysForTimeframe:timeframe];
     
     for (NSInteger i = 0; i < self.dateRangeSegmented.segmentCount; i++) {

@@ -55,22 +55,6 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "2B06A6B7-637E-44A9-B6B7-279C4C7E4839"
-            shouldBeEnabled = "Yes"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "UI/Widgets/Chart/ChartPanelView.m"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "2563"
-            endingLineNumber = "2563"
-            landmarkName = "-calculateDateRangeForType:clickedBarIndex:"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
             uuid = "692DF652-6024-43F5-99BA-4B175DC0B305"
             shouldBeEnabled = "Yes"
             ignoreCount = "0"
@@ -110,8 +94,8 @@
             filePath = "UI/Widgets/Chart/ChartWidget.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1320"
-            endingLineNumber = "1320"
+            startingLineNumber = "1332"
+            endingLineNumber = "1332"
             landmarkName = "-controlTextDidEndEditing:"
             landmarkType = "7">
          </BreakpointContent>
@@ -132,28 +116,28 @@
             landmarkType = "7">
             <Locations>
                <Location
-                  uuid = "D272F23F-D83F-42F3-95F3-291C6098AE59 - 9b8d8bd09780adc3"
+                  uuid = "D272F23F-D83F-42F3-95F3-291C6098AE59 - 3f1fdfbe44b6778c"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
                   symbolName = "__60-[ChartWidget(IndicatorsUI) deleteTemplateWithConfirmation:]_block_invoke"
                   moduleName = "mafia_AI"
                   usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/fabiogattone/Documents/coding/macmafia/mafia_AI/UI/Widgets/Chart/ChartWidget+IndicatorsUI.m"
+                  urlString = "file:///Users/fabiogattone/Documents/mafia_AI/UI/Widgets/Chart/ChartWidget+IndicatorsUI.m"
                   startingColumnNumber = "9223372036854775807"
                   endingColumnNumber = "9223372036854775807"
                   startingLineNumber = "629"
                   endingLineNumber = "629">
                </Location>
                <Location
-                  uuid = "D272F23F-D83F-42F3-95F3-291C6098AE59 - a3393678786dcb0d"
+                  uuid = "D272F23F-D83F-42F3-95F3-291C6098AE59 - 7ab6216ab5b2ec0"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
                   symbolName = "__60-[ChartWidget(IndicatorsUI) deleteTemplateWithConfirmation:]_block_invoke_2"
                   moduleName = "mafia_AI"
                   usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/fabiogattone/Documents/coding/macmafia/mafia_AI/UI/Widgets/Chart/ChartWidget+IndicatorsUI.m"
+                  urlString = "file:///Users/fabiogattone/Documents/mafia_AI/UI/Widgets/Chart/ChartWidget+IndicatorsUI.m"
                   startingColumnNumber = "9223372036854775807"
                   endingColumnNumber = "9223372036854775807"
                   startingLineNumber = "630"

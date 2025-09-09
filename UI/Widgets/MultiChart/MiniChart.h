@@ -18,15 +18,15 @@ typedef NS_ENUM(NSInteger, MiniChartType) {
     MiniChartTypeBar
 };
 
-typedef NS_ENUM(NSInteger, MiniChartTimeframe) {
-    MiniChartTimeframe1Min,
-    MiniChartTimeframe5Min,
-    MiniChartTimeframe15Min,
-    MiniChartTimeframe30Min,
-    MiniChartTimeframe1Hour,
-    MiniChartTimeframeDaily,
-    MiniChartTimeframeWeekly,
-    MiniChartTimeframeMonthly
+typedef NS_ENUM(NSInteger, MiniBarTimeframe) {
+    MiniBarTimeframe1Min,
+    MiniBarTimeframe5Min,
+    MiniBarTimeframe15Min,
+    MiniBarTimeframe30Min,
+    MiniBarTimeframe1Hour,
+    MiniBarTimeframeDaily,
+    MiniBarTimeframeWeekly,
+    MiniBarTimeframeMonthly
 };
 
 typedef NS_ENUM(NSInteger, MiniChartScaleType) {
@@ -40,7 +40,7 @@ typedef NS_ENUM(NSInteger, MiniChartScaleType) {
 // Data
 @property (nonatomic, strong) NSString *symbol;
 @property (nonatomic, assign) MiniChartType chartType;
-@property (nonatomic, assign) MiniChartTimeframe timeframe;
+@property (nonatomic, assign) MiniBarTimeframe timeframe;
 @property (nonatomic, assign) MiniChartScaleType scaleType;
 @property (nonatomic, strong) NSArray<HistoricalBarModel *> *priceData;  // UPDATED: Array di RuntimeModels
 @property (nonatomic, assign) NSInteger maxBars;  // Numero massimo di barre da visualizzare
@@ -73,7 +73,7 @@ typedef NS_ENUM(NSInteger, MiniChartScaleType) {
 // Initialization
 + (instancetype)miniChartWithSymbol:(NSString *)symbol
                           chartType:(MiniChartType)chartType
-                          timeframe:(MiniChartTimeframe)timeframe
+                          timeframe:(MiniBarTimeframe)timeframe
                           scaleType:(MiniChartScaleType)scaleType
                             maxBars:(NSInteger)maxBars
                          showVolume:(BOOL)showVolume;

@@ -16,7 +16,7 @@
 
 // Configuration
 @property (nonatomic, assign) MiniChartType chartType;
-@property (nonatomic, assign) MiniChartTimeframe timeframe;
+@property (nonatomic, assign) MiniBarTimeframe timeframe;
 @property (nonatomic, assign) MiniChartScaleType scaleType;
 @property (nonatomic, assign) NSInteger maxBars;
 @property (nonatomic, assign) BOOL showVolume;

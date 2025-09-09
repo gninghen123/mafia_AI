@@ -28,7 +28,7 @@
 
 typedef struct {
     NSString *symbol;
-    BarTimeframe timeframe;
+    BarTimeframe timeframe;          // ✅ UNIFIED: Cambiato da BarTimeframe a BarTimeframe
     NSInteger daysToDownload;
     BOOL hasTimeframe;
     BOOL hasDaysSpecified;
@@ -36,18 +36,7 @@ typedef struct {
     NSDate *endDate;
 } SmartSymbolParameters;
 
-
-typedef NS_ENUM(NSInteger, ChartTimeframe) {
-    ChartTimeframe1Min,
-    ChartTimeframe5Min,
-    ChartTimeframe15Min,
-    ChartTimeframe30Min,
-    ChartTimeframe1Hour,
-    ChartTimeframe4Hour,
-    ChartTimeframeDaily,
-    ChartTimeframeWeekly,
-    ChartTimeframeMonthly
-};
+// ❌ REMOVED: BarTimeframe enum - use BarTimeframe from CommonTypes.h
 
 @interface ChartWidget : BaseWidget
 
@@ -131,7 +120,7 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 
 #pragma mark - Data Properties
 @property (nonatomic, strong, readwrite) NSString *currentSymbol;
-@property (nonatomic, assign, readwrite) ChartTimeframe currentTimeframe;
+@property (nonatomic, assign, readwrite) BarTimeframe currentTimeframe;  // ✅ UNIFIED: Cambiato da BarTimeframe a BarTimeframe
 @property (nonatomic, assign, readwrite) NSInteger initialBarsToShow;
 
 #pragma mark - Chart Panels
@@ -172,18 +161,18 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 - (void)loadChartTemplate:(NSString *)templateName;
 
 #pragma mark - Date Range Management Methods
-- (void)updateDateRangeSliderForTimeframe:(ChartTimeframe)timeframe;
+- (void)updateDateRangeSliderForTimeframe:(BarTimeframe)timeframe;  // ✅ UNIFIED: Cambiato da BarTimeframe a BarTimeframe
 - (void)dateRangeSliderChanged:(id)sender;
-- (NSInteger)getMinDaysForTimeframe:(ChartTimeframe)timeframe;
-- (NSInteger)getMaxDaysForTimeframe:(ChartTimeframe)timeframe;
-- (NSInteger)getDefaultDaysForTimeframe:(ChartTimeframe)timeframe;
-- (NSInteger)getDefaultVisibleDaysForTimeframe:(ChartTimeframe)timeframe;
+- (NSInteger)getMinDaysForTimeframe:(BarTimeframe)timeframe;         // ✅ UNIFIED: Cambiato da BarTimeframe a BarTimeframe
+- (NSInteger)getMaxDaysForTimeframe:(BarTimeframe)timeframe;         // ✅ UNIFIED: Cambiato da BarTimeframe a BarTimeframe
+- (NSInteger)getDefaultDaysForTimeframe:(BarTimeframe)timeframe;     // ✅ UNIFIED: Cambiato da BarTimeframe a BarTimeframe
+- (NSInteger)getDefaultVisibleDaysForTimeframe:(BarTimeframe)timeframe; // ✅ UNIFIED: Cambiato da BarTimeframe a BarTimeframe
 - (void)updateDateRangeLabel;
 - (NSString *)formatDaysToDisplayString:(NSInteger)days;
 
 #pragma mark - Public Methods
 - (void)loadSymbol:(NSString *)symbol;
-- (void)setTimeframe:(ChartTimeframe)timeframe;
+- (void)setTimeframe:(BarTimeframe)timeframe;                        // ✅ UNIFIED: Cambiato da BarTimeframe a BarTimeframe
 - (void)zoomToRange:(NSInteger)startIndex endIndex:(NSInteger)endIndex;
 - (void)synchronizePanels;
 
@@ -215,7 +204,7 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 - (void)saveDateRangeDefaults;
 
 - (void)setupDateRangeSegmentedControl;
-- (void)updateDateRangeSegmentedForTimeframe:(ChartTimeframe)timeframe;
+- (void)updateDateRangeSegmentedForTimeframe:(BarTimeframe)timeframe; // ✅ UNIFIED: Cambiato da BarTimeframe a BarTimeframe
 - (void)updateCustomSegmentWithDays:(NSInteger)days;
 - (NSString *)formatDaysToAbbreviation:(NSInteger)days;
 - (NSInteger)getDaysForSegment:(NSInteger)segment;
@@ -261,8 +250,5 @@ typedef NS_ENUM(NSInteger, ChartTimeframe) {
 - (void)recalculateAllIndicators;
 - (void)refreshIndicatorsRendering;
 - (void)applyChartTemplate:(ChartTemplateModel *)template;
-
-
-
 
 @end

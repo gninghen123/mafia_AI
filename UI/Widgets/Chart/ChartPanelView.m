@@ -2394,7 +2394,7 @@
     }
     
     // Verifica che il timeframe corrente supporti zoom intraday
-    ChartTimeframe currentTimeframe = self.chartWidget.currentTimeframe;
+    BarTimeframe currentTimeframe = self.chartWidget.currentTimeframe;
     NSArray<NSNumber *> *availableTimeframes = [self getIntradayTimeframesForCurrentTimeframe:currentTimeframe];
     
     if (availableTimeframes.count == 0) {
@@ -2424,7 +2424,7 @@
         NSMenu *timeframeSubmenu = [[NSMenu alloc] initWithTitle:rangeOption[@"title"]];
         
         for (NSNumber *timeframeNum in availableTimeframes) {
-            ChartTimeframe timeframe = [timeframeNum intValue];
+            BarTimeframe timeframe = [timeframeNum intValue];
             NSString *timeframeStr = [self timeframeToDisplayString:timeframe];
             
             NSMenuItem *timeframeItem = [[NSMenuItem alloc] initWithTitle:timeframeStr
@@ -2449,46 +2449,46 @@
     return microscopeItem;
 }
 
-- (NSArray<NSNumber *> *)getIntradayTimeframesForCurrentTimeframe:(ChartTimeframe)currentTimeframe {
+- (NSArray<NSNumber *> *)getIntradayTimeframesForCurrentTimeframe:(BarTimeframe)currentTimeframe {
     NSMutableArray *availableTimeframes = [NSMutableArray array];
     
     // Solo se siamo su Daily o superiore, mostriamo intraday
-    if (currentTimeframe >= ChartTimeframeDaily) {
-        [availableTimeframes addObject:@(ChartTimeframe1Hour)];
-        [availableTimeframes addObject:@(ChartTimeframe30Min)];
-        [availableTimeframes addObject:@(ChartTimeframe15Min)];
-        [availableTimeframes addObject:@(ChartTimeframe5Min)];
-        [availableTimeframes addObject:@(ChartTimeframe1Min)];
+    if (currentTimeframe >= BarTimeframeDaily) {
+        [availableTimeframes addObject:@(BarTimeframe1Hour)];
+        [availableTimeframes addObject:@(BarTimeframe30Min)];
+        [availableTimeframes addObject:@(BarTimeframe15Min)];
+        [availableTimeframes addObject:@(BarTimeframe5Min)];
+        [availableTimeframes addObject:@(BarTimeframe1Min)];
     }
     // Se siamo su 4H, mostriamo timeframes inferiori
-    else if (currentTimeframe == ChartTimeframe4Hour) {
-        [availableTimeframes addObject:@(ChartTimeframe1Hour)];
-        [availableTimeframes addObject:@(ChartTimeframe30Min)];
-        [availableTimeframes addObject:@(ChartTimeframe15Min)];
-        [availableTimeframes addObject:@(ChartTimeframe5Min)];
+    else if (currentTimeframe == BarTimeframe4Hour) {
+        [availableTimeframes addObject:@(BarTimeframe1Hour)];
+        [availableTimeframes addObject:@(BarTimeframe30Min)];
+        [availableTimeframes addObject:@(BarTimeframe15Min)];
+        [availableTimeframes addObject:@(BarTimeframe5Min)];
     }
     // Se siamo su 1H, mostriamo solo minute timeframes
-    else if (currentTimeframe == ChartTimeframe1Hour) {
-        [availableTimeframes addObject:@(ChartTimeframe30Min)];
-        [availableTimeframes addObject:@(ChartTimeframe15Min)];
-        [availableTimeframes addObject:@(ChartTimeframe5Min)];
-        [availableTimeframes addObject:@(ChartTimeframe1Min)];
+    else if (currentTimeframe == BarTimeframe1Hour) {
+        [availableTimeframes addObject:@(BarTimeframe30Min)];
+        [availableTimeframes addObject:@(BarTimeframe15Min)];
+        [availableTimeframes addObject:@(BarTimeframe5Min)];
+        [availableTimeframes addObject:@(BarTimeframe1Min)];
     }
     
     return [availableTimeframes copy];
 }
 
-- (NSString *)timeframeToDisplayString:(ChartTimeframe)timeframe {
+- (NSString *)timeframeToDisplayString:(BarTimeframe)timeframe {
     switch (timeframe) {
-        case ChartTimeframe1Min: return @"1 minuto";
-        case ChartTimeframe5Min: return @"5 minuti";
-        case ChartTimeframe15Min: return @"15 minuti";
-        case ChartTimeframe30Min: return @"30 minuti";
-        case ChartTimeframe1Hour: return @"1 ora";
-        case ChartTimeframe4Hour: return @"4 ore";
-        case ChartTimeframeDaily: return @"1 giorno";
-        case ChartTimeframeWeekly: return @"1 settimana";
-        case ChartTimeframeMonthly: return @"1 mese";
+        case BarTimeframe1Min: return @"1 minuto";
+        case BarTimeframe5Min: return @"5 minuti";
+        case BarTimeframe15Min: return @"15 minuti";
+        case BarTimeframe30Min: return @"30 minuti";
+        case BarTimeframe1Hour: return @"1 ora";
+        case BarTimeframe4Hour: return @"4 ore";
+        case BarTimeframeDaily: return @"1 giorno";
+        case BarTimeframeWeekly: return @"1 settimana";
+        case BarTimeframeMonthly: return @"1 mese";
         default: return @"Sconosciuto";
     }
 }
@@ -2496,7 +2496,7 @@
 - (void)openMicroscopeWithParameters:(NSMenuItem *)menuItem {
     NSDictionary *params = menuItem.representedObject;
     NSString *rangeType = params[@"rangeType"];
-    ChartTimeframe targetTimeframe = [params[@"timeframe"] intValue];
+    BarTimeframe targetTimeframe = [params[@"timeframe"] intValue];
     NSInteger clickedBarIndex = [params[@"clickedBarIndex"] integerValue];
     
     NSLog(@"🔬 Opening Microscopio: range=%@, timeframe=%ld, barIndex=%ld",
@@ -2522,12 +2522,11 @@
     }
     
     // Converte timeframe per API DataHub
-    BarTimeframe apiTimeframe = [self chartTimeframeToBarTimeframe:targetTimeframe];
     BOOL needExtendedHours = (self.chartWidget.tradingHoursMode == ChartTradingHoursWithAfterHours);
 
     // Chiamata DataHub per dati microscopi (API date range)
     [[DataHub shared] getHistoricalBarsForSymbol:self.chartWidget.currentSymbol
-                                        timeframe:apiTimeframe
+                                       timeframe:targetTimeframe
                                         startDate:startDate
                                           endDate:endDate
                                needExtendedHours:needExtendedHours
@@ -2598,7 +2597,7 @@
 }
 
 - (void)openMicroscopeWindowWithBars:(NSArray<HistoricalBarModel *> *)bars
-                           timeframe:(ChartTimeframe)timeframe
+                           timeframe:(BarTimeframe)timeframe
                            rangeType:(NSString *)rangeType
                            dateRange:(NSArray<NSDate *> *)dateRange {
     
@@ -2670,20 +2669,6 @@
     [alert runModal];
 }
 
-- (BarTimeframe)chartTimeframeToBarTimeframe:(ChartTimeframe)chartTimeframe {
-    switch (chartTimeframe) {
-        case ChartTimeframe1Min: return BarTimeframe1Min;
-        case ChartTimeframe5Min: return BarTimeframe5Min;
-        case ChartTimeframe15Min: return BarTimeframe15Min;
-        case ChartTimeframe30Min: return BarTimeframe30Min;
-        case ChartTimeframe1Hour: return BarTimeframe1Hour;
-        case ChartTimeframe4Hour: return BarTimeframe4Hour;
-        case ChartTimeframeDaily: return BarTimeframeDaily;
-        case ChartTimeframeWeekly: return BarTimeframeWeekly;
-        case ChartTimeframeMonthly: return BarTimeframeMonthly;
-        default: return BarTimeframeDaily;
-    }
-}
 
 #pragma mark - Context Menu Actions
 

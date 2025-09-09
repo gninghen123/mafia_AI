@@ -452,21 +452,7 @@
 
 #pragma mark - Timeframe Mapping
 
-/// Helper: Map BarTimeframe to ChartTimeframe
-- (ChartTimeframe)chartTimeframeFromBarTimeframe:(BarTimeframe)barTimeframe {
-    switch (barTimeframe) {
-        case BarTimeframe1Min:    return ChartTimeframe1Min;
-        case BarTimeframe5Min:    return ChartTimeframe5Min;
-        case BarTimeframe15Min:   return ChartTimeframe15Min;
-        case BarTimeframe30Min:   return ChartTimeframe30Min;
-        case BarTimeframe1Hour:   return ChartTimeframe1Hour;
-        case BarTimeframe4Hour:   return ChartTimeframe4Hour;
-        case BarTimeframeDaily:   return ChartTimeframeDaily;
-        case BarTimeframeWeekly:  return ChartTimeframeWeekly;
-        case BarTimeframeMonthly: return ChartTimeframeMonthly;
-        default:                  return -1;
-    }
-}
+
 
 #pragma mark - Batch Conversion
 
@@ -527,8 +513,8 @@
                         SavedChartData *savedData = [[SavedChartData alloc] init];
                         savedData.chartID = [[NSUUID UUID] UUIDString];
                         savedData.symbol = file.symbol;
-                        // Map BarTimeframe to ChartTimeframe before assigning
-                        savedData.timeframe = [self chartTimeframeFromBarTimeframe:file.mappedTimeframe];
+                        // Map BarTimeframe to BarTimeframe before assigning
+                        savedData.timeframe = file.mappedTimeframe;
                         savedData.dataType = typeToUse;
                         savedData.startDate = bars.firstObject.date;
                         savedData.endDate = bars.lastObject.date;
@@ -1189,8 +1175,8 @@
     SavedChartData *savedData = [[SavedChartData alloc] init];
     savedData.chartID = [[NSUUID UUID] UUIDString];
     savedData.symbol = fileInfo.symbol;
-    // Map BarTimeframe to ChartTimeframe before assigning
-    savedData.timeframe = [self chartTimeframeFromBarTimeframe:fileInfo.mappedTimeframe];
+    // Map BarTimeframe to BarTimeframe before assigning
+    savedData.timeframe = fileInfo.mappedTimeframe;
     savedData.dataType = dataType;
     savedData.startDate = bars.firstObject.date;
     savedData.endDate = bars.lastObject.date;

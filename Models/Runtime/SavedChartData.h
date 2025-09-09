@@ -28,7 +28,7 @@ typedef NS_ENUM(NSInteger, SavedChartDataType) {
 /// Symbol associated with this chart data
 @property (nonatomic, strong) NSString *symbol;
 
-/// Timeframe of the saved data (using ChartTimeframe enum)
+/// Timeframe of the saved data (using BarTimeframe enum)
 @property (nonatomic, assign) BarTimeframe timeframe;
 
 /// Type of saved data (snapshot vs continuous)

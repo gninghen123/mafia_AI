@@ -117,12 +117,75 @@
     NSArray<NSString *> *continuousFiles = [ChartWidget availableSavedChartDataFilesOfType:SavedChartDataTypeContinuous];
     
     NSLog(@"🔍 Auto-discovering continuous storage files in: %@", savedDataDir);
+    NSLog(@"🚀 Using FILENAME PARSING ONLY - no file loading!");
     
     for (NSString *filePath in continuousFiles) {
-        [self registerContinuousStorage:filePath];
+        // ✅ NEW: Use filename parsing for auto-discovery
+        [self registerContinuousStorageWithFilenameParsingOnly:filePath];
     }
     
-    NSLog(@"📋 Auto-discovered %ld continuous storage files", (long)continuousFiles.count);
+    NSLog(@"📋 Auto-discovered %ld continuous storage files using filename parsing", (long)continuousFiles.count);
+}
+
+#pragma mark - Lazy Loading for Updates
+
+- (SavedChartData *)loadSavedDataForActiveItem:(ActiveStorageItem *)item {
+    // Load SavedChartData ONLY when needed for updates
+    if (!item.savedData) {
+        NSLog(@"📄 Lazy loading SavedChartData for update: %@", [item.filePath lastPathComponent]);
+        item.savedData = [SavedChartData loadFromFile:item.filePath];
+        
+        if (item.savedData) {
+            // Schedule updates now that we have the data
+            [self scheduleUpdateForStorageItem:item];
+            NSLog(@"✅ Lazy loaded and scheduled updates for: %@", item.savedData.symbol);
+        } else {
+            NSLog(@"❌ Failed to lazy load SavedChartData: %@", item.filePath);
+        }
+    }
+    
+    return item.savedData;
+}
+
+#pragma mark - New Registry Management (Filename Parsing Only)
+
+- (BOOL)registerContinuousStorageWithFilenameParsingOnly:(NSString *)filePath {
+    NSString *filename = [filePath lastPathComponent];
+    
+    // Quick validation using filename parsing
+    if (![SavedChartData isNewFormatFilename:filename]) {
+        NSLog(@"⚠️ Skipping old format file: %@", filename);
+        return NO;
+    }
+    
+    NSString *typeStr = [SavedChartData typeFromFilename:filename];
+    if (![typeStr isEqualToString:@"Continuous"]) {
+        NSLog(@"⚠️ File is not continuous storage: %@", filename);
+        return NO;
+    }
+    
+    // Check if already registered
+    for (ActiveStorageItem *item in self.mutableActiveStorages) {
+        if ([item.filePath isEqualToString:filePath]) {
+            NSLog(@"ℹ️ Storage already registered: %@", filename);
+            return YES;
+        }
+    }
+    
+    // ✅ Create ActiveStorageItem WITHOUT loading SavedChartData
+    ActiveStorageItem *item = [[ActiveStorageItem alloc] init];
+    item.filePath = filePath;
+    item.savedData = nil; // We'll load this ONLY when actually needed for updates
+    item.failureCount = 0;
+    item.isPaused = NO;
+    
+    // Add to registry immediately
+    [self.mutableActiveStorages addObject:item];
+    
+    NSLog(@"✅ Registered continuous storage (filename parsing): %@",
+          [SavedChartData symbolFromFilename:filename]);
+    
+    return YES;
 }
 
 #pragma mark - Registry Management
@@ -238,9 +301,16 @@
         return;
     }
     
+    // ✅ For scheduling, we need the SavedChartData
+    SavedChartData *storage = [self loadSavedDataForActiveItem:item];
+    if (!storage) {
+        NSLog(@"⚠️ Cannot schedule updates without SavedChartData: %@", item.filePath);
+        return;
+    }
+    
     // Calculate next update date based on timeframe
-    NSDate *nextUpdate = [self calculateNextUpdateDateForStorage:item.savedData];
-    item.savedData.nextScheduledUpdate = nextUpdate;
+    NSDate *nextUpdate = [self calculateNextUpdateDateForStorage:storage];
+    storage.nextScheduledUpdate = nextUpdate;
     
     // Calculate time interval until next update
     NSTimeInterval timeUntilUpdate = [nextUpdate timeIntervalSinceNow];
@@ -258,7 +328,7 @@
                                                        repeats:NO];
     
     NSLog(@"⏰ Scheduled update for %@ [%@] in %.0f hours",
-          item.savedData.symbol, [item.savedData timeframeDescription], timeUntilUpdate / 3600.0);
+          storage.symbol, [storage timeframeDescription], timeUntilUpdate / 3600.0);
 }
 
 - (NSDate *)calculateNextUpdateDateForStorage:(SavedChartData *)savedData {
@@ -267,19 +337,19 @@
     
     // Update intervals based on timeframe
     switch (savedData.timeframe) {
-        case ChartTimeframe1Min:
+        case BarTimeframe1Min:
             updateInterval = 30 * 24 * 60 * 60; // 30 days for 1min
             break;
-        case ChartTimeframe5Min:
-        case ChartTimeframe15Min:
-        case ChartTimeframe30Min:
-        case ChartTimeframe1Hour:
-        case ChartTimeframe4Hour:
+        case BarTimeframe5Min:
+        case BarTimeframe15Min:
+        case BarTimeframe30Min:
+        case BarTimeframe1Hour:
+        case BarTimeframe4Hour:
             updateInterval = 241 * 24 * 60 * 60; // 241 days (8 months) for 5min+
             break;
-        case ChartTimeframeDaily:
-        case ChartTimeframeWeekly:
-        case ChartTimeframeMonthly:
+        case BarTimeframeDaily:
+        case BarTimeframeWeekly:
+        case BarTimeframeMonthly:
             updateInterval = 365 * 24 * 60 * 60; // 1 year for daily+
             break;
         default:
@@ -289,6 +359,15 @@
     
     return [baseDate dateByAddingTimeInterval:updateInterval];
 }
+
+- (void)logInitializationPerformance {
+    NSLog(@"📊 StorageManager Initialization Performance:");
+    NSLog(@"   🚀 Method: FILENAME PARSING ONLY");
+    NSLog(@"   📁 Files discovered: %ld", (long)self.mutableActiveStorages.count);
+    NSLog(@"   💾 File loading: ZERO (lazy loading only)");
+    NSLog(@"   ⚡ Performance: MAXIMUM (instant initialization)");
+}
+
 
 - (void)timerTriggeredUpdate:(NSTimer *)timer {
     ActiveStorageItem *item = timer.userInfo[@"storageItem"];
@@ -381,7 +460,15 @@
 - (void)performUpdateForStorageItem:(ActiveStorageItem *)item
                          completion:(void(^)(BOOL success, NSError * _Nullable error))completion {
     
-    SavedChartData *storage = item.savedData;
+    // ✅ Lazy load SavedChartData only when needed for update
+    SavedChartData *storage = [self loadSavedDataForActiveItem:item];
+    if (!storage) {
+        NSError *error = [NSError errorWithDomain:@"StorageManager"
+                                             code:1006
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Failed to load SavedChartData for update"}];
+        if (completion) completion(NO, error);
+        return;
+    }
     
     NSLog(@"📥 Performing automatic update for %@ [%@] from %@",
           storage.symbol, [storage timeframeDescription], storage.endDate);
@@ -390,22 +477,22 @@
     NSDate *fromDate = [storage.endDate dateByAddingTimeInterval:-(3 * [self timeframeToSeconds:storage.timeframe])];
     NSDate *toDate = [NSDate date];
     
-    // Request new data from DataHub
+    // Request data from DataHub
     [[DataHub shared] getHistoricalBarsForSymbol:storage.symbol
-                                          timeframe:storage.timeframe
-                                          startDate:fromDate
-                                            endDate:toDate
-                                 needExtendedHours:storage.includesExtendedHours
-                                         completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
+                                       timeframe:storage.timeframe
+                                       startDate:fromDate
+                                         endDate:toDate
+                              needExtendedHours:storage.includesExtendedHours
+                                      completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
         
         if (!bars || bars.count == 0) {
-                  NSLog(@"❌ No new data received for %@", storage.symbol);
-                  NSError *error = [NSError errorWithDomain:@"StorageManager"
-                                                       code:1005
-                                                   userInfo:@{NSLocalizedDescriptionKey: @"No new data available"}];
-                  if (completion) completion(NO, error);
-                  return;
-              }
+            NSLog(@"❌ No new data received for %@", storage.symbol);
+            NSError *error = [NSError errorWithDomain:@"StorageManager"
+                                                 code:1005
+                                             userInfo:@{NSLocalizedDescriptionKey: @"No new data available"}];
+            if (completion) completion(NO, error);
+            return;
+        }
         
         NSLog(@"📥 Received %ld new bars for %@", (long)bars.count, storage.symbol);
         
@@ -417,7 +504,7 @@
             storage.lastSuccessfulUpdate = [NSDate date];
             
             // Save with automatic filename update
-            NSError *saveError; // ← FIX: Dichiarazione mancante
+            NSError *saveError;
             NSString *updatedFilePath = [storage saveToFileWithFilenameUpdate:item.filePath error:&saveError];
             
             if (updatedFilePath) {
@@ -505,18 +592,7 @@
     
     for (ActiveStorageItem *item in self.mutableActiveStorages) {
         if ([item.filePath isEqualToString:filePath]) {
-            NSLog(@"🔧 Force updating storage: %@", item.savedData.symbol);
-            
-            [self performUpdateForStorageItem:item completion:^(BOOL success, NSError *error) {
-                if (success) {
-                    // Reset failure count and reschedule
-                    item.failureCount = 0;
-                    item.lastFailureDate = nil;
-                    [self scheduleUpdateForStorageItem:item];
-                }
-                
-                if (completion) completion(success, error);
-            }];
+            [self performUpdateForStorageItem:item completion:completion];
             return;
         }
     }
@@ -762,7 +838,7 @@
     [[NSUserDefaults standardUserDefaults] setObject:storageStates forKey:@"StorageManagerRegistry"];
     [[NSUserDefaults standardUserDefaults] synchronize];
     
-    NSLog(@"💾 Saved registry state for %ld storages", (long)storageStates.count);
+    NSLog(@"💾 Saved registry state for %ld storages (filename parsing mode)", (long)storageStates.count);
 }
 
 - (void)loadRegistryState {
@@ -770,13 +846,14 @@
     
     if (!storageStates) return;
     
-    NSLog(@"📖 Loading registry state for %ld storages", (long)storageStates.count);
+    NSLog(@"📖 Loading registry state for %ld storages (filename parsing mode)", (long)storageStates.count);
     
     for (NSDictionary *state in storageStates) {
         NSString *filePath = state[@"filePath"];
         
         if ([[NSFileManager defaultManager] fileExistsAtPath:filePath]) {
-            if ([self registerContinuousStorage:filePath]) {
+            // ✅ Use filename parsing for registry restoration
+            if ([self registerContinuousStorageWithFilenameParsingOnly:filePath]) {
                 // Restore additional state
                 for (ActiveStorageItem *item in self.mutableActiveStorages) {
                     if ([item.filePath isEqualToString:filePath]) {

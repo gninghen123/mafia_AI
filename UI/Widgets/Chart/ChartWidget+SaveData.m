@@ -193,27 +193,60 @@
     [selectionAlert addButtonWithTitle:@"Load"];
     [selectionAlert addButtonWithTitle:@"Cancel"];
     
-    // Create popup button for file selection with detailed info
+    // ✅ OTTIMIZZAZIONE: Create popup button usando SOLO filename parsing
     NSPopUpButton *fileSelector = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 0, 500, 25)];
+    
     for (NSString *filePath in availableFiles) {
-        // Load file to get metadata for display
-        SavedChartData *savedData = [SavedChartData loadFromFile:filePath];
-        if (savedData) {
-            NSString *displayTitle = [NSString stringWithFormat:@"%@ %@ [%@] %ld bars - %@",
-                                    savedData.symbol,
-                                    savedData.timeframeDescription,
-                                    savedData.dataType == SavedChartDataTypeSnapshot ? @"SNAPSHOT" : @"CONTINUOUS",
-                                    (long)savedData.barCount,
-                                    savedData.formattedDateRange];
-            [fileSelector addItemWithTitle:displayTitle];
-            fileSelector.lastItem.representedObject = filePath;
+        NSString *filename = [filePath lastPathComponent];
+        
+        // ✅ FAST: Parse metadata from filename only
+        if ([SavedChartData isNewFormatFilename:filename]) {
+            // Use filename parsing for display info
+            NSString *symbol = [SavedChartData symbolFromFilename:filename];
+            NSString *timeframeStr = [SavedChartData timeframeFromFilename:filename];
+            NSString *typeStr = [SavedChartData typeFromFilename:filename];
+            NSInteger barCount = [SavedChartData barCountFromFilename:filename];
+            NSString *dateRangeStr = [SavedChartData dateRangeStringFromFilename:filename];
+            
+            if (symbol && timeframeStr && typeStr) {
+                // ✅ FAST: Create display title from parsed metadata
+                NSString *displayTitle = [NSString stringWithFormat:@"%@ %@ [%@] %ld bars - %@",
+                                        symbol,
+                                        timeframeStr,
+                                        typeStr,
+                                        (long)barCount,
+                                        dateRangeStr ?: @"Unknown"];
+                
+                [fileSelector addItemWithTitle:displayTitle];
+                fileSelector.lastItem.representedObject = filePath;
+            } else {
+                // Fallback for incomplete metadata
+                NSString *displayTitle = [NSString stringWithFormat:@"%@ (Incomplete metadata)", symbol ?: filename];
+                [fileSelector addItemWithTitle:displayTitle];
+                fileSelector.lastItem.representedObject = filePath;
+            }
+            
         } else {
-            // Fallback to filename if loading fails
-            NSString *filename = filePath.lastPathComponent;
-            [fileSelector addItemWithTitle:filename];
-            fileSelector.lastItem.representedObject = filePath;
+            // ❌ OLD FORMAT: Still need to load file (should be rare after migration)
+            NSLog(@"⚠️ Old format file detected, loading to get metadata: %@", filename);
+            SavedChartData *savedData = [SavedChartData loadFromFile:filePath];
+            if (savedData) {
+                NSString *displayTitle = [NSString stringWithFormat:@"%@ %@ [%@] %ld bars - %@ (OLD FORMAT)",
+                                        savedData.symbol,
+                                        [self timeframeDisplayStringForTimeframe:savedData.timeframe],
+                                        savedData.dataType == SavedChartDataTypeSnapshot ? @"SNAPSHOT" : @"CONTINUOUS",
+                                        (long)savedData.barCount,
+                                        savedData.formattedDateRange];
+                [fileSelector addItemWithTitle:displayTitle];
+                fileSelector.lastItem.representedObject = filePath;
+            } else {
+                // Ultimate fallback to filename
+                [fileSelector addItemWithTitle:filename];
+                fileSelector.lastItem.representedObject = filePath;
+            }
         }
     }
+    
     selectionAlert.accessoryView = fileSelector;
     
     NSModalResponse response = [selectionAlert runModal];
@@ -239,6 +272,37 @@
             }];
         }
     }
+}
+
+- (void)logLoadDialogPerformanceStats:(NSTimeInterval)duration fileCount:(NSInteger)fileCount {
+    NSLog(@"📊 Load Dialog Performance Stats:");
+    NSLog(@"   Dialog creation duration: %.3f ms", duration * 1000);
+    NSLog(@"   Files processed: %ld", (long)fileCount);
+    NSLog(@"   Files per second: %.0f", fileCount / duration);
+    NSLog(@"   Method: FILENAME PARSING ONLY (no file loading for new format)");
+}
+
+- (NSString *)createDisplayInfoFromFilename:(NSString *)filename {
+    if (![SavedChartData isNewFormatFilename:filename]) {
+        return filename; // Fallback for old format
+    }
+    
+    NSString *symbol = [SavedChartData symbolFromFilename:filename];
+    NSString *timeframeStr = [SavedChartData timeframeFromFilename:filename];
+    NSString *typeStr = [SavedChartData typeFromFilename:filename];
+    NSInteger barCount = [SavedChartData barCountFromFilename:filename];
+    NSString *dateRangeStr = [SavedChartData dateRangeStringFromFilename:filename];
+    
+    if (!symbol || !timeframeStr || !typeStr) {
+        return [NSString stringWithFormat:@"%@ (Incomplete metadata)", symbol ?: filename];
+    }
+    
+    return [NSString stringWithFormat:@"%@ %@ [%@] %ld bars - %@",
+            symbol,
+            timeframeStr,
+            typeStr,
+            (long)barCount,
+            dateRangeStr ?: @"Unknown"];
 }
 
 - (void)loadSavedDataFromFile:(NSString *)filePath completion:(void(^)(BOOL success, NSError * _Nullable error))completion {
@@ -480,4 +544,111 @@
     }
 }
 
++ (NSArray<NSString *> *)availableSavedChartDataFilesOptimized {
+    NSString *directory = [self savedChartDataDirectory];
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    
+    NSError *error;
+    NSArray *files = [fileManager contentsOfDirectoryAtPath:directory error:&error];
+    if (!files) {
+        NSLog(@"❌ Failed to list saved chart data files: %@", error.localizedDescription);
+        return @[];
+    }
+    
+    // Filter for .chartdata files and return full paths
+    NSMutableArray *chartDataFiles = [NSMutableArray array];
+    for (NSString *filename in files) {
+        if ([filename.pathExtension.lowercaseString isEqualToString:@"chartdata"]) {
+            NSString *fullPath = [directory stringByAppendingPathComponent:filename];
+            [chartDataFiles addObject:fullPath];
+        }
+    }
+    
+    // ✅ OTTIMIZZAZIONE: Sort usando creation date dal filename (per new format)
+    [chartDataFiles sortUsingComparator:^NSComparisonResult(NSString *path1, NSString *path2) {
+        NSString *filename1 = [path1 lastPathComponent];
+        NSString *filename2 = [path2 lastPathComponent];
+        
+        // Try filename parsing first (much faster)
+        if ([SavedChartData isNewFormatFilename:filename1] && [SavedChartData isNewFormatFilename:filename2]) {
+            NSDate *date1 = [SavedChartData creationDateFromFilename:filename1];
+            NSDate *date2 = [SavedChartData creationDateFromFilename:filename2];
+            
+            if (date1 && date2) {
+                return [date2 compare:date1]; // Newest first
+            }
+        }
+        
+        // ❌ FALLBACK: Use file system dates for old format files
+        NSDictionary *attrs1 = [[NSFileManager defaultManager] attributesOfItemAtPath:path1 error:nil];
+        NSDictionary *attrs2 = [[NSFileManager defaultManager] attributesOfItemAtPath:path2 error:nil];
+        NSDate *date1 = attrs1[NSFileModificationDate];
+        NSDate *date2 = attrs2[NSFileModificationDate];
+        return [date2 compare:date1]; // Newest first
+    }];
+    
+    return [chartDataFiles copy];
+}
+
+// ✅ NUOVO METODO: Get file info senza caricare il file completo
++ (NSDictionary *)getFileInfoFromPath:(NSString *)filePath {
+    NSString *filename = [filePath lastPathComponent];
+    NSMutableDictionary *info = [NSMutableDictionary dictionary];
+    
+    if ([SavedChartData isNewFormatFilename:filename]) {
+        // ✅ FAST: Use filename parsing
+        info[@"symbol"] = [SavedChartData symbolFromFilename:filename] ?: @"Unknown";
+        info[@"timeframe"] = [SavedChartData timeframeFromFilename:filename] ?: @"Unknown";
+        info[@"type"] = [SavedChartData typeFromFilename:filename] ?: @"Unknown";
+        info[@"barCount"] = @([SavedChartData barCountFromFilename:filename]);
+        info[@"dateRange"] = [SavedChartData dateRangeStringFromFilename:filename] ?: @"Unknown";
+        info[@"extendedHours"] = @([SavedChartData extendedHoursFromFilename:filename]);
+        info[@"hasGaps"] = @([SavedChartData hasGapsFromFilename:filename]);
+        
+        // File size from filesystem (fast)
+        info[@"fileSize"] = @([SavedChartData fileSizeFromPath:filePath]);
+        
+        info[@"source"] = @"filename"; // Indicates data source
+        
+    } else {
+        // ❌ OLD FORMAT: Need to load file (rare case)
+        SavedChartData *savedData = [SavedChartData loadFromFile:filePath];
+        if (savedData) {
+            info[@"symbol"] = savedData.symbol ?: @"Unknown";
+            info[@"timeframe"] = savedData.timeframeDescription ?: @"Unknown";
+            info[@"type"] = savedData.dataType == SavedChartDataTypeSnapshot ? @"Snapshot" : @"Continuous";
+            info[@"barCount"] = @(savedData.barCount);
+            info[@"dateRange"] = savedData.formattedDateRange ?: @"Unknown";
+            info[@"extendedHours"] = @(savedData.includesExtendedHours);
+            info[@"hasGaps"] = @(savedData.hasGaps);
+            info[@"fileSize"] = @(savedData.estimatedFileSize);
+            info[@"source"] = @"file_load"; // Indicates data source
+        } else {
+            // Ultimate fallback
+            info[@"symbol"] = @"Unknown";
+            info[@"timeframe"] = @"Unknown";
+            info[@"type"] = @"Unknown";
+            info[@"barCount"] = @(0);
+            info[@"dateRange"] = @"Unknown";
+            info[@"extendedHours"] = @(NO);
+            info[@"hasGaps"] = @(NO);
+            info[@"fileSize"] = @(0);
+            info[@"source"] = @"fallback";
+        }
+    }
+    
+    return [info copy];
+}
+
+// ✅ NUOVO METODO: Get display summary per file senza caricarlo
++ (NSString *)getDisplaySummaryForFile:(NSString *)filePath {
+    NSDictionary *info = [self getFileInfoFromPath:filePath];
+    
+    return [NSString stringWithFormat:@"%@ %@ [%@] %@ bars - %@",
+            info[@"symbol"],
+            info[@"timeframe"],
+            info[@"type"],
+            info[@"barCount"],
+            info[@"dateRange"]];
+}
 @end

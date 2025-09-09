@@ -67,7 +67,12 @@ NS_ASSUME_NONNULL_BEGIN
 /// Delete a saved chart data file
 + (BOOL)deleteSavedChartDataFile:(NSString *)filePath error:(NSError **)error;
 
++ (NSArray<NSString *> *)availableSavedChartDataFilesOptimized;
++ (NSDictionary *)getFileInfoFromPath:(NSString *)filePath;
++ (NSString *)getDisplaySummaryForFile:(NSString *)filePath;
+
 #pragma mark - Context Menu Integration
+
 
 /// Add save data menu items to existing context menu
 - (void)addSaveDataMenuItemsToMenu:(NSMenu *)menu;

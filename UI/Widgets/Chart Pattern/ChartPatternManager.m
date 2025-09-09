@@ -11,6 +11,7 @@
 #import "SavedChartData.h"
 #import "DataHub.h"
 #import "DataHub+ChartPatterns.h"
+#import "SavedChartData+FilenameParsing.h"
 
 @implementation ChartPatternManager
 
@@ -361,10 +362,7 @@
     // ✅ OTTIMIZZAZIONE: Cerca match usando SOLO filename parsing
     for (NSString *filename in chartDataFiles) {
         
-        // Quick validation: check if new format
-        if (![SavedChartData isNewFormatFilename:filename]) {
-            continue; // Skip old format files
-        }
+       
         
         // ✅ FAST: Extract metadata from filename only
         NSString *fileSymbol = [SavedChartData symbolFromFilename:filename];

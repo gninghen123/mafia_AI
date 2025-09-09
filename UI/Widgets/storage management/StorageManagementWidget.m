@@ -708,9 +708,12 @@
 }
 
 - (void)showStorageDetails:(UnifiedStorageItem *)item {
-    NSAlert *detailsAlert = [[NSAlert alloc] init];
-    detailsAlert.messageText = [NSString stringWithFormat:@"Storage Details: %@", item.savedData.symbol];
+    // ✅ OTTIMIZZAZIONE: Get all metadata from filename first
+    NSString *filename = [item.filePath lastPathComponent];
+    NSDictionary *metadata = [self getStorageMetadataFromFilename:filename fallbackItem:item];
     
+    // Create details string using parsed metadata
+    NSMutableString *details = [NSMutableString string];
     NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
     dateFormatter.dateStyle = NSDateFormatterMediumStyle;
     dateFormatter.timeStyle = NSDateFormatterShortStyle;
@@ -719,44 +722,116 @@
     shortFormatter.dateStyle = NSDateFormatterShortStyle;
     shortFormatter.timeStyle = NSDateFormatterNoStyle;
     
-    NSMutableString *details = [NSMutableString string];
-    [details appendFormat:@"Symbol: %@\n", item.savedData.symbol];
-    [details appendFormat:@"Timeframe: %@\n", [item.savedData timeframeDescription]];
-    [details appendFormat:@"Type: %@\n", item.isContinuous ? @"Continuous" : @"Snapshot"];
-    [details appendFormat:@"Bars: %ld\n", (long)item.savedData.barCount];
-    [details appendFormat:@"Range: %@ to %@\n",
-             [shortFormatter stringFromDate:item.savedData.startDate],
-             [shortFormatter stringFromDate:item.savedData.endDate]];
-    [details appendFormat:@"Created: %@\n", [dateFormatter stringFromDate:item.savedData.creationDate]];
+    // Basic info from parsed metadata
+    [details appendFormat:@"Symbol: %@\n", metadata[@"symbol"]];
+    [details appendFormat:@"Timeframe: %@\n", metadata[@"timeframe"]];
+    [details appendFormat:@"Type: %@\n", metadata[@"type"]];
+    [details appendFormat:@"Bars: %@\n", metadata[@"barCount"]];
+    [details appendFormat:@"Range: %@\n", metadata[@"dateRange"]];
+    [details appendFormat:@"Extended Hours: %@\n", [metadata[@"extendedHours"] boolValue] ? @"Yes" : @"No"];
+    [details appendFormat:@"Has Gaps: %@\n", [metadata[@"hasGaps"] boolValue] ? @"Yes" : @"No"];
+    [details appendFormat:@"File Size: %@ KB\n", metadata[@"fileSizeKB"]];
     
-    if (item.savedData.lastSuccessfulUpdate) {
-        [details appendFormat:@"Last Update: %@\n", [dateFormatter stringFromDate:item.savedData.lastSuccessfulUpdate]];
+    // Creation date from filename
+    if (metadata[@"creationDate"]) {
+        [details appendFormat:@"Created: %@\n", [dateFormatter stringFromDate:metadata[@"creationDate"]]];
     }
     
-    if (item.isContinuous && item.activeItem && item.savedData.nextScheduledUpdate && !item.activeItem.isPaused) {
-        [details appendFormat:@"Next Update: %@\n", [dateFormatter stringFromDate:item.savedData.nextScheduledUpdate]];
-    }
-    
-    [details appendFormat:@"Extended Hours: %@\n", item.savedData.includesExtendedHours ? @"Yes" : @"No"];
-    [details appendFormat:@"Has Gaps: %@\n", item.savedData.hasGaps ? @"Yes" : @"No"];
-    
+    // Additional info for continuous storage (if activeItem exists)
     if (item.isContinuous && item.activeItem) {
         [details appendFormat:@"Failure Count: %ld\n", (long)item.activeItem.failureCount];
         [details appendFormat:@"Paused: %@\n", item.activeItem.isPaused ? @"Yes" : @"No"];
+        
+        // These require loading the saved data (only if needed)
+        if (item.savedData) {
+            if (item.savedData.lastSuccessfulUpdate) {
+                [details appendFormat:@"Last Update: %@\n", [dateFormatter stringFromDate:item.savedData.lastSuccessfulUpdate]];
+            }
+            if (item.savedData.nextScheduledUpdate && !item.activeItem.isPaused) {
+                [details appendFormat:@"Next Update: %@\n", [dateFormatter stringFromDate:item.savedData.nextScheduledUpdate]];
+            }
+        } else {
+            [details appendString:@"[Additional update info requires loading file]\n"];
+        }
     }
     
-    [details appendFormat:@"Status: %@\n", [self statusStringForStorageItem:item]];
+    [details appendFormat:@"\nFile Path: %@\n", item.filePath];
+    [details appendFormat:@"Data Source: %@", metadata[@"source"]];
     
-    if (item.savedData.notes && item.savedData.notes.length > 0) {
-        [details appendFormat:@"Notes: %@\n", item.savedData.notes];
-    }
-    
-    [details appendFormat:@"\nFile: %@", [item.filePath lastPathComponent]];
-    
-    detailsAlert.informativeText = details;
-    detailsAlert.alertStyle = NSAlertStyleInformational;
-    [detailsAlert runModal];
+    // Show in alert
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = [NSString stringWithFormat:@"Storage Details: %@", metadata[@"symbol"]];
+    alert.informativeText = details;
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
 }
+
+- (NSDictionary *)getStorageMetadataFromFilename:(NSString *)filename fallbackItem:(UnifiedStorageItem *)item {
+    NSMutableDictionary *metadata = [NSMutableDictionary dictionary];
+    
+    if ([SavedChartData isNewFormatFilename:filename]) {
+        // ✅ FAST: Parse from filename
+        metadata[@"symbol"] = [SavedChartData symbolFromFilename:filename] ?: @"Unknown";
+        metadata[@"timeframe"] = [SavedChartData timeframeFromFilename:filename] ?: @"Unknown";
+        metadata[@"type"] = [SavedChartData typeFromFilename:filename] ?: @"Unknown";
+        metadata[@"barCount"] = @([SavedChartData barCountFromFilename:filename]);
+        metadata[@"dateRange"] = [SavedChartData dateRangeStringFromFilename:filename] ?: @"Unknown";
+        metadata[@"extendedHours"] = @([SavedChartData extendedHoursFromFilename:filename]);
+        metadata[@"hasGaps"] = @([SavedChartData hasGapsFromFilename:filename]);
+        metadata[@"creationDate"] = [SavedChartData creationDateFromFilename:filename];
+        
+        // File size from filesystem
+        NSInteger fileSize = [SavedChartData fileSizeFromPath:item.filePath];
+        metadata[@"fileSizeKB"] = @(fileSize / 1024);
+        
+        metadata[@"source"] = @"filename";
+        
+    } else if (item.savedData) {
+        // ❌ FALLBACK: Use already loaded data
+        metadata[@"symbol"] = item.savedData.symbol ?: @"Unknown";
+        metadata[@"timeframe"] = item.savedData.timeframeDescription ?: @"Unknown";
+        metadata[@"type"] = item.savedData.dataType == SavedChartDataTypeContinuous ? @"Continuous" : @"Snapshot";
+        metadata[@"barCount"] = @(item.savedData.barCount);
+        metadata[@"dateRange"] = item.savedData.formattedDateRange ?: @"Unknown";
+        metadata[@"extendedHours"] = @(item.savedData.includesExtendedHours);
+        metadata[@"hasGaps"] = @(item.savedData.hasGaps);
+        metadata[@"creationDate"] = item.savedData.creationDate;
+        metadata[@"fileSizeKB"] = @(item.savedData.estimatedFileSize / 1024);
+        metadata[@"source"] = @"cached";
+        
+    } else {
+        // ❌ LAST RESORT: Load file (should be very rare)
+        NSLog(@"⚠️ Loading file for metadata (old format): %@", filename);
+        SavedChartData *tempData = [SavedChartData loadFromFile:item.filePath];
+        if (tempData) {
+            metadata[@"symbol"] = tempData.symbol ?: @"Unknown";
+            metadata[@"timeframe"] = tempData.timeframeDescription ?: @"Unknown";
+            metadata[@"type"] = tempData.dataType == SavedChartDataTypeContinuous ? @"Continuous" : @"Snapshot";
+            metadata[@"barCount"] = @(tempData.barCount);
+            metadata[@"dateRange"] = tempData.formattedDateRange ?: @"Unknown";
+            metadata[@"extendedHours"] = @(tempData.includesExtendedHours);
+            metadata[@"hasGaps"] = @(tempData.hasGaps);
+            metadata[@"creationDate"] = tempData.creationDate;
+            metadata[@"fileSizeKB"] = @(tempData.estimatedFileSize / 1024);
+            metadata[@"source"] = @"file_load";
+        } else {
+            // Ultimate fallback
+            metadata[@"symbol"] = @"Unknown";
+            metadata[@"timeframe"] = @"Unknown";
+            metadata[@"type"] = @"Unknown";
+            metadata[@"barCount"] = @(0);
+            metadata[@"dateRange"] = @"Unknown";
+            metadata[@"extendedHours"] = @(NO);
+            metadata[@"hasGaps"] = @(NO);
+            metadata[@"creationDate"] = nil;
+            metadata[@"fileSizeKB"] = @(0);
+            metadata[@"source"] = @"fallback";
+        }
+    }
+    
+    return [metadata copy];
+}
+
 
 - (void)openStorageLocation:(UnifiedStorageItem *)item {
     [[NSWorkspace sharedWorkspace] selectFile:item.filePath inFileViewerRootedAtPath:nil];
@@ -917,35 +992,51 @@
 // 4. AGGIUNGI QUESTO METODO HELPER (CORE LOGIC)
 
 - (void)openChartDataInFloatingWindow:(UnifiedStorageItem *)storageItem {
-    // Get AppDelegate for window creation
+    // Get app delegate
     AppDelegate *appDelegate = (AppDelegate *)[NSApplication sharedApplication].delegate;
     if (!appDelegate) {
-        NSLog(@"❌ Cannot get AppDelegate for window creation");
+        NSLog(@"❌ Cannot get AppDelegate");
         return;
     }
     
-    // Create new ChartWidget
+    // Create chart widget
     ChartWidget *chartWidget = [[ChartWidget alloc] initWithType:@"Chart Widget" panelType:PanelTypeCenter];
-    
     if (!chartWidget) {
         NSLog(@"❌ Failed to create ChartWidget");
         return;
     }
     
-    // Setup widget view
-    [chartWidget loadView];
+    // ✅ OTTIMIZZAZIONE: Get metadata from filename instead of loading savedData
+    NSString *filename = [storageItem.filePath lastPathComponent];
+    NSString *symbol, *timeframeStr, *typeStr;
     
-    // Create descriptive window title
-    NSString *typeString = storageItem.isContinuous ? @"CONTINUOUS" : @"SNAPSHOT";
+    if ([SavedChartData isNewFormatFilename:filename]) {
+        // ✅ FAST: Use filename parsing
+        symbol = [SavedChartData symbolFromFilename:filename] ?: @"Unknown";
+        timeframeStr = [SavedChartData timeframeFromFilename:filename] ?: @"Unknown";
+        typeStr = [SavedChartData typeFromFilename:filename] ?: @"Unknown";
+    } else if (storageItem.savedData) {
+        // ❌ FALLBACK: Use already loaded data (if available)
+        symbol = storageItem.savedData.symbol ?: @"Unknown";
+        timeframeStr = storageItem.savedData.timeframeDescription ?: @"Unknown";
+        typeStr = storageItem.savedData.dataType == SavedChartDataTypeContinuous ? @"CONTINUOUS" : @"SNAPSHOT";
+    } else {
+        // ❌ ULTIMATE FALLBACK: Load file (rare case)
+        NSLog(@"⚠️ Loading file for window title (old format): %@", filename);
+        SavedChartData *tempData = [SavedChartData loadFromFile:storageItem.filePath];
+        symbol = tempData.symbol ?: @"Unknown";
+        timeframeStr = tempData.timeframeDescription ?: @"Unknown";
+        typeStr = tempData.dataType == SavedChartDataTypeContinuous ? @"CONTINUOUS" : @"SNAPSHOT";
+    }
+    
+    // Create window title using parsed/cached data
     NSString *windowTitle = [NSString stringWithFormat:@"🔬 Chart Data: %@ [%@] (%@)",
-                            storageItem.savedData.symbol,
-                            storageItem.savedData.timeframeDescription,
-                            typeString];
+                            symbol, timeframeStr, typeStr];
     
     // Determine window size based on content
-    NSSize windowSize = NSMakeSize(1000, 700); // Good size for chart viewing
+    NSSize windowSize = NSMakeSize(1000, 700);
     
-    // Create floating window using existing AppDelegate infrastructure
+    // Create floating window
     FloatingWidgetWindow *chartWindow = [appDelegate createFloatingWindowWithWidget:chartWidget
                                                                                title:windowTitle
                                                                                 size:windowSize];
@@ -955,37 +1046,26 @@
         return;
     }
     
-    // Load chart data in background to avoid UI blocking
+    // Load chart data in background (this is the only unavoidable file loading)
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
         NSString *filePath = storageItem.filePath;
         
-        // Load chart data using existing method (this automatically sets static mode)
         [chartWidget loadSavedDataFromFile:filePath completion:^(BOOL success, NSError *error) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (success) {
-                    NSLog(@"✅ Successfully loaded chart data: %@ in floating window",
-                          storageItem.savedData.symbol);
-                    
-                    // Show the window
+                    NSLog(@"✅ Successfully loaded chart data: %@ in floating window", symbol);
                     [chartWindow makeKeyAndOrderFront:self];
-                    // todo controllare !!! [chartWidget resetToInitialView];
-                    
-                    // Optional: Show brief success indicator
-                    [self showBriefSuccessMessage:[NSString stringWithFormat:@"Opened %@ chart",
-                                                  storageItem.savedData.symbol]];
+                    [self showBriefSuccessMessage:[NSString stringWithFormat:@"Opened %@ chart", symbol]];
                 } else {
                     NSLog(@"❌ Failed to load chart data: %@", error.localizedDescription);
-                    
-                    // Close the window since loading failed
                     [chartWindow close];
-                    
-                    // Show error to user
-                    [self showLoadErrorDialog:error forSymbol:storageItem.savedData.symbol];
+                    [self showLoadErrorDialog:error forSymbol:symbol];
                 }
             });
         }];
     });
 }
+
 
 // 5. AGGIUNGI QUESTI METODI HELPER PER UX
 

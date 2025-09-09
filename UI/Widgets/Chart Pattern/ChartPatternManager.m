@@ -356,54 +356,105 @@
     NSArray<NSString *> *chartDataFiles = [files filteredArrayUsingPredicate:
         [NSPredicate predicateWithFormat:@"self ENDSWITH '.chartdata'"]];
     
-    NSLog(@"🔍 ChartPatternManager: Searching for compatible SavedChartData among %ld files", (long)chartDataFiles.count);
+    NSLog(@"🚀 ChartPatternManager: FAST search using filename parsing only among %ld files", (long)chartDataFiles.count);
     
-    // Cerca match in ordine di preferenza
+    // ✅ OTTIMIZZAZIONE: Cerca match usando SOLO filename parsing
     for (NSString *filename in chartDataFiles) {
-        NSString *filePath = [directory stringByAppendingPathComponent:filename];
-        SavedChartData *candidateData = [SavedChartData loadFromFile:filePath];
         
-        if (!candidateData || !candidateData.isDataValid) {
-            continue; // Skip file corrotti
+        // Quick validation: check if new format
+        if (![SavedChartData isNewFormatFilename:filename]) {
+            continue; // Skip old format files
         }
         
-        // Verifica match dei parametri base
-        if (![self doesSavedChartData:candidateData
-                            matchSymbol:symbol
-                              timeframe:timeframe
-                    includesExtendedHours:includesExtendedHours]) {
+        // ✅ FAST: Extract metadata from filename only
+        NSString *fileSymbol = [SavedChartData symbolFromFilename:filename];
+        BarTimeframe fileTimeframe = [SavedChartData timeframeEnumFromFilename:filename];
+        NSString *fileType = [SavedChartData typeFromFilename:filename];
+        NSDate *fileStartDate = [SavedChartData startDateFromFilename:filename];
+        NSDate *fileEndDate = [SavedChartData endDateFromFilename:filename];
+        BOOL fileExtendedHours = [SavedChartData extendedHoursFromFilename:filename];
+        
+        // ✅ FAST: Basic compatibility checks using parsed metadata
+        if (!fileSymbol || !fileStartDate || !fileEndDate) {
+            continue; // Skip files with incomplete metadata
+        }
+        
+        // Check symbol match (case insensitive)
+        if (![fileSymbol.lowercaseString isEqualToString:symbol.lowercaseString]) {
             continue;
         }
         
-        // Verifica copertura date range
-        SavedChartDataCoverage coverage = [self checkDateCoverage:candidateData
-                                                    patternStartDate:patternStartDate
-                                                      patternEndDate:patternEndDate];
+        // Check timeframe match
+        if (fileTimeframe != timeframe) {
+            continue;
+        }
         
-        switch (coverage) {
-            case SavedChartDataCoverageFullMatch:
-                NSLog(@"✅ ChartPatternManager: PERFECT MATCH found - %@", candidateData.chartID);
-                return candidateData.chartID;
-                
-            case SavedChartDataCoverageCanExtend:
-                NSLog(@"🔄 ChartPatternManager: EXTENDABLE MATCH found - %@", candidateData.chartID);
-                // Prova ad estendere il SavedChartData esistente
-                if ([self extendSavedChartData:candidateData
-                                toPatternStartDate:patternStartDate
-                                    patternEndDate:patternEndDate]) {
-                    return candidateData.chartID;
-                }
-                break;
-                
-            case SavedChartDataCoverageNoMatch:
-                // Continua a cercare
-                break;
+        // Check extended hours match
+        if (fileExtendedHours != includesExtendedHours) {
+            continue;
+        }
+        
+        // ✅ FAST: Check if file date range covers pattern date range
+        BOOL patternStartInRange = [patternStartDate compare:fileStartDate] != NSOrderedAscending &&
+                                   [patternStartDate compare:fileEndDate] != NSOrderedDescending;
+        
+        BOOL patternEndInRange = [patternEndDate compare:fileStartDate] != NSOrderedAscending &&
+                                 [patternEndDate compare:fileEndDate] != NSOrderedDescending;
+        
+        if (patternStartInRange && patternEndInRange) {
+            // ✅ FOUND COMPATIBLE FILE: Extract chartID from filename
+            NSString *chartID = [filename stringByDeletingPathExtension];
+            
+            NSLog(@"✅ ChartPatternManager: Found compatible SavedChartData via filename parsing!");
+            NSLog(@"   File: %@", filename);
+            NSLog(@"   Symbol: %@ (matches %@)", fileSymbol, symbol);
+            NSLog(@"   Timeframe: %ld (matches %ld)", (long)fileTimeframe, (long)timeframe);
+            NSLog(@"   Date range: %@ to %@ (covers pattern %@ to %@)",
+                  fileStartDate, fileEndDate, patternStartDate, patternEndDate);
+            NSLog(@"   Extended hours: %@ (matches %@)",
+                  fileExtendedHours ? @"YES" : @"NO", includesExtendedHours ? @"YES" : @"NO");
+            
+            return chartID;
         }
     }
     
-    NSLog(@"❌ ChartPatternManager: No compatible SavedChartData found - will create new one");
+    NSLog(@"ℹ️ ChartPatternManager: No compatible SavedChartData found via filename parsing");
     return nil;
 }
+
+// ✅ NUOVO METODO: Verifica veloce se un file è compatibile per pattern usando solo filename
+- (BOOL)isFileCompatibleForPatternUsingFilename:(NSString *)filename
+                                         symbol:(NSString *)symbol
+                                      timeframe:(BarTimeframe)timeframe
+                            includesExtendedHours:(BOOL)includesExtendedHours
+                               patternStartDate:(NSDate *)patternStartDate
+                                 patternEndDate:(NSDate *)patternEndDate {
+    
+  
+    
+    // Extract metadata from filename
+    NSString *fileSymbol = [SavedChartData symbolFromFilename:filename];
+    BarTimeframe fileTimeframe = [SavedChartData timeframeEnumFromFilename:filename];
+    NSDate *fileStartDate = [SavedChartData startDateFromFilename:filename];
+    NSDate *fileEndDate = [SavedChartData endDateFromFilename:filename];
+    BOOL fileExtendedHours = [SavedChartData extendedHoursFromFilename:filename];
+    
+    // Check all compatibility criteria
+    if (!fileSymbol || !fileStartDate || !fileEndDate) return NO;
+    if (![fileSymbol.lowercaseString isEqualToString:symbol.lowercaseString]) return NO;
+    if (fileTimeframe != timeframe) return NO;
+    if (fileExtendedHours != includesExtendedHours) return NO;
+    
+    // Check date range coverage
+    BOOL patternStartInRange = [patternStartDate compare:fileStartDate] != NSOrderedAscending &&
+                               [patternStartDate compare:fileEndDate] != NSOrderedDescending;
+    
+    BOOL patternEndInRange = [patternEndDate compare:fileStartDate] != NSOrderedAscending &&
+                             [patternEndDate compare:fileEndDate] != NSOrderedDescending;
+    
+    return patternStartInRange && patternEndInRange;
+}
+
 
 typedef NS_ENUM(NSInteger, SavedChartDataCoverage) {
     SavedChartDataCoverageFullMatch,    // Le date del pattern sono completamente coperte

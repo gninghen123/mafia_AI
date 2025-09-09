@@ -2794,89 +2794,29 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 #pragma mark - indicator visibility
 
-/*
+
 - (IBAction)toggleIndicatorsVisibility:(id)sender {
-    // Update all chart panels
+    NSButton *button = (NSButton *)sender;
+    BOOL shouldShow = (button.state == NSControlStateValueOn);
+    
+    NSLog(@"📈 Toggling indicators visibility: %@", shouldShow ? @"ON" : @"OFF");
+    
+    // Agisce su tutti i renderer
+    for (ChartIndicatorRenderer *renderer in self.indicatorRenderers.allValues) {
+        if (shouldShow) {
+            // Mostra layer + riabilita rendering
+            renderer.indicatorsLayer.hidden = NO;
+        } else {
+            // Nascondi layer + blocca rendering (già gestito dai check)
+            renderer.indicatorsLayer.hidden = YES;
+        }
+    }
+    
+    // Force redraw dei panel
     for (ChartPanelView *panel in self.chartPanels) {
-        if (panel.indicatorRenderer) {
-            [self updateIndicatorChildrenVisibility:panel.indicatorRenderer
-                                         showChildren:[sender state]];
-            [panel setNeedsDisplay:YES];
-        }
+        [panel setNeedsDisplay:YES];
     }
 }
-
-// ✅ METODO HELPER PER GESTIRE LA VISIBILITÀ
-- (void)updateIndicatorChildrenVisibility:(ChartIndicatorRenderer *)renderer
-                             showChildren:(BOOL)showChildren {
-    
-    // Ottieni il root indicator del pannello (questo rimane sempre visibile)
-    TechnicalIndicatorBase *rootIndicator = [self getRootIndicatorForRenderer:renderer];
-    
-    if (!rootIndicator) {
-        NSLog(@"⚠️ No root indicator found for renderer");
-        return;
-    }
-    
-    
-    // ✅ LOGICA CHIAVE: Modifica solo i FIGLI, non il root
-    [self setVisibilityForChildrenRecursively:rootIndicator.childIndicators
-                                    isVisible:showChildren];
-    
-    // Forza il re-rendering del renderer
-    [renderer invalidateIndicatorLayers];
-    [renderer renderIndicatorTree:rootIndicator];
-}
-
-// ✅ METODO RICORSIVO PER IMPOSTARE VISIBILITÀ DEI FIGLI
-- (void)setVisibilityForChildrenRecursively:(NSArray<TechnicalIndicatorBase *> *)children
-                                  isVisible:(BOOL)isVisible {
-    
-    for (TechnicalIndicatorBase *child in children) {
-        // Modifica la visibilità del figlio
-        child.isVisible = isVisible;
-        
-        NSLog(@"  %@ %@: %@",
-              isVisible ? @"👁️" : @"🙈",
-              child.displayName,
-              isVisible ? @"VISIBLE" : @"HIDDEN");
-        
-        // ✅ RICORSIVO: Applica anche ai figli del figlio
-        if (child.childIndicators.count > 0) {
-            [self setVisibilityForChildrenRecursively:child.childIndicators
-                                            isVisible:isVisible];
-        }
-        
-        // ✅ IMPORTANTE: Segna che serve re-rendering
-        child.needsRendering = YES;
-    }
-}
-
-// ✅ HELPER PER TROVARE IL ROOT INDICATOR
-- (TechnicalIndicatorBase *)getRootIndicatorForRenderer:(ChartIndicatorRenderer *)renderer {
-    // Questo metodo dovrebbe restituire il root indicator associato al pannello
-    // L'implementazione dipende da come sono strutturati i dati nel tuo sistema
-    
-    // Per ora, placeholder - dovrai implementare la logica specifica
-    // basandoti su come il renderer tiene traccia del suo root indicator
-    
-    // Opzione 1: Se il renderer ha una property rootIndicator
-    // return renderer.rootIndicator;
-    
-    // Opzione 2: Se è nel ChartPanelView
-    // return renderer.panelView.rootIndicator;
-    
-    // Opzione 3: Cerca attraverso i template
-    ChartPanelView *panel = renderer.panelView;
-    if ([panel.panelType isEqualToString:@"security"]) {
-        // Per il security panel, il root è SecurityIndicator
-        // return [self findIndicatorByType:@"SecurityIndicator" inPanel:panel];
-    }
-    
-    NSLog(@"⚠️ getRootIndicatorForRenderer needs implementation");
-    return nil; // TODO: Implementare
-}
-*/
 
 
 @end

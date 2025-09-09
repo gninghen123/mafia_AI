@@ -3009,14 +3009,16 @@
             [invalidatedLayers addObject:@"indicators"];
         }
     }
-    
+   
+    /*
     // Step 4: Log invalidation for debugging
     if (invalidatedLayers.count > 0) {
-        NSLog(@"🎨 ChartPanelView (%@): Invalidated layers: [%@] - %@",
+      NSLog(@"🎨 ChartPanelView (%@): Invalidated layers: [%@] - %@",
               self.panelType,
               [invalidatedLayers componentsJoinedByString:@", "],
               reason ?: @"no reason");
     }
+     */
 }
 
 

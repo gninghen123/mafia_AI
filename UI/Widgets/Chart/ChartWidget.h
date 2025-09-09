@@ -66,6 +66,7 @@ typedef struct {
 @property (nonatomic, strong) IBOutlet NSButton *zoomOutButton;
 @property (nonatomic, strong) IBOutlet NSButton *zoomInButton;
 @property (nonatomic, strong) IBOutlet NSButton *zoomAllButton;
+@property (nonatomic, strong) IBOutlet NSSwitch *indicatorsVisibilityToggle;
 
 // Objects UI
 @property (nonatomic, strong) IBOutlet NSSegmentedControl *dateRangeSegmented;

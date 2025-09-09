@@ -9,6 +9,7 @@
             <connections>
                 <outlet property="dateRangeSegmented" destination="rAc-lA-MOP" id="AGN-iO-7xq"/>
                 <outlet property="indicatorsPanelToggle" destination="Po4-5B-WCZ" id="tc4-pV-jhU"/>
+                <outlet property="indicatorsVisibilityToggle" destination="Cn0-1E-CYv" id="GYq-9C-3Fz"/>
                 <outlet property="mainSplitView" destination="65j-Ye-ijW" id="mKi-CT-x9A"/>
                 <outlet property="objectsPanelToggle" destination="kUx-os-VYx" id="zxG-xW-T0R"/>
                 <outlet property="objectsVisibilityToggle" destination="p4z-uD-F0P" id="yjJ-Ev-iLX"/>
@@ -183,7 +184,7 @@
                 <switch horizontalHuggingPriority="750" verticalHuggingPriority="750" baseWritingDirection="leftToRight" alignment="left" state="on" translatesAutoresizingMaskIntoConstraints="NO" id="Cn0-1E-CYv">
                     <rect key="frame" x="1124" y="703" width="42" height="25"/>
                     <connections>
-                        <action selector="toggleIndicatorsVisibility:" target="-2" id="lNI-53-kvq"/>
+                        <action selector="toggleIndicatorsVisibility:" target="-2" id="sDk-qC-ZVh"/>
                     </connections>
                 </switch>
             </subviews>
@@ -225,7 +226,7 @@
                 <constraint firstItem="q6v-oX-Foa" firstAttribute="leading" secondItem="q9h-ca-HQ2" secondAttribute="trailing" constant="11" id="wTv-w2-517"/>
                 <constraint firstItem="rAc-lA-MOP" firstAttribute="leading" secondItem="AbQ-SP-niQ" secondAttribute="trailing" constant="8" symbolic="YES" id="xVm-sc-W4f"/>
             </constraints>
-            <point key="canvasLocation" x="428.5" y="32"/>
+            <point key="canvasLocation" x="242" y="32"/>
         </customView>
     </objects>
     <resources>

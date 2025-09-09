@@ -110,13 +110,13 @@
             filePath = "UI/Widgets/Chart/ChartWidget+IndicatorsUI.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "629"
-            endingLineNumber = "629"
+            startingLineNumber = "632"
+            endingLineNumber = "632"
             landmarkName = "-deleteTemplateWithConfirmation:"
             landmarkType = "7">
             <Locations>
                <Location
-                  uuid = "D272F23F-D83F-42F3-95F3-291C6098AE59 - 3f1fdfbe44b6778c"
+                  uuid = "D272F23F-D83F-42F3-95F3-291C6098AE59 - 3f1fdfbe44b64831"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
@@ -126,11 +126,11 @@
                   urlString = "file:///Users/fabiogattone/Documents/mafia_AI/UI/Widgets/Chart/ChartWidget+IndicatorsUI.m"
                   startingColumnNumber = "9223372036854775807"
                   endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "629"
-                  endingLineNumber = "629">
+                  startingLineNumber = "632"
+                  endingLineNumber = "632">
                </Location>
                <Location
-                  uuid = "D272F23F-D83F-42F3-95F3-291C6098AE59 - 7ab6216ab5b2ec0"
+                  uuid = "D272F23F-D83F-42F3-95F3-291C6098AE59 - 7ab6216ab5b2ebf"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
@@ -140,8 +140,8 @@
                   urlString = "file:///Users/fabiogattone/Documents/mafia_AI/UI/Widgets/Chart/ChartWidget+IndicatorsUI.m"
                   startingColumnNumber = "9223372036854775807"
                   endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "630"
-                  endingLineNumber = "630">
+                  startingLineNumber = "633"
+                  endingLineNumber = "633">
                </Location>
             </Locations>
          </BreakpointContent>

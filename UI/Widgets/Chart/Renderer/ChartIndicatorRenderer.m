@@ -118,6 +118,11 @@
 #pragma mark - Rendering Management
 
 - (void)renderIndicatorTree:(TechnicalIndicatorBase *)rootIndicator {
+    
+    if (self.panelView.chartWidget.indicatorsVisibilityToggle.state != NSControlStateValueOn) {
+          NSLog(@"📈 Indicators disabled - skipping rendering");
+          return;
+      }
     self.rootIndicator = rootIndicator;
     
     if (!rootIndicator) {
@@ -143,6 +148,10 @@
 }
 
 - (void)invalidateIndicatorLayers {
+    if (self.panelView.chartWidget.indicatorsVisibilityToggle.state != NSControlStateValueOn) {
+          NSLog(@"📈 Indicators disabled - skipping rendering");
+          return;
+      }
     [self.indicatorsLayer setNeedsDisplay];
 }
 
@@ -233,9 +242,8 @@
     [self applyStyleToPath:path forIndicator:indicator];
     [[self defaultStrokeColorForIndicator:indicator] setStroke];
     
-    // Draw
     [path stroke];
-    
+
     NSLog(@"📈 Drew line indicator: %@ with %lu points",
           indicator.displayName, (unsigned long)visibleData.count);
 }
@@ -517,9 +525,21 @@
         return dataPoints; // Return all if no visible range specified
     }
     
-    // For now, return all data points as we assume they're aligned with chart data
-    // In a more sophisticated implementation, we'd filter based on timestamp ranges
-    return dataPoints;
+    // ✅ VALIDAZIONE DEGLI INDICI
+    if (startIndex < 0) startIndex = 0;
+    if (endIndex >= dataPoints.count) endIndex = dataPoints.count - 1;
+    if (startIndex > endIndex) return @[]; // Range invalido
+    
+    // ✅ ESTRAI SOLO I DATI VISIBILI
+    NSInteger length = endIndex - startIndex + 1; // +1 perché range è inclusivo
+    NSRange visibleRange = NSMakeRange(startIndex, length);
+    
+    NSArray<IndicatorDataModel *> *visibleData = [dataPoints subarrayWithRange:visibleRange];
+    
+    NSLog(@"📊 Extracted %ld visible points from range [%ld-%ld] (total: %ld)",
+          (long)visibleData.count, (long)startIndex, (long)endIndex, (long)dataPoints.count);
+    
+    return visibleData;
 }
 
 - (BOOL)hasVisibleRangeChanged:(NSInteger)startIndex endIndex:(NSInteger)endIndex {

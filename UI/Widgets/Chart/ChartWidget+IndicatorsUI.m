@@ -259,7 +259,10 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 
 - (void)calculateAndRenderIndicatorsForRenderer:(ChartIndicatorRenderer *)renderer
                                        withData:(NSArray<HistoricalBarModel *> *)chartData {
-    
+    if (self.indicatorsVisibilityToggle.state != NSControlStateValueOn) {
+           NSLog(@"📈 Indicators disabled - skipping calculation");
+           return;
+       }
     if (!renderer.rootIndicator) {
         NSLog(@"⚠️ No root indicator to calculate and render");
         return;
@@ -919,6 +922,12 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 }
 
 - (void)updateIndicatorsWithChartData:(NSArray<HistoricalBarModel *> *)chartData {
+    
+    if (self.indicatorsVisibilityToggle.state != NSControlStateValueOn) {
+         NSLog(@"📈 Indicators disabled - skipping update");
+         return;
+     }
+    
     if (!chartData || chartData.count == 0) {
         NSLog(@"⚠️ No chart data available for indicators update");
         return;
@@ -985,6 +994,13 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 
 
 - (void)recalculateAllIndicators {
+    
+    if (self.indicatorsVisibilityToggle.state != NSControlStateValueOn) {
+           NSLog(@"📈 Indicators disabled - skipping recalculation");
+           return;
+       }
+    
+    
     NSLog(@"🧮 Starting indicator recalculation for all panels");
     
     // ✅ STEP 1: Ottieni i dati correnti (potrebbero essere appena cambiati)

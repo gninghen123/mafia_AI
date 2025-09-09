@@ -1029,8 +1029,8 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
 - (void)startAutoRefresh {
     [self stopAutoRefresh]; // Stop existing timer
     
-    // Refresh every 10 seconds
-    self.refreshTimer = [NSTimer scheduledTimerWithTimeInterval:10.0
+    // Refresh every 5min seconds
+    self.refreshTimer = [NSTimer scheduledTimerWithTimeInterval:300.0
                                                          target:self
                                                        selector:@selector(autoRefreshTick:)
                                                        userInfo:nil

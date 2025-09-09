@@ -127,6 +127,50 @@
 
 #pragma mark - Registry Management
 
+
+- (void)registerContinuousStorageFromParsedData:(UnifiedStorageItem *)unifiedItem {
+    // Convert parsed UnifiedStorageItem to ActiveStorageItem
+    if (!unifiedItem.isContinuous) {
+        return;
+    }
+    
+    // Check if already registered
+    for (ActiveStorageItem *existing in self.mutableActiveStorages) {
+        if ([existing.filePath isEqualToString:unifiedItem.filePath]) {
+            return; // Already registered
+        }
+    }
+    
+    // We need to load the SavedChartData for continuous storage because we need the full data
+    // This is the ONLY case where we still load files - for registering continuous storage
+    SavedChartData *savedData = [SavedChartData loadFromFile:unifiedItem.filePath];
+    if (!savedData || savedData.dataType != SavedChartDataTypeContinuous) {
+        NSLog(@"❌ Failed to load continuous storage from: %@", unifiedItem.filePath);
+        return;
+    }
+    
+    // Create ActiveStorageItem
+    ActiveStorageItem *activeItem = [[ActiveStorageItem alloc] init];
+    activeItem.filePath = unifiedItem.filePath;
+    activeItem.savedData = savedData; // Use loaded data for continuous storage
+    activeItem.failureCount = 0;
+    activeItem.isPaused = NO;
+    
+    // Schedule updates
+    [self scheduleUpdateForStorageItem:activeItem];
+    
+    // Add to registry
+    [self.mutableActiveStorages addObject:activeItem];
+    
+    // Update the unified item to reference the active item and loaded data
+    unifiedItem.activeItem = activeItem;
+    unifiedItem.savedData = savedData; // Update with loaded data
+    
+    NSLog(@"✅ Auto-registered continuous storage: %@ [%@]",
+          activeItem.savedData.symbol, activeItem.savedData.timeframeDescription);
+}
+
+
 - (BOOL)registerContinuousStorage:(NSString *)filePath {
     if (!filePath || ![filePath containsString:@"continuous"]) {
         NSLog(@"⚠️ Invalid file path for continuous storage: %@", filePath);
@@ -346,62 +390,85 @@
     NSDate *fromDate = [storage.endDate dateByAddingTimeInterval:-(3 * [self timeframeToSeconds:storage.timeframe])];
     NSDate *toDate = [NSDate date];
     
-    NSLog(@"📅 Requesting data from %@ to %@ (3-bar overlap for merge)", fromDate, toDate);
-    
-    // Request new data via DataHub using the correct date range method
+    // Request new data from DataHub
     [[DataHub shared] getHistoricalBarsForSymbol:storage.symbol
-                                       timeframe:storage.timeframe
-                                       startDate:fromDate
-                                         endDate:toDate
-                               needExtendedHours:storage.includesExtendedHours
-                                      completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
+                                          timeframe:storage.timeframe
+                                          startDate:fromDate
+                                            endDate:toDate
+                                 needExtendedHours:storage.includesExtendedHours
+                                         completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
         
         if (!bars || bars.count == 0) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                NSError *error = [NSError errorWithDomain:@"StorageManager"
-                                                     code:1001
-                                                 userInfo:@{NSLocalizedDescriptionKey: @"No new data received from API"}];
-                if (completion) completion(NO, error);
-            });
-            return;
-        }
+                  NSLog(@"❌ No new data received for %@", storage.symbol);
+                  NSError *error = [NSError errorWithDomain:@"StorageManager"
+                                                       code:1005
+                                                   userInfo:@{NSLocalizedDescriptionKey: @"No new data available"}];
+                  if (completion) completion(NO, error);
+                  return;
+              }
         
-        NSLog(@"📊 Received %ld bars for merge attempt", (long)bars.count);
+        NSLog(@"📥 Received %ld new bars for %@", (long)bars.count, storage.symbol);
         
-        // Perform merge operation (we expect some overlap)
+        // Attempt to merge new data
         BOOL mergeSuccess = [storage mergeWithNewBars:bars overlapBarCount:3];
         
         if (mergeSuccess) {
-               // OLD: [storage saveToFile:item.filePath error:&saveError];
-               // NEW: Save with automatic filename update
-               NSString *updatedFilePath = [storage saveToFileWithFilenameUpdate:item.filePath error:&saveError];
-               
-               if (updatedFilePath) {
-                   // Update registry if file path changed
-                   if (![updatedFilePath isEqualToString:item.filePath]) {
-                       NSLog(@"📝 Registry: Updated file path for %@", storage.symbol);
-                       item.filePath = updatedFilePath;
-                   }
-                   completion(YES, nil);
-               } else {
-                   completion(NO, saveError);
-               }
-           }
+            // Update timestamps
+            storage.lastSuccessfulUpdate = [NSDate date];
+            
+            // Save with automatic filename update
+            NSError *saveError; // ← FIX: Dichiarazione mancante
+            NSString *updatedFilePath = [storage saveToFileWithFilenameUpdate:item.filePath error:&saveError];
+            
+            if (updatedFilePath) {
+                // Update registry if file path changed
+                if (![updatedFilePath isEqualToString:item.filePath]) {
+                    NSLog(@"📝 Registry: Updated file path for %@", storage.symbol);
+                    item.filePath = updatedFilePath;
+                }
+                
+                NSLog(@"✅ Automatic update successful for %@ (%ld total bars)",
+                      storage.symbol, (long)storage.barCount);
+                
+                if (completion) completion(YES, nil);
+            } else {
+                NSLog(@"❌ Failed to save updated data for %@: %@",
+                      storage.symbol, saveError.localizedDescription);
+                if (completion) completion(NO, saveError);
+            }
+        } else {
+            NSError *mergeError = [NSError errorWithDomain:@"StorageManager"
+                                                      code:1004
+                                                  userInfo:@{NSLocalizedDescriptionKey: @"Failed to merge new data"}];
+            NSLog(@"❌ Failed to merge new data for %@", storage.symbol);
+            if (completion) completion(NO, mergeError);
+        }
     }];
 }
 
+
 - (NSTimeInterval)timeframeToSeconds:(BarTimeframe)timeframe {
     switch (timeframe) {
-        case ChartTimeframe1Min: return 60;
-        case ChartTimeframe5Min: return 300;
-        case ChartTimeframe15Min: return 900;
-        case ChartTimeframe30Min: return 1800;
-        case ChartTimeframe1Hour: return 3600;
-        case ChartTimeframe4Hour: return 14400;
-        case ChartTimeframeDaily: return 86400;
-        case ChartTimeframeWeekly: return 604800;
-        case ChartTimeframeMonthly: return 2592000;
-        default: return 300; // Default to 5 minutes
+        case BarTimeframe1Min:
+            return 60;
+        case BarTimeframe5Min:
+            return 300;
+        case BarTimeframe15Min:
+            return 900;
+        case BarTimeframe30Min:
+            return 1800;
+        case BarTimeframe1Hour:
+            return 3600;
+        case BarTimeframe4Hour:
+            return 14400;
+        case BarTimeframeDaily:
+            return 86400;
+        case BarTimeframeWeekly:
+            return 604800;
+        case BarTimeframeMonthly:
+            return 2629746; // Average month
+        default:
+            return 3600; // Default to 1 hour
     }
 }
 
@@ -812,16 +879,26 @@
     NSLog(@"✅ Fast refresh complete: %ld total items - ZERO file loading!", (long)allItems.count);
 }
 
-- (UnifiedStorageItem *)createUnifiedStorageItemFromFilename:(NSString *)filename filePath:(NSString *)filePath {
+- (UnifiedStorageItem *)createUnifiedStorageItemFromFilename:(NSString *)filename
+                                                   filePath:(NSString *)filePath {
+    
     NSString *symbol = [SavedChartData symbolFromFilename:filename];
     NSString *typeStr = [SavedChartData typeFromFilename:filename];
     
-    if (!symbol || !typeStr) return nil;
+    if (!symbol || !typeStr) {
+        NSLog(@"⚠️ Could not parse symbol or type from filename: %@", filename);
+        return nil;
+    }
     
+    // Create UnifiedStorageItem with parsed data
     UnifiedStorageItem *item = [[UnifiedStorageItem alloc] init];
     item.filePath = filePath;
-    item.dataType = [typeStr isEqualToString:@"Continuous"] ? SavedChartDataTypeContinuous : SavedChartDataTypeSnapshot;
-    item.savedData = nil; // For snapshots, we don't need SavedChartData object
+    item.dataType = [typeStr isEqualToString:@"Continuous"] ?
+                    SavedChartDataTypeContinuous : SavedChartDataTypeSnapshot;
+    
+    // For snapshot storage, we don't need SavedChartData object (filename parsing is enough)
+    // For continuous storage, savedData will be set in registerContinuousStorageFromParsedData
+    item.savedData = nil;
     item.activeItem = nil;
     
     return item;

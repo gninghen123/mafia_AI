@@ -8,6 +8,7 @@
 //
 
 #import "ChartWidget+SaveData.h"
+#import "SavedChartData+FilenameUpdate.h"
 
 @implementation ChartWidget (SaveData)
 
@@ -80,7 +81,7 @@
     
     // Generate file path
     NSString *directory = [ChartWidget savedChartDataDirectory];
-    NSString *filename = [savedData suggestedFilename];
+    NSString *filename = [savedData generateCurrentFilename];
     NSString *filePath = [directory stringByAppendingPathComponent:filename];
     
     // Save to file
@@ -159,7 +160,7 @@
     
     // Generate file path
     NSString *directory = [ChartWidget savedChartDataDirectory];
-    NSString *filename = [savedData suggestedFilename];
+    NSString *filename = [savedData generateCurrentFilename];
     NSString *filePath = [directory stringByAppendingPathComponent:filename];
     
     // Save to file

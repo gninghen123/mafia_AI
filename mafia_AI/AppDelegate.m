@@ -42,13 +42,14 @@
     [DataHub shared];
     
     // 🎯 FIX: Inizializza il sistema di storage automatico
-       [[StorageSystemInitializer sharedInitializer] initializeStorageSystemWithCompletion:^(BOOL success, NSError *error) {
-           if (success) {
-               NSLog(@"✅ Storage system initialized successfully at app startup");
-           } else {
-               NSLog(@"❌ Failed to initialize storage system: %@", error.localizedDescription);
-           }
-       }];
+    [[StorageSystemInitializer sharedInitializer] initializeStorageSystemWithCompletion:^(BOOL success, NSError *error) {
+        if (success) {
+            NSLog(@"✅ Storage system initialized successfully at app startup");
+        } else {
+            NSLog(@"❌ Failed to initialize storage system: %@", error.localizedDescription);
+        }
+    }];
+
     
     [self registerDataSources];
     self.floatingWindows = [[NSMutableArray alloc] init];

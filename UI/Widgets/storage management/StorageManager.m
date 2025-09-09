@@ -11,6 +11,8 @@
 #import <Cocoa/Cocoa.h>
 #import "datahub+marketdata.h"
 #import "SavedChartData+FilenameParsing.h"
+#import "SavedChartData+FilenameUpdate.h"
+
 
 #pragma mark - ActiveStorageItem Implementation
 
@@ -370,26 +372,21 @@
         BOOL mergeSuccess = [storage mergeWithNewBars:bars overlapBarCount:3];
         
         if (mergeSuccess) {
-                // OLD: Just save normally
-                // BOOL saveSuccess = [storage saveToFile:item.filePath error:&saveError];
-                
-                // NEW: Save with automatic filename update
-                NSString *updatedFilePath = [storage saveToFileWithFilenameUpdate:item.filePath error:&saveError];
-                
-                if (updatedFilePath) {
-                    // Update the registry with new file path if it changed
-                    if (![updatedFilePath isEqualToString:item.filePath]) {
-                        NSLog(@"📝 Registry: Updated file path for %@", storage.symbol);
-                        item.filePath = updatedFilePath;
-                    }
-                    
-                    // Success
-                    completion(YES, nil);
-                } else {
-                    // Save failed
-                    completion(NO, saveError);
-                }
-            }
+               // OLD: [storage saveToFile:item.filePath error:&saveError];
+               // NEW: Save with automatic filename update
+               NSString *updatedFilePath = [storage saveToFileWithFilenameUpdate:item.filePath error:&saveError];
+               
+               if (updatedFilePath) {
+                   // Update registry if file path changed
+                   if (![updatedFilePath isEqualToString:item.filePath]) {
+                       NSLog(@"📝 Registry: Updated file path for %@", storage.symbol);
+                       item.filePath = updatedFilePath;
+                   }
+                   completion(YES, nil);
+               } else {
+                   completion(NO, saveError);
+               }
+           }
     }];
 }
 
@@ -751,13 +748,83 @@
 }
 
 - (void)refreshAllStorageItems {
-    // Invece di caricare ogni file, usa filename parsing!
-    NSArray<NSString *> *allFiles = [ChartWidget availableSavedChartDataFiles];
+    NSLog(@"🚀 Fast refreshing storage items using FILENAME PARSING (no file loading)...");
     
-    [SavedChartData parseMetadataFromFiles:allFiles completion:^(NSArray<SavedChartData *> *metadataObjects) {
-        // Crea UnifiedStorageItem da metadata
-        // Performance: istantaneo invece di minuti!
+    NSArray<NSString *> *allFiles = [ChartWidget availableSavedChartDataFiles];
+    NSMutableArray<UnifiedStorageItem *> *allItems = [NSMutableArray array];
+    
+    // 1. Add continuous storage from registry (already loaded)
+    for (ActiveStorageItem *activeItem in self.mutableActiveStorages) {
+        UnifiedStorageItem *unifiedItem = [[UnifiedStorageItem alloc] init];
+        unifiedItem.dataType = SavedChartDataTypeContinuous;
+        unifiedItem.savedData = activeItem.savedData;
+        unifiedItem.activeItem = activeItem;
+        unifiedItem.filePath = activeItem.filePath;
+        [allItems addObject:unifiedItem];
+    }
+    
+    // 2. Parse ALL files using FILENAME PARSING
+    for (NSString *filePath in allFiles) {
+        @autoreleasepool {
+            NSString *filename = [filePath lastPathComponent];
+            
+            if (![SavedChartData isNewFormatFilename:filename]) {
+                NSLog(@"⚠️ Skipping old format file: %@", filename);
+                continue;
+            }
+            
+            // Skip if already in registry
+            BOOL isAlreadyInRegistry = NO;
+            for (ActiveStorageItem *activeItem in self.mutableActiveStorages) {
+                if ([activeItem.filePath isEqualToString:filePath]) {
+                    isAlreadyInRegistry = YES;
+                    break;
+                }
+            }
+            if (isAlreadyInRegistry) continue;
+            
+            // Create UnifiedStorageItem from filename parsing
+            UnifiedStorageItem *unifiedItem = [self createUnifiedStorageItemFromFilename:filename filePath:filePath];
+            if (unifiedItem) {
+                [allItems addObject:unifiedItem];
+                
+                // Auto-register continuous storage
+                if (unifiedItem.isContinuous) {
+                    NSLog(@"📋 Found unregistered continuous storage, auto-registering: %@", filename);
+                    [self registerContinuousStorageFromParsedData:unifiedItem];
+                }
+            }
+        }
+    }
+    
+    // 3. Sort by creation date
+    [allItems sortUsingComparator:^NSComparisonResult(UnifiedStorageItem *obj1, UnifiedStorageItem *obj2) {
+        NSDate *date1 = [SavedChartData creationDateFromFilename:[obj1.filePath lastPathComponent]];
+        NSDate *date2 = [SavedChartData creationDateFromFilename:[obj2.filePath lastPathComponent]];
+        if (!date1) date1 = [NSDate distantPast];
+        if (!date2) date2 = [NSDate distantPast];
+        return [date2 compare:date1];
     }];
+    
+    self.cachedAllStorageItems = [allItems copy];
+    self.lastFileSystemScan = [NSDate date];
+    
+    NSLog(@"✅ Fast refresh complete: %ld total items - ZERO file loading!", (long)allItems.count);
+}
+
+- (UnifiedStorageItem *)createUnifiedStorageItemFromFilename:(NSString *)filename filePath:(NSString *)filePath {
+    NSString *symbol = [SavedChartData symbolFromFilename:filename];
+    NSString *typeStr = [SavedChartData typeFromFilename:filename];
+    
+    if (!symbol || !typeStr) return nil;
+    
+    UnifiedStorageItem *item = [[UnifiedStorageItem alloc] init];
+    item.filePath = filePath;
+    item.dataType = [typeStr isEqualToString:@"Continuous"] ? SavedChartDataTypeContinuous : SavedChartDataTypeSnapshot;
+    item.savedData = nil; // For snapshots, we don't need SavedChartData object
+    item.activeItem = nil;
+    
+    return item;
 }
 
 - (void)refreshAllStorageItemsIfNeeded {

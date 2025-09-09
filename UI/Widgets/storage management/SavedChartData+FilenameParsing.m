@@ -1,27 +1,15 @@
-
-
-// IMPLEMENTATION - SavedChartData+FilenameParsing.m
-
 #import "SavedChartData+FilenameParsing.h"
 
 @implementation SavedChartData (FilenameParsing)
 
-#pragma mark - Simple Filename Parsing
-
 + (nullable NSString *)symbolFromFilename:(NSString *)filename {
-    if (![self isNewFormatFilename:filename]) {
-        return nil;
-    }
-    
+    if (![self isNewFormatFilename:filename]) return nil;
     NSArray *components = [[filename stringByDeletingPathExtension] componentsSeparatedByString:@"_"];
     return components.count > 0 ? components[0] : nil;
 }
 
 + (nullable NSString *)timeframeFromFilename:(NSString *)filename {
-    if (![self isNewFormatFilename:filename]) {
-        return nil;
-    }
-    
+    if (![self isNewFormatFilename:filename]) return nil;
     NSArray *components = [[filename stringByDeletingPathExtension] componentsSeparatedByString:@"_"];
     return components.count > 1 ? components[1] : nil;
 }
@@ -40,78 +28,56 @@
     if ([timeframeStr isEqualToString:@"1w"]) return BarTimeframeWeekly;
     if ([timeframeStr isEqualToString:@"1M"]) return BarTimeframeMonthly;
     
-    return BarTimeframeDaily; // Default fallback
+    return BarTimeframeDaily;
 }
 
 + (nullable NSString *)typeFromFilename:(NSString *)filename {
-    if (![self isNewFormatFilename:filename]) {
-        return nil;
-    }
-    
+    if (![self isNewFormatFilename:filename]) return nil;
     NSArray *components = [[filename stringByDeletingPathExtension] componentsSeparatedByString:@"_"];
     if (components.count <= 2) return nil;
     
     NSString *typeStr = components[2];
-    if ([typeStr isEqualToString:@"continuous"]) {
-        return @"Continuous";
-    } else if ([typeStr isEqualToString:@"snapshot"]) {
-        return @"Snapshot";
-    }
-    
-    return typeStr; // Return as-is if unknown
+    if ([typeStr isEqualToString:@"continuous"]) return @"Continuous";
+    if ([typeStr isEqualToString:@"snapshot"]) return @"Snapshot";
+    return typeStr;
 }
 
 + (NSInteger)barCountFromFilename:(NSString *)filename {
-    if (![self isNewFormatFilename:filename]) {
-        return 0;
-    }
-    
+    if (![self isNewFormatFilename:filename]) return 0;
     NSArray *components = [[filename stringByDeletingPathExtension] componentsSeparatedByString:@"_"];
     
-    // Look for component ending with "bars"
     for (NSString *component in components) {
         if ([component hasSuffix:@"bars"]) {
             NSString *numberStr = [component stringByReplacingOccurrencesOfString:@"bars" withString:@""];
             return [numberStr integerValue];
         }
     }
-    
     return 0;
 }
 
 + (nullable NSDate *)startDateFromFilename:(NSString *)filename {
-    if (![self isNewFormatFilename:filename]) {
-        return nil;
-    }
-    
+    if (![self isNewFormatFilename:filename]) return nil;
     NSArray *components = [[filename stringByDeletingPathExtension] componentsSeparatedByString:@"_"];
     
-    // Look for component starting with "s"
     for (NSString *component in components) {
-        if ([component hasPrefix:@"s"] && component.length == 9) { // s + 8 digits
+        if ([component hasPrefix:@"s"] && component.length == 9) {
             NSString *dateStr = [component substringFromIndex:1];
             return [self parseDateFromString:dateStr];
         }
     }
-    
     return nil;
 }
 
 + (nullable NSDate *)endDateFromFilename:(NSString *)filename {
-    if (![self isNewFormatFilename:filename]) {
-        return nil;
-    }
-    
+    if (![self isNewFormatFilename:filename]) return nil;
     NSArray *components = [[filename stringByDeletingPathExtension] componentsSeparatedByString:@"_"];
     
-    // Look for component starting with "e"
     for (NSString *component in components) {
-        if ([component hasPrefix:@"e"] && component.length == 9) { // e + 8 digits
+        if ([component hasPrefix:@"e"] && component.length == 9) {
             NSString *dateStr = [component substringFromIndex:1];
             return [self parseDateFromString:dateStr];
         }
     }
-    
     return nil;
 }
 
@@ -119,9 +85,7 @@
     NSDate *startDate = [self startDateFromFilename:filename];
     NSDate *endDate = [self endDateFromFilename:filename];
     
-    if (!startDate || !endDate) {
-        return nil;
-    }
+    if (!startDate || !endDate) return nil;
     
     NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
     formatter.dateStyle = NSDateFormatterShortStyle;
@@ -133,74 +97,54 @@
 }
 
 + (BOOL)extendedHoursFromFilename:(NSString *)filename {
-    if (![self isNewFormatFilename:filename]) {
-        return NO;
-    }
-    
+    if (![self isNewFormatFilename:filename]) return NO;
     NSArray *components = [[filename stringByDeletingPathExtension] componentsSeparatedByString:@"_"];
     
-    // Look for component starting with "eh"
     for (NSString *component in components) {
         if ([component hasPrefix:@"eh"] && component.length >= 3) {
             NSString *flagStr = [component substringFromIndex:2];
             return [flagStr boolValue];
         }
     }
-    
     return NO;
 }
 
 + (BOOL)hasGapsFromFilename:(NSString *)filename {
-    if (![self isNewFormatFilename:filename]) {
-        return NO;
-    }
-    
+    if (![self isNewFormatFilename:filename]) return NO;
     NSArray *components = [[filename stringByDeletingPathExtension] componentsSeparatedByString:@"_"];
     
-    // Look for component starting with "g"
     for (NSString *component in components) {
         if ([component hasPrefix:@"g"] && component.length >= 2) {
             NSString *flagStr = [component substringFromIndex:1];
             return [flagStr boolValue];
         }
     }
-    
     return NO;
 }
 
 + (nullable NSDate *)creationDateFromFilename:(NSString *)filename {
-    if (![self isNewFormatFilename:filename]) {
-        return nil;
-    }
-    
+    if (![self isNewFormatFilename:filename]) return nil;
     NSArray *components = [[filename stringByDeletingPathExtension] componentsSeparatedByString:@"_"];
     
-    // Look for component starting with "c"
     for (NSString *component in components) {
-        if ([component hasPrefix:@"c"] && component.length == 14) { // c + 8 digits + _ + 4 digits
+        if ([component hasPrefix:@"c"] && component.length == 14) {
             NSString *dateTimeStr = [component substringFromIndex:1];
             return [self parseDateTimeFromString:dateTimeStr];
         }
     }
-    
     return nil;
 }
 
 + (nullable NSDate *)lastUpdateFromFilename:(NSString *)filename {
-    if (![self isNewFormatFilename:filename]) {
-        return nil;
-    }
-    
+    if (![self isNewFormatFilename:filename]) return nil;
     NSArray *components = [[filename stringByDeletingPathExtension] componentsSeparatedByString:@"_"];
     
-    // Look for component starting with "u"
     for (NSString *component in components) {
-        if ([component hasPrefix:@"u"] && component.length == 14) { // u + 8 digits + _ + 4 digits
+        if ([component hasPrefix:@"u"] && component.length == 14) {
             NSString *dateTimeStr = [component substringFromIndex:1];
             return [self parseDateTimeFromString:dateTimeStr];
         }
     }
-    
     return nil;
 }
 
@@ -210,7 +154,6 @@
 }
 
 + (BOOL)isNewFormatFilename:(NSString *)filename {
-    // Check for new format markers
     return [filename containsString:@"_s"] &&
            [filename containsString:@"_e"] &&
            [filename containsString:@"bars"];
@@ -220,15 +163,13 @@
 
 + (nullable NSDate *)parseDateFromString:(NSString *)dateString {
     if (dateString.length != 8) return nil;
-    
     NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
     [formatter setDateFormat:@"yyyyMMdd"];
     return [formatter dateFromString:dateString];
 }
 
 + (nullable NSDate *)parseDateTimeFromString:(NSString *)dateTimeString {
-    if (dateTimeString.length != 13) return nil; // YYYYMMDD_HHMM = 13 chars
-    
+    if (dateTimeString.length != 13) return nil;
     NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
     [formatter setDateFormat:@"yyyyMMdd_HHmm"];
     return [formatter dateFromString:dateTimeString];

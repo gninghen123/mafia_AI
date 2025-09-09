@@ -13,6 +13,7 @@
 #import "ChartWidget.h"
 #import "AppDelegate.h"
 #import "FloatingWidgetWindow.h"
+#import "SavedChartData+FilenameParsing.h"
 
 
 @interface StorageManagementWidget ()
@@ -495,30 +496,28 @@
     if (row >= self.storageItems.count) return nil;
     
     UnifiedStorageItem *item = self.storageItems[row];
-    SavedChartData *storage = item.savedData;
-    
+    NSString *filename = [item.filePath lastPathComponent];
     NSString *columnIdentifier = tableColumn.identifier;
     
     if ([columnIdentifier isEqualToString:@"symbol"]) {
-        return storage.symbol ?: @"Unknown";
+        NSString *symbol = [SavedChartData symbolFromFilename:filename];
+        return symbol ?: @"Unknown";
         
     } else if ([columnIdentifier isEqualToString:@"timeframe"]) {
-        return [storage timeframeDescription] ?: @"Unknown";
+        NSString *timeframe = [SavedChartData timeframeFromFilename:filename];
+        return timeframe ?: @"Unknown";
         
     } else if ([columnIdentifier isEqualToString:@"type"]) {
-        return item.isContinuous ? @"Continuous" : @"Snapshot";
+        NSString *type = [SavedChartData typeFromFilename:filename];
+        return type ?: @"Unknown";
         
     } else if ([columnIdentifier isEqualToString:@"range"]) {
-        if (storage.startDate && storage.endDate) {
-            NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-            formatter.dateStyle = NSDateFormatterShortStyle;
-            formatter.timeStyle = NSDateFormatterNoStyle;
-            
-            return [NSString stringWithFormat:@"%@ - %@",
-                    [formatter stringFromDate:storage.startDate],
-                    [formatter stringFromDate:storage.endDate]];
-        }
-        return @"No data";
+        NSString *dateRange = [SavedChartData dateRangeStringFromFilename:filename];
+        return dateRange ?: @"No data";
+        
+    } else if ([columnIdentifier isEqualToString:@"bars"]) {
+        NSInteger barCount = [SavedChartData barCountFromFilename:filename];
+        return [NSString stringWithFormat:@"%ld bars", (long)barCount];
         
     } else if ([columnIdentifier isEqualToString:@"status"]) {
         return [self statusStringForStorageItem:item];
@@ -529,6 +528,7 @@
     
     return nil;
 }
+
 
 #pragma mark - NSTableViewDelegate
 
@@ -765,26 +765,35 @@
 #pragma mark - Status Helpers
 
 - (NSString *)statusStringForStorageItem:(UnifiedStorageItem *)item {
-    if (item.isSnapshot) {
-        return @"📸 Snapshot";
-    }
+    NSString *filename = [item.filePath lastPathComponent];
     
-    if (item.activeItem) {
+    if (item.isContinuous && item.activeItem) {
         ActiveStorageItem *activeItem = item.activeItem;
+        
         if (activeItem.isPaused) {
             return @"⏸️ Paused";
         } else if (activeItem.failureCount > 0) {
-            return [NSString stringWithFormat:@"❌ Failed (%ld)", (long)activeItem.failureCount];
-        } else if (item.savedData.hasGaps) {
-            return @"⚠️ Has Gaps";
-        } else if (item.savedData.nextScheduledUpdate && [item.savedData.nextScheduledUpdate compare:[NSDate date]] == NSOrderedAscending) {
-            return @"⏰ Overdue";
+            return [NSString stringWithFormat:@"⚠️ %ld failures", (long)activeItem.failureCount];
         } else {
-            return @"✅ Active";
+            NSDate *lastUpdate = [SavedChartData lastUpdateFromFilename:filename];
+            if (lastUpdate) {
+                NSTimeInterval timeSinceUpdate = [[NSDate date] timeIntervalSinceDate:lastUpdate];
+                if (timeSinceUpdate < 3600) return @"✅ Recent";
+                if (timeSinceUpdate < 86400) return @"🔄 Active";
+                return @"🕐 Stale";
+            }
+            return @"🔄 Active";
         }
+    } else {
+        NSDate *creationDate = [SavedChartData creationDateFromFilename:filename];
+        if (creationDate) {
+            NSTimeInterval age = [[NSDate date] timeIntervalSinceDate:creationDate];
+            if (age < 86400) return @"📸 Recent";
+            if (age < 604800) return @"📸 This week";
+            return @"📸 Archived";
+        }
+        return @"📸 Snapshot";
     }
-    
-    return @"❓ Unknown";
 }
 
 - (NSColor *)statusColorForStorageItem:(UnifiedStorageItem *)item {

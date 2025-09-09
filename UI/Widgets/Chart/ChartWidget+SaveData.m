@@ -8,6 +8,7 @@
 //
 
 #import "ChartWidget+SaveData.h"
+#import "SavedChartData+FilenameParsing.h"
 #import "SavedChartData+FilenameUpdate.h"
 
 @implementation ChartWidget (SaveData)
@@ -335,11 +336,36 @@
     NSMutableArray<NSString *> *filteredFiles = [NSMutableArray array];
     
     for (NSString *filePath in allFiles) {
-        SavedChartData *savedData = [SavedChartData loadFromFile:filePath];
-        if (savedData && savedData.dataType == dataType) {
-            [filteredFiles addObject:filePath];
+        NSString *filename = [filePath lastPathComponent];
+        
+        // ✅ Use filename parsing instead of loading file
+        if ([SavedChartData isNewFormatFilename:filename]) {
+            NSString *typeStr = [SavedChartData typeFromFilename:filename];
+            
+            // Check if type matches
+            BOOL isTargetType = NO;
+            if (dataType == SavedChartDataTypeContinuous && [typeStr isEqualToString:@"Continuous"]) {
+                isTargetType = YES;
+            } else if (dataType == SavedChartDataTypeSnapshot && [typeStr isEqualToString:@"Snapshot"]) {
+                isTargetType = YES;
+            }
+            
+            if (isTargetType) {
+                [filteredFiles addObject:filePath];
+            }
+        } else {
+            // For old format files, we still need to load them (but these should be rare after migration)
+            NSLog(@"⚠️ Old format file detected, loading to check type: %@", filename);
+            SavedChartData *savedData = [SavedChartData loadFromFile:filePath];
+            if (savedData && savedData.dataType == dataType) {
+                [filteredFiles addObject:filePath];
+            }
         }
     }
+    
+    NSLog(@"📋 Filtered %ld files of type %@ using filename parsing",
+          (long)filteredFiles.count,
+          dataType == SavedChartDataTypeContinuous ? @"Continuous" : @"Snapshot");
     
     return [filteredFiles copy];
 }

@@ -120,7 +120,7 @@
     NSLog(@"🚀 Using FILENAME PARSING ONLY - no file loading!");
     
     for (NSString *filePath in continuousFiles) {
-        // ✅ NEW: Use filename parsing for auto-discovery
+        // ✅ Use filename parsing only
         [self registerContinuousStorageWithFilenameParsingOnly:filePath];
     }
     
@@ -188,90 +188,11 @@
     return YES;
 }
 
-#pragma mark - Registry Management
-
-
-- (void)registerContinuousStorageFromParsedData:(UnifiedStorageItem *)unifiedItem {
-    // Convert parsed UnifiedStorageItem to ActiveStorageItem
-    if (!unifiedItem.isContinuous) {
-        return;
-    }
-    
-    // Check if already registered
-    for (ActiveStorageItem *existing in self.mutableActiveStorages) {
-        if ([existing.filePath isEqualToString:unifiedItem.filePath]) {
-            return; // Already registered
-        }
-    }
-    
-    // We need to load the SavedChartData for continuous storage because we need the full data
-    // This is the ONLY case where we still load files - for registering continuous storage
-    SavedChartData *savedData = [SavedChartData loadFromFile:unifiedItem.filePath];
-    if (!savedData || savedData.dataType != SavedChartDataTypeContinuous) {
-        NSLog(@"❌ Failed to load continuous storage from: %@", unifiedItem.filePath);
-        return;
-    }
-    
-    // Create ActiveStorageItem
-    ActiveStorageItem *activeItem = [[ActiveStorageItem alloc] init];
-    activeItem.filePath = unifiedItem.filePath;
-    activeItem.savedData = savedData; // Use loaded data for continuous storage
-    activeItem.failureCount = 0;
-    activeItem.isPaused = NO;
-    
-    // Schedule updates
-    [self scheduleUpdateForStorageItem:activeItem];
-    
-    // Add to registry
-    [self.mutableActiveStorages addObject:activeItem];
-    
-    // Update the unified item to reference the active item and loaded data
-    unifiedItem.activeItem = activeItem;
-    unifiedItem.savedData = savedData; // Update with loaded data
-    
-    NSLog(@"✅ Auto-registered continuous storage: %@ [%@]",
-          activeItem.savedData.symbol, activeItem.savedData.timeframeDescription);
-}
 
 
 - (BOOL)registerContinuousStorage:(NSString *)filePath {
-    if (!filePath || ![filePath containsString:@"continuous"]) {
-        NSLog(@"⚠️ Invalid file path for continuous storage: %@", filePath);
-        return NO;
-    }
-    
-    // Check if already registered
-    for (ActiveStorageItem *item in self.mutableActiveStorages) {
-        if ([item.filePath isEqualToString:filePath]) {
-            NSLog(@"ℹ️ Storage already registered: %@", filePath);
-            return YES;
-        }
-    }
-    
-    // Load saved data
-    SavedChartData *savedData = [SavedChartData loadFromFile:filePath];
-    if (!savedData || savedData.dataType != SavedChartDataTypeContinuous) {
-        NSLog(@"❌ Failed to load continuous storage from: %@", filePath);
-        return NO;
-    }
-    
-    // Create active storage item
-    ActiveStorageItem *item = [[ActiveStorageItem alloc] init];
-    item.filePath = filePath;
-    item.savedData = savedData;
-    item.failureCount = 0;
-    item.isPaused = NO;
-    
-    // Calculate and schedule next update
-    [self scheduleUpdateForStorageItem:item];
-    
-    // Add to registry
-    [self.mutableActiveStorages addObject:item];
-    
-    NSLog(@"✅ Registered continuous storage: %@ [%@] - Next update: %@",
-          savedData.symbol, [savedData timeframeDescription], savedData.nextScheduledUpdate);
-    
-    return YES;
+    // ✅ Redirect to filename parsing version
+    return [self registerContinuousStorageWithFilenameParsingOnly:filePath];
 }
 
 - (void)unregisterContinuousStorage:(NSString *)filePath {
@@ -907,7 +828,7 @@
         [allItems addObject:unifiedItem];
     }
     
-    // 2. Parse ALL files using FILENAME PARSING
+    // 2. Parse ALL files using FILENAME PARSING ONLY
     for (NSString *filePath in allFiles) {
         @autoreleasepool {
             NSString *filename = [filePath lastPathComponent];
@@ -927,15 +848,18 @@
             }
             if (isAlreadyInRegistry) continue;
             
-            // Create UnifiedStorageItem from filename parsing
+            // Create UnifiedStorageItem from filename parsing ONLY
             UnifiedStorageItem *unifiedItem = [self createUnifiedStorageItemFromFilename:filename filePath:filePath];
             if (unifiedItem) {
                 [allItems addObject:unifiedItem];
                 
-                // Auto-register continuous storage
+                // ❌ RIMUOVI QUESTA RIGA CHE CAUSA IL LOADING:
+                // [self registerContinuousStorageFromParsedData:unifiedItem];
+                
+                // ✅ SOSTITUISCI CON: Solo aggiunta al registry senza loading
                 if (unifiedItem.isContinuous) {
-                    NSLog(@"📋 Found unregistered continuous storage, auto-registering: %@", filename);
-                    [self registerContinuousStorageFromParsedData:unifiedItem];
+                    NSLog(@"📋 Found unregistered continuous storage (filename only): %@", filename);
+                    [self registerContinuousStorageWithFilenameParsingOnly:filePath];
                 }
             }
         }
@@ -955,7 +879,6 @@
     
     NSLog(@"✅ Fast refresh complete: %ld total items - ZERO file loading!", (long)allItems.count);
 }
-
 - (UnifiedStorageItem *)createUnifiedStorageItemFromFilename:(NSString *)filename
                                                    filePath:(NSString *)filePath {
     

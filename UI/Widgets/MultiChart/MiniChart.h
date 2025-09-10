@@ -50,6 +50,8 @@ typedef NS_ENUM(NSInteger, MiniChartScaleType) {
 @property (nonatomic, strong) NSNumber *currentPrice;
 @property (nonatomic, strong) NSNumber *priceChange;
 @property (nonatomic, strong) NSNumber *percentChange;
+@property (nonatomic, strong) NSNumber *aptrValue;     // NUOVO: APTR calcolato
+
 
 // Appearance
 @property (nonatomic, strong) NSColor *positiveColor;
@@ -66,6 +68,7 @@ typedef NS_ENUM(NSInteger, MiniChartScaleType) {
 @property (nonatomic, strong, readonly) NSTextField *symbolLabel;
 @property (nonatomic, strong, readonly) NSTextField *priceLabel;
 @property (nonatomic, strong, readonly) NSTextField *changeLabel;
+@property (nonatomic, strong, readonly) NSTextField *aptrLabel;        // NUOVO: Label per APTR
 @property (nonatomic, strong, readonly) NSView *chartArea;
 @property (nonatomic, strong, readonly) NSView *volumeArea;
 @property (nonatomic, strong, readonly) NSProgressIndicator *loadingIndicator;
@@ -83,6 +86,9 @@ typedef NS_ENUM(NSInteger, MiniChartScaleType) {
 
 // DEPRECATED: Remove old method
 // - (void)updateWithPriceData:(NSArray *)priceData;
+
+- (void)calculateAPTR;                                                    // NUOVO: Calcola APTR dalle price data
+- (double)calculateAPTRFromBars:(NSArray<HistoricalBarModel *> *)bars;  
 
 // UI State
 - (void)setLoading:(BOOL)loading;

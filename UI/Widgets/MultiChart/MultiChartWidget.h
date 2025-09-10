@@ -8,7 +8,7 @@
 #import "BaseWidget.h"
 #import "MiniChart.h"
 
-@interface MultiChartWidget : BaseWidget
+@interface MultiChartWidget : BaseWidget <NSCollectionViewDelegate, NSCollectionViewDataSource>
 
 
 @property (nonatomic, strong) NSCollectionView *collectionView;
@@ -18,7 +18,6 @@
 @property (nonatomic, assign) MiniChartType chartType;
 @property (nonatomic, assign) MiniBarTimeframe timeframe;
 @property (nonatomic, assign) MiniChartScaleType scaleType;
-@property (nonatomic, assign) NSInteger maxBars;
 @property (nonatomic, assign) BOOL showVolume;
 @property (nonatomic, assign) NSInteger columnsCount;  // Numero di colonne nella griglia
 
@@ -38,8 +37,10 @@
 @property (nonatomic, strong) NSPopUpButton *chartTypePopup;
 @property (nonatomic, strong) NSPopUpButton *timeframePopup;
 @property (nonatomic, strong) NSPopUpButton *scaleTypePopup;
-@property (nonatomic, strong) NSTextField *maxBarsField;
 @property (nonatomic, strong) NSButton *volumeCheckbox;
+
+@property (nonatomic, assign) NSInteger timeRange;  // 0=1d, 1=3d, 2=5d, 3=1m, 4=3m, 5=6m, 6=1y, 7=5y
+@property (nonatomic, strong) NSSegmentedControl *timeRangeSegmented;
 
 // Mini charts container - REMOVED readonly to allow internal assignment
 @property (nonatomic, strong) NSMutableArray<MiniChart *> *miniCharts;

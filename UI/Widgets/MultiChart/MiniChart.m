@@ -15,6 +15,7 @@
 @property (nonatomic, strong) NSTextField *symbolLabel;
 @property (nonatomic, strong) NSTextField *priceLabel;
 @property (nonatomic, strong) NSTextField *changeLabel;
+@property (nonatomic, strong) NSTextField *aptrLabel;
 @property (nonatomic, strong) NSProgressIndicator *loadingIndicator;
 
 // Chart drawing data
@@ -93,55 +94,85 @@
 }
 
 - (void)setupUI {
+   // self.wantsLayer = YES;
+    self.layer.backgroundColor = self.backgroundColor.CGColor;
+    self.layer.borderWidth = 1.0;
+    self.layer.borderColor = [NSColor separatorColor].CGColor;
+    self.layer.cornerRadius = 4.0;
+    
     // Symbol label (top left)
     self.symbolLabel = [[NSTextField alloc] init];
-    self.symbolLabel.editable = NO;
-    self.symbolLabel.bordered = NO;
-    self.symbolLabel.backgroundColor = [NSColor clearColor];
-    self.symbolLabel.font = [NSFont boldSystemFontOfSize:18];
-    self.symbolLabel.textColor = self.textColor;
     self.symbolLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.symbolLabel.backgroundColor = [NSColor clearColor];
+    self.symbolLabel.bordered = NO;
+    self.symbolLabel.editable = NO;
+    self.symbolLabel.font = [NSFont boldSystemFontOfSize:12];
+    self.symbolLabel.textColor = self.textColor;
+    self.symbolLabel.stringValue = self.symbol ?: @"";
     [self addSubview:self.symbolLabel];
     
     // Price label (top right)
     self.priceLabel = [[NSTextField alloc] init];
-    self.priceLabel.editable = NO;
-    self.priceLabel.bordered = NO;
+    self.priceLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.priceLabel.backgroundColor = [NSColor clearColor];
-    self.priceLabel.font = [NSFont systemFontOfSize:14];
+    self.priceLabel.bordered = NO;
+    self.priceLabel.editable = NO;
+    self.priceLabel.font = [NSFont systemFontOfSize:11];
     self.priceLabel.textColor = self.textColor;
     self.priceLabel.alignment = NSTextAlignmentRight;
-    self.priceLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.priceLabel.stringValue = @"--";
     [self addSubview:self.priceLabel];
     
-    // Change label (below price, right aligned)
+    // Change label (below price)
     self.changeLabel = [[NSTextField alloc] init];
-    self.changeLabel.editable = NO;
-    self.changeLabel.bordered = NO;
+    self.changeLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.changeLabel.backgroundColor = [NSColor clearColor];
-    self.changeLabel.font = [NSFont systemFontOfSize:14];
+    self.changeLabel.bordered = NO;
+    self.changeLabel.editable = NO;
+    self.changeLabel.font = [NSFont systemFontOfSize:10];
     self.changeLabel.textColor = self.textColor;
     self.changeLabel.alignment = NSTextAlignmentRight;
-    self.changeLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.changeLabel.stringValue = @"+0.00%";
     [self addSubview:self.changeLabel];
     
-    // Loading indicator (center)
+    // APTR label (NUOVO: sotto il simbolo)
+    self.aptrLabel = [[NSTextField alloc] init];
+    self.aptrLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.aptrLabel.backgroundColor = [NSColor clearColor];
+    self.aptrLabel.bordered = NO;
+    self.aptrLabel.editable = NO;
+    self.aptrLabel.font = [NSFont systemFontOfSize:12];
+    self.aptrLabel.textColor = [NSColor secondaryLabelColor];
+    self.aptrLabel.stringValue = @"APTR: --";
+    [self addSubview:self.aptrLabel];
+    
+    // Loading indicator
     self.loadingIndicator = [[NSProgressIndicator alloc] init];
-    self.loadingIndicator.style = NSProgressIndicatorStyleSpinning;
-    self.loadingIndicator.hidden = YES;
     self.loadingIndicator.translatesAutoresizingMaskIntoConstraints = NO;
+    self.loadingIndicator.style = NSProgressIndicatorStyleSpinning;
+    self.loadingIndicator.controlSize = NSControlSizeSmall;
+    self.loadingIndicator.hidden = YES;
     [self addSubview:self.loadingIndicator];
+    
+    NSLog(@"✅ MiniChart UI setup completed with APTR label");
 }
 
 - (void)setupConstraints {
-    CGFloat padding = 8;
-    CGFloat labelHeight = 20;
+    CGFloat padding = 4.0;
+    CGFloat labelHeight = 16.0;
     
     // Symbol label (top left)
     [NSLayoutConstraint activateConstraints:@[
         [self.symbolLabel.topAnchor constraintEqualToAnchor:self.topAnchor constant:padding],
         [self.symbolLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:padding],
         [self.symbolLabel.heightAnchor constraintEqualToConstant:labelHeight]
+    ]];
+    
+    // APTR label (NUOVO: sotto il simbolo)
+    [NSLayoutConstraint activateConstraints:@[
+        [self.aptrLabel.topAnchor constraintEqualToAnchor:self.symbolLabel.bottomAnchor],
+        [self.aptrLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:padding],
+        [self.aptrLabel.heightAnchor constraintEqualToConstant:12.0]
     ]];
     
     // Price label (top right)
@@ -155,7 +186,7 @@
     [NSLayoutConstraint activateConstraints:@[
         [self.changeLabel.topAnchor constraintEqualToAnchor:self.priceLabel.bottomAnchor],
         [self.changeLabel.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-padding],
-        [self.changeLabel.heightAnchor constraintEqualToConstant:labelHeight]
+        [self.changeLabel.heightAnchor constraintEqualToConstant:12.0]
     ]];
     
     // Loading indicator (center)
@@ -164,7 +195,6 @@
         [self.loadingIndicator.centerYAnchor constraintEqualToAnchor:self.centerYAnchor]
     ]];
 }
-
 #pragma mark - Drawing Areas Calculation
 
 - (CGRect)chartRect {
@@ -222,6 +252,7 @@
     // Calculate ranges and generate paths
     [self calculatePriceRange];
     [self calculateVolumeRange];
+    [self calculateAPTR];  // NUOVO: Calcola APTR quando si aggiornano i dati
     [self generateChartPath];
     [self generateVolumePath];
     
@@ -284,8 +315,9 @@
         self.changeLabel.stringValue = @"+0.00%";
         self.changeLabel.textColor = self.textColor;
     }
+    
+    // APTR label is updated by updateAPTRLabel method
     [self setNeedsDisplay:YES];
-
 }
 
 #pragma mark - Chart Path Generation
@@ -631,6 +663,8 @@
         if (loading) {
             self.loadingIndicator.hidden = NO;
             [self.loadingIndicator startAnimation:nil];
+            self.aptrValue = nil;
+                    [self updateAPTRLabel];
         } else {
             self.loadingIndicator.hidden = YES;
             [self.loadingIndicator stopAnimation:nil];
@@ -647,6 +681,9 @@
     dispatch_async(dispatch_get_main_queue(), ^{
         if (errorMessage) {
             self.priceLabel.stringValue = @"Error";
+            // Clear APTR on error
+              self.aptrValue = nil;
+              [self updateAPTRLabel];
             self.changeLabel.stringValue = @"--";
             self.layer.borderColor = [NSColor systemRedColor].CGColor;
         } else {
@@ -663,15 +700,10 @@
 
 #pragma mark - Actions
 
-- (void)refresh {
-    // The actual data loading is handled by the parent MultiChartWidget
-}
+
 
 #pragma mark - Mouse Events
 
-- (void)mouseDown:(NSEvent *)event {
-    // Could show detailed chart popup here
-}
 
 #pragma mark - Appearance Updates
 
@@ -702,6 +734,158 @@
     } else {
         NSLog(@"❌ Cannot convert priceData to HistoricalBarModel array");
         [self setError:@"Invalid data format"];
+    }
+}
+
+- (void)calculateAPTR {
+    if (!self.priceData || self.priceData.count < 10) {
+        self.aptrValue = nil;
+        self.aptrLabel.stringValue = @"APTR: --";
+        return;
+    }
+    
+    NSInteger startIndex = MAX(0, (NSInteger)self.priceData.count - 10);
+    NSArray *last10Bars = [self.priceData subarrayWithRange:NSMakeRange(startIndex, MIN(10, self.priceData.count - startIndex))];
+    
+    double sum = 0.0;
+    NSInteger validCount = 0;
+    
+    for (NSInteger i = 0; i < last10Bars.count; i++) {
+        HistoricalBarModel *currentBar = last10Bars[i];
+        HistoricalBarModel *previousBar = (i > 0) ? last10Bars[i-1] : nil;
+        
+        double bottom = previousBar ? MIN(previousBar.close, currentBar.low) : currentBar.low;
+        double tr = currentBar.high - currentBar.low;
+        if (previousBar) {
+            tr = MAX(tr, fabs(currentBar.high - previousBar.close));
+            tr = MAX(tr, fabs(currentBar.low - previousBar.close));
+        }
+        
+        if (tr > 0 && bottom > 0) {
+            double ptr = (tr / (bottom + tr / 2.0)) * 100.0;
+            sum += ptr;
+            validCount++;
+        }
+    }
+    
+    if (validCount > 0) {
+        double aptr = sum / validCount;
+        self.aptrValue = @(aptr);
+        self.aptrLabel.stringValue = [NSString stringWithFormat:@"APTR: %.1f", aptr];
+        
+        if (aptr > 15.0) {
+            self.aptrLabel.textColor = [NSColor redColor];
+        } else if (aptr > 8.0) {
+            self.aptrLabel.textColor = [NSColor orangeColor];
+        } else {
+            self.aptrLabel.textColor = [NSColor systemGreenColor];
+        }
+    } else {
+        self.aptrValue = nil;
+        self.aptrLabel.stringValue = @"APTR: --";
+    }
+}
+
+
+- (double)calculateAPTRFromBars:(NSArray<HistoricalBarModel *> *)bars {
+    if (!bars || bars.count < 10) {
+        return NAN;
+    }
+    
+    // Use last 10 bars for APTR calculation
+    NSInteger startIndex = MAX(0, (NSInteger)bars.count - 10);
+    NSArray<HistoricalBarModel *> *last10Bars = [bars subarrayWithRange:NSMakeRange(startIndex, MIN(10, bars.count - startIndex))];
+    
+    if (last10Bars.count < 2) {
+        return NAN;
+    }
+    
+    NSMutableArray<NSNumber *> *ptrValues = [NSMutableArray array];
+    
+    // Calculate PTR for each bar
+    for (NSInteger i = 0; i < last10Bars.count; i++) {
+        HistoricalBarModel *currentBar = last10Bars[i];
+        HistoricalBarModel *previousBar = (i > 0) ? last10Bars[i-1] : nil;
+        
+        double ptr = [self calculatePTRForBar:currentBar previousBar:previousBar];
+        if (!isnan(ptr) && !isinf(ptr)) {
+            [ptrValues addObject:@(ptr)];
+        }
+    }
+    
+    if (ptrValues.count == 0) {
+        return NAN;
+    }
+    
+    // Calculate Simple Moving Average of PTR values (APTR)
+    double sum = 0.0;
+    for (NSNumber *value in ptrValues) {
+        sum += [value doubleValue];
+    }
+    
+    return sum / ptrValues.count;
+}
+
+- (double)calculatePTRForBar:(HistoricalBarModel *)currentBar previousBar:(HistoricalBarModel *)previousBar {
+    // Formula from TOS:
+    // def bottom = Min(close[1], low);
+    // def tr = TrueRange(high, close, low);
+    // def ptr = tr / (bottom + tr / 2) * 100;
+    
+    double bottom;
+    if (previousBar) {
+        bottom = MIN(previousBar.close, currentBar.low);
+    } else {
+        bottom = currentBar.low;  // For first bar, use current low
+    }
+    
+    // Calculate True Range
+    double tr = [self calculateTrueRange:currentBar previousBar:previousBar];
+    
+    if (tr <= 0 || bottom <= 0) {
+        return NAN;
+    }
+    
+    // PTR formula: tr / (bottom + tr / 2) * 100
+    double denominator = bottom + (tr / 2.0);
+    if (denominator <= 0) {
+        return NAN;
+    }
+    
+    return (tr / denominator) * 100.0;
+}
+
+- (double)calculateTrueRange:(HistoricalBarModel *)currentBar previousBar:(HistoricalBarModel *)previousBar {
+    // True Range = max(high - low, |high - prevClose|, |low - prevClose|)
+    
+    double range1 = currentBar.high - currentBar.low;
+    
+    if (!previousBar) {
+        return range1;  // For first bar, TR = high - low
+    }
+    
+    double range2 = fabs(currentBar.high - previousBar.close);
+    double range3 = fabs(currentBar.low - previousBar.close);
+    
+    return MAX(range1, MAX(range2, range3));
+}
+
+- (void)updateAPTRLabel {
+    if (self.aptrValue) {
+        self.aptrLabel.stringValue = [NSString stringWithFormat:@"APTR: %.1f", [self.aptrValue doubleValue]];
+        
+        // Color coding based on APTR value
+        double aptr = [self.aptrValue doubleValue];
+        if (aptr < 3.0) {
+            self.aptrLabel.textColor = [NSColor orangeColor];        // < 3 = Arancione
+        } else if (aptr >= 3.0 && aptr <= 6.0) {
+            self.aptrLabel.textColor = [NSColor systemGreenColor];   // 3-6 = Verde
+        } else {
+            self.aptrLabel.textColor = [NSColor cyanColor];          // > 6 = Cyan
+        }
+    } else {
+        self.aptrLabel.stringValue = @"APTR: --";
+        self.aptrLabel.textColor = [NSColor secondaryLabelColor];
     }
 }
 

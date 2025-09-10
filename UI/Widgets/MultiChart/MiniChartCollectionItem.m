@@ -5,6 +5,32 @@
 
 @implementation MiniChartCollectionItem
 
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    // Abilita il layer per selezione e bordi
+    self.view.wantsLayer = YES;
+    if (self.view.layer) {
+        self.view.layer.masksToBounds = YES;
+        self.view.layer.cornerRadius = 4.0;
+        self.view.layer.borderWidth = 0.0;
+        self.view.layer.borderColor = [NSColor clearColor].CGColor;
+    }
+}
+
+- (BOOL)isSelectable {
+    return YES;
+}
+
+- (void)handleItemClick:(NSClickGestureRecognizer *)recognizer {
+    if (self.collectionView) {
+        NSIndexPath *indexPath = [self.collectionView indexPathForItem:self];
+        if (indexPath) {
+            [self.collectionView selectItemsAtIndexPaths:[NSSet setWithObject:indexPath]
+                                            scrollPosition:NSCollectionViewScrollPositionNone];
+        }
+    }
+}
+
 - (void)loadView {
     // ✅ FIX: Crea sempre una view container, mai riutilizzare direttamente MiniChart
     NSView *containerView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 200, 150)];
@@ -41,32 +67,8 @@
     
     NSLog(@"📦 MiniChart configured: %@ in collection item", miniChart.symbol ?: @"nil");
     
-    // Setup dei callback esistenti usando i pattern attuali
-    if (self.onChartClicked) {
-        // Rimuovi gesture recognizer esistenti per evitare duplicati
-        NSArray *existingGestures = [miniChart.gestureRecognizers copy];
-        for (NSGestureRecognizer *recognizer in existingGestures) {
-            if ([recognizer isKindOfClass:[NSClickGestureRecognizer class]]) {
-                [miniChart removeGestureRecognizer:recognizer];
-            }
-        }
-        
-        // Aggiungi nuovo gesture recognizer
-        NSClickGestureRecognizer *clickGesture = [[NSClickGestureRecognizer alloc]
-                                                  initWithTarget:self
-                                                  action:@selector(chartClicked:)];
-        [miniChart addGestureRecognizer:clickGesture];
-    }
-    
     if (self.onSetupContextMenu) {
         self.onSetupContextMenu(miniChart);
-    }
-}
-
-- (void)chartClicked:(NSClickGestureRecognizer *)gesture {
-    NSLog(@"👆 Chart clicked in collection item: %@", self.miniChart.symbol ?: @"nil");
-    if (self.onChartClicked && self.miniChart) {
-        self.onChartClicked(self.miniChart);
     }
 }
 

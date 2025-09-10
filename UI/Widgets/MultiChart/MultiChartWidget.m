@@ -15,7 +15,7 @@
 static NSString *const kMultiChartItemWidthKey = @"MultiChart_ItemWidth";
 static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
 
-@interface MultiChartWidget ()
+@interface MultiChartWidget () <NSCollectionViewDelegate, NSCollectionViewDataSource>
 
 // UI Components - Only declare internal ones not in header
 @property (nonatomic, strong) NSView *controlsView;
@@ -48,7 +48,8 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
     _chartType = MiniChartTypeLine;
     _timeframe = MiniBarTimeframeDaily;
     _scaleType = MiniChartScaleLinear;
-    _maxBars = 100;
+    self.timeRange = 3;  // NUOVO: Default 1 mese
+
     _showVolume = YES;
     _symbols = @[];
     _symbolsString = @"";
@@ -130,13 +131,23 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
     [self.scaleTypePopup setAction:@selector(scaleTypeChanged:)];
     [self.controlsView addSubview:self.scaleTypePopup];
     
-    // Max bars field
-    self.maxBarsField = [[NSTextField alloc] init];
-    self.maxBarsField.stringValue = @"100";
-    self.maxBarsField.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.maxBarsField setTarget:self];
-    [self.maxBarsField setAction:@selector(maxBarsChanged:)];
-    [self.controlsView addSubview:self.maxBarsField];
+    // SOSTITUISCI tutto il blocco maxBarsField con:
+    self.timeRangeSegmented = [[NSSegmentedControl alloc] init];
+    self.timeRangeSegmented.translatesAutoresizingMaskIntoConstraints = NO;
+    self.timeRangeSegmented.segmentCount = 8;
+    [self.timeRangeSegmented setLabel:@"1d" forSegment:0];
+    [self.timeRangeSegmented setLabel:@"3d" forSegment:1];
+    [self.timeRangeSegmented setLabel:@"5d" forSegment:2];
+    [self.timeRangeSegmented setLabel:@"1m" forSegment:3];
+    [self.timeRangeSegmented setLabel:@"3m" forSegment:4];
+    [self.timeRangeSegmented setLabel:@"6m" forSegment:5];
+    [self.timeRangeSegmented setLabel:@"1y" forSegment:6];
+    [self.timeRangeSegmented setLabel:@"5y" forSegment:7];
+    self.timeRangeSegmented.selectedSegment = self.timeRange;
+    self.timeRangeSegmented.target = self;
+    self.timeRangeSegmented.action = @selector(timeRangeChanged:);
+    [self.controlsView addSubview:self.timeRangeSegmented];
+    
     
     // Volume checkbox
     self.volumeCheckbox = [NSButton checkboxWithTitle:@"Volume" target:self action:@selector(volumeCheckboxChanged:)];
@@ -213,20 +224,16 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
     
     // Max bars field
     [NSLayoutConstraint activateConstraints:@[
-        [self.maxBarsField.leadingAnchor constraintEqualToAnchor:self.scaleTypePopup.trailingAnchor constant:spacing],
-        [self.maxBarsField.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
-        [self.maxBarsField.widthAnchor constraintEqualToConstant:50]
+        [self.timeRangeSegmented.leadingAnchor constraintEqualToAnchor:self.scaleTypePopup.trailingAnchor constant:spacing],
+    [self.timeRangeSegmented.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
+    [self.timeRangeSegmented.widthAnchor constraintEqualToConstant:250]
     ]];
     
     // Volume checkbox
     [NSLayoutConstraint activateConstraints:@[
-        [self.volumeCheckbox.leadingAnchor constraintEqualToAnchor:self.maxBarsField.trailingAnchor constant:spacing],
+        [self.volumeCheckbox.leadingAnchor constraintEqualToAnchor:self.timeRangeSegmented.trailingAnchor constant:spacing],
         [self.volumeCheckbox.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor]
     ]];
-    
-    // ❌ ELIMINA QUESTI (vecchi constraint righe/colonne):
-    // [self.rowsField.leadingAnchor constraintEqualToAnchor:self.volumeCheckbox.trailingAnchor constant:spacing]
-    // [self.columnsField.leadingAnchor constraintEqualToAnchor:self.rowsField.trailingAnchor constant:4]
     
     // ✅ SOSTITUISCI CON QUESTI (nuovi constraint width/height):
     [NSLayoutConstraint activateConstraints:@[
@@ -275,6 +282,8 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
     self.collectionView.dataSource = self;
     self.collectionView.delegate = self;
     self.collectionView.backgroundColors = @[[NSColor controlBackgroundColor]];
+    self.collectionView.allowsMultipleSelection = NO;
+    self.collectionView.allowsEmptySelection = YES;
     
     // ✅ FIX: Registra la classe item CORRETTAMENTE
     [self.collectionView registerClass:[MiniChartCollectionItem class]
@@ -303,6 +312,28 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
     NSLog(@"✅ NSCollectionView setup completed with proper grid configuration");
 }
 
+
+- (IBAction)timeRangeChanged:(id)sender {
+    self.timeRange = (NSInteger)self.timeRangeSegmented.selectedSegment;
+    [self loadDataFromDataHub];
+}
+
+- (NSInteger)calculateMaxBarsForTimeRange {
+    NSArray *days = @[@1, @3, @5, @30, @90, @180, @365, @1825];
+    NSInteger daysCount = [days[self.timeRange] integerValue];
+    
+    switch (self.timeframe) {
+        case MiniBarTimeframe1Min: return daysCount * 390;
+        case MiniBarTimeframe5Min: return daysCount * 78;
+        case MiniBarTimeframe15Min: return daysCount * 26;
+        case MiniBarTimeframe30Min: return daysCount * 13;
+        case MiniBarTimeframe1Hour: return daysCount * 7;
+        case MiniBarTimeframeDaily: return daysCount;
+        case MiniBarTimeframeWeekly: return daysCount / 7;
+        case MiniBarTimeframeMonthly: return daysCount / 30;
+        default: return daysCount;
+    }
+}
 
 #pragma mark - Notifications
 
@@ -388,10 +419,10 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
         // ✅ SEMPLIFICATO: Loading solo se chiamato da setup iniziale
         // Non controlliamo historicalBars perché non esiste come proprietà
         [chart setLoading:YES];
-        
+
         [[DataHub shared] getHistoricalBarsForSymbol:chart.symbol
                                            timeframe:[self convertToBarTimeframe:self.timeframe]
-                                            barCount:self.maxBars
+                                            barCount:[self calculateMaxBarsForTimeRange]
                                    needExtendedHours:NO  // ← Aggiungi questo
                                           completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isLive) {
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -435,7 +466,7 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
             // Load historical data
             [[DataHub shared] getHistoricalBarsForSymbol:symbol
                                                timeframe:[self convertToBarTimeframe:self.timeframe]
-                                                barCount:self.maxBars
+                                                barCount:[self calculateMaxBarsForTimeRange]
                                        needExtendedHours:NO  // ← Aggiungi questo
                                               completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isLive) {
                 dispatch_async(dispatch_get_main_queue(), ^{
@@ -550,7 +581,6 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
         miniChart.chartType = self.chartType;
         miniChart.timeframe = self.timeframe;
         miniChart.scaleType = self.scaleType;
-        miniChart.maxBars = self.maxBars;
         miniChart.showVolume = self.showVolume;
         
         // Setup appearance esistente
@@ -642,41 +672,23 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
     // Configura l'item con il MiniChart esistente
     [item configureMiniChart:miniChart];
     
-    // Setup callbacks usando i metodi esistenti
+    // Setup context menu callback only
     __weak typeof(self) weakSelf = self;
-    item.onChartClicked = ^(MiniChart *chart) {
-        NSLog(@"👆 Chart clicked callback: %@", chart.symbol);
-        [weakSelf handleChartClick:chart];
-    };
-    
     item.onSetupContextMenu = ^(MiniChart *chart) {
         [weakSelf setupChartContextMenu:chart];
     };
-    
     NSLog(@"✅ Created collection item for: %@", miniChart.symbol);
     return item;
 }
 
 
-- (void)handleChartClick:(MiniChart *)clickedChart {
-    NSString *symbol = clickedChart.symbol;
-    
-    NSLog(@"MultiChartWidget: Mini chart clicked for symbol: %@", symbol);
-    
-    // Aggiorna la selezione visuale (usa codice esistente)
-    [self updateChartSelection:clickedChart];
-    
-    // Broadcast del simbolo selezionato alla chain (codice esistente)
-    if (self.chainActive && symbol.length > 0) {
-        [self broadcastUpdate:@{
-            @"action": @"setSymbols",
-            @"symbols": @[symbol]
-        }];
-        
-        NSLog(@"MultiChartWidget: Broadcasted symbol '%@' to chain", symbol);
-        
-        // Mostra feedback temporaneo
-        [self showTemporaryMessageForCollectionView:[NSString stringWithFormat:@"Sent %@ to chain", symbol]];
+#pragma mark - NSCollectionView Delegate Selection
+
+- (void)collectionView:(NSCollectionView *)collectionView didSelectItemsAtIndexPaths:(NSSet<NSIndexPath *> *)indexPaths {
+    NSIndexPath *indexPath = indexPaths.anyObject;
+    if (indexPath && indexPath.item < self.miniCharts.count) {
+        MiniChart *selectedChart = self.miniCharts[indexPath.item];
+        [self updateChartSelection:selectedChart];
     }
 }
 
@@ -707,47 +719,12 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
         [messageLabel removeFromSuperview];
     });
 }
-
-- (void)setupChartClickHandler:(MiniChart *)chart {
-    // Aggiungi gesture recognizer per gestire i click
-    NSClickGestureRecognizer *clickGesture = [[NSClickGestureRecognizer alloc]
-                                              initWithTarget:self
-                                              action:@selector(miniChartClicked:)];
-    [chart addGestureRecognizer:clickGesture];
-    
-    // Configura il chart per essere selezionabile visivamente
-    [self setupChartSelectionAppearance:chart];
-}
-
 - (void)setupChartSelectionAppearance:(MiniChart *)chart {
     // Aggiungi bordo per indicare lo stato di selezione
     chart.wantsLayer = YES;
     chart.layer.borderWidth = 0.0;
     chart.layer.borderColor = [NSColor controlAccentColor].CGColor;
     chart.layer.cornerRadius = 4.0;
-}
-
-- (void)miniChartClicked:(NSClickGestureRecognizer *)gesture {
-    MiniChart *clickedChart = (MiniChart *)gesture.view;
-    NSString *symbol = clickedChart.symbol;
-    
-    NSLog(@"MultiChartWidget: Mini chart clicked for symbol: %@", symbol);
-    
-    // Aggiorna la selezione visuale
-    [self updateChartSelection:clickedChart];
-    
-    // Broadcast del simbolo selezionato alla chain
-    if (self.chainActive && symbol.length > 0) {
-        [self broadcastUpdate:@{
-            @"action": @"setSymbols",
-            @"symbols": @[symbol]
-        }];
-        
-        NSLog(@"MultiChartWidget: Broadcasted symbol '%@' to chain", symbol);
-        
-        // Mostra feedback temporaneo
-        [self showTemporaryMessageForCollectionView:[NSString stringWithFormat:@"Sent %@ to chain", symbol]];
-    }
 }
 
 
@@ -939,19 +916,7 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
     }
 }
 
-- (void)maxBarsChanged:(id)sender {
-    NSInteger newMaxBars = self.maxBarsField.integerValue;
-    if (newMaxBars > 0 && newMaxBars <= 500) {
-        self.maxBars = newMaxBars;
-        
-        // Update all charts
-        for (MiniChart *chart in self.miniCharts) {
-            chart.maxBars = self.maxBars;
-        }
-        
-        [self loadDataFromDataHub];
-    }
-}
+
 
 - (void)volumeCheckboxChanged:(id)sender {
     self.showVolume = (self.volumeCheckbox.state == NSControlStateValueOn);
@@ -1000,7 +965,7 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
                 // Also refresh historical data
                 [[DataHub shared] getHistoricalBarsForSymbol:symbol
                                                    timeframe:[self convertToBarTimeframe:self.timeframe]
-                                                    barCount:self.maxBars
+                                                    barCount:[self calculateMaxBarsForTimeRange]
                                            needExtendedHours:NO  // ← Aggiungi questo
                                                   completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isLive) {
                     dispatch_async(dispatch_get_main_queue(), ^{
@@ -1127,7 +1092,6 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
     state[@"chartType"] = @(self.chartType);
     state[@"timeframe"] = @(self.timeframe);
     state[@"scaleType"] = @(self.scaleType);
-    state[@"maxBars"] = @(self.maxBars);
     state[@"showVolume"] = @(self.showVolume);
     state[@"columnsCount"] = @(self.columnsCount);
     
@@ -1151,9 +1115,7 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
         self.scaleType = [state[@"scaleType"] integerValue];
     }
     
-    if (state[@"maxBars"]) {
-        self.maxBars = [state[@"maxBars"] integerValue];
-    }
+   
     
     if (state[@"showVolume"]) {
         self.showVolume = [state[@"showVolume"] boolValue];
@@ -1230,12 +1192,7 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         self.scaleType = MiniChartScaleLinear; // Default
     }
     
-    // Max Bars (default: 100 se non salvato o fuori range)
-    if (savedMaxBars > 0 && savedMaxBars <= 500) {
-        self.maxBars = savedMaxBars;
-    } else {
-        self.maxBars = 100; // Default
-    }
+   
     
     // Show Volume (default: YES se non salvato)
     // boolForKey ritorna NO se la key non esiste, quindi controlliamo se la key esiste
@@ -1262,9 +1219,7 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         self.symbols = @[];
     
     
-    NSLog(@"MultiChartWidget: Loaded settings - ChartType:%ld, Timeframe:%ld, ScaleType:%ld, MaxBars:%ld, ShowVolume:%@, Columns:%ld, Symbols:%@",
-          (long)self.chartType, (long)self.timeframe, (long)self.scaleType, (long)self.maxBars,
-          self.showVolume ? @"YES" : @"NO", (long)self.columnsCount, self.symbolsString);
+   
 }
 
 - (void)saveSettingsToUserDefaults {
@@ -1274,7 +1229,6 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     [defaults setInteger:self.chartType forKey:kMultiChartChartTypeKey];
     [defaults setInteger:self.timeframe forKey:kMultiBarTimeframeKey];
     [defaults setInteger:self.scaleType forKey:kMultiChartScaleTypeKey];
-    [defaults setInteger:self.maxBars forKey:kMultiChartMaxBarsKey];
     [defaults setBool:self.showVolume forKey:kMultiChartShowVolumeKey];
     [defaults setInteger:self.columnsCount forKey:kMultiChartColumnsCountKey];
     [defaults setInteger:self.itemWidth forKey:kMultiChartItemWidthKey];
@@ -1282,9 +1236,7 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     // Forza la sincronizzazione immediata
     [defaults synchronize];
     
-    NSLog(@"MultiChartWidget: Saved settings - ChartType:%ld, Timeframe:%ld, ScaleType:%ld, MaxBars:%ld, ShowVolume:%@, Columns:%ld, Symbols:%@",
-          (long)self.chartType, (long)self.timeframe, (long)self.scaleType, (long)self.maxBars,
-          self.showVolume ? @"YES" : @"NO", (long)self.columnsCount, self.symbolsString);
+  
 }
 
 - (void)updateUIFromSettings {
@@ -1305,10 +1257,7 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         [self.scaleTypePopup selectItemAtIndex:self.scaleType];
     }
     
-    // Max Bars Field
-    if (self.maxBarsField) {
-        self.maxBarsField.integerValue = self.maxBars;
-    }
+   
     
     // Volume Checkbox
     if (self.volumeCheckbox) {
@@ -1355,13 +1304,7 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     [self saveSettingsToUserDefaults];
 }
 
-- (void)maxBarsChangedWithAutoSave:(id)sender {
-    // Chiama il metodo originale
-    [self maxBarsChanged:sender];
-    
-    // Salva automaticamente
-    [self saveSettingsToUserDefaults];
-}
+
 
 - (void)volumeCheckboxChangedWithAutoSave:(id)sender {
     // Chiama il metodo originale
@@ -1416,10 +1359,7 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         self.scaleTypePopup.action = @selector(scaleTypeChangedWithAutoSave:);
     }
     
-    if (self.maxBarsField) {
-        self.maxBarsField.target = self;
-        self.maxBarsField.action = @selector(maxBarsChangedWithAutoSave:);
-    }
+  
     
     if (self.volumeCheckbox) {
         self.volumeCheckbox.target = self;

@@ -13,5 +13,6 @@
 @property (nonatomic, strong) NSToolbar *toolbar;
 
 - (void)setupToolbarForWindow:(NSWindow *)window;
+- (void)refreshLayoutMenu;  // ✅ NUOVO METODO PUBBLICO
 
 @end

@@ -13,7 +13,7 @@
 #import "MultiChartWidget.h"
 #import "MiniChart.h"
 #import "ConnectionsWidget.h"
-#import "SymbolDataBase/SymbolDataBaseWidget.h"
+#import "SymbolDataBaseWidget.h"
 #import "SeasonalChartWidget.h"
 #import "TickChartWidget.h"
 #import "StorageManagementWidget.h"

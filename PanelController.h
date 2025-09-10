@@ -34,4 +34,6 @@
 - (void)loadLayoutPreset:(NSString *)presetName;
 - (NSArray *)availablePresets;
 
+- (void)transformWidget:(BaseWidget *)oldWidget toType:(NSString *)newType;  // ✅ AGGIUNTO
+
 @end

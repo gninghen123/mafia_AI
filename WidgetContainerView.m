@@ -6,6 +6,7 @@
 #import "WidgetContainerView.h"
 #import "PanelController.h"
 #import "BaseWidget.h"
+#import "WidgetTypeManager.h"
 
 @interface WidgetContainerNode : NSObject
 @property (nonatomic, strong) id content; // Can be BaseWidget or NSSplitView
@@ -83,28 +84,31 @@
 
 - (void)addWidget:(BaseWidget *)widget {
     if (!self.rootNode) {
-        // First widget becomes the root
+        // ✅ FIX: Primo widget - crea nodo root correttamente
         self.rootNode = [[WidgetContainerNode alloc] init];
-        self.rootNode.content = widget.view;
+        self.rootNode.content = widget.view;  // Usa widget.view, non widget
+        
+        // ✅ CRITICO: Aggiungi il widget alla mappa PRIMA di usarlo
         self.widgetToNodeMap[widget.widgetID] = self.rootNode;
         
-        // Make sure widget view has a size
-        if (NSIsEmptyRect(widget.view.frame)) {
-            widget.view.frame = self.bounds;
-        }
+        NSLog(@"✅ Added first widget as root: %@ (view: %@)",
+              widget.widgetID, widget.view);
+        NSLog(@"✅ Widget mapped: %@ -> %@", widget.widgetID, self.rootNode);
         
+        // Aggiungi la view al container
         [self addSubview:widget.view];
         [self setupConstraintsForRootView:widget.view];
         
-        NSLog(@"Added first widget as root: %@", widget.widgetID);
     } else {
-        // Add to the bottom of the last widget (default behavior for panels)
+        // Widget aggiuntivi - logica esistente per split views
+        // (resto del metodo rimane uguale)
+        
+        // Per ora, aggiungi come split - questo gestirà widget multipli
         BaseWidget *lastWidget = [self findLastWidget];
         if (lastWidget) {
-            // For side panels, always add below. For center panel, add to the right
-            WidgetAddDirection direction = (widget.panelType == PanelTypeCenter) ?
-                                         WidgetAddDirectionRight : WidgetAddDirectionBottom;
-            [self insertWidget:widget relativeToWidget:lastWidget inDirection:direction];
+            [self insertWidget:widget
+                relativeToWidget:lastWidget
+                   inDirection:WidgetAddDirectionBottom];
         }
     }
 }
@@ -414,13 +418,65 @@
 #pragma mark - Serialization
 
 - (NSDictionary *)serializeStructure {
+    NSLog(@"🔍 DEBUG serializeStructure called");
+       NSLog(@"   rootNode: %@", self.rootNode);
+       NSLog(@"   rootNode.content: %@ (class: %@)", self.rootNode.content, [self.rootNode.content class]);
+       NSLog(@"   widgetToNodeMap count: %lu", (unsigned long)self.widgetToNodeMap.count);
+       NSLog(@"   widgetToNodeMap: %@", self.widgetToNodeMap);
+       
+       if (!self.rootNode) {
+           NSLog(@"WARNING: No root node to serialize");
+           return nil;
+       }
     if (!self.rootNode) {
         NSLog(@"WARNING: No root node to serialize");
         return nil;
     }
     
+    // ✅ FIX: Se il root node ha content ma è una NSView (widget singolo),
+    // dobbiamo trovare il widget ID corrispondente
+    if ([self.rootNode.content isKindOfClass:[NSView class]] &&
+        ![[self.rootNode.content class] isSubclassOfClass:[NSSplitView class]]) {
+        
+        // Trova il widget ID per questa view
+        NSString *foundWidgetID = nil;
+        for (NSString *widgetID in self.widgetToNodeMap) {
+            if (self.widgetToNodeMap[widgetID] == self.rootNode) {
+                foundWidgetID = widgetID;
+                break;
+            }
+        }
+        
+        if (foundWidgetID) {
+            NSDictionary *serialized = @{
+                @"type": @"widget",
+                @"widgetID": foundWidgetID
+            };
+            NSLog(@"✅ Serialized single widget structure: %@", serialized);
+            return serialized;
+        } else {
+            NSLog(@"❌ ERROR: Could not find widget ID for root node view");
+            // ✅ FIX AGGIUNTIVO: Se non troviamo nella mappa, cerchiamo direttamente
+            // Questo può succedere se il widget è stato aggiunto in modo diverso
+            
+            // Prova a creare una struttura dal primo widget disponibile
+            if (self.panelController && self.panelController.widgets.count > 0) {
+                BaseWidget *firstWidget = self.panelController.widgets.firstObject;
+                NSDictionary *fallbackSerialized = @{
+                    @"type": @"widget",
+                    @"widgetID": firstWidget.widgetID
+                };
+                NSLog(@"✅ Used fallback serialization: %@", fallbackSerialized);
+                return fallbackSerialized;
+            }
+            
+            return nil;
+        }
+    }
+    
+    // Serializzazione normale per strutture complesse (split views)
     NSDictionary *serialized = [self serializeNode:self.rootNode];
-    NSLog(@"Serialized structure: %@", serialized);
+    NSLog(@"✅ Serialized complex structure: %@", serialized);
     return serialized;
 }
 
@@ -454,6 +510,10 @@
             CGFloat position = NSMaxX([splitView.subviews[0] frame]);
             dict[@"splitPosition"] = @(position);
         }
+        
+        NSLog(@"🔍 SERIALIZE SPLIT: isVertical=%@, position=%@",
+              dict[@"isVertical"], dict[@"splitPosition"]);
+        
     } else if ([node.content isKindOfClass:[NSView class]]) {
         // Find the widget that owns this view
         NSString *foundWidgetID = nil;
@@ -467,20 +527,27 @@
         if (foundWidgetID) {
             dict[@"type"] = @"widget";
             dict[@"widgetID"] = foundWidgetID;
+            NSLog(@"🔍 SERIALIZE NODE: Found widget with ID=%@", foundWidgetID);
         } else {
-            NSLog(@"WARNING: Could not find widget ID for node");
+            NSLog(@"❌ SERIALIZE ERROR: Could not find widget ID for node with view=%@", node.content);
         }
     }
     
     return dict;
 }
 
+
 - (void)restoreStructure:(NSDictionary *)structure
          withWidgetStates:(NSArray *)widgetStates
          panelController:(PanelController *)panelController {
+    NSLog(@"🔄 RESTORE STRUCTURE START");
+    NSLog(@"   Structure: %@", structure);
+    NSLog(@"   Widget states: %@", widgetStates);
+    
     [self clearAllWidgets];
     
     if (!structure || !widgetStates || widgetStates.count == 0) {
+        NSLog(@"❌ RESTORE STRUCTURE FAILED: Invalid data");
         return;
     }
     
@@ -490,12 +557,18 @@
         NSString *widgetID = state[@"widgetID"];
         if (widgetID) {
             stateMap[widgetID] = state;
+            NSLog(@"🗂️ MAPPED: %@ -> %@", widgetID, state[@"widgetType"]);
         }
     }
     
+    NSLog(@"🔄 CALLING restoreNode...");
     self.rootNode = [self restoreNode:structure withStateMap:stateMap panelController:panelController];
     if (self.rootNode) {
+        NSLog(@"✅ RESTORE NODE SUCCESS: Rebuilding view hierarchy...");
         [self rebuildViewHierarchy];
+        NSLog(@"✅ RESTORE STRUCTURE COMPLETE");
+    } else {
+        NSLog(@"❌ RESTORE NODE FAILED: rootNode is nil");
     }
 }
 
@@ -509,13 +582,46 @@
         NSString *widgetID = nodeData[@"widgetID"];
         NSDictionary *state = stateMap[widgetID];
         
-        BaseWidget *widget = [[BaseWidget alloc] initWithType:state[@"widgetType"] ?: @"Empty Widget"
-                                                    panelType:panelController.panelType];
+        if (!state) {
+            NSLog(@"❌ No state found for widget ID: %@", widgetID);
+            return nil;
+        }
+        
+        NSString *widgetType = state[@"widgetType"];
+        if (!widgetType) {
+            NSLog(@"❌ No widgetType in state for widget ID: %@", widgetID);
+            return nil;
+        }
+        
+        NSLog(@"🔄 RESTORE NODE: Creating widget type '%@' for ID: %@", widgetType, widgetID);
+        
+        // ✅ CORREZIONE: Usa WidgetTypeManager per ottenere la classe corretta
+        Class widgetClass = [[WidgetTypeManager sharedManager] classForWidgetType:widgetType];
+        if (!widgetClass) {
+            NSLog(@"⚠️ Unknown widget type '%@', using BaseWidget", widgetType);
+            widgetClass = [BaseWidget class];
+        }
+        
+        // ✅ CORREZIONE: Crea il widget con la classe corretta E il panelType
+        BaseWidget *widget = [[widgetClass alloc] initWithType:widgetType
+                                                     panelType:panelController.panelType];
+        
+        if (!widget) {
+            NSLog(@"❌ Failed to create widget of type: %@", widgetType);
+            return nil;
+        }
+        
+        // ✅ CORREZIONE: Forza la creazione della view PRIMA di restoreState
+        [widget loadView];
+        
+        // Restore widget state
         [widget restoreState:state];
         
+        // ✅ CORREZIONE: Usa widget.view invece di widget direttamente
         node.content = widget.view;
         self.widgetToNodeMap[widget.widgetID] = node;
         
+        // Add to panel controller
         [panelController addWidgetToCollection:widget];
         
         // Set up widget callbacks
@@ -527,6 +633,13 @@
         widget.onAddRequest = ^(BaseWidget *sourceWidget, WidgetAddDirection direction) {
             [weakController addNewWidgetFromWidget:sourceWidget inDirection:direction];
         };
+        
+        widget.onTypeChange = ^(BaseWidget *sourceWidget, NSString *newType) {
+            [weakController transformWidget:sourceWidget toType:newType];
+        };
+        
+        NSLog(@"✅ Successfully restored widget: %@ (ID: %@, Class: %@)",
+              widget.widgetType, widget.widgetID, NSStringFromClass([widget class]));
         
     } else if ([nodeData[@"type"] isEqualToString:@"split"]) {
         NSSplitView *splitView = [[NSSplitView alloc] init];
@@ -554,6 +667,7 @@
     
     return node;
 }
+
 
 #pragma mark - NSSplitViewDelegate
 

@@ -60,6 +60,9 @@
     self.toolbarController.mainWindowController = self;
     [self.toolbarController setupToolbarForWindow:self.window];
     
+    [self.toolbarController refreshLayoutMenu];
+
+    
     // Initialize panel controllers
     self.leftPanelController = [[PanelController alloc] initWithPanelType:PanelTypeLeft];
     self.centerPanelController = [[PanelController alloc] initWithPanelType:PanelTypeCenter];

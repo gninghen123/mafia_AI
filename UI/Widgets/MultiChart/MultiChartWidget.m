@@ -423,7 +423,7 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
         [[DataHub shared] getHistoricalBarsForSymbol:chart.symbol
                                            timeframe:[self convertToBarTimeframe:self.timeframe]
                                             barCount:[self calculateMaxBarsForTimeRange]
-                                   needExtendedHours:NO  // ← Aggiungi questo
+                                   needExtendedHours:YES  // ← Aggiungi questo
                                           completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isLive) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 completedCount++;

@@ -74,15 +74,17 @@
     BaseWidget *defaultWidget;
     
     if (self.panelType == PanelTypeCenter) {
-        // ✅ STEP 1: Crea direttamente un ChartWidget
-        Class chartWidgetClass = [[WidgetTypeManager sharedManager] classForWidgetType:@"Chart Widget"];
+        // Usa l'ultimo tipo salvato o fallback a Chart Widget
+        NSString *lastType = [[NSUserDefaults standardUserDefaults] stringForKey:@"LastCurrentWidgetType"];
+        NSString *widgetTypeToUse = lastType ?: @"Chart Widget";
+        Class chartWidgetClass = [[WidgetTypeManager sharedManager] classForWidgetType:widgetTypeToUse];
         
         if (chartWidgetClass) {
-            defaultWidget = [[chartWidgetClass alloc] initWithType:@"Chart Widget"
+            defaultWidget = [[chartWidgetClass alloc] initWithType:widgetTypeToUse
                                                         panelType:self.panelType];
         } else {
             // Fallback se non trova la classe
-            defaultWidget = [[BaseWidget alloc] initWithType:@"Chart Widget"
+            defaultWidget = [[BaseWidget alloc] initWithType:widgetTypeToUse
                                                   panelType:self.panelType];
         }
     } else {
@@ -132,6 +134,8 @@
             return; // ❌ Non trasformare
         }
     }
+    [[NSUserDefaults standardUserDefaults] setObject:newType forKey:@"LastCurrentWidgetType"];
+
 
     NSLog(@"=== DEBUG transformWidget ===");
     NSLog(@"Transform request: %@ (%@) -> %@", oldWidget.widgetType, [oldWidget class], newType);
@@ -265,18 +269,28 @@
         NSDictionary *state = [widget serializeState];
         if (state) {
             [widgetStates addObject:state];
+            // ✅ DEBUG: Log dettagliato dei widget serializzati
+            NSLog(@"🔍 SERIALIZE WIDGET: ID=%@, Type=%@, Class=%@",
+                  state[@"widgetID"], state[@"widgetType"], NSStringFromClass([widget class]));
+            NSLog(@"   Full state: %@", state);
+        } else {
+            NSLog(@"❌ SERIALIZE ERROR: Widget %@ returned nil state!", widget.widgetID);
         }
     }
     layout[@"widgetStates"] = widgetStates;
     
-    NSLog(@"Serialized panel %ld with %lu widgets", (long)self.panelType, (unsigned long)widgetStates.count);
+    NSLog(@"📦 SERIALIZE COMPLETE: Panel %ld with %lu widgets", (long)self.panelType, (unsigned long)widgetStates.count);
+    NSLog(@"   Container structure keys: %@", containerStructure.allKeys);
+    NSLog(@"   Widget states count: %lu", (unsigned long)widgetStates.count);
     
     return layout;
 }
-
 - (void)restoreLayout:(NSDictionary *)layoutData {
+    NSLog(@"🔄 RESTORE LAYOUT START: Panel type %ld", (long)self.panelType);
+    NSLog(@"   Layout data keys: %@", layoutData.allKeys);
+    
     if (!layoutData || layoutData.count == 0) {
-        // Se non ci sono dati, non fare nulla
+        NSLog(@"❌ RESTORE FAILED: No layout data");
         return;
     }
     
@@ -288,12 +302,18 @@
     NSDictionary *containerStructure = layoutData[@"containerStructure"];
     NSArray *widgetStates = layoutData[@"widgetStates"];
     
+    NSLog(@"🔍 RESTORE DATA:");
+    NSLog(@"   Container structure: %@", containerStructure ? @"EXISTS" : @"NIL");
+    NSLog(@"   Widget states count: %lu", (unsigned long)widgetStates.count);
+    
     if (containerStructure && widgetStates) {
+        NSLog(@"🔄 CALLING restoreStructure...");
         [self.containerView restoreStructure:containerStructure
                              withWidgetStates:widgetStates
                              panelController:self];
+        NSLog(@"✅ RESTORE COMPLETE: %lu widgets restored", (unsigned long)self.mutableWidgets.count);
     } else {
-        // Se non c'è una struttura valida, aggiungi un widget di default
+        NSLog(@"❌ RESTORE FAILED: Missing container structure or widget states");
         [self addDefaultWidget];
     }
 }

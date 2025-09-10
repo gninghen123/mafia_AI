@@ -191,10 +191,17 @@
         bar.close = [candle[@"close"] doubleValue];
         bar.volume = [candle[@"volume"] integerValue];
         
+    
+        
         // Set timeframe based on data (this might need to be passed as parameter)
         bar.timeframe = BarTimeframeDaily; // Default, should be determined from context
         
         [bars addObject:bar];
+    }
+    
+    // controlla l ultima barra che abbia close !=0
+    if ([[bars lastObject] close] == 0) {
+        [bars removeLastObject];
     }
     
     NSLog(@"✅ SchwabAdapter: Created %lu HistoricalBarModel objects for %@",

@@ -7,6 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		9543903C2E7164AE0015F05A /* BaseWidget.m in Sources */ = {isa = PBXBuildFile; fileRef = 954390012E7164AE0015F05A /* BaseWidget.m */; };
+		9543903D2E7164AE0015F05A /* TagManagementWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954390032E7164AE0015F05A /* TagManagementWindowController.m */; };
+		9543903E2E7164AE0015F05A /* WidgetContainerView.m in Sources */ = {isa = PBXBuildFile; fileRef = 954390052E7164AE0015F05A /* WidgetContainerView.m */; };
+		9543903F2E7164AE0015F05A /* WidgetTypeManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 954390072E7164AE0015F05A /* WidgetTypeManager.m */; };
 		954D30D52E28531C00C7DC88 /* LayoutManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30CA2E28531C00C7DC88 /* LayoutManager.m */; };
 		954D30D72E28531C00C7DC88 /* ToolbarController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30C82E28531C00C7DC88 /* ToolbarController.m */; };
 		954D30D82E28531C00C7DC88 /* PanelHeaderView.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30C42E28531C00C7DC88 /* PanelHeaderView.m */; };
@@ -37,6 +41,14 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		954390002E7164AE0015F05A /* BaseWidget.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = BaseWidget.h; sourceTree = "<group>"; };
+		954390012E7164AE0015F05A /* BaseWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = BaseWidget.m; sourceTree = "<group>"; };
+		954390022E7164AE0015F05A /* TagManagementWindowController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TagManagementWindowController.h; sourceTree = "<group>"; };
+		954390032E7164AE0015F05A /* TagManagementWindowController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TagManagementWindowController.m; sourceTree = "<group>"; };
+		954390042E7164AE0015F05A /* WidgetContainerView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WidgetContainerView.h; sourceTree = "<group>"; };
+		954390052E7164AE0015F05A /* WidgetContainerView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WidgetContainerView.m; sourceTree = "<group>"; };
+		954390062E7164AE0015F05A /* WidgetTypeManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WidgetTypeManager.h; sourceTree = "<group>"; };
+		954390072E7164AE0015F05A /* WidgetTypeManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WidgetTypeManager.m; sourceTree = "<group>"; };
 		954D30002E28514A00C7DC88 /* mafia_AI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = mafia_AI.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		954D30122E28514B00C7DC88 /* mafia_AITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = mafia_AITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		954D301C2E28514C00C7DC88 /* mafia_AIUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = mafia_AIUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -161,6 +173,14 @@
 				954D30CF2E28531C00C7DC88 /* PanelController.m */,
 				954D30D12E28531C00C7DC88 /* MainWindowController.h */,
 				954D30D22E28531C00C7DC88 /* MainWindowController.m */,
+				954390002E7164AE0015F05A /* BaseWidget.h */,
+				954390012E7164AE0015F05A /* BaseWidget.m */,
+				954390022E7164AE0015F05A /* TagManagementWindowController.h */,
+				954390032E7164AE0015F05A /* TagManagementWindowController.m */,
+				954390042E7164AE0015F05A /* WidgetContainerView.h */,
+				954390052E7164AE0015F05A /* WidgetContainerView.m */,
+				954390062E7164AE0015F05A /* WidgetTypeManager.h */,
+				954390072E7164AE0015F05A /* WidgetTypeManager.m */,
 				95F1AD762E2E517E00D96BDD /* UI */,
 				959A4B4E2E3A1E6000D83EB1 /* Models */,
 				95F1AFB42E31131100D96BDD /* Gestione Dati */,
@@ -336,6 +356,10 @@
 			files = (
 				954D388F2E50D1A6000454EF /* FloatingWidgetWindow.m in Sources */,
 				954D30E32E2860F100C7DC88 /* PreferencesWindowController.m in Sources */,
+				9543903C2E7164AE0015F05A /* BaseWidget.m in Sources */,
+				9543903D2E7164AE0015F05A /* TagManagementWindowController.m in Sources */,
+				9543903E2E7164AE0015F05A /* WidgetContainerView.m in Sources */,
+				9543903F2E7164AE0015F05A /* WidgetTypeManager.m in Sources */,
 				954D30E72E28612100C7DC88 /* AppSettings.m in Sources */,
 				954D30D52E28531C00C7DC88 /* LayoutManager.m in Sources */,
 				954D30D72E28531C00C7DC88 /* ToolbarController.m in Sources */,

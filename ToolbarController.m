@@ -24,6 +24,11 @@ static NSString *const ToolbarItemSaveLayout = @"SaveLayout";
 
 @implementation ToolbarController
 
+- (void)refreshLayoutMenu {
+    [self updateLayoutMenu];
+}
+
+
 - (void)setupToolbarForWindow:(NSWindow *)window {
     self.toolbar = [[NSToolbar alloc] initWithIdentifier:@"MainToolbar"];
     self.toolbar.delegate = self;
@@ -32,6 +37,12 @@ static NSString *const ToolbarItemSaveLayout = @"SaveLayout";
     self.toolbar.displayMode = NSToolbarDisplayModeIconAndLabel;
     
     window.toolbar = self.toolbar;
+    dispatch_async(dispatch_get_main_queue(), ^{
+         if (self.mainWindowController) {
+             [self updateLayoutMenu];
+             NSLog(@"✅ Layout menu populated at startup");
+         }
+     });
 }
 
 #pragma mark - NSToolbarDelegate

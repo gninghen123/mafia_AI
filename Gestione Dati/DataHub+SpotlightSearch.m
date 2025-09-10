@@ -9,6 +9,7 @@
 #import "DataHub+Private.h"
 #import "DownloadManager.h"
 #import "Symbol+CoreDataClass.h"
+#import "CompanyInfo+CoreDataProperties.h"
 
 @implementation DataHub (SpotlightSearch)
 
@@ -99,9 +100,9 @@
     
     // First check if we have company info locally
     Symbol *localSymbol = [self getSymbolWithName:symbol.uppercaseString];
-    if (localSymbol && localSymbol.companyName.length > 0) {
+    if (localSymbol && localSymbol.companyInfo && localSymbol.companyInfo.name.length > 0) {
         SymbolSearchResult *result = [SymbolSearchResult resultWithSymbol:symbol
-                                                              companyName:localSymbol.companyName
+                                                              companyName:localSymbol.companyInfo.name
                                                                sourceType:DataSourceTypeLocal];
         if (completion) completion(result, nil);
         return;
@@ -117,7 +118,7 @@
         SymbolSearchResult *result = nil;
         if (companyInfo) {
             result = [SymbolSearchResult resultWithSymbol:symbol
-                                              companyName:companyInfo.companyName
+                                              companyName:companyInfo.name
                                                sourceType:dataSource];
         }
         
@@ -147,7 +148,7 @@
         // Also search by company name if query is longer
         NSPredicate *companyPredicate = nil;
         if (query.length > 1) {
-            companyPredicate = [NSPredicate predicateWithFormat:@"name CONTAINS[cd] %@", query];
+            companyPredicate = [NSPredicate predicateWithFormat:@"companyInfo.name CONTAINS[cd] %@", query];
         }
         
         // Combine predicates
@@ -171,8 +172,9 @@
         
         if (!error) {
             for (Symbol *symbol in symbols) {
+                NSString *companyName = symbol.companyInfo ? symbol.companyInfo.name : nil;
                 SymbolSearchResult *result = [SymbolSearchResult resultWithSymbol:symbol.symbol
-                                                                      companyName:symbol.companyName
+                                                                      companyName:companyName
                                                                        sourceType:DataSourceTypeLocal];
                 
                 // Calculate relevance score based on match type and interaction
@@ -303,8 +305,9 @@
         
         if (!error) {
             for (Symbol *symbol in symbols) {
+                NSString *companyName = symbol.companyInfo ? symbol.companyInfo.name : nil;
                 SymbolSearchResult *result = [SymbolSearchResult resultWithSymbol:symbol.symbol
-                                                                      companyName:symbol.companyName
+                                                                      companyName:companyName
                                                                        sourceType:DataSourceTypeLocal];
                 [results addObject:result];
             }

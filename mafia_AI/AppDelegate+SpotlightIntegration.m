@@ -56,8 +56,6 @@ static char const * const SpotlightManagerKey = "SpotlightManagerKey";
         // Use the existing processSmartSymbolInput method
         [chartWidget processSmartSymbolInput:symbol];
         
-        // Focus the main window and center panel
-        [self.mainWindowController.window makeKeyAndOrderFront:nil];
         
         NSLog(@"✅ AppDelegate: ChartWidget configured with symbol: %@", symbol);
     } else {

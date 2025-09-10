@@ -212,7 +212,7 @@ typedef struct {
 - (void)loadDateRangeSegmentedDefaults;
 - (void)saveDateRangeSegmentedDefaults;
 - (NSInteger)barTimeframeToSegmentIndex:(BarTimeframe)timeframe;
-
+- (void)processSmartSymbolInput:(NSString *)input;
 - (void)showTemporaryMessage:(NSString *)message;
 
 

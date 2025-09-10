@@ -9,6 +9,8 @@
 #import "GlobalSpotlightManager.h"
 #import "AppDelegate.h"
 #import "DataHub.h"
+#import "DataHub+SpotlightSearch.h"
+#import "SpotlightCategoryButton.h"
 
 static const CGFloat kWindowWidth = 600.0;
 static const CGFloat kWindowHeight = 400.0;
@@ -126,11 +128,12 @@ static const CGFloat kMargin = 10.0;
     // Use DataHub to search for symbols
     DataSourceType selectedSource = self.dataSourceButton.selectedDataSource;
     
-    [[DataHub shared] searchSymbolsWithQuery:searchText
-                                  dataSource:selectedSource
-                                       limit:10
-                                  completion:^(NSArray<SymbolSearchResult *> *results, NSError *error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
+    
+     [[DataHub shared] searchSymbolsWithQuery:searchText
+                                   dataSource:selectedSource
+                                        limit:10
+                                   completion:^(NSArray<SymbolSearchResult *> *results, NSError *error) {
+         dispatch_async(dispatch_get_main_queue(), ^{
             if (error) {
                 NSLog(@"❌ Symbol search error: %@", error);
                 self.symbolResults = @[];
@@ -256,7 +259,7 @@ static const CGFloat kMargin = 10.0;
     
     // Get AppDelegate to open ChartWidget in center panel
     AppDelegate *appDelegate = self.spotlightManager.appDelegate;
-    if (appDelegate && appDelegate.mainWindowController) {
+    if (appDelegate) {
         // Open ChartWidget in center panel with the selected symbol
         [self openChartWidgetWithSymbol:selectedResult.symbol];
     }
@@ -271,20 +274,10 @@ static const CGFloat kMargin = 10.0;
     
     NSLog(@"🔧 Executing widget action for: %@", selectedOption.widgetName);
     
-    // Get target panel type
-    SpotlightWidgetTarget target = self.widgetTargetButton.selectedWidgetTarget;
-    
-    // Get AppDelegate to open widget
+    // TEMPORARY: Just open as floating until we fix the target type issue
     AppDelegate *appDelegate = self.spotlightManager.appDelegate;
     if (appDelegate) {
-        if (target == SpotlightWidgetTargetFloating) {
-            // Open as floating window
-            [self openFloatingWidget:selectedOption.widgetType];
-        } else {
-            // Open in specified panel
-            PanelType panelType = [SpotlightCategoryButton panelTypeForWidgetTarget:target];
-            [self openWidgetInPanel:selectedOption.widgetType panelType:panelType];
-        }
+        [self openFloatingWidget:selectedOption.widgetType];
     }
     
     // Hide spotlight
@@ -642,9 +635,9 @@ static const CGFloat kMargin = 10.0;
     }
 }
 
-- (void)spotlightCategoryButton:(SpotlightCategoryButton *)button didSelectWidgetTarget:(SpotlightWidgetTarget)target {
-    NSLog(@"🎯 SpotlightSearchWindow: Widget target changed to %@",
-          [SpotlightCategoryButton displayNameForWidgetTarget:target]);
+- (void)spotlightCategoryButton:(SpotlightCategoryButton *)button didSelectTargetType:(SpotlightCategoryType)target {
+    NSLog(@"🎯 SpotlightSearchWindow: Target type changed to %@",
+          [SpotlightCategoryButton displayNameForTargetType:target]);
     
     // No immediate action needed, will be used when executing widget action
 }

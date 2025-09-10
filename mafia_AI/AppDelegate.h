@@ -9,11 +9,13 @@
 @class ChartWidget;
 @class FloatingWidgetWindow;
 @class WidgetTypeManager;
+@class MainWindowController;  // ← AGGIUNGI QUESTA LINEA
 
 @interface AppDelegate : NSObject <NSApplicationDelegate, NSWindowRestoration>
 
 // Outlet per la finestra principale
 @property (weak) IBOutlet NSWindow *window;
+@property (nonatomic, strong) MainWindowController *mainWindowController;
 
 // Floating Windows Management
 @property (nonatomic, strong) NSMutableArray<FloatingWidgetWindow *> *floatingWindows;

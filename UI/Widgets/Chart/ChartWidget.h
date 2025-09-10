@@ -211,6 +211,7 @@ typedef struct {
 - (NSInteger)getDaysForSegment:(NSInteger)segment;
 - (void)loadDateRangeSegmentedDefaults;
 - (void)saveDateRangeSegmentedDefaults;
+- (NSInteger)barTimeframeToSegmentIndex:(BarTimeframe)timeframe;
 
 - (void)showTemporaryMessage:(NSString *)message;
 

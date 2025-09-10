@@ -316,8 +316,11 @@
     }
     
     // ✅ UPDATE TIMEFRAME SEGMENTED CONTROL
-    if (self.timeframeSegmented && self.timeframeSegmented.segmentCount > self.currentTimeframe) {
-        [self.timeframeSegmented setSelectedSegment:self.currentTimeframe];
+    if (self.timeframeSegmented) {
+        NSInteger segmentIndex = [self barTimeframeToSegmentIndex:self.currentTimeframe];
+        if (segmentIndex >= 0 && segmentIndex < self.timeframeSegmented.segmentCount) {
+            [self.timeframeSegmented setSelectedSegment:segmentIndex];
+        }
     }
     
     

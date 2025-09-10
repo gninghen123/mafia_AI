@@ -14,7 +14,6 @@
 
 
 #pragma mark - Data Source Types
-
 typedef NS_ENUM(NSInteger, DataSourceType) {
     DataSourceTypeSchwab,
     DataSourceTypeIBKR,
@@ -22,7 +21,8 @@ typedef NS_ENUM(NSInteger, DataSourceType) {
     DataSourceTypeWebull,
     DataSourceTypeCustom,
     DataSourceTypeClaude,
-    DataSourceTypeOther  
+    DataSourceTypeOther,
+    DataSourceTypeLocal = 999  // ADD THIS LINE
 };
 
 #pragma mark - Data Source Capabilities

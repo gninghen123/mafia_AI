@@ -10,6 +10,7 @@
 
 #import <Foundation/Foundation.h>
 #import "CommonTypes.h"
+#import "runtimeModels.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -293,6 +294,29 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSString *)fetchMarketListForType:(DataRequestType)listType
                           parameters:(nullable NSDictionary *)parameters
                           completion:(void (^)(NSArray *results, DataSourceType usedSource, NSError *error))completion;
+
+/**
+ * Search for symbols across data sources
+ * @param query Search query text
+ * @param dataSource Specific data source to use
+ * @param limit Maximum number of results
+ * @param completion Completion with results array
+ */
+- (void)searchSymbolsWithQuery:(NSString *)query
+                    dataSource:(DataSourceType)dataSource
+                         limit:(NSInteger)limit
+                    completion:(void(^)(NSArray<NSDictionary *> *results, NSError *error))completion;
+
+/**
+ * Get company information for symbol
+ * @param symbol Stock symbol
+ * @param dataSource Data source to use
+ * @param completion Completion with company info
+ */
+- (void)getCompanyInfoForSymbol:(NSString *)symbol
+                     dataSource:(DataSourceType)dataSource
+                     completion:(void(^)(CompanyInfoModel *companyInfo, NSError *error))completion;
+
 
 #pragma mark - CONVENIENCE METHODS for Account Data (🛡️ Require DataSource)
 

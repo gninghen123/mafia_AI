@@ -75,6 +75,11 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		954391052E71D42B0015F05A /* spotlight */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = spotlight;
+			sourceTree = "<group>";
+		};
 		954D30022E28514A00C7DC88 /* mafia_AI */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = mafia_AI;
@@ -150,6 +155,7 @@
 		954D2FF72E28514A00C7DC88 = {
 			isa = PBXGroup;
 			children = (
+				954391052E71D42B0015F05A /* spotlight */,
 				95D8C7D22E65793400628924 /* technical indicators */,
 				958DF9D22E5C6E4700720709 /* coredata */,
 				958DF9482E5B57C500720709 /* clientportal */,
@@ -217,6 +223,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
+				954391052E71D42B0015F05A /* spotlight */,
 				954D30022E28514A00C7DC88 /* mafia_AI */,
 				958DF9482E5B57C500720709 /* clientportal */,
 				958DF9D22E5C6E4700720709 /* coredata */,

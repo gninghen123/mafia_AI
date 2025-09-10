@@ -1892,6 +1892,47 @@
     }
 }
 
+
+// Implementazione dei metodi di ricerca simboli:
+
+- (void)searchSymbolsWithQuery:(NSString *)query
+                    dataSource:(DataSourceType)dataSource
+                         limit:(NSInteger)limit
+                    completion:(void(^)(NSArray<NSDictionary *> *results, NSError *error))completion {
+    
+    // Per ora implementazione semplice - ritorna risultati vuoti
+    // TODO: Implementare ricerca reale via API
+    NSLog(@"🔍 DownloadManager: Symbol search for '%@' via %@", query, @(dataSource));
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (completion) {
+            // Mock results per testing
+            NSArray *mockResults = @[
+                @{@"symbol": [query uppercaseString], @"name": @"Mock Company", @"exchange": @"NASDAQ"}
+            ];
+            completion(mockResults, nil);
+        }
+    });
+}
+
+- (void)getCompanyInfoForSymbol:(NSString *)symbol
+                     dataSource:(DataSourceType)dataSource
+                     completion:(void(^)(CompanyInfoModel *companyInfo, NSError *error))completion {
+    
+    NSLog(@"🏢 DownloadManager: Company info for '%@' via %@", symbol, @(dataSource));
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        if (completion) {
+            // Mock company info per testing
+            CompanyInfoModel *mockInfo = [[CompanyInfoModel alloc] init];
+            mockInfo.symbol = symbol;
+            mockInfo.name = [NSString stringWithFormat:@"%@ Company", symbol];
+            completion(mockInfo, nil);
+        }
+    });
+}
+
+
 @end
 
 

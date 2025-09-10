@@ -163,7 +163,21 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
                    needExtendedHours:(BOOL)needExtendedHours
                           completion:(void (^)(NSArray *bars, NSError *error))completion {
     
-    // ✅ REFACTORED: Usa loginManager per token
+    // ✅ NUOVO: Check per timeframe che richiedono aggregazione
+    if ([self needsAggregationForTimeframe:timeframe]) {
+        NSLog(@"🔄 SchwabDataSource: Timeframe %ld needs aggregation, using 30min base", (long)timeframe);
+        
+        // Usa 30min come base e aggrega
+        [self fetchAndAggregateHistoricalData:symbol
+                                    timeframe:timeframe
+                                    startDate:startDate
+                                      endDate:endDate
+                            needExtendedHours:needExtendedHours
+                                   completion:completion];
+        return;
+    }
+    
+    // ✅ ESISTENTE: Per timeframe supportati nativamente, continua con la logica originale
     [self.loginManager ensureTokensValidWithCompletion:^(BOOL success, NSError *error) {
         if (!success) {
             if (completion) completion(nil, error);
@@ -179,7 +193,7 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
             return;
         }
         
-        // ✅ REST OF IMPLEMENTATION - INVARIATO
+        // ✅ RESTO DELLA LOGICA ORIGINALE - INVARIATA
         NSString *schwabTimeframe = [self convertTimeframeSchwab:timeframe];
         NSString *frequencyType = [self convertFrequencyTypeSchwab:timeframe];
         NSString *periodType = [self convertPeriodTypeSchwab:frequencyType];
@@ -228,14 +242,26 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
     }];
 }
 
-// Refactored: use startDate and endDate calculation instead of unsupported &period param
 - (void)fetchHistoricalDataForSymbol:(NSString *)symbol
                            timeframe:(BarTimeframe)timeframe
                             barCount:(NSInteger)barCount
                    needExtendedHours:(BOOL)needExtendedHours
                           completion:(void (^)(NSArray *bars, NSError *error))completion {
     
-    // ✅ REFACTORED: Usa loginManager per token
+    // ✅ NUOVO: Check per timeframe che richiedono aggregazione
+    if ([self needsAggregationForTimeframe:timeframe]) {
+        NSLog(@"🔄 SchwabDataSource: Timeframe %ld needs aggregation for %ld bars", (long)timeframe, (long)barCount);
+        
+        // Usa 30min come base e aggrega
+        [self fetchAndAggregateHistoricalData:symbol
+                                    timeframe:timeframe
+                                     barCount:barCount
+                            needExtendedHours:needExtendedHours
+                                   completion:completion];
+        return;
+    }
+    
+    // ✅ ESISTENTE: Per timeframe supportati nativamente, continua con la logica originale
     [self.loginManager ensureTokensValidWithCompletion:^(BOOL success, NSError *error) {
         if (!success) {
             if (completion) completion(nil, error);
@@ -251,7 +277,7 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
             return;
         }
         
-        // ✅ REST OF IMPLEMENTATION - INVARIATO
+        // ✅ RESTO DELLA LOGICA ORIGINALE - INVARIATA
         NSString *schwabTimeframe = [self convertTimeframeSchwab:timeframe];
         NSString *frequencyType = [self convertFrequencyTypeSchwab:timeframe];
         NSString *periodType = [self convertPeriodTypeSchwab:frequencyType];
@@ -310,6 +336,7 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
         [task resume];
     }];
 }
+
 
 #pragma mark - Portfolio Data - INVARIATI (solo auth token cambiato)
 
@@ -692,4 +719,229 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
     return @"day";
 }
 
+
+
+#pragma mark - 🆕 NUOVI METODI HELPER PER AGGREGAZIONE (da aggiungere in fondo al file)
+
+- (BOOL)needsAggregationForTimeframe:(BarTimeframe)timeframe {
+    // Schwab supporta nativamente solo fino a 30min per intraday
+    // Timeframe > 30min ma < daily richiedono aggregazione
+    switch (timeframe) {
+        case BarTimeframe1Min:
+        case BarTimeframe5Min:
+        case BarTimeframe15Min:
+        case BarTimeframe30Min:
+        case BarTimeframeDaily:
+        case BarTimeframeWeekly:
+        case BarTimeframeMonthly:
+            return NO; // Supportati nativamente
+            
+        case BarTimeframe1Hour:
+        case BarTimeframe4Hour:
+            return YES; // Richiedono aggregazione da 30min
+            
+        default:
+            return NO;
+    }
+}
+
+- (void)fetchAndAggregateHistoricalData:(NSString *)symbol
+                              timeframe:(BarTimeframe)timeframe
+                              startDate:(NSDate *)startDate
+                                endDate:(NSDate *)endDate
+                      needExtendedHours:(BOOL)needExtendedHours
+                             completion:(void (^)(NSArray *bars, NSError *error))completion {
+    
+    // Usa sempre 30min come base per l'aggregazione
+    BarTimeframe baseTimeframe = BarTimeframe30Min;
+    
+    NSLog(@"📊 SchwabAggregation: Fetching %@ base data (30min) from %@ to %@", symbol, startDate, endDate);
+    
+    // Ricorsione: chiama il metodo originale con 30min (che non richiede aggregazione)
+    [self fetchHistoricalDataForSymbol:symbol
+                             timeframe:baseTimeframe
+                             startDate:startDate
+                               endDate:endDate
+                     needExtendedHours:needExtendedHours
+                            completion:^(NSArray *baseBars, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        
+        // Aggrega i dati al timeframe target
+        NSArray *aggregatedBars = [self aggregateBars:baseBars toTimeframe:timeframe];
+        
+        NSLog(@"✅ SchwabAggregation: %lu base bars -> %lu aggregated bars",
+              (unsigned long)baseBars.count, (unsigned long)aggregatedBars.count);
+        
+        if (completion) completion(aggregatedBars, nil);
+    }];
+}
+
+- (void)fetchAndAggregateHistoricalData:(NSString *)symbol
+                              timeframe:(BarTimeframe)timeframe
+                               barCount:(NSInteger)barCount
+                      needExtendedHours:(BOOL)needExtendedHours
+                             completion:(void (^)(NSArray *bars, NSError *error))completion {
+    
+    // Usa sempre 30min come base per l'aggregazione
+    BarTimeframe baseTimeframe = BarTimeframe30Min;
+    NSInteger aggregationFactor = [self getAggregationFactor:timeframe];
+    
+    // Calcola quante barre base servono (con margine per aggregazione perfetta)
+    NSInteger baseBarsNeeded = barCount * aggregationFactor * 1.2; // 20% di margine
+    
+    NSLog(@"📊 SchwabAggregation: Fetching %ld base bars (30min) to get %ld target bars (factor: %ld)",
+          (long)baseBarsNeeded, (long)barCount, (long)aggregationFactor);
+    
+    // Ricorsione: chiama il metodo originale con 30min (che non richiede aggregazione)
+    [self fetchHistoricalDataForSymbol:symbol
+                             timeframe:baseTimeframe
+                              barCount:baseBarsNeeded
+                     needExtendedHours:needExtendedHours
+                            completion:^(NSArray *baseBars, NSError *error) {
+        if (error) {
+            if (completion) completion(nil, error);
+            return;
+        }
+        
+        // Aggrega i dati al timeframe target
+        NSArray *aggregatedBars = [self aggregateBars:baseBars toTimeframe:timeframe];
+        
+        // Taglia al numero di barre richieste (prendi le più recenti)
+        NSArray *finalBars = aggregatedBars;
+        if (aggregatedBars.count > barCount) {
+            NSRange range = NSMakeRange(aggregatedBars.count - barCount, barCount);
+            finalBars = [aggregatedBars subarrayWithRange:range];
+        }
+        
+        NSLog(@"✅ SchwabAggregation: %lu base bars -> %lu aggregated bars -> %lu final bars",
+              (unsigned long)baseBars.count, (unsigned long)aggregatedBars.count, (unsigned long)finalBars.count);
+        
+        if (completion) completion(finalBars, nil);
+    }];
+}
+
+- (NSInteger)getAggregationFactor:(BarTimeframe)timeframe {
+    switch (timeframe) {
+        case BarTimeframe1Hour:  return 2;  // 60min / 30min = 2
+        case BarTimeframe4Hour:  return 8;  // 240min / 30min = 8
+        default:                 return 1;
+    }
+}
+
+- (NSArray *)aggregateBars:(NSArray *)baseBars toTimeframe:(BarTimeframe)targetTimeframe {
+    if (!baseBars || baseBars.count == 0) {
+        return @[];
+    }
+    
+    NSInteger aggregationFactor = [self getAggregationFactor:targetTimeframe];
+    
+    if (aggregationFactor <= 1) {
+        return baseBars; // Nessuna aggregazione necessaria
+    }
+    
+    NSMutableArray *aggregatedBars = [NSMutableArray array];
+    NSMutableArray *currentGroup = [NSMutableArray array];
+    
+    for (NSDictionary *bar in baseBars) {
+        [currentGroup addObject:bar];
+        
+        // Quando raggiungiamo il fattore di aggregazione, crea la barra aggregata
+        if (currentGroup.count >= aggregationFactor) {
+            NSDictionary *aggregatedBar = [self createAggregatedBar:currentGroup targetTimeframe:targetTimeframe];
+            if (aggregatedBar) {
+                [aggregatedBars addObject:aggregatedBar];
+            }
+            [currentGroup removeAllObjects];
+        }
+    }
+    
+    // Gestisci l'ultimo gruppo parziale se presente
+    if (currentGroup.count > 0) {
+        NSDictionary *aggregatedBar = [self createAggregatedBar:currentGroup targetTimeframe:targetTimeframe];
+        if (aggregatedBar) {
+            [aggregatedBars addObject:aggregatedBar];
+        }
+    }
+    
+    return [aggregatedBars copy];
+}
+
+- (NSDictionary *)createAggregatedBar:(NSArray *)barGroup targetTimeframe:(BarTimeframe)targetTimeframe {
+    if (!barGroup || barGroup.count == 0) {
+        return nil;
+    }
+    
+    // Prendi la prima barra per timestamp e open
+    NSDictionary *firstBar = barGroup[0];
+    NSDictionary *lastBar = barGroup.lastObject;
+    
+    // Calcola valori aggregati OHLCV
+    double open = [firstBar[@"open"] doubleValue];
+    double close = [lastBar[@"close"] doubleValue];
+    double high = 0.0;
+    double low = DBL_MAX;
+    long long volume = 0;
+    
+    for (NSDictionary *bar in barGroup) {
+        double barHigh = [bar[@"high"] doubleValue];
+        double barLow = [bar[@"low"] doubleValue];
+        long long barVolume = [bar[@"volume"] longLongValue];
+        
+        if (barHigh > high) high = barHigh;
+        if (barLow < low) low = barLow;
+        volume += barVolume;
+    }
+    
+    // Calcola il timestamp allineato per la barra aggregata
+    NSNumber *aggregatedTimestamp = [self calculateAlignedTimestamp:firstBar[@"datetime"] targetTimeframe:targetTimeframe];
+    
+    return @{
+        @"datetime": aggregatedTimestamp,
+        @"open": @(open),
+        @"high": @(high),
+        @"low": @(low),
+        @"close": @(close),
+        @"volume": @(volume)
+    };
+}
+
+- (NSNumber *)calculateAlignedTimestamp:(NSNumber *)baseTimestamp targetTimeframe:(BarTimeframe)targetTimeframe {
+    if (!baseTimestamp) {
+        return @([[NSDate date] timeIntervalSince1970] * 1000.0);
+    }
+    
+    double timestampMillis = [baseTimestamp doubleValue];
+    NSDate *baseDate = [NSDate dateWithTimeIntervalSince1970:timestampMillis / 1000.0];
+    
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDateComponents *components = [calendar components:(NSCalendarUnitYear | NSCalendarUnitMonth | NSCalendarUnitDay | NSCalendarUnitHour | NSCalendarUnitMinute) fromDate:baseDate];
+    
+    switch (targetTimeframe) {
+        case BarTimeframe1Hour: {
+            // Allinea all'inizio dell'ora
+            components.minute = 0;
+            components.second = 0;
+            break;
+        }
+        case BarTimeframe4Hour: {
+            // Allinea a intervalli di 4 ore: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00
+            NSInteger hour = components.hour;
+            NSInteger alignedHour = (hour / 4) * 4;
+            components.hour = alignedHour;
+            components.minute = 0;
+            components.second = 0;
+            break;
+        }
+        default: {
+            // Per altri timeframe, usa il timestamp originale
+            return baseTimestamp;
+        }
+    }
+    
+    NSDate *alignedDate = [calendar dateFromComponents:components] ?: baseDate;
+    return @([alignedDate timeIntervalSince1970] * 1000.0);
+}
 @end

@@ -19,24 +19,24 @@ typedef void(^IndicatorConfigurationCompletionBlock)(BOOL saved, NSDictionary * 
 @property (nonatomic, strong) NSDictionary *currentParameters;
 @property (nonatomic, copy, nullable) IndicatorConfigurationCompletionBlock completionBlock;
 
-#pragma mark - UI Components
-@property (weak) IBOutlet NSTextField *indicatorNameLabel;
-@property (weak) IBOutlet NSTextField *indicatorDescriptionLabel;
-@property (weak) IBOutlet NSScrollView *parametersScrollView;
-@property (weak) IBOutlet NSStackView *parametersStackView;
-@property (weak) IBOutlet NSButton *saveButton;
-@property (weak) IBOutlet NSButton *cancelButton;
-@property (weak) IBOutlet NSButton *resetButton;
-@property (weak) IBOutlet NSTabView *tabView;
+#pragma mark - UI Components (ora strong invece di weak - creati programmaticamente)
+@property (strong) NSTextField *indicatorNameLabel;
+@property (strong) NSTextField *indicatorDescriptionLabel;
+@property (strong) NSScrollView *parametersScrollView;
+@property (strong) NSStackView *parametersStackView;
+@property (strong) NSButton *saveButton;
+@property (strong) NSButton *cancelButton;
+@property (strong) NSButton *resetButton;
+@property (strong) NSTabView *tabView;
 
 // Appearance Tab
-@property (weak) IBOutlet NSColorWell *colorWell;
-@property (weak) IBOutlet NSSlider *lineWidthSlider;
-@property (weak) IBOutlet NSTextField *lineWidthLabel;
-@property (weak) IBOutlet NSButton *visibilityToggle;
+@property (strong) NSColorWell *colorWell;
+@property (strong) NSSlider *lineWidthSlider;
+@property (strong) NSTextField *lineWidthLabel;
+@property (strong) NSButton *visibilityToggle;
 
 // Advanced Tab
-@property (weak) IBOutlet NSTextView *notesTextView;
+@property (strong) NSTextView *notesTextView;
 
 #pragma mark - Class Methods
 /// Create and show indicator configuration dialog

@@ -174,9 +174,7 @@
     [NSGraphicsContext saveGraphicsState];
     [NSGraphicsContext setCurrentContext:nsContext];
     
-    if (layer == self.chartContentLayer) {
-        [self drawChartContent];
-    } else if (layer == self.crosshairLayer) {
+    if (layer == self.crosshairLayer) {
         [self drawCrosshairContent];
     } else if (layer == self.chartPortionSelectionLayer) {
         [self drawChartPortionSelectionContent];
@@ -281,21 +279,7 @@
 
 #pragma mark - Layer-Specific Drawing
 
-- (void)drawChartContent {
-    if (!self.chartData || self.chartData.count == 0) {
-        [self drawEmptyState];
-        return;
-    }
-    
-    // Draw based on panel type
-    if ([self.panelType isEqualToString:@"security"]) {
-        [self drawCandlesticks];
-    } else if ([self.panelType isEqualToString:@"volume"]) {
-        [self drawVolumeHistogram];
-    }
-    
-    NSLog(@"🎨 ChartPanelView: Chart content drawn (%@ panel)", self.panelType);
-}
+
 
 
 - (void)drawCrosshairContent {
@@ -418,26 +402,47 @@
     
     // Formatazione intelligente basata sul timeframe
     if (timeframeMinutes <= 0) {
-        // Timeframe sconosciuto - mostra data e ora complete
-        formatter.dateFormat = @"MMM dd HH:mm";
-    } else if (timeframeMinutes < 60) {
-        // Intraday (< 1 ora): mostra data e ora
-        formatter.dateFormat = @"MMM dd HH:mm";
-    } else if (timeframeMinutes < 1440) {
-        // Intraday (>= 1 ora, < 1 giorno): mostra data e ora
-        formatter.dateFormat = @"MMM dd HH:mm";
-    } else if (timeframeMinutes == 1440) {
-        // Daily: mostra solo data
-        formatter.dateFormat = @"MMM dd, yyyy";
-    } else if (timeframeMinutes == 10080) {
-        // Weekly: mostra settimana
-        formatter.dateFormat = @"'Week of' MMM dd";
+        // Timeframe sconosciuto - mostra giorno settimana e data/ora
+        formatter.dateFormat = @"EEE MM/dd HH:mm";
+    } else if (timeframeMinutes < 390) {
+        // Intraday (< 1 giorno): giorno settimana + data + ora
+        formatter.dateFormat = @"EEE MM/dd HH:mm";
+    } else if (timeframeMinutes == 390) {
+        // Daily: giorno settimana + data completa + quarter
+        formatter.dateFormat = @"EEE MM/dd/yyyy";
+        NSString *baseDate = [formatter stringFromDate:timestamp];
+        NSString *quarter = [self getQuarterForDate:timestamp];
+        return [NSString stringWithFormat:@"%@ %@", baseDate, quarter];
+    } else if (timeframeMinutes == 1950) {
+        // Weekly: numero settimana + mese + anno + quarter
+        formatter.dateFormat = @"'W'ww MMM yyyy";
+        NSString *baseDate = [formatter stringFromDate:timestamp];
+        NSString *quarter = [self getQuarterForDate:timestamp];
+        return [NSString stringWithFormat:@"%@ %@", baseDate, quarter];
     } else {
-        // Monthly o superiore: mostra mese/anno
+        // Monthly o superiore: mese/anno + quarter
         formatter.dateFormat = @"MMM yyyy";
+        NSString *baseDate = [formatter stringFromDate:timestamp];
+        NSString *quarter = [self getQuarterForDate:timestamp];
+        return [NSString stringWithFormat:@"%@ %@", baseDate, quarter];
     }
     
     return [formatter stringFromDate:timestamp];
+}
+
+- (NSString *)getQuarterForDate:(NSDate *)date {
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSInteger month = [calendar component:NSCalendarUnitMonth fromDate:date];
+    
+    if (month >= 1 && month <= 3) {
+        return @"Q1";
+    } else if (month >= 4 && month <= 6) {
+        return @"Q2";
+    } else if (month >= 7 && month <= 9) {
+        return @"Q3";
+    } else {
+        return @"Q4";
+    }
 }
 
 
@@ -591,110 +596,7 @@
     [message drawAtPoint:drawPoint withAttributes:attributes];
 }
 
-- (void)drawCandlesticks {
-    return;//todo
-    if (self.visibleStartIndex >= self.visibleEndIndex || self.visibleEndIndex > self.chartData.count) {
-        return;
-    }
-    
-    // ✅ VERIFICA COORDINATORI
-    if (!self.sharedXContext || !self.panelYContext) {
-        NSLog(@"⚠️ drawCandlesticks: Missing coordinate contexts - skipping draw");
-        return;
-    }
-    
-    // ✅ Calcola barWidth dal coordinator X
-    CGFloat barWidth = [self.sharedXContext barWidth];
-    barWidth -= [self.sharedXContext barSpacing];
-    
-    // 🚀 OTTIMIZZAZIONE: Se barWidth <= 1px, disegna solo linee semplici
-    if (barWidth <= 1.0) {
-        [self drawSimplifiedCandlesticks];
-        return;
-    }
-    
-    // ✅ DISEGNO COMPLETO per barWidth > 1px
-    [self drawFullCandlesticks:barWidth];
-}
 
-// 🚀 NUOVO: Metodo per disegno semplificato quando width <= 1px
-- (void)drawSimplifiedCandlesticks {
-    NSColor *neutralColor = [NSColor labelColor]; // Colore neutro
-    NSBezierPath *simplePath = [NSBezierPath bezierPath];
-    simplePath.lineWidth = 1.0;
-    
-    [neutralColor setStroke];
-    
-    for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
-        HistoricalBarModel *bar = self.chartData[i];
-        
-        // ✅ COORDINATE X - SOLO sharedXContext
-        CGFloat centerX = [self.sharedXContext screenXForBarIndex:i] + ([self.sharedXContext barWidth] / 2.0);
-        
-        // ✅ COORDINATE Y - SOLO panelYContext
-        CGFloat highY = [self.panelYContext screenYForValue:bar.high];
-        CGFloat lowY = [self.panelYContext screenYForValue:bar.low];
-        
-        // Disegna solo una linea verticale da high a low
-        [simplePath moveToPoint:NSMakePoint(centerX, highY)];
-        [simplePath lineToPoint:NSMakePoint(centerX, lowY)];
-    }
-    
-    [simplePath stroke];
-    NSLog(@"📊 Simplified candlesticks drawn (width <= 1px)");
-}
-
-// ✅ ESISTENTE: Metodo per disegno completo (estratto dal codice originale)
-- (void)drawFullCandlesticks:(CGFloat)barWidth {
-    // ✅ Pre-alloca colori e paths
-    NSColor *greenColor = [NSColor systemGreenColor];
-    NSColor *redColor = [NSColor systemRedColor];
-    NSColor *strokeColor = [NSColor labelColor];
-    CGFloat halfBarWidth = barWidth / 2.0;
-    
-    NSBezierPath *shadowPath = [NSBezierPath bezierPath];
-    NSBezierPath *bodyPath = [NSBezierPath bezierPath];
-    shadowPath.lineWidth = 1.0;
-    
-    for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
-        HistoricalBarModel *bar = self.chartData[i];
-        
-        // ✅ COORDINATE X - SOLO sharedXContext
-        CGFloat x = [self.sharedXContext screenXForBarIndex:i];
-        
-        // ✅ COORDINATE Y - SOLO panelYContext
-        CGFloat openY = [self.panelYContext screenYForValue:bar.open];
-        CGFloat closeY = [self.panelYContext screenYForValue:bar.close];
-        CGFloat highY = [self.panelYContext screenYForValue:bar.high];
-        CGFloat lowY = [self.panelYContext screenYForValue:bar.low];
-        
-        NSColor *bodyColor = (bar.close >= bar.open) ? greenColor : redColor;
-        CGFloat centerX = x + halfBarWidth;
-        
-        // ✅ Draw high-low line (wick) - ORIGINALE
-        [strokeColor setStroke];
-        [shadowPath removeAllPoints];
-        [shadowPath moveToPoint:NSMakePoint(centerX, highY)];
-        [shadowPath lineToPoint:NSMakePoint(centerX, lowY)];
-        [shadowPath stroke];
-        
-        // ✅ TORNA ALLA LOGICA ORIGINALE per body rectangle
-        // Se PanelYContext è corretto: prezzi alti = Y grandi, prezzi bassi = Y piccole
-        CGFloat bodyTop = MAX(openY, closeY);        // ORIGINALE
-        CGFloat bodyBottom = MIN(openY, closeY);     // ORIGINALE
-        CGFloat bodyHeight = bodyTop - bodyBottom;   // ORIGINALE
-        
-        if (bodyHeight < 1) bodyHeight = 1; // Minimum height for doji
-        
-        NSRect bodyRect = NSMakeRect(x, bodyBottom, barWidth, bodyHeight);
-        [bodyColor setFill];
-        [bodyPath removeAllPoints];
-        [bodyPath appendBezierPathWithRect:bodyRect];
-        [bodyPath fill];
-    }
-    
-    NSLog(@"📊 Full candlesticks drawn (width > 1px)");
-}
 
 
 - (double)calculateOptimalTickStep:(double)range targetTicks:(NSInteger)targetTicks {
@@ -817,65 +719,7 @@
     }
 }
 
-- (void)drawVolumeHistogram {
-    return; //todo
-    if (self.visibleStartIndex >= self.visibleEndIndex || self.visibleEndIndex > self.chartData.count) {
-        return;
-    }
-    
-    // ✅ VERIFICA COORDINATORI
-    if (!self.sharedXContext || !self.panelYContext) {
-        NSLog(@"⚠️ drawVolumeHistogram: Missing coordinate contexts - skipping draw");
-        return;
-    }
-    
-    // ✅ Calcola barWidth dal coordinator X
-    CGFloat barWidth = [self.sharedXContext barWidth];
-    barWidth -= [self.sharedXContext barSpacing];
-    
-    // ✅ NUOVO: Prepara i colori per volume
-    NSColor *positiveVolumeColor = [[NSColor systemGreenColor] colorWithAlphaComponent:0.6];
-    NSColor *negativeVolumeColor = [[NSColor systemRedColor] colorWithAlphaComponent:0.6];
-    NSColor *neutralVolumeColor = [[NSColor systemGrayColor] colorWithAlphaComponent:0.6];
-    
-    // ✅ NUOVO: Disegna volume per volume con colore appropriato
-    for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
-        HistoricalBarModel *bar = self.chartData[i];
-        
-        // ✅ COORDINATE X - SOLO sharedXContext
-        CGFloat x = [self.sharedXContext screenXForBarIndex:i];
-        
-        // ✅ COORDINATE Y - USA panelYContext
-        CGFloat baseY = [self.panelYContext screenYForValue:0.0];           // Base sempre a 0
-        CGFloat topY = [self.panelYContext screenYForValue:bar.volume];     // Top al valore del volume
-        
-        // ✅ FIX: Volume rectangle orientamento corretto
-        CGFloat rectTop = MIN(baseY, topY);     // Y più piccolo = più in alto
-        CGFloat rectHeight = ABS(baseY - topY); // Altezza sempre positiva
-        
-        // ✅ NUOVO: Determina colore in base a close vs close precedente
-        NSColor *volumeColor = neutralVolumeColor; // Default neutro
-        
-        if (i > 0 && i > self.visibleStartIndex) {
-            HistoricalBarModel *previousBar = self.chartData[i - 1];
-            
-            if (bar.close > previousBar.close) {
-                volumeColor = positiveVolumeColor; // Verde se close > close precedente
-            } else if (bar.close < previousBar.close) {
-                volumeColor = negativeVolumeColor; // Rosso se close < close precedente
-            }
-            // Se close == previousClose rimane neutro (grigio)
-        }
-        
-        // ✅ DISEGNA il rettangolo del volume con il colore appropriato
-        [volumeColor setFill];
-        NSRect volumeRect = NSMakeRect(x, rectTop, barWidth, rectHeight);
-        NSBezierPath *volumePath = [NSBezierPath bezierPathWithRect:volumeRect];
-        [volumePath fill];
-    }
-    
-    NSLog(@"📊 Volume histogram drawn with colored bars based on price movement");
-}
+
 
 
 - (void)drawChartPortionSelection {

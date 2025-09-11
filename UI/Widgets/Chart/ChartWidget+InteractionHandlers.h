@@ -18,7 +18,8 @@ typedef NS_OPTIONS(NSUInteger, ChartInvalidationFlags) {
     ChartInvalidationObjects        = 1 << 4,  // Oggetti da ricaricare
     ChartInvalidationTemplate       = 1 << 5,  // Template cambiato
     ChartInvalidationUI             = 1 << 6,  // UI controls da aggiornare
-    
+    ChartInvalidationIndicatorToggle = 1 << 7,  // Toggle visibility degli indicatori
+
     // Combinazioni comuni
     ChartInvalidationSymbolChange   = ChartInvalidationData | ChartInvalidationIndicators |
                                      ChartInvalidationViewport | ChartInvalidationAlerts |

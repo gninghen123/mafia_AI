@@ -2803,13 +2803,7 @@ extern NSString *const DataHubDataLoadedNotification;
     
     // Agisce su tutti i renderer
     for (ChartIndicatorRenderer *renderer in self.indicatorRenderers.allValues) {
-        if (shouldShow) {
-            // Mostra layer + riabilita rendering
-            renderer.indicatorsLayer.hidden = NO;
-        } else {
-            // Nascondi layer + blocca rendering (già gestito dai check)
-            renderer.indicatorsLayer.hidden = YES;
-        }
+        [renderer invalidateIndicatorLayers];
     }
     
     // Force redraw dei panel

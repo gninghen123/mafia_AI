@@ -120,10 +120,7 @@
 
 - (void)renderIndicatorTree:(TechnicalIndicatorBase *)rootIndicator {
     
-    if (self.panelView.chartWidget.indicatorsVisibilityToggle.state != NSControlStateValueOn) {
-          NSLog(@"📈 Indicators disabled - skipping rendering");
-          return;
-      }
+   
     self.rootIndicator = rootIndicator;
     
     if (!rootIndicator) {
@@ -149,10 +146,7 @@
 }
 
 - (void)invalidateIndicatorLayers {
-    if (self.panelView.chartWidget.indicatorsVisibilityToggle.state != NSControlStateValueOn) {
-          NSLog(@"📈 Indicators disabled - skipping rendering");
-          return;
-      }
+   
     [self.indicatorsLayer setNeedsDisplay];
 }
 
@@ -189,15 +183,17 @@
     if (!indicator || !indicator.isVisible || !indicator.outputSeries.count) {
         return;
     }
-   /* // ✅ AGGIUNTO: Skip indicators senza output visuale
-      if (![indicator hasVisualOutput]) {
-          // Skip rendering ma continua con i children
-          [self renderChildrenRecursively:indicator];
-          return;
-      }*/
+  
+    
+    BOOL isRoot = (indicator == self.rootIndicator);
+     BOOL toggleIsOn = (self.panelView.chartWidget.indicatorsVisibilityToggle.state == NSControlStateValueOn);
+     
+    if (!isRoot && !toggleIsOn) {
+         return;
+     }
       
     // Draw this indicator based on its type
-    switch (indicator.visualizationType) {//todo
+    switch (indicator.visualizationType) {
             case VisualizationTypeCandlestick:
                 [self drawCandlestickIndicator:indicator];
                 break;
@@ -682,8 +678,11 @@
 
 - (void)setVisibilityRecursively:(NSArray<TechnicalIndicatorBase *> *)indicators visible:(BOOL)visible {
     for (TechnicalIndicatorBase *indicator in indicators) {
-        indicator.isVisible = visible;
-        indicator.needsRendering = YES;
+        if (indicator != self.rootIndicator) {
+            indicator.isVisible = visible;
+            indicator.needsRendering = YES;
+        }
+       
         
         // Recursively apply to children
         if (indicator.childIndicators.count > 0) {

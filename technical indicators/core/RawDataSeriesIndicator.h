@@ -22,14 +22,7 @@ typedef NS_ENUM(NSInteger, RawDataType) {
     RawDataTypeAlternative      // Social sentiment, news, etc.
 };
 
-typedef NS_ENUM(NSInteger, VisualizationType) {
-    VisualizationTypeCandlestick,   // OHLC candlesticks
-    VisualizationTypeLine,          // Simple line
-    VisualizationTypeArea,          // Area fill
-    VisualizationTypeHistogram,     // Histogram bars (volume)
-    VisualizationTypeOHLC,          // OHLC bars
-    VisualizationTypeStep           // Step line
-};
+
 
 // =======================================
 // BASE CLASS
@@ -71,11 +64,6 @@ typedef NS_ENUM(NSInteger, VisualizationType) {
 - (BOOL)hasVisualOutput;
 
 #pragma mark - Utility Methods
-
-/// Convert VisualizationType to IndicatorSeriesType for rendering
-/// @param vizType Visualization type from this indicator
-/// @return Series type for the rendering system
-+ (IndicatorSeriesType)seriesTypeFromVisualizationType:(VisualizationType)vizType;
 
 /// Get display name for visualization type
 /// @param vizType Visualization type

@@ -7,6 +7,7 @@
 
 #import "BaseWidget.h"
 #import "TickDataModel.h"
+#import "TickChartView.h"  // 🆕 ADD
 
 @interface TickChartWidget : BaseWidget
 
@@ -16,6 +17,10 @@
 @property (nonatomic) NSInteger tickLimit;              // Number of ticks to display
 @property (nonatomic) NSInteger volumeThreshold;        // Threshold for significant trades
 @property (nonatomic) BOOL realTimeUpdates;            // Enable/disable real-time streaming
+
+// 🆕 NEW: Enhanced Time and Market Controls
+@property (nonatomic, strong) NSString *fromTime;              // Start time for tick data (e.g., "9:30")
+@property (nonatomic, strong) NSString *marketSession;         // "regular", "pre", "post", "full"
 
 #pragma mark - Data
 
@@ -38,5 +43,10 @@
 
 // Export data
 - (NSArray *)exportTickData;
+
+// 🆕 NEW: Enhanced Configuration Methods
+- (void)setFromTime:(NSString *)fromTime;
+- (void)setMarketSession:(NSString *)session;
+- (void)setVolumeThreshold:(NSInteger)threshold;
 
 @end

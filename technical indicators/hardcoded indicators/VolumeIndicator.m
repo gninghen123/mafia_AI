@@ -233,7 +233,7 @@
 }
 
 - (BOOL)hasVisualOutput {
-    return NO; // ChartPanelView disegna già l'histogram del volume
+    return YES; // ChartPanelView disegna già l'histogram del volume
 }
 
 @end

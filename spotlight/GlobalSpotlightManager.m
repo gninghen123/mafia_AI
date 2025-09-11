@@ -33,16 +33,26 @@
 #pragma mark - Keyboard Monitoring
 
 - (void)setupGlobalKeyboardMonitoring {
-    // Remove existing monitor if any
     [self removeKeyboardMonitoring];
     
-    // Setup global key monitor for alphanumeric keys
-    self.globalKeyboardMonitor = [NSEvent addGlobalMonitorForEventsMatchingMask:NSEventMaskKeyDown
-                                                                        handler:^(NSEvent *event) {
+    NSLog(@"🔧 Setting up LOCAL keyboard monitor...");
+    
+    // USA addLocalMonitorForEventsMatchingMask invece di addGlobalMonitor
+    self.globalKeyboardMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown
+                                                                      handler:^NSEvent *(NSEvent *event) {
+        NSLog(@"🎯 LOCAL monitor: Key pressed! Character: %@", event.characters);
+        
         [self handleGlobalKeyEvent:event];
+        
+        // IMPORTANTE: Ritorna l'evento per permettere al sistema di gestirlo normalmente
+        return event;
     }];
     
-    NSLog(@"⌨️ GlobalSpotlightManager: Global keyboard monitoring enabled");
+    if (self.globalKeyboardMonitor) {
+        NSLog(@"✅ Local keyboard monitor created successfully");
+    } else {
+        NSLog(@"❌ Failed to create local keyboard monitor!");
+    }
 }
 
 - (void)removeKeyboardMonitoring {
@@ -83,12 +93,7 @@
 
 - (void)showSpotlightWithCharacter:(NSString *)character {
     if (self.isSpotlightVisible) {
-        // If already visible, just append to search field
-        if (self.searchWindow.searchField) {
-            NSString *currentText = self.searchWindow.searchField.stringValue;
-            self.searchWindow.searchField.stringValue = [currentText stringByAppendingString:character];
-            [self.searchWindow performSymbolSearch:self.searchWindow.searchField.stringValue];
-        }
+        // Se già visibile, non fare nulla - lascia che il search field gestisca
         return;
     }
     

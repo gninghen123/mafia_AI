@@ -105,6 +105,11 @@ NS_ASSUME_NONNULL_BEGIN
 /// @param indicator Bands indicator to draw
 - (void)drawBandsIndicator:(TechnicalIndicatorBase *)indicator;
 
+/// Draw candlestick indicator (Security data)
+/// @param indicator Security indicator to draw
+- (void)drawCandlestickIndicator:(TechnicalIndicatorBase *)indicator;
+
+
 #pragma mark - BezierPath Creation Helpers
 /// Create line BezierPath from indicator data points
 /// @param dataPoints Array of IndicatorDataModel points

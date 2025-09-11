@@ -16,11 +16,13 @@ typedef NS_ENUM(NSInteger, IndicatorType) {
     IndicatorTypePineScript      // Custom PineScript indicators
 };
 
-typedef NS_ENUM(NSInteger, IndicatorSeriesType) {
-    IndicatorSeriesTypeLine,     // Line plot (most indicators)
-    IndicatorSeriesTypeHistogram, // Histogram/bars
-    IndicatorSeriesTypeArea,     // Area fill
-    IndicatorSeriesTypeSignal    // Signal arrows/markers
+typedef NS_ENUM(NSInteger, VisualizationType) {
+    VisualizationTypeCandlestick,   // OHLC candlesticks
+    VisualizationTypeLine,          // Simple line
+    VisualizationTypeArea,          // Area fill
+    VisualizationTypeHistogram,     // Histogram bars (volume)
+    VisualizationTypeOHLC,          // OHLC bars
+    VisualizationTypeStep           // Step line
 };
 
 NS_ASSUME_NONNULL_BEGIN
@@ -98,7 +100,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSDate *timestamp;          // Bar timestamp
 @property (nonatomic, assign) double value;               // Indicator value
 @property (nonatomic, strong) NSString *seriesName;       // "RSI", "BB_Upper", etc.
-@property (nonatomic, assign) IndicatorSeriesType seriesType;  // Line, histogram, etc.
+@property (nonatomic, assign) VisualizationType visualizationType;  // Line, histogram, etc.
 @property (nonatomic, strong, nullable) NSColor *color;   // Display color
 @property (nonatomic, assign) double anchorValue;         // For relative positioning
 @property (nonatomic, assign) BOOL isSignal;              // For buy/sell signals
@@ -107,12 +109,12 @@ NS_ASSUME_NONNULL_BEGIN
 + (instancetype)dataWithTimestamp:(NSDate *)timestamp
                             value:(double)value
                        seriesName:(NSString *)seriesName
-                       seriesType:(IndicatorSeriesType)type;
+                       visualizationType:(VisualizationType)type;
 
 + (instancetype)dataWithTimestamp:(NSDate *)timestamp
                             value:(double)value
                        seriesName:(NSString *)seriesName
-                       seriesType:(IndicatorSeriesType)type
+                       visualizationType:(VisualizationType)type
                             color:(NSColor *)color;
 
 @end

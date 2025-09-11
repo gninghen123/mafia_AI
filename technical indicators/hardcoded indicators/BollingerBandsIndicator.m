@@ -110,7 +110,7 @@
             IndicatorDataModel *middlePoint = [IndicatorDataModel dataWithTimestamp:bar.date
                                                                                value:sma
                                                                           seriesName:@"BB_Middle"
-                                                                          seriesType:IndicatorSeriesTypeLine
+                                                                  visualizationType:VisualizationTypeLine
                                                                                color:[self middleBandColor]];
             middlePoint.anchorValue = sma;
             [outputData addObject:middlePoint];
@@ -119,7 +119,7 @@
             IndicatorDataModel *upperPoint = [IndicatorDataModel dataWithTimestamp:bar.date
                                                                               value:upperBand
                                                                          seriesName:@"BB_Upper"
-                                                                         seriesType:IndicatorSeriesTypeLine
+                                                                 visualizationType:VisualizationTypeLine
                                                                               color:[self upperBandColor]];
             upperPoint.anchorValue = sma;
             [outputData addObject:upperPoint];
@@ -128,7 +128,7 @@
             IndicatorDataModel *lowerPoint = [IndicatorDataModel dataWithTimestamp:bar.date
                                                                               value:lowerBand
                                                                          seriesName:@"BB_Lower"
-                                                                         seriesType:IndicatorSeriesTypeLine
+                                                                 visualizationType:VisualizationTypeLine
                                                                               color:[self lowerBandColor]];
             lowerPoint.anchorValue = sma;
             [outputData addObject:lowerPoint];

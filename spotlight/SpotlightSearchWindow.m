@@ -72,8 +72,17 @@ static const CGFloat kMargin = 10.0;
     
     // Focus search field
     [self makeFirstResponder:self.searchField];
-    
-    // Update category button states
+    dispatch_async(dispatch_get_main_queue(), ^{
+           [self.searchField becomeFirstResponder];
+           
+           // Se c'è testo iniziale, posiziona il cursore alla fine
+           if (initialText.length > 0) {
+               NSText *editor = [self.searchField currentEditor];
+               if (editor) {
+                   [editor setSelectedRange:NSMakeRange(initialText.length, 0)];
+               }
+           }
+       });    // Update category button states
     [self.dataSourceButton setActiveState:YES];
     [self.widgetTargetButton setActiveState:NO];
     

@@ -23,10 +23,11 @@
 #import "ibkrconfiguration.h"
 #import "yahooDataSource.h"
 #import "StorageSystemInitializer.h"  // ← AGGIUNGI QUESTA RIGA
+#import "AppDelegate+SpotlightIntegration.h"  // ← AGGIUNGI QUESTA LINEA
+
 
 
 @interface AppDelegate ()
-@property (nonatomic, strong) MainWindowController *mainWindowController;
 @end
 
 @implementation AppDelegate
@@ -67,6 +68,8 @@
         [self autoConnectToIBKRWithPreferences];
 
     });
+    [self initializeSpotlightSearch];
+
     [self setupClaudeDataSource];
     if (self.window) {
         self.window.restorationClass = [self class];

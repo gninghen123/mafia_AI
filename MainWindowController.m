@@ -14,7 +14,7 @@
 @property (nonatomic, strong) NSView *leftPanelView;
 @property (nonatomic, strong) NSView *centerPanelView;
 @property (nonatomic, strong) NSView *rightPanelView;
-@property (nonatomic, strong) LayoutManager *layoutManager;
+
 @end
 
 @implementation MainWindowController

@@ -592,6 +592,7 @@
 }
 
 - (void)drawCandlesticks {
+    return;//todo
     if (self.visibleStartIndex >= self.visibleEndIndex || self.visibleEndIndex > self.chartData.count) {
         return;
     }
@@ -606,6 +607,45 @@
     CGFloat barWidth = [self.sharedXContext barWidth];
     barWidth -= [self.sharedXContext barSpacing];
     
+    // 🚀 OTTIMIZZAZIONE: Se barWidth <= 1px, disegna solo linee semplici
+    if (barWidth <= 1.0) {
+        [self drawSimplifiedCandlesticks];
+        return;
+    }
+    
+    // ✅ DISEGNO COMPLETO per barWidth > 1px
+    [self drawFullCandlesticks:barWidth];
+}
+
+// 🚀 NUOVO: Metodo per disegno semplificato quando width <= 1px
+- (void)drawSimplifiedCandlesticks {
+    NSColor *neutralColor = [NSColor labelColor]; // Colore neutro
+    NSBezierPath *simplePath = [NSBezierPath bezierPath];
+    simplePath.lineWidth = 1.0;
+    
+    [neutralColor setStroke];
+    
+    for (NSInteger i = self.visibleStartIndex; i <= self.visibleEndIndex && i < self.chartData.count; i++) {
+        HistoricalBarModel *bar = self.chartData[i];
+        
+        // ✅ COORDINATE X - SOLO sharedXContext
+        CGFloat centerX = [self.sharedXContext screenXForBarIndex:i] + ([self.sharedXContext barWidth] / 2.0);
+        
+        // ✅ COORDINATE Y - SOLO panelYContext
+        CGFloat highY = [self.panelYContext screenYForValue:bar.high];
+        CGFloat lowY = [self.panelYContext screenYForValue:bar.low];
+        
+        // Disegna solo una linea verticale da high a low
+        [simplePath moveToPoint:NSMakePoint(centerX, highY)];
+        [simplePath lineToPoint:NSMakePoint(centerX, lowY)];
+    }
+    
+    [simplePath stroke];
+    NSLog(@"📊 Simplified candlesticks drawn (width <= 1px)");
+}
+
+// ✅ ESISTENTE: Metodo per disegno completo (estratto dal codice originale)
+- (void)drawFullCandlesticks:(CGFloat)barWidth {
     // ✅ Pre-alloca colori e paths
     NSColor *greenColor = [NSColor systemGreenColor];
     NSColor *redColor = [NSColor systemRedColor];
@@ -653,7 +693,7 @@
         [bodyPath fill];
     }
     
-    NSLog(@"📊 Candlesticks drawn with original logic");
+    NSLog(@"📊 Full candlesticks drawn (width > 1px)");
 }
 
 
@@ -778,6 +818,7 @@
 }
 
 - (void)drawVolumeHistogram {
+    return; //todo
     if (self.visibleStartIndex >= self.visibleEndIndex || self.visibleEndIndex > self.chartData.count) {
         return;
     }

@@ -208,7 +208,7 @@
 }
 
 - (BOOL)hasVisualOutput {
-    return NO; // ChartPanelView disegna già i candlestick
+    return YES; // ChartPanelView disegna già i candlestick
 }
 
 @end

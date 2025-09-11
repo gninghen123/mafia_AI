@@ -100,7 +100,7 @@
         IndicatorDataModel *dataPoint = [IndicatorDataModel dataWithTimestamp:bar.date
                                                                          value:smaValue
                                                                     seriesName:seriesName
-                                                                    seriesType:IndicatorSeriesTypeLine
+                                                            visualizationType:VisualizationTypeLine
                                                                          color:[self smaColor]];
         
         dataPoint.anchorValue = smaValue;

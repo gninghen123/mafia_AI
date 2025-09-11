@@ -95,7 +95,7 @@
         IndicatorDataModel *dataPoint = [IndicatorDataModel dataWithTimestamp:bar.date
                                                                        value:value
                                                                   seriesName:self.shortName
-                                                                  seriesType:[[self class] seriesTypeFromVisualizationType:self.visualizationType]
+                                                            visualizationType:self.visualizationType
                                                                        color:self.seriesColor];
         [results addObject:dataPoint];
     }
@@ -180,21 +180,7 @@
 
 #pragma mark - Utility Methods
 
-+ (IndicatorSeriesType)seriesTypeFromVisualizationType:(VisualizationType)vizType {
-    switch (vizType) {
-        case VisualizationTypeCandlestick:
-        case VisualizationTypeOHLC:
-        case VisualizationTypeLine:
-        case VisualizationTypeStep:
-            return IndicatorSeriesTypeLine;
-        case VisualizationTypeHistogram:
-            return IndicatorSeriesTypeHistogram;
-        case VisualizationTypeArea:
-            return IndicatorSeriesTypeArea;
-        default:
-            return IndicatorSeriesTypeLine;
-    }
-}
+
 
 + (NSString *)displayNameForVisualizationType:(VisualizationType)vizType {
     switch (vizType) {

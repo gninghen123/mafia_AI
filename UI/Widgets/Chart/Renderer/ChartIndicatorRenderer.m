@@ -11,6 +11,7 @@
 #import "PanelYCoordinateContext.h"
 #import "RuntimeModels.h"
 #import "TechnicalIndicatorBase+Hierarchy.h"
+#import "rawdataseriesindicator.h"
 
 @implementation ChartIndicatorRenderer
 
@@ -188,36 +189,41 @@
     if (!indicator || !indicator.isVisible || !indicator.outputSeries.count) {
         return;
     }
-    // ✅ AGGIUNTO: Skip indicators senza output visuale
+   /* // ✅ AGGIUNTO: Skip indicators senza output visuale
       if (![indicator hasVisualOutput]) {
           // Skip rendering ma continua con i children
           [self renderChildrenRecursively:indicator];
           return;
-      }
+      }*/
       
     // Draw this indicator based on its type
-    switch (indicator.type) {
-        case IndicatorSeriesTypeLine:
-            [self drawLineIndicator:indicator];
-            break;
-            
-        case IndicatorSeriesTypeHistogram:
-            [self drawHistogramIndicator:indicator];
-            break;
-            
-        case IndicatorSeriesTypeArea:
-            [self drawAreaIndicator:indicator];
-            break;
-            
-        case IndicatorSeriesTypeSignal:
-            [self drawSignalIndicator:indicator];
-            break;
-            
-        default:
-            // Default to line rendering
-            [self drawLineIndicator:indicator];
-            break;
-    }
+    switch (indicator.visualizationType) {
+            case VisualizationTypeCandlestick:
+                [self drawCandlestickIndicator:indicator];
+                break;
+                
+            case VisualizationTypeHistogram:
+                [self drawHistogramIndicator:indicator];
+                break;
+                
+            case VisualizationTypeLine:
+                [self drawLineIndicator:indicator];
+                break;
+                
+            case VisualizationTypeArea:
+                [self drawAreaIndicator:indicator];
+                break;
+                
+            case VisualizationTypeOHLC:
+                // TODO: Implementare OHLC bars se necessario
+                [self drawLineIndicator:indicator]; // Fallback temporaneo
+                break;
+                
+            default:
+                // Fallback per tipi non gestiti
+                [self drawLineIndicator:indicator];
+                break;
+        }
     
     // Recursively draw children
     [self renderChildrenRecursively:indicator];
@@ -442,6 +448,132 @@
     }
     
     return path.elementCount > 0 ? path : nil;
+}
+#pragma mark - Specialized Drawing Methods
+
+- (void)drawCandlestickIndicator:(TechnicalIndicatorBase *)indicator {
+    // Per i candlestick, abbiamo bisogno dei dati OHLC originali dal ChartPanelView
+    NSArray<HistoricalBarModel *> *chartData = self.panelView.chartData;
+    if (!chartData.count) {
+        NSLog(@"⚠️ No chart data available for candlestick rendering");
+        return;
+    }
+    
+    NSInteger startIndex = self.panelView.visibleStartIndex;
+    NSInteger endIndex = self.panelView.visibleEndIndex;
+    
+    // Verifica range valido
+    if (startIndex == NSNotFound || endIndex == NSNotFound || startIndex > endIndex) {
+        NSLog(@"⚠️ Invalid visible range for candlestick rendering");
+        return;
+    }
+    
+    // Verifica che i coordinate contexts siano disponibili
+    if (!self.sharedXContext || !self.panelYContext) {
+        NSLog(@"⚠️ Missing coordinate contexts for candlestick rendering");
+        return;
+    }
+    
+    // ✅ Calcola barWidth per ottimizzazione
+    CGFloat barWidth = [self.sharedXContext barWidth];
+    barWidth -= [self.sharedXContext barSpacing];
+    
+    // 🚀 OTTIMIZZAZIONE: Se barWidth <= 1px, disegna solo linee semplici
+    if (barWidth <= 1.0) {
+        [self drawSimplifiedCandlesticks:chartData startIndex:startIndex endIndex:endIndex];
+        return;
+    }
+    
+    // ✅ DISEGNO COMPLETO per barWidth > 1px
+    [self drawFullCandlesticks:chartData startIndex:startIndex endIndex:endIndex barWidth:barWidth];
+    
+    NSLog(@"🕯️ Drew candlestick indicator with %ld bars (width: %.1fpx)",
+          (long)(endIndex - startIndex + 1), barWidth);
+}
+
+// 🚀 METODO PRIVATO: Disegno semplificato quando width <= 1px
+- (void)drawSimplifiedCandlesticks:(NSArray<HistoricalBarModel *> *)chartData
+                        startIndex:(NSInteger)startIndex
+                          endIndex:(NSInteger)endIndex {
+    
+    NSColor *neutralColor = [NSColor labelColor]; // Colore neutro
+    NSBezierPath *simplePath = [NSBezierPath bezierPath];
+    simplePath.lineWidth = 1.0;
+    
+    [neutralColor setStroke];
+    
+    for (NSInteger i = startIndex; i <= endIndex && i < chartData.count; i++) {
+        HistoricalBarModel *bar = chartData[i];
+        
+        // ✅ COORDINATE X - dal sharedXContext
+        CGFloat centerX = [self.sharedXContext screenXForBarIndex:i] + ([self.sharedXContext barWidth] / 2.0);
+        
+        // ✅ COORDINATE Y - dal panelYContext
+        CGFloat highY = [self.panelYContext screenYForValue:bar.high];
+        CGFloat lowY = [self.panelYContext screenYForValue:bar.low];
+        
+        // Disegna solo una linea verticale da high a low
+        [simplePath moveToPoint:NSMakePoint(centerX, highY)];
+        [simplePath lineToPoint:NSMakePoint(centerX, lowY)];
+    }
+    
+    [simplePath stroke];
+    NSLog(@"📊 Simplified candlesticks drawn (%ld bars, width <= 1px)", (long)(endIndex - startIndex + 1));
+}
+
+// ✅ METODO PRIVATO: Disegno completo per barWidth > 1px
+- (void)drawFullCandlesticks:(NSArray<HistoricalBarModel *> *)chartData
+                  startIndex:(NSInteger)startIndex
+                    endIndex:(NSInteger)endIndex
+                    barWidth:(CGFloat)barWidth {
+    
+    // ✅ Pre-alloca colori e paths
+    NSColor *greenColor = [NSColor systemGreenColor];
+    NSColor *redColor = [NSColor systemRedColor];
+    NSColor *strokeColor = [NSColor labelColor];
+    CGFloat halfBarWidth = barWidth / 2.0;
+    
+    NSBezierPath *shadowPath = [NSBezierPath bezierPath];
+    NSBezierPath *bodyPath = [NSBezierPath bezierPath];
+    shadowPath.lineWidth = 1.0;
+    
+    for (NSInteger i = startIndex; i <= endIndex && i < chartData.count; i++) {
+        HistoricalBarModel *bar = chartData[i];
+        
+        // ✅ COORDINATE X - dal sharedXContext
+        CGFloat x = [self.sharedXContext screenXForBarIndex:i];
+        
+        // ✅ COORDINATE Y - dal panelYContext
+        CGFloat openY = [self.panelYContext screenYForValue:bar.open];
+        CGFloat closeY = [self.panelYContext screenYForValue:bar.close];
+        CGFloat highY = [self.panelYContext screenYForValue:bar.high];
+        CGFloat lowY = [self.panelYContext screenYForValue:bar.low];
+        
+        NSColor *bodyColor = (bar.close >= bar.open) ? greenColor : redColor;
+        CGFloat centerX = x + halfBarWidth;
+        
+        // ✅ Draw high-low line (wick)
+        [strokeColor setStroke];
+        [shadowPath removeAllPoints];
+        [shadowPath moveToPoint:NSMakePoint(centerX, highY)];
+        [shadowPath lineToPoint:NSMakePoint(centerX, lowY)];
+        [shadowPath stroke];
+        
+        // ✅ Draw body rectangle
+        CGFloat bodyTop = MAX(openY, closeY);
+        CGFloat bodyBottom = MIN(openY, closeY);
+        CGFloat bodyHeight = bodyTop - bodyBottom;
+        
+        if (bodyHeight < 1) bodyHeight = 1; // Minimum height for doji
+        
+        NSRect bodyRect = NSMakeRect(x, bodyBottom, barWidth, bodyHeight);
+        [bodyColor setFill];
+        [bodyPath removeAllPoints];
+        [bodyPath appendBezierPathWithRect:bodyRect];
+        [bodyPath fill];
+    }
+    
+    NSLog(@"📊 Full candlesticks drawn (%ld bars, width > 1px)", (long)(endIndex - startIndex + 1));
 }
 
 #pragma mark - Coordinate Conversion

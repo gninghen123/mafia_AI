@@ -1,4 +1,3 @@
-
 // AppDelegate+SpotlightIntegration.m
 //  Implementation of Spotlight integration
 //
@@ -8,6 +7,8 @@
 #import "MainWindowController.h"
 #import "ChartWidget.h"
 #import "PanelController.h"
+#import "LayoutManager.h"
+#import "FloatingWidgetWindow.h"
 #import <objc/runtime.h>
 
 // Associated object key for spotlight manager
@@ -56,6 +57,8 @@ static char const * const SpotlightManagerKey = "SpotlightManagerKey";
         // Use the existing processSmartSymbolInput method
         [chartWidget processSmartSymbolInput:symbol];
         
+        // Focus main window
+        [self.mainWindowController.window makeKeyAndOrderFront:nil];
         
         NSLog(@"✅ AppDelegate: ChartWidget configured with symbol: %@", symbol);
     } else {
@@ -78,8 +81,8 @@ static char const * const SpotlightManagerKey = "SpotlightManagerKey";
 - (ChartWidget *)findChartWidgetInCenterPanel {
     if (!self.mainWindowController) return nil;
     
-    // Get center panel controller
-    PanelController *centerPanel = [self.mainWindowController.layoutManager getPanelController:PanelTypeCenter];
+    // Get center panel controller directly from MainWindowController
+    PanelController *centerPanel = self.mainWindowController.centerPanelController;
     if (!centerPanel) return nil;
     
     // Search through widgets in center panel
@@ -105,8 +108,8 @@ static char const * const SpotlightManagerKey = "SpotlightManagerKey";
         return nil;
     }
     
-    // Get center panel controller
-    PanelController *centerPanel = [self.mainWindowController.layoutManager getPanelController:PanelTypeCenter];
+    // Get center panel controller directly from MainWindowController
+    PanelController *centerPanel = self.mainWindowController.centerPanelController;
     if (!centerPanel) {
         NSLog(@"❌ AppDelegate: No center panel controller available");
         return nil;
@@ -133,8 +136,20 @@ static char const * const SpotlightManagerKey = "SpotlightManagerKey";
         return;
     }
     
-    // Get target panel controller
-    PanelController *panelController = [self.mainWindowController.layoutManager getPanelController:panelType];
+    // Get target panel controller based on panel type
+    PanelController *panelController = nil;
+    switch (panelType) {
+        case PanelTypeLeft:
+            panelController = self.mainWindowController.leftPanelController;
+            break;
+        case PanelTypeCenter:
+            panelController = self.mainWindowController.centerPanelController;
+            break;
+        case PanelTypeRight:
+            panelController = self.mainWindowController.rightPanelController;
+            break;
+    }
+    
     if (!panelController) {
         NSLog(@"⚠️ AppDelegate: Panel not available, opening as floating window instead");
         // Fallback to floating window

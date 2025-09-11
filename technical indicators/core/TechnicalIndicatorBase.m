@@ -106,24 +106,24 @@
 + (instancetype)dataWithTimestamp:(NSDate *)timestamp
                             value:(double)value
                        seriesName:(NSString *)seriesName
-                       seriesType:(IndicatorSeriesType)type {
+                visualizationType:(VisualizationType)type {
     return [self dataWithTimestamp:timestamp
                              value:value
                         seriesName:seriesName
-                        seriesType:type
+                 visualizationType:type
                              color:nil];
 }
 
 + (instancetype)dataWithTimestamp:(NSDate *)timestamp
                             value:(double)value
                        seriesName:(NSString *)seriesName
-                       seriesType:(IndicatorSeriesType)type
+                visualizationType:(VisualizationType)type
                             color:(NSColor *)color {
     IndicatorDataModel *model = [[self alloc] init];
     model.timestamp = timestamp;
     model.value = value;
     model.seriesName = seriesName;
-    model.seriesType = type;
+    model.visualizationType = type;
     model.color = color ?: [NSColor systemBlueColor];  // Default color
     model.anchorValue = 0.0;
     model.isSignal = NO;

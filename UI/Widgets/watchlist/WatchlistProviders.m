@@ -112,6 +112,7 @@
     
     NSString *timeframeName;
     switch (self.timeframe) {
+        // ✅ Standard timeframes for Top Gainers/Losers
         case MarketTimeframePreMarket:
             timeframeName = @"Pre-Market";
             break;
@@ -136,6 +137,26 @@
         case MarketTimeframeFiftyTwoWeeks:
             timeframeName = @"52 Weeks";
             break;
+            
+        // ✅ NEW: Earnings-specific timeframes
+        case MarketTimeframeEarningsTodayBMO:
+            timeframeName = @"Today BMO";
+            break;
+        case MarketTimeframeEarningsTodayAMC:
+            timeframeName = @"Today AMC";
+            break;
+        case MarketTimeframeEarningsLast5Days:
+            timeframeName = @"Last 5 Days";
+            break;
+        case MarketTimeframeEarningsLast10Days:
+            timeframeName = @"Last 10 Days";
+            break;
+            
+        // ✅ NEW: No timeframe for ETF/Industry
+        case MarketTimeframeNone:
+            // For ETF and Industry, don't show timeframe
+            return typeName;
+            
         default:
             timeframeName = @"1 Day";
             break;
@@ -218,8 +239,15 @@
     }
 }
 
+// ✅ AGGIORNAMENTO del metodo per convertire timeframe in stringa per DataHub
 - (NSString *)timeframeStringForDataHub {
     switch (self.timeframe) {
+        case MarketTimeframePreMarket:
+            return @"premarket";
+        case MarketTimeframeAfterHours:
+            return @"afterhours";
+        case MarketTimeframeFiveMinutes:
+            return @"5min";
         case MarketTimeframeOneDay:
             return @"1d";
         case MarketTimeframeFiveDays:
@@ -230,12 +258,21 @@
             return @"3m";
         case MarketTimeframeFiftyTwoWeeks:
             return @"52w";
-        case MarketTimeframePreMarket:
-            return @"preMarket";
-        case MarketTimeframeAfterHours:
-            return @"afterMarket";
-        case MarketTimeframeFiveMinutes:
-            return @"5min";
+            
+        // ✅ NEW: Earnings timeframes
+        case MarketTimeframeEarningsTodayBMO:
+            return @"today_bmo";
+        case MarketTimeframeEarningsTodayAMC:
+            return @"today_amc";
+        case MarketTimeframeEarningsLast5Days:
+            return @"last_5_days";
+        case MarketTimeframeEarningsLast10Days:
+            return @"last_10_days";
+            
+        // ✅ NEW: No timeframe
+        case MarketTimeframeNone:
+            return @""; // Empty string for ETF/Industry
+            
         default:
             return @"1d";
     }

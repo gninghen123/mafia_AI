@@ -8,6 +8,8 @@
 #import "HierarchicalWatchlistSelector.h"
 #import "WatchlistProviderManager.h"
 #import "TradingAppTypes.h"
+#import "WatchlistProviders.h"  // ✅ FIX: Aggiunto import per MarketListProvider
+
 
 @interface HierarchicalWatchlistSelector () <NSMenuDelegate>
 // Track which categories have been loaded
@@ -177,10 +179,6 @@
     // ✅ Ensure providers are loaded
     [self.providerManager ensureProvidersLoadedForCategory:categoryName];
     
-    // ✅ Get providers
-    NSArray<id<WatchlistProvider>> *providers = [self.providerManager providersForCategory:categoryName];
-    NSLog(@"📊 Category %@ returned %lu providers", categoryName, (unsigned long)providers.count);
-    
     // ✅ Find the submenu to populate
     NSMenuItem *categoryItem = [self findCategoryItem:categoryName];
     if (!categoryItem || !categoryItem.submenu) {
@@ -190,37 +188,127 @@
     
     NSMenu *submenu = categoryItem.submenu;
     
-    // ✅ Clear placeholder and populate with real providers
+    // ✅ Clear placeholder
     [submenu removeAllItems];
     
-    if (providers.count == 0) {
-        // No providers - show empty message
-        NSMenuItem *emptyItem = [[NSMenuItem alloc] initWithTitle:@"(No items)" action:nil keyEquivalent:@""];
-        emptyItem.enabled = NO;
-        [submenu addItem:emptyItem];
+    // ✅ SPECIAL CASE: Market Lists gets hierarchical structure
+    if ([categoryName isEqualToString:@"Market Lists"]) {
+        [self buildHierarchicalMarketListSubmenu:submenu];
     } else {
-        // Add all providers
-        for (id<WatchlistProvider> provider in providers) {
-            NSMenuItem *providerItem = [self createMenuItemForProvider:provider];
-            [submenu addItem:providerItem];
+        // ✅ STANDARD CASE: Other categories get flat provider list
+        NSArray<id<WatchlistProvider>> *providers = [self.providerManager providersForCategory:categoryName];
+        NSLog(@"📊 Category %@ returned %lu providers", categoryName, (unsigned long)providers.count);
+        
+        if (providers.count == 0) {
+            // No providers - show empty message
+            NSMenuItem *emptyItem = [[NSMenuItem alloc] initWithTitle:@"(No items)" action:nil keyEquivalent:@""];
+            emptyItem.enabled = NO;
+            [submenu addItem:emptyItem];
+        } else {
+            // Add all providers
+            for (id<WatchlistProvider> provider in providers) {
+                NSMenuItem *providerItem = [self createMenuItemForProvider:provider];
+                [submenu addItem:providerItem];
+            }
         }
     }
     
     // ✅ Mark as loaded
     [self.loadedCategories addObject:categoryName];
     
-    NSLog(@"✅ Loaded submenu for '%@' with %lu providers", categoryName, (unsigned long)providers.count);
+    NSLog(@"✅ Loaded submenu for '%@'", categoryName);
 }
 
-- (NSMenuItem *)findCategoryItem:(NSString *)categoryName {
-    for (NSMenuItem *item in [self menu].itemArray) {
-        if ([item.representedObject isEqualToString:categoryName]) {
-            return item;
-        }
+- (void)buildHierarchicalMarketListSubmenu:(NSMenu *)submenu {
+    NSLog(@"🏗️ Building hierarchical Market Lists submenu");
+    
+    // ✅ Define market list structure according to requirements:
+    // * topgainers -> premarket, afterhours, 5min, 1day, 5day, 1month, 3month, 52weeks
+    // * toplosers -> premarket, afterhours, 5min, 1day, 5day, 1month, 3month, 52weeks
+    // * earnings -> today BMO, today AMC, last 5 days, last 10 days
+    // * etf -> no submenu
+    // * industry -> no submenu
+    
+    // ✅ 1. TOP GAINERS with submenu
+    NSMenuItem *gainersItem = [[NSMenuItem alloc] initWithTitle:@"🚀 Top Gainers" action:nil keyEquivalent:@""];
+    NSMenu *gainersSubmenu = [[NSMenu alloc] initWithTitle:@"Top Gainers"];
+    [self addTimeframeItemsToSubmenu:gainersSubmenu forMarketType:MarketListTypeTopGainers withGainerLoserTimeframes:YES];
+    gainersItem.submenu = gainersSubmenu;
+    [submenu addItem:gainersItem];
+    
+    // ✅ 2. TOP LOSERS with submenu
+    NSMenuItem *losersItem = [[NSMenuItem alloc] initWithTitle:@"📉 Top Losers" action:nil keyEquivalent:@""];
+    NSMenu *losersSubmenu = [[NSMenu alloc] initWithTitle:@"Top Losers"];
+    [self addTimeframeItemsToSubmenu:losersSubmenu forMarketType:MarketListTypeTopLosers withGainerLoserTimeframes:YES];
+    losersItem.submenu = losersSubmenu;
+    [submenu addItem:losersItem];
+    
+    // ✅ 3. EARNINGS with submenu
+    NSMenuItem *earningsItem = [[NSMenuItem alloc] initWithTitle:@"📊 Earnings" action:nil keyEquivalent:@""];
+    NSMenu *earningsSubmenu = [[NSMenu alloc] initWithTitle:@"Earnings"];
+    [self addTimeframeItemsToSubmenu:earningsSubmenu forMarketType:MarketListTypeEarnings withGainerLoserTimeframes:NO];
+    earningsItem.submenu = earningsSubmenu;
+    [submenu addItem:earningsItem];
+    
+    // ✅ 4. ETF (no submenu)
+    NSMenuItem *etfItem = [self createDirectMarketListItem:MarketListTypeETF];
+    [submenu addItem:etfItem];
+    
+    // ✅ 5. INDUSTRY (no submenu)
+    NSMenuItem *industryItem = [self createDirectMarketListItem:MarketListTypeIndustry];
+    [submenu addItem:industryItem];
+    
+    NSLog(@"✅ Hierarchical Market Lists submenu built with 5 main categories");
+}
+
+- (void)addTimeframeItemsToSubmenu:(NSMenu *)submenu forMarketType:(MarketListType)marketType withGainerLoserTimeframes:(BOOL)useGainerLoserTimeframes {
+    
+    NSArray<NSNumber *> *timeframes;
+    
+    if (useGainerLoserTimeframes) {
+        // ✅ Top Gainers/Losers timeframes
+        timeframes = @[
+            @(MarketTimeframePreMarket),
+            @(MarketTimeframeAfterHours),
+            @(MarketTimeframeFiveMinutes),
+            @(MarketTimeframeOneDay),
+            @(MarketTimeframeFiveDays),
+            @(MarketTimeframeOneMonth),
+            @(MarketTimeframeThreeMonths),
+            @(MarketTimeframeFiftyTwoWeeks)
+        ];
+    } else {
+        // ✅ Earnings timeframes
+        timeframes = @[
+            @(MarketTimeframeEarningsTodayBMO),
+            @(MarketTimeframeEarningsTodayAMC),
+            @(MarketTimeframeEarningsLast5Days),
+            @(MarketTimeframeEarningsLast10Days)
+        ];
     }
-    return nil;
+    
+    // ✅ Create menu item for each timeframe
+    for (NSNumber *timeframeNum in timeframes) {
+        MarketTimeframe timeframe = (MarketTimeframe)[timeframeNum integerValue];
+        
+        // ✅ Create provider for this market type + timeframe combination
+        MarketListProvider *provider = [[MarketListProvider alloc] initWithMarketType:marketType timeframe:timeframe];
+        
+        // ✅ Create menu item
+        NSMenuItem *timeframeItem = [self createMenuItemForProvider:provider];
+        [submenu addItem:timeframeItem];
+    }
 }
 
+- (NSMenuItem *)createDirectMarketListItem:(MarketListType)marketType {
+    // ✅ Create provider with MarketTimeframeNone for ETF/Industry
+    MarketListProvider *provider = [[MarketListProvider alloc] initWithMarketType:marketType timeframe:MarketTimeframeNone];
+    
+    // ✅ Create menu item
+    return [self createMenuItemForProvider:provider];
+}
+
+// ✅ EXISTING METHOD - no changes needed, already creates proper menu items
 - (NSMenuItem *)createMenuItemForProvider:(id<WatchlistProvider>)provider {
     NSString *title = provider.displayName;
     
@@ -233,6 +321,18 @@
     
     return item;
 }
+
+- (NSMenuItem *)findCategoryItem:(NSString *)categoryName {
+    for (NSMenuItem *item in [self menu].itemArray) {
+        if ([item.representedObject isEqualToString:categoryName]) {
+            return item;
+        }
+    }
+    return nil;
+}
+
+
+
 
 #pragma mark - Selection Handling
 

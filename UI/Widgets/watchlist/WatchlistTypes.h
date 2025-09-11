@@ -4,7 +4,7 @@
 //
 //  Common type definitions for the watchlist provider system
 //
-
+/*
 #import <Foundation/Foundation.h>
 
 NS_ASSUME_NONNULL_BEGIN
@@ -40,3 +40,4 @@ typedef NS_ENUM(NSInteger, BasketType) {
 };
 
 NS_ASSUME_NONNULL_END
+*/

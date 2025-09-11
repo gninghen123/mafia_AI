@@ -11,6 +11,41 @@
 @interface LineWidthToStringTransformer : NSValueTransformer
 @end
 
+
+#pragma mark - ParametersProxy KVO-compliant class
+@interface ParametersProxy : NSObject
+@property (nonatomic, strong) NSMutableDictionary *storage;
+- (instancetype)initWithDictionary:(NSDictionary *)dict;
+- (NSArray *)allKeys;
+@end
+
+@implementation ParametersProxy
+- (instancetype)initWithDictionary:(NSDictionary *)dict {
+    if (self = [super init]) {
+        _storage = [dict mutableCopy];
+    }
+    return self;
+}
+- (id)valueForKey:(NSString *)key { return self.storage[key]; }
+- (void)setValue:(id)value forKey:(NSString *)key {
+    [self willChangeValueForKey:key];
+    self.storage[key] = value;
+    [self didChangeValueForKey:key];
+}
+- (NSArray *)allKeys { return self.storage.allKeys; }
+
+// Subscripting support
+- (id)objectForKeyedSubscript:(id)key {
+    return self.storage[key];
+}
+
+- (void)setObject:(id)obj forKeyedSubscript:(id<NSCopying>)key {
+    [self willChangeValueForKey:(NSString *)key];
+    self.storage[key] = obj;
+    [self didChangeValueForKey:(NSString *)key];
+}
+@end
+
 @interface IndicatorConfigurationDialog ()
 @property (nonatomic, strong, readwrite) TechnicalIndicatorBase *indicator;
 @property (nonatomic, strong, readwrite) NSDictionary *originalParameters;
@@ -18,7 +53,7 @@
 @property (nonatomic, strong) NSMutableDictionary<NSString *, id> *controlValueMap;
 
 // ✅ NUOVO: Property per KVO sui parametri
-@property (nonatomic, strong) NSMutableDictionary *parametersProxy;
+@property (nonatomic, strong) ParametersProxy *parametersProxy;
 @end
 
 @implementation IndicatorConfigurationDialog
@@ -60,13 +95,17 @@
     [self removeKVOObservation];
 }
 
-#pragma mark - KVO & Bindings Setup
+ #pragma mark - KVO & Bindings Setup
 
 - (void)setupParametersProxy {
     // ✅ Crea un proxy dictionary per i parametri che supporta KVO
-    self.parametersProxy = [self.currentParameters mutableCopy];
-    
-    // ✅ Setup KVO sui singoli parametri
+    self.parametersProxy = [[ParametersProxy alloc] initWithDictionary:self.currentParameters];
+    // 👉 Setup KVO observers for each parameter key
+    [self setupParametersProxyObservers];
+}
+
+// Add KVO for all keys in parametersProxy
+- (void)setupParametersProxyObservers {
     for (NSString *key in self.parametersProxy.allKeys) {
         [self.parametersProxy addObserver:self
                                forKeyPath:key
@@ -98,10 +137,6 @@
         [self.indicator removeObserver:self forKeyPath:@"displayColor"];
         [self.indicator removeObserver:self forKeyPath:@"lineWidth"];
         [self.indicator removeObserver:self forKeyPath:@"isVisible"];
-        
-        for (NSString *key in self.parametersProxy.allKeys) {
-            [self.parametersProxy removeObserver:self forKeyPath:key];
-        }
     }
     @catch (NSException *exception) {
         NSLog(@"⚠️ KVO removal error: %@", exception);
@@ -112,9 +147,15 @@
                       ofObject:(id)object
                         change:(NSDictionary<NSKeyValueChangeKey,id> *)change
                        context:(void *)context {
-    
+    // Handle KVO for parameter proxy (parametersProxy)
+    if (object == self.parametersProxy) {
+        NSLog(@"🔄 Parameter '%@' changed to %@", keyPath, change[NSKeyValueChangeNewKey]);
+        // Update indicator immediately
+        [self syncParametersFromProxyToIndicator];
+        [self invalidateIndicatorRendering];
+        return;
+    }
     NSLog(@"🔄 KVO Change detected: %@ = %@", keyPath, change[NSKeyValueChangeNewKey]);
-    
     // ✅ Quando cambia un parametro o appearance, forza il refresh del renderer
     [self invalidateIndicatorRendering];
 }
@@ -268,53 +309,16 @@
                                 value:(id)value
                                 rules:(NSDictionary *)rules {
     
-    // ✅ COSTANTI PER LAYOUT CONTROLLI PARAMETRI
-    const CGFloat kControlRowHeight = 32;
-    const CGFloat kLabelWidth = 120;
-    const CGFloat kControlSpacing = 12;
-    const CGFloat kControlHeight = 24;
+    // Create a simple text field for now
+    NSTextField *textField = [[NSTextField alloc] init];
+    textField.translatesAutoresizingMaskIntoConstraints = NO;
+    textField.stringValue = [value description] ?: @"";
     
-    // Create container view
-    NSView *containerView = [[NSView alloc] init];
-    containerView.translatesAutoresizingMaskIntoConstraints = NO;
+    // Store mapping
+    self.controlValueMap[parameterName] = textField;
     
-    // Create label
-    NSTextField *label = [[NSTextField alloc] init];
-    label.translatesAutoresizingMaskIntoConstraints = NO;
-    label.stringValue = [self friendlyNameForParameter:parameterName];
-    label.editable = NO;
-    label.bezeled = NO;
-    label.backgroundColor = [NSColor clearColor];
-    label.font = [NSFont systemFontOfSize:13];
-    label.alignment = NSTextAlignmentRight; // ✅ Right align per layout pulito
-    
-    // Create appropriate control based on value type and rules
-    NSView *control = [self createInputControlForValue:value rules:rules parameterName:parameterName];
-    control.translatesAutoresizingMaskIntoConstraints = NO;
-    
-    [containerView addSubview:label];
-    [containerView addSubview:control];
-    
-    // ✅ LAYOUT CONSTRAINTS OTTIMIZZATI
-    [NSLayoutConstraint activateConstraints:@[
-        // Container row height consistente
-        [containerView.heightAnchor constraintEqualToConstant:kControlRowHeight],
-        
-        // Label - fixed width, right aligned, centered vertically
-        [label.leadingAnchor constraintEqualToAnchor:containerView.leadingAnchor],
-        [label.centerYAnchor constraintEqualToAnchor:containerView.centerYAnchor],
-        [label.widthAnchor constraintEqualToConstant:kLabelWidth],
-        
-        // Control - fills remaining space, centered vertically, fixed height
-        [control.leadingAnchor constraintEqualToAnchor:label.trailingAnchor constant:kControlSpacing],
-        [control.trailingAnchor constraintEqualToAnchor:containerView.trailingAnchor],
-        [control.centerYAnchor constraintEqualToAnchor:containerView.centerYAnchor],
-        [control.heightAnchor constraintEqualToConstant:kControlHeight]
-    ]];
-    
-    return containerView;
+    return textField;
 }
-
 - (NSView *)createInputControlForValue:(id)value
                                  rules:(NSDictionary *)rules
                          parameterName:(NSString *)parameterName {
@@ -617,6 +621,37 @@
     label.font = [NSFont systemFontOfSize:13];
     return label;
 }
+- (void)resetParametersToDefaults {
+    if ([self.indicator.class respondsToSelector:@selector(defaultParameters)]) {
+        NSDictionary *defaults = [self.indicator.class defaultParameters];
+        self.currentParameters = [defaults mutableCopy];
+    } else {
+        self.currentParameters = [self.originalParameters mutableCopy];
+    }
+}
+
+- (BOOL)validateParameters:(NSError **)error {
+    // Basic validation - could be enhanced
+    for (NSString *key in self.currentParameters) {
+        id value = self.currentParameters[key];
+        
+        if ([value isKindOfClass:[NSString class]] && [(NSString *)value length] == 0) {
+            if (error) {
+                *error = [NSError errorWithDomain:@"IndicatorConfiguration"
+                                             code:1001
+                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Parameter '%@' cannot be empty", key]}];
+            }
+            return NO;
+        }
+    }
+    
+    return YES;
+}
+
+- (void)updateParametersFromControls {
+    // Placeholder - implement if not using bindings
+    NSLog(@"updateParametersFromControls called");
+}
 
 - (void)createAppearanceTab {
     NSTabViewItem *appearanceTab = [[NSTabViewItem alloc] initWithIdentifier:@"appearance"];
@@ -915,11 +950,7 @@
 
 @end
 
-
 #pragma mark - Value Transformer
-
-@interface LineWidthToStringTransformer : NSValueTransformer
-@end
 
 @implementation LineWidthToStringTransformer
 

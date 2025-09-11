@@ -138,19 +138,61 @@ typedef NS_ENUM(NSInteger, DataRequestType) {
     DataRequestTypeOrderStatus = 604      // Get order status
 };
 
-#pragma mark - Market Timeframes for Lists
 
+#pragma mark - Provider Category Types
+
+typedef NS_ENUM(NSInteger, WatchlistProviderCategory) {
+    WatchlistProviderCategoryManual,        // 📝 MY LISTS
+    WatchlistProviderCategoryMarketLists,   // 📊 MARKET LISTS
+    WatchlistProviderCategoryBaskets,       // 📅 BASKETS
+    WatchlistProviderCategoryTagLists,      // 🏷️ TAG LISTS
+    WatchlistProviderCategoryArchives       // 📦 ARCHIVES
+};
+
+#pragma mark - Market List Types
+
+// Market list types for API calls
+typedef NS_ENUM(NSInteger, MarketListType) {
+    MarketListTypeTopGainers,
+    MarketListTypeTopLosers,
+    MarketListTypeEarnings,
+    MarketListTypeETF,
+    MarketListTypeIndustry
+};
+
+#pragma mark - Enhanced Market Timeframes for Hierarchical Menu
+
+// Extended timeframes to support the new hierarchical menu structure
 typedef NS_ENUM(NSInteger, MarketTimeframe) {
+    // ✅ Top Gainers/Losers sub-timeframes
     MarketTimeframePreMarket,     // Pre-market hours
     MarketTimeframeAfterHours,    // After-hours
     MarketTimeframeFiveMinutes,   // Last 5 minutes
     MarketTimeframeOneDay,        // Current trading day
     MarketTimeframeFiveDays,      // Last 5 trading days
-    MarketTimeframeOneWeek,       // Last week
     MarketTimeframeOneMonth,      // Last month
     MarketTimeframeThreeMonths,   // Last 3 months
-    MarketTimeframeFiftyTwoWeeks  // Last 52 weeks
+    MarketTimeframeFiftyTwoWeeks, // Last 52 weeks
+    
+    // ✅ Earnings sub-timeframes
+    MarketTimeframeEarningsTodayBMO,    // Today Before Market Open
+    MarketTimeframeEarningsTodayAMC,    // Today After Market Close
+    MarketTimeframeEarningsLast5Days,   // Last 5 days
+    MarketTimeframeEarningsLast10Days,  // Last 10 days
+    
+    // ✅ ETF and Industry (no timeframe parameters needed)
+    MarketTimeframeNone              // No timeframe filter (for ETF, Industry)
 };
+
+#pragma mark - Basket Types
+
+// Basket types for interaction tracking
+typedef NS_ENUM(NSInteger, BasketType) {
+    BasketTypeToday,        // Symbols interacted with today
+    BasketTypeWeek,         // Last 7 days (rolling)
+    BasketTypeMonth         // Last 30 days (rolling)
+};
+
 
 #pragma mark - Data Freshness
 

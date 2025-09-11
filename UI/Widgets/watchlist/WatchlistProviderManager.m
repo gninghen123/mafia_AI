@@ -151,22 +151,80 @@
 }
 
 - (void)loadMarketListProviders {
+    // ✅ CAMBIAMENTO IMPORTANTE: Non creiamo più automaticamente tutte le combinazioni
+    // I provider verranno creati on-demand dalla struttura gerarchica del menu
+    
     // Remove existing market providers from cache
     for (id<WatchlistProvider> provider in self.mutableMarketListProviders) {
         [self.providerCache removeObjectForKey:provider.providerId];
     }
     [self.mutableMarketListProviders removeAllObjects];
     
-    // Create all combinations of market types and timeframes
-    NSArray<id<WatchlistProvider>> *providers = [self createAllMarketListProviders];
-    
-    for (id<WatchlistProvider> provider in providers) {
-        [self.mutableMarketListProviders addObject:provider];
-        self.providerCache[provider.providerId] = provider;
+    NSLog(@"📊 Market list providers cleared - will be created on-demand via hierarchical menu");
+}
+
+- (NSArray<id<WatchlistProvider>> *)providersForCategory:(NSString *)categoryName {
+    // ✅ SPECIAL CASE: Market Lists category returns empty array
+    // because providers are created dynamically in the hierarchical menu
+    if ([categoryName isEqualToString:@"Market Lists"]) {
+        NSLog(@"📊 Market Lists category - returning empty array (hierarchical menu handles creation)");
+        return @[];
     }
     
-    NSLog(@"📊 Loaded %lu market list providers", (unsigned long)self.mutableMarketListProviders.count);
+    // ✅ Standard categories return their cached providers
+    if ([categoryName isEqualToString:@"Manual Watchlists"]) {
+        return self.manualWatchlistProviders;
+    } else if ([categoryName isEqualToString:@"Baskets"]) {
+        return self.basketProviders;
+    } else if ([categoryName isEqualToString:@"Tag Lists"]) {
+        return self.tagListProviders;
+    } else if ([categoryName isEqualToString:@"Archives"]) {
+        return self.archiveProviders;
+    }
+    
+    return @[];
 }
+
+#pragma mark - ✅ UPDATED: Provider Lookup with On-Demand Creation
+
+- (nullable id<WatchlistProvider>)providerWithId:(NSString *)providerId {
+    // ✅ Check cache first
+    id<WatchlistProvider> cachedProvider = self.providerCache[providerId];
+    if (cachedProvider) {
+        return cachedProvider;
+    }
+    
+    // ✅ SPECIAL CASE: Market list providers - create on demand
+    if ([providerId hasPrefix:@"market:"]) {
+        return [self createMarketProviderFromId:providerId];
+    }
+    
+    // ✅ Standard provider lookup
+    return nil;
+}
+ 
+
+#pragma mark - ✅ NEW: Dynamic Market Provider Creation
+
+- (nullable id<WatchlistProvider>)createMarketProviderFromId:(NSString *)providerId {
+    // ✅ Parse provider ID format: "market:marketType:timeframe"
+    NSArray<NSString *> *components = [providerId componentsSeparatedByString:@":"];
+    if (components.count != 3) {
+        NSLog(@"❌ Invalid market provider ID format: %@", providerId);
+        return nil;
+    }
+    
+    MarketListType marketType = (MarketListType)[components[1] integerValue];
+    MarketTimeframe timeframe = (MarketTimeframe)[components[2] integerValue];
+    
+    // ✅ Create and cache the provider
+    MarketListProvider *provider = [[MarketListProvider alloc] initWithMarketType:marketType timeframe:timeframe];
+    self.providerCache[provider.providerId] = provider;
+    
+    NSLog(@"✅ Created on-demand market provider: %@", provider.displayName);
+    return provider;
+}
+
 
 - (void)loadBasketProviders {
     NSLog(@"📅 Loading basket providers...");
@@ -344,36 +402,7 @@
 
 #pragma mark - Provider Lookup
 
-- (nullable id<WatchlistProvider>)providerWithId:(NSString *)providerId {
-    return self.providerCache[providerId];
-}
 
-- (NSArray<id<WatchlistProvider>> *)providersForCategory:(NSString *)categoryName {
-    NSLog(@"🔍 ProviderManager: Getting providers for category: '%@'", categoryName);
-    
-    // ✅ FIX: Ensure providers are loaded before returning
-    [self ensureProvidersLoadedForCategory:categoryName];
-    
-    if ([categoryName isEqualToString:@"Manual Watchlists"]) {
-        NSLog(@"   Returning %lu manual providers", (unsigned long)self.manualWatchlistProviders.count);
-        return self.manualWatchlistProviders;
-    } else if ([categoryName isEqualToString:@"Market Lists"]) {
-        NSLog(@"   Returning %lu market providers", (unsigned long)self.marketListProviders.count);
-        return self.marketListProviders;
-    } else if ([categoryName isEqualToString:@"Baskets"]) {
-        NSLog(@"   Returning %lu basket providers", (unsigned long)self.basketProviders.count);
-        return self.basketProviders;
-    } else if ([categoryName isEqualToString:@"Tag Lists"]) {
-        NSLog(@"   Returning %lu tag providers", (unsigned long)self.tagListProviders.count);
-        return self.tagListProviders;
-    } else if ([categoryName isEqualToString:@"Archives"]) {
-        NSLog(@"   Returning %lu archive providers", (unsigned long)self.archiveProviders.count);
-        return self.archiveProviders;
-    }
-    
-    NSLog(@"❌ Unknown category: '%@'", categoryName);
-    return @[];
-}
 
 - (id<WatchlistProvider>)defaultProvider {
     // Priority: last selected > first manual watchlist > first basket
@@ -455,36 +484,41 @@
 #pragma mark - Convenience Methods
 
 - (NSArray<id<WatchlistProvider>> *)createAllMarketListProviders {
-    NSMutableArray<id<WatchlistProvider>> *providers = [NSMutableArray array];
-    
-    // Create combinations of market types and timeframes
-    NSArray<NSNumber *> *marketTypes = @[
-        @(MarketListTypeTopGainers),
-        @(MarketListTypeTopLosers),
-        @(MarketListTypeEarnings),
-        @(MarketListTypeETF),
-        @(MarketListTypeIndustry)
-    ];
-    
-    NSArray<NSNumber *> *timeframes = @[
-        @(MarketTimeframeOneDay),
-        @(MarketTimeframeFiveDays),
-        @(MarketTimeframeOneMonth),
-        @(MarketTimeframeThreeMonths),
-        @(MarketTimeframeFiftyTwoWeeks)
-    ];
-    
-    for (NSNumber *marketTypeNum in marketTypes) {
-        MarketListType marketType = (MarketListType)[marketTypeNum integerValue];
-        for (NSNumber *timeframeNum in timeframes) {
-            MarketTimeframe timeframe = (MarketTimeframe)[timeframeNum integerValue];
+    // ✅ DEPRECATED: This method is no longer used for the hierarchical menu
+    // but kept for compatibility. Returns empty array.
+    NSLog(@"⚠️ createAllMarketListProviders called - returning empty array (hierarchical menu used instead)");
+    return @[];
+}
+
+- (BOOL)isValidMarketTypeTimeframeCombination:(MarketListType)marketType timeframe:(MarketTimeframe)timeframe {
+    switch (marketType) {
+        case MarketListTypeTopGainers:
+        case MarketListTypeTopLosers:
+            // ✅ Gainers/Losers support standard timeframes
+            return (timeframe == MarketTimeframePreMarket ||
+                    timeframe == MarketTimeframeAfterHours ||
+                    timeframe == MarketTimeframeFiveMinutes ||
+                    timeframe == MarketTimeframeOneDay ||
+                    timeframe == MarketTimeframeFiveDays ||
+                    timeframe == MarketTimeframeOneMonth ||
+                    timeframe == MarketTimeframeThreeMonths ||
+                    timeframe == MarketTimeframeFiftyTwoWeeks);
             
-            MarketListProvider *provider = [[MarketListProvider alloc] initWithMarketType:marketType timeframe:timeframe];
-            [providers addObject:provider];
-        }
+        case MarketListTypeEarnings:
+            // ✅ Earnings support earnings-specific timeframes
+            return (timeframe == MarketTimeframeEarningsTodayBMO ||
+                    timeframe == MarketTimeframeEarningsTodayAMC ||
+                    timeframe == MarketTimeframeEarningsLast5Days ||
+                    timeframe == MarketTimeframeEarningsLast10Days);
+            
+        case MarketListTypeETF:
+        case MarketListTypeIndustry:
+            // ✅ ETF/Industry require no timeframe
+            return (timeframe == MarketTimeframeNone);
+            
+        default:
+            return NO;
     }
-    
-    return [providers copy];
 }
 
 - (NSArray<id<WatchlistProvider>> *)createAllBasketProviders {

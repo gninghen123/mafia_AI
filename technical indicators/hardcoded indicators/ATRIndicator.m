@@ -74,7 +74,7 @@
         IndicatorDataModel *dataPoint = [IndicatorDataModel dataWithTimestamp:bar.date
                                                                          value:atrValue
                                                                     seriesName:seriesName
-                                                            visualizationType:VisualizationTypeLine
+                                                            seriesType:VisualizationTypeLine
                                                                          color:[self atrColor]];
         
         dataPoint.anchorValue = 0.0;  // ATR starts from 0

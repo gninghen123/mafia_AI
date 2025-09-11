@@ -109,7 +109,7 @@
         IndicatorDataModel *dataPoint = [IndicatorDataModel dataWithTimestamp:bar.date
                                                                          value:rsiValue
                                                                     seriesName:seriesName
-                                                            visualizationType:VisualizationTypeLine
+                                                                   seriesType:VisualizationTypeLine
                                                                          color:[self rsiColor]];
         dataPoint.anchorValue = 50.0;  // RSI center line
         dataPoint.isSignal = NO;
@@ -120,7 +120,7 @@
             IndicatorDataModel *overboughtPoint = [IndicatorDataModel dataWithTimestamp:bar.date
                                                                                    value:overboughtLevel
                                                                               seriesName:@"RSI_Overbought"
-                                                                      visualizationType:VisualizationTypeLine
+                                                                             seriesType:VisualizationTypeLine
                                                                                    color:[NSColor redColor]];
             overboughtPoint.anchorValue = 50.0;
             [outputData addObject:overboughtPoint];
@@ -129,7 +129,7 @@
             IndicatorDataModel *oversoldPoint = [IndicatorDataModel dataWithTimestamp:bar.date
                                                                                  value:oversoldLevel
                                                                             seriesName:@"RSI_Oversold"
-                                                                    visualizationType:VisualizationTypeLine
+                                                                           seriesType:VisualizationTypeLine
                                                                                  color:[NSColor greenColor]];
             oversoldPoint.anchorValue = 50.0;
             [outputData addObject:oversoldPoint];

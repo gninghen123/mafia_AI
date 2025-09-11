@@ -112,7 +112,7 @@
         IndicatorDataModel *dataPoint = [IndicatorDataModel dataWithTimestamp:bar.date
                                                                          value:emaValue
                                                                     seriesName:seriesName
-                                                            visualizationType:VisualizationTypeLine
+                                                                   seriesType:VisualizationTypeLine
                                                                          color:[self emaColor]];
         
         // For EMA, we can use the EMA value itself as anchor (for overlay on price chart)

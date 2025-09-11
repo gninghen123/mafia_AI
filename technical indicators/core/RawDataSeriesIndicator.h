@@ -32,7 +32,6 @@ typedef NS_ENUM(NSInteger, RawDataType) {
 
 #pragma mark - Core Properties
 @property (nonatomic, assign) RawDataType dataType;
-@property (nonatomic, assign) VisualizationType visualizationType;
 @property (nonatomic, strong) NSString *dataField;  // "close", "volume", "revenue", etc.
 
 #pragma mark - Display Properties

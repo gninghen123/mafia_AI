@@ -16,6 +16,7 @@ typedef NS_ENUM(NSInteger, IndicatorType) {
     IndicatorTypePineScript      // Custom PineScript indicators
 };
 
+// ✅ SPOSTATO QUI da RawDataSeriesIndicator.h
 typedef NS_ENUM(NSInteger, VisualizationType) {
     VisualizationTypeCandlestick,   // OHLC candlesticks
     VisualizationTypeLine,          // Simple line
@@ -35,8 +36,11 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, readonly) NSString *indicatorID;      // Unique identifier
 @property (nonatomic, strong, readonly) NSString *name;             // Display name
 @property (nonatomic, strong, readonly) NSString *shortName;        // Short name (e.g. "RSI")
-@property (nonatomic, assign, readonly) IndicatorType type;     // Hardcoded vs PineScript
+@property (nonatomic, assign, readonly) IndicatorType type;         // Hardcoded vs PineScript
 @property (nonatomic, strong) NSDictionary<NSString *, id> *parameters;  // Configurable params
+
+#pragma mark - ✅ NEW: Visualization Properties
+@property (nonatomic, assign) VisualizationType visualizationType;  // How to render this indicator
 
 #pragma mark - Output Data
 @property (nonatomic, strong, nullable) NSArray<IndicatorDataModel *> *outputSeries;
@@ -70,6 +74,17 @@ NS_ASSUME_NONNULL_BEGIN
 /// @return Dictionary describing parameter constraints
 + (NSDictionary<NSString *, id> *)parameterValidationRules;
 
+#pragma mark - ✅ NEW: Visualization Methods
+
+/// Get the default visualization type for this indicator
+/// @return Default visualization type
+- (VisualizationType)defaultVisualizationType;
+
+/// Get display name for visualization type
+/// @param vizType Visualization type
+/// @return Human-readable name
++ (NSString *)displayNameForVisualizationType:(VisualizationType)vizType;
+
 #pragma mark - Validation
 
 /// Validate parameters before calculation
@@ -100,7 +115,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) NSDate *timestamp;          // Bar timestamp
 @property (nonatomic, assign) double value;               // Indicator value
 @property (nonatomic, strong) NSString *seriesName;       // "RSI", "BB_Upper", etc.
-@property (nonatomic, assign) VisualizationType visualizationType;  // Line, histogram, etc.
+@property (nonatomic, assign) VisualizationType seriesType;  // ✅ UPDATED: ora usa VisualizationType
 @property (nonatomic, strong, nullable) NSColor *color;   // Display color
 @property (nonatomic, assign) double anchorValue;         // For relative positioning
 @property (nonatomic, assign) BOOL isSignal;              // For buy/sell signals
@@ -109,12 +124,12 @@ NS_ASSUME_NONNULL_BEGIN
 + (instancetype)dataWithTimestamp:(NSDate *)timestamp
                             value:(double)value
                        seriesName:(NSString *)seriesName
-                       visualizationType:(VisualizationType)type;
+                       seriesType:(VisualizationType)type;
 
 + (instancetype)dataWithTimestamp:(NSDate *)timestamp
                             value:(double)value
                        seriesName:(NSString *)seriesName
-                       visualizationType:(VisualizationType)type
+                       seriesType:(VisualizationType)type
                             color:(NSColor *)color;
 
 @end

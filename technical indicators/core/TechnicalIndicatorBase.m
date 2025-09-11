@@ -1,44 +1,37 @@
 //
 // TechnicalIndicatorBase.m
+// TradingApp
 //
 
 #import "TechnicalIndicatorBase.h"
 
 @implementation TechnicalIndicatorBase
 
+#pragma mark - Initialization
+
 - (instancetype)initWithParameters:(NSDictionary<NSString *, id> *)parameters {
-    self = [super init];
-    if (self) {
-        // Generate unique ID
+    if (self = [super init]) {
         _indicatorID = [[NSUUID UUID] UUIDString];
-        
-        // Set parameters (with validation)
-        NSError *error;
-        if (![self validateParameters:parameters error:&error]) {
-            NSLog(@"❌ TechnicalIndicatorBase: Invalid parameters for %@: %@", self.class, error.localizedDescription);
-            return nil;
-        }
-        
-        _parameters = [parameters copy] ?: @{};
-        _type = IndicatorTypeHardcoded;  // Default, can be overridden
-        
-        // Initialize state
+        _type = IndicatorTypeHardcoded;
+        _parameters = parameters ?: @{};
         _isCalculated = NO;
-        self.outputSeries = nil;
-        self.lastError = nil;
+        
+        // ✅ NEW: Set default visualization type
+        _visualizationType = [self defaultVisualizationType];
+        
+        // Override from parameters if provided
+        if (parameters[@"visualizationType"]) {
+            _visualizationType = [parameters[@"visualizationType"] integerValue];
+        }
     }
     return self;
-}
-
-- (instancetype)init {
-    return [self initWithParameters:[[self class] defaultParameters]];
 }
 
 #pragma mark - Abstract Methods (Must be overridden)
 
 - (void)calculateWithBars:(NSArray<HistoricalBarModel *> *)bars {
     @throw [NSException exceptionWithName:NSInternalInconsistencyException
-                                   reason:@"calculateWithBars: must be overridden by subclass"
+                                   reason:@"calculateWithBars must be overridden by subclass"
                                  userInfo:nil];
 }
 
@@ -58,6 +51,32 @@
     @throw [NSException exceptionWithName:NSInternalInconsistencyException
                                    reason:@"parameterValidationRules must be overridden by subclass"
                                  userInfo:nil];
+}
+
+#pragma mark - ✅ NEW: Visualization Methods
+
+- (VisualizationType)defaultVisualizationType {
+    // Base implementation - subclasses should override
+    return VisualizationTypeLine;
+}
+
++ (NSString *)displayNameForVisualizationType:(VisualizationType)vizType {
+    switch (vizType) {
+        case VisualizationTypeCandlestick:
+            return @"Candlestick";
+        case VisualizationTypeLine:
+            return @"Line";
+        case VisualizationTypeArea:
+            return @"Area";
+        case VisualizationTypeHistogram:
+            return @"Histogram";
+        case VisualizationTypeOHLC:
+            return @"OHLC";
+        case VisualizationTypeStep:
+            return @"Step";
+        default:
+            return @"Unknown";
+    }
 }
 
 #pragma mark - Default Implementations
@@ -106,24 +125,24 @@
 + (instancetype)dataWithTimestamp:(NSDate *)timestamp
                             value:(double)value
                        seriesName:(NSString *)seriesName
-                visualizationType:(VisualizationType)type {
+                       seriesType:(VisualizationType)type {
     return [self dataWithTimestamp:timestamp
                              value:value
                         seriesName:seriesName
-                 visualizationType:type
+                        seriesType:type
                              color:nil];
 }
 
 + (instancetype)dataWithTimestamp:(NSDate *)timestamp
                             value:(double)value
                        seriesName:(NSString *)seriesName
-                visualizationType:(VisualizationType)type
+                       seriesType:(VisualizationType)type
                             color:(NSColor *)color {
     IndicatorDataModel *model = [[self alloc] init];
     model.timestamp = timestamp;
     model.value = value;
     model.seriesName = seriesName;
-    model.visualizationType = type;
+    model.seriesType = type;
     model.color = color ?: [NSColor systemBlueColor];  // Default color
     model.anchorValue = 0.0;
     model.isSignal = NO;

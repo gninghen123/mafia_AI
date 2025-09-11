@@ -9,26 +9,9 @@
 
 #pragma mark - Initialization
 
-- (instancetype)initWithParameters:(NSDictionary<NSString *, id> *)parameters {
-    self = [super initWithParameters:parameters];
-    if (self) {
-        // Set defaults from parameters
-        _dataType = parameters[@"dataType"] ? [parameters[@"dataType"] integerValue] : RawDataTypePrice;
-        _visualizationType = parameters[@"visualizationType"] ? [parameters[@"visualizationType"] integerValue] : [self defaultVisualizationType];
-        _dataField = parameters[@"dataField"] ?: @"close";
-        _seriesColor = parameters[@"color"] ?: [self defaultColor];
-        _lineWidth = parameters[@"lineWidth"] ? [parameters[@"lineWidth"] floatValue] : 1.0;
-        _showValues = parameters[@"showValues"] ? [parameters[@"showValues"] boolValue] : NO;
-        
-        NSLog(@"🎨 RawDataSeriesIndicator initialized: dataType=%ld, vizType=%ld, field='%@'",
-              (long)_dataType, (long)_visualizationType, _dataField);
-    }
-    return self;
-}
-
 - (instancetype)initWithDataType:(RawDataType)dataType
-                visualizationType:(VisualizationType)vizType
-                        dataField:(NSString *)field {
+                 visualizationType:(VisualizationType)vizType
+                         dataField:(NSString *)field {
     
     NSDictionary *params = @{
         @"dataType": @(dataType),
@@ -36,10 +19,60 @@
         @"dataField": field ?: @"close"
     };
     
-    return [self initWithParameters:params];
+    if (self = [super initWithParameters:params]) {
+        _dataType = dataType;
+        _dataField = field ?: @"close";
+        _lineWidth = 1.0;
+        _showValues = NO;
+        
+        // Set the visualization type on the base class
+        self.visualizationType = vizType;
+        
+        NSLog(@"📊 RawDataSeriesIndicator created: %@ - %@",
+              [[self class] displayNameForDataType:dataType],
+              [[self class] displayNameForVisualizationType:vizType]);
+    }
+    return self;
+}
+
+- (instancetype)initWithParameters:(NSDictionary<NSString *, id> *)parameters {
+    RawDataType dataType = [parameters[@"dataType"] integerValue];
+    VisualizationType vizType = parameters[@"visualizationType"] ?
+        [parameters[@"visualizationType"] integerValue] : [self defaultVisualizationType];
+    NSString *dataField = parameters[@"dataField"] ?: @"close";
+    
+    return [self initWithDataType:dataType visualizationType:vizType dataField:dataField];
 }
 
 #pragma mark - TechnicalIndicatorBase Overrides
+
+- (void)calculateWithBars:(NSArray<HistoricalBarModel *> *)bars {
+    if (!bars || bars.count == 0) {
+        self.isCalculated = NO;
+        return;
+    }
+    
+    NSMutableArray<IndicatorDataModel *> *results = [[NSMutableArray alloc] init];
+    
+    for (HistoricalBarModel *bar in bars) {
+        double value = [self extractValueFromBar:bar];
+        
+        IndicatorDataModel *dataPoint = [IndicatorDataModel dataWithTimestamp:bar.date
+                                                                         value:value
+                                                                    seriesName:self.shortName
+                                                                    seriesType:self.visualizationType];
+        [results addObject:dataPoint];
+    }
+    
+    self.outputSeries = [results copy];
+    self.isCalculated = YES;
+    
+    NSLog(@"📈 %@ calculated with %lu data points", self.name, (unsigned long)results.count);
+}
+
+- (NSInteger)minimumBarsRequired {
+    return 1; // Raw data series only need one bar
+}
 
 + (NSDictionary<NSString *, id> *)defaultParameters {
     return @{
@@ -56,60 +89,29 @@
     return @{
         @"dataType": @{
             @"type": @"integer",
-            @"min": @0,
-            @"max": @4,
-            @"description": @"Raw data type (0=Price, 1=Volume, 2=Fundamentals, 3=MarketMetrics, 4=Alternative)"
+            @"values": @[@(RawDataTypePrice), @(RawDataTypeVolume),
+                        @(RawDataTypeFundamentals), @(RawDataTypeMarketMetrics),
+                        @(RawDataTypeAlternative)],
+            @"description": @"Type of raw data to visualize"
         },
         @"visualizationType": @{
             @"type": @"integer",
-            @"min": @0,
-            @"max": @5,
-            @"description": @"Visualization type (0=Candlestick, 1=Line, 2=Area, 3=Histogram, 4=OHLC, 5=Step)"
+            @"values": @[@(VisualizationTypeLine), @(VisualizationTypeArea),
+                        @(VisualizationTypeHistogram), @(VisualizationTypeCandlestick),
+                        @(VisualizationTypeOHLC), @(VisualizationTypeStep)],
+            @"description": @"How to visualize the data"
         },
         @"dataField": @{
             @"type": @"string",
-            @"description": @"Data field to extract (close, volume, revenue, etc.)"
+            @"description": @"Field name to extract from bars"
         }
     };
 }
 
-- (NSInteger)minimumBarsRequired {
-    return 1; // Raw data needs only 1 bar minimum
-}
-
-- (void)calculateWithBars:(NSArray<HistoricalBarModel *> *)bars {
-    [self reset];
-    
-    if (![self canCalculateWithBars:bars]) {
-        self.lastError = [NSError errorWithDomain:@"RawDataSeriesIndicator"
-                                            code:1001
-                                        userInfo:@{NSLocalizedDescriptionKey: @"Insufficient bars for calculation"}];
-        return;
-    }
-    
-    NSMutableArray<IndicatorDataModel *> *results = [[NSMutableArray alloc] initWithCapacity:bars.count];
-    
-    for (HistoricalBarModel *bar in bars) {
-        double value = [self extractValueFromBar:bar];
-        
-        IndicatorDataModel *dataPoint = [IndicatorDataModel dataWithTimestamp:bar.date
-                                                                       value:value
-                                                                  seriesName:self.shortName
-                                                            visualizationType:self.visualizationType
-                                                                       color:self.seriesColor];
-        [results addObject:dataPoint];
-    }
-    
-    self.outputSeries = [results copy];
-    self.isCalculated = YES;
-    
-    NSLog(@"✅ RawDataSeriesIndicator calculated %lu data points", (unsigned long)results.count);
-}
-
-#pragma mark - Abstract Methods (Subclasses Override)
+#pragma mark - Abstract Method Implementations
 
 - (double)extractValueFromBar:(HistoricalBarModel *)bar {
-    // Base implementation extracts based on dataField
+    // Extract the specified field from the bar
     if ([self.dataField isEqualToString:@"open"]) {
         return bar.open;
     } else if ([self.dataField isEqualToString:@"high"]) {
@@ -118,17 +120,15 @@
         return bar.low;
     } else if ([self.dataField isEqualToString:@"close"]) {
         return bar.close;
+    } else if ([self.dataField isEqualToString:@"volume"]) {
+        return bar.volume;
     } else if ([self.dataField isEqualToString:@"adjustedClose"]) {
         return bar.adjustedClose;
-    } else if ([self.dataField isEqualToString:@"volume"]) {
-        return (double)bar.volume;
     } else if ([self.dataField isEqualToString:@"typical"]) {
-        return bar.typicalPrice;
-    } else if ([self.dataField isEqualToString:@"range"]) {
-        return bar.range;
+        return (bar.high + bar.low + bar.close) / 3.0;
     }
     
-    // Default to close
+    // Default to close price
     return bar.close;
 }
 
@@ -139,11 +139,11 @@
         case RawDataTypeVolume:
             return [NSColor systemGrayColor];
         case RawDataTypeFundamentals:
-            return [NSColor systemGreenColor];
+            return [NSColor systemPurpleColor];
         case RawDataTypeMarketMetrics:
             return [NSColor systemOrangeColor];
         case RawDataTypeAlternative:
-            return [NSColor systemPurpleColor];
+            return [NSColor systemYellowColor];
         default:
             return [NSColor systemBlueColor];
     }
@@ -152,11 +152,10 @@
 - (VisualizationType)defaultVisualizationType {
     switch (self.dataType) {
         case RawDataTypePrice:
-            return VisualizationTypeLine;
+            return VisualizationTypeCandlestick;
         case RawDataTypeVolume:
             return VisualizationTypeHistogram;
         case RawDataTypeFundamentals:
-            return VisualizationTypeLine;
         case RawDataTypeMarketMetrics:
             return VisualizationTypeLine;
         case RawDataTypeAlternative:
@@ -164,6 +163,10 @@
         default:
             return VisualizationTypeLine;
     }
+}
+
+- (BOOL)hasVisualOutput {
+    return YES; // All raw data series have visual output
 }
 
 #pragma mark - Display Properties
@@ -179,27 +182,6 @@
 }
 
 #pragma mark - Utility Methods
-
-
-
-+ (NSString *)displayNameForVisualizationType:(VisualizationType)vizType {
-    switch (vizType) {
-        case VisualizationTypeCandlestick:
-            return @"Candlestick";
-        case VisualizationTypeLine:
-            return @"Line";
-        case VisualizationTypeArea:
-            return @"Area";
-        case VisualizationTypeHistogram:
-            return @"Histogram";
-        case VisualizationTypeOHLC:
-            return @"OHLC";
-        case VisualizationTypeStep:
-            return @"Step";
-        default:
-            return @"Unknown";
-    }
-}
 
 + (NSString *)displayNameForDataType:(RawDataType)dataType {
     switch (dataType) {

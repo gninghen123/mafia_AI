@@ -197,7 +197,7 @@
       }*/
       
     // Draw this indicator based on its type
-    switch (indicator.visualizationType) {
+    switch (indicator.type) {//todo
             case VisualizationTypeCandlestick:
                 [self drawCandlestickIndicator:indicator];
                 break;

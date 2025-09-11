@@ -35,7 +35,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, readonly) NSString *indicatorID;      // Unique identifier
 @property (nonatomic, strong, readonly) NSString *name;             // Display name
 @property (nonatomic, strong, readonly) NSString *shortName;        // Short name (e.g. "RSI")
-@property (nonatomic, assign, readonly) IndicatorType type;         // Hardcoded vs PineScript
+@property (nonatomic, assign, readonly) IndicatorType type;     // Hardcoded vs PineScript
 @property (nonatomic, strong) NSDictionary<NSString *, id> *parameters;  // Configurable params
 
 #pragma mark - Output Data

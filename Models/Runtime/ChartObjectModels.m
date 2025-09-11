@@ -146,7 +146,7 @@
             break;
             
         case ChartObjectTypeHorizontalLine:
-            style.color = [NSColor systemOrangeColor];
+            style.color = [NSColor systemPinkColor];
             style.thickness = 1.5;
             break;
             

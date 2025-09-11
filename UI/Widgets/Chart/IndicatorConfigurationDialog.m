@@ -1,13 +1,24 @@
-
+//
+//  IndicatorConfigurationDialog.m
+//  TradingApp
+//
+//  ✅ VERSIONE CON BINDINGS REAL-TIME
 //
 
 #import "IndicatorConfigurationDialog.h"
+
+
+@interface LineWidthToStringTransformer : NSValueTransformer
+@end
 
 @interface IndicatorConfigurationDialog ()
 @property (nonatomic, strong, readwrite) TechnicalIndicatorBase *indicator;
 @property (nonatomic, strong, readwrite) NSDictionary *originalParameters;
 @property (nonatomic, strong) NSMutableArray<NSView *> *parameterControls;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, id> *controlValueMap;
+
+// ✅ NUOVO: Property per KVO sui parametri
+@property (nonatomic, strong) NSMutableDictionary *parametersProxy;
 @end
 
 @implementation IndicatorConfigurationDialog
@@ -25,7 +36,6 @@
 #pragma mark - Initialization
 
 - (instancetype)initWithIndicator:(TechnicalIndicatorBase *)indicator {
-    // ✅ NON caricare XIB - creiamo tutto programmaticamente
     self = [super init];
     if (self) {
         _indicator = indicator;
@@ -34,17 +44,102 @@
         _parameterControls = [[NSMutableArray alloc] init];
         _controlValueMap = [[NSMutableDictionary alloc] init];
         
-        // ✅ Crea la finestra programmaticamente
+        // ✅ CREA PROXY PER PARAMETERS BINDING
+        [self setupParametersProxy];
+        
+        // ✅ SETUP KVO per refresh automatico del renderer
+        [self setupKVOObservation];
+        
         [self createWindowProgrammatically];
     }
     return self;
 }
 
-#pragma mark - Window Creation
+- (void)dealloc {
+    // ✅ Rimuovi observers KVO
+    [self removeKVOObservation];
+}
+
+#pragma mark - KVO & Bindings Setup
+
+- (void)setupParametersProxy {
+    // ✅ Crea un proxy dictionary per i parametri che supporta KVO
+    self.parametersProxy = [self.currentParameters mutableCopy];
+    
+    // ✅ Setup KVO sui singoli parametri
+    for (NSString *key in self.parametersProxy.allKeys) {
+        [self.parametersProxy addObserver:self
+                               forKeyPath:key
+                                  options:NSKeyValueObservingOptionNew
+                                  context:nil];
+    }
+}
+
+- (void)setupKVOObservation {
+    // ✅ Osserva le properties appearance dell'indicatore per refresh automatico
+    [self.indicator addObserver:self
+                     forKeyPath:@"displayColor"
+                        options:NSKeyValueObservingOptionNew
+                        context:nil];
+    
+    [self.indicator addObserver:self
+                     forKeyPath:@"lineWidth"
+                        options:NSKeyValueObservingOptionNew
+                        context:nil];
+    
+    [self.indicator addObserver:self
+                     forKeyPath:@"isVisible"
+                        options:NSKeyValueObservingOptionNew
+                        context:nil];
+}
+
+- (void)removeKVOObservation {
+    @try {
+        [self.indicator removeObserver:self forKeyPath:@"displayColor"];
+        [self.indicator removeObserver:self forKeyPath:@"lineWidth"];
+        [self.indicator removeObserver:self forKeyPath:@"isVisible"];
+        
+        for (NSString *key in self.parametersProxy.allKeys) {
+            [self.parametersProxy removeObserver:self forKeyPath:key];
+        }
+    }
+    @catch (NSException *exception) {
+        NSLog(@"⚠️ KVO removal error: %@", exception);
+    }
+}
+
+- (void)observeValueForKeyPath:(NSString *)keyPath
+                      ofObject:(id)object
+                        change:(NSDictionary<NSKeyValueChangeKey,id> *)change
+                       context:(void *)context {
+    
+    NSLog(@"🔄 KVO Change detected: %@ = %@", keyPath, change[NSKeyValueChangeNewKey]);
+    
+    // ✅ Quando cambia un parametro o appearance, forza il refresh del renderer
+    [self invalidateIndicatorRendering];
+}
+
+- (void)invalidateIndicatorRendering {
+    // ✅ Notifica il sistema che l'indicatore è cambiato
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // Segna che serve re-rendering
+        if ([self.indicator respondsToSelector:@selector(setNeedsRendering:)]) {
+            [self.indicator performSelector:@selector(setNeedsRendering:) withObject:@YES];
+        }
+        
+        // Invalida il calcolo se necessario
+        if ([self.indicator respondsToSelector:@selector(setIsCalculated:)]) {
+            self.indicator.isCalculated = NO;
+        }
+        
+        NSLog(@"🎨 Real-time indicator refresh triggered");
+    });
+}
+
+#pragma mark - Window Creation (stesso codice di prima)
 
 - (void)createWindowProgrammatically {
-    // ✅ Crea la finestra
-    NSRect windowFrame = NSMakeRect(0, 0, 600, 400);
+    NSRect windowFrame = NSMakeRect(0, 0, 600, 500);
     NSUInteger styleMask = NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable;
     
     NSWindow *window = [[NSWindow alloc] initWithContentRect:windowFrame
@@ -53,9 +148,9 @@
                                                        defer:NO];
     
     window.title = [NSString stringWithFormat:@"Configure %@", self.indicator.shortName];
-    window.minSize = NSMakeSize(600, 400);
+    window.minSize = NSMakeSize(550, 450);
+    window.maxSize = NSMakeSize(800, 700);
     
-    // ✅ Crea la content view principale
     NSView *contentView = [[NSView alloc] initWithFrame:windowFrame];
     contentView.wantsLayer = YES;
     contentView.layer.backgroundColor = [NSColor windowBackgroundColor].CGColor;
@@ -63,338 +158,84 @@
     window.contentView = contentView;
     self.window = window;
     
-    // ✅ Crea l'interfaccia
     [self createUserInterface];
 }
 
 - (void)createUserInterface {
     NSView *contentView = self.window.contentView;
     
-    // ✅ 1. Crea il TabView
     self.tabView = [[NSTabView alloc] init];
     self.tabView.translatesAutoresizingMaskIntoConstraints = NO;
     [contentView addSubview:self.tabView];
     
-    // ✅ 2. Crea i pulsanti
     [self createButtons];
-    
-    // ✅ 3. Crea i tab
     [self createParametersTab];
     [self createAppearanceTab];
     [self createAdvancedTab];
-    
-    // ✅ 4. Layout constraints
     [self setupLayoutConstraints];
     
-    // ✅ 5. Setup iniziale
+    // ✅ Setup UI e bindings
     [self setupUI];
     [self setupParameterControls];
-    [self updateAppearanceControls];
+    [self setupBindings]; // ✅ NUOVO!
 }
 
-- (void)createButtons {
-    NSView *contentView = self.window.contentView;
+#pragma mark - Bindings Setup
+
+- (void)setupBindings {
+    NSLog(@"🔗 Setting up real-time bindings...");
     
-    // ✅ Save Button
-    self.saveButton = [[NSButton alloc] init];
-    self.saveButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.saveButton.title = @"Save";
-    self.saveButton.bezelStyle = NSBezelStyleRounded;
-    self.saveButton.keyEquivalent = @"\r"; // Enter key
-    self.saveButton.target = self;
-    self.saveButton.action = @selector(saveAction:);
-    [contentView addSubview:self.saveButton];
+    // ✅ 1. BIND APPEARANCE CONTROLS DIRETTAMENTE ALL'INDICATORE
+    [self.colorWell bind:@"value"
+                toObject:self.indicator
+             withKeyPath:@"displayColor"
+                 options:@{NSContinuouslyUpdatesValueBindingOption: @YES}];
     
-    // ✅ Cancel Button
-    self.cancelButton = [[NSButton alloc] init];
-    self.cancelButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.cancelButton.title = @"Cancel";
-    self.cancelButton.bezelStyle = NSBezelStyleRounded;
-    self.cancelButton.keyEquivalent = @"\033"; // Escape key
-    self.cancelButton.target = self;
-    self.cancelButton.action = @selector(cancelAction:);
-    [contentView addSubview:self.cancelButton];
+    [self.lineWidthSlider bind:@"value"
+                      toObject:self.indicator
+                   withKeyPath:@"lineWidth"
+                       options:@{NSContinuouslyUpdatesValueBindingOption: @YES}];
     
-    // ✅ Reset Button
-    self.resetButton = [[NSButton alloc] init];
-    self.resetButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.resetButton.title = @"Reset to Defaults";
-    self.resetButton.bezelStyle = NSBezelStyleRounded;
-    self.resetButton.target = self;
-    self.resetButton.action = @selector(resetAction:);
-    [contentView addSubview:self.resetButton];
+    [self.visibilityToggle bind:@"value"
+                       toObject:self.indicator
+                    withKeyPath:@"isVisible"
+                        options:@{NSContinuouslyUpdatesValueBindingOption: @YES}];
+    
+    // ✅ 2. BIND LABEL DEL LINE WIDTH
+    [self.lineWidthLabel bind:@"value"
+                     toObject:self.indicator
+                  withKeyPath:@"lineWidth"
+                      options:@{NSValueTransformerNameBindingOption: @"LineWidthToStringTransformer"}];
+    
+    // ✅ 3. BIND PARAMETER CONTROLS AI PARAMETERS
+    [self setupParameterBindings];
+    
+    NSLog(@"✅ Real-time bindings configured");
 }
 
-// Revised createParametersTab for flexible autolayout and horizontal resizing
-- (void)createParametersTab {
-    // ✅ Crea il tab item
-    NSTabViewItem *parametersTab = [[NSTabViewItem alloc] initWithIdentifier:@"parameters"];
-    parametersTab.label = @"Parameters";
-
-    // ✅ Content view del tab
-    NSView *tabView = [[NSView alloc] init];
-
-    // ✅ Header labels
-    self.indicatorNameLabel = [[NSTextField alloc] init];
-    self.indicatorNameLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.indicatorNameLabel.editable = NO;
-    self.indicatorNameLabel.bezeled = NO;
-    self.indicatorNameLabel.backgroundColor = [NSColor clearColor];
-    self.indicatorNameLabel.font = [NSFont boldSystemFontOfSize:16];
-    [tabView addSubview:self.indicatorNameLabel];
-
-    self.indicatorDescriptionLabel = [[NSTextField alloc] init];
-    self.indicatorDescriptionLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.indicatorDescriptionLabel.editable = NO;
-    self.indicatorDescriptionLabel.bezeled = NO;
-    self.indicatorDescriptionLabel.backgroundColor = [NSColor clearColor];
-    self.indicatorDescriptionLabel.font = [NSFont systemFontOfSize:12];
-    self.indicatorDescriptionLabel.textColor = [NSColor secondaryLabelColor];
-    [tabView addSubview:self.indicatorDescriptionLabel];
-
-    // ✅ Scroll view per i parametri
-    self.parametersScrollView = [[NSScrollView alloc] init];
-    self.parametersScrollView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.parametersScrollView.hasVerticalScroller = YES;
-    self.parametersScrollView.hasHorizontalScroller = NO;
-    self.parametersScrollView.autohidesScrollers = YES;
-    self.parametersScrollView.borderType = NSBezelBorder;
-    [tabView addSubview:self.parametersScrollView];
-
-    // ✅ Stack view per i controlli dei parametri
-    self.parametersStackView = [[NSStackView alloc] init];
-    self.parametersStackView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.parametersStackView.orientation = NSUserInterfaceLayoutOrientationVertical;
-    self.parametersStackView.alignment = NSLayoutAttributeLeading;
-    self.parametersStackView.spacing = 8;
-
-    // ✅ Document view della scroll view
-    NSView *documentView = [[NSView alloc] init];
-    documentView.translatesAutoresizingMaskIntoConstraints = NO;
-    [documentView addSubview:self.parametersStackView];
-    self.parametersScrollView.documentView = documentView;
-
-    // Ensure documentView resizes horizontally with the scrollView contentView
-    documentView.translatesAutoresizingMaskIntoConstraints = NO;
-    [NSLayoutConstraint activateConstraints:@[
-        [documentView.leadingAnchor constraintEqualToAnchor:self.parametersScrollView.contentView.leadingAnchor],
-        [documentView.trailingAnchor constraintEqualToAnchor:self.parametersScrollView.contentView.trailingAnchor],
-        [documentView.topAnchor constraintEqualToAnchor:self.parametersScrollView.contentView.topAnchor],
-        [documentView.bottomAnchor constraintEqualToAnchor:self.parametersScrollView.contentView.bottomAnchor],
-        [self.parametersStackView.widthAnchor constraintLessThanOrEqualToAnchor:documentView.widthAnchor constant:-16]
-    ]];
-
-    // ✅ Constraints per il content del tab
-    [NSLayoutConstraint activateConstraints:@[
-        // Header
-        [self.indicatorNameLabel.topAnchor constraintEqualToAnchor:tabView.topAnchor constant:16],
-        [self.indicatorNameLabel.leadingAnchor constraintEqualToAnchor:tabView.leadingAnchor constant:16],
-        [self.indicatorNameLabel.trailingAnchor constraintEqualToAnchor:tabView.trailingAnchor constant:-16],
-
-        [self.indicatorDescriptionLabel.topAnchor constraintEqualToAnchor:self.indicatorNameLabel.bottomAnchor constant:4],
-        [self.indicatorDescriptionLabel.leadingAnchor constraintEqualToAnchor:tabView.leadingAnchor constant:16],
-        [self.indicatorDescriptionLabel.trailingAnchor constraintEqualToAnchor:tabView.trailingAnchor constant:-16],
-
-        // Scroll view
-        [self.parametersScrollView.topAnchor constraintEqualToAnchor:self.indicatorDescriptionLabel.bottomAnchor constant:16],
-        [self.parametersScrollView.leadingAnchor constraintEqualToAnchor:tabView.leadingAnchor constant:16],
-        [self.parametersScrollView.trailingAnchor constraintEqualToAnchor:tabView.trailingAnchor constant:-16],
-        [self.parametersScrollView.bottomAnchor constraintEqualToAnchor:tabView.bottomAnchor constant:-16],
-
-        // Stack view nella document view
-        [self.parametersStackView.topAnchor constraintEqualToAnchor:documentView.topAnchor constant:8],
-        [self.parametersStackView.leadingAnchor constraintEqualToAnchor:documentView.leadingAnchor constant:8],
-        [self.parametersStackView.trailingAnchor constraintEqualToAnchor:documentView.trailingAnchor constant:-8],
-        [self.parametersStackView.bottomAnchor constraintLessThanOrEqualToAnchor:documentView.bottomAnchor constant:-8]
-        // No rigid width constraint, allow horizontal expansion
-    ]];
-
-    parametersTab.view = tabView;
-    [self.tabView addTabViewItem:parametersTab];
-}
-
-- (void)createAppearanceTab {
-    NSTabViewItem *appearanceTab = [[NSTabViewItem alloc] initWithIdentifier:@"appearance"];
-    appearanceTab.label = @"Appearance";
-    
-    NSView *tabView = [[NSView alloc] init];
-    
-    // ✅ Color Well
-    NSTextField *colorLabel = [self createLabel:@"Color:"];
-    self.colorWell = [[NSColorWell alloc] init];
-    self.colorWell.translatesAutoresizingMaskIntoConstraints = NO;
-    self.colorWell.target = self;
-    self.colorWell.action = @selector(colorChanged:);
-    
-    // ✅ Line Width
-    NSTextField *lineWidthLabelText = [self createLabel:@"Line Width:"];
-    self.lineWidthSlider = [[NSSlider alloc] init];
-    self.lineWidthSlider.translatesAutoresizingMaskIntoConstraints = NO;
-    self.lineWidthSlider.minValue = 0.5;
-    self.lineWidthSlider.maxValue = 5.0;
-    self.lineWidthSlider.target = self;
-    self.lineWidthSlider.action = @selector(lineWidthChanged:);
-    
-    self.lineWidthLabel = [[NSTextField alloc] init];
-    self.lineWidthLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.lineWidthLabel.editable = NO;
-    self.lineWidthLabel.bezeled = NO;
-    self.lineWidthLabel.backgroundColor = [NSColor clearColor];
-    self.lineWidthLabel.alignment = NSTextAlignmentCenter;
-    
-    // ✅ Visibility Toggle
-    self.visibilityToggle = [[NSButton alloc] init];
-    self.visibilityToggle.translatesAutoresizingMaskIntoConstraints = NO;
-    self.visibilityToggle.title = @"Visible";
-    [self.visibilityToggle setButtonType:NSButtonTypeSwitch];
-    self.visibilityToggle.target = self;
-    self.visibilityToggle.action = @selector(visibilityToggled:);
-    
-    // ✅ Add to view
-    [tabView addSubview:colorLabel];
-    [tabView addSubview:self.colorWell];
-    [tabView addSubview:lineWidthLabelText];
-    [tabView addSubview:self.lineWidthSlider];
-    [tabView addSubview:self.lineWidthLabel];
-    [tabView addSubview:self.visibilityToggle];
-    
-    // ✅ Layout
-    [NSLayoutConstraint activateConstraints:@[
-        // Color
-        [colorLabel.topAnchor constraintEqualToAnchor:tabView.topAnchor constant:20],
-        [colorLabel.leadingAnchor constraintEqualToAnchor:tabView.leadingAnchor constant:20],
-        [self.colorWell.leadingAnchor constraintEqualToAnchor:colorLabel.trailingAnchor constant:16],
-        [self.colorWell.centerYAnchor constraintEqualToAnchor:colorLabel.centerYAnchor],
+- (void)setupParameterBindings {
+    // ✅ Bind ogni controllo parametro al proxy parameters
+    [self.controlValueMap enumerateKeysAndObjectsUsingBlock:^(NSString *paramName, NSView *control, BOOL *stop) {
         
-        // Line Width
-        [lineWidthLabelText.topAnchor constraintEqualToAnchor:colorLabel.bottomAnchor constant:20],
-        [lineWidthLabelText.leadingAnchor constraintEqualToAnchor:tabView.leadingAnchor constant:20],
-        [self.lineWidthSlider.leadingAnchor constraintEqualToAnchor:lineWidthLabelText.trailingAnchor constant:16],
-        [self.lineWidthSlider.centerYAnchor constraintEqualToAnchor:lineWidthLabelText.centerYAnchor],
-        [self.lineWidthSlider.widthAnchor constraintEqualToConstant:150],
-        [self.lineWidthLabel.leadingAnchor constraintEqualToAnchor:self.lineWidthSlider.trailingAnchor constant:8],
-        [self.lineWidthLabel.centerYAnchor constraintEqualToAnchor:self.lineWidthSlider.centerYAnchor],
-        [self.lineWidthLabel.widthAnchor constraintEqualToConstant:50],
+        NSString *keyPath = paramName;
+        NSDictionary *options = @{NSContinuouslyUpdatesValueBindingOption: @YES};
         
-        // Visibility
-        [self.visibilityToggle.topAnchor constraintEqualToAnchor:lineWidthLabelText.bottomAnchor constant:20],
-        [self.visibilityToggle.leadingAnchor constraintEqualToAnchor:tabView.leadingAnchor constant:20]
-    ]];
-    
-    appearanceTab.view = tabView;
-    [self.tabView addTabViewItem:appearanceTab];
+        if ([control isKindOfClass:[NSSlider class]]) {
+            [control bind:@"value" toObject:self.parametersProxy withKeyPath:keyPath options:options];
+            NSLog(@"🔗 Bound slider '%@' to parameters.%@", paramName, keyPath);
+            
+        } else if ([control isKindOfClass:[NSTextField class]]) {
+            [control bind:@"value" toObject:self.parametersProxy withKeyPath:keyPath options:options];
+            NSLog(@"🔗 Bound textField '%@' to parameters.%@", paramName, keyPath);
+            
+        } else if ([control isKindOfClass:[NSPopUpButton class]]) {
+            [control bind:@"selectedObject" toObject:self.parametersProxy withKeyPath:keyPath options:options];
+            NSLog(@"🔗 Bound popUp '%@' to parameters.%@", paramName, keyPath);
+        }
+    }];
 }
 
-- (void)createAdvancedTab {
-    NSTabViewItem *advancedTab = [[NSTabViewItem alloc] initWithIdentifier:@"advanced"];
-    advancedTab.label = @"Advanced";
-    
-    NSView *tabView = [[NSView alloc] init];
-    
-    // ✅ Notes
-    NSTextField *notesLabel = [self createLabel:@"Notes:"];
-    
-    NSScrollView *notesScrollView = [[NSScrollView alloc] init];
-    notesScrollView.translatesAutoresizingMaskIntoConstraints = NO;
-    notesScrollView.hasVerticalScroller = YES;
-    notesScrollView.hasHorizontalScroller = NO;
-    notesScrollView.borderType = NSBezelBorder;
-    
-    self.notesTextView = [[NSTextView alloc] init];
-    self.notesTextView.font = [NSFont systemFontOfSize:12];
-    notesScrollView.documentView = self.notesTextView;
-    
-    [tabView addSubview:notesLabel];
-    [tabView addSubview:notesScrollView];
-    
-    [NSLayoutConstraint activateConstraints:@[
-        [notesLabel.topAnchor constraintEqualToAnchor:tabView.topAnchor constant:20],
-        [notesLabel.leadingAnchor constraintEqualToAnchor:tabView.leadingAnchor constant:20],
-        
-        [notesScrollView.topAnchor constraintEqualToAnchor:notesLabel.bottomAnchor constant:8],
-        [notesScrollView.leadingAnchor constraintEqualToAnchor:tabView.leadingAnchor constant:20],
-        [notesScrollView.trailingAnchor constraintEqualToAnchor:tabView.trailingAnchor constant:-20],
-        [notesScrollView.bottomAnchor constraintEqualToAnchor:tabView.bottomAnchor constant:-20]
-    ]];
-    
-    advancedTab.view = tabView;
-    [self.tabView addTabViewItem:advancedTab];
-}
-
-- (NSTextField *)createLabel:(NSString *)text {
-    NSTextField *label = [[NSTextField alloc] init];
-    label.translatesAutoresizingMaskIntoConstraints = NO;
-    label.stringValue = text;
-    label.editable = NO;
-    label.bezeled = NO;
-    label.backgroundColor = [NSColor clearColor];
-    label.font = [NSFont systemFontOfSize:13];
-    return label;
-}
-
-
-// Revised constraints for flexible autolayout and resizable window
-- (void)setupLayoutConstraints {
-    NSView *contentView = self.window.contentView;
-
-    // Tab view should fill the available space above the buttons
-    [NSLayoutConstraint activateConstraints:@[
-        [self.tabView.topAnchor constraintEqualToAnchor:contentView.topAnchor constant:16],
-        [self.tabView.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:16],
-        [self.tabView.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-16],
-        [self.tabView.bottomAnchor constraintEqualToAnchor:self.saveButton.topAnchor constant:-20]
-    ]];
-
-    // Save Button
-    [NSLayoutConstraint activateConstraints:@[
-        [self.saveButton.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-16],
-        [self.saveButton.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor constant:-16],
-        [self.saveButton.widthAnchor constraintEqualToConstant:80]
-    ]];
-
-    // Cancel Button
-    [NSLayoutConstraint activateConstraints:@[
-        [self.cancelButton.trailingAnchor constraintEqualToAnchor:self.saveButton.leadingAnchor constant:-8],
-        [self.cancelButton.bottomAnchor constraintEqualToAnchor:self.saveButton.bottomAnchor],
-        [self.cancelButton.widthAnchor constraintEqualToConstant:80]
-    ]];
-
-    // Reset Button
-    [NSLayoutConstraint activateConstraints:@[
-        [self.resetButton.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:16],
-        [self.resetButton.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor constant:-16],
-        [self.resetButton.widthAnchor constraintEqualToConstant:120]
-    ]];
-}
-
-#pragma mark - UI Setup (resto del codice invariato)
-
-- (void)setupUI {
-    // Set window title
-    self.window.title = [NSString stringWithFormat:@"Configure %@", self.indicator.shortName];
-    
-    // Setup basic info
-    self.indicatorNameLabel.stringValue = self.indicator.displayName ?: @"Unknown Indicator";
-    self.indicatorDescriptionLabel.stringValue = [self getIndicatorDescription];
-    
-    // Setup appearance controls
-    self.colorWell.color = self.indicator.displayColor ?: [NSColor systemBlueColor];
-    self.lineWidthSlider.doubleValue = self.indicator.lineWidth;
-    self.lineWidthLabel.stringValue = [NSString stringWithFormat:@"%.1f pt", self.indicator.lineWidth];
-    self.visibilityToggle.state = self.indicator.isVisible ? NSControlStateValueOn : NSControlStateValueOff;
-}
-
-- (NSString *)getIndicatorDescription {
-    // Get description from indicator class or use default
-    if ([self.indicator respondsToSelector:@selector(indicatorDescription)]) {
-        return [self.indicator performSelector:@selector(indicatorDescription)];
-    }
-    
-    return [NSString stringWithFormat:@"%@ technical indicator with configurable parameters",
-            self.indicator.shortName ?: @"Technical"];
-}
-
-#pragma mark - Parameter Controls Setup (resto del codice già esistente)
+#pragma mark - Parameter Controls Setup (semplificato)
 
 - (void)setupParameterControls {
     // Clear existing controls
@@ -421,9 +262,7 @@
         }
     }];
 }
-
-// ✅ RESTO DEI METODI INVARIATI
-// (createControlForParameter, createInputControlForValue, actions, etc.)
+#pragma mark - Parameter Controls Creation
 
 - (NSView *)createControlForParameter:(NSString *)parameterName
                                 value:(id)value
@@ -505,70 +344,6 @@
     }
 }
 
-// Slider + manual value input field in a stack view
-- (NSView *)createSliderForParameter:(NSString *)parameterName
-                              value:(NSNumber *)value
-                                min:(double)minValue
-                                max:(double)maxValue {
-    NSSlider *slider = [[NSSlider alloc] init];
-    slider.minValue = minValue;
-    slider.maxValue = maxValue;
-    slider.doubleValue = [value doubleValue];
-    slider.target = self;
-    slider.action = @selector(parameterControlChanged:);
-
-    // Manual input text field
-    NSTextField *textField = [[NSTextField alloc] init];
-    textField.translatesAutoresizingMaskIntoConstraints = NO;
-    textField.stringValue = [value stringValue];
-    textField.alignment = NSTextAlignmentCenter;
-    textField.controlSize = NSControlSizeSmall;
-    [textField setBezeled:YES];
-    [textField setEditable:YES];
-    textField.target = self;
-    textField.action = @selector(parameterControlChanged:);
-
-    // Stack view to hold slider and text field horizontally
-    NSStackView *stack = [[NSStackView alloc] init];
-    stack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-    stack.spacing = 8;
-    stack.translatesAutoresizingMaskIntoConstraints = NO;
-    [stack addArrangedSubview:slider];
-    [stack addArrangedSubview:textField];
-
-    // Optionally constrain text field width for neatness
-    [textField.widthAnchor constraintEqualToConstant:60].active = YES;
-
-    // Store mapping: store both controls in a dictionary
-    self.controlValueMap[parameterName] = @{ @"slider": slider, @"textField": textField };
-
-    return stack;
-}
-
-- (NSTextField *)createNumberFieldForParameter:(NSString *)parameterName value:(NSNumber *)value {
-    NSTextField *textField = [[NSTextField alloc] init];
-    textField.stringValue = [value stringValue];
-    textField.target = self;
-    textField.action = @selector(parameterControlChanged:);
-    
-    // Store mapping
-    self.controlValueMap[parameterName] = textField;
-    
-    return textField;
-}
-
-- (NSTextField *)createTextFieldForParameter:(NSString *)parameterName value:(NSString *)value {
-    NSTextField *textField = [[NSTextField alloc] init];
-    textField.stringValue = value ?: @"";
-    textField.target = self;
-    textField.action = @selector(parameterControlChanged:);
-    
-    // Store mapping
-    self.controlValueMap[parameterName] = textField;
-    
-    return textField;
-}
-
 - (NSPopUpButton *)createPopUpForParameter:(NSString *)parameterName
                                      value:(id)value
                                    options:(NSArray *)options {
@@ -587,16 +362,11 @@
         }
     }
     
-    popup.target = self;
-    popup.action = @selector(parameterControlChanged:);
-    
-    // Store mapping
+    // Store mapping for binding setup
     self.controlValueMap[parameterName] = popup;
     
     return popup;
 }
-
-#pragma mark - Helper Methods
 
 - (NSString *)friendlyNameForParameter:(NSString *)parameterName {
     // Convert camelCase to friendly names
@@ -617,14 +387,472 @@
     
     return [friendly copy];
 }
-
-- (void)updateAppearanceControls {
-    self.colorWell.color = self.indicator.displayColor ?: [NSColor systemBlueColor];
-    self.lineWidthSlider.doubleValue = self.indicator.lineWidth;
-    self.lineWidthLabel.stringValue = [NSString stringWithFormat:@"%.1f pt", self.indicator.lineWidth];
-    self.visibilityToggle.state = self.indicator.isVisible ? NSControlStateValueOn : NSControlStateValueOff;
+- (NSSlider *)createSliderForParameter:(NSString *)parameterName
+                                 value:(NSNumber *)value
+                                   min:(double)minValue
+                                   max:(double)maxValue {
+    
+    NSSlider *slider = [[NSSlider alloc] init];
+    slider.minValue = minValue;
+    slider.maxValue = maxValue;
+    slider.doubleValue = [value doubleValue];
+    
+    // ✅ NON SERVE PIÙ TARGET/ACTION - useremo bindings!
+    // slider.target = self;
+    // slider.action = @selector(parameterControlChanged:);
+    
+    // ✅ PERIODI DEVONO ESSERE NUMERI INTERI
+    BOOL isPeriodParameter = [parameterName.lowercaseString containsString:@"period"] ||
+                            [parameterName.lowercaseString containsString:@"length"] ||
+                            [parameterName.lowercaseString containsString:@"window"] ||
+                            [parameterName.lowercaseString containsString:@"span"] ||
+                            [parameterName.lowercaseString containsString:@"bars"];
+    
+    if (isPeriodParameter) {
+        slider.numberOfTickMarks = (NSInteger)(maxValue - minValue) + 1;
+        slider.allowsTickMarkValuesOnly = YES;
+        slider.tickMarkPosition = NSTickMarkPositionBelow;
+    }
+    
+    // Store mapping for binding setup
+    self.controlValueMap[parameterName] = slider;
+    
+    return slider;
 }
 
+- (NSTextField *)createNumberFieldForParameter:(NSString *)parameterName value:(NSNumber *)value {
+    NSTextField *textField = [[NSTextField alloc] init];
+    textField.stringValue = [value stringValue];
+    
+    // ✅ NON SERVE PIÙ TARGET/ACTION
+    // Store mapping for binding setup
+    self.controlValueMap[parameterName] = textField;
+    
+    return textField;
+}
+
+- (NSTextField *)createTextFieldForParameter:(NSString *)parameterName value:(NSString *)value {
+    NSTextField *textField = [[NSTextField alloc] init];
+    textField.stringValue = value ?: @"";
+    
+    // Store mapping for binding setup
+    self.controlValueMap[parameterName] = textField;
+    
+    return textField;
+}
+
+#pragma mark - Actions (semplificati)
+
+- (IBAction)saveAction:(NSButton *)sender {
+    // ✅ CON I BINDINGS NON SERVE PIÙ RACCOGLIERE MANUALMENTE I VALORI!
+    // I parametri sono già stati applicati in real-time
+    
+    // ✅ Sincronizza i parameters proxy con l'indicatore
+    [self syncParametersFromProxyToIndicator];
+    
+    [self.window.sheetParent endSheet:self.window returnCode:NSModalResponseOK];
+}
+
+- (IBAction)cancelAction:(NSButton *)sender {
+    // ✅ Ripristina i valori originali
+    [self restoreOriginalValues];
+    [self.window.sheetParent endSheet:self.window returnCode:NSModalResponseCancel];
+}
+
+- (IBAction)resetAction:(NSButton *)sender {
+    [self resetParametersToDefaults];
+    [self updateBindingsFromDefaults];
+}
+
+#pragma mark - Parameter Sync
+
+- (void)syncParametersFromProxyToIndicator {
+    NSLog(@"🔄 Syncing parameters from proxy to indicator");
+    
+    // ✅ Applica i parametri dal proxy all'indicatore
+    NSMutableDictionary *cleanedParams = [[NSMutableDictionary alloc] init];
+    
+    // Filtra i parametri, escludendo quelli di appearance
+    for (NSString *key in self.parametersProxy.allKeys) {
+        if (![key isEqualToString:@"displayColor"] &&
+            ![key isEqualToString:@"lineWidth"] &&
+            ![key isEqualToString:@"isVisible"]) {
+            cleanedParams[key] = self.parametersProxy[key];
+        }
+    }
+    
+    // Applica i parametri all'indicatore
+    self.indicator.parameters = [cleanedParams copy];
+    
+    NSLog(@"✅ Parameters synced: %@", cleanedParams);
+}
+
+- (void)restoreOriginalValues {
+    NSLog(@"🔄 Restoring original indicator values");
+    
+    // ✅ Ripristina i valori originali dell'indicatore
+    self.indicator.parameters = self.originalParameters;
+    
+    // Ripristina appearance values se presenti negli originalParameters
+    if (self.originalParameters[@"displayColor"]) {
+        self.indicator.displayColor = self.originalParameters[@"displayColor"];
+    }
+    if (self.originalParameters[@"lineWidth"]) {
+        self.indicator.lineWidth = [self.originalParameters[@"lineWidth"] floatValue];
+    }
+    if (self.originalParameters[@"isVisible"]) {
+        self.indicator.isVisible = [self.originalParameters[@"isVisible"] boolValue];
+    }
+}
+
+- (void)updateBindingsFromDefaults {
+    if ([self.indicator.class respondsToSelector:@selector(defaultParameters)]) {
+        NSDictionary *defaults = [self.indicator.class defaultParameters];
+        
+        // ✅ Aggiorna il proxy con i default
+        [self.parametersProxy setValuesForKeysWithDictionary:defaults];
+        
+        // ✅ Aggiorna appearance controls
+        if (defaults[@"displayColor"]) {
+            self.indicator.displayColor = defaults[@"displayColor"];
+        }
+        if (defaults[@"lineWidth"]) {
+            self.indicator.lineWidth = [defaults[@"lineWidth"] floatValue];
+        }
+        if (defaults[@"isVisible"]) {
+            self.indicator.isVisible = [defaults[@"isVisible"] boolValue];
+        }
+    }
+}
+
+- (void)createParametersTab {
+    NSTabViewItem *parametersTab = [[NSTabViewItem alloc] initWithIdentifier:@"parameters"];
+    parametersTab.label = @"Parameters";
+    
+    NSView *tabContentView = [[NSView alloc] init];
+    
+    // Header labels
+    self.indicatorNameLabel = [[NSTextField alloc] init];
+    self.indicatorNameLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.indicatorNameLabel.editable = NO;
+    self.indicatorNameLabel.bezeled = NO;
+    self.indicatorNameLabel.backgroundColor = [NSColor clearColor];
+    self.indicatorNameLabel.font = [NSFont boldSystemFontOfSize:16];
+    [tabContentView addSubview:self.indicatorNameLabel];
+    
+    self.indicatorDescriptionLabel = [[NSTextField alloc] init];
+    self.indicatorDescriptionLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.indicatorDescriptionLabel.editable = NO;
+    self.indicatorDescriptionLabel.bezeled = NO;
+    self.indicatorDescriptionLabel.backgroundColor = [NSColor clearColor];
+    self.indicatorDescriptionLabel.font = [NSFont systemFontOfSize:12];
+    self.indicatorDescriptionLabel.textColor = [NSColor secondaryLabelColor];
+    [tabContentView addSubview:self.indicatorDescriptionLabel];
+    
+    // Scroll view per i parametri
+    self.parametersScrollView = [[NSScrollView alloc] init];
+    self.parametersScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.parametersScrollView.hasVerticalScroller = YES;
+    self.parametersScrollView.hasHorizontalScroller = NO;
+    self.parametersScrollView.autohidesScrollers = YES;
+    self.parametersScrollView.borderType = NSBezelBorder;
+    [tabContentView addSubview:self.parametersScrollView];
+    
+    // Stack view per i controlli dei parametri
+    self.parametersStackView = [[NSStackView alloc] init];
+    self.parametersStackView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.parametersStackView.orientation = NSUserInterfaceLayoutOrientationVertical;
+    self.parametersStackView.alignment = NSLayoutAttributeLeading;
+    self.parametersStackView.spacing = 8;
+    
+    // Document view della scroll view
+    NSView *documentView = [[NSView alloc] init];
+    documentView.translatesAutoresizingMaskIntoConstraints = NO;
+    [documentView addSubview:self.parametersStackView];
+    self.parametersScrollView.documentView = documentView;
+    
+    // ✅ CONSTRAINTS OTTIMIZZATI - Pattern a costanti
+    const CGFloat kMargin = 16;
+    const CGFloat kHeaderSpacing = 4;
+    const CGFloat kContentSpacing = 16;
+    const CGFloat kScrollPadding = 8;
+    
+    [NSLayoutConstraint activateConstraints:@[
+        // Header labels - layout verticale pulito
+        [self.indicatorNameLabel.topAnchor constraintEqualToAnchor:tabContentView.topAnchor constant:kMargin],
+        [self.indicatorNameLabel.leadingAnchor constraintEqualToAnchor:tabContentView.leadingAnchor constant:kMargin],
+        [self.indicatorNameLabel.trailingAnchor constraintEqualToAnchor:tabContentView.trailingAnchor constant:-kMargin],
+        
+        [self.indicatorDescriptionLabel.topAnchor constraintEqualToAnchor:self.indicatorNameLabel.bottomAnchor constant:kHeaderSpacing],
+        [self.indicatorDescriptionLabel.leadingAnchor constraintEqualToAnchor:tabContentView.leadingAnchor constant:kMargin],
+        [self.indicatorDescriptionLabel.trailingAnchor constraintEqualToAnchor:tabContentView.trailingAnchor constant:-kMargin],
+        
+        // Scroll view - riempie il resto del tab
+        [self.parametersScrollView.topAnchor constraintEqualToAnchor:self.indicatorDescriptionLabel.bottomAnchor constant:kContentSpacing],
+        [self.parametersScrollView.leadingAnchor constraintEqualToAnchor:tabContentView.leadingAnchor constant:kMargin],
+        [self.parametersScrollView.trailingAnchor constraintEqualToAnchor:tabContentView.trailingAnchor constant:-kMargin],
+        [self.parametersScrollView.bottomAnchor constraintEqualToAnchor:tabContentView.bottomAnchor constant:-kMargin],
+        
+        // Stack view nella document view - layout ottimizzato per scrolling
+        [self.parametersStackView.topAnchor constraintEqualToAnchor:documentView.topAnchor constant:kScrollPadding],
+        [self.parametersStackView.leadingAnchor constraintEqualToAnchor:documentView.leadingAnchor constant:kScrollPadding],
+        [self.parametersStackView.trailingAnchor constraintEqualToAnchor:documentView.trailingAnchor constant:-kScrollPadding],
+        [self.parametersStackView.bottomAnchor constraintLessThanOrEqualToAnchor:documentView.bottomAnchor constant:-kScrollPadding],
+        
+        // ✅ CHIAVE: width constraint corretto per evitare overflow orizzontale
+        [self.parametersStackView.widthAnchor constraintEqualToAnchor:self.parametersScrollView.contentView.widthAnchor constant:-(2 * kScrollPadding)]
+    ]];
+    
+    parametersTab.view = tabContentView;
+    [self.tabView addTabViewItem:parametersTab];
+}
+
+- (NSTextField *)createLabel:(NSString *)text {
+    NSTextField *label = [[NSTextField alloc] init];
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    label.stringValue = text;
+    label.editable = NO;
+    label.bezeled = NO;
+    label.backgroundColor = [NSColor clearColor];
+    label.font = [NSFont systemFontOfSize:13];
+    return label;
+}
+
+- (void)createAppearanceTab {
+    NSTabViewItem *appearanceTab = [[NSTabViewItem alloc] initWithIdentifier:@"appearance"];
+    appearanceTab.label = @"Appearance";
+    
+    NSView *tabContentView = [[NSView alloc] init];
+    
+    // ✅ COSTANTI PER LAYOUT CONSISTENTE
+    const CGFloat kMargin = 20;
+    const CGFloat kRowHeight = 32;
+    const CGFloat kRowSpacing = 16;
+    const CGFloat kLabelWidth = 100;
+    const CGFloat kControlSpacing = 16;
+    const CGFloat kSliderWidth = 150;
+    const CGFloat kValueLabelWidth = 50;
+    
+    // ✅ Color Well Row
+    NSTextField *colorLabel = [self createLabel:@"Color:"];
+    self.colorWell = [[NSColorWell alloc] init];
+    self.colorWell.translatesAutoresizingMaskIntoConstraints = NO;
+    self.colorWell.target = self;
+    self.colorWell.action = @selector(colorChanged:);
+    
+    // ✅ Line Width Row
+    NSTextField *lineWidthLabelText = [self createLabel:@"Line Width:"];
+    self.lineWidthSlider = [[NSSlider alloc] init];
+    self.lineWidthSlider.translatesAutoresizingMaskIntoConstraints = NO;
+    self.lineWidthSlider.minValue = 0.5;
+    self.lineWidthSlider.maxValue = 5.0;
+    self.lineWidthSlider.target = self;
+    self.lineWidthSlider.action = @selector(lineWidthChanged:);
+    
+    self.lineWidthLabel = [[NSTextField alloc] init];
+    self.lineWidthLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.lineWidthLabel.editable = NO;
+    self.lineWidthLabel.bezeled = NO;
+    self.lineWidthLabel.backgroundColor = [NSColor clearColor];
+    self.lineWidthLabel.alignment = NSTextAlignmentCenter;
+    self.lineWidthLabel.font = [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular];
+    
+    // ✅ Visibility Toggle
+    self.visibilityToggle = [[NSButton alloc] init];
+    self.visibilityToggle.translatesAutoresizingMaskIntoConstraints = NO;
+    self.visibilityToggle.title = @"Visible";
+    [self.visibilityToggle setButtonType:NSButtonTypeSwitch];
+    self.visibilityToggle.target = self;
+    self.visibilityToggle.action = @selector(visibilityToggled:);
+    
+    // ✅ Add views
+    [tabContentView addSubview:colorLabel];
+    [tabContentView addSubview:self.colorWell];
+    [tabContentView addSubview:lineWidthLabelText];
+    [tabContentView addSubview:self.lineWidthSlider];
+    [tabContentView addSubview:self.lineWidthLabel];
+    [tabContentView addSubview:self.visibilityToggle];
+    
+    // ✅ CONSTRAINTS PULITI E ALLINEATI
+    [NSLayoutConstraint activateConstraints:@[
+        // Color Row - baseline alignment
+        [colorLabel.topAnchor constraintEqualToAnchor:tabContentView.topAnchor constant:kMargin],
+        [colorLabel.leadingAnchor constraintEqualToAnchor:tabContentView.leadingAnchor constant:kMargin],
+        [colorLabel.widthAnchor constraintEqualToConstant:kLabelWidth],
+        [colorLabel.heightAnchor constraintEqualToConstant:kRowHeight],
+        
+        [self.colorWell.leadingAnchor constraintEqualToAnchor:colorLabel.trailingAnchor constant:kControlSpacing],
+        [self.colorWell.centerYAnchor constraintEqualToAnchor:colorLabel.centerYAnchor],
+        [self.colorWell.widthAnchor constraintEqualToConstant:44], // Standard color well size
+        [self.colorWell.heightAnchor constraintEqualToConstant:24],
+        
+        // Line Width Row - tri-part layout
+        [lineWidthLabelText.topAnchor constraintEqualToAnchor:colorLabel.bottomAnchor constant:kRowSpacing],
+        [lineWidthLabelText.leadingAnchor constraintEqualToAnchor:tabContentView.leadingAnchor constant:kMargin],
+        [lineWidthLabelText.widthAnchor constraintEqualToConstant:kLabelWidth],
+        [lineWidthLabelText.heightAnchor constraintEqualToConstant:kRowHeight],
+        
+        [self.lineWidthSlider.leadingAnchor constraintEqualToAnchor:lineWidthLabelText.trailingAnchor constant:kControlSpacing],
+        [self.lineWidthSlider.centerYAnchor constraintEqualToAnchor:lineWidthLabelText.centerYAnchor],
+        [self.lineWidthSlider.widthAnchor constraintEqualToConstant:kSliderWidth],
+        
+        [self.lineWidthLabel.leadingAnchor constraintEqualToAnchor:self.lineWidthSlider.trailingAnchor constant:8],
+        [self.lineWidthLabel.centerYAnchor constraintEqualToAnchor:self.lineWidthSlider.centerYAnchor],
+        [self.lineWidthLabel.widthAnchor constraintEqualToConstant:kValueLabelWidth],
+        
+        // Visibility Toggle - single control
+        [self.visibilityToggle.topAnchor constraintEqualToAnchor:lineWidthLabelText.bottomAnchor constant:kRowSpacing],
+        [self.visibilityToggle.leadingAnchor constraintEqualToAnchor:tabContentView.leadingAnchor constant:kMargin],
+        [self.visibilityToggle.heightAnchor constraintEqualToConstant:kRowHeight]
+    ]];
+    
+    appearanceTab.view = tabContentView;
+    [self.tabView addTabViewItem:appearanceTab];
+}
+
+- (void)createAdvancedTab {
+    NSTabViewItem *advancedTab = [[NSTabViewItem alloc] initWithIdentifier:@"advanced"];
+    advancedTab.label = @"Advanced";
+    
+    NSView *tabContentView = [[NSView alloc] init];
+    
+    // ✅ COSTANTI LAYOUT
+    const CGFloat kMargin = 20;
+    const CGFloat kLabelHeight = 20;
+    const CGFloat kContentSpacing = 8;
+    
+    // ✅ Notes Label
+    NSTextField *notesLabel = [self createLabel:@"Notes:"];
+    [tabContentView addSubview:notesLabel];
+    
+    // ✅ Notes Scroll View & Text View
+    NSScrollView *notesScrollView = [[NSScrollView alloc] init];
+    notesScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    notesScrollView.hasVerticalScroller = YES;
+    notesScrollView.hasHorizontalScroller = NO;
+    notesScrollView.autohidesScrollers = YES;
+    notesScrollView.borderType = NSBezelBorder;
+    
+    self.notesTextView = [[NSTextView alloc] init];
+    self.notesTextView.font = [NSFont systemFontOfSize:12];
+    self.notesTextView.textColor = [NSColor textColor];
+    self.notesTextView.backgroundColor = [NSColor textBackgroundColor];
+    notesScrollView.documentView = self.notesTextView;
+    
+    [tabContentView addSubview:notesScrollView];
+    
+    // ✅ CONSTRAINTS OTTIMIZZATI
+    [NSLayoutConstraint activateConstraints:@[
+        // Notes label - fixed height, top aligned
+        [notesLabel.topAnchor constraintEqualToAnchor:tabContentView.topAnchor constant:kMargin],
+        [notesLabel.leadingAnchor constraintEqualToAnchor:tabContentView.leadingAnchor constant:kMargin],
+        [notesLabel.trailingAnchor constraintEqualToAnchor:tabContentView.trailingAnchor constant:-kMargin],
+        [notesLabel.heightAnchor constraintEqualToConstant:kLabelHeight],
+        
+        // Notes text view - fills remaining space
+        [notesScrollView.topAnchor constraintEqualToAnchor:notesLabel.bottomAnchor constant:kContentSpacing],
+        [notesScrollView.leadingAnchor constraintEqualToAnchor:tabContentView.leadingAnchor constant:kMargin],
+        [notesScrollView.trailingAnchor constraintEqualToAnchor:tabContentView.trailingAnchor constant:-kMargin],
+        [notesScrollView.bottomAnchor constraintEqualToAnchor:tabContentView.bottomAnchor constant:-kMargin]
+    ]];
+    
+    advancedTab.view = tabContentView;
+    [self.tabView addTabViewItem:advancedTab];
+}
+
+- (void)setupLayoutConstraints {
+    NSView *contentView = self.window.contentView;
+    
+    // ✅ COSTANTI PER LAYOUT PULITO
+    const CGFloat kWindowMargin = 16;
+    const CGFloat kButtonHeight = 32;
+    const CGFloat kButtonWidth = 80;
+    const CGFloat kResetButtonWidth = 120;
+    const CGFloat kButtonSpacing = 8;
+    const CGFloat kTabButtonSpacing = 20;
+    
+    // ✅ CONSTRAINTS STRUTTURATI E ROBUSTI
+    [NSLayoutConstraint activateConstraints:@[
+        // Tab view - occupa la maggior parte della finestra
+        [self.tabView.topAnchor constraintEqualToAnchor:contentView.topAnchor constant:kWindowMargin],
+        [self.tabView.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:kWindowMargin],
+        [self.tabView.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-kWindowMargin],
+        [self.tabView.bottomAnchor constraintEqualToAnchor:self.saveButton.topAnchor constant:-kTabButtonSpacing],
+        
+        // Bottom buttons row - layout da destra a sinistra
+        // Save button (primary action - rightmost)
+        [self.saveButton.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor constant:-kWindowMargin],
+        [self.saveButton.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor constant:-kWindowMargin],
+        [self.saveButton.widthAnchor constraintEqualToConstant:kButtonWidth],
+        [self.saveButton.heightAnchor constraintEqualToConstant:kButtonHeight],
+        
+        // Cancel button (secondary action - a sinistra del Save)
+        [self.cancelButton.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor constant:-kWindowMargin],
+        [self.cancelButton.trailingAnchor constraintEqualToAnchor:self.saveButton.leadingAnchor constant:-kButtonSpacing],
+        [self.cancelButton.widthAnchor constraintEqualToConstant:kButtonWidth],
+        [self.cancelButton.heightAnchor constraintEqualToConstant:kButtonHeight],
+        
+        // Reset button (utility action - leftmost)
+        [self.resetButton.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor constant:-kWindowMargin],
+        [self.resetButton.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor constant:kWindowMargin],
+        [self.resetButton.widthAnchor constraintEqualToConstant:kResetButtonWidth],
+        [self.resetButton.heightAnchor constraintEqualToConstant:kButtonHeight]
+    ]];
+}
+#pragma mark - UI Setup
+
+- (void)setupUI {
+    // Set window title
+    self.window.title = [NSString stringWithFormat:@"Configure %@", self.indicator.shortName];
+    
+    // Setup basic info
+    self.indicatorNameLabel.stringValue = self.indicator.displayName ?: @"Unknown Indicator";
+    self.indicatorDescriptionLabel.stringValue = [self getIndicatorDescription];
+    
+    // ✅ CARICA I VALORI REALI DELL'INDICATORE - non i default
+    NSLog(@"🔍 Loading real indicator values - Color: %@, Width: %.1f, Visible: %@",
+          self.indicator.displayColor, self.indicator.lineWidth, self.indicator.isVisible ? @"YES" : @"NO");
+    
+    // Setup appearance controls con i valori REALI
+    NSColor *actualColor = self.indicator.displayColor;
+    if (!actualColor) {
+        // Se non c'è colore impostato, cerca nei parametri
+        if (self.indicator.parameters[@"color"]) {
+            actualColor = self.indicator.parameters[@"color"];
+        } else if (self.indicator.parameters[@"displayColor"]) {
+            actualColor = self.indicator.parameters[@"displayColor"];
+        } else {
+            actualColor = [NSColor systemOrangeColor]; // Default visibile
+        }
+    }
+    
+    CGFloat actualLineWidth = self.indicator.lineWidth;
+    if (actualLineWidth <= 0) {
+        // Se non c'è width impostato, cerca nei parametri
+        if (self.indicator.parameters[@"lineWidth"]) {
+            actualLineWidth = [self.indicator.parameters[@"lineWidth"] floatValue];
+        } else {
+            actualLineWidth = 2.0; // Default ragionevole
+        }
+    }
+    
+    self.colorWell.color = actualColor;
+    self.lineWidthSlider.doubleValue = actualLineWidth;
+    self.lineWidthLabel.stringValue = [NSString stringWithFormat:@"%.1f pt", actualLineWidth];
+    self.visibilityToggle.state = self.indicator.isVisible ? @"YES" : @"NO";
+    
+    NSLog(@"✅ Setup appearance controls - Color: %@, Width: %.1f", actualColor, actualLineWidth);
+}
+
+- (NSString *)getIndicatorDescription {
+    // Get description from indicator class or use default
+    if ([self.indicator respondsToSelector:@selector(indicatorDescription)]) {
+        return [self.indicator performSelector:@selector(indicatorDescription)];
+    }
+    
+    return [NSString stringWithFormat:@"%@ technical indicator with configurable parameters",
+            self.indicator.shortName ?: @"Technical"];
+}
 #pragma mark - Dialog Management
 
 - (void)showAsSheetForWindow:(NSWindow *)parentWindow completion:(IndicatorConfigurationCompletionBlock)completion {
@@ -632,150 +860,82 @@
     
     [parentWindow beginSheet:self.window completionHandler:^(NSModalResponse returnCode) {
         BOOL saved = (returnCode == NSModalResponseOK);
-        NSDictionary *parameters = saved ? self.currentParameters : nil;
         
         if (completion) {
-            completion(saved, parameters);
+            // ✅ CON I BINDINGS, I PARAMETRI SONO GIÀ APPLICATI!
+            completion(saved, saved ? self.indicator.parameters : nil);
         }
     }];
 }
 
-#pragma mark - Actions
+#pragma mark - UI Setup & Layout (stesso codice di prima ma senza gli action methods)
 
-- (IBAction)saveAction:(NSButton *)sender {
-    NSError *error;
-    if (![self validateParameters:&error]) {
-        NSAlert *alert = [[NSAlert alloc] init];
-        alert.messageText = @"Invalid Parameters";
-        alert.informativeText = error.localizedDescription;
-        alert.alertStyle = NSAlertStyleWarning;
-        [alert addButtonWithTitle:@"OK"];
-        [alert beginSheetModalForWindow:self.window completionHandler:nil];
-        return;
-    }
+- (void)createButtons {
+    NSView *contentView = self.window.contentView;
     
-    [self updateParametersFromControls];
-    [self.window.sheetParent endSheet:self.window returnCode:NSModalResponseOK];
-}
-
-- (IBAction)cancelAction:(NSButton *)sender {
-    [self.window.sheetParent endSheet:self.window returnCode:NSModalResponseCancel];
-}
-
-- (IBAction)resetAction:(NSButton *)sender {
-    [self resetParametersToDefaults];
-    [self setupParameterControls];
-    [self updateAppearanceControls];
-}
-
-- (IBAction)colorChanged:(NSColorWell *)sender {
-    // Update indicator color (will be applied on save)
-}
-
-- (IBAction)lineWidthChanged:(NSSlider *)sender {
-    self.lineWidthLabel.stringValue = [NSString stringWithFormat:@"%.1f pt", sender.doubleValue];
-}
-
-- (IBAction)visibilityToggled:(NSButton *)sender {
-    // Update visibility (will be applied on save)
-}
-
-- (IBAction)parameterControlChanged:(id)sender {
-    // Sync slider and textField for slider+field combos
-    [self.controlValueMap enumerateKeysAndObjectsUsingBlock:^(NSString *paramName, id obj, BOOL *stop) {
-        if ([obj isKindOfClass:[NSDictionary class]]) {
-            NSSlider *slider = obj[@"slider"];
-            NSTextField *textField = obj[@"textField"];
-            if (sender == slider) {
-                // Update textField to match slider
-                textField.stringValue = [NSString stringWithFormat:@"%.2f", slider.doubleValue];
-            } else if (sender == textField) {
-                // Update slider to match textField, if possible
-                NSNumberFormatter *formatter = [[NSNumberFormatter alloc] init];
-                NSNumber *num = [formatter numberFromString:textField.stringValue];
-                if (num) {
-                    slider.doubleValue = [num doubleValue];
-                }
-            }
-        }
-    }];
-    // Parameter values will be collected on save
-    // Could add real-time preview here if needed
-}
-
-#pragma mark - Parameter Management
-
-- (void)updateParametersFromControls {
-    NSMutableDictionary *updatedParams = [[NSMutableDictionary alloc] init];
+    self.saveButton = [[NSButton alloc] init];
+    self.saveButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.saveButton.title = @"Save";
+    self.saveButton.bezelStyle = NSBezelStyleRounded;
+    self.saveButton.keyEquivalent = @"\r";
+    self.saveButton.target = self;
+    self.saveButton.action = @selector(saveAction:);
+    [contentView addSubview:self.saveButton];
     
-    [self.controlValueMap enumerateKeysAndObjectsUsingBlock:^(NSString *paramName, NSView *control, BOOL *stop) {
-        id value = [self extractValueFromControl:control];
-        if (value) {
-            updatedParams[paramName] = value;
-        }
-    }];
+    self.cancelButton = [[NSButton alloc] init];
+    self.cancelButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.cancelButton.title = @"Cancel";
+    self.cancelButton.bezelStyle = NSBezelStyleRounded;
+    self.cancelButton.keyEquivalent = @"\033";
+    self.cancelButton.target = self;
+    self.cancelButton.action = @selector(cancelAction:);
+    [contentView addSubview:self.cancelButton];
     
-    self.currentParameters = [updatedParams copy];
-    
-    // Also update appearance properties
-    // These would be applied to the indicator by the caller
+    self.resetButton = [[NSButton alloc] init];
+    self.resetButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.resetButton.title = @"Reset to Defaults";
+    self.resetButton.bezelStyle = NSBezelStyleRounded;
+    self.resetButton.target = self;
+    self.resetButton.action = @selector(resetAction:);
+    [contentView addSubview:self.resetButton];
 }
 
-- (id)extractValueFromControl:(NSView *)control {
-    if ([control isKindOfClass:[NSDictionary class]]) {
-        // Our slider+textField combo
-        NSSlider *slider = [(NSDictionary *)control objectForKey:@"slider"];
-        if (slider) {
-            return @(slider.doubleValue);
-        }
-        return nil;
-    }
-    if ([control isKindOfClass:[NSTextField class]]) {
-        NSTextField *textField = (NSTextField *)control;
-        NSString *stringValue = textField.stringValue;
-        
-        // Try to convert to number if possible
-        NSNumberFormatter *formatter = [[NSNumberFormatter alloc] init];
-        NSNumber *numberValue = [formatter numberFromString:stringValue];
-        return numberValue ?: stringValue;
-        
-    } else if ([control isKindOfClass:[NSSlider class]]) {
-        NSSlider *slider = (NSSlider *)control;
-        return @(slider.doubleValue);
-        
-    } else if ([control isKindOfClass:[NSPopUpButton class]]) {
-        NSPopUpButton *popup = (NSPopUpButton *)control;
-        return popup.selectedItem.title;
-    }
-    
-    return nil;
-}
+// ✅ RESTO DEI METODI createParametersTab, createAppearanceTab, createAdvancedTab, setupLayoutConstraints
+// (identici alla versione precedente - li ometto per brevità)
 
-- (void)resetParametersToDefaults {
-    if ([self.indicator.class respondsToSelector:@selector(defaultParameters)]) {
-        NSDictionary *defaults = [self.indicator.class defaultParameters];
-        self.currentParameters = [defaults mutableCopy];
-    } else {
-        self.currentParameters = [self.originalParameters mutableCopy];
+#pragma mark - Value Transformer per Line Width
+
++ (void)initialize {
+    if (self == [IndicatorConfigurationDialog class]) {
+        // ✅ Registra un transformer per convertire lineWidth in stringa
+        [NSValueTransformer setValueTransformer:[[LineWidthToStringTransformer alloc] init]
+                                        forName:@"LineWidthToStringTransformer"];
     }
 }
 
-- (BOOL)validateParameters:(NSError **)error {
-    // Basic validation - could be enhanced
-    for (NSString *key in self.currentParameters) {
-        id value = self.currentParameters[key];
-        
-        if ([value isKindOfClass:[NSString class]] && [(NSString *)value length] == 0) {
-            if (error) {
-                *error = [NSError errorWithDomain:@"IndicatorConfiguration"
-                                             code:1001
-                                         userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"Parameter '%@' cannot be empty", key]}];
-            }
-            return NO;
-        }
+@end
+
+
+#pragma mark - Value Transformer
+
+@interface LineWidthToStringTransformer : NSValueTransformer
+@end
+
+@implementation LineWidthToStringTransformer
+
++ (Class)transformedValueClass {
+    return [NSString class];
+}
+
++ (BOOL)allowsReverseTransformation {
+    return NO;
+}
+
+- (id)transformedValue:(id)value {
+    if ([value isKindOfClass:[NSNumber class]]) {
+        return [NSString stringWithFormat:@"%.1f pt", [value floatValue]];
     }
-    
-    return YES;
+    return @"0.0 pt";
 }
 
 @end

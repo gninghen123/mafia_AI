@@ -243,9 +243,9 @@
 - (NSString *)timeframeStringForDataHub {
     switch (self.timeframe) {
         case MarketTimeframePreMarket:
-            return @"premarket";
+            return @"preMarket";
         case MarketTimeframeAfterHours:
-            return @"afterhours";
+            return @"afterMarket";
         case MarketTimeframeFiveMinutes:
             return @"5min";
         case MarketTimeframeOneDay:

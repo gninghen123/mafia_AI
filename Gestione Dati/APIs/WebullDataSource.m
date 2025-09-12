@@ -273,16 +273,16 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
     
     switch (listType) {
         case DataRequestTypeTopGainers: {
-            NSString *rankType = parameters[@"rankType"] ?: @"1d";
-            NSInteger pageSize = [parameters[@"pageSize"] integerValue] ?: 20;
+            NSString *rankType = parameters[@"timeframe"] ?: @"1d";
+            NSInteger pageSize = [parameters[@"pageSize"] integerValue] ?: 50;
             [self fetchTopGainersWithRankType:rankType
                                      pageSize:pageSize
                                    completion:completion];
             break;
         }
         case DataRequestTypeTopLosers: {
-            NSString *rankType = parameters[@"rankType"] ?: @"1d";
-            NSInteger pageSize = [parameters[@"pageSize"] integerValue] ?: 20;
+            NSString *rankType = parameters[@"timeframe"] ?: @"1d";
+            NSInteger pageSize = [parameters[@"pageSize"] integerValue] ?: 50;
             [self fetchTopLosersWithRankType:rankType
                                     pageSize:pageSize
                                   completion:completion];

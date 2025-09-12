@@ -48,10 +48,16 @@ NS_ASSUME_NONNULL_BEGIN
 #pragma mark - Database Management
 
 /**
- * Initialize database from Downloads/data/ folder
+ * Initialize database from local Downloads folder
  * @return YES if successful
  */
-- (BOOL)initializeDatabaseFromDownloads;
+- (BOOL)initializeDatabaseFromLocalDownloads;
+
+/**
+ * Check for and process daily update files in Downloads folder
+ * @return Number of files processed
+ */
+- (NSInteger)processAvailableUpdates;
 
 /**
  * Update database with daily file

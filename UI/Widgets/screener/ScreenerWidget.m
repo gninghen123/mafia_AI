@@ -7,7 +7,7 @@
 
 #import "ScreenerWidget.h"
 
-@interface ScreenerWidget () <NSDraggingDestination>
+@interface ScreenerWidget ()
 
 // UI Components - Data Tab
 @property (nonatomic, strong) NSTabView *tabView;
@@ -48,8 +48,10 @@
         _selectedCategories = [NSMutableArray array];
         _dbManager = [STOOQDatabaseManager sharedManager];
         
+        // Ensure view is loaded before setting up UI
+        [self loadView];
+        
         [self setupUI];
-        [self setupDragAndDrop];
         [self updateDatabaseStatus];
         [self refreshData];
     }
@@ -200,11 +202,20 @@
     // Initialize button
     self.initializeButton = [[NSButton alloc] init];
     self.initializeButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.initializeButton.title = @"Initialize from Downloads/data";
+    self.initializeButton.title = @"Import from Downloads/data";
     self.initializeButton.bezelStyle = NSBezelStyleRounded;
     self.initializeButton.target = self;
     self.initializeButton.action = @selector(initializeDatabaseClicked:);
     [self.databaseTabView addSubview:self.initializeButton];
+    
+    // Process updates button
+    NSButton *processUpdatesButton = [[NSButton alloc] init];
+    processUpdatesButton.translatesAutoresizingMaskIntoConstraints = NO;
+    processUpdatesButton.title = @"Process Updates";
+    processUpdatesButton.bezelStyle = NSBezelStyleRounded;
+    processUpdatesButton.target = self;
+    processUpdatesButton.action = @selector(processUpdatesClicked:);
+    [self.databaseTabView addSubview:processUpdatesButton];
     
     // Drop zone section
     NSTextField *dropTitle = [[NSTextField alloc] init];
@@ -213,7 +224,7 @@
     dropTitle.bezeled = NO;
     dropTitle.backgroundColor = [NSColor clearColor];
     dropTitle.font = [NSFont boldSystemFontOfSize:14];
-    dropTitle.stringValue = @"Daily Updates";
+    dropTitle.stringValue = @"Instructions";
     [self.databaseTabView addSubview:dropTitle];
     
     // Drop zone
@@ -224,6 +235,7 @@
     self.dropZone.layer.borderColor = [NSColor tertiaryLabelColor].CGColor;
     self.dropZone.layer.cornerRadius = 8.0;
     self.dropZone.layer.backgroundColor = [NSColor controlBackgroundColor].CGColor;
+    
     [self.databaseTabView addSubview:self.dropZone];
     
     self.dropZoneLabel = [[NSTextField alloc] init];
@@ -234,7 +246,7 @@
     self.dropZoneLabel.font = [NSFont systemFontOfSize:14];
     self.dropZoneLabel.textColor = [NSColor secondaryLabelColor];
     self.dropZoneLabel.alignment = NSTextAlignmentCenter;
-    self.dropZoneLabel.stringValue = @"Drop STOOQ daily update file here\n(Format: MMDD_d)";
+    self.dropZoneLabel.stringValue = @"Place STOOQ update files in Downloads folder\nthen click 'Process Updates' button";
     [self.dropZone addSubview:self.dropZoneLabel];
     
     // Progress indicator
@@ -264,6 +276,11 @@
         [self.initializeButton.topAnchor constraintEqualToAnchor:self.dbPathLabel.bottomAnchor constant:12],
         [self.initializeButton.leadingAnchor constraintEqualToAnchor:self.databaseTabView.leadingAnchor constant:20],
         [self.initializeButton.widthAnchor constraintEqualToConstant:200],
+        
+        // Process updates button
+        [processUpdatesButton.topAnchor constraintEqualToAnchor:self.dbPathLabel.bottomAnchor constant:12],
+        [processUpdatesButton.leadingAnchor constraintEqualToAnchor:self.initializeButton.trailingAnchor constant:12],
+        [processUpdatesButton.widthAnchor constraintEqualToConstant:150],
         
         // Drop title
         [dropTitle.topAnchor constraintEqualToAnchor:self.initializeButton.bottomAnchor constant:24],
@@ -332,12 +349,6 @@
     [self.resultsTable addTableColumn:dollarVolumeColumn];
 }
 
-#pragma mark - Drag and Drop Setup
-
-- (void)setupDragAndDrop {
-    [self.dropZone registerForDraggedTypes:@[NSPasteboardTypeFileURL]];
-}
-
 #pragma mark - Actions
 
 - (void)refreshButtonClicked:(id)sender {
@@ -350,6 +361,10 @@
 
 - (void)initializeDatabaseClicked:(id)sender {
     [self performDatabaseInitialization];
+}
+
+- (void)processUpdatesClicked:(id)sender {
+    [self performUpdatesProcessing];
 }
 
 #pragma mark - Public Methods
@@ -451,7 +466,7 @@
     self.initializeButton.enabled = NO;
     
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        BOOL success = [self.dbManager initializeDatabaseFromDownloads];
+        BOOL success = [self.dbManager initializeDatabaseFromLocalDownloads];
         
         dispatch_async(dispatch_get_main_queue(), ^{
             [self.progressIndicator stopAnimation:nil];
@@ -462,11 +477,51 @@
             
             if (success) {
                 [self refreshData];
+                
+                // Show success message
+                NSAlert *alert = [[NSAlert alloc] init];
+                alert.messageText = @"Database Initialized Successfully";
+                alert.informativeText = [NSString stringWithFormat:@"Loaded %lu symbols from Downloads/data folder.", (unsigned long)self.dbManager.totalStocksCount];
+                alert.alertStyle = NSAlertStyleInformational;
+                [alert runModal];
             } else {
                 NSAlert *alert = [[NSAlert alloc] init];
                 alert.messageText = @"Database Initialization Failed";
-                alert.informativeText = @"Could not find or process files in Downloads/data folder. Please check that the STOOQ database files are properly extracted.";
+                alert.informativeText = @"Could not find Downloads/data folder next to database. Please create the folder and copy STOOQ files there.";
                 alert.alertStyle = NSAlertStyleWarning;
+                [alert runModal];
+            }
+        });
+    });
+}
+
+- (void)performUpdatesProcessing {
+    self.progressIndicator.hidden = NO;
+    [self.progressIndicator startAnimation:nil];
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        NSInteger processedCount = [self.dbManager processAvailableUpdates];
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self.progressIndicator stopAnimation:nil];
+            self.progressIndicator.hidden = YES;
+            
+            [self updateDatabaseStatus];
+            
+            if (processedCount > 0) {
+                [self refreshData];
+                
+                // Show success message
+                NSAlert *alert = [[NSAlert alloc] init];
+                alert.messageText = @"Updates Processed Successfully";
+                alert.informativeText = [NSString stringWithFormat:@"Processed %ld update files. Files moved to Downloads/processed folder.", (long)processedCount];
+                alert.alertStyle = NSAlertStyleInformational;
+                [alert runModal];
+            } else {
+                NSAlert *alert = [[NSAlert alloc] init];
+                alert.messageText = @"No Updates Found";
+                alert.informativeText = @"No update files found in Downloads folder. Place STOOQ daily update files there.";
+                alert.alertStyle = NSAlertStyleInformational;
                 [alert runModal];
             }
         });
@@ -548,84 +603,6 @@
 
 - (void)tableViewSelectionDidChange:(NSNotification *)notification {
     // Handle selection changes if needed for future features
-}
-
-#pragma mark - NSDraggingDestination
-
-- (NSDragOperation)draggingEntered:(id<NSDraggingInfo>)sender {
-    NSPasteboard *pasteboard = sender.draggingPasteboard;
-    NSArray *urls = [pasteboard readObjectsForClasses:@[[NSURL class]] options:nil];
-    
-    if (urls.count == 1) {
-        NSURL *url = urls.firstObject;
-        if ([url.pathExtension.lowercaseString isEqualToString:@"csv"] ||
-            [url.lastPathComponent containsString:@"_d"]) {
-            
-            // Highlight drop zone
-            self.dropZone.layer.borderColor = [NSColor systemBlueColor].CGColor;
-            self.dropZone.layer.backgroundColor = [NSColor selectedControlColor].CGColor;
-            
-            return NSDragOperationCopy;
-        }
-    }
-    
-    return NSDragOperationNone;
-}
-
-- (void)draggingExited:(id<NSDraggingInfo>)sender {
-    // Reset drop zone appearance
-    self.dropZone.layer.borderColor = [NSColor tertiaryLabelColor].CGColor;
-    self.dropZone.layer.backgroundColor = [NSColor controlBackgroundColor].CGColor;
-}
-
-- (BOOL)performDragOperation:(id<NSDraggingInfo>)sender {
-    NSPasteboard *pasteboard = sender.draggingPasteboard;
-    NSArray *urls = [pasteboard readObjectsForClasses:@[[NSURL class]] options:nil];
-    
-    if (urls.count == 1) {
-        NSURL *url = urls.firstObject;
-        [self processDroppedFile:url];
-        return YES;
-    }
-    
-    return NO;
-}
-
-- (void)processDroppedFile:(NSURL *)fileURL {
-    // Reset drop zone appearance
-    [self draggingExited:nil];
-    
-    self.progressIndicator.hidden = NO;
-    [self.progressIndicator startAnimation:nil];
-    
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        BOOL success = [self.dbManager updateDatabaseWithFile:fileURL.path];
-        
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self.progressIndicator stopAnimation:nil];
-            self.progressIndicator.hidden = YES;
-            
-            [self updateDatabaseStatus];
-            
-            if (success) {
-                [self refreshData];
-                
-                // Show success feedback
-                self.dropZoneLabel.stringValue = @"✅ Update successful!\nDrop next update file here";
-                
-                // Reset label after 3 seconds
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    self.dropZoneLabel.stringValue = @"Drop STOOQ daily update file here\n(Format: MMDD_d)";
-                });
-            } else {
-                NSAlert *alert = [[NSAlert alloc] init];
-                alert.messageText = @"Update Failed";
-                alert.informativeText = @"Could not process the dropped file. Please verify it's a valid STOOQ daily update file.";
-                alert.alertStyle = NSAlertStyleWarning;
-                [alert runModal];
-            }
-        });
-    });
 }
 
 #pragma mark - BaseWidget Overrides

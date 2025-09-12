@@ -114,19 +114,30 @@
 
 #pragma mark - Database Management
 
-- (BOOL)initializeDatabaseFromDownloads {
-    NSLog(@"🔄 Starting database initialization from Downloads...");
+- (BOOL)initializeDatabaseFromLocalDownloads {
+    NSLog(@"🔄 Starting database initialization from local Downloads folder...");
     
     // Clear existing data
     [self.stockData removeAllObjects];
     [self.latestData removeAllObjects];
     [self.availableCategories removeAllObjects];
     
-    // Get Downloads/data path
-    NSString *downloadsPath = [NSHomeDirectory() stringByAppendingPathComponent:@"Downloads/data"];
+    // Get local Downloads/data path (next to STOOQ_Database)
+    NSString *downloadsPath = [self.databasePath.stringByDeletingLastPathComponent stringByAppendingPathComponent:@"Downloads/data"];
     
-    if (![[NSFileManager defaultManager] fileExistsAtPath:downloadsPath]) {
-        NSLog(@"❌ Downloads/data folder not found: %@", downloadsPath);
+    NSLog(@"🔍 Looking for data in: %@", downloadsPath);
+    
+    // Check if Downloads/data exists
+    BOOL isDirectory;
+    BOOL pathExists = [[NSFileManager defaultManager] fileExistsAtPath:downloadsPath isDirectory:&isDirectory];
+    
+    if (!pathExists) {
+        NSLog(@"❌ Local Downloads/data folder not found: %@", downloadsPath);
+        return NO;
+    }
+    
+    if (!isDirectory) {
+        NSLog(@"❌ Path exists but is not a directory: %@", downloadsPath);
         return NO;
     }
     
@@ -158,6 +169,75 @@
     NSLog(@"📊 Database contains %lu symbols, %lu categories", (unsigned long)self.stockData.count, (unsigned long)self.availableCategories.count);
     
     return processedFiles > 0;
+}
+
+- (NSInteger)processAvailableUpdates {
+    NSLog(@"🔄 Checking for available updates...");
+    
+    // Get local Downloads path (next to STOOQ_Database)
+    NSString *downloadsPath = [self.databasePath.stringByDeletingLastPathComponent stringByAppendingPathComponent:@"Downloads"];
+    
+    if (![[NSFileManager defaultManager] fileExistsAtPath:downloadsPath]) {
+        NSLog(@"📂 No Downloads folder found");
+        return 0;
+    }
+    
+    NSError *error;
+    NSArray *files = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:downloadsPath error:&error];
+    
+    if (error) {
+        NSLog(@"❌ Error reading Downloads folder: %@", error.localizedDescription);
+        return 0;
+    }
+    
+    NSInteger processedUpdates = 0;
+    
+    // Look for update files (pattern: MMDD_d or *.csv)
+    for (NSString *filename in files) {
+        if ([filename hasSuffix:@"_d"] ||
+            [filename.pathExtension.lowercaseString isEqualToString:@"csv"]) {
+            
+            NSString *filePath = [downloadsPath stringByAppendingPathComponent:filename];
+            
+            NSLog(@"🔄 Processing update file: %@", filename);
+            
+            if ([self updateDatabaseWithFile:filePath]) {
+                processedUpdates++;
+                
+                // Move processed file to processed folder
+                [self moveProcessedFile:filePath];
+            }
+        }
+    }
+    
+    NSLog(@"✅ Processed %ld update files", (long)processedUpdates);
+    return processedUpdates;
+}
+
+- (void)moveProcessedFile:(NSString *)filePath {
+    // Create processed folder if it doesn't exist
+    NSString *downloadsPath = [self.databasePath.stringByDeletingLastPathComponent stringByAppendingPathComponent:@"Downloads"];
+    NSString *processedPath = [downloadsPath stringByAppendingPathComponent:@"processed"];
+    
+    if (![[NSFileManager defaultManager] fileExistsAtPath:processedPath]) {
+        [[NSFileManager defaultManager] createDirectoryAtPath:processedPath
+                                  withIntermediateDirectories:YES
+                                                   attributes:nil
+                                                        error:nil];
+    }
+    
+    // Move file to processed folder
+    NSString *filename = filePath.lastPathComponent;
+    NSString *destinationPath = [processedPath stringByAppendingPathComponent:filename];
+    
+    NSError *error;
+    [[NSFileManager defaultManager] moveItemAtPath:filePath toPath:destinationPath error:&error];
+    
+    if (error) {
+        NSLog(@"⚠️ Could not move processed file: %@", error.localizedDescription);
+    } else {
+        NSLog(@"📦 Moved processed file to: processed/%@", filename);
+    }
 }
 
 - (BOOL)updateDatabaseWithFile:(NSString *)filePath {

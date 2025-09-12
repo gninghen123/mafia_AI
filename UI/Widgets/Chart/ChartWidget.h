@@ -38,7 +38,7 @@ typedef struct {
 
 // ❌ REMOVED: BarTimeframe enum - use BarTimeframe from CommonTypes.h
 
-@interface ChartWidget : BaseWidget
+@interface ChartWidget : BaseWidget 
 
 @property (nonatomic, strong) SharedXCoordinateContext *  sharedXContext;
 

@@ -153,7 +153,6 @@ extern NSString *const DataHubDataLoadedNotification;
 
     // ✅ Enable frame change notifications
     self.view.postsFrameChangedNotifications = YES;
-    
     NSLog(@"✅ ChartWidget setup completed");
 }
 /**
@@ -322,8 +321,6 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 
-
-
 - (IBAction)toggleObjectsPanel:(id)sender {
     NSButton *button = (NSButton *)sender;
     BOOL shouldShow = (button.state == NSControlStateValueOn);
@@ -342,7 +339,9 @@ extern NSString *const DataHubDataLoadedNotification;
         [self.objectsPanel removeFromSuperview];
         self.isObjectsPanelVisible = NO;
     }
-    
+    [self.mainSplitView layoutSubtreeIfNeeded];
+
+    [self splitViewFrameDidChange:nil];
     NSLog(@"🎨 Objects panel toggled: %@", self.isObjectsPanelVisible ? @"VISIBLE" : @"HIDDEN");
 }
 
@@ -365,7 +364,9 @@ extern NSString *const DataHubDataLoadedNotification;
         [self.indicatorsPanel removeFromSuperview];
         self.isIndicatorsPanelVisible = NO;
     }
-    
+    [self.mainSplitView layoutSubtreeIfNeeded];
+
+    [self splitViewFrameDidChange:nil];
     NSLog(@"📈 Indicators panel toggled: %@", self.isIndicatorsPanelVisible ? @"VISIBLE" : @"HIDDEN");
 }
 
@@ -2745,6 +2746,9 @@ extern NSString *const DataHubDataLoadedNotification;
 
 
 - (void)chartViewFrameDidChange:(NSNotification *)notification {
+    if (![notification.object isEqualTo:self.panelsSplitView]) {
+        return;
+    }
     // ✅ Questo viene chiamato quando il frame del view cambia
     if (self.chartData && self.chartData.count > 0) {
         [self updateSharedXContext];

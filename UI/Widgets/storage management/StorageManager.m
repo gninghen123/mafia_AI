@@ -133,6 +133,7 @@
     // Load SavedChartData ONLY when needed for updates
     if (!item.savedData) {
         NSLog(@"📄 Lazy loading SavedChartData for update: %@", [item.filePath lastPathComponent]);
+        // todo carica i metadata?
         item.savedData = [SavedChartData loadFromFile:item.filePath];
         
         if (item.savedData) {
@@ -435,7 +436,7 @@
         
         // Save updated data
         NSError *saveError;
-        BOOL saved = [storage saveToFile:item.filePath error:&saveError];
+        BOOL saved = [storage saveToFileWithFilenameUpdate:item.filePath error:&saveError];
         
         if (saved) {
             NSLog(@"✅ Update completed for %@ - added %ld bars", storage.symbol, (long)bars.count);
@@ -455,6 +456,7 @@
         
         // Schedule next update
         [self scheduleUpdateForStorageItem:item];
+        
     }];
 }
 
@@ -634,7 +636,7 @@
             if (mergeSuccess) {
                 // Save updated storage
                 NSError *saveError;
-                BOOL saveSuccess = [storage saveToFile:item.filePath error:&saveError];
+                BOOL saveSuccess = [storage saveToFileWithFilenameUpdate:item.filePath error:&saveError];
                 
                 if (saveSuccess) {
                     NSLog(@"✅ Opportunistic update successful for %@", storage.symbol);
@@ -727,6 +729,8 @@
             // Convert the SavedChartData to snapshot
             [item.savedData convertToSnapshot];
             
+            
+            // todo correggere save to file con il filepath contenente metadata [storage saveToFileWithFilenameUpdate:item.filePath error:&saveError];
             // Save updated file
             NSError *error;
             BOOL success = [item.savedData saveToFile:filePath error:&error];

@@ -194,7 +194,7 @@
     
         
         // Set timeframe based on data (this might need to be passed as parameter)
-        bar.timeframe = BarTimeframeDaily; // Default, should be determined from context
+        bar.timeframe = 0; // Default, should be determined from context
         
         [bars addObject:bar];
     }

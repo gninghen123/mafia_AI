@@ -94,8 +94,8 @@
             filePath = "UI/Widgets/Chart/ChartWidget.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1332"
-            endingLineNumber = "1332"
+            startingLineNumber = "1333"
+            endingLineNumber = "1333"
             landmarkName = "-controlTextDidEndEditing:"
             landmarkType = "7">
          </BreakpointContent>

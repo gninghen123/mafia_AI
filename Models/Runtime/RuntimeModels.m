@@ -55,7 +55,7 @@
     bar.close = [dict[@"close"] doubleValue];
     bar.adjustedClose = dict[@"adjustedClose"] ? [dict[@"adjustedClose"] doubleValue] : bar.close;
     bar.volume = [dict[@"volume"] longLongValue];
-    bar.timeframe = dict[@"timeframe"] ? (BarTimeframe)[dict[@"timeframe"] integerValue] : BarTimeframeDaily;
+    bar.timeframe = dict[@"timeframe"] ? (BarTimeframe)[dict[@"timeframe"] integerValue] : 0;
     
     return bar;
 }

@@ -23,6 +23,7 @@
 #import "IBKRTestWidget.h"
 #import "NewsWidget.h"
 #import "pinescripteditorwidget.h"
+#import "screenerwidget.h"
 
 @interface WidgetTypeManager ()
 @property (nonatomic, strong) NSDictionary<NSString *, NSArray<NSString *> *> *widgetCategories;
@@ -76,7 +77,7 @@
         ],
         @"Analysis": @[
             @"Technical Indicators",
-            @"Scanner",
+            @"Screener",
             @"Alerts",
             @"Alerts",
             @"Strategy Tester",
@@ -142,6 +143,7 @@
     typeToClass[@"Portfolio"] = [PortfolioWidget class];
     typeToClass[@"IBKR Test Widget"]= [IBKRTestWidget class];
     typeToClass[@"News"] = [NewsWidget class];
+    typeToClass[@"Screener"] = [ScreenerWidget class];
     typeToClass[@"PineScript Editor"] = [PineScriptEditorWidget class];
 
     // Map all other types to BaseWidget for now
@@ -183,7 +185,7 @@
         @"PineScript Editor":@"pine",
 
         @"Technical Indicators": @"waveform.path.ecg",
-        @"Scanner": @"magnifyingglass",
+        @"Screener": @"magnifyingglass",
         @"Alerts": @"bell",
         @"Strategy Tester": @"play.rectangle",
         @"Correlation Matrix": @"square.grid.3x3",

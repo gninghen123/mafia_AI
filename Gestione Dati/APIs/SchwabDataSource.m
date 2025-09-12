@@ -196,7 +196,8 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
         // ✅ RESTO DELLA LOGICA ORIGINALE - INVARIATA
         NSString *schwabTimeframe = [self convertTimeframeSchwab:timeframe];
         NSString *frequencyType = [self convertFrequencyTypeSchwab:timeframe];
-        NSString *periodType = [self convertPeriodTypeSchwab:frequencyType];
+        NSString *periodType = [self convertPeriodTypeSchwab:frequencyType timeframe:timeframe];
+        
         
         // Schwab richiede UNIX timestamp in ms per startDate/endDate
         long long startDateMillis = (long long)([startDate timeIntervalSince1970] * 1000.0);
@@ -280,7 +281,8 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
         // ✅ RESTO DELLA LOGICA ORIGINALE - INVARIATA
         NSString *schwabTimeframe = [self convertTimeframeSchwab:timeframe];
         NSString *frequencyType = [self convertFrequencyTypeSchwab:timeframe];
-        NSString *periodType = [self convertPeriodTypeSchwab:frequencyType];
+        NSString *periodType = [self convertPeriodTypeSchwab:frequencyType timeframe:timeframe];
+        
         
         // Calculate endDateMillis = now, startDateMillis = now - barCount * interval * 1000
         NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
@@ -687,14 +689,10 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
 }
 
 - (NSString *)convertFrequencyTypeSchwab:(BarTimeframe)timeframe {
+    if (timeframe<1000) {
+        return @"minute";
+    }
     switch (timeframe) {
-        case BarTimeframe1Min:
-        case BarTimeframe5Min:
-        case BarTimeframe15Min:
-        case BarTimeframe30Min:
-        case BarTimeframe1Hour:
-        case BarTimeframe4Hour:
-            return @"minute";
         case BarTimeframeDaily:
             return @"daily";
         case BarTimeframeWeekly:
@@ -706,19 +704,16 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
     }
 }
 
-- (NSString *)convertPeriodTypeSchwab:(NSString *)frequencyType {
+- (NSString *)convertPeriodTypeSchwab:(NSString *)frequencyType timeframe:(BarTimeframe)timeframe {
     if ([frequencyType isEqualToString:@"minute"]) {
-        return @"day";
-    } else if ([frequencyType isEqualToString:@"daily"]) {
-        return @"year";
-    } else if ([frequencyType isEqualToString:@"weekly"]) {
-        return @"year";
-    } else if ([frequencyType isEqualToString:@"monthly"]) {
-        return @"year";
+        return @"day"; // intraday 1min-4h copre massimo 1 giorno
+    } else if ([frequencyType isEqualToString:@"daily"] ||
+               [frequencyType isEqualToString:@"weekly"] ||
+               [frequencyType isEqualToString:@"monthly"]) {
+        return @"year"; // dati giornalieri o superiori
     }
     return @"day";
 }
-
 
 
 #pragma mark - 🆕 NUOVI METODI HELPER PER AGGREGAZIONE (da aggiungere in fondo al file)

@@ -513,153 +513,130 @@
 
 #pragma mark - BezierPath Creation Helpers (UPDATED - Direct Index Access)
 
+// OPTIMIZED: Use sequential X coordinates (no per-point timestamp lookup), REVERSED iteration from endIndex to startIndex
 - (NSBezierPath *)createLinePathFromIndicator:(TechnicalIndicatorBase *)indicator
                                    startIndex:(NSInteger)startIndex
                                      endIndex:(NSInteger)endIndex {
-    
-    NSArray<IndicatorDataModel *> *dataPoints = indicator.outputSeries;
-    if (!dataPoints.count) return nil;
-    
+    if (!indicator.outputSeries.count) return nil;
+    if (!self.sharedXContext) return nil;
     NSBezierPath *path = [NSBezierPath bezierPath];
     BOOL isFirstPoint = YES;
-    
-    // ✅ ITERA DIRETTAMENTE SUGLI INDICI - NO ARRAY ALLOCATION
-    for (NSInteger i = startIndex; i <= endIndex; i++) {
-        IndicatorDataModel *dataPoint = dataPoints[i];
-        
-        // ✅ CRITICAL FIX: Skip NaN values FIRST before any coordinate conversion
-        if (isnan(dataPoint.value)) {
-            continue;
-        }
-        
-        CGFloat x = [self xCoordinateForTimestamp:dataPoint.timestamp];
+
+    // Calcola X iniziale a partire da endIndex
+    CGFloat x0 = [self.sharedXContext screenXForBarIndex:endIndex] + ([self.sharedXContext barWidth] / 2.0);
+    CGFloat dx = [self.sharedXContext barWidth];
+    CGFloat x = x0;
+    // Itera da endIndex verso startIndex (inclusivo)
+    for (NSInteger i = endIndex; i >= startIndex; i--) {
+        IndicatorDataModel *dataPoint = indicator.outputSeries[i];
+        if (isnan(dataPoint.value)) continue;
         CGFloat y = [self yCoordinateForValue:dataPoint.value];
-        
-        // Skip invalid coordinates (coordinate conversion problems)
-        if (x < -9999 || y < -9999) continue;
-        
+        if (x < -9999 || y < -9999) { x -= dx; continue; }
         NSPoint point = NSMakePoint(x, y);
-        
         if (isFirstPoint) {
             [path moveToPoint:point];
             isFirstPoint = NO;
         } else {
             [path lineToPoint:point];
         }
+        x -= dx;
     }
-    
     return path.elementCount > 0 ? path : nil;
 }
 
+// OPTIMIZED: Use sequential X coordinates (no per-point timestamp lookup)
 - (NSBezierPath *)createHistogramPathFromIndicator:(TechnicalIndicatorBase *)indicator
                                         startIndex:(NSInteger)startIndex
                                           endIndex:(NSInteger)endIndex
                                          baselineY:(CGFloat)baselineY {
-    
-    NSArray<IndicatorDataModel *> *dataPoints = indicator.outputSeries;
-    if (!dataPoints.count) return nil;
-    
+
+    if (!indicator.outputSeries.count) return nil;
+    if (!self.sharedXContext) return nil;
+
     NSBezierPath *path = [NSBezierPath bezierPath];
-    CGFloat barWidth = [self.sharedXContext barWidth] * 0.8; // Slightly smaller than candle width
-    
-    // ✅ ITERA DIRETTAMENTE SUGLI INDICI - NO ARRAY ALLOCATION
+    CGFloat barWidth = [self.sharedXContext barWidth] * 0.8;
+    CGFloat x0 = [self.sharedXContext screenXForBarIndex:startIndex] + ([self.sharedXContext barWidth] / 2.0);
+    CGFloat dx = [self.sharedXContext barWidth];
+    CGFloat x = x0;
+
     for (NSInteger i = startIndex; i <= endIndex; i++) {
-        IndicatorDataModel *dataPoint = dataPoints[i];
-        
-        // ✅ SKIP NaN VALUES
-        if (isnan(dataPoint.value)) continue;
-        
-        CGFloat x = [self xCoordinateForTimestamp:dataPoint.timestamp];
+        IndicatorDataModel *dataPoint = indicator.outputSeries[i];
+        if (isnan(dataPoint.value)) { x += dx; continue; }
+
         CGFloat y = [self yCoordinateForValue:dataPoint.value];
-        
-        // Skip invalid coordinates
-        if (x < -9999 || y < -9999) continue;
-        
-        // Create bar rectangle
-        CGFloat barHeight = ABS(y - baselineY);
-        CGFloat barBottom = MIN(y, baselineY);
-        
-        NSRect barRect = NSMakeRect(x - barWidth/2, barBottom, barWidth, barHeight);
-        [path appendBezierPathWithRect:barRect];
+        if (x < -9999 || y < -9999) { x += dx; continue; }
+
+        if (barWidth < 2.0) {
+            // Draw a simple vertical line
+            [path moveToPoint:NSMakePoint(x, baselineY)];
+            [path lineToPoint:NSMakePoint(x, y)];
+        } else {
+            // Draw full rectangle
+            CGFloat barHeight = ABS(y - baselineY);
+            CGFloat barBottom = MIN(y, baselineY);
+            NSRect barRect = NSMakeRect(x - barWidth/2, barBottom, barWidth, barHeight);
+            [path appendBezierPathWithRect:barRect];
+        }
+
+        x += dx;
     }
-    
+
     return path.elementCount > 0 ? path : nil;
 }
 
+// OPTIMIZED: Use sequential X coordinates (no per-point timestamp lookup)
 - (NSBezierPath *)createAreaPathFromIndicator:(TechnicalIndicatorBase *)indicator
                                    startIndex:(NSInteger)startIndex
                                      endIndex:(NSInteger)endIndex
                                     baselineY:(CGFloat)baselineY {
-    
-    NSArray<IndicatorDataModel *> *dataPoints = indicator.outputSeries;
-    if (!dataPoints.count) return nil;
-    
+    if (!indicator.outputSeries.count) return nil;
+    if (!self.sharedXContext) return nil;
     NSBezierPath *path = [NSBezierPath bezierPath];
     NSMutableArray *validPoints = [NSMutableArray array];
-    
-    // ✅ ITERA DIRETTAMENTE SUGLI INDICI - NO ARRAY ALLOCATION
-    // Collect valid points (skip NaN values)
+    CGFloat x0 = [self.sharedXContext screenXForBarIndex:startIndex] + ([self.sharedXContext barWidth] / 2.0);
+    CGFloat dx = [self.sharedXContext barWidth];
+    CGFloat x = x0;
     for (NSInteger i = startIndex; i <= endIndex; i++) {
-        IndicatorDataModel *dataPoint = dataPoints[i];
-        
-        // ✅ SKIP NaN VALUES
-        if (isnan(dataPoint.value)) continue;
-        
-        CGFloat x = [self xCoordinateForTimestamp:dataPoint.timestamp];
+        IndicatorDataModel *dataPoint = indicator.outputSeries[i];
+        if (isnan(dataPoint.value)) { x += dx; continue; }
         CGFloat y = [self yCoordinateForValue:dataPoint.value];
-        
         if (x > -9999 && y > -9999) {
             [validPoints addObject:[NSValue valueWithPoint:NSMakePoint(x, y)]];
         }
+        x += dx;
     }
-    
     if (!validPoints.count) return nil;
-    
-    // Start from baseline at first point
     NSPoint firstPoint = [[validPoints firstObject] pointValue];
     [path moveToPoint:NSMakePoint(firstPoint.x, baselineY)];
-    
-    // Draw line through all points
     for (NSValue *pointValue in validPoints) {
         [path lineToPoint:[pointValue pointValue]];
     }
-    
-    // Close area back to baseline
     NSPoint lastPoint = [[validPoints lastObject] pointValue];
     [path lineToPoint:NSMakePoint(lastPoint.x, baselineY)];
     [path closePath];
-    
     return path;
 }
 
+// OPTIMIZED: Use sequential X coordinates (no per-point timestamp lookup)
 - (NSBezierPath *)createSignalPathFromIndicator:(TechnicalIndicatorBase *)indicator
                                      startIndex:(NSInteger)startIndex
                                        endIndex:(NSInteger)endIndex {
-    
-    NSArray<IndicatorDataModel *> *dataPoints = indicator.outputSeries;
-    if (!dataPoints.count) return nil;
-    
+    if (!indicator.outputSeries.count) return nil;
+    if (!self.sharedXContext) return nil;
     NSBezierPath *path = [NSBezierPath bezierPath];
     CGFloat markerSize = 6.0;
-    
-    // ✅ ITERA DIRETTAMENTE SUGLI INDICI - NO ARRAY ALLOCATION
+    CGFloat x0 = [self.sharedXContext screenXForBarIndex:startIndex] + ([self.sharedXContext barWidth] / 2.0);
+    CGFloat dx = [self.sharedXContext barWidth];
+    CGFloat x = x0;
     for (NSInteger i = startIndex; i <= endIndex; i++) {
-        IndicatorDataModel *dataPoint = dataPoints[i];
-        
-        // Only draw signals where value is non-zero
-        if (ABS(dataPoint.value) < 0.001) continue;
-        
-        CGFloat x = [self xCoordinateForTimestamp:dataPoint.timestamp];
+        IndicatorDataModel *dataPoint = indicator.outputSeries[i];
+        if (ABS(dataPoint.value) < 0.001) { x += dx; continue; }
         CGFloat y = [self yCoordinateForValue:dataPoint.value];
-        
-        // Skip invalid coordinates
-        if (x < -9999 || y < -9999) continue;
-        
-        // Create marker (circle for now, could be arrows based on value sign)
+        if (x < -9999 || y < -9999) { x += dx; continue; }
         NSRect markerRect = NSMakeRect(x - markerSize/2, y - markerSize/2, markerSize, markerSize);
         [path appendBezierPathWithOvalInRect:markerRect];
+        x += dx;
     }
-    
     return path.elementCount > 0 ? path : nil;
 }
 

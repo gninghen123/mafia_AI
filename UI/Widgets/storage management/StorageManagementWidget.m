@@ -655,24 +655,27 @@
 
 - (void)forceUpdateStorage:(UnifiedStorageItem *)item {
     if (!item.isContinuous) {
-        NSLog(@"⚠️ Cannot update snapshot storage: %@", item.savedData.symbol);
+        NSString *symbol = [SavedChartData symbolFromFilename:[item.filePath lastPathComponent]] ?: @"Unknown";
+        NSLog(@"⚠️ Cannot update snapshot storage: %@", symbol);
         return;
     }
     
-    NSLog(@"🔧 Force updating storage: %@", item.savedData.symbol);
+    // ✅ CORREZIONE: Usa filename parsing per symbol invece di savedData
+    NSString *symbol = item.savedData ? item.savedData.symbol : [SavedChartData symbolFromFilename:[item.filePath lastPathComponent]];
+    NSLog(@"🔧 Force updating storage: %@", symbol ?: @"Unknown");
     
     [[StorageManager sharedManager] forceUpdateForStorage:item.filePath
                                                completion:^(BOOL success, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (success) {
-                NSLog(@"✅ Force update successful for %@", item.savedData.symbol);
+                NSLog(@"✅ Force update successful for %@", symbol ?: @"Unknown");
             } else {
-                NSLog(@"❌ Force update failed for %@: %@", item.savedData.symbol, error.localizedDescription);
+                NSLog(@"❌ Force update failed for %@: %@", symbol ?: @"Unknown", error.localizedDescription);
                 
                 NSAlert *errorAlert = [[NSAlert alloc] init];
                 errorAlert.messageText = @"Update Failed";
                 errorAlert.informativeText = [NSString stringWithFormat:@"Failed to update %@:\n%@",
-                                             item.savedData.symbol, error.localizedDescription];
+                                             symbol ?: @"Unknown", error.localizedDescription];
                 errorAlert.alertStyle = NSAlertStyleWarning;
                 [errorAlert runModal];
             }
@@ -681,7 +684,6 @@
         });
     }];
 }
-
 
 - (void)pauseResumeStorage:(UnifiedStorageItem *)item {
     if (!item.isContinuous || !item.activeItem) {

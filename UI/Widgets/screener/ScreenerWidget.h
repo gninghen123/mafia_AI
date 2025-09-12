@@ -2,15 +2,48 @@
 //  ScreenerWidget.h
 //  mafia_AI
 //
-//  Created by fabio gattone on 12/09/25.
+//  STOOQ Stock Screener Widget
 //
 
 #import "BaseWidget.h"
+#import "STOOQDatabaseManager.h"
 
-NS_ASSUME_NONNULL_BEGIN
+@class NSTableView, NSTabView, NSTextField, NSButton, NSProgressIndicator;
 
-@interface ScreenerWidget : BaseWidget
+@interface ScreenerWidget : BaseWidget <NSTableViewDataSource, NSTableViewDelegate>
+
+#pragma mark - Configuration Properties
+
+@property (nonatomic, assign) BOOL showVolume;           // Show volume column
+@property (nonatomic, assign) BOOL showDollarVolume;     // Show $volume column
+@property (nonatomic, assign) NSInteger maxResults;      // Limit results count
+
+#pragma mark - Data Properties
+
+@property (nonatomic, strong, readonly) NSMutableArray<STOOQStockData *> *currentResults;
+@property (nonatomic, strong, readonly) NSMutableArray<NSString *> *selectedCategories;
+
+#pragma mark - Public Methods
+
+/**
+ * Refresh data and update table
+ */
+- (void)refreshData;
+
+/**
+ * Apply basic filters and update results
+ */
+- (void)applyFiltersWithMinChange:(nullable NSNumber *)minChange
+                        minVolume:(nullable NSNumber *)minVolume;
+
+/**
+ * Clear all filters and show all data
+ */
+- (void)clearFilters;
+
+/**
+ * Export current results to CSV
+ */
+- (void)exportResultsToCSV;
 
 @end
-
-NS_ASSUME_NONNULL_END

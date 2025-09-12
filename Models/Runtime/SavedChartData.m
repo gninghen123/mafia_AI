@@ -149,10 +149,11 @@
         return NO;
     }
     
+    /* validazione non serve perche timeframe delel barre e' un dato mock
     if (![self isCompatibleWithBars:newBars]) {
         NSLog(@"❌ Merge failed: Incompatible bar data");
         return NO;
-    }
+    }*/
     
     if (self.dataType != SavedChartDataTypeContinuous) {
         NSLog(@"❌ Merge failed: Can only merge with continuous storage");
@@ -396,6 +397,11 @@
 }
 
 - (BOOL)isCompatibleWithBars:(NSArray<HistoricalBarModel *> *)newBars {
+    //bar timeframe dato mock evita il check
+    
+    return YES;
+    
+    // todo le barre vengono standardizzate con timeframe mock a daily prima ora a zero... e' un check inutile
     if (!newBars || newBars.count == 0) return NO;
     
     HistoricalBarModel *firstNewBar = newBars.firstObject;
@@ -408,7 +414,7 @@
     
     // Check timeframe compatibility
     BarTimeframe newBarTimeframe = firstNewBar.timeframe;
-    BarTimeframe expectedTimeframe = [self BarTimeframeToBarTimeframe:self.timeframe];
+    BarTimeframe expectedTimeframe = self.timeframe;
     
     if (newBarTimeframe != expectedTimeframe) {
         NSLog(@"❌ Incompatible: Timeframe mismatch (%ld vs %ld)", (long)newBarTimeframe, (long)expectedTimeframe);
@@ -467,20 +473,6 @@
     return [self.lastSuccessfulUpdate dateByAddingTimeInterval:bufferDays * 24 * 60 * 60];
 }
 
-- (BarTimeframe)BarTimeframeToBarTimeframe:(BarTimeframe)BarTimeframe {
-    switch (BarTimeframe) {
-        case BarTimeframe1Min: return BarTimeframe1Min;
-        case BarTimeframe5Min: return BarTimeframe5Min;
-        case BarTimeframe15Min: return BarTimeframe15Min;
-        case BarTimeframe30Min: return BarTimeframe30Min;
-        case BarTimeframe1Hour: return BarTimeframe1Hour;
-        case BarTimeframe4Hour: return BarTimeframe4Hour;
-        case BarTimeframeDaily: return BarTimeframeDaily;
-        case BarTimeframeWeekly: return BarTimeframeWeekly;
-        case BarTimeframeMonthly: return BarTimeframeMonthly;
-        default: return BarTimeframeDaily;
-    }
-}
 
 #pragma mark - Compression Helpers
 

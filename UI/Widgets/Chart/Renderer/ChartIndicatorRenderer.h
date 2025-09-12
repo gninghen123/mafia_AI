@@ -32,10 +32,35 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) NSInteger lastVisibleStartIndex;
 @property (nonatomic, assign) NSInteger lastVisibleEndIndex;
 
+@property (nonatomic, strong) CATextLayer *warningMessagesLayer;
+@property (nonatomic, strong) NSMutableArray<NSString *> *activeWarnings;
+
 #pragma mark - Initialization
 /// Initialize renderer with panel view
 /// @param panelView Parent chart panel view
 - (instancetype)initWithPanelView:(ChartPanelView *)panelView;
+
+#pragma mark - Period Optimization (NEW)
+/// Check if indicator period is too short for visible range
+/// @param indicator Indicator to check
+/// @param visibleRange Current visible range length
+/// @return YES if period is too short (period * 30 < visibleRange)
+- (BOOL)isPeriodTooShortForIndicator:(TechnicalIndicatorBase *)indicator visibleRange:(NSInteger)visibleRange;
+
+/// Extract period from indicator parameters
+/// @param indicator Indicator to examine
+/// @return Period value or 1 if not found
+- (NSInteger)extractPeriodFromIndicator:(TechnicalIndicatorBase *)indicator;
+
+/// Add warning message to display
+/// @param message Warning message text
+- (void)addWarningMessage:(NSString *)message;
+
+/// Clear all warning messages
+- (void)clearWarningMessages;
+
+/// Update warning messages display
+- (void)updateWarningMessagesDisplay;
 
 #pragma mark - Rendering Management
 /// Render entire indicator tree
@@ -109,32 +134,62 @@ NS_ASSUME_NONNULL_BEGIN
 /// @param indicator Security indicator to draw
 - (void)drawCandlestickIndicator:(TechnicalIndicatorBase *)indicator;
 
+#pragma mark - Visible Data Optimization (UPDATED)
+/// Check if visible range has changed since last render
+/// @param startIndex Current visible start index
+/// @param endIndex Current visible end index
+/// @return YES if visible range changed
+- (BOOL)hasVisibleRangeChanged:(NSInteger)startIndex endIndex:(NSInteger)endIndex;
 
-#pragma mark - BezierPath Creation Helpers
-/// Create line BezierPath from indicator data points
-/// @param dataPoints Array of IndicatorDataModel points
+/// Get valid visible range for indicator data
+/// @param indicator Indicator to check
+/// @param startIndex Visible start index
+/// @param endIndex Visible end index
+/// @return NSRange with clamped valid indices
+- (NSRange)validVisibleRangeForIndicator:(TechnicalIndicatorBase *)indicator
+                              startIndex:(NSInteger)startIndex
+                                endIndex:(NSInteger)endIndex;
+
+#pragma mark - BezierPath Creation Helpers (UPDATED - No Array Creation)
+/// Create line BezierPath directly from indicator data using indices
+/// @param indicator Source indicator with data
+/// @param startIndex Start index in data array
+/// @param endIndex End index in data array
 /// @return NSBezierPath for line rendering
-- (NSBezierPath *)createLinePathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints;
+- (NSBezierPath *)createLinePathFromIndicator:(TechnicalIndicatorBase *)indicator
+                                   startIndex:(NSInteger)startIndex
+                                     endIndex:(NSInteger)endIndex;
 
-/// Create histogram bars BezierPath from data points
-/// @param dataPoints Array of IndicatorDataModel points
+/// Create histogram bars BezierPath directly from indicator data using indices
+/// @param indicator Source indicator with data
+/// @param startIndex Start index in data array
+/// @param endIndex End index in data array
 /// @param baselineY Y coordinate for histogram baseline
 /// @return NSBezierPath for histogram rendering
-- (NSBezierPath *)createHistogramPathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints
-                                          baselineY:(CGFloat)baselineY;
+- (NSBezierPath *)createHistogramPathFromIndicator:(TechnicalIndicatorBase *)indicator
+                                        startIndex:(NSInteger)startIndex
+                                          endIndex:(NSInteger)endIndex
+                                         baselineY:(CGFloat)baselineY;
 
-/// Create area BezierPath from data points
-/// @param dataPoints Array of IndicatorDataModel points
+/// Create area BezierPath directly from indicator data using indices
+/// @param indicator Source indicator with data
+/// @param startIndex Start index in data array
+/// @param endIndex End index in data array
 /// @param baselineY Y coordinate for area baseline
 /// @return NSBezierPath for area rendering
-- (NSBezierPath *)createAreaPathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints
-                                     baselineY:(CGFloat)baselineY;
+- (NSBezierPath *)createAreaPathFromIndicator:(TechnicalIndicatorBase *)indicator
+                                   startIndex:(NSInteger)startIndex
+                                     endIndex:(NSInteger)endIndex
+                                    baselineY:(CGFloat)baselineY;
 
-/// Create signal markers BezierPath from data points
-/// @param dataPoints Array of IndicatorDataModel points
+/// Create signal markers BezierPath directly from indicator data using indices
+/// @param indicator Source indicator with data
+/// @param startIndex Start index in data array
+/// @param endIndex End index in data array
 /// @return NSBezierPath for signal rendering
-- (NSBezierPath *)createSignalPathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints;
-
+- (NSBezierPath *)createSignalPathFromIndicator:(TechnicalIndicatorBase *)indicator
+                                     startIndex:(NSInteger)startIndex
+                                       endIndex:(NSInteger)endIndex;
 #pragma mark - Coordinate Conversion
 /// Convert timestamp to X coordinate using SharedXContext
 /// @param timestamp Data point timestamp

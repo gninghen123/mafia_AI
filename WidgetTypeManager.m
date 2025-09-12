@@ -22,7 +22,7 @@
 #import "PortfolioWidget.h"  
 #import "IBKRTestWidget.h"
 #import "NewsWidget.h"
-
+#import "pinescripteditorwidget.h"
 
 @interface WidgetTypeManager ()
 @property (nonatomic, strong) NSDictionary<NSString *, NSArray<NSString *> *> *widgetCategories;
@@ -107,6 +107,7 @@
             @"API Playground",
             @"Storage Management",
             @"LegacyDataConverter",
+            @"PineScript Editor",
             @"IBKR Test Widget"  // NUOVO
 
 
@@ -141,6 +142,7 @@
     typeToClass[@"Portfolio"] = [PortfolioWidget class];
     typeToClass[@"IBKR Test Widget"]= [IBKRTestWidget class];
     typeToClass[@"News"] = [NewsWidget class];
+    typeToClass[@"PineScript Editor"] = [PineScriptEditorWidget class];
 
     // Map all other types to BaseWidget for now
     for (NSArray *types in self.widgetCategories.allValues) {
@@ -178,6 +180,7 @@
         @"Portfolio": @"briefcase.fill",  // ✅ NUOVO: Icona per Portfolio Widget
         @"IBKR Test Widget": @"testtube.2",
         @"News": @"newspaper",
+        @"PineScript Editor":@"pine",
 
         @"Technical Indicators": @"waveform.path.ecg",
         @"Scanner": @"magnifyingglass",

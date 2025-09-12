@@ -82,6 +82,8 @@ NS_ASSUME_NONNULL_BEGIN
 /// Ferma tutti i timer automatici
 - (void)stopAllTimers;
 
+- (void)invalidateCache;
+
 /// Pausa/riprende un singolo storage
 /// @param filePath Path del file da pausare/riprendere
 /// @param paused YES per pausare, NO per riprendere

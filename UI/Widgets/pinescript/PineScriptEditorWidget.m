@@ -24,6 +24,12 @@
 
 #pragma mark - PineScript Editor Widget Implementation
 
+
+#pragma mark - Private Interface
+@interface PineScriptEditorWidget ()
+@property (nonatomic, strong) NSView *metadataPanel;
+@end
+
 @implementation PineScriptEditorWidget
 
 #pragma mark - Initialization
@@ -62,183 +68,156 @@
     [self loadDefaultTemplate];
 }
 
-#pragma mark - UI Setup
+#pragma mark - Custom UI Setup
 
 - (void)setupUI {
-    // Main container
-    NSView *container = [[NSView alloc] init];
-    container.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.contentView addSubview:container];
-    
-    // Setup main split view (vertical: editor | output)
-    self.mainSplitView = [[NSSplitView alloc] init];
-    self.mainSplitView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.mainSplitView.vertical = YES;
-    self.mainSplitView.dividerStyle = NSSplitViewDividerStyleThin;
-    [container addSubview:self.mainSplitView];
-    
-    // Setup editor split view (horizontal: metadata | code)
-    self.editorSplitView = [[NSSplitView alloc] init];
-    self.editorSplitView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.editorSplitView.vertical = NO;
-    self.editorSplitView.dividerStyle = NSSplitViewDividerStyleThin;
-    [self.mainSplitView addSubview:self.editorSplitView];
-    
-    // Create UI components
-    [self createMetadataPanel];
-    [self createCodeEditor];
-    [self createOutputPanel];
-    [self createToolbar];
-    
-    // Layout constraints
+    // --- 1. Root container ---
+    NSView *rootView = [[NSView alloc] init];
+    rootView.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.contentView addSubview:rootView];
+
     [NSLayoutConstraint activateConstraints:@[
-        [container.topAnchor constraintEqualToAnchor:self.contentView.topAnchor],
-        [container.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
-        [container.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
-        [container.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor],
-        // Main split view fills below toolbar, with minimum height
-        [self.mainSplitView.topAnchor constraintEqualToAnchor:container.topAnchor constant:44], // Space for toolbar
-        [self.mainSplitView.leadingAnchor constraintEqualToAnchor:container.leadingAnchor],
-        [self.mainSplitView.trailingAnchor constraintEqualToAnchor:container.trailingAnchor],
-        [self.mainSplitView.bottomAnchor constraintEqualToAnchor:container.bottomAnchor],
-        [self.mainSplitView.heightAnchor constraintGreaterThanOrEqualToConstant:200]
+        [rootView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor],
+        [rootView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
+        [rootView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
+        [rootView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor]
     ]];
-    
-    // Set initial split proportions
-    [self setSplitViewProportions];
+
+    // DEBUG: Set wantsLayer and background color for rootView and minimum constraints
+    rootView.wantsLayer = YES;
+    rootView.layer.backgroundColor = [[NSColor colorWithCalibratedRed:0.95 green:0.95 blue:1.0 alpha:1.0] CGColor];
+    // Minimum width/height for rootView to force visibility
+    NSLayoutConstraint *minWidth = [rootView.widthAnchor constraintGreaterThanOrEqualToConstant:1000];
+    NSLayoutConstraint *minHeight = [rootView.heightAnchor constraintGreaterThanOrEqualToConstant:700];
+    minWidth.priority = NSLayoutPriorityRequired;
+    minHeight.priority = NSLayoutPriorityRequired;
+    minWidth.active = YES;
+    minHeight.active = YES;
+
+    // --- 2. Toolbar ---
+    NSView *toolbar = [self createToolbar];
+    [rootView addSubview:toolbar];
+    [NSLayoutConstraint activateConstraints:@[
+        [toolbar.topAnchor constraintEqualToAnchor:rootView.topAnchor],
+        [toolbar.leadingAnchor constraintEqualToAnchor:rootView.leadingAnchor],
+        [toolbar.trailingAnchor constraintEqualToAnchor:rootView.trailingAnchor],
+        [toolbar.heightAnchor constraintEqualToConstant:44]
+    ]];
+
+    // --- 3. Main content stack (horizontal: metadata | main area) ---
+    NSStackView *mainStack = [[NSStackView alloc] init];
+    mainStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    mainStack.spacing = 0;
+    mainStack.translatesAutoresizingMaskIntoConstraints = NO;
+    mainStack.distribution = NSStackViewDistributionFill;
+    [rootView addSubview:mainStack];
+    [NSLayoutConstraint activateConstraints:@[
+        [mainStack.topAnchor constraintEqualToAnchor:toolbar.bottomAnchor],
+        [mainStack.leadingAnchor constraintEqualToAnchor:rootView.leadingAnchor],
+        [mainStack.trailingAnchor constraintEqualToAnchor:rootView.trailingAnchor],
+        [mainStack.bottomAnchor constraintEqualToAnchor:rootView.bottomAnchor]
+    ]];
+
+    // --- 4. Left panel: metadata ---
+    NSView *metadataPanel = [self createMetadataPanel];
+    metadataPanel.translatesAutoresizingMaskIntoConstraints = NO;
+    [mainStack addArrangedSubview:metadataPanel];
+    [metadataPanel.widthAnchor constraintEqualToConstant:250].active = YES;
+    self.metadataPanel = metadataPanel;
+
+    // DEBUG: Set wantsLayer and background color for metadataPanel
+    metadataPanel.wantsLayer = YES;
+    metadataPanel.layer.backgroundColor = [[NSColor colorWithCalibratedRed:0.9 green:1.0 blue:0.9 alpha:1.0] CGColor];
+
+    // --- 5. Main area: vertical stack (code editor above, output below) ---
+    NSStackView *editorOutputStack = [[NSStackView alloc] init];
+    editorOutputStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+    editorOutputStack.spacing = 0;
+    editorOutputStack.translatesAutoresizingMaskIntoConstraints = NO;
+    editorOutputStack.distribution = NSStackViewDistributionFill;
+    [mainStack addArrangedSubview:editorOutputStack];
+
+    // Code editor
+    NSScrollView *codeScrollView = [self createCodeEditor];
+    codeScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    [editorOutputStack addArrangedSubview:codeScrollView];
+    [codeScrollView.heightAnchor constraintEqualToConstant:380].active = YES;
+    self.codeScrollView = codeScrollView;
+
+    // DEBUG: Set wantsLayer and background color for codeScrollView
+    codeScrollView.wantsLayer = YES;
+    codeScrollView.layer.backgroundColor = [[NSColor colorWithCalibratedRed:1.0 green:0.95 blue:0.95 alpha:1.0] CGColor];
+
+    // Output panel
+    NSScrollView *outputScrollView = [self createOutputPanel];
+    outputScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    [editorOutputStack addArrangedSubview:outputScrollView];
+    [outputScrollView.heightAnchor constraintEqualToConstant:170].active = YES;
+    self.outputScrollView = outputScrollView;
+
+    // DEBUG: Set wantsLayer and background color for outputScrollView
+    outputScrollView.wantsLayer = YES;
+    outputScrollView.layer.backgroundColor = [[NSColor colorWithCalibratedRed:0.95 green:1.0 blue:0.95 alpha:1.0] CGColor];
+
+    // Let editorOutputStack fill available space
+    [editorOutputStack setHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    [editorOutputStack setHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationVertical];
 }
 
-- (void)createMetadataPanel {
-    NSView *metadataPanel = [[NSView alloc] init];
-    metadataPanel.translatesAutoresizingMaskIntoConstraints = NO;
+#pragma mark - Metadata Panel
 
-    // Indicator name
+- (NSView *)createMetadataPanel {
+    NSView *panel = [[NSView alloc] init];
+    panel.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    // Labels + Fields
     NSTextField *nameLabel = [NSTextField labelWithString:@"Indicator Name:"];
     self.indicatorNameField = [[NSTextField alloc] init];
-    self.indicatorNameField.placeholderString = @"Enter indicator name...";
-    self.indicatorNameField.delegate = (id<NSTextFieldDelegate>)self;
-
-    // Description
+    
     NSTextField *descLabel = [NSTextField labelWithString:@"Description:"];
     self.descriptionField = [[NSTextField alloc] init];
-    self.descriptionField.placeholderString = @"Enter description...";
-    self.descriptionField.delegate = (id<NSTextFieldDelegate>)self;
-
-    // Template selector
+    
     NSTextField *templateLabel = [NSTextField labelWithString:@"Template:"];
     self.templatePopup = [[NSPopUpButton alloc] init];
     self.templatePopup.target = self;
     self.templatePopup.action = @selector(templateSelected:);
-
-    // Layout
-    nameLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.indicatorNameField.translatesAutoresizingMaskIntoConstraints = NO;
-    descLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.descriptionField.translatesAutoresizingMaskIntoConstraints = NO;
-    templateLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.templatePopup.translatesAutoresizingMaskIntoConstraints = NO;
-
-    // Stack rows for metadata
-    NSStackView *row1 = [NSStackView stackViewWithViews:@[nameLabel, self.indicatorNameField]];
-    row1.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-    row1.spacing = 8;
-    row1.translatesAutoresizingMaskIntoConstraints = NO;
-    [row1 setHuggingPriority:NSLayoutPriorityDefaultHigh forOrientation:NSLayoutConstraintOrientationVertical];
-    [row1 setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh forOrientation:NSLayoutConstraintOrientationVertical];
-
-    NSStackView *row2 = [NSStackView stackViewWithViews:@[descLabel, self.descriptionField]];
-    row2.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-    row2.spacing = 8;
-    row2.translatesAutoresizingMaskIntoConstraints = NO;
-    [row2 setHuggingPriority:NSLayoutPriorityDefaultHigh forOrientation:NSLayoutConstraintOrientationVertical];
-    [row2 setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh forOrientation:NSLayoutConstraintOrientationVertical];
-
-    NSStackView *row3 = [NSStackView stackViewWithViews:@[templateLabel, self.templatePopup]];
-    row3.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-    row3.spacing = 8;
-    row3.translatesAutoresizingMaskIntoConstraints = NO;
-    [row3 setHuggingPriority:NSLayoutPriorityDefaultHigh forOrientation:NSLayoutConstraintOrientationVertical];
-    [row3 setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh forOrientation:NSLayoutConstraintOrientationVertical];
-
-    NSStackView *vstack = [NSStackView stackViewWithViews:@[row1, row2, row3]];
-    vstack.orientation = NSUserInterfaceLayoutOrientationVertical;
-    vstack.spacing = 12;
-    vstack.edgeInsets = NSEdgeInsetsMake(12, 12, 12, 12);
-    vstack.translatesAutoresizingMaskIntoConstraints = NO;
-    [vstack setHuggingPriority:NSLayoutPriorityDefaultHigh forOrientation:NSLayoutConstraintOrientationVertical];
-    [vstack setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh forOrientation:NSLayoutConstraintOrientationVertical];
-
-    [metadataPanel addSubview:vstack];
-    // Remove frame assignments (use auto layout)
-
-    [NSLayoutConstraint activateConstraints:@[
-        [vstack.topAnchor constraintEqualToAnchor:metadataPanel.topAnchor],
-        [vstack.leadingAnchor constraintEqualToAnchor:metadataPanel.leadingAnchor],
-        [vstack.trailingAnchor constraintEqualToAnchor:metadataPanel.trailingAnchor],
-        [vstack.bottomAnchor constraintEqualToAnchor:metadataPanel.bottomAnchor],
-        [metadataPanel.heightAnchor constraintGreaterThanOrEqualToConstant:100]
+    
+    // Stack vertical
+    NSStackView *vStack = [NSStackView stackViewWithViews:@[
+        [self createMetadataRowWithLabel:nameLabel field:self.indicatorNameField],
+        [self createMetadataRowWithLabel:descLabel field:self.descriptionField],
+        [self createMetadataRowWithLabel:templateLabel field:self.templatePopup]
     ]];
-
-    // Let split view manage the size, so just ensure translatesAutoresizingMaskIntoConstraints = NO
-    metadataPanel.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.editorSplitView addSubview:metadataPanel];
+    vStack.orientation = NSUserInterfaceLayoutOrientationVertical;
+    vStack.spacing = 12;
+    vStack.edgeInsets = NSEdgeInsetsMake(12, 12, 12, 12);
+    vStack.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    [panel addSubview:vStack];
+    [NSLayoutConstraint activateConstraints:@[
+        [vStack.topAnchor constraintEqualToAnchor:panel.topAnchor],
+        [vStack.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor],
+        [vStack.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor],
+        [vStack.bottomAnchor constraintLessThanOrEqualToAnchor:panel.bottomAnchor constant:-12]
+    ]];
+    
+    return panel;
 }
 
-- (void)createCodeEditor {
-    // Create code text view with scroll view
-    self.codeScrollView = [[NSScrollView alloc] init];
-    self.codeScrollView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.codeScrollView.hasVerticalScroller = YES;
-    self.codeScrollView.hasHorizontalScroller = YES;
-    self.codeScrollView.autohidesScrollers = YES;
-    
-    self.codeTextView = [[NSTextView alloc] init];
-    self.codeTextView.delegate = (id<NSTextViewDelegate>)self;
-    self.codeTextView.font = [NSFont fontWithName:@"SF Mono" size:13] ?: [NSFont monospacedSystemFontOfSize:13 weight:NSFontWeightRegular];
-    self.codeTextView.automaticQuoteSubstitutionEnabled = NO;
-    self.codeTextView.automaticDashSubstitutionEnabled = NO;
-    self.codeTextView.automaticTextReplacementEnabled = NO;
-    self.codeTextView.automaticSpellingCorrectionEnabled = NO;
-    
-    self.codeScrollView.documentView = self.codeTextView;
-    // Remove frame assignment. Let split view manage sizing.
-    self.codeScrollView.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.editorSplitView addSubview:self.codeScrollView];
-    // Let split view manage, but ensure scroll view fills itself
-    [NSLayoutConstraint activateConstraints:@[
-        [self.codeScrollView.widthAnchor constraintGreaterThanOrEqualToConstant:200],
-        [self.codeScrollView.heightAnchor constraintGreaterThanOrEqualToConstant:100]
-    ]];
+- (NSStackView *)createMetadataRowWithLabel:(NSTextField *)label field:(NSView *)field {
+    NSStackView *row = [[NSStackView alloc] init];
+    row.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    row.spacing = 8;
+    [row setViews:@[label, field] inGravity:NSStackViewGravityLeading];
+    row.translatesAutoresizingMaskIntoConstraints = NO;
+    return row;
 }
 
-- (void)createOutputPanel {
-    // Create output text view with scroll view
-    self.outputScrollView = [[NSScrollView alloc] init];
-    self.outputScrollView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.outputScrollView.hasVerticalScroller = YES;
-    self.outputScrollView.hasHorizontalScroller = YES;
-    self.outputScrollView.autohidesScrollers = YES;
+#pragma mark - Toolbar
 
-    self.outputTextView = [[NSTextView alloc] init];
-    self.outputTextView.editable = NO;
-    self.outputTextView.font = [NSFont fontWithName:@"SF Mono" size:11] ?: [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular];
-    self.outputTextView.textColor = [NSColor secondaryLabelColor];
-    
-    self.outputScrollView.documentView = self.outputTextView;
-    // Remove frame assignment. Let split view manage sizing.
-    self.outputScrollView.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.mainSplitView addSubview:self.outputScrollView];
-    // Let split view manage, but ensure scroll view fills itself
-    [NSLayoutConstraint activateConstraints:@[
-        [self.outputScrollView.widthAnchor constraintGreaterThanOrEqualToConstant:100],
-        [self.outputScrollView.heightAnchor constraintGreaterThanOrEqualToConstant:50]
-    ]];
-}
-
-- (void)createToolbar {
+- (NSView *)createToolbar {
     NSView *toolbar = [[NSView alloc] init];
     toolbar.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.contentView addSubview:toolbar];
     
     // Buttons
     self.createNewButton = [NSButton buttonWithTitle:@"New" target:self action:@selector(newScript)];
@@ -253,46 +232,65 @@
     self.compilationProgress.controlSize = NSControlSizeSmall;
     self.compilationProgress.hidden = YES;
     
-    // Style buttons
-    self.compileButton.bezelStyle = NSBezelStyleRounded;
-    self.compileButton.keyEquivalent = @"\r"; // Enter key
-    self.testButton.bezelStyle = NSBezelStyleRounded;
-    self.saveButton.bezelStyle = NSBezelStyleRounded;
-    
-    // Layout toolbar
-    NSStackView *buttonStack = [NSStackView stackViewWithViews:@[
+    NSStackView *stack = [NSStackView stackViewWithViews:@[
         self.createNewButton, self.loadButton, self.compileButton, self.testButton, self.saveButton, self.compilationProgress
     ]];
-    buttonStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
-    buttonStack.spacing = 8;
-    buttonStack.translatesAutoresizingMaskIntoConstraints = NO;
-    [toolbar addSubview:buttonStack];
+    stack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    stack.spacing = 8;
+    stack.translatesAutoresizingMaskIntoConstraints = NO;
     
+    [toolbar addSubview:stack];
     [NSLayoutConstraint activateConstraints:@[
-        [toolbar.topAnchor constraintEqualToAnchor:self.contentView.topAnchor],
-        [toolbar.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
-        [toolbar.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
-        [toolbar.heightAnchor constraintEqualToConstant:44],
-        
-        [buttonStack.centerYAnchor constraintEqualToAnchor:toolbar.centerYAnchor],
-        [buttonStack.leadingAnchor constraintEqualToAnchor:toolbar.leadingAnchor constant:12]
+        [stack.centerYAnchor constraintEqualToAnchor:toolbar.centerYAnchor],
+        [stack.leadingAnchor constraintEqualToAnchor:toolbar.leadingAnchor constant:12]
     ]];
     
-    [self updateButtonStates];
+    return toolbar;
 }
 
+#pragma mark - Code Editor & Output
+
+- (NSScrollView *)createCodeEditor {
+    NSScrollView *scroll = [[NSScrollView alloc] init];
+    scroll.hasVerticalScroller = YES;
+    scroll.hasHorizontalScroller = YES;
+    scroll.autohidesScrollers = YES;
+    scroll.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    self.codeTextView = [[NSTextView alloc] init];
+    self.codeTextView.font = [NSFont monospacedSystemFontOfSize:13 weight:NSFontWeightRegular];
+    scroll.documentView = self.codeTextView;
+    
+    return scroll;
+}
+
+- (NSScrollView *)createOutputPanel {
+    NSScrollView *scroll = [[NSScrollView alloc] init];
+    scroll.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    self.outputTextView = [[NSTextView alloc] init];
+    self.outputTextView.editable = NO;
+    self.outputTextView.font = [NSFont monospacedSystemFontOfSize:13 weight:NSFontWeightRegular];
+    scroll.documentView = self.outputTextView;
+    
+    return scroll;
+}
 - (void)setSplitViewProportions {
     dispatch_async(dispatch_get_main_queue(), ^{
-        // Editor split view (metadata:code)
-        NSRect editorFrame = self.editorSplitView.bounds;
-        [self.editorSplitView setPosition:120 ofDividerAtIndex:0];
-        
-        // Main split view (editor:output)
-        NSRect mainFrame = self.mainSplitView.bounds;
-        [self.mainSplitView setPosition:mainFrame.size.width * 0.6 ofDividerAtIndex:0];
+        // Set split proportions for the main split view (metadata | editor/output)
+        if (self.mainSplitView.frame.size.width > 0) {
+            CGFloat metadataWidth = self.mainSplitView.frame.size.width * 0.25; // 25% for metadata
+            [self.mainSplitView setPosition:metadataWidth ofDividerAtIndex:0];
+        }
+
+        // Set split proportions for the editor/output split view (code | output)
+        NSSplitView *editorOutputSplitView = self.mainSplitView.arrangedSubviews[1];
+        if (editorOutputSplitView.frame.size.height > 0) {
+            CGFloat outputHeight = editorOutputSplitView.frame.size.height * 0.25; // 25% for output
+            [editorOutputSplitView setPosition:editorOutputSplitView.frame.size.height - outputHeight ofDividerAtIndex:0];
+        }
     });
 }
-
 #pragma mark - Syntax Highlighting
 
 - (void)setupSyntaxHighlighting {

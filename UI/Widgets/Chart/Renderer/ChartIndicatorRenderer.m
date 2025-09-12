@@ -24,7 +24,7 @@
         _lastVisibleStartIndex = NSNotFound;
         _lastVisibleEndIndex = NSNotFound;
         _panelYContext = [[PanelYCoordinateContext alloc] init];
-
+        _activeWarnings = [[NSMutableArray alloc] init];
         [self setupIndicatorsLayer];
         [self setupWarningMessagesLayer];
 
@@ -100,7 +100,7 @@
     }
     
     NSInteger period = [self extractPeriodFromIndicator:indicator];
-    NSInteger threshold = period * 30;
+    NSInteger threshold = period * 40;
     
     BOOL isTooShort = threshold < visibleRange;
     
@@ -206,6 +206,8 @@
 - (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext {
     self.sharedXContext = sharedXContext;
     
+    [self clearWarningMessages];
+
     // Trigger re-rendering if rootIndicator exists
     if (self.rootIndicator) {
         [self invalidateIndicatorLayers];
@@ -237,6 +239,7 @@
         return;
     }
     
+
     // Mark all indicators for rendering
     [self markAllIndicatorsForRerendering];
     
@@ -1013,6 +1016,11 @@
         self.indicatorsLayer.delegate = nil;
         self.indicatorsLayer = nil;
     }
+    
+    if (self.warningMessagesLayer) {
+          [self.warningMessagesLayer removeFromSuperlayer];
+          self.warningMessagesLayer = nil;
+      }
     
     self.sharedXContext = nil;
     self.panelYContext = nil;

@@ -366,18 +366,25 @@
             if (paused) {
                 [item.updateTimer invalidate];
                 item.updateTimer = nil;
-                NSLog(@"⏸️ Paused automatic updates for: %@", item.savedData.symbol);
+                NSLog(@"⏸️ Paused automatic updates for: %@", [item.filePath lastPathComponent]);
             } else {
                 [self scheduleUpdateForStorageItem:item];
-                NSLog(@"▶️ Resumed automatic updates for: %@", item.savedData.symbol);
+                NSLog(@"▶️ Resumed automatic updates for: %@", [item.filePath lastPathComponent]);
             }
+            
+            // ✅ AGGIUNTO: Invalida cache e invia notifica
+            self.cachedAllStorageItems = nil;
+            self.lastFileSystemScan = nil;
+            
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"StorageManagerDidUpdateRegistry"
+                                                                object:self
+                                                              userInfo:@{@"action": paused ? @"paused" : @"resumed", @"filePath": filePath}];
             break;
         }
     }
 }
 
 #pragma mark - Update Operations
-
 - (void)performUpdateForStorageItem:(ActiveStorageItem *)item
                          completion:(void(^)(BOOL success, NSError * _Nullable error))completion {
     
@@ -394,66 +401,62 @@
     NSLog(@"📥 Performing automatic update for %@ [%@] from %@",
           storage.symbol, [storage timeframeDescription], storage.endDate);
     
-    // Calculate date range for API request (with 3-bar overlap for safety)
-    NSDate *fromDate = [storage.endDate dateByAddingTimeInterval:-(3 * [self timeframeToSeconds:storage.timeframe])];
+    // Calculate date range for update
+    NSDate *fromDate = storage.endDate;
     NSDate *toDate = [NSDate date];
     
-    // Request data from DataHub
+    // ✅ CORREZIONE: Usa DataHub con il metodo corretto
     [[DataHub shared] getHistoricalBarsForSymbol:storage.symbol
-                                       timeframe:storage.timeframe
-                                       startDate:fromDate
-                                         endDate:toDate
-                              needExtendedHours:storage.includesExtendedHours
-                                      completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
+                                        timeframe:storage.timeframe
+                                        startDate:fromDate
+                                          endDate:toDate
+                                 needExtendedHours:storage.includesExtendedHours
+                                        completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
         
         if (!bars || bars.count == 0) {
-            NSLog(@"❌ No new data received for %@", storage.symbol);
+            NSLog(@"❌ Update failed for %@: No data returned", storage.symbol);
+            
+            item.failureCount++;
+            item.lastFailureDate = [NSDate date];
+            
             NSError *error = [NSError errorWithDomain:@"StorageManager"
-                                                 code:1005
-                                             userInfo:@{NSLocalizedDescriptionKey: @"No new data available"}];
+                                                code:1007
+                                            userInfo:@{NSLocalizedDescriptionKey: @"No data returned from DataHub"}];
             if (completion) completion(NO, error);
             return;
         }
         
-        NSLog(@"📥 Received %ld new bars for %@", (long)bars.count, storage.symbol);
+        // Merge new bars with existing data
+        [storage mergeWithNewBars:bars overlapBarCount:1];
+
+        // Update metadata
+        storage.lastSuccessfulUpdate = [NSDate date];
+        storage.nextScheduledUpdate = [self calculateNextUpdateDateForStorage:storage];
         
-        // Attempt to merge new data
-        BOOL mergeSuccess = [storage mergeWithNewBars:bars overlapBarCount:3];
+        // Save updated data
+        NSError *saveError;
+        BOOL saved = [storage saveToFile:item.filePath error:&saveError];
         
-        if (mergeSuccess) {
-            // Update timestamps
-            storage.lastSuccessfulUpdate = [NSDate date];
+        if (saved) {
+            NSLog(@"✅ Update completed for %@ - added %ld bars", storage.symbol, (long)bars.count);
             
-            // Save with automatic filename update
-            NSError *saveError;
-            NSString *updatedFilePath = [storage saveToFileWithFilenameUpdate:item.filePath error:&saveError];
+            // Reset failure count on success
+            item.failureCount = 0;
+            item.lastFailureDate = nil;
             
-            if (updatedFilePath) {
-                // Update registry if file path changed
-                if (![updatedFilePath isEqualToString:item.filePath]) {
-                    NSLog(@"📝 Registry: Updated file path for %@", storage.symbol);
-                    item.filePath = updatedFilePath;
-                }
-                
-                NSLog(@"✅ Automatic update successful for %@ (%ld total bars)",
-                      storage.symbol, (long)storage.barCount);
-                
-                if (completion) completion(YES, nil);
-            } else {
-                NSLog(@"❌ Failed to save updated data for %@: %@",
-                      storage.symbol, saveError.localizedDescription);
-                if (completion) completion(NO, saveError);
-            }
+            if (completion) completion(YES, nil);
         } else {
-            NSError *mergeError = [NSError errorWithDomain:@"StorageManager"
-                                                      code:1004
-                                                  userInfo:@{NSLocalizedDescriptionKey: @"Failed to merge new data"}];
-            NSLog(@"❌ Failed to merge new data for %@", storage.symbol);
-            if (completion) completion(NO, mergeError);
+            NSLog(@"❌ Failed to save updated storage for %@: %@", storage.symbol, saveError.localizedDescription);
+            item.failureCount++;
+            item.lastFailureDate = [NSDate date];
+            
+            if (completion) completion(NO, saveError);
         }
+        
+        // Schedule next update
+        [self scheduleUpdateForStorageItem:item];
     }];
 }
-
 
 - (NSTimeInterval)timeframeToSeconds:(BarTimeframe)timeframe {
     switch (timeframe) {
@@ -506,25 +509,86 @@
     }
 }
 
+- (void)postUpdateNotification:(NSString *)status forStorage:(SavedChartData *)storage {
+    NSDictionary *userInfo = @{
+        @"symbol": storage.symbol ?: @"Unknown",
+        @"timeframe": storage.timeframeDescription ?: @"Unknown",
+        @"status": status,
+        @"timestamp": [NSDate date]
+    };
+    
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"StorageManagerUpdateStatusChanged"
+                                                        object:self
+                                                      userInfo:userInfo];
+    
+    NSLog(@"📢 Posted update notification: %@ - %@", status, storage.symbol);
+}
 #pragma mark - Manual Updates
 
 - (void)forceUpdateForStorage:(NSString *)filePath
                    completion:(void(^)(BOOL success, NSError * _Nullable error))completion {
     
-    for (ActiveStorageItem *item in self.mutableActiveStorages) {
-        if ([item.filePath isEqualToString:filePath]) {
-            [self performUpdateForStorageItem:item completion:completion];
+    // Find active storage item
+    ActiveStorageItem *item = nil;
+    for (ActiveStorageItem *activeItem in self.mutableActiveStorages) {
+        if ([activeItem.filePath isEqualToString:filePath]) {
+            item = activeItem;
+            break;
+        }
+    }
+    
+    if (!item) {
+        // ✅ CORREZIONE: Se non è nel registry, prova a registrarlo
+        NSLog(@"⚠️ Storage not in registry - attempting to register: %@", filePath);
+        if ([self registerContinuousStorageWithFilenameParsingOnly:filePath]) {
+            // Retry find after registration
+            for (ActiveStorageItem *activeItem in self.mutableActiveStorages) {
+                if ([activeItem.filePath isEqualToString:filePath]) {
+                    item = activeItem;
+                    break;
+                }
+            }
+        }
+        
+        if (!item) {
+            NSError *error = [NSError errorWithDomain:@"StorageManager"
+                                                 code:1005
+                                             userInfo:@{NSLocalizedDescriptionKey: @"Storage not found in active registry"}];
+            if (completion) completion(NO, error);
             return;
         }
     }
     
-    // Storage not found
-    if (completion) {
-        NSError *error = [NSError errorWithDomain:@"StorageManager"
-                                             code:1003
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Storage not found in registry"}];
-        completion(NO, error);
-    }
+    NSLog(@"🔧 Force updating storage: %@", [item.filePath lastPathComponent]);
+    
+    // ✅ AGGIUNTO: Invalida il timer per evitare conflitti
+    [item.updateTimer invalidate];
+    item.updateTimer = nil;
+    
+    // Perform update
+    [self performUpdateForStorageItem:item completion:^(BOOL success, NSError *error) {
+        if (success) {
+            NSLog(@"✅ Force update completed successfully");
+        } else {
+            NSLog(@"❌ Force update failed: %@", error.localizedDescription);
+        }
+        
+        // ✅ AGGIUNTO: Riprogramma il timer dopo l'update
+        if (!item.isPaused) {
+            [self scheduleUpdateForStorageItem:item];
+        }
+        
+        // ✅ CORREZIONE: Invalida cache per forzare refresh
+        self.cachedAllStorageItems = nil;
+        self.lastFileSystemScan = nil;
+        
+        // ✅ AGGIUNTO: Invia notifica di aggiornamento registry
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"StorageManagerDidUpdateRegistry"
+                                                            object:self
+                                                          userInfo:@{@"action": @"forceUpdate", @"filePath": filePath}];
+        
+        if (completion) completion(success, error);
+    }];
 }
 
 - (void)forceUpdateAllStorages {
@@ -651,6 +715,15 @@
 - (void)convertStorageToSnapshot:(NSString *)filePath userConfirmed:(BOOL)userConfirmed {
     for (ActiveStorageItem *item in self.mutableActiveStorages) {
         if ([item.filePath isEqualToString:filePath]) {
+            // ✅ CORREZIONE: Lazy load se necessario
+            if (!item.savedData) {
+                item.savedData = [SavedChartData loadFromFile:item.filePath];
+                if (!item.savedData) {
+                    NSLog(@"❌ Cannot load SavedChartData for conversion: %@", filePath);
+                    return;
+                }
+            }
+            
             // Convert the SavedChartData to snapshot
             [item.savedData convertToSnapshot];
             
@@ -668,6 +741,14 @@
                 
                 NSLog(@"📸 Successfully converted %@ to snapshot", item.savedData.symbol);
                 
+                // ✅ AGGIUNTO: Invalida cache e invia notifica
+                self.cachedAllStorageItems = nil;
+                self.lastFileSystemScan = nil;
+                
+                [[NSNotificationCenter defaultCenter] postNotificationName:@"StorageManagerDidUpdateRegistry"
+                                                                    object:self
+                                                                  userInfo:@{@"action": @"convertedToSnapshot", @"filePath": filePath}];
+                
                 // Show success notification
                 if (userConfirmed) {
                     [self showNotification:@"Storage Converted"
@@ -680,6 +761,7 @@
         }
     }
 }
+
 
 - (void)deleteStorageWithConfirmation:(ActiveStorageItem *)storageItem {
     NSAlert *confirmAlert = [[NSAlert alloc] init];
@@ -853,10 +935,7 @@
             if (unifiedItem) {
                 [allItems addObject:unifiedItem];
                 
-                // ❌ RIMUOVI QUESTA RIGA CHE CAUSA IL LOADING:
-                // [self registerContinuousStorageFromParsedData:unifiedItem];
-                
-                // ✅ SOSTITUISCI CON: Solo aggiunta al registry senza loading
+                // ✅ CORREZIONE: Solo aggiunta al registry senza loading per continuous
                 if (unifiedItem.isContinuous) {
                     NSLog(@"📋 Found unregistered continuous storage (filename only): %@", filename);
                     [self registerContinuousStorageWithFilenameParsingOnly:filePath];
@@ -878,7 +957,22 @@
     self.lastFileSystemScan = [NSDate date];
     
     NSLog(@"✅ Fast refresh complete: %ld total items - ZERO file loading!", (long)allItems.count);
+    
+    // ✅ AGGIUNTO: Invia notifica di refresh completato
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"StorageManagerDidUpdateRegistry"
+                                                        object:self
+                                                      userInfo:@{@"action": @"refreshCompleted", @"itemCount": @(allItems.count)}];
 }
+
+- (void)invalidateCache {
+    NSLog(@"🗑️ Manually invalidating StorageManager cache");
+    self.cachedAllStorageItems = nil;
+    self.lastFileSystemScan = nil;
+    
+    // Forza un refresh immediato
+    [self refreshAllStorageItems];
+}
+
 - (UnifiedStorageItem *)createUnifiedStorageItemFromFilename:(NSString *)filename
                                                    filePath:(NSString *)filePath {
     
@@ -924,9 +1018,16 @@
     
     if (deleted) {
         NSLog(@"✅ Successfully deleted storage file: %@", filePath);
-        // Invalida cache per trigger refresh
+        
+        // ✅ AGGIUNTO: Invalida cache per trigger refresh
         self.cachedAllStorageItems = nil;
         self.lastFileSystemScan = nil;
+        
+        // ✅ AGGIUNTO: Invia notifica di eliminazione
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"StorageManagerDidUpdateRegistry"
+                                                            object:self
+                                                          userInfo:@{@"action": @"deleted", @"filePath": filePath}];
+        
     } else {
         NSLog(@"❌ Failed to delete storage file: %@", error.localizedDescription);
     }

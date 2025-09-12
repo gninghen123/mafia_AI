@@ -39,7 +39,6 @@
     [self createStorageManagementUI];
     [self setupNotificationObservers];
     [self refreshStorageList:nil];
-    [self startAutoRefresh];
 }
 
 // ========================================================================
@@ -329,13 +328,26 @@
 - (void)setupNotificationObservers {
     NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
     
-    // Listen for storage manager changes
+    // ✅ PRINCIPALE: Ascolta aggiornamenti del registry
     [nc addObserver:self
            selector:@selector(handleStorageManagerUpdate:)
                name:@"StorageManagerDidUpdateRegistry"
              object:nil];
+    
+    // ✅ NUOVO: Ascolta cambi di stato degli updates
+    [nc addObserver:self
+           selector:@selector(handleStorageUpdateStatusChange:)
+               name:@"StorageManagerUpdateStatusChanged"
+             object:nil];
+    
+    // ✅ NUOVO: Ascolta creazione di nuovi storage
+    [nc addObserver:self
+           selector:@selector(handleNewStorageCreated:)
+               name:@"NewContinuousStorageCreated"
+             object:nil];
+    
+    NSLog(@"📡 StorageManagementWidget: Notification observers setup complete");
 }
-
 - (NSMenu *)createContextMenu {
     NSMenu *contextMenu = [[NSMenu alloc] init];
     
@@ -372,6 +384,11 @@
 - (IBAction)refreshStorageList:(id)sender {
     NSLog(@"🔄 Refreshing storage list...");
     
+    // ✅ AGGIUNTO: Indicatore visivo di refresh
+    if (sender) {
+        [self showStatusMessage:@"🔄 Refreshing..." duration:1.0];
+    }
+    
     // Force refresh of storage manager data
     StorageManager *manager = [StorageManager sharedManager];
     [manager refreshAllStorageItems];
@@ -386,66 +403,91 @@
     [self updateStatusDisplay];
     
     NSLog(@"🔄 Storage list refreshed: %ld items displayed", (long)self.storageItems.count);
+    
+    // ✅ AGGIUNTO: Feedback finale
+    if (sender) {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self showStatusMessage:@"✅ Refresh complete" duration:1.5];
+        });
+    }
 }
 
 - (void)updateStatusDisplay {
     StorageManager *manager = [StorageManager sharedManager];
     
-    // Update statistics labels - usando solo le proprietà esistenti
+    // Update statistics labels
     self.totalStoragesLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)manager.totalActiveStorages];
     
-    // Calcolo storage continui vs snapshot per le label esistenti
-    NSInteger continuousCount = 0;
-    NSInteger snapshotCount = 0;
+    // Calcolo storage continui vs snapshot
+    NSInteger continuousCount = manager.continuousStorageItems.count;
+    NSInteger snapshotCount = manager.snapshotStorageItems.count;
     
-    // Conta i tipi di storage dall'array unificato
-    for (UnifiedStorageItem *item in self.storageItems) {
-        if (item.dataType == SavedChartDataTypeContinuous) {
-            continuousCount++;
-        } else if (item.dataType == SavedChartDataTypeSnapshot) {
-            snapshotCount++;
+    // ✅ AGGIUNTO: Verifica esistenza label prima di aggiornare
+    if (self.continuousStoragesLabel) {
+        self.continuousStoragesLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)continuousCount];
+    }
+    
+    if (self.snapshotStoragesLabel) {
+        self.snapshotStoragesLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)snapshotCount];
+    }
+    
+    if (self.errorStoragesLabel) {
+        NSInteger errorCount = manager.storagesWithErrors;
+        self.errorStoragesLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)errorCount];
+        
+        // ✅ AGGIUNTO: Colore rosso se ci sono errori
+        self.errorStoragesLabel.textColor = errorCount > 0 ? [NSColor systemRedColor] : [NSColor labelColor];
+    }
+    
+    // Next update info
+    if (self.nextUpdateLabel) {
+        ActiveStorageItem *nextItem = manager.nextStorageToUpdate;
+        if (nextItem && nextItem.savedData && nextItem.savedData.nextScheduledUpdate) {
+            NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+            formatter.dateStyle = NSDateFormatterShortStyle;
+            formatter.timeStyle = NSDateFormatterShortStyle;
+            
+            NSString *nextUpdateString = [NSString stringWithFormat:@"Next: %@ at %@",
+                                        nextItem.savedData.symbol,
+                                        [formatter stringFromDate:nextItem.savedData.nextScheduledUpdate]];
+            self.nextUpdateLabel.stringValue = nextUpdateString;
+        } else {
+            self.nextUpdateLabel.stringValue = @"No updates scheduled";
         }
     }
     
-    self.continuousStoragesLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)continuousCount];
-    self.snapshotStoragesLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)snapshotCount];
-    self.errorStoragesLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)manager.storagesWithErrors];
-    
-    // Next update info
-    ActiveStorageItem *nextItem = manager.nextStorageToUpdate;
-    if (nextItem && nextItem.savedData.nextScheduledUpdate) {
-        NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-        formatter.dateStyle = NSDateFormatterShortStyle;
-        formatter.timeStyle = NSDateFormatterShortStyle;
+    // Status summary
+    if (self.statusLabel) {
+        NSString *statusText;
+        if (continuousCount == 0 && snapshotCount == 0) {
+            statusText = @"No storage items found";
+        } else if (!manager.automaticUpdatesEnabled) {
+            statusText = @"⏸️ Automatic updates paused";
+        } else {
+            NSInteger pausedCount = manager.pausedStorages;
+            NSInteger errorCount = manager.storagesWithErrors;
+            
+            if (errorCount > 0) {
+                statusText = [NSString stringWithFormat:@"⚠️ %ld active, %ld errors", (long)(continuousCount - pausedCount - errorCount), (long)errorCount];
+            } else if (pausedCount > 0) {
+                statusText = [NSString stringWithFormat:@"✅ %ld active, %ld paused", (long)(continuousCount - pausedCount), (long)pausedCount];
+            } else {
+                statusText = [NSString stringWithFormat:@"✅ All %ld storages active", (long)continuousCount];
+            }
+        }
         
-        NSString *nextUpdateText = [NSString stringWithFormat:@"%@ [%@]",
-                                   [formatter stringFromDate:nextItem.savedData.nextScheduledUpdate],
-                                   nextItem.savedData.symbol];
-        self.nextUpdateLabel.stringValue = nextUpdateText;
-    } else {
-        self.nextUpdateLabel.stringValue = @"No updates scheduled";
-    }
-    
-    // Overall status
-    if (manager.totalActiveStorages == 0) {
-        self.statusLabel.stringValue = @"No active storage";
-        self.statusLabel.textColor = [NSColor secondaryLabelColor];
-    } else if (manager.storagesWithErrors > 0) {
-        self.statusLabel.stringValue = [NSString stringWithFormat:@"⚠️ %ld storage(s) have errors", (long)manager.storagesWithErrors];
-        self.statusLabel.textColor = [NSColor systemOrangeColor];
-    } else if (manager.automaticUpdatesEnabled) {
-        self.statusLabel.stringValue = @"✅ All storage systems operational";
-        self.statusLabel.textColor = [NSColor systemGreenColor];
-    } else {
-        self.statusLabel.stringValue = @"⏸️ Automatic updates disabled";
-        self.statusLabel.textColor = [NSColor systemYellowColor];
+        self.statusLabel.stringValue = statusText;
     }
     
     // Update button states
-    self.pauseAllButton.title = manager.automaticUpdatesEnabled ? @"⏸️ Pause All" : @"▶️ Resume All";
-    self.updateAllButton.enabled = (manager.totalActiveStorages > 0);
+    if (self.pauseAllButton) {
+        self.pauseAllButton.title = manager.automaticUpdatesEnabled ? @"⏸️ Pause All" : @"▶️ Resume All";
+    }
+    
+    if (self.updateAllButton) {
+        self.updateAllButton.enabled = (manager.totalActiveStorages > 0);
+    }
 }
-
 #pragma mark - Actions
 
 - (IBAction)togglePauseAllStorages:(id)sender {
@@ -898,39 +940,67 @@
     return item.isContinuous ? @"Continuous" : @"Snapshot";
 }
 
-#pragma mark - Auto-refresh
 
-- (void)startAutoRefresh {
-    if (self.refreshTimer) {
-        [self.refreshTimer invalidate];
-    }
-    
-    // Refresh UI every 30 seconds
-    self.refreshTimer = [NSTimer scheduledTimerWithTimeInterval:30.0
-                                                         target:self
-                                                       selector:@selector(autoRefreshTimerFired:)
-                                                       userInfo:nil
-                                                        repeats:YES];
-    
-    NSLog(@"🔄 Auto-refresh started for StorageManagementWidget");
-}
-
-- (void)stopAutoRefresh {
-    [self.refreshTimer invalidate];
-    self.refreshTimer = nil;
-    
-    NSLog(@"⏸️ Auto-refresh stopped for StorageManagementWidget");
-}
-
-- (void)autoRefreshTimerFired:(NSTimer *)timer {
-    [self refreshStorageList:nil];
-}
 
 #pragma mark - Notification Handlers
 
 - (void)handleStorageManagerUpdate:(NSNotification *)notification {
+    NSString *action = notification.userInfo[@"action"];
+    
+    // ✅ CORREZIONE: Ignora le notifiche di refresh che causano loop
+    if ([action isEqualToString:@"refreshCompleted"]) {
+        NSLog(@"📢 StorageManagementWidget ignoring refreshCompleted to prevent loop");
+        return;
+    }
+    
+    NSLog(@"📢 StorageManagementWidget received update: %@", action ?: @"unknown");
+    
     dispatch_async(dispatch_get_main_queue(), ^{
         [self refreshStorageList:nil];
+    });
+}
+
+- (void)handleStorageUpdateStatusChange:(NSNotification *)notification {
+    NSString *symbol = notification.userInfo[@"symbol"];
+    NSString *status = notification.userInfo[@"status"];
+    
+    NSLog(@"📊 Storage update status: %@ - %@", symbol, status);
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        // Update solo la UI se necessario (non force refresh completo)
+        [self updateStatusDisplay];
+        
+        // ✅ AGGIUNTO: Feedback per status importanti
+        if ([status isEqualToString:@"Completed"]) {
+            [self showStatusMessage:[NSString stringWithFormat:@"✅ %@ updated", symbol] duration:2.0];
+        } else if ([status isEqualToString:@"Failed"]) {
+            [self showStatusMessage:[NSString stringWithFormat:@"❌ %@ update failed", symbol] duration:3.0];
+        }
+    });
+}
+- (void)handleNewStorageCreated:(NSNotification *)notification {
+    NSString *filePath = notification.userInfo[@"filePath"];
+    
+    NSLog(@"🆕 New storage created: %@", [filePath lastPathComponent]);
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self refreshStorageList:nil];
+        [self showStatusMessage:@"🆕 New storage created" duration:2.0];
+    });
+}
+- (void)showStatusMessage:(NSString *)message duration:(NSTimeInterval)duration {
+    // Update status label temporarily
+    NSString *originalStatus = self.statusLabel.stringValue;
+    self.statusLabel.stringValue = message;
+    
+    // ✅ AGGIUNTO: Cambio colore per feedback visivo
+    NSColor *originalColor = self.statusLabel.textColor;
+    self.statusLabel.textColor = [NSColor systemBlueColor];
+    
+    // Restore after delay
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(duration * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        self.statusLabel.stringValue = originalStatus;
+        self.statusLabel.textColor = originalColor;
     });
 }
 

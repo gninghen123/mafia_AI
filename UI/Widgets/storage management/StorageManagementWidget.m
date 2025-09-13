@@ -301,12 +301,21 @@
     
     self.storageTableView.doubleAction = @selector(handleTableDoubleClick:);
        self.storageTableView.target = self;
-    // 🎯 CONFIGURAZIONE AVANZATA TABLE VIEW
     self.storageTableView.allowsColumnReordering = YES;
-    self.storageTableView.allowsColumnResizing = YES;
-    self.storageTableView.allowsColumnSelection = NO;
-    self.storageTableView.allowsEmptySelection = YES;
-    self.storageTableView.allowsMultipleSelection = NO;
+      self.storageTableView.allowsColumnResizing = YES;
+      self.storageTableView.allowsColumnSelection = YES; // abilita selezione intestazioni
+      self.storageTableView.allowsEmptySelection = YES;
+      self.storageTableView.allowsMultipleSelection = NO;
+      self.storageTableView.allowsTypeSelect = YES;
+
+      // 🎯 ABILITA ORDINAMENTO NATIVO COLONNE
+    for (NSTableColumn *column in self.storageTableView.tableColumns) {
+        NSSortDescriptor *sortDescriptor =
+        [NSSortDescriptor sortDescriptorWithKey:column.identifier
+                                      ascending:YES
+                                       selector:@selector(localizedCaseInsensitiveCompare:)];
+        column.sortDescriptorPrototype = sortDescriptor;
+    }
     
     // Setup context menu
     [self.storageTableView setMenu:[self createContextMenu]];
@@ -318,6 +327,39 @@
     NSLog(@"   - Column resizing: enabled");
 }
 
+- (void)tableView:(NSTableView *)tableView sortDescriptorsDidChange:(NSArray<NSSortDescriptor *> *)oldDescriptors {
+    NSSortDescriptor *descriptor = tableView.sortDescriptors.firstObject;
+    if (!descriptor) return;
+    
+    NSString *key = descriptor.key;
+    BOOL ascending = descriptor.ascending;
+    
+    self.storageItems = [self.storageItems sortedArrayUsingComparator:^NSComparisonResult(UnifiedStorageItem *a, UnifiedStorageItem *b) {
+        NSString *valueA = [self valueForColumnKey:key fromItem:a];
+        NSString *valueB = [self valueForColumnKey:key fromItem:b];
+        return ascending ? [valueA compare:valueB options:NSCaseInsensitiveSearch]
+                         : [valueB compare:valueA options:NSCaseInsensitiveSearch];
+    }];
+    
+    [self.storageTableView reloadData];
+}
+
+- (NSString *)valueForColumnKey:(NSString *)key fromItem:(UnifiedStorageItem *)item {
+    NSString *filename = [item.filePath lastPathComponent];
+    
+    if ([key isEqualToString:@"symbol"]) {
+        return [SavedChartData symbolFromFilename:filename] ?: @"";
+    } else if ([key isEqualToString:@"timeframe"]) {
+        return [SavedChartData timeframeFromFilename:filename] ?: @"";
+    } else if ([key isEqualToString:@"type"]) {
+        return [SavedChartData typeFromFilename:filename] ?: @"";
+    } else if ([key isEqualToString:@"range"]) {
+        return [SavedChartData dateRangeStringFromFilename:filename] ?: @"";
+    } else if ([key isEqualToString:@"status"]) {
+        return [self statusStringForStorageItem:item] ?: @"";
+    }
+    return @""; // default
+}
 
 - (void)dealloc {
     [self stopAutoRefresh];

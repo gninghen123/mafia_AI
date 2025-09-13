@@ -10,7 +10,7 @@
 // Webull API Endpoints
 static NSString *const kWebullTopGainersURL = @"https://quotes-gw.webullfintech.com/api/bgw/market/topGainers";
 static NSString *const kWebullTopLosersURL = @"https://quotes-gw.webullfintech.com/api/bgw/market/dropGainers";
-static NSString *const kWebullETFListURL = @"https://quotes-gw.webullfintech.com/api/wlas/etfinder/pcFinder";
+static NSString *const kWebullETFListURL = @"https://quotes-gw.webullfintech.com/api/wlas/etfinder/pcFinder?topNum=5&finderId=wlas.etfinder.index&nbboLevel=false";
 static NSString *const kWebullQuotesURL = @"https://quotes-gw.webullfintech.com/api/bgw/quote/tickerRealTimes";
 static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.com/api/quote/charts/query";
 
@@ -171,8 +171,19 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
                 completion:(void (^)(id response, NSError *error))completion {
     
     if (error) {
+        NSLog(@"❌ WebullDataSource: Network error: %@", error.localizedDescription);
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (completion) completion(nil, error);
+            if (completion) completion(nil, error);  // ✅ FIX: sintassi completa
+        });
+        return;
+    }
+    
+    if (!data) {
+        NSError *noDataError = [NSError errorWithDomain:@"WebullDataSource"
+                                                   code:404
+                                               userInfo:@{NSLocalizedDescriptionKey: @"No data received"}];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(nil, noDataError);
         });
         return;
     }
@@ -181,7 +192,9 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
     if (httpResponse.statusCode != 200) {
         NSError *httpError = [NSError errorWithDomain:@"WebullDataSource"
                                                  code:httpResponse.statusCode
-                                             userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"HTTP Error %ld", (long)httpResponse.statusCode]}];
+                                             userInfo:@{NSLocalizedDescriptionKey:
+                                                       [NSString stringWithFormat:@"HTTP Error %ld", (long)httpResponse.statusCode]}];
+        NSLog(@"❌ WebullDataSource: HTTP Error %ld", (long)httpResponse.statusCode);
         dispatch_async(dispatch_get_main_queue(), ^{
             if (completion) completion(nil, httpError);
         });
@@ -192,12 +205,14 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
     id json = [NSJSONSerialization JSONObjectWithData:data options:0 error:&parseError];
     
     if (parseError) {
+        NSLog(@"❌ WebullDataSource: JSON parse error: %@", parseError.localizedDescription);
         dispatch_async(dispatch_get_main_queue(), ^{
             if (completion) completion(nil, parseError);
         });
         return;
     }
     
+    NSLog(@"✅ WebullDataSource: Request successful, parsed JSON response");
     dispatch_async(dispatch_get_main_queue(), ^{
         if (completion) completion(json, nil);
     });
@@ -267,6 +282,8 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
 
 #pragma mark - Market Lists - UNIFIED PROTOCOL
 
+// Modifica al metodo fetchMarketListForType nel file WebullDataSource.m
+
 - (void)fetchMarketListForType:(DataRequestType)listType
                     parameters:(NSDictionary *)parameters
                     completion:(void (^)(NSArray *results, NSError *error))completion {
@@ -292,6 +309,15 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
             [self fetchETFListWithCompletion:completion];
             break;
         }
+        
+        // ✅ NUOVO: Earnings Market Lists
+        case DataRequestTypeMarketList: {
+                    // Estrae il timeframe come stringa dai parametri
+                    NSString *timeframeString = parameters[@"timeframe"] ?: @"today_bmo";
+                    [self fetchEarningsForTimeframe:timeframeString completion:completion];
+                    break;
+                }
+        
         default: {
             NSError *error = [NSError errorWithDomain:@"WebullDataSource"
                                                  code:400
@@ -301,6 +327,150 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
             break;
         }
     }
+}
+
+#pragma mark - Earnings Implementation
+
+- (void)fetchEarningsForTimeframe:(NSString *)timeframeString
+                       completion:(void (^)(NSArray *results, NSError *error))completion {
+    
+    NSString *startDate;
+    NSString *qualifierFilter = nil; // nil = tutti, "BMO"/"AMC" = filtro specifico
+    
+    if ([timeframeString isEqualToString:@"today_bmo"]) {
+        startDate = [self todayDateString];
+        qualifierFilter = @"BMO";
+    }
+    else if ([timeframeString isEqualToString:@"today_amc"]) {
+        startDate = [self todayDateString];
+        qualifierFilter = @"AMC";
+    }
+    else if ([timeframeString isEqualToString:@"last_5_days"]) {
+        startDate = [self dateStringDaysAgo:5];
+        // qualifierFilter rimane nil per includere tutti
+    }
+    else if ([timeframeString isEqualToString:@"last_10_days"]) {
+        startDate = [self dateStringDaysAgo:10];
+        // qualifierFilter rimane nil per includere tutti
+    }
+    else {
+        NSError *error = [NSError errorWithDomain:@"WebullDataSource"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey:
+                                                   [NSString stringWithFormat:@"Unsupported earnings timeframe: %@", timeframeString]}];
+        if (completion) completion(nil, error);
+        return;
+    }
+    
+    NSLog(@"🔍 WebullDataSource: Fetching earnings for timeframe '%@', startDate: %@, qualifier: %@",
+          timeframeString, startDate, qualifierFilter ?: @"ALL");
+    
+    [self fetchWebullEarningsFromDate:startDate
+                      qualifierFilter:qualifierFilter
+                           completion:completion];
+}
+
+- (void)fetchWebullEarningsFromDate:(NSString *)startDate
+                    qualifierFilter:(NSString *)qualifierFilter
+                         completion:(void (^)(NSArray *results, NSError *error))completion {
+    
+    // URL Webull Earnings Calendar
+    NSString *urlString = [NSString stringWithFormat:
+                          @"https://quotes-gw.webullfintech.com/api/bgw/explore/calendar/earnings?regionId=6&pageIndex=1&pageSize=350&startDate=%@",
+                          startDate];
+    
+    NSLog(@"🔍 WebullDataSource: Fetching earnings from: %@", urlString);
+    
+    [self executeRequest:urlString completion:^(id response, NSError *error) {
+        if (error) {
+            NSLog(@"❌ WebullDataSource: Earnings request failed: %@", error.localizedDescription);
+            if (completion) completion(nil, error);
+            return;
+        }
+        
+        NSArray *rawEarnings = [self extractEarningsDataFromResponse:response];
+        
+        // ✅ Applica filtro BMO/AMC se specificato
+        if (qualifierFilter) {
+            rawEarnings = [self filterEarningsData:rawEarnings byQualifier:qualifierFilter];
+            NSLog(@"🎯 WebullDataSource: Filtered earnings for %@: %lu results",
+                  qualifierFilter, (unsigned long)rawEarnings.count);
+        } else {
+            NSLog(@"📊 WebullDataSource: Fetched ALL earnings: %lu results",
+                  (unsigned long)rawEarnings.count);
+        }
+        
+        // ✅ RITORNA DATI RAW WEBULL - WebullDataAdapter si occuperà della standardizzazione
+        if (completion) completion(rawEarnings, nil);
+    }];
+}
+
+- (NSArray *)extractEarningsDataFromResponse:(id)response {
+    if (![response isKindOfClass:[NSDictionary class]]) {
+        NSLog(@"⚠️ WebullDataSource: Earnings response non è un dictionary");
+        return @[];
+    }
+    
+    NSDictionary *responseDict = (NSDictionary *)response;
+    NSArray *data = responseDict[@"data"];
+    
+    if (![data isKindOfClass:[NSArray class]]) {
+        NSLog(@"⚠️ WebullDataSource: Earnings data non è un array, structure: %@", responseDict.allKeys);
+        return @[];
+    }
+    
+    NSLog(@"✅ WebullDataSource: Extracted %lu earnings items from response", (unsigned long)data.count);
+    return data;
+}
+
+- (NSArray *)filterEarningsData:(NSArray *)earningsData byQualifier:(NSString *)qualifier {
+    if (!earningsData || !qualifier) {
+        return earningsData;
+    }
+    
+    NSMutableArray *filteredResults = [NSMutableArray array];
+    
+    for (NSDictionary *item in earningsData) {
+        if (![item isKindOfClass:[NSDictionary class]]) continue;
+        
+        // ✅ FIX: Il qualifier è dentro il dizionario "values"
+        NSDictionary *values = item[@"values"];
+        if (![values isKindOfClass:[NSDictionary class]]) continue;
+        
+        NSString *itemQualifier = values[@"qualifier"] ?: values[@"timing"] ?: values[@"timeOfDay"] ?: @"";
+        
+        if ([itemQualifier isEqualToString:qualifier]) {
+            [filteredResults addObject:item];
+            NSLog(@"✅ WebullDataSource: Found %@ earnings for %@", qualifier, values[@"ticker"][@"symbol"] ?: @"unknown");
+        }
+    }
+    
+    NSLog(@"🎯 WebullDataSource: Filtered %lu items for qualifier '%@'", (unsigned long)filteredResults.count, qualifier);
+    return [filteredResults copy];
+}
+
+#pragma mark - Date Helper Methods
+
+- (NSString *)todayDateString {
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    formatter.dateFormat = @"yyyy-MM-dd";
+    formatter.timeZone = [NSTimeZone timeZoneWithName:@"America/New_York"]; // US markets timezone
+    return [formatter stringFromDate:[NSDate date]];
+}
+
+- (NSString *)dateStringDaysAgo:(NSInteger)daysAgo {
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    calendar.timeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
+    
+    NSDate *pastDate = [calendar dateByAddingUnit:NSCalendarUnitDay
+                                            value:-daysAgo
+                                           toDate:[NSDate date]
+                                          options:0];
+    
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    formatter.dateFormat = @"yyyy-MM-dd";
+    formatter.timeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
+    return [formatter stringFromDate:pastDate];
 }
 
 // INTERNAL: Top Gainers

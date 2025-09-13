@@ -165,32 +165,16 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "EC20F7C3-0439-4227-BB6D-CE166E4427F4"
-            shouldBeEnabled = "Yes"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "UI/Widgets/Chart/ChartWidget+IndicatorsUI.m"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "262"
-            endingLineNumber = "262"
-            landmarkName = "-calculateAndRenderIndicatorsForRenderer:withData:"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "6964B914-E32C-4517-9835-0559441C618F"
+            uuid = "13FECD84-07DF-4679-8D0B-88B5CAC13BE5"
             shouldBeEnabled = "Yes"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "Gestione Dati/APIs/WebullDataSource.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "274"
-            endingLineNumber = "274"
-            landmarkName = "-fetchMarketListForType:parameters:completion:"
+            startingLineNumber = "206"
+            endingLineNumber = "206"
+            landmarkName = "-handleHTTPResponse:response:error:completion:"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

@@ -12,6 +12,7 @@
 #import "datahub+marketdata.h"
 #import "SavedChartData+FilenameParsing.h"
 #import "SavedChartData+FilenameUpdate.h"
+#import "StorageMetadataCache.h"
 
 
 #pragma mark - ActiveStorageItem Implementation
@@ -39,8 +40,10 @@
 @property (nonatomic, strong) NSMutableArray<ActiveStorageItem *> *mutableActiveStorages;
 @property (nonatomic, strong) NSTimer *masterCheckTimer;
 @property (nonatomic, assign) BOOL isInitialized;
-@property (nonatomic, strong) NSArray<UnifiedStorageItem *> *cachedAllStorageItems;
-@property (nonatomic, strong) NSDate *lastFileSystemScan;
+
+@property (nonatomic, strong) StorageMetadataCache *metadataCache;
+@property (nonatomic, strong) NSTimer *consistencyCheckTimer;
+@property (nonatomic, strong) NSString *storageDirectory;
 @end
 
 @implementation StorageManager
@@ -75,19 +78,82 @@
 - (void)initializeStorageManager {
     if (_isInitialized) return;
     
-    NSLog(@"🚀 StorageManager initializing automatic storage system...");
+    NSLog(@"🚀 StorageManager initializing with cache system...");
+    
+    // ✅ NUOVO: Initialize cache system
+    self.metadataCache = [StorageMetadataCache sharedCache];
+    self.storageDirectory = [ChartWidget savedChartDataDirectory];
     
     // Setup notification observers
     [self setupNotificationObservers];
     
-    // Auto-register existing continuous storage files
-    [self autoDiscoverContinuousStorages];
+    // ✅ NUOVO: Initialize cache (with persistence fallback)
+    [self initializeCacheSystem];
+    
+    // Auto-register existing continuous storage files from cache
+    [self autoDiscoverContinuousStoragesFromCache];
+    
+    // ✅ NUOVO: Start consistency check timer (30 minutes)
+    [self startConsistencyCheckTimer];
     
     // Start master timer for health checks
     [self startMasterTimer];
     
     _isInitialized = YES;
     NSLog(@"✅ StorageManager initialized with %ld active storages", (long)self.totalActiveStorages);
+}
+
+- (void)initializeCacheSystem {
+    NSLog(@"📦 Initializing cache system...");
+    
+    // Try loading from UserDefaults first (fast startup)
+    [self.metadataCache loadFromUserDefaults];
+    
+    // If no cached data, build from filesystem
+    if (self.metadataCache.totalCount == 0) {
+        NSLog(@"📦 No cached metadata found - building from filesystem");
+        [self.metadataCache buildCacheFromDirectory:self.storageDirectory];
+    } else {
+        NSLog(@"📦 Loaded %ld items from cached metadata", (long)self.metadataCache.totalCount);
+    }
+}
+
+- (void)autoDiscoverContinuousStoragesFromCache {
+    NSArray<StorageMetadataItem *> *continuousItems = self.metadataCache.continuousItems;
+    
+    NSLog(@"🔍 Auto-discovering continuous storage from cache...");
+    NSLog(@"🚀 Using CACHED METADATA - no file loading!");
+    
+    for (StorageMetadataItem *item in continuousItems) {
+        [self registerContinuousStorageWithFilenameParsingOnly:item.filePath];
+    }
+    
+    NSLog(@"📋 Auto-discovered %ld continuous storage files from cache", (long)continuousItems.count);
+}
+
+- (void)startConsistencyCheckTimer {
+    // Timer after 30 minutes for consistency check
+    self.consistencyCheckTimer = [NSTimer scheduledTimerWithTimeInterval:(30.0 * 60.0)
+                                                                   target:self
+                                                                 selector:@selector(performScheduledConsistencyCheck:)
+                                                                 userInfo:nil
+                                                                  repeats:NO];
+    
+    NSLog(@"⏰ Consistency check scheduled for 30 minutes from now");
+}
+
+- (void)performScheduledConsistencyCheck:(NSTimer *)timer {
+    NSLog(@"🔍 Performing scheduled consistency check...");
+    
+    [self.metadataCache performConsistencyCheck:self.storageDirectory completion:^(NSInteger inconsistencies) {
+        if (inconsistencies > 0) {
+            NSLog(@"⚠️ Found %ld inconsistencies during consistency check", (long)inconsistencies);
+            // Save updated cache
+            [self.metadataCache saveToUserDefaults];
+        } else {
+            NSLog(@"✅ Consistency check passed - no inconsistencies found");
+        }
+    }];
 }
 
 - (void)setupNotificationObservers {
@@ -389,76 +455,45 @@
 - (void)performUpdateForStorageItem:(ActiveStorageItem *)item
                          completion:(void(^)(BOOL success, NSError * _Nullable error))completion {
     
-    // ✅ Lazy load SavedChartData only when needed for update
-    SavedChartData *storage = [self loadSavedDataForActiveItem:item];
-    if (!storage) {
-        NSError *error = [NSError errorWithDomain:@"StorageManager"
-                                             code:1006
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Failed to load SavedChartData for update"}];
-        if (completion) completion(NO, error);
-        return;
+    // ... [tutto il codice esistente rimane uguale fino al salvataggio] ...
+    
+    // Nella sezione dove salvi il file, SOSTITUISCI:
+    // BOOL saved = [storage saveToFile:item.filePath error:&saveError];
+    
+    // CON:
+    NSString *updatedFilePath = [storage saveToFileWithFilenameUpdate:item.filePath error:&saveError];
+    
+    if (updatedFilePath) {
+        NSLog(@"✅ Update completed for %@ - added %ld bars", storage.symbol, (long)bars.count);
+        
+        // Reset failure count on success
+        item.failureCount = 0;
+        item.lastFailureDate = nil;
+        
+        // ✅ NUOVO: Update file path if filename changed
+        if (![updatedFilePath isEqualToString:item.filePath]) {
+            [self.metadataCache handleFileRenamed:item.filePath newPath:updatedFilePath];
+            item.filePath = updatedFilePath;
+        } else {
+            [self.metadataCache handleFileUpdated:updatedFilePath];
+        }
+        
+        // Save cache
+        [self.metadataCache saveToUserDefaults];
+        
+        if (completion) completion(YES, nil);
+    } else {
+        NSLog(@"❌ Failed to save updated storage for %@: %@", storage.symbol, saveError.localizedDescription);
+        item.failureCount++;
+        item.lastFailureDate = [NSDate date];
+        
+        if (completion) completion(NO, saveError);
     }
     
-    NSLog(@"📥 Performing automatic update for %@ [%@] from %@",
-          storage.symbol, [storage timeframeDescription], storage.endDate);
-    
-    // Calculate date range for update
-    NSDate *fromDate = storage.endDate;
-    NSDate *toDate = [NSDate date];
-    
-    // ✅ CORREZIONE: Usa DataHub con il metodo corretto
-    [[DataHub shared] getHistoricalBarsForSymbol:storage.symbol
-                                        timeframe:storage.timeframe
-                                        startDate:fromDate
-                                          endDate:toDate
-                                 needExtendedHours:storage.includesExtendedHours
-                                        completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
-        
-        if (!bars || bars.count == 0) {
-            NSLog(@"❌ Update failed for %@: No data returned", storage.symbol);
-            
-            item.failureCount++;
-            item.lastFailureDate = [NSDate date];
-            
-            NSError *error = [NSError errorWithDomain:@"StorageManager"
-                                                code:1007
-                                            userInfo:@{NSLocalizedDescriptionKey: @"No data returned from DataHub"}];
-            if (completion) completion(NO, error);
-            return;
-        }
-        
-        // Merge new bars with existing data
-        [storage mergeWithNewBars:bars overlapBarCount:1];
-
-        // Update metadata
-        storage.lastSuccessfulUpdate = [NSDate date];
-        storage.nextScheduledUpdate = [self calculateNextUpdateDateForStorage:storage];
-        
-        // Save updated data
-        NSError *saveError;
-        BOOL saved = [storage saveToFileWithFilenameUpdate:item.filePath error:&saveError];
-        
-        if (saved) {
-            NSLog(@"✅ Update completed for %@ - added %ld bars", storage.symbol, (long)bars.count);
-            
-            // Reset failure count on success
-            item.failureCount = 0;
-            item.lastFailureDate = nil;
-            
-            if (completion) completion(YES, nil);
-        } else {
-            NSLog(@"❌ Failed to save updated storage for %@: %@", storage.symbol, saveError.localizedDescription);
-            item.failureCount++;
-            item.lastFailureDate = [NSDate date];
-            
-            if (completion) completion(NO, saveError);
-        }
-        
-        // Schedule next update
-        [self scheduleUpdateForStorageItem:item];
-        
-    }];
+    // Schedule next update
+    [self scheduleUpdateForStorageItem:item];
 }
+
 
 - (NSTimeInterval)timeframeToSeconds:(BarTimeframe)timeframe {
     switch (timeframe) {
@@ -540,7 +575,7 @@
     }
     
     if (!item) {
-        // ✅ CORREZIONE: Se non è nel registry, prova a registrarlo
+        // Try to register if not found
         NSLog(@"⚠️ Storage not in registry - attempting to register: %@", filePath);
         if ([self registerContinuousStorageWithFilenameParsingOnly:filePath]) {
             // Retry find after registration
@@ -563,7 +598,7 @@
     
     NSLog(@"🔧 Force updating storage: %@", [item.filePath lastPathComponent]);
     
-    // ✅ AGGIUNTO: Invalida il timer per evitare conflitti
+    // Invalidate timer to avoid conflicts
     [item.updateTimer invalidate];
     item.updateTimer = nil;
     
@@ -571,20 +606,20 @@
     [self performUpdateForStorageItem:item completion:^(BOOL success, NSError *error) {
         if (success) {
             NSLog(@"✅ Force update completed successfully");
+            
+            // ✅ NUOVO: Update cache after successful update
+            [self updateCacheForFilePath:item.filePath];
+            
         } else {
             NSLog(@"❌ Force update failed: %@", error.localizedDescription);
         }
         
-        // ✅ AGGIUNTO: Riprogramma il timer dopo l'update
+        // Reschedule timer after update
         if (!item.isPaused) {
             [self scheduleUpdateForStorageItem:item];
         }
         
-        // ✅ CORREZIONE: Invalida cache per forzare refresh
-        self.cachedAllStorageItems = nil;
-        self.lastFileSystemScan = nil;
-        
-        // ✅ AGGIUNTO: Invia notifica di aggiornamento registry
+        // Send notification of registry update
         [[NSNotificationCenter defaultCenter] postNotificationName:@"StorageManagerDidUpdateRegistry"
                                                             object:self
                                                           userInfo:@{@"action": @"forceUpdate", @"filePath": filePath}];
@@ -767,6 +802,48 @@
 }
 
 
+- (void)updateCacheForFilePath:(NSString *)filePath {
+    // Update cache metadata after file modification
+    [self.metadataCache handleFileUpdated:filePath];
+    
+    // Save to UserDefaults for persistence
+    [self.metadataCache saveToUserDefaults];
+    
+    NSLog(@"📦 Updated cache for file: %@", [filePath lastPathComponent]);
+}
+
+
+- (void)deleteStorageItem:(NSString *)filePath completion:(void(^)(BOOL success, NSError * _Nullable error))completion {
+    NSLog(@"🗑️ Deleting storage item: %@", filePath);
+    
+    // 1. Remove from continuous registry if needed
+    [self unregisterContinuousStorage:filePath];
+    
+    // 2. Delete the file
+    NSError *error;
+    BOOL deleted = [[NSFileManager defaultManager] removeItemAtPath:filePath error:&error];
+    
+    if (deleted) {
+        NSLog(@"✅ Successfully deleted storage file: %@", filePath);
+        
+        // ✅ NUOVO: Update cache after deletion
+        [self.metadataCache handleFileDeleted:filePath];
+        
+        // Send notification
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"StorageManagerDidUpdateRegistry"
+                                                            object:self
+                                                          userInfo:@{@"action": @"deleted", @"filePath": filePath}];
+    } else {
+        NSLog(@"❌ Failed to delete storage file: %@", error.localizedDescription);
+    }
+    
+    if (completion) {
+        completion(deleted, error);
+    }
+}
+
+
+
 - (void)deleteStorageWithConfirmation:(ActiveStorageItem *)storageItem {
     NSAlert *confirmAlert = [[NSAlert alloc] init];
     confirmAlert.messageText = @"⚠️ Confirm Storage Deletion";
@@ -884,162 +961,58 @@
 #pragma mark - Unified Storage Management
 
 - (NSArray<UnifiedStorageItem *> *)allStorageItems {
-    [self refreshAllStorageItemsIfNeeded];
-    return self.cachedAllStorageItems ?: @[];
+    NSArray<StorageMetadataItem *> *cachedItems = self.metadataCache.allItems;
+    return [self createUnifiedStorageItemsFromCachedItems:cachedItems];
 }
 
 - (NSArray<UnifiedStorageItem *> *)continuousStorageItems {
-    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"dataType == %d", SavedChartDataTypeContinuous];
-    return [self.allStorageItems filteredArrayUsingPredicate:predicate];
+    NSArray<StorageMetadataItem *> *cachedItems = self.metadataCache.continuousItems;
+    return [self createUnifiedStorageItemsFromCachedItems:cachedItems];
 }
 
 - (NSArray<UnifiedStorageItem *> *)snapshotStorageItems {
-    NSPredicate *predicate = [NSPredicate predicateWithFormat:@"dataType == %d", SavedChartDataTypeSnapshot];
-    return [self.allStorageItems filteredArrayUsingPredicate:predicate];
+    NSArray<StorageMetadataItem *> *cachedItems = self.metadataCache.snapshotItems;
+    return [self createUnifiedStorageItemsFromCachedItems:cachedItems];
 }
 
-- (void)refreshAllStorageItems {
-    NSLog(@"🚀 Fast refreshing storage items using FILENAME PARSING (no file loading)...");
+// Helper method to convert cached items to UnifiedStorageItems
+- (NSArray<UnifiedStorageItem *> *)createUnifiedStorageItemsFromCachedItems:(NSArray<StorageMetadataItem *> *)cachedItems {
+    NSMutableArray<UnifiedStorageItem *> *unifiedItems = [NSMutableArray array];
     
-    NSArray<NSString *> *allFiles = [ChartWidget availableSavedChartDataFiles];
-    NSMutableArray<UnifiedStorageItem *> *allItems = [NSMutableArray array];
-    
-    // 1. Add continuous storage from registry (already loaded)
-    for (ActiveStorageItem *activeItem in self.mutableActiveStorages) {
+    for (StorageMetadataItem *cachedItem in cachedItems) {
         UnifiedStorageItem *unifiedItem = [[UnifiedStorageItem alloc] init];
-        unifiedItem.dataType = SavedChartDataTypeContinuous;
-        unifiedItem.savedData = activeItem.savedData;
-        unifiedItem.activeItem = activeItem;
-        unifiedItem.filePath = activeItem.filePath;
-        [allItems addObject:unifiedItem];
-    }
-    
-    // 2. Parse ALL files using FILENAME PARSING ONLY
-    for (NSString *filePath in allFiles) {
-        @autoreleasepool {
-            NSString *filename = [filePath lastPathComponent];
-            
-            if (![SavedChartData isNewFormatFilename:filename]) {
-                NSLog(@"⚠️ Skipping old format file: %@", filename);
-                continue;
-            }
-            
-            // Skip if already in registry
-            BOOL isAlreadyInRegistry = NO;
+        unifiedItem.filePath = cachedItem.filePath;
+        unifiedItem.dataType = cachedItem.dataType;
+        unifiedItem.savedData = nil; // Lazy loading when needed
+        
+        // Link to ActiveStorageItem if it's continuous
+        if (cachedItem.isContinuous) {
             for (ActiveStorageItem *activeItem in self.mutableActiveStorages) {
-                if ([activeItem.filePath isEqualToString:filePath]) {
-                    isAlreadyInRegistry = YES;
+                if ([activeItem.filePath isEqualToString:cachedItem.filePath]) {
+                    unifiedItem.activeItem = activeItem;
                     break;
                 }
             }
-            if (isAlreadyInRegistry) continue;
-            
-            // Create UnifiedStorageItem from filename parsing ONLY
-            UnifiedStorageItem *unifiedItem = [self createUnifiedStorageItemFromFilename:filename filePath:filePath];
-            if (unifiedItem) {
-                [allItems addObject:unifiedItem];
-                
-                // ✅ CORREZIONE: Solo aggiunta al registry senza loading per continuous
-                if (unifiedItem.isContinuous) {
-                    NSLog(@"📋 Found unregistered continuous storage (filename only): %@", filename);
-                    [self registerContinuousStorageWithFilenameParsingOnly:filePath];
-                }
-            }
         }
+        
+        [unifiedItems addObject:unifiedItem];
     }
     
-    // 3. Sort by creation date
-    [allItems sortUsingComparator:^NSComparisonResult(UnifiedStorageItem *obj1, UnifiedStorageItem *obj2) {
-        NSDate *date1 = [SavedChartData creationDateFromFilename:[obj1.filePath lastPathComponent]];
-        NSDate *date2 = [SavedChartData creationDateFromFilename:[obj2.filePath lastPathComponent]];
-        if (!date1) date1 = [NSDate distantPast];
-        if (!date2) date2 = [NSDate distantPast];
+    // Sort by creation date (newest first)
+    [unifiedItems sortUsingComparator:^NSComparisonResult(UnifiedStorageItem *obj1, UnifiedStorageItem *obj2) {
+        StorageMetadataItem *item1 = [self.metadataCache itemForPath:obj1.filePath];
+        StorageMetadataItem *item2 = [self.metadataCache itemForPath:obj2.filePath];
+        
+        NSDate *date1 = item1.creationDate ?: [NSDate distantPast];
+        NSDate *date2 = item2.creationDate ?: [NSDate distantPast];
+        
         return [date2 compare:date1];
     }];
     
-    self.cachedAllStorageItems = [allItems copy];
-    self.lastFileSystemScan = [NSDate date];
-    
-    NSLog(@"✅ Fast refresh complete: %ld total items - ZERO file loading!", (long)allItems.count);
-    
-    // ✅ AGGIUNTO: Invia notifica di refresh completato
-    [[NSNotificationCenter defaultCenter] postNotificationName:@"StorageManagerDidUpdateRegistry"
-                                                        object:self
-                                                      userInfo:@{@"action": @"refreshCompleted", @"itemCount": @(allItems.count)}];
+    return [unifiedItems copy];
 }
 
-- (void)invalidateCache {
-    NSLog(@"🗑️ Manually invalidating StorageManager cache");
-    self.cachedAllStorageItems = nil;
-    self.lastFileSystemScan = nil;
-    
-    // Forza un refresh immediato
-    [self refreshAllStorageItems];
-}
 
-- (UnifiedStorageItem *)createUnifiedStorageItemFromFilename:(NSString *)filename
-                                                   filePath:(NSString *)filePath {
-    
-    NSString *symbol = [SavedChartData symbolFromFilename:filename];
-    NSString *typeStr = [SavedChartData typeFromFilename:filename];
-    
-    if (!symbol || !typeStr) {
-        NSLog(@"⚠️ Could not parse symbol or type from filename: %@", filename);
-        return nil;
-    }
-    
-    // Create UnifiedStorageItem with parsed data
-    UnifiedStorageItem *item = [[UnifiedStorageItem alloc] init];
-    item.filePath = filePath;
-    item.dataType = [typeStr isEqualToString:@"Continuous"] ?
-                    SavedChartDataTypeContinuous : SavedChartDataTypeSnapshot;
-    
-    // For snapshot storage, we don't need SavedChartData object (filename parsing is enough)
-    // For continuous storage, savedData will be set in registerContinuousStorageFromParsedData
-    item.savedData = nil;
-    item.activeItem = nil;
-    
-    return item;
-}
-
-- (void)refreshAllStorageItemsIfNeeded {
-    // Refresh se non mai fatto o se è passato più di 1 minuto dall'ultimo scan
-    if (!self.lastFileSystemScan ||
-        [[NSDate date] timeIntervalSinceDate:self.lastFileSystemScan] > 60.0) {
-        [self refreshAllStorageItems];
-    }
-}
-
-- (void)deleteStorageItem:(NSString *)filePath completion:(void(^)(BOOL success, NSError * _Nullable error))completion {
-    NSLog(@"🗑️ Deleting storage item: %@", filePath);
-    
-    // 1. Se è continuous, rimuovi dal registry
-    [self unregisterContinuousStorage:filePath];
-    
-    // 2. Elimina il file
-    NSError *error;
-    BOOL deleted = [[NSFileManager defaultManager] removeItemAtPath:filePath error:&error];
-    
-    if (deleted) {
-        NSLog(@"✅ Successfully deleted storage file: %@", filePath);
-        
-        // ✅ AGGIUNTO: Invalida cache per trigger refresh
-        self.cachedAllStorageItems = nil;
-        self.lastFileSystemScan = nil;
-        
-        // ✅ AGGIUNTO: Invia notifica di eliminazione
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"StorageManagerDidUpdateRegistry"
-                                                            object:self
-                                                          userInfo:@{@"action": @"deleted", @"filePath": filePath}];
-        
-    } else {
-        NSLog(@"❌ Failed to delete storage file: %@", error.localizedDescription);
-    }
-    
-    if (completion) {
-        completion(deleted, error);
-    }
-}
 
 #pragma mark - Statistics & Monitoring
 
@@ -1120,6 +1093,11 @@
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     [self stopAllTimers];
     [self.masterCheckTimer invalidate];
+    
+    // ✅ NUOVO: Save cache on app termination
+    [self.consistencyCheckTimer invalidate];
+    [self.metadataCache saveToUserDefaults];
+    
+    NSLog(@"💾 StorageManager: Cache saved on dealloc");
 }
-
 @end

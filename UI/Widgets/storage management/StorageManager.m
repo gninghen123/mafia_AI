@@ -258,9 +258,44 @@
 
 
 - (BOOL)registerContinuousStorage:(NSString *)filePath {
-    // ✅ Redirect to filename parsing version
-    return [self registerContinuousStorageWithFilenameParsingOnly:filePath];
+    NSString *filename = [filePath lastPathComponent];
+    
+    // Quick validation using filename parsing
+    if (![SavedChartData isNewFormatFilename:filename]) {
+        NSLog(@"⚠️ Skipping old format file: %@", filename);
+        return NO;
+    }
+    
+    NSString *typeStr = [SavedChartData typeFromFilename:filename];
+    if (![typeStr isEqualToString:@"Continuous"]) {
+        NSLog(@"⚠️ File is not continuous storage: %@", filename);
+        return NO;
+    }
+    
+    // Check if already registered
+    for (ActiveStorageItem *item in self.mutableActiveStorages) {
+        if ([item.filePath isEqualToString:filePath]) {
+            NSLog(@"ℹ️ Storage already registered: %@", filename);
+            return YES;
+        }
+    }
+    
+    // ✅ Create ActiveStorageItem WITHOUT loading SavedChartData
+    ActiveStorageItem *item = [[ActiveStorageItem alloc] init];
+    item.filePath = filePath;
+    item.savedData = nil; // We'll load this ONLY when actually needed for updates
+    item.failureCount = 0;
+    item.isPaused = NO;
+    
+    // Add to registry immediately
+    [self.mutableActiveStorages addObject:item];
+    
+    NSLog(@"✅ Registered continuous storage (filename parsing): %@",
+          [SavedChartData symbolFromFilename:filename]);
+    
+    return YES;
 }
+
 
 - (void)unregisterContinuousStorage:(NSString *)filePath {
     for (NSInteger i = self.mutableActiveStorages.count - 1; i >= 0; i--) {
@@ -439,9 +474,8 @@
                 NSLog(@"▶️ Resumed automatic updates for: %@", [item.filePath lastPathComponent]);
             }
             
-            // ✅ AGGIUNTO: Invalida cache e invia notifica
-            self.cachedAllStorageItems = nil;
-            self.lastFileSystemScan = nil;
+            [self.metadataCache performConsistencyCheck:self.storageDirectory completion:nil];
+
             
             [[NSNotificationCenter defaultCenter] postNotificationName:@"StorageManagerDidUpdateRegistry"
                                                                 object:self
@@ -455,43 +489,154 @@
 - (void)performUpdateForStorageItem:(ActiveStorageItem *)item
                          completion:(void(^)(BOOL success, NSError * _Nullable error))completion {
     
-    // ... [tutto il codice esistente rimane uguale fino al salvataggio] ...
-    
-    // Nella sezione dove salvi il file, SOSTITUISCI:
-    // BOOL saved = [storage saveToFile:item.filePath error:&saveError];
-    
-    // CON:
-    NSString *updatedFilePath = [storage saveToFileWithFilenameUpdate:item.filePath error:&saveError];
-    
-    if (updatedFilePath) {
-        NSLog(@"✅ Update completed for %@ - added %ld bars", storage.symbol, (long)bars.count);
-        
-        // Reset failure count on success
-        item.failureCount = 0;
-        item.lastFailureDate = nil;
-        
-        // ✅ NUOVO: Update file path if filename changed
-        if (![updatedFilePath isEqualToString:item.filePath]) {
-            [self.metadataCache handleFileRenamed:item.filePath newPath:updatedFilePath];
-            item.filePath = updatedFilePath;
-        } else {
-            [self.metadataCache handleFileUpdated:updatedFilePath];
-        }
-        
-        // Save cache
-        [self.metadataCache saveToUserDefaults];
-        
-        if (completion) completion(YES, nil);
-    } else {
-        NSLog(@"❌ Failed to save updated storage for %@: %@", storage.symbol, saveError.localizedDescription);
-        item.failureCount++;
-        item.lastFailureDate = [NSDate date];
-        
-        if (completion) completion(NO, saveError);
+    if (!item) {
+        NSError *error = [NSError errorWithDomain:@"StorageManager"
+                                             code:1001
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid storage item"}];
+        if (completion) completion(NO, error);
+        return;
     }
     
-    // Schedule next update
-    [self scheduleUpdateForStorageItem:item];
+    // Lazy load SavedChartData if not already loaded
+    if (!item.savedData) {
+        item.savedData = [self loadSavedDataForActiveItem:item];
+        if (!item.savedData) {
+            NSError *error = [NSError errorWithDomain:@"StorageManager"
+                                                 code:1002
+                                             userInfo:@{NSLocalizedDescriptionKey: @"Failed to load SavedChartData for update"}];
+            if (completion) completion(NO, error);
+            return;
+        }
+    }
+    
+    SavedChartData *storage = item.savedData;
+    
+    NSLog(@"🔄 Performing update for %@ [%@]", storage.symbol, storage.timeframeDescription);
+    [self postUpdateNotification:@"updating" forStorage:storage];
+    
+    // Calculate new date range for update
+    NSDate *fromDate = storage.endDate;
+    NSDate *toDate = [NSDate date];
+    
+    // Request new data from DataHub
+    [[DataHub shared] getHistoricalBarsForSymbol:storage.symbol
+                                        timeframe:storage.timeframe
+                                        startDate:fromDate
+                                          endDate:toDate
+                                needExtendedHours:storage.includesExtendedHours
+                                       completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
+        
+        dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+            
+            if (!bars || bars.count == 0) {
+                NSLog(@"ℹ️ No new data available for %@ - storage is up to date", storage.symbol);
+                
+                // Update next scheduled time even if no new data
+                storage.nextScheduledUpdate = [self calculateNextUpdateDateForStorage:storage];
+                
+                // Save the updated schedule
+                NSError *saveError;
+                NSString *updatedFilePath = [storage saveToFileWithFilenameUpdate:item.filePath error:&saveError];
+                
+                if (updatedFilePath) {
+                    // Update file path if filename changed
+                    if (![updatedFilePath isEqualToString:item.filePath]) {
+                        [self.metadataCache handleFileRenamed:item.filePath newPath:updatedFilePath];
+                        item.filePath = updatedFilePath;
+                    } else {
+                        [self.metadataCache handleFileUpdated:updatedFilePath];
+                    }
+                    
+                    // Save cache
+                    [self.metadataCache saveToUserDefaults];
+                }
+                
+                [self postUpdateNotification:@"up_to_date" forStorage:storage];
+                
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (completion) completion(YES, nil);
+                });
+                return;
+            }
+            
+            NSLog(@"📥 Received %ld new bars for %@", (long)bars.count, storage.symbol);
+            
+            // Validate data compatibility
+            if (![storage isCompatibleWithBars:bars]) {
+                NSError *compatibilityError = [NSError errorWithDomain:@"StorageManager"
+                                                                  code:1003
+                                                              userInfo:@{NSLocalizedDescriptionKey: @"New data is incompatible with existing storage"}];
+                [self handleUpdateFailureForItem:item error:compatibilityError];
+                [self postUpdateNotification:@"failed" forStorage:storage];
+                
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (completion) completion(NO, compatibilityError);
+                });
+                return;
+            }
+            
+            // Merge new bars with existing data
+            BOOL mergeSuccess = [storage mergeWithNewBars:bars overlapBarCount:3];
+            
+            if (!mergeSuccess) {
+                NSError *mergeError = [NSError errorWithDomain:@"StorageManager"
+                                                          code:1004
+                                                      userInfo:@{NSLocalizedDescriptionKey: @"Failed to merge new data with existing storage"}];
+                [self handleUpdateFailureForItem:item error:mergeError];
+                [self postUpdateNotification:@"failed" forStorage:storage];
+                
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (completion) completion(NO, mergeError);
+                });
+                return;
+            }
+            
+            // Update metadata
+            storage.lastSuccessfulUpdate = [NSDate date];
+            storage.nextScheduledUpdate = [self calculateNextUpdateDateForStorage:storage];
+            
+            // Save updated storage to file with filename update
+            NSError *saveError;
+            NSString *updatedFilePath = [storage saveToFileWithFilenameUpdate:item.filePath error:&saveError];
+            
+            if (updatedFilePath) {
+                NSLog(@"✅ Update completed for %@ - added %ld bars", storage.symbol, (long)bars.count);
+                
+                // Reset failure count on success
+                item.failureCount = 0;
+                item.lastFailureDate = nil;
+                
+                // Update file path if filename changed
+                if (![updatedFilePath isEqualToString:item.filePath]) {
+                    [self.metadataCache handleFileRenamed:item.filePath newPath:updatedFilePath];
+                    item.filePath = updatedFilePath;
+                } else {
+                    [self.metadataCache handleFileUpdated:updatedFilePath];
+                }
+                
+                // Save cache
+                [self.metadataCache saveToUserDefaults];
+                
+                [self postUpdateNotification:@"completed" forStorage:storage];
+                
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (completion) completion(YES, nil);
+                });
+                
+            } else {
+                NSLog(@"❌ Failed to save updated storage for %@: %@", storage.symbol, saveError.localizedDescription);
+                [self handleUpdateFailureForItem:item error:saveError];
+                [self postUpdateNotification:@"failed" forStorage:storage];
+                
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (completion) completion(NO, saveError);
+                });
+            }
+            
+            // Schedule next update
+            [self scheduleUpdateForStorageItem:item];
+        });
+    }];
 }
 
 
@@ -781,8 +926,7 @@
                 NSLog(@"📸 Successfully converted %@ to snapshot", item.savedData.symbol);
                 
                 // ✅ AGGIUNTO: Invalida cache e invia notifica
-                self.cachedAllStorageItems = nil;
-                self.lastFileSystemScan = nil;
+                [self.metadataCache performConsistencyCheck:self.storageDirectory completion:nil];
                 
                 [[NSNotificationCenter defaultCenter] postNotificationName:@"StorageManagerDidUpdateRegistry"
                                                                     object:self

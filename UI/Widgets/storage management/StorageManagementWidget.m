@@ -431,9 +431,8 @@
         [self showStatusMessage:@"🔄 Refreshing..." duration:1.0];
     }
     
-    // Force refresh of storage manager data
-    StorageManager *manager = [StorageManager sharedManager];
-    [manager refreshAllStorageItems];
+
+    
     
     // Apply current filter to get the right data
     [self applyCurrentFilter];
@@ -852,71 +851,6 @@
     [alert runModal];
 }
 
-- (NSDictionary *)getStorageMetadataFromFilename:(NSString *)filename fallbackItem:(UnifiedStorageItem *)item {
-    NSMutableDictionary *metadata = [NSMutableDictionary dictionary];
-    
-    if ([SavedChartData isNewFormatFilename:filename]) {
-        // ✅ FAST: Parse from filename
-        metadata[@"symbol"] = [SavedChartData symbolFromFilename:filename] ?: @"Unknown";
-        metadata[@"timeframe"] = [SavedChartData timeframeFromFilename:filename] ?: @"Unknown";
-        metadata[@"type"] = [SavedChartData typeFromFilename:filename] ?: @"Unknown";
-        metadata[@"barCount"] = @([SavedChartData barCountFromFilename:filename]);
-        metadata[@"dateRange"] = [SavedChartData dateRangeStringFromFilename:filename] ?: @"Unknown";
-        metadata[@"extendedHours"] = @([SavedChartData extendedHoursFromFilename:filename]);
-        metadata[@"hasGaps"] = @([SavedChartData hasGapsFromFilename:filename]);
-        metadata[@"creationDate"] = [SavedChartData creationDateFromFilename:filename];
-        
-        // File size from filesystem
-        NSInteger fileSize = [SavedChartData fileSizeFromPath:item.filePath];
-        metadata[@"fileSizeKB"] = @(fileSize / 1024);
-        
-        metadata[@"source"] = @"filename";
-        
-    } else if (item.savedData) {
-        // ❌ FALLBACK: Use already loaded data
-        metadata[@"symbol"] = item.savedData.symbol ?: @"Unknown";
-        metadata[@"timeframe"] = item.savedData.timeframeDescription ?: @"Unknown";
-        metadata[@"type"] = item.savedData.dataType == SavedChartDataTypeContinuous ? @"Continuous" : @"Snapshot";
-        metadata[@"barCount"] = @(item.savedData.barCount);
-        metadata[@"dateRange"] = item.savedData.formattedDateRange ?: @"Unknown";
-        metadata[@"extendedHours"] = @(item.savedData.includesExtendedHours);
-        metadata[@"hasGaps"] = @(item.savedData.hasGaps);
-        metadata[@"creationDate"] = item.savedData.creationDate;
-        metadata[@"fileSizeKB"] = @(item.savedData.estimatedFileSize / 1024);
-        metadata[@"source"] = @"cached";
-        
-    } else {
-        // ❌ LAST RESORT: Load file (should be very rare)
-        NSLog(@"⚠️ Loading file for metadata (old format): %@", filename);
-        SavedChartData *tempData = [SavedChartData loadFromFile:item.filePath];
-        if (tempData) {
-            metadata[@"symbol"] = tempData.symbol ?: @"Unknown";
-            metadata[@"timeframe"] = tempData.timeframeDescription ?: @"Unknown";
-            metadata[@"type"] = tempData.dataType == SavedChartDataTypeContinuous ? @"Continuous" : @"Snapshot";
-            metadata[@"barCount"] = @(tempData.barCount);
-            metadata[@"dateRange"] = tempData.formattedDateRange ?: @"Unknown";
-            metadata[@"extendedHours"] = @(tempData.includesExtendedHours);
-            metadata[@"hasGaps"] = @(tempData.hasGaps);
-            metadata[@"creationDate"] = tempData.creationDate;
-            metadata[@"fileSizeKB"] = @(tempData.estimatedFileSize / 1024);
-            metadata[@"source"] = @"file_load";
-        } else {
-            // Ultimate fallback
-            metadata[@"symbol"] = @"Unknown";
-            metadata[@"timeframe"] = @"Unknown";
-            metadata[@"type"] = @"Unknown";
-            metadata[@"barCount"] = @(0);
-            metadata[@"dateRange"] = @"Unknown";
-            metadata[@"extendedHours"] = @(NO);
-            metadata[@"hasGaps"] = @(NO);
-            metadata[@"creationDate"] = nil;
-            metadata[@"fileSizeKB"] = @(0);
-            metadata[@"source"] = @"fallback";
-        }
-    }
-    
-    return [metadata copy];
-}
 
 
 - (void)openStorageLocation:(UnifiedStorageItem *)item {

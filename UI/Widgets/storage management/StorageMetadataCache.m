@@ -42,10 +42,10 @@
     item.timeframe = dict[@"timeframe"];
     item.dataType = [dict[@"dataType"] integerValue];
     item.barCount = [dict[@"barCount"] integerValue];
-    item.startDate = dict[@"startDate"];
-    item.endDate = dict[@"endDate"];
-    item.creationDate = dict[@"creationDate"];
-    item.lastUpdate = dict[@"lastUpdate"];
+    item.startDate = [dict[@"startDate"] doubleValue] >0 ? [NSDate dateWithTimeIntervalSince1970:[dict[@"startDate"] doubleValue]] : nil;
+    item.endDate = [dict[@"endDate"] doubleValue] >0 ? [NSDate dateWithTimeIntervalSince1970:[dict[@"endDate"] doubleValue]] : nil;
+    item.creationDate = [dict[@"creationDate"] doubleValue] > 0 ? [NSDate dateWithTimeIntervalSince1970:[dict[@"creationDate"] doubleValue]] : nil;
+    item.lastUpdate = [dict[@"lastUpdate"] doubleValue] > 0 ? [NSDate dateWithTimeIntervalSince1970:[dict[@"lastUpdate"] doubleValue]] : nil;
     item.includesExtendedHours = [dict[@"includesExtendedHours"] boolValue];
     item.hasGaps = [dict[@"hasGaps"] boolValue];
     item.isNewFormat = [dict[@"isNewFormat"] boolValue];
@@ -64,10 +64,10 @@
         @"timeframe": self.timeframe ?: @"",
         @"dataType": @(self.dataType),
         @"barCount": @(self.barCount),
-        @"startDate": self.startDate ?: [NSNull null],
-        @"endDate": self.endDate ?: [NSNull null],
-        @"creationDate": self.creationDate ?: [NSNull null],
-        @"lastUpdate": self.lastUpdate ?: [NSNull null],
+        @"startDate": self.startDate ? @([self.startDate timeIntervalSince1970]) : @0,
+                @"endDate": self.endDate ? @([self.endDate timeIntervalSince1970]) : @0,
+        @"creationDate": self.creationDate ? @([self.creationDate timeIntervalSince1970]) : @0,
+        @"lastUpdate": self.lastUpdate ? @([self.lastUpdate timeIntervalSince1970]) : @0,
         @"includesExtendedHours": @(self.includesExtendedHours),
         @"hasGaps": @(self.hasGaps),
         @"isNewFormat": @(self.isNewFormat),

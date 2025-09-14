@@ -111,6 +111,12 @@ typedef NS_ENUM(NSInteger, StorageTableColumn) {
 - (void)startAutoRefresh;
 - (void)stopAutoRefresh;
 
+/// Get metadata dictionary from filename with fallback to item data
+/// @param filename The filename to parse
+/// @param item Fallback item for additional data
+/// @return Dictionary containing metadata
+- (NSDictionary *)getStorageMetadataFromFilename:(NSString *)filename fallbackItem:(UnifiedStorageItem *)item;
+
 @end
 
 NS_ASSUME_NONNULL_END

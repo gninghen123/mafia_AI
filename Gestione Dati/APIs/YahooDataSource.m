@@ -637,5 +637,175 @@
         @"Pragma": @"no-cache"
     };
 }
+#pragma mark - Symbol Search Implementation
+
+- (void)searchSymbolsWithQuery:(NSString *)query
+                         limit:(NSInteger)limit
+                    completion:(void(^)(NSArray<NSDictionary *> * _Nullable results, NSError * _Nullable error))completion {
+    
+    if (!query || query.length == 0) {
+        if (completion) completion(@[], nil);
+        return;
+    }
+    
+    NSLog(@"🔍 Yahoo Finance: Searching symbols for '%@'", query);
+    
+    // Yahoo Finance search endpoint
+    NSString *encodedQuery = [query stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]];
+    NSString *urlString = [NSString stringWithFormat:@"https://query2.finance.yahoo.com/v1/finance/search?q=%@&count=%ld",
+                          encodedQuery, (long)limit];
+    
+    NSURL *url = [NSURL URLWithString:urlString];
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.HTTPMethod = @"GET";
+    
+    // Add headers
+    [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+    [request setValue:@"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" forHTTPHeaderField:@"User-Agent"];
+    
+    NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:request
+                                                                 completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        
+        if (error) {
+            NSLog(@"❌ Yahoo Finance search error: %@", error.localizedDescription);
+            if (completion) completion(nil, error);
+            return;
+        }
+        
+        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+        if (httpResponse.statusCode != 200) {
+            NSError *statusError = [NSError errorWithDomain:@"YahooFinance" code:httpResponse.statusCode
+                                                   userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"HTTP %ld", (long)httpResponse.statusCode]}];
+            NSLog(@"❌ Yahoo Finance search HTTP error: %ld", (long)httpResponse.statusCode);
+            if (completion) completion(nil, statusError);
+            return;
+        }
+        
+        @try {
+            NSDictionary *jsonResponse = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+            NSArray *quotes = jsonResponse[@"quotes"] ?: @[];
+            
+            NSMutableArray<NSDictionary *> *results = [NSMutableArray array];
+            
+            for (NSDictionary *quote in quotes) {
+                // Extract and standardize fields
+                NSString *symbol = quote[@"symbol"];
+                NSString *shortname = quote[@"shortname"] ?: quote[@"longname"];
+                NSString *exchange = quote[@"exchange"];
+                NSString *quoteType = quote[@"quoteType"];
+                
+                if (symbol && shortname && [quoteType isEqualToString:@"EQUITY"]) {
+                    [results addObject:@{
+                        @"symbol": symbol,
+                        @"name": shortname,
+                        @"exchange": exchange ?: @"",
+                        @"type": @"stock"
+                    }];
+                }
+            }
+            
+            NSLog(@"✅ Yahoo Finance: Found %ld symbols for '%@'", (long)results.count, query);
+            
+            if (completion) completion([results copy], nil);
+            
+        } @catch (NSException *exception) {
+            NSError *parseError = [NSError errorWithDomain:@"YahooFinance" code:500
+                                                  userInfo:@{NSLocalizedDescriptionKey: @"Failed to parse search response"}];
+            NSLog(@"❌ Yahoo Finance search parse error: %@", exception.reason);
+            if (completion) completion(nil, parseError);
+        }
+    }];
+    
+    [task resume];
+}
+
+- (void)getCompanyInfoForSymbol:(NSString *)symbol
+                     completion:(void(^)(NSDictionary * _Nullable companyData, NSError * _Nullable error))completion {
+    
+    if (!symbol || symbol.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"YahooFinance" code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid symbol"}];
+        if (completion) completion(nil, error);
+        return;
+    }
+    
+    NSLog(@"🏢 Yahoo Finance: Getting company info for '%@'", symbol);
+    
+    // Yahoo Finance company info endpoint
+    NSString *urlString = [NSString stringWithFormat:@"https://query2.finance.yahoo.com/v10/finance/quoteSummary/%@?modules=assetProfile,summaryProfile",
+                          [symbol uppercaseString]];
+    
+    NSURL *url = [NSURL URLWithString:urlString];
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.HTTPMethod = @"GET";
+    
+    [request setValue:@"application/json" forHTTPHeaderField:@"Accept"];
+    [request setValue:@"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" forHTTPHeaderField:@"User-Agent"];
+    
+    NSURLSessionDataTask *task = [[NSURLSession sharedSession] dataTaskWithRequest:request
+                                                                 completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        
+        if (error) {
+            NSLog(@"❌ Yahoo Finance company info error: %@", error.localizedDescription);
+            if (completion) completion(nil, error);
+            return;
+        }
+        
+        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+        if (httpResponse.statusCode != 200) {
+            NSError *statusError = [NSError errorWithDomain:@"YahooFinance" code:httpResponse.statusCode
+                                                   userInfo:@{NSLocalizedDescriptionKey: [NSString stringWithFormat:@"HTTP %ld", (long)httpResponse.statusCode]}];
+            if (completion) completion(nil, statusError);
+            return;
+        }
+        
+        @try {
+            NSDictionary *jsonResponse = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+            NSDictionary *quoteSummary = jsonResponse[@"quoteSummary"];
+            NSArray *result = quoteSummary[@"result"];
+            
+            if (result.count > 0) {
+                NSDictionary *data = result[0];
+                NSDictionary *assetProfile = data[@"assetProfile"];
+                NSDictionary *summaryProfile = data[@"summaryProfile"];
+                
+                // Extract company information
+                NSString *companyName = assetProfile[@"longBusinessSummary"] ?
+                                       summaryProfile[@"name"] ?: assetProfile[@"longName"] :
+                                       summaryProfile[@"name"];
+                
+                NSString *sector = assetProfile[@"sector"];
+                NSString *industry = assetProfile[@"industry"];
+                NSString *website = assetProfile[@"website"];
+                NSNumber *marketCap = summaryProfile[@"marketCap"];
+                
+                NSDictionary *companyData = @{
+                    @"symbol": symbol.uppercaseString,
+                    @"name": companyName ?: @"",
+                    @"sector": sector ?: @"",
+                    @"industry": industry ?: @"",
+                    @"website": website ?: @"",
+                    @"marketCap": marketCap ?: @0
+                };
+                
+                NSLog(@"✅ Yahoo Finance: Got company info for %@", symbol);
+                if (completion) completion(companyData, nil);
+                
+            } else {
+                NSError *error = [NSError errorWithDomain:@"YahooFinance" code:404
+                                                 userInfo:@{NSLocalizedDescriptionKey: @"Company not found"}];
+                if (completion) completion(nil, error);
+            }
+            
+        } @catch (NSException *exception) {
+            NSError *parseError = [NSError errorWithDomain:@"YahooFinance" code:500
+                                                  userInfo:@{NSLocalizedDescriptionKey: @"Failed to parse company info"}];
+            NSLog(@"❌ Yahoo Finance company info parse error: %@", exception.reason);
+            if (completion) completion(nil, parseError);
+        }
+    }];
+    
+    [task resume];
+}
 
 @end

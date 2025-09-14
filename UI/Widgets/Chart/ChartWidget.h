@@ -39,7 +39,7 @@ typedef struct {
 
 // ❌ REMOVED: BarTimeframe enum - use BarTimeframe from CommonTypes.h
 
-@interface ChartWidget : BaseWidget <NSSearchFieldDelegate>
+@interface ChartWidget : BaseWidget <NSComboBoxDataSource,NSComboBoxDelegate>
 
 @property (nonatomic, strong) SharedXCoordinateContext *  sharedXContext;
 
@@ -59,7 +59,7 @@ typedef struct {
 @property (nonatomic, assign) ChartTradingHours tradingHoursMode;
 
 #pragma mark - UI Components (Interface Builder - IBOutlet references)
-@property (nonatomic, strong) IBOutlet NSSearchField *symbolTextField;
+@property (nonatomic, strong) IBOutlet NSComboBox *symbolTextField;
 @property (nonatomic, strong) IBOutlet NSSegmentedControl *timeframeSegmented;
 @property (nonatomic, strong) IBOutlet NSButton *preferencesButton;
 @property (nonatomic, strong) IBOutlet NSSplitView *panelsSplitView;

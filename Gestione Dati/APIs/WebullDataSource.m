@@ -607,5 +607,76 @@ static NSString *const kWebullHistoricalURL = @"https://quotes-gw.webullfintech.
     // ✅ RITORNA ARRAY RAW WEBULL bars
     return data ?: @[];
 }
+#pragma mark - Symbol Search Implementation
+
+- (void)searchSymbolsWithQuery:(NSString *)query
+                         limit:(NSInteger)limit
+                    completion:(void(^)(NSArray<NSDictionary *> * _Nullable results, NSError * _Nullable error))completion {
+    
+    NSLog(@"🔍 Webull: Searching symbols for '%@'", query);
+    
+    // Webull search is typically more limited for free users
+    // This is a simplified implementation
+    
+    if (!self.isConnected) {
+        NSError *error = [NSError errorWithDomain:@"Webull" code:401
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Not connected to Webull"}];
+        if (completion) completion(nil, error);
+        return;
+    }
+    
+    // For now, return simple mock data - real implementation would call Webull API
+    // This demonstrates the adapter pattern where each source has its own format
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        NSMutableArray *mockResults = [NSMutableArray array];
+        
+        // Mock some results based on query
+        if ([query.uppercaseString containsString:@"AAPL"] || [query.lowercaseString containsString:@"apple"]) {
+            [mockResults addObject:@{
+                @"ticker": @"AAPL",           // Note: different field name than Yahoo
+                @"companyName": @"Apple Inc.", // Different field name
+                @"market": @"NASDAQ",         // Different field name
+                @"instrumentType": @"stock"
+            }];
+        }
+        
+        if ([query.uppercaseString containsString:@"MSFT"] || [query.lowercaseString containsString:@"microsoft"]) {
+            [mockResults addObject:@{
+                @"ticker": @"MSFT",
+                @"companyName": @"Microsoft Corporation",
+                @"market": @"NASDAQ",
+                @"instrumentType": @"stock"
+            }];
+        }
+        
+        NSLog(@"✅ Webull: Found %ld symbols for '%@' (mock data)", (long)mockResults.count, query);
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion([mockResults copy], nil);
+        });
+    });
+}
+
+- (void)getCompanyInfoForSymbol:(NSString *)symbol
+                     completion:(void(^)(NSDictionary * _Nullable companyData, NSError * _Nullable error))completion {
+    
+    NSLog(@"🏢 Webull: Getting company info for '%@' (mock)", symbol);
+    
+    // Mock implementation - real version would call Webull API
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        NSDictionary *mockCompanyData = @{
+            @"ticker": symbol.uppercaseString,
+            @"companyName": [NSString stringWithFormat:@"%@ Corporation", symbol], // Mock name
+            @"sector": @"Technology",
+            @"industry": @"Software",
+            @"marketCapitalization": @1000000000 // Mock market cap
+        };
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (completion) completion(mockCompanyData, nil);
+        });
+    });
+}
 
 @end

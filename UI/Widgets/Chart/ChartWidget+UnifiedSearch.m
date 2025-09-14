@@ -84,7 +84,7 @@ static const void *kCurrentSearchResultsKey = &kCurrentSearchResultsKey;
     }
 }
 
-#pragma mark - Text Field Delegate (Override existing method in ChartWidget.m)
+#pragma mark - Text Field Delegate
 
 - (void)controlTextDidChange:(NSNotification *)notification {
     NSControl *control = notification.object;
@@ -107,7 +107,6 @@ static const void *kCurrentSearchResultsKey = &kCurrentSearchResultsKey;
     }
 }
 
-// This method should be updated in the main ChartWidget.m file
 - (void)controlTextDidEndEditingUnified:(NSNotification *)notification {
     NSDictionary *info = notification.userInfo;
     NSNumber *movement = info[@"NSTextMovement"];
@@ -216,22 +215,86 @@ static const void *kCurrentSearchResultsKey = &kCurrentSearchResultsKey;
 #pragma mark - Normal Mode Search Implementation
 
 - (void)performLiveSymbolSearch:(NSString *)searchTerm {
-    // TODO: Future integration with SearchQuote API
-    NSLog(@"🔴 Live symbol search for '%@' (SearchQuote API needed)", searchTerm);
+    // ✅ CORRECTED ARCHITECTURE: Use DataHub (which now properly uses DataManager → DownloadManager)
+    DataHub *dataHub = [DataHub shared];
     
-    // For now, clear results in normal mode
-    self.currentSearchResults = @[];
-    
-    // Future: This would call DataHub/broker API to get live symbol matches
-    // and populate self.currentSearchResults with symbol results
+    // Use the corrected DataHub method that now follows proper architecture
+    [dataHub searchSymbolsWithQuery:searchTerm
+                               limit:8  // Limit for dropdown
+                          completion:^(NSArray<SymbolSearchResult *> * _Nullable results, NSError * _Nullable error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (error) {
+                NSLog(@"🔴 Live symbol search error: %@", error.localizedDescription);
+                self.currentSearchResults = @[];
+            } else {
+                // Convert SymbolSearchResult to StorageMetadataItem-like objects for consistent UI
+                NSMutableArray<StorageMetadataItem *> *searchResults = [NSMutableArray array];
+                
+                for (SymbolSearchResult *result in results) {
+                    // Create a minimal StorageMetadataItem for display consistency
+                    StorageMetadataItem *displayItem = [[StorageMetadataItem alloc] init];
+                    displayItem.symbol = result.symbol ?: @"";
+                    displayItem.timeframe = result.companyName ?: @"Live"; // Use company name as description
+                    displayItem.dataType = SavedChartDataTypeSnapshot; // Mark as not continuous for UI logic
+                    displayItem.barCount = 0; // No bar count for live symbols
+                    
+                    // Add exchange info if available
+                    if (result.exchange && result.exchange.length > 0) {
+                        displayItem.timeframe = [NSString stringWithFormat:@"%@ (%@)",
+                                               result.companyName ?: @"Live", result.exchange];
+                    }
+                    
+                    [searchResults addObject:displayItem];
+                }
+                
+                self.currentSearchResults = [searchResults copy];
+                
+                NSLog(@"🔴 Found %ld live symbols for '%@' via corrected architecture",
+                      (long)results.count, searchTerm);
+                
+                // Refresh dropdown if it's a combo box
+                if ([self.symbolTextField isKindOfClass:[NSComboBox class]]) {
+                    [(NSComboBox *)self.symbolTextField reloadData];
+                }
+            }
+        });
+    }];
 }
 
 - (void)executeNormalModeEntry:(NSString *)inputText {
-    // Use existing ChartWidget smart entry logic
+    // Use existing ChartWidget methods - avoid direct method calls that might not be visible
+    
     if ([inputText containsString:@","]) {
-        [self processSmartSymbolInput:inputText];
+        // Smart symbol input - check if method exists and call it
+        if ([self respondsToSelector:@selector(processSmartSymbolInput:)]) {
+            [self processSmartSymbolInput:inputText];
+        } else {
+            NSLog(@"⚠️ processSmartSymbolInput: method not available");
+            // Fallback to simple symbol change
+            [self handleSimpleSymbolChange:inputText];
+        }
     } else {
-        [self symbolChanged:inputText];
+        // Simple symbol change
+        [self handleSimpleSymbolChange:inputText];
+    }
+}
+
+// Helper method to handle symbol change using available public interface
+- (void)handleSimpleSymbolChange:(NSString *)symbol {
+    // Use the interaction handler if available (more robust)
+    if ([self respondsToSelector:@selector(handleSymbolChange:forceReload:)]) {
+        [self handleSymbolChange:symbol forceReload:NO];
+    } else {
+        // Fallback: directly set properties and load data
+        self.currentSymbol = symbol;
+        self.symbolTextField.stringValue = symbol;
+        
+        // Trigger data load if method exists
+        if ([self respondsToSelector:@selector(loadDataWithCurrentSettings)]) {
+            [self loadDataWithCurrentSettings];
+        } else {
+            NSLog(@"⚠️ No available method to load data for symbol: %@", symbol);
+        }
     }
 }
 
@@ -258,8 +321,14 @@ static const void *kCurrentSearchResultsKey = &kCurrentSearchResultsKey;
                    item.symbol, item.timeframe, typeStr,
                    (long)item.barCount, item.dateRangeString ?: @""];
         } else {
-            // Simple display for live symbols
-            return item.symbol;
+            // Display for live symbol search results
+            if (item.barCount == 0 && [item.timeframe isEqualToString:@"Live"]) {
+                // This is a live search result, show company name if available
+                return [NSString stringWithFormat:@"%@ - %@", item.symbol, item.timeframe];
+            } else {
+                // Fallback display
+                return item.symbol;
+            }
         }
     }
     return @"";
@@ -282,12 +351,16 @@ static const void *kCurrentSearchResultsKey = &kCurrentSearchResultsKey;
                         NSString *message = [NSString stringWithFormat:@"📊 Loaded %@", selectedItem.symbol];
                         [self showTemporaryMessage:message];
                         self.symbolTextField.stringValue = selectedItem.symbol;
+                    } else {
+                        NSString *errorMessage = [NSString stringWithFormat:@"❌ Failed to load %@", selectedItem.displayName];
+                        [self showTemporaryMessage:errorMessage];
                     }
                 });
             }];
         } else {
-            // Set symbol for live mode
-            [self symbolChanged:selectedItem.symbol];
+            // Load selected live symbol
+            [self handleSimpleSymbolChange:selectedItem.symbol];
+            self.symbolTextField.stringValue = selectedItem.symbol;
         }
     }
 }

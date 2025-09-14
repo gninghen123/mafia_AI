@@ -163,10 +163,7 @@ extern NSString *const DataHubDataLoadedNotification;
         return;
     }
     
-    // Transform existing NSTextField to NSSearchField behavior
-    self.symbolTextField.delegate = self;
-    
-    // Setup initial appearance based on current static mode
+    self.symbolTextField.completes = YES;    // Setup initial appearance based on current static mode
     [self updateSearchFieldForMode];
     
     NSLog(@"✅ Unified search field setup completed");
@@ -1379,6 +1376,8 @@ extern NSString *const DataHubDataLoadedNotification;
         // 🔴 NORMAL MODE: Search live symbols via API
         [self performLiveSymbolSearch:searchTerm];
     }
+ 
+
 }
 
 - (void)controlTextDidEndEditing:(NSNotification *)notification {
@@ -1412,102 +1411,7 @@ extern NSString *const DataHubDataLoadedNotification;
     }
 }
 
-#pragma mark - Static Mode Search Implementation
 
-- (void)performSavedDataSearch:(NSString *)searchTerm {
-    StorageMetadataCache *cache = [StorageMetadataCache sharedCache];
-    NSArray<StorageMetadataItem *> *allItems = [cache allItems];
-    
-    if (allItems.count == 0) {
-        self.currentSearchResults = @[];
-        return;
-    }
-    
-    // Create predicate for flexible search
-    NSString *searchTermLower = searchTerm.lowercaseString;
-    NSPredicate *predicate = [NSPredicate predicateWithFormat:
-        @"symbol CONTAINS[c] %@ OR timeframe CONTAINS[c] %@ OR displayName CONTAINS[c] %@",
-        searchTermLower, searchTermLower, searchTermLower];
-    
-    NSArray<StorageMetadataItem *> *matches = [allItems filteredArrayUsingPredicate:predicate];
-    
-    // Sort by relevance
-    self.currentSearchResults = [matches sortedArrayUsingComparator:^NSComparisonResult(StorageMetadataItem *obj1, StorageMetadataItem *obj2) {
-        // Exact symbol match first
-        BOOL obj1Exact = [obj1.symbol.lowercaseString isEqualToString:searchTermLower];
-        BOOL obj2Exact = [obj2.symbol.lowercaseString isEqualToString:searchTermLower];
-        
-        if (obj1Exact && !obj2Exact) return NSOrderedAscending;
-        if (!obj1Exact && obj2Exact) return NSOrderedDescending;
-        
-        // Then by modification time (newest first)
-        return [@(obj2.fileModificationTime) compare:@(obj1.fileModificationTime)];
-    }];
-    
-    NSLog(@"🔍 Static search: Found %ld matches for '%@'", (long)self.currentSearchResults.count, searchTerm);
-    
-    // Optional: Could show count in status or update UI here
-    if (self.currentSearchResults.count > 0) {
-        NSString *statusMessage = [NSString stringWithFormat:@"%ld saved data matches", (long)self.currentSearchResults.count];
-        // Could update a status label if available
-    }
-}
-
-- (void)executeStaticModeSearch:(NSString *)searchTerm {
-    // First perform search to get current results
-    [self performSavedDataSearch:searchTerm];
-    
-    if (self.currentSearchResults.count == 0) {
-        [self showTemporaryMessage:[NSString stringWithFormat:@"❌ No saved data found for '%@'", searchTerm]];
-        return;
-    }
-    
-    // Load the best match (first in sorted array)
-    StorageMetadataItem *bestMatch = self.currentSearchResults.firstObject;
-    
-    NSLog(@"✅ Loading best match: %@", bestMatch.displayName);
-    
-    [self loadSavedDataFromFile:bestMatch.filePath completion:^(BOOL success, NSError *error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (success) {
-                NSString *typeIcon = bestMatch.isContinuous ? @"📊" : @"📸";
-                NSString *message = [NSString stringWithFormat:@"%@ Loaded %@ [%@]",
-                                   typeIcon, bestMatch.symbol, bestMatch.timeframe];
-                [self showTemporaryMessage:message];
-                
-                // Update search field to show loaded symbol
-                self.symbolTextField.stringValue = bestMatch.symbol;
-                
-            } else {
-                [self showTemporaryMessage:[NSString stringWithFormat:@"❌ Failed to load %@", bestMatch.displayName]];
-                NSLog(@"❌ Load error: %@", error.localizedDescription);
-            }
-        });
-    }];
-}
-
-#pragma mark - Normal Mode Search Implementation
-
-- (void)performLiveSymbolSearch:(NSString *)searchTerm {
-    // TODO: Integrate with SearchQuote API
-    // This would call DataHub or broker API to search for live symbols
-    // For now, we'll just log and continue with existing smart entry
-    NSLog(@"🔴 Normal mode search: '%@' (SearchQuote API integration needed)", searchTerm);
-    
-    // Placeholder for future API integration
-    // Could populate dropdown with live symbol search results
-}
-
-- (void)executeNormalModeEntry:(NSString *)inputText {
-    // Use existing smart entry logic
-    if ([inputText containsString:@","]) {
-        // Smart symbol input (AAPL,1h,30d)
-        [self processSmartSymbolInput:inputText];
-    } else {
-        // Simple symbol change
-        [self symbolChanged:inputText];
-    }
-}
 
 #pragma mark - Search Results UI (Optional Enhancement)
 

@@ -1900,19 +1900,101 @@
                          limit:(NSInteger)limit
                     completion:(void(^)(NSArray<NSDictionary *> *results, NSError *error))completion {
     
-    // Per ora implementazione semplice - ritorna risultati vuoti
-    // TODO: Implementare ricerca reale via API
-    NSLog(@"🔍 DownloadManager: Symbol search for '%@' via %@", query, @(dataSource));
+    if (!query || query.length == 0) {
+        if (completion) completion(@[], nil);
+        return;
+    }
     
-    dispatch_async(dispatch_get_main_queue(), ^{
-        if (completion) {
-            // Mock results per testing
-            NSArray *mockResults = @[
-                @{@"symbol": [query uppercaseString], @"name": @"Mock Company", @"exchange": @"NASDAQ"}
-            ];
-            completion(mockResults, nil);
+    NSLog(@"🌐 DownloadManager: Executing symbol search for '%@' via %@", query, DataSourceTypeToString(dataSource));
+    
+    // Get appropriate data source
+    id<DataSource> dataSourceImpl = [self dataSourceForType:dataSource];
+    
+    if (!dataSourceImpl) {
+        // Try fallback to next available source
+        DataSourceType fallbackSource = [self getNextAvailableDataSource:dataSource];
+        if (fallbackSource != DataSourceTypeUnknown) {
+            NSLog(@"🔄 DownloadManager: Falling back to %@", DataSourceTypeToString(fallbackSource));
+            [self searchSymbolsWithQuery:query dataSource:fallbackSource limit:limit completion:completion];
+            return;
         }
-    });
+        
+        NSError *error = [NSError errorWithDomain:@"DownloadManager" code:404
+                                         userInfo:@{NSLocalizedDescriptionKey: @"No available data sources for symbol search"}];
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, error);
+            });
+        }
+        return;
+    }
+    
+    // Check if data source supports symbol search
+    if (![dataSourceImpl respondsToSelector:@selector(searchSymbolsWithQuery:limit:completion:)]) {
+        NSLog(@"⚠️ DownloadManager: %@ does not support symbol search", DataSourceTypeToString(dataSource));
+        
+        // Try next available source
+        DataSourceType fallbackSource = [self getNextAvailableDataSource:dataSource];
+        if (fallbackSource != DataSourceTypeUnknown) {
+            [self searchSymbolsWithQuery:query dataSource:fallbackSource limit:limit completion:completion];
+            return;
+        }
+        
+        NSError *error = [NSError errorWithDomain:@"DownloadManager" code:501
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Symbol search not supported by available data sources"}];
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, error);
+            });
+        }
+        return;
+    }
+    
+    // Execute search via selected data source
+    NSTimeInterval startTime = [[NSDate date] timeIntervalSince1970];
+    
+    [dataSourceImpl searchSymbolsWithQuery:query
+                                      limit:limit
+                                 completion:^(NSArray<NSDictionary *> *results, NSError *error) {
+        
+        NSTimeInterval duration = [[NSDate date] timeIntervalSince1970] - startTime;
+        
+        if (error) {
+            NSLog(@"❌ DownloadManager: Symbol search failed for %@ (%.2fs): %@",
+                  DataSourceTypeToString(dataSource), duration, error.localizedDescription);
+            
+            // Track failure and try fallback
+            [self recordFailureForDataSource:dataSource];
+            
+            DataSourceType fallbackSource = [self getNextAvailableDataSource:dataSource];
+            if (fallbackSource != DataSourceTypeUnknown) {
+                NSLog(@"🔄 DownloadManager: Trying fallback to %@", DataSourceTypeToString(fallbackSource));
+                [self searchSymbolsWithQuery:query dataSource:fallbackSource limit:limit completion:completion];
+                return;
+            }
+            
+            // No more fallbacks available
+            if (completion) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(nil, error);
+                });
+            }
+            return;
+        }
+        
+        NSLog(@"✅ DownloadManager: Symbol search completed for %@ (%.2fs): %ld results",
+              DataSourceTypeToString(dataSource), duration, (long)results.count);
+        
+        // Reset failure count on success
+        [self recordSuccessForDataSource:dataSource];
+        
+        // Return results
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(results ?: @[], nil);
+            });
+        }
+    }];
 }
 
 - (void)getCompanyInfoForSymbol:(NSString *)symbol
@@ -1930,6 +2012,44 @@
             completion(mockInfo, nil);
         }
     });
+}
+
+
+- (DataSourceType)getNextAvailableDataSource:(DataSourceType)currentSource {
+    // Get list of data sources sorted by priority
+    NSArray<NSNumber *> *availableSources = [self.dataSources.allKeys sortedArrayUsingComparator:^NSComparisonResult(NSNumber *obj1, NSNumber *obj2) {
+        NSInteger priority1 = [self priorityForDataSource:(DataSourceType)obj1.integerValue];
+        NSInteger priority2 = [self priorityForDataSource:(DataSourceType)obj2.integerValue];
+        return [@(priority1) compare:@(priority2)];
+    }];
+    
+    // Find next available source after current one
+    BOOL foundCurrent = NO;
+    for (NSNumber *sourceTypeNum in availableSources) {
+        DataSourceType sourceType = (DataSourceType)sourceTypeNum.integerValue;
+        
+        if (foundCurrent) {
+            if ([self isDataSourceConnected:sourceType]) {
+                return sourceType;
+            }
+        }
+        
+        if (sourceType == currentSource) {
+            foundCurrent = YES;
+        }
+    }
+    
+    return DataSourceTypeUnknown;
+}
+
+- (void)recordFailureForDataSource:(DataSourceType)dataSource {
+    // Implementation for failure tracking
+    // This helps with smart fallback decisions
+}
+
+- (void)recordSuccessForDataSource:(DataSourceType)dataSource {
+    // Implementation for success tracking
+    // Reset failure counters on success
 }
 
 

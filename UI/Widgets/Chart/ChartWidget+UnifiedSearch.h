@@ -4,8 +4,12 @@
 //  Unified search field that adapts to static/normal mode
 //
 
-#import "ChartWidget.h"
-#import "StorageMetadataCache.h"
+#import <Foundation/Foundation.h>
+#import <Cocoa/Cocoa.h>
+
+// Forward declarations
+@class ChartWidget;
+@class StorageMetadataItem;
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -29,11 +33,14 @@ NS_ASSUME_NONNULL_BEGIN
 
 #pragma mark - Normal Mode Search (Live Symbols)
 
-/// Search live symbols via API (future: SearchQuote integration)
+/// Search live symbols via DataHub API integration
 - (void)performLiveSymbolSearch:(NSString *)searchTerm;
 
 /// Execute normal mode entry (smart entry + symbol change)
 - (void)executeNormalModeEntry:(NSString *)inputText;
+
+/// Helper method to handle symbol change using available public interface
+- (void)handleSimpleSymbolChange:(NSString *)symbol;
 
 #pragma mark - Search Results Management
 
@@ -43,3 +50,4 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 NS_ASSUME_NONNULL_END
+

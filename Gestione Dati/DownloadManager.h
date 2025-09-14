@@ -45,6 +45,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)fetchQuotesForSymbols:(NSArray<NSString *> *)symbols
                    completion:(void (^)(NSDictionary *quotes, NSError *error))completion;
 
+
+
 /**
  * UNIFIED: Historical bars with standardized parameters
  * All DataSources MUST implement this method
@@ -150,6 +152,27 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)cancelOrderForAccount:(NSString *)accountId
                       orderId:(NSString *)orderId
                    completion:(void (^)(BOOL success, NSError *error))completion;
+
+@optional
+
+/**
+ * Search for symbols matching query
+ * @param query Search text (company name or symbol)
+ * @param limit Maximum number of results
+ * @param completion Completion with raw API results (will be standardized by DataManager)
+ */
+- (void)searchSymbolsWithQuery:(NSString *)query
+                         limit:(NSInteger)limit
+                    completion:(void(^)(NSArray<NSDictionary *> * _Nullable results, NSError * _Nullable error))completion;
+
+/**
+ * Get detailed company information for symbol
+ * @param symbol Stock symbol
+ * @param completion Completion with raw company data
+ */
+- (void)getCompanyInfoForSymbol:(NSString *)symbol
+                     completion:(void(^)(NSDictionary * _Nullable companyData, NSError * _Nullable error))completion;
+
 
 @end
 

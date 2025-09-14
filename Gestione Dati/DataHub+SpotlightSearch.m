@@ -10,6 +10,8 @@
 #import "DownloadManager.h"
 #import "Symbol+CoreDataClass.h"
 #import "CompanyInfo+CoreDataProperties.h"
+#import "DataManager.h"
+
 
 @implementation DataHub (SpotlightSearch)
 
@@ -108,12 +110,12 @@
         return;
     }
     
-    // Otherwise, fetch from API
-    DownloadManager *downloadManager = [DownloadManager sharedManager];
+    // ✅ CORRECTED: Use DataManager instead of DownloadManager
+    DataManager *dataManager = [DataManager sharedManager];
     
-    [downloadManager getCompanyInfoForSymbol:symbol
-                                  dataSource:dataSource
-                                  completion:^(CompanyInfoModel *companyInfo, NSError *error) {
+    [dataManager getCompanyInfoForSymbol:symbol
+                               dataSource:dataSource
+                               completion:^(CompanyInfoModel *companyInfo, NSError *error) {
         
         SymbolSearchResult *result = nil;
         if (companyInfo) {
@@ -209,36 +211,19 @@
                             limit:(NSInteger)limit
                        completion:(void(^)(NSArray<SymbolSearchResult *> *results, NSError *error))completion {
     
-    DownloadManager *downloadManager = [DownloadManager sharedManager];
+    // ✅ CORRECTED: Use DataManager instead of DownloadManager directly
+    DataManager *dataManager = [DataManager sharedManager];
     
-    [downloadManager searchSymbolsWithQuery:query
-                                  dataSource:dataSource
-                                       limit:limit
-                                  completion:^(NSArray<NSDictionary *> *searchResults, NSError *error) {
+    [dataManager searchSymbolsWithQuery:query
+                              dataSource:dataSource
+                                   limit:limit
+                              completion:^(NSArray<SymbolSearchResult *> *results, NSError *error) {
         
-        NSMutableArray<SymbolSearchResult *> *results = [NSMutableArray array];
-        
-        if (searchResults && !error) {
-            for (NSDictionary *result in searchResults) {
-                NSString *symbol = result[@"symbol"];
-                NSString *companyName = result[@"name"] ?: result[@"companyName"];
-                NSString *exchange = result[@"exchange"];
-                
-                if (symbol) {
-                    SymbolSearchResult *searchResult = [SymbolSearchResult resultWithSymbol:symbol
-                                                                               companyName:companyName
-                                                                                sourceType:dataSource];
-                    searchResult.exchange = exchange;
-                    [results addObject:searchResult];
-                }
-            }
-        }
-        
-        NSLog(@"🌐 Found %lu API symbols for query '%@' via %@", (unsigned long)results.count, query, @(dataSource));
-        
-        if (completion) completion([results copy], error);
+        // Results are already standardized by DataManager
+        if (completion) completion(results ?: @[], error);
     }];
 }
+
 
 - (NSArray<SymbolSearchResult *> *)mergeSearchResults:(NSArray<SymbolSearchResult *> *)localResults
                                           withResults:(NSArray<SymbolSearchResult *> *)apiResults

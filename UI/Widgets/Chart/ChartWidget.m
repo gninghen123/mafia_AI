@@ -19,8 +19,8 @@
 #import "chartpatternmanager.h"
 #import "ChartWidget+IndicatorsUI.h"
 #import "DataHub+ChartTemplates.h"
-#import "ChartWidget+InteractionHandlers.h"  // ✅ ADD THIS LINE
-
+#import "ChartWidget+InteractionHandlers.h"  
+#import "ChartWidget+UnifiedSearch.h"
 
 #pragma mark - Smart Symbol Input Parameters
 
@@ -2915,12 +2915,7 @@ extern NSString *const DataHubDataLoadedNotification;
 
 #pragma mark - view resize update sharedX coord
 
-// ✅ SOLUZIONE CORRETTA: NSViewController methods per BaseWidget
 
-// 🎯 PROBLEMA: BaseWidget è NSViewController, non NSView!
-// Quindi devo usare i metodi del view controller lifecycle
-
-// ✅ FIX 1: In ChartWidget.m - Override viewDidLayout (NSViewController method)
 - (void)viewDidLayout {
     [super viewDidLayout];
     

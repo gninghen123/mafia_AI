@@ -15,7 +15,6 @@
 #import "StorageMetadataCache.h"
 
 
-
 @class ChartPanelView;
 @class HistoricalBarModel;
 @class MarketQuoteModel;

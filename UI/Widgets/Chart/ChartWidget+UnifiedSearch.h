@@ -1,4 +1,3 @@
-//
 //  ChartWidget+UnifiedSearch.h
 //  TradingApp
 //

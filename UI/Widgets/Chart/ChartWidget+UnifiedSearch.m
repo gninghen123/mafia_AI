@@ -10,6 +10,8 @@
 #import "ChartWidget.h"
 #import "ChartWidget+SaveData.h"
 #import "StorageMetadataCache.h"
+#import "DataHub+SpotlightSearch.h"
+#import "SpotlightModels.h"
 #import <objc/runtime.h>
 
 // Associated object key for search results

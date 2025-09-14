@@ -143,7 +143,8 @@ extern NSString *const DataHubDataLoadedNotification;
     
     [self setupObjectsAndIndicatorsUI];
 
-    
+    [self setupUnifiedSearchField];
+
     // ✅ Setup template system (SEMPLIFICATO)
     [self loadAndApplyLastUsedTemplate];
     [[NSNotificationCenter defaultCenter] addObserver:self
@@ -155,6 +156,50 @@ extern NSString *const DataHubDataLoadedNotification;
     self.view.postsFrameChangedNotifications = YES;
     NSLog(@"✅ ChartWidget setup completed");
 }
+
+- (void)setupUnifiedSearchField {
+    if (!self.symbolTextField) {
+        NSLog(@"⚠️ symbolTextField is nil - check IBOutlet connection");
+        return;
+    }
+    
+    // Transform existing NSTextField to NSSearchField behavior
+    self.symbolTextField.delegate = self;
+    
+    // Setup initial appearance based on current static mode
+    [self updateSearchFieldForMode];
+    
+    NSLog(@"✅ Unified search field setup completed");
+}
+
+- (void)updateSearchFieldForMode {
+    if (!self.symbolTextField) return;
+    
+    if (self.isStaticMode) {
+        // 🔵 STATIC MODE: Search saved data
+        self.symbolTextField.placeholderString = @"Search saved data...";
+        
+        // Style as search field
+        self.symbolTextField.wantsLayer = YES;
+        self.symbolTextField.layer.cornerRadius = 12.0;
+        self.symbolTextField.layer.borderColor = [NSColor systemBlueColor].CGColor;
+        self.symbolTextField.layer.borderWidth = 1.5;
+        
+        NSLog(@"🔍 Search field configured for static mode (saved data search)");
+        
+    } else {
+        // 🔴 NORMAL MODE: Live symbol search + smart entry
+        self.symbolTextField.placeholderString = @"Symbol or search...";
+        
+        // Style as normal field with search capability
+        self.symbolTextField.layer.cornerRadius = 6.0;
+        self.symbolTextField.layer.borderColor = [NSColor controlAccentColor].CGColor;
+        self.symbolTextField.layer.borderWidth = 1.0;
+        
+        NSLog(@"📈 Search field configured for normal mode (live symbols + smart entry)");
+    }
+}
+
 /**
  * Loads initial preferences from UserDefaults.
  * Idempotent - safe to call multiple times.
@@ -1314,29 +1359,185 @@ extern NSString *const DataHubDataLoadedNotification;
 // ======== AGGIUNGI metodi delegate per symbolTextField ========
 #pragma mark - NSTextFieldDelegate
 
+- (void)controlTextDidChange:(NSNotification *)notification {
+    NSSearchField *searchField = notification.object;
+    
+    if (searchField != self.symbolTextField) return;
+    
+    NSString *searchTerm = searchField.stringValue;
+    
+    if (searchTerm.length == 0) {
+        // Clear any search results
+        self.currentSearchResults = nil;
+        return;
+    }
+    
+    if (self.isStaticMode) {
+        // 🔵 STATIC MODE: Search in metadata cache
+        [self performSavedDataSearch:searchTerm];
+    } else {
+        // 🔴 NORMAL MODE: Search live symbols via API
+        [self performLiveSymbolSearch:searchTerm];
+    }
+}
+
 - (void)controlTextDidEndEditing:(NSNotification *)notification {
-    NSDictionary *info = [notification userInfo];
-      NSNumber *movement = info[@"NSTextMovement"];
+    NSDictionary *info = notification.userInfo;
+    NSNumber *movement = info[@"NSTextMovement"];
+    
     if (movement.intValue != NSReturnTextMovement) {
         return;
     }
     
+    NSSearchField *searchField = notification.object;
     
-    NSTextField *textField = [notification object];
-    
-    // Verifica se è il titleComboBox di BaseWidget
-    if (textField == self.titleComboBox) {
+    // Handle base widget delegate first
+    if (searchField == self.titleComboBox) {
         [super controlTextDidEndEditing:notification];
         return;
     }
     
-    // ✅ NUOVO: Gestisci smart symbol text field
-    if (textField == self.symbolTextField) {
-        NSString *inputText = [textField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        if (inputText.length > 0) {
-            [self symbolChanged:inputText];
+    if (searchField == self.symbolTextField) {
+        NSString *inputText = [searchField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        
+        if (inputText.length == 0) return;
+        
+        if (self.isStaticMode) {
+            // 🔵 STATIC MODE: Load best matching saved data
+            [self executeStaticModeSearch:inputText];
+        } else {
+            // 🔴 NORMAL MODE: Execute symbol change (existing smart entry logic)
+            [self executeNormalModeEntry:inputText];
         }
     }
+}
+
+#pragma mark - Static Mode Search Implementation
+
+- (void)performSavedDataSearch:(NSString *)searchTerm {
+    StorageMetadataCache *cache = [StorageMetadataCache sharedCache];
+    NSArray<StorageMetadataItem *> *allItems = [cache allItems];
+    
+    if (allItems.count == 0) {
+        self.currentSearchResults = @[];
+        return;
+    }
+    
+    // Create predicate for flexible search
+    NSString *searchTermLower = searchTerm.lowercaseString;
+    NSPredicate *predicate = [NSPredicate predicateWithFormat:
+        @"symbol CONTAINS[c] %@ OR timeframe CONTAINS[c] %@ OR displayName CONTAINS[c] %@",
+        searchTermLower, searchTermLower, searchTermLower];
+    
+    NSArray<StorageMetadataItem *> *matches = [allItems filteredArrayUsingPredicate:predicate];
+    
+    // Sort by relevance
+    self.currentSearchResults = [matches sortedArrayUsingComparator:^NSComparisonResult(StorageMetadataItem *obj1, StorageMetadataItem *obj2) {
+        // Exact symbol match first
+        BOOL obj1Exact = [obj1.symbol.lowercaseString isEqualToString:searchTermLower];
+        BOOL obj2Exact = [obj2.symbol.lowercaseString isEqualToString:searchTermLower];
+        
+        if (obj1Exact && !obj2Exact) return NSOrderedAscending;
+        if (!obj1Exact && obj2Exact) return NSOrderedDescending;
+        
+        // Then by modification time (newest first)
+        return [@(obj2.fileModificationTime) compare:@(obj1.fileModificationTime)];
+    }];
+    
+    NSLog(@"🔍 Static search: Found %ld matches for '%@'", (long)self.currentSearchResults.count, searchTerm);
+    
+    // Optional: Could show count in status or update UI here
+    if (self.currentSearchResults.count > 0) {
+        NSString *statusMessage = [NSString stringWithFormat:@"%ld saved data matches", (long)self.currentSearchResults.count];
+        // Could update a status label if available
+    }
+}
+
+- (void)executeStaticModeSearch:(NSString *)searchTerm {
+    // First perform search to get current results
+    [self performSavedDataSearch:searchTerm];
+    
+    if (self.currentSearchResults.count == 0) {
+        [self showTemporaryMessage:[NSString stringWithFormat:@"❌ No saved data found for '%@'", searchTerm]];
+        return;
+    }
+    
+    // Load the best match (first in sorted array)
+    StorageMetadataItem *bestMatch = self.currentSearchResults.firstObject;
+    
+    NSLog(@"✅ Loading best match: %@", bestMatch.displayName);
+    
+    [self loadSavedDataFromFile:bestMatch.filePath completion:^(BOOL success, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (success) {
+                NSString *typeIcon = bestMatch.isContinuous ? @"📊" : @"📸";
+                NSString *message = [NSString stringWithFormat:@"%@ Loaded %@ [%@]",
+                                   typeIcon, bestMatch.symbol, bestMatch.timeframe];
+                [self showTemporaryMessage:message];
+                
+                // Update search field to show loaded symbol
+                self.symbolTextField.stringValue = bestMatch.symbol;
+                
+            } else {
+                [self showTemporaryMessage:[NSString stringWithFormat:@"❌ Failed to load %@", bestMatch.displayName]];
+                NSLog(@"❌ Load error: %@", error.localizedDescription);
+            }
+        });
+    }];
+}
+
+#pragma mark - Normal Mode Search Implementation
+
+- (void)performLiveSymbolSearch:(NSString *)searchTerm {
+    // TODO: Integrate with SearchQuote API
+    // This would call DataHub or broker API to search for live symbols
+    // For now, we'll just log and continue with existing smart entry
+    NSLog(@"🔴 Normal mode search: '%@' (SearchQuote API integration needed)", searchTerm);
+    
+    // Placeholder for future API integration
+    // Could populate dropdown with live symbol search results
+}
+
+- (void)executeNormalModeEntry:(NSString *)inputText {
+    // Use existing smart entry logic
+    if ([inputText containsString:@","]) {
+        // Smart symbol input (AAPL,1h,30d)
+        [self processSmartSymbolInput:inputText];
+    } else {
+        // Simple symbol change
+        [self symbolChanged:inputText];
+    }
+}
+
+#pragma mark - Search Results UI (Optional Enhancement)
+
+// Optional: Add search results dropdown
+- (NSInteger)numberOfItemsInComboBox:(NSComboBox *)comboBox {
+    if (comboBox == self.symbolTextField && self.currentSearchResults) {
+        return self.currentSearchResults.count;
+    }
+    return 0;
+}
+
+- (id)comboBox:(NSComboBox *)comboBox objectValueForItemAtIndex:(NSInteger)index {
+    if (comboBox == self.symbolTextField &&
+        self.currentSearchResults &&
+        index < self.currentSearchResults.count) {
+        
+        StorageMetadataItem *item = self.currentSearchResults[index];
+        
+        if (self.isStaticMode) {
+            // Show rich description for saved data
+            return [NSString stringWithFormat:@"%@ %@ [%@] %ld bars",
+                   item.symbol, item.timeframe,
+                   item.isContinuous ? @"CONT" : @"SNAP",
+                   (long)item.barCount];
+        } else {
+            // Show simple symbol for live search
+            return item.symbol;
+        }
+    }
+    return @"";
 }
 
 #pragma mark - Cleanup
@@ -2024,6 +2225,9 @@ extern NSString *const DataHubDataLoadedNotification;
         self.mainSplitView.layer.borderColor = [NSColor clearColor].CGColor;
         self.mainSplitView.layer.borderWidth = 0.0;
     }
+    
+    [self updateSearchFieldForMode];
+
 }
 
 - (void)showStaticModeNotification {

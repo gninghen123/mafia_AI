@@ -12,6 +12,8 @@
 #import "CommonTypes.h"          // Per BarTimeframe enum
 #import "ChartPreferencesWindow.h"
 #import "ChartTemplateModels.h"
+#import "StorageMetadataCache.h"
+
 
 
 @class ChartPanelView;
@@ -38,7 +40,7 @@ typedef struct {
 
 // ❌ REMOVED: BarTimeframe enum - use BarTimeframe from CommonTypes.h
 
-@interface ChartWidget : BaseWidget 
+@interface ChartWidget : BaseWidget <NSSearchFieldDelegate>
 
 @property (nonatomic, strong) SharedXCoordinateContext *  sharedXContext;
 
@@ -58,7 +60,7 @@ typedef struct {
 @property (nonatomic, assign) ChartTradingHours tradingHoursMode;
 
 #pragma mark - UI Components (Interface Builder - IBOutlet references)
-@property (nonatomic, strong) IBOutlet NSTextField *symbolTextField;
+@property (nonatomic, strong) IBOutlet NSSearchField *symbolTextField;
 @property (nonatomic, strong) IBOutlet NSSegmentedControl *timeframeSegmented;
 @property (nonatomic, strong) IBOutlet NSButton *preferencesButton;
 @property (nonatomic, strong) IBOutlet NSSplitView *panelsSplitView;
@@ -76,6 +78,10 @@ typedef struct {
 
 // Additional UI components from implementation
 @property (nonatomic, strong) IBOutlet NSSplitView *mainSplitView;
+
+
+
+@property (nonatomic, strong, nullable) NSArray<StorageMetadataItem *> *currentSearchResults;
 
 
 // Date Range Control Properties (non-UI)
@@ -134,7 +140,7 @@ typedef struct {
 #pragma mark - IBAction Methods (Connected to XIB controls)
 
 // Symbol and Timeframe Actions
-- (IBAction)symbolFieldChanged:(NSTextField *)sender;
+- (IBAction)symbolChanged:(NSTextField *)sender;
 - (IBAction)timeframeChanged:(NSSegmentedControl *)sender;
 
 // Navigation and Zoom Actions

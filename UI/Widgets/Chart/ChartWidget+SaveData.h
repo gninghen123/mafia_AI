@@ -3,10 +3,12 @@
 //  TradingApp
 //
 //  Extension per il salvataggio delle barre visibili e continuous storage
+//  ✅ REFACTOR: Now supports MetadataCache for fast operations
 //
 
 #import "ChartWidget.h"
 #import "SavedChartData.h"
+#import "StorageMetadataCache.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -50,7 +52,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)loadSavedDataFromFile:(NSString *)filePath
                    completion:(void(^)(BOOL success, NSError * _Nullable error))completion;
 
-#pragma mark - File Management
+#pragma mark - File Management - ✅ REFACTORED TO USE METADATA CACHE
 
 /// Get the default directory for saved chart data
 + (NSString *)savedChartDataDirectory;
@@ -58,30 +60,45 @@ NS_ASSUME_NONNULL_BEGIN
 /// Ensure the saved chart data directory exists
 + (BOOL)ensureSavedChartDataDirectoryExists:(NSError **)error;
 
-/// Get list of all saved chart data files
+/// Get list of all saved chart data files (now uses MetadataCache)
 + (NSArray<NSString *> *)availableSavedChartDataFiles;
 
-/// Get list of saved chart data files filtered by type
+/// Get list of saved chart data files filtered by type (now uses MetadataCache)
 + (NSArray<NSString *> *)availableSavedChartDataFilesOfType:(SavedChartDataType)dataType;
 
-/// Delete a saved chart data file
+/// ✅ NEW: Get metadata items directly from cache (fastest method)
++ (NSArray<StorageMetadataItem *> *)availableStorageMetadataItems;
+
+/// ✅ NEW: Get metadata items for specific symbol from cache
++ (NSArray<StorageMetadataItem *> *)availableStorageMetadataForSymbol:(NSString *)symbol;
+
+/// Delete a saved chart data file (updates cache automatically)
 + (BOOL)deleteSavedChartDataFile:(NSString *)filePath error:(NSError **)error;
 
+#pragma mark - Legacy Methods (Kept for compatibility)
+
+/// @deprecated Use availableSavedChartDataFiles instead
 + (NSArray<NSString *> *)availableSavedChartDataFilesOptimized;
+
+/// Get file info dictionary (now uses cache first, then filename parsing)
 + (NSDictionary *)getFileInfoFromPath:(NSString *)filePath;
+
+/// Get display summary for file (now uses cache first)
 + (NSString *)getDisplaySummaryForFile:(NSString *)filePath;
 
 #pragma mark - Context Menu Integration
 
-
 /// Add save data menu items to existing context menu
 - (void)addSaveDataMenuItemsToMenu:(NSMenu *)menu;
 
+#pragma mark - Helper Methods
 
+/// Helper method to convert timeframe enum to display string (instance method)
 - (NSString *)timeframeDisplayStringForTimeframe:(BarTimeframe)timeframe;
 
+/// Helper method to convert timeframe enum to display string (class method)
++ (NSString *)displayStringForTimeframe:(BarTimeframe)timeframe;
 
 @end
 
 NS_ASSUME_NONNULL_END
-

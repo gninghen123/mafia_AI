@@ -41,7 +41,7 @@
                         <action selector="toggleObjectsPanel:" target="-2" id="ou0-VF-0Qm"/>
                     </connections>
                 </button>
-                <textField focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="mRQ-t4-Qv9">
+                <textField focusRingType="none" verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="mRQ-t4-Qv9" customClass="NSSearchField">
                     <rect key="frame" x="113" y="705" width="336" height="21"/>
                     <textFieldCell key="cell" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" sendsActionOnEndEditing="YES" borderStyle="bezel" placeholderString="enter symbol (,timeframe,period) optional" drawsBackground="YES" id="AsT-2o-Fzp">
                         <font key="font" metaFont="system"/>

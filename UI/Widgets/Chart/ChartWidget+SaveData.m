@@ -10,6 +10,7 @@
 #import "ChartWidget+SaveData.h"
 #import "SavedChartData+FilenameParsing.h"
 #import "SavedChartData+FilenameUpdate.h"
+#import "StorageMetadataCache.h"
 
 @implementation ChartWidget (SaveData)
 
@@ -193,15 +194,31 @@
     [selectionAlert addButtonWithTitle:@"Load"];
     [selectionAlert addButtonWithTitle:@"Cancel"];
     
-    // ✅ OTTIMIZZAZIONE: Create popup button usando SOLO filename parsing
+    // ✅ FAST: Create popup button using MetadataCache
     NSPopUpButton *fileSelector = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 0, 500, 25)];
     
     for (NSString *filePath in availableFiles) {
         NSString *filename = [filePath lastPathComponent];
         
-        // ✅ FAST: Parse metadata from filename only
-        if ([SavedChartData isNewFormatFilename:filename]) {
-            // Use filename parsing for display info
+        // ✅ FAST: Get metadata from cache instead of filename parsing
+        StorageMetadataCache *cache = [StorageMetadataCache sharedCache];
+        StorageMetadataItem *cacheItem = [cache itemForPath:filePath];
+        
+        if (cacheItem) {
+            // ✅ FASTEST: Use cached metadata
+            NSString *typeStr = cacheItem.isContinuous ? @"CONTINUOUS" : @"SNAPSHOT";
+            NSString *displayTitle = [NSString stringWithFormat:@"%@ %@ [%@] %ld bars - %@",
+                                    cacheItem.symbol,
+                                    cacheItem.timeframe,
+                                    typeStr,
+                                    (long)cacheItem.barCount,
+                                    cacheItem.dateRangeString];
+            
+            [fileSelector addItemWithTitle:displayTitle];
+            fileSelector.lastItem.representedObject = filePath;
+            
+        } else if ([SavedChartData isNewFormatFilename:filename]) {
+            // ✅ FALLBACK: Parse from filename if not in cache
             NSString *symbol = [SavedChartData symbolFromFilename:filename];
             NSString *timeframeStr = [SavedChartData timeframeFromFilename:filename];
             NSString *typeStr = [SavedChartData typeFromFilename:filename];
@@ -209,7 +226,6 @@
             NSString *dateRangeStr = [SavedChartData dateRangeStringFromFilename:filename];
             
             if (symbol && timeframeStr && typeStr) {
-                // ✅ FAST: Create display title from parsed metadata
                 NSString *displayTitle = [NSString stringWithFormat:@"%@ %@ [%@] %ld bars - %@",
                                         symbol,
                                         timeframeStr,
@@ -220,7 +236,7 @@
                 [fileSelector addItemWithTitle:displayTitle];
                 fileSelector.lastItem.representedObject = filePath;
             } else {
-                // Fallback for incomplete metadata
+                // Incomplete metadata
                 NSString *displayTitle = [NSString stringWithFormat:@"%@ (Incomplete metadata)", symbol ?: filename];
                 [fileSelector addItemWithTitle:displayTitle];
                 fileSelector.lastItem.representedObject = filePath;
@@ -350,6 +366,7 @@
     return [[appSupportDir stringByAppendingPathComponent:appName] stringByAppendingPathComponent:@"SavedChartData"];
 }
 
+
 + (BOOL)ensureSavedChartDataDirectoryExists:(NSError **)error {
     NSString *directory = [self savedChartDataDirectory];
     NSFileManager *fileManager = [NSFileManager defaultManager];
@@ -363,79 +380,113 @@
     return YES;
 }
 
+
 + (NSArray<NSString *> *)availableSavedChartDataFiles {
-    NSString *directory = [self savedChartDataDirectory];
-    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSLog(@"📦 Getting available chart data files from MetadataCache...");
     
-    NSError *error;
-    NSArray *files = [fileManager contentsOfDirectoryAtPath:directory error:&error];
-    if (!files) {
-        NSLog(@"❌ Failed to list saved chart data files: %@", error.localizedDescription);
-        return @[];
+    StorageMetadataCache *cache = [StorageMetadataCache sharedCache];
+    NSArray<StorageMetadataItem *> *allItems = [cache allItems];
+    
+    if (allItems.count == 0) {
+        NSLog(@"📦 No items in cache - building from filesystem...");
+        NSString *directory = [self savedChartDataDirectory];
+        [cache buildCacheFromDirectory:directory];
+        allItems = [cache allItems];
     }
     
-    // Filter for .chartdata files and return full paths
-    NSMutableArray *chartDataFiles = [NSMutableArray array];
-    for (NSString *filename in files) {
-        if ([filename.pathExtension.lowercaseString isEqualToString:@"chartdata"]) {
-            NSString *fullPath = [directory stringByAppendingPathComponent:filename];
-            [chartDataFiles addObject:fullPath];
-        }
-    }
-    
-    // Sort by modification date (newest first)
-    [chartDataFiles sortUsingComparator:^NSComparisonResult(NSString *path1, NSString *path2) {
-        NSDictionary *attrs1 = [[NSFileManager defaultManager] attributesOfItemAtPath:path1 error:nil];
-        NSDictionary *attrs2 = [[NSFileManager defaultManager] attributesOfItemAtPath:path2 error:nil];
-        NSDate *date1 = attrs1[NSFileModificationDate];
-        NSDate *date2 = attrs2[NSFileModificationDate];
-        return [date2 compare:date1]; // Newest first
+    // Sort by file modification time (newest first)
+    NSArray<StorageMetadataItem *> *sortedItems = [allItems sortedArrayUsingComparator:^NSComparisonResult(StorageMetadataItem *obj1, StorageMetadataItem *obj2) {
+        if (obj1.fileModificationTime > obj2.fileModificationTime) return NSOrderedAscending;
+        if (obj1.fileModificationTime < obj2.fileModificationTime) return NSOrderedDescending;
+        return NSOrderedSame;
     }];
     
-    return [chartDataFiles copy];
+    // Extract file paths
+    NSMutableArray<NSString *> *filePaths = [NSMutableArray array];
+    for (StorageMetadataItem *item in sortedItems) {
+        [filePaths addObject:item.filePath];
+    }
+    
+    NSLog(@"✅ Retrieved %ld chart data files from cache (no filesystem scanning)", (long)filePaths.count);
+    return [filePaths copy];
 }
 
 + (NSArray<NSString *> *)availableSavedChartDataFilesOfType:(SavedChartDataType)dataType {
-    NSArray<NSString *> *allFiles = [self availableSavedChartDataFiles];
-    NSMutableArray<NSString *> *filteredFiles = [NSMutableArray array];
-    
-    for (NSString *filePath in allFiles) {
-        NSString *filename = [filePath lastPathComponent];
-        
-        // ✅ Use filename parsing instead of loading file
-        if ([SavedChartData isNewFormatFilename:filename]) {
-            NSString *typeStr = [SavedChartData typeFromFilename:filename];
-            
-            // Check if type matches
-            BOOL isTargetType = NO;
-            if (dataType == SavedChartDataTypeContinuous && [typeStr isEqualToString:@"Continuous"]) {
-                isTargetType = YES;
-            } else if (dataType == SavedChartDataTypeSnapshot && [typeStr isEqualToString:@"Snapshot"]) {
-                isTargetType = YES;
-            }
-            
-            if (isTargetType) {
-                [filteredFiles addObject:filePath];
-            }
-        } else {
-            // For old format files, we still need to load them (but these should be rare after migration)
-            NSLog(@"⚠️ Old format file detected, loading to check type: %@", filename);
-            SavedChartData *savedData = [SavedChartData loadFromFile:filePath];
-            if (savedData && savedData.dataType == dataType) {
-                [filteredFiles addObject:filePath];
-            }
-        }
-    }
-    
-    NSLog(@"📋 Filtered %ld files of type %@ using filename parsing",
-          (long)filteredFiles.count,
+    NSLog(@"📦 Getting chart data files of type %@ from MetadataCache...",
           dataType == SavedChartDataTypeContinuous ? @"Continuous" : @"Snapshot");
     
-    return [filteredFiles copy];
+    StorageMetadataCache *cache = [StorageMetadataCache sharedCache];
+    NSArray<StorageMetadataItem *> *filteredItems;
+    
+    if (dataType == SavedChartDataTypeContinuous) {
+        filteredItems = [cache continuousItems];
+    } else {
+        filteredItems = [cache snapshotItems];
+    }
+    
+    // Sort by file modification time (newest first)
+    NSArray<StorageMetadataItem *> *sortedItems = [filteredItems sortedArrayUsingComparator:^NSComparisonResult(StorageMetadataItem *obj1, StorageMetadataItem *obj2) {
+        if (obj1.fileModificationTime > obj2.fileModificationTime) return NSOrderedAscending;
+        if (obj1.fileModificationTime < obj2.fileModificationTime) return NSOrderedDescending;
+        return NSOrderedSame;
+    }];
+    
+    // Extract file paths
+    NSMutableArray<NSString *> *filePaths = [NSMutableArray array];
+    for (StorageMetadataItem *item in sortedItems) {
+        [filePaths addObject:item.filePath];
+    }
+    
+    NSLog(@"✅ Retrieved %ld %@ files from cache",
+          (long)filePaths.count,
+          dataType == SavedChartDataTypeContinuous ? @"continuous" : @"snapshot");
+    
+    return [filePaths copy];
+}
+
++ (NSArray<StorageMetadataItem *> *)availableStorageMetadataForSymbol:(NSString *)symbol {
+    StorageMetadataCache *cache = [StorageMetadataCache sharedCache];
+    NSArray<StorageMetadataItem *> *symbolItems = [cache itemsForSymbol:symbol];
+    
+    // Sort by file modification time (newest first)
+    return [symbolItems sortedArrayUsingComparator:^NSComparisonResult(StorageMetadataItem *obj1, StorageMetadataItem *obj2) {
+        if (obj1.fileModificationTime > obj2.fileModificationTime) return NSOrderedAscending;
+        if (obj1.fileModificationTime < obj2.fileModificationTime) return NSOrderedDescending;
+        return NSOrderedSame;
+    }];
+}
+
++ (NSArray<StorageMetadataItem *> *)availableStorageMetadataItems {
+    StorageMetadataCache *cache = [StorageMetadataCache sharedCache];
+    NSArray<StorageMetadataItem *> *allItems = [cache allItems];
+    
+    if (allItems.count == 0) {
+        NSString *directory = [self savedChartDataDirectory];
+        [cache buildCacheFromDirectory:directory];
+        allItems = [cache allItems];
+    }
+    
+    // Sort by file modification time (newest first)
+    return [allItems sortedArrayUsingComparator:^NSComparisonResult(StorageMetadataItem *obj1, StorageMetadataItem *obj2) {
+        if (obj1.fileModificationTime > obj2.fileModificationTime) return NSOrderedAscending;
+        if (obj1.fileModificationTime < obj2.fileModificationTime) return NSOrderedDescending;
+        return NSOrderedSame;
+    }];
 }
 
 + (BOOL)deleteSavedChartDataFile:(NSString *)filePath error:(NSError **)error {
-    return [[NSFileManager defaultManager] removeItemAtPath:filePath error:error];
+    BOOL success = [[NSFileManager defaultManager] removeItemAtPath:filePath error:error];
+    
+    if (success) {
+        // ✅ UPDATE CACHE AFTER DELETION
+        StorageMetadataCache *cache = [StorageMetadataCache sharedCache];
+        [cache handleFileDeleted:filePath];
+        [cache saveToUserDefaults];
+        
+        NSLog(@"✅ Deleted file and updated cache: %@", [filePath lastPathComponent]);
+    }
+    
+    return success;
 }
 
 #pragma mark - Context Menu Integration
@@ -545,110 +596,83 @@
 }
 
 + (NSArray<NSString *> *)availableSavedChartDataFilesOptimized {
-    NSString *directory = [self savedChartDataDirectory];
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    
-    NSError *error;
-    NSArray *files = [fileManager contentsOfDirectoryAtPath:directory error:&error];
-    if (!files) {
-        NSLog(@"❌ Failed to list saved chart data files: %@", error.localizedDescription);
-        return @[];
-    }
-    
-    // Filter for .chartdata files and return full paths
-    NSMutableArray *chartDataFiles = [NSMutableArray array];
-    for (NSString *filename in files) {
-        if ([filename.pathExtension.lowercaseString isEqualToString:@"chartdata"]) {
-            NSString *fullPath = [directory stringByAppendingPathComponent:filename];
-            [chartDataFiles addObject:fullPath];
-        }
-    }
-    
-    // ✅ OTTIMIZZAZIONE: Sort usando creation date dal filename (per new format)
-    [chartDataFiles sortUsingComparator:^NSComparisonResult(NSString *path1, NSString *path2) {
-        NSString *filename1 = [path1 lastPathComponent];
-        NSString *filename2 = [path2 lastPathComponent];
-        
-        // Try filename parsing first (much faster)
-        if ([SavedChartData isNewFormatFilename:filename1] && [SavedChartData isNewFormatFilename:filename2]) {
-            NSDate *date1 = [SavedChartData creationDateFromFilename:filename1];
-            NSDate *date2 = [SavedChartData creationDateFromFilename:filename2];
-            
-            if (date1 && date2) {
-                return [date2 compare:date1]; // Newest first
-            }
-        }
-        
-        // ❌ FALLBACK: Use file system dates for old format files
-        NSDictionary *attrs1 = [[NSFileManager defaultManager] attributesOfItemAtPath:path1 error:nil];
-        NSDictionary *attrs2 = [[NSFileManager defaultManager] attributesOfItemAtPath:path2 error:nil];
-        NSDate *date1 = attrs1[NSFileModificationDate];
-        NSDate *date2 = attrs2[NSFileModificationDate];
-        return [date2 compare:date1]; // Newest first
-    }];
-    
-    return [chartDataFiles copy];
+    // ✅ REDIRECT TO NEW CACHE-BASED METHOD
+    return [self availableSavedChartDataFiles];
 }
 
 // ✅ NUOVO METODO: Get file info senza caricare il file completo
 + (NSDictionary *)getFileInfoFromPath:(NSString *)filePath {
-    NSString *filename = [filePath lastPathComponent];
-    NSMutableDictionary *info = [NSMutableDictionary dictionary];
+    // ✅ USE CACHE FIRST
+    StorageMetadataCache *cache = [StorageMetadataCache sharedCache];
+    StorageMetadataItem *cacheItem = [cache itemForPath:filePath];
     
-    if ([SavedChartData isNewFormatFilename:filename]) {
-        // ✅ FAST: Use filename parsing
-        info[@"symbol"] = [SavedChartData symbolFromFilename:filename] ?: @"Unknown";
-        info[@"timeframe"] = [SavedChartData timeframeFromFilename:filename] ?: @"Unknown";
-        info[@"type"] = [SavedChartData typeFromFilename:filename] ?: @"Unknown";
-        info[@"barCount"] = @([SavedChartData barCountFromFilename:filename]);
-        info[@"dateRange"] = [SavedChartData dateRangeStringFromFilename:filename] ?: @"Unknown";
-        info[@"extendedHours"] = @([SavedChartData extendedHoursFromFilename:filename]);
-        info[@"hasGaps"] = @([SavedChartData hasGapsFromFilename:filename]);
-        
-        // File size from filesystem (fast)
-        info[@"fileSize"] = @([SavedChartData fileSizeFromPath:filePath]);
-        
-        info[@"source"] = @"filename"; // Indicates data source
-        
-    } else {
-        // ❌ OLD FORMAT: Need to load file (rare case)
-        SavedChartData *savedData = [SavedChartData loadFromFile:filePath];
-        if (savedData) {
-            info[@"symbol"] = savedData.symbol ?: @"Unknown";
-            info[@"timeframe"] = savedData.timeframeDescription ?: @"Unknown";
-            info[@"type"] = savedData.dataType == SavedChartDataTypeSnapshot ? @"Snapshot" : @"Continuous";
-            info[@"barCount"] = @(savedData.barCount);
-            info[@"dateRange"] = savedData.formattedDateRange ?: @"Unknown";
-            info[@"extendedHours"] = @(savedData.includesExtendedHours);
-            info[@"hasGaps"] = @(savedData.hasGaps);
-            info[@"fileSize"] = @(savedData.estimatedFileSize);
-            info[@"source"] = @"file_load"; // Indicates data source
-        } else {
-            // Ultimate fallback
-            info[@"symbol"] = @"Unknown";
-            info[@"timeframe"] = @"Unknown";
-            info[@"type"] = @"Unknown";
-            info[@"barCount"] = @(0);
-            info[@"dateRange"] = @"Unknown";
-            info[@"extendedHours"] = @(NO);
-            info[@"hasGaps"] = @(NO);
-            info[@"fileSize"] = @(0);
-            info[@"source"] = @"fallback";
-        }
+    if (cacheItem) {
+        // Return metadata from cache
+        return @{
+            @"symbol": cacheItem.symbol ?: @"Unknown",
+            @"timeframe": cacheItem.timeframe ?: @"Unknown",
+            @"type": cacheItem.isContinuous ? @"Continuous" : @"Snapshot",
+            @"barCount": @(cacheItem.barCount),
+            @"dateRange": cacheItem.dateRangeString ?: @"Unknown",
+            @"fileSize": @(cacheItem.fileSizeBytes),
+            @"hasGaps": @(cacheItem.hasGaps),
+            @"extendedHours": @(cacheItem.includesExtendedHours),
+            @"source": @"cache"
+        };
     }
     
-    return [info copy];
+    // ✅ FALLBACK: Parse from filename
+    NSString *filename = [filePath lastPathComponent];
+    if ([SavedChartData isNewFormatFilename:filename]) {
+        return @{
+            @"symbol": [SavedChartData symbolFromFilename:filename] ?: @"Unknown",
+            @"timeframe": [SavedChartData timeframeFromFilename:filename] ?: @"Unknown",
+            @"type": [SavedChartData typeFromFilename:filename] ?: @"Unknown",
+            @"barCount": @([SavedChartData barCountFromFilename:filename]),
+            @"dateRange": [SavedChartData dateRangeStringFromFilename:filename] ?: @"Unknown",
+            @"source": @"filename_parsing"
+        };
+    }
+    
+    // ❌ ULTIMATE FALLBACK: Load file (slow)
+    NSLog(@"⚠️ Falling back to file loading for info: %@", filename);
+    SavedChartData *savedData = [SavedChartData loadFromFile:filePath];
+    if (savedData) {
+        return @{
+            @"symbol": savedData.symbol ?: @"Unknown",
+            @"timeframe": [ChartWidget displayStringForTimeframe:savedData.timeframe],
+            @"type": savedData.dataType == SavedChartDataTypeContinuous ? @"Continuous" : @"Snapshot",
+            @"barCount": @(savedData.barCount),
+            @"dateRange": savedData.formattedDateRange ?: @"Unknown",
+            @"source": @"file_loading"
+        };
+    }
+    
+    return @{@"symbol": @"Unknown", @"source": @"failed"};
 }
 
 // ✅ NUOVO METODO: Get display summary per file senza caricarlo
 + (NSString *)getDisplaySummaryForFile:(NSString *)filePath {
     NSDictionary *info = [self getFileInfoFromPath:filePath];
-    
     return [NSString stringWithFormat:@"%@ %@ [%@] %@ bars - %@",
-            info[@"symbol"],
-            info[@"timeframe"],
-            info[@"type"],
-            info[@"barCount"],
-            info[@"dateRange"]];
+            info[@"symbol"], info[@"timeframe"], info[@"type"], info[@"barCount"], info[@"dateRange"]];
 }
+
++ (NSString *)displayStringForTimeframe:(BarTimeframe)timeframe {
+    switch (timeframe) {
+        case BarTimeframe1Min: return @"1min";
+        case BarTimeframe5Min: return @"5min";
+        case BarTimeframe15Min: return @"15min";
+        case BarTimeframe30Min: return @"30min";
+        case BarTimeframe1Hour: return @"1hour";
+        case BarTimeframe4Hour: return @"4hour";
+        case BarTimeframeDaily: return @"daily";
+        case BarTimeframeWeekly: return @"weekly";
+        case BarTimeframeMonthly: return @"monthly";
+        default: return @"unknown";
+    }
+}
+
+
+
 @end

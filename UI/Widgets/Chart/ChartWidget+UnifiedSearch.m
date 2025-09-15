@@ -10,6 +10,7 @@
 #import "ChartWidget.h"
 #import "ChartWidget+SaveData.h"
 #import "StorageMetadataCache.h"
+#import "ChartWidget+InteractionHandlers.h"  // ✅ AGGIUNTO: Import per handleSymbolChange:forceReload:
 #import "DataHub+SpotlightSearch.h"
 #import "SpotlightModels.h"
 #import <objc/runtime.h>

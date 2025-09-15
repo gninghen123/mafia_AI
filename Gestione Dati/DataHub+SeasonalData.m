@@ -96,10 +96,11 @@ static NSTimeInterval const kSeasonalDataTTL = 6 * 60 * 60; // 6 hours
            @"wrapper": normalizedDataType
        };
        
-       [[DataManager sharedManager] requestZacksData:parameters
-                                          completion:^(SeasonalDataModel * _Nullable seasonalModel, NSError * _Nullable error) {
-           
-           if (error) {
+    [[DataManager sharedManager] requestSeasonalDataForSymbol:normalizedSymbol
+                                                       dataType:normalizedDataType
+                                                     completion:^(SeasonalDataModel * _Nullable seasonalModel, NSError * _Nullable error) {
+          
+          if (error) {
                NSLog(@"❌ DataHub: Failed to fetch seasonal data for %@: %@", cacheKey, error.localizedDescription);
                
                // If we have cached data (even stale), and this is first request, return error

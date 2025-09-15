@@ -1,180 +1,21 @@
 //
-//  DownloadManager.h (UPDATED - SECURITY ENHANCED)
+//  DownloadManager.h (CLEANED & ORGANIZED)
 //  TradingApp
 //
-//  UNIFICATO: HTTP request manager for external data sources
-//  🛡️ SECURITY UPDATE: Distinguished Market Data vs Account Data routing
+//  HTTP request manager for external data sources
+//  🛡️ SECURITY: Distinguished Market Data vs Account Data routing
 //  - Market Data: Automatic routing with fallback (Schwab → Yahoo)
 //  - Account Data: Specific DataSource REQUIRED, NO fallback for security
 //
 
 #import <Foundation/Foundation.h>
 #import "CommonTypes.h"
-#import "runtimeModels.h"
+#import "RuntimeModels.h"
+#import "DataSource.h"  // ✅ Import separated protocol
+
+@class CompanyInfoModel;
 
 NS_ASSUME_NONNULL_BEGIN
-
-#pragma mark - Data Source Protocol
-
-// Data source protocol - HTTP requests only
-@protocol DataSource <NSObject>
-
-@required
-@property (nonatomic, readonly) DataSourceType sourceType;
-@property (nonatomic, readonly) DataSourceCapabilities capabilities;
-@property (nonatomic, readonly) NSString *sourceName;
-@property (nonatomic, readonly) BOOL isConnected;
-
-// Connection management (HTTP authentication only)
-- (void)connectWithCompletion:(void (^)(BOOL success, NSError *error))completion;
-- (void)disconnect;
-
-#pragma mark - UNIFIED MARKET DATA METHODS (Required)
-
-/**
- * UNIFIED: Single quote for any symbol
- * All DataSources MUST implement this method
- */
-- (void)fetchQuoteForSymbol:(NSString *)symbol
-                 completion:(void (^)(id quote, NSError *error))completion;
-
-/**
- * UNIFIED: Batch quotes for multiple symbols
- * All DataSources MUST implement this method
- */
-- (void)fetchQuotesForSymbols:(NSArray<NSString *> *)symbols
-                   completion:(void (^)(NSDictionary *quotes, NSError *error))completion;
-
-
-
-/**
- * UNIFIED: Historical bars with standardized parameters
- * All DataSources MUST implement this method
- *
- * @param symbol The symbol to fetch data for
- * @param timeframe Standard timeframe enum (BarTimeframe)
- * @param startDate Start date for historical data
- * @param endDate End date for historical data
- * @param needExtendedHours YES for pre/post market data
- * @param completion Returns array of standardized bar dictionaries
- */
-- (void)fetchHistoricalDataForSymbol:(NSString *)symbol
-                           timeframe:(BarTimeframe)timeframe
-                           startDate:(NSDate *)startDate
-                             endDate:(NSDate *)endDate
-                   needExtendedHours:(BOOL)needExtendedHours
-                          completion:(void (^)(NSArray *bars, NSError *error))completion;
-
-/**
- * UNIFIED: Historical bars by bar count instead of date range
- * All DataSources MUST implement this method
- */
-- (void)fetchHistoricalDataForSymbol:(NSString *)symbol
-                           timeframe:(BarTimeframe)timeframe
-                            barCount:(NSInteger)barCount
-                   needExtendedHours:(BOOL)needExtendedHours
-                          completion:(void (^)(NSArray *bars, NSError *error))completion;
-
-#pragma mark - MARKET LISTS AND ANALYTICS (Optional - implement if supported)
-
-/**
- * UNIFIED: Market lists and screeners
- * Only implement if DataSource supports market lists
- *
- * @param listType Type of list (TopGainers, TopLosers, ETFList, etc.)
- * @param parameters Additional parameters (limit, timeframe, etc.)
- * @param completion Returns array of result dictionaries
- */
-- (void)fetchMarketListForType:(DataRequestType)listType
-                    parameters:(nullable NSDictionary *)parameters
-                    completion:(void (^)(NSArray *results, NSError *error))completion;
-
-/**
- * UNIFIED: Level 2 order book data
- * Only implement if DataSource supports order book
- */
-- (void)fetchOrderBookForSymbol:(NSString *)symbol
-                          depth:(NSInteger)depth
-                     completion:(void (^)(NSDictionary *orderBook, NSError *error))completion;
-
-/**
- * UNIFIED: Company fundamentals
- * Only implement if DataSource supports fundamentals
- */
-- (void)fetchFundamentalsForSymbol:(NSString *)symbol
-                        completion:(void (^)(NSDictionary *fundamentals, NSError *error))completion;
-
-#pragma mark - ACCOUNT DATA METHODS (Optional - only for trading DataSources)
-// 🛡️ SECURITY: These methods require specific DataSource, NO automatic routing
-
-/**
- * Get all available accounts for this broker
- * Only implemented by trading DataSources
- */
-- (void)fetchAccountsWithCompletion:(void (^)(NSArray *accounts, NSError *error))completion;
-
-/**
- * Get detailed information for specific account
- * Only implemented by trading DataSources
- */
-- (void)fetchAccountDetails:(NSString *)accountId
-                 completion:(void (^)(NSDictionary *accountDetails, NSError *error))completion;
-
-/**
- * Get positions for specific account
- * Only implemented by trading DataSources
- */
-- (void)fetchPositionsForAccount:(NSString *)accountId
-                      completion:(void (^)(NSArray *positions, NSError *error))completion;
-
-/**
- * Get orders for specific account
- * Only implemented by trading DataSources
- */
-- (void)fetchOrdersForAccount:(NSString *)accountId
-                   completion:(void (^)(NSArray *orders, NSError *error))completion;
-
-#pragma mark - TRADING OPERATIONS (Optional - only for trading APIs)
-// 🛡️ SECURITY: Trading operations require specific DataSource, NO fallback
-
-/**
- * Place a new order
- * Only implemented by trading DataSources
- */
-- (void)placeOrderForAccount:(NSString *)accountId
-                   orderData:(NSDictionary *)orderData
-                  completion:(void (^)(NSString *orderId, NSError *error))completion;
-
-/**
- * Cancel an existing order
- * Only implemented by trading DataSources
- */
-- (void)cancelOrderForAccount:(NSString *)accountId
-                      orderId:(NSString *)orderId
-                   completion:(void (^)(BOOL success, NSError *error))completion;
-
-@optional
-
-/**
- * Search for symbols matching query
- * @param query Search text (company name or symbol)
- * @param limit Maximum number of results
- * @param completion Completion with raw API results (will be standardized by DataManager)
- */
-- (void)searchSymbolsWithQuery:(NSString *)query
-                         limit:(NSInteger)limit
-                    completion:(void(^)(NSArray<NSDictionary *> * _Nullable results, NSError * _Nullable error))completion;
-
-/**
- * Get detailed company information for symbol
- * @param symbol Stock symbol
- * @param completion Completion with raw company data
- */
-- (void)getCompanyInfoForSymbol:(NSString *)symbol
-                     completion:(void(^)(NSDictionary * _Nullable companyData, NSError * _Nullable error))completion;
-
-
-@end
 
 #pragma mark - DOWNLOAD MANAGER INTERFACE
 
@@ -184,25 +25,86 @@ NS_ASSUME_NONNULL_BEGIN
 
 #pragma mark - Data Source Management
 
+/**
+ * Register a data source with priority
+ * @param dataSource DataSource implementation to register
+ * @param type DataSource type identifier
+ * @param priority Priority (lower number = higher priority)
+ */
 - (void)registerDataSource:(id<DataSource>)dataSource
                   withType:(DataSourceType)type
                   priority:(NSInteger)priority;
+
+/**
+ * Unregister a data source
+ * @param type DataSource type to unregister
+ */
 - (void)unregisterDataSource:(DataSourceType)type;
 
 #pragma mark - Connection Management
 
+/**
+ * Connect to specific data source
+ * @param type DataSource type to connect
+ * @param completion Called with connection result
+ */
 - (void)connectDataSource:(DataSourceType)type
                completion:(nullable void (^)(BOOL success, NSError * _Nullable error))completion;
+
+/**
+ * Disconnect from specific data source
+ * @param type DataSource type to disconnect
+ */
 - (void)disconnectDataSource:(DataSourceType)type;
+
+/**
+ * Reconnect all registered data sources
+ */
 - (void)reconnectAllDataSources;
 
 #pragma mark - Status and Monitoring
 
+/**
+ * Check if data source is connected
+ * @param type DataSource type to check
+ * @return YES if connected, NO otherwise
+ */
 - (BOOL)isDataSourceConnected:(DataSourceType)type;
+
+/**
+ * Get capabilities for data source
+ * @param type DataSource type to check
+ * @return Capabilities bitmask
+ */
 - (DataSourceCapabilities)capabilitiesForDataSource:(DataSourceType)type;
+
+/**
+ * Get statistics for data source
+ * @param type DataSource type to check
+ * @return Statistics dictionary
+ */
 - (NSDictionary *)statisticsForDataSource:(DataSourceType)type;
 
+/**
+ * Get currently active data source
+ */
 @property (nonatomic, readonly) DataSourceType currentDataSource;
+
+#pragma mark - ✅ DATA SOURCE ACCESS (For DataManager Integration)
+
+/**
+ * Get data source instance for given type
+ * @param type DataSourceType to get
+ * @return Data source instance or nil
+ */
+- (nullable id<DataSource>)dataSourceForType:(DataSourceType)type;
+
+/**
+ * Get priority for data source
+ * @param dataSource DataSourceType to check
+ * @return Priority value (lower = higher priority)
+ */
+- (NSInteger)priorityForDataSource:(DataSourceType)dataSource;
 
 #pragma mark - 📈 MARKET DATA REQUESTS (Automatic routing with fallback)
 
@@ -223,7 +125,7 @@ NS_ASSUME_NONNULL_BEGIN
  */
 - (NSString *)executeMarketDataRequest:(DataRequestType)requestType
                             parameters:(NSDictionary *)parameters
-                            completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion;
+                            completion:(void (^)(id _Nullable result, DataSourceType usedSource, NSError * _Nullable error))completion;
 
 /**
  * MARKET DATA with preferred source (still has fallback)
@@ -238,7 +140,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSString *)executeMarketDataRequest:(DataRequestType)requestType
                             parameters:(NSDictionary *)parameters
                        preferredSource:(DataSourceType)preferredSource
-                            completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion;
+                            completion:(void (^)(id _Nullable result, DataSourceType usedSource, NSError * _Nullable error))completion;
 
 #pragma mark - 🛡️ ACCOUNT DATA REQUESTS (Specific DataSource REQUIRED)
 
@@ -257,7 +159,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSString *)executeAccountDataRequest:(DataRequestType)requestType
                              parameters:(NSDictionary *)parameters
                          requiredSource:(DataSourceType)requiredSource
-                             completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion;
+                             completion:(void (^)(id _Nullable result, DataSourceType usedSource, NSError * _Nullable error))completion;
 
 #pragma mark - 🚨 TRADING OPERATIONS (Specific DataSource REQUIRED)
 
@@ -276,50 +178,12 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSString *)executeTradingRequest:(DataRequestType)requestType
                          parameters:(NSDictionary *)parameters
                      requiredSource:(DataSourceType)requiredSource
-                         completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion;
+                         completion:(void (^)(id _Nullable result, DataSourceType usedSource, NSError * _Nullable error))completion;
 
-#pragma mark - UNIFIED CONVENIENCE METHODS for Market Data
-
-/**
- * CONVENIENCE: Single quote with automatic source selection and failover
- */
-- (NSString *)fetchQuoteForSymbol:(NSString *)symbol
-                       completion:(void (^)(id quote, DataSourceType usedSource, NSError *error))completion;
+#pragma mark - 🔍 SYMBOL SEARCH AND COMPANY INFO
 
 /**
- * CONVENIENCE: Batch quotes with automatic source selection and failover
- */
-- (NSString *)fetchQuotesForSymbols:(NSArray<NSString *> *)symbols
-                         completion:(void (^)(NSDictionary *quotes, DataSourceType usedSource, NSError *error))completion;
-
-/**
- * CONVENIENCE: Historical bars (date range) with automatic source selection and failover
- */
-- (NSString *)fetchHistoricalDataForSymbol:(NSString *)symbol
-                                 timeframe:(BarTimeframe)timeframe
-                                 startDate:(NSDate *)startDate
-                                   endDate:(NSDate *)endDate
-                          needExtendedHours:(BOOL)needExtendedHours
-                                completion:(void (^)(NSArray *bars, DataSourceType usedSource, NSError *error))completion;
-
-/**
- * CONVENIENCE: Historical bars (bar count) with automatic source selection and failover
- */
-- (NSString *)fetchHistoricalDataForSymbol:(NSString *)symbol
-                                 timeframe:(BarTimeframe)timeframe
-                                  barCount:(NSInteger)barCount
-                         needExtendedHours:(BOOL)needExtendedHours
-                                completion:(void (^)(NSArray *bars, DataSourceType usedSource, NSError *error))completion;
-
-/**
- * CONVENIENCE: Market lists with automatic source selection and failover
- */
-- (NSString *)fetchMarketListForType:(DataRequestType)listType
-                          parameters:(nullable NSDictionary *)parameters
-                          completion:(void (^)(NSArray *results, DataSourceType usedSource, NSError *error))completion;
-
-/**
- * Search for symbols across data sources
+ * Search for symbols using specific data source
  * @param query Search query text
  * @param dataSource Specific data source to use
  * @param limit Maximum number of results
@@ -328,64 +192,23 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)searchSymbolsWithQuery:(NSString *)query
                     dataSource:(DataSourceType)dataSource
                          limit:(NSInteger)limit
-                    completion:(void(^)(NSArray<NSDictionary *> *results, NSError *error))completion;
+                    completion:(void(^)(NSArray<NSDictionary *> * _Nullable results, NSError * _Nullable error))completion;
 
 /**
- * Get company information for symbol
+ * Get company information for symbol using specific data source
  * @param symbol Stock symbol
  * @param dataSource Data source to use
  * @param completion Completion with company info
  */
 - (void)getCompanyInfoForSymbol:(NSString *)symbol
                      dataSource:(DataSourceType)dataSource
-                     completion:(void(^)(CompanyInfoModel *companyInfo, NSError *error))completion;
-
-
-#pragma mark - CONVENIENCE METHODS for Account Data (🛡️ Require DataSource)
-
-/**
- * 🛡️ CONVENIENCE: Account positions - requires specific DataSource
- */
-- (NSString *)fetchPositionsForAccount:(NSString *)accountId
-                        fromDataSource:(DataSourceType)requiredSource
-                            completion:(void (^)(NSArray *positions, DataSourceType usedSource, NSError *error))completion;
-
-/**
- * 🛡️ CONVENIENCE: Account orders - requires specific DataSource
- */
-- (NSString *)fetchOrdersForAccount:(NSString *)accountId
-                     fromDataSource:(DataSourceType)requiredSource
-                         completion:(void (^)(NSArray *orders, DataSourceType usedSource, NSError *error))completion;
-
-/**
- * 🛡️ CONVENIENCE: Account details - requires specific DataSource
- */
-- (NSString *)fetchAccountDetails:(NSString *)accountId
-                   fromDataSource:(DataSourceType)requiredSource
-                       completion:(void (^)(NSDictionary *details, DataSourceType usedSource, NSError *error))completion;
-
-#pragma mark - CONVENIENCE METHODS for Trading (🚨 Require DataSource)
-
-/**
- * 🚨 CONVENIENCE: Place order - requires exact DataSource
- */
-- (NSString *)placeOrder:(NSDictionary *)orderData
-              forAccount:(NSString *)accountId
-          usingDataSource:(DataSourceType)requiredSource
-               completion:(void (^)(NSString *orderId, DataSourceType usedSource, NSError *error))completion;
-
-/**
- * 🚨 CONVENIENCE: Cancel order - requires exact DataSource
- */
-- (NSString *)cancelOrder:(NSString *)orderId
-               forAccount:(NSString *)accountId
-          usingDataSource:(DataSourceType)requiredSource
-               completion:(void (^)(BOOL success, DataSourceType usedSource, NSError *error))completion;
+                     completion:(void(^)(CompanyInfoModel * _Nullable companyInfo, NSError * _Nullable error))completion;
 
 #pragma mark - Request Cancellation
 
 /**
  * Cancel an active request
+ * @param requestID Request ID to cancel
  */
 - (void)cancelRequest:(NSString *)requestID;
 

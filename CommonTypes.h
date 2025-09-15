@@ -15,6 +15,7 @@
 
 #pragma mark - Data Source Types
 typedef NS_ENUM(NSInteger, DataSourceType) {
+    DataSourceTypeUnknown = -1,    // ✅ AGGIUNTO: Per casi di errore/fallback
     DataSourceTypeSchwab,
     DataSourceTypeIBKR,
     DataSourceTypeYahoo,

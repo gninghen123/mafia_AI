@@ -11,6 +11,7 @@
 #import "Symbol+CoreDataClass.h"
 #import "CompanyInfo+CoreDataProperties.h"
 #import "DataManager.h"
+#import "DataManager+SymbolSearch.h"  // ✅ AGGIUNTO: Import per metodi symbol search
 
 
 @implementation DataHub (SpotlightSearch)

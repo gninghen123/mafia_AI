@@ -9,7 +9,6 @@
 //
 
 #import "DataManager.h"
-#import "DownloadManager.h"
 #import "MarketData.h"
 #import "OtherDataAdapter.h"
 #import "DataAdapterFactory.h"

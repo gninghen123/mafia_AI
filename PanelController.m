@@ -8,7 +8,6 @@
 #import "WidgetContainerView.h"
 #import "PanelHeaderView.h"
 #import "WidgetTypeManager.h"
-#import "QuoteWidget.h"
 
 @interface PanelController ()
 @property (nonatomic, strong) WidgetContainerView *containerView;

@@ -235,14 +235,13 @@ static const void *kCurrentSearchResultsKey = &kCurrentSearchResultsKey;
                     // Create a minimal StorageMetadataItem for display consistency
                     StorageMetadataItem *displayItem = [[StorageMetadataItem alloc] init];
                     displayItem.symbol = result.symbol ?: @"";
-                    displayItem.timeframe = result.companyName ?: @"Live"; // Use company name as description
                     displayItem.dataType = SavedChartDataTypeSnapshot; // Mark as not continuous for UI logic
                     displayItem.barCount = 0; // No bar count for live symbols
                     
                     // Add exchange info if available
                     if (result.exchange && result.exchange.length > 0) {
-                        displayItem.timeframe = [NSString stringWithFormat:@"%@ (%@)",
-                                               result.companyName ?: @"Live", result.exchange];
+                        displayItem.timeframe = [NSString stringWithFormat:@"%@",
+                                               result.companyName];
                     }
                     
                     [searchResults addObject:displayItem];
@@ -333,6 +332,29 @@ static const void *kCurrentSearchResultsKey = &kCurrentSearchResultsKey;
         }
     }
     return @"";
+}
+
+
+
+- (NSUInteger)comboBox:(NSComboBox *)comboBox indexOfItemWithStringValue:(NSString *)string {
+    if (comboBox == (NSComboBox *)self.symbolTextField && self.currentSearchResults) {
+        for (NSUInteger i = 0; i < self.currentSearchResults.count; i++) {
+            StorageMetadataItem *item = self.currentSearchResults[i];
+            
+            if (self.isStaticMode) {
+                // Per saved data, confronta il simbolo
+                if ([item.symbol isEqualToString:string]) {
+                    return i;
+                }
+            } else {
+                // Per live symbols, confronta il simbolo
+                if ([item.symbol isEqualToString:string]) {
+                    return i;
+                }
+            }
+        }
+    }
+    return NSNotFound;
 }
 
 - (void)comboBoxSelectionDidChange:(NSNotification *)notification {

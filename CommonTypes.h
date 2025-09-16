@@ -129,6 +129,7 @@ typedef NS_ENUM(NSInteger, DataRequestType) {
     // External data sources (routing OK)
     DataRequestTypeFinvizStatements = 300,
     DataRequestTypeZacksCharts = 400,
+    DataRequestTypeSeasonalData = 401,       
     DataRequestTypeOpenInsider = 500,
     
     // 🚨 TRADING OPERATIONS (Specific DataSource REQUIRED, NEVER fallback)
@@ -251,6 +252,7 @@ static inline BOOL IsMarketDataRequestType(DataRequestType requestType) {
         case DataRequestTypeEPS:
         case DataRequestTypeEarningsForecast:
         case DataRequestTypeAnalystMomentum:
+        case  DataRequestTypeSeasonalData:
             
         // 📰 NEWS DATA SOURCES (AGGIUNTI) ✅
         case DataRequestTypeGoogleFinanceNews:

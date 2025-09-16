@@ -81,7 +81,7 @@
                 </splitView>
                 <slider verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="q9h-ca-HQ2">
                     <rect key="frame" x="18" y="3" width="1105" height="28"/>
-                    <sliderCell key="cell" state="on" alignment="left" maxValue="100" doubleValue="50" tickMarkPosition="above" sliderType="linear" id="XUa-IE-gWC">
+                    <sliderCell key="cell" continuous="YES" state="on" alignment="left" maxValue="100" doubleValue="50" tickMarkPosition="above" sliderType="linear" id="XUa-IE-gWC">
                         <font key="font" size="12" name="Helvetica"/>
                     </sliderCell>
                     <connections>

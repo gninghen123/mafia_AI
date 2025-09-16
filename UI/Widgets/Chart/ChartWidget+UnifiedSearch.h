@@ -6,9 +6,9 @@
 
 #import <Foundation/Foundation.h>
 #import <Cocoa/Cocoa.h>
+#import "ChartWidget.h"
 
 // Forward declarations
-@class ChartWidget;
 @class StorageMetadataItem;
 
 NS_ASSUME_NONNULL_BEGIN

@@ -27,6 +27,7 @@
 // User preferences
 @property (nonatomic, strong) NSString *lastSelectedProviderId;
 
+
 @end
 
 @implementation WatchlistProviderManager

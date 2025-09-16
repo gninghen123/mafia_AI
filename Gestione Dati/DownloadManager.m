@@ -348,49 +348,52 @@
  */
 - (NSArray<DataSourceInfo *> *)getAvailableSourcesForRequestType:(DataRequestType)requestType
                                                   preferredSource:(DataSourceType)preferredSource {
+    
     NSMutableArray<DataSourceInfo *> *availableSources = [NSMutableArray array];
     
-    // First add preferred source if specified and supports the request type
-    if (preferredSource != -1) {
-        DataSourceInfo *preferredSourceInfo = self.dataSources[@(preferredSource)];
-        if (preferredSourceInfo && [self dataSourceSupportsRequestType:preferredSourceInfo requestType:requestType]) {
-            [availableSources addObject:preferredSourceInfo];
+    // Special routing for seasonal data - always use OtherDataSource (Zacks)
+    if (requestType == DataRequestTypeSeasonalData || requestType == DataRequestTypeZacksCharts) {
+        DataSourceInfo *otherInfo = self.dataSources[@(DataSourceTypeOther)];
+        if (otherInfo && otherInfo.isConnected && [self dataSourceSupportsRequestType:otherInfo requestType:requestType]) {
+            return @[otherInfo];
+        }
+        NSLog(@"⚠️ DownloadManager: OtherDataSource not available for seasonal data");
+        return @[]; // No fallback for seasonal data
+    }
+    
+    // Get all registered data sources
+    NSMutableArray<DataSourceInfo *> *candidateSources = [NSMutableArray array];
+    
+    for (NSNumber *typeNumber in self.dataSources) {
+        DataSourceInfo *sourceInfo = self.dataSources[typeNumber];
+        
+        // Check if connected and supports the request type
+        if (sourceInfo.isConnected && [self dataSourceSupportsRequestType:sourceInfo requestType:requestType]) {
+            [candidateSources addObject:sourceInfo];
         }
     }
     
-    // Then add other available sources sorted by priority (excluding preferred source)
-    NSArray<DataSourceInfo *> *allSources = [self.dataSources.allValues
-                                              sortedArrayUsingComparator:^NSComparisonResult(DataSourceInfo *obj1, DataSourceInfo *obj2) {
-        // Lower priority number first (1 = highest priority, 100 = lowest)
-        if (obj1.priority < obj2.priority) return NSOrderedAscending;
-        if (obj1.priority > obj2.priority) return NSOrderedDescending;
-        
-        // If same priority, prefer source with fewer recent failures
-        if (obj1.failureCount < obj2.failureCount) return NSOrderedAscending;
-        if (obj1.failureCount > obj2.failureCount) return NSOrderedDescending;
-        
-        return NSOrderedSame;
+    // If preferred source specified and available, put it first
+    if (preferredSource != -1) {
+        DataSourceInfo *preferredInfo = self.dataSources[@(preferredSource)];
+        if (preferredInfo && preferredInfo.isConnected && [self dataSourceSupportsRequestType:preferredInfo requestType:requestType]) {
+            [availableSources addObject:preferredInfo];
+            [candidateSources removeObject:preferredInfo];
+        }
+    }
+    
+    // Sort remaining sources by priority (lower number = higher priority)
+    NSArray<DataSourceInfo *> *sortedSources = [candidateSources sortedArrayUsingComparator:^NSComparisonResult(DataSourceInfo *obj1, DataSourceInfo *obj2) {
+        return [@(obj1.priority) compare:@(obj2.priority)];
     }];
     
+    [availableSources addObjectsFromArray:sortedSources];
     
-    for (DataSourceInfo *sourceInfo in allSources) {
-        // Skip if already added as preferred source
-        if (preferredSource != -1 && sourceInfo.type == preferredSource) {
-            continue;
-        }
-        
-        // Only add if connected and supports request type
-        if (sourceInfo.isConnected && [self dataSourceSupportsRequestType:sourceInfo requestType:requestType]) {
-            [availableSources addObject:sourceInfo];
-        }
-    }
-    
-    NSLog(@"📊 DownloadManager: Found %lu available sources for request type %ld",
+    NSLog(@"📡 DownloadManager: Found %lu available sources for request type %ld",
           (unsigned long)availableSources.count, (long)requestType);
     
     return availableSources;
 }
-
 /**
  * 🔍 Check if DataSource supports specific request type
  */
@@ -401,6 +404,9 @@
         case DataRequestTypeQuote:
         case DataRequestTypeBatchQuotes:
             return (capabilities & DataSourceCapabilityQuotes) != 0;
+        case DataRequestTypeSeasonalData:
+        case DataRequestTypeZacksCharts:
+            return (capabilities & DataSourceCapabilityFundamentals) != 0;
             
         case DataRequestTypeHistoricalBars:
             return (capabilities & DataSourceCapabilityHistoricalData) != 0;
@@ -545,6 +551,16 @@
                                    requestID:requestID
                                   completion:completion];
             break;
+        case DataRequestTypeSeasonalData:
+        case DataRequestTypeZacksCharts:
+            [self executeSeasonalDataRequest:parameters
+                              withDataSource:dataSource
+                                  sourceInfo:sourceInfo
+                                     sources:sources
+                                 sourceIndex:sourceIndex
+                                   requestID:requestID
+                                  completion:completion];
+            break;
         case DataRequestTypeNews:
              case DataRequestTypeCompanyNews:
              case DataRequestTypePressReleases:
@@ -576,8 +592,41 @@
 }
 
 #pragma mark - Specific Market Data Request Type Implementations
-
-
+- (void)executeSeasonalDataRequest:(NSDictionary *)parameters
+                    withDataSource:(id<DataSource>)dataSource
+                        sourceInfo:(DataSourceInfo *)sourceInfo
+                           sources:(NSArray<DataSourceInfo *> *)sources
+                       sourceIndex:(NSInteger)sourceIndex
+                         requestID:(NSString *)requestID
+                        completion:(void (^)(id result, DataSourceType usedSource, NSError *error))completion {
+    
+    NSString *symbol = parameters[@"symbol"];
+    NSString *wrapper = parameters[@"dataType"]; // dataType maps to wrapper
+    
+    if ([dataSource respondsToSelector:@selector(fetchZacksFundamentalChartForSymbol:wrapper:completion:)]) {
+        [(OtherDataSource *)dataSource fetchZacksFundamentalChartForSymbol:symbol
+                                                                    wrapper:wrapper
+                                                                 completion:^(NSDictionary *chartData, NSError *error) {
+            [self handleGenericResponse:chartData
+                                   error:error
+                              dataSource:dataSource
+                              sourceInfo:sourceInfo
+                                 sources:sources
+                             sourceIndex:sourceIndex
+                              parameters:parameters
+                               requestID:requestID
+                             requestType:DataRequestTypeSeasonalData
+                              completion:completion];
+        }];
+    } else {
+        [self executeRequestWithSources:sources
+                             requestType:DataRequestTypeSeasonalData
+                              parameters:parameters
+                               requestID:requestID
+                             sourceIndex:sourceIndex + 1
+                              completion:completion];
+    }
+}
 - (void)executeQuoteRequest:(NSDictionary *)parameters
              withDataSource:(id<DataSource>)dataSource
                  sourceInfo:(DataSourceInfo *)sourceInfo
@@ -1594,7 +1643,7 @@
         return; // Request was cancelled
     }
     
-    if (error) {
+    if (error || !result || ([result isKindOfClass:[NSArray class]] && [(NSArray *)result count] == 0)) {
         NSLog(@"❌ DownloadManager: %@ failed for market data request type %ld: %@", dataSource.sourceName, (long)requestType, error.localizedDescription);
         [self recordFailureForSource:sourceInfo];
         
@@ -1997,6 +2046,11 @@
     }];
 }
 
+- (nullable id<DataSource>)dataSourceForType:(DataSourceType)type {
+    DataSourceInfo *info = self.dataSources[@(type)];
+    return info ? info.dataSource : nil;
+}
+
 - (void)getCompanyInfoForSymbol:(NSString *)symbol
                      dataSource:(DataSourceType)dataSource
                      completion:(void(^)(CompanyInfoModel *companyInfo, NSError *error))completion {
@@ -2040,6 +2094,11 @@
     }
     
     return DataSourceTypeUnknown;
+}
+
+- (NSInteger)priorityForDataSource:(DataSourceType)dataSource {
+    DataSourceInfo *info = self.dataSources[@(dataSource)];
+    return info ? info.priority : NSIntegerMax; // Return max priority if not found
 }
 
 - (void)recordFailureForDataSource:(DataSourceType)dataSource {

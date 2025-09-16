@@ -5,7 +5,6 @@
 #import "APIPlaygroundWidget.h"
 #import "WidgetTypeManager.h"
 #import "BaseWidget.h"
-#import "QuoteWidget.h"
 #import "ConnectionStatusWidget.h"
 #import "WatchlistWidget.h"
 #import "ChartWidget.h"
@@ -119,7 +118,6 @@
     NSMutableDictionary *typeToClass = [NSMutableDictionary dictionary];
     
     // FIX: Map specific widget types to their classes
-    typeToClass[@"Quote"] = [QuoteWidget class];
     typeToClass[@"Watchlist"] = [WatchlistWidget class];
     typeToClass[@"Connection Status"] = [ConnectionStatusWidget class];
     typeToClass[@"MultiChart Widget"] = [MultiChartWidget class];

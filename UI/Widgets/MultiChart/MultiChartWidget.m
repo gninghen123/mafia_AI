@@ -15,7 +15,7 @@
 static NSString *const kMultiChartItemWidthKey = @"MultiChart_ItemWidth";
 static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
 
-@interface MultiChartWidget () <NSCollectionViewDelegate, NSCollectionViewDataSource>
+@interface MultiChartWidget ()
 
 // UI Components - Only declare internal ones not in header
 @property (nonatomic, strong) NSView *controlsView;
@@ -23,9 +23,6 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
 
 // Layout
 @property (nonatomic, strong) NSMutableArray<NSLayoutConstraint *> *chartConstraints;
-
-// Data management
-@property (nonatomic, strong) NSTimer *refreshTimer;
 
 @end
 
@@ -281,9 +278,10 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
     self.collectionView.collectionViewLayout = gridLayout;
     self.collectionView.dataSource = self;
     self.collectionView.delegate = self;
-    self.collectionView.backgroundColors = @[[NSColor controlBackgroundColor]];
-    self.collectionView.allowsMultipleSelection = NO;
-    self.collectionView.allowsEmptySelection = YES;
+   // self.collectionView.backgroundColors = @[[NSColor controlBackgroundColor]];
+    self.collectionView.allowsMultipleSelection = YES;
+    self.collectionView.allowsEmptySelection = NO;
+    self.collectionView.selectable = YES;
     
     // ✅ FIX: Registra la classe item CORRETTAMENTE
     [self.collectionView registerClass:[MiniChartCollectionItem class]
@@ -359,7 +357,6 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
-    [self stopAutoRefresh];
     [self saveSettingsOnExit];
 
 }
@@ -368,13 +365,11 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
 
 - (void)viewWillAppear {
     [super viewWillAppear];
-    [self startAutoRefresh];
     [self loadDataFromDataHub];
 }
 
 - (void)viewWillDisappear {
     [super viewWillDisappear];
-    [self stopAutoRefresh];
 }
 
 #pragma mark - Data Loading
@@ -445,6 +440,8 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
             });
         }];
     }
+  
+    
 }
 - (void)loadDataForMiniChart:(MiniChart *)miniChart {
     NSString *symbol = miniChart.symbol;
@@ -642,6 +639,8 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
     return count;
 }
 
+// Sostituisci il metodo itemForRepresentedObjectAtIndexPath: in MultiChartWidget.m
+
 - (NSCollectionViewItem *)collectionView:(NSCollectionView *)collectionView
                      itemForRepresentedObjectAtIndexPath:(NSIndexPath *)indexPath {
     
@@ -672,16 +671,53 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
     // Configura l'item con il MiniChart esistente
     [item configureMiniChart:miniChart];
     
-    // Setup context menu callback only
+    /*
+    // ✅ AGGIUNTO: Setup callbacks
     __weak typeof(self) weakSelf = self;
+    
+    // ✅ NUOVO: Callback per click su chart -> invia alla chain
+    item.onChartClicked = ^(MiniChart *chart) {
+        NSLog(@"📈 MultiChartWidget: Chart clicked callback for: %@", chart.symbol);
+        [weakSelf handleChartSelection:chart];
+    };
+    
+    // Setup context menu callback (esistente)
     item.onSetupContextMenu = ^(MiniChart *chart) {
         [weakSelf setupChartContextMenu:chart];
     };
-    NSLog(@"✅ Created collection item for: %@", miniChart.symbol);
+     */
+    
+    NSLog(@"✅ Created collection item for: %@ with callbacks", miniChart.symbol);
     return item;
 }
 
-
+// ✅ AGGIUNTO: Metodo per gestire la selezione di un chart
+- (void)handleChartSelection:(MiniChart *)selectedChart {
+    NSLog(@"🎯 MultiChartWidget: Handling selection for chart: %@", selectedChart.symbol);
+    
+    // Aggiorna la selezione visiva
+    [self updateChartSelection:selectedChart];
+    
+    // ✅ INVIA ALLA CHAIN se attiva
+    if (self.chainActive && selectedChart.symbol) {
+        [self broadcastUpdate:@{
+            @"action": @"setSymbols",
+            @"symbols": @[selectedChart.symbol]
+        }];
+        
+        NSLog(@"🔗 MultiChartWidget: Chart '%@' sent to chain", selectedChart.symbol);
+        
+        // Mostra feedback visivo
+        [self showTemporaryMessageForCollectionView:
+         [NSString stringWithFormat:@"📈 %@ sent to chain", selectedChart.symbol]];
+    } else if (!self.chainActive) {
+        NSLog(@"⚠️ MultiChartWidget: Chain not active, selection not broadcasted");
+        
+        // Anche se chain non attiva, mostra feedback che il chart è selezionato
+        [self showTemporaryMessageForCollectionView:
+         [NSString stringWithFormat:@"📊 %@ selected", selectedChart.symbol]];
+    }
+}
 #pragma mark - NSCollectionView Delegate Selection
 
 - (void)collectionView:(NSCollectionView *)collectionView didSelectItemsAtIndexPaths:(NSSet<NSIndexPath *> *)indexPaths {
@@ -691,6 +727,8 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
         [self updateChartSelection:selectedChart];
     }
 }
+
+
 
 - (void)showTemporaryMessageForCollectionView:(NSString *)message {
     NSTextField *messageLabel = [NSTextField labelWithString:message];
@@ -989,29 +1027,6 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
     return nil;
 }
 
-#pragma mark - Auto Refresh
-
-- (void)startAutoRefresh {
-    [self stopAutoRefresh]; // Stop existing timer
-    
-    // Refresh every 5min seconds
-    self.refreshTimer = [NSTimer scheduledTimerWithTimeInterval:300.0
-                                                         target:self
-                                                       selector:@selector(autoRefreshTick:)
-                                                       userInfo:nil
-                                                        repeats:YES];
-}
-
-- (void)stopAutoRefresh {
-    if (self.refreshTimer) {
-        [self.refreshTimer invalidate];
-        self.refreshTimer = nil;
-    }
-}
-
-- (void)autoRefreshTick:(NSTimer *)timer {
-    [self refreshAllCharts];
-}
 
 #pragma mark - Notification Handlers
 
@@ -1397,21 +1412,33 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
 
 
 
+// Modifica il metodo updateChartSelection: in MultiChartWidget.m
+
 - (void)updateChartSelection:(MiniChart *)selectedChart {
-    // Rimuovi selezione da tutti i chart (stesso codice)
+    // Rimuovi selezione da tutti i chart
     for (MiniChart *chart in self.miniCharts) {
         if (chart.layer) {
             chart.layer.borderWidth = 0.0;
         }
     }
     
-    // Aggiungi selezione al chart cliccato (stesso codice)
+    // Aggiungi selezione al chart cliccato
     if (selectedChart.layer) {
         selectedChart.layer.borderWidth = 2.0;
         selectedChart.layer.borderColor = [NSColor controlAccentColor].CGColor;
     }
     
-    // ✅ NUOVO: Scroll al chart selezionato per assicurarsi che sia visibile
+    // ✅ NUOVO: Invia simbolo alla chain se attiva
+    if (self.chainActive && selectedChart.symbol) {
+        [self broadcastUpdate:@{
+            @"action": @"setSymbols",
+            @"symbols": @[selectedChart.symbol]
+        }];
+        
+        NSLog(@"🔗 MultiChartWidget: Selected chart '%@' sent to chain", selectedChart.symbol);
+    }
+    
+    // Scroll al chart selezionato
     NSInteger index = [self.miniCharts indexOfObject:selectedChart];
     if (index != NSNotFound) {
         NSIndexPath *indexPath = [NSIndexPath indexPathForItem:index inSection:0];
@@ -1419,7 +1446,7 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
                                         scrollPosition:NSCollectionViewScrollPositionCenteredVertically];
     }
     
-    // Animazione esistente rimane identica
+    // Animazione UI esistente
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0.2;
         if (selectedChart.layer) {

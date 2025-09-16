@@ -109,7 +109,7 @@
 #pragma mark - Zacks Data
 
 // Zacks chart data
-- (void)fetchZacksChartForSymbol:(NSString *)symbol
+- (void)fetchZacksFundamentalChartForSymbol:(NSString *)symbol
                          wrapper:(NSString *)wrapper // revenue, eps_diluted, etc.
                       completion:(void (^)(NSDictionary *chartData, NSError *error))completion;
 

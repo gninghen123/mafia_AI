@@ -86,6 +86,9 @@ NS_ASSUME_NONNULL_BEGIN
 // Archive helpers
 - (NSArray<NSString *> *)discoverAvailableArchives;
 
+//
+
+
 @end
 
 #pragma mark - Provider Protocol
@@ -114,7 +117,6 @@ NS_ASSUME_NONNULL_BEGIN
 @optional
 - (void)addSymbol:(NSString *)symbol completion:(void(^)(BOOL success, NSError * _Nullable error))completion;
 - (void)removeSymbol:(NSString *)symbol completion:(void(^)(BOOL success, NSError * _Nullable error))completion;
-
 @end
 
 NS_ASSUME_NONNULL_END

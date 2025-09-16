@@ -16,7 +16,6 @@
 #import "WatchlistWidget.h"
 #import "ConnectionsWidget.h"
 #import "SeasonalChartWidget.h"
-#import "QuoteWidget.h"
 #import "ConnectionStatusWidget.h"
 #import "APIPlaygroundWidget.h"
 #import "ibkrdatasource.h"

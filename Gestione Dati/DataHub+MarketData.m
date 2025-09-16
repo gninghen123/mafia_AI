@@ -10,8 +10,6 @@
 #import "DataHub+Private.h"
 #import "DataManager.h"
 #import "MarketData.h"
-
-// Import Core Data entities (for internal persistence only)
 #import "HistoricalBar+CoreDataClass.h"
 #import "MarketQuote+CoreDataClass.h"
 #import "CompanyInfo+CoreDataClass.h"

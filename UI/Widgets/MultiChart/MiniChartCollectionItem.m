@@ -7,7 +7,8 @@
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    // Abilita il layer per selezione e bordi
+    
+    // ✅ IMPORTANTE: Abilita la selezione
     self.view.wantsLayer = YES;
     if (self.view.layer) {
         self.view.layer.masksToBounds = YES;
@@ -15,21 +16,14 @@
         self.view.layer.borderWidth = 0.0;
         self.view.layer.borderColor = [NSColor clearColor].CGColor;
     }
+    
+   
+    
+    NSLog(@"✅ MiniChartCollectionItem: Click gesture added");
 }
 
-- (BOOL)isSelectable {
-    return YES;
-}
 
-- (void)handleItemClick:(NSClickGestureRecognizer *)recognizer {
-    if (self.collectionView) {
-        NSIndexPath *indexPath = [self.collectionView indexPathForItem:self];
-        if (indexPath) {
-            [self.collectionView selectItemsAtIndexPaths:[NSSet setWithObject:indexPath]
-                                            scrollPosition:NSCollectionViewScrollPositionNone];
-        }
-    }
-}
+
 
 - (void)loadView {
     // ✅ FIX: Crea sempre una view container, mai riutilizzare direttamente MiniChart

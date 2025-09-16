@@ -797,125 +797,13 @@
         return;
     }
     
-    NSLog(@"🌐 DownloadManager: Executing symbol search for '%@' via %@", query, DataSourceTypeToString(dataSource));
+    NSLog(@"DataManager: Requesting symbol search for '%@'", query);
     
-    // Get appropriate data source
-    id<DataSource> dataSourceImpl = [self dataSourceForType:dataSource];
-
-    if (!dataSourceImpl) {
-        // Try fallback to next available source
-        DataSourceType fallbackSource = [self getNextAvailableDataSource:dataSource];
-        if (fallbackSource != DataSourceTypeUnknown) {
-            NSLog(@"🔄 DownloadManager: Falling back to %@", DataSourceTypeToString(fallbackSource));
-            [self searchSymbolsWithQuery:query dataSource:fallbackSource limit:limit completion:completion];
-            return;
-        }
-        
-        NSError *error = [NSError errorWithDomain:@"DownloadManager" code:404
-                                         userInfo:@{NSLocalizedDescriptionKey: @"No available data sources for symbol search"}];
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(nil, error);
-            });
-        }
-        return;
-    }
-    
-    // Check if data source supports symbol search
-    if (![dataSourceImpl respondsToSelector:@selector(searchSymbolsWithQuery:limit:completion:)]) {
-        NSLog(@"⚠️ DownloadManager: %@ does not support symbol search", DataSourceTypeToString(dataSource));
-        
-        // Try next available source
-        DataSourceType fallbackSource = [self getNextAvailableDataSource:dataSource];
-        if (fallbackSource != DataSourceTypeUnknown) {
-            [self searchSymbolsWithQuery:query dataSource:fallbackSource limit:limit completion:completion];
-            return;
-        }
-        
-        NSError *error = [NSError errorWithDomain:@"DownloadManager" code:501
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Symbol search not supported by available data sources"}];
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(nil, error);
-            });
-        }
-        return;
-    }
-    
-    // Execute search via selected data source
-    NSTimeInterval startTime = [[NSDate date] timeIntervalSince1970];
-    
-    [dataSourceImpl searchSymbolsWithQuery:query
-                                      limit:limit
-                                 completion:^(NSArray<NSDictionary *> *results, NSError *error) {
-        
-        NSTimeInterval duration = [[NSDate date] timeIntervalSince1970] - startTime;
-        
-        if (error) {
-            NSLog(@"❌ DownloadManager: Symbol search failed for %@ (%.2fs): %@",
-                  DataSourceTypeToString(dataSource), duration, error.localizedDescription);
-            
-            // Track failure and try fallback
-            [self recordFailureForDataSource:dataSource];
-            
-            DataSourceType fallbackSource = [self getNextAvailableDataSource:dataSource];
-            if (fallbackSource != DataSourceTypeUnknown) {
-                NSLog(@"🔄 DownloadManager: Trying fallback to %@", DataSourceTypeToString(fallbackSource));
-                [self searchSymbolsWithQuery:query dataSource:fallbackSource limit:limit completion:completion];
-                return;
-            }
-            
-            // No more fallbacks available
-            if (completion) {
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    completion(nil, error);
-                });
-            }
-            return;
-        }
-        
-        NSLog(@"✅ DownloadManager: Symbol search completed for %@ (%.2fs): %ld results",
-              DataSourceTypeToString(dataSource), duration, (long)results.count);
-        
-        // Reset failure count on success
-        [self recordSuccessForDataSource:dataSource];
-        
-        // Return results
-        if (completion) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completion(results ?: @[], nil);
-            });
-        }
-    }];
-}
-
-// Helper methods for DownloadManager:
-
-- (DataSourceType)getNextAvailableDataSource:(DataSourceType)currentSource {
-    // Get list of data sources sorted by priority
-    NSArray<NSNumber *> *availableSources = [self.dataSources.allKeys sortedArrayUsingComparator:^NSComparisonResult(NSNumber *obj1, NSNumber *obj2) {
-        NSInteger priority1 = [self priorityForDataSource:(DataSourceType)obj1.integerValue];
-        NSInteger priority2 = [self priorityForDataSource:(DataSourceType)obj2.integerValue];
-        return [@(priority1) compare:@(priority2)];
-    }];
-    
-    // Find next available source after current one
-    BOOL foundCurrent = NO;
-    for (NSNumber *sourceTypeNum in availableSources) {
-        DataSourceType sourceType = (DataSourceType)sourceTypeNum.integerValue;
-        
-        if (foundCurrent) {
-            if ([self isDataSourceConnected:sourceType]) {
-                return sourceType;
-            }
-        }
-        
-        if (sourceType == currentSource) {
-            foundCurrent = YES;
-        }
-    }
-    
-    return DataSourceTypeUnknown;
+    // Use DownloadManager's specific search method instead of executeMarketDataRequest
+    [self.downloadManager searchSymbolsWithQuery:query
+                                       dataSource:dataSource
+                                            limit:limit
+                                       completion:completion];
 }
 
 - (void)recordFailureForDataSource:(DataSourceType)dataSource {
@@ -928,5 +816,63 @@
     // Reset failure counters on success
 }
 
+
+#pragma mark - Seasonal Data Implementation (MISSING)
+
+- (void)requestSeasonalDataForSymbol:(NSString *)symbol
+                            dataType:(NSString *)dataType
+                          completion:(void (^)(SeasonalDataModel *seasonalData, NSError *error))completion {
+    
+    if (!symbol || symbol.length == 0 || !dataType || dataType.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"DataManager"
+                                             code:104
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid symbol or dataType for seasonal data request"}];
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(nil, error);
+            });
+        }
+        return;
+    }
+    
+    NSLog(@"📊 DataManager: Requesting seasonal data for %@ (%@)", symbol, dataType);
+    
+    NSDictionary *parameters = @{
+        @"symbol": symbol,
+        @"dataType": dataType
+    };
+    
+    [self.downloadManager executeMarketDataRequest:DataRequestTypeSeasonalData
+                                        parameters:parameters
+                                        completion:^(id result, DataSourceType usedSource, NSError *error) {
+        if (error) {
+            NSLog(@"❌ DataManager: Seasonal data request failed: %@", error.localizedDescription);
+            if (completion) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    completion(nil, error);
+                });
+            }
+            return;
+        }
+        
+        // Convert result to SeasonalDataModel
+        SeasonalDataModel *seasonalModel = nil;
+        if ([result isKindOfClass:[SeasonalDataModel class]]) {
+            seasonalModel = (SeasonalDataModel *)result;
+        } else if ([result isKindOfClass:[NSDictionary class]]) {
+            // Use OtherDataAdapter to convert Zacks data
+            OtherDataAdapter *adapter = [[OtherDataAdapter alloc] init];
+            seasonalModel = [adapter convertZacksChartToSeasonalModel:(NSDictionary *)result
+                                                               symbol:symbol
+                                                             dataType:dataType];
+        }
+        
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(seasonalModel, nil);
+            });
+        }
+    }];
+}
 
 @end

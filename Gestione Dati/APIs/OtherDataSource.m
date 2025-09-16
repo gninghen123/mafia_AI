@@ -996,7 +996,7 @@ static NSString *const kSeekingAlphaNewsURL = @"https://seekingalpha.com/api/sa/
 
 #pragma mark - Zacks Data
 
-- (void)fetchZacksChartForSymbol:(NSString *)symbol
+- (void)fetchZacksFundamentalChartForSymbol:(NSString *)symbol
                          wrapper:(NSString *)wrapper
                       completion:(void (^)(NSDictionary *chartData, NSError *error))completion {
     NSString *urlString = [NSString stringWithFormat:@"%@?ticker=%@&wrapper=%@",

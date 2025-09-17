@@ -859,18 +859,30 @@ static NSString *const kChainSenderKey = @"sender";
 #pragma mark - NSComboBoxDataSource
 
 - (NSInteger)numberOfItemsInComboBox:(NSComboBox *)comboBox {
+    if (comboBox != self.titleComboBox) {
+        return 0;
+    }
     return self.availableWidgetTypes.count;
 }
 
 - (id)comboBox:(NSComboBox *)comboBox objectValueForItemAtIndex:(NSInteger)index {
+    if (comboBox != self.titleComboBox) {
+        return nil;
+    }
     return self.availableWidgetTypes[index];
 }
 
 - (NSUInteger)comboBox:(NSComboBox *)comboBox indexOfItemWithStringValue:(NSString *)string {
+    if (comboBox != self.titleComboBox) {
+        return NSNotFound;
+    }
     return [self.availableWidgetTypes indexOfObject:string];
 }
 
 - (NSString *)comboBox:(NSComboBox *)comboBox completedString:(NSString *)string {
+    if (comboBox != self.titleComboBox) {
+        return nil;
+    }
     for (NSString *type in self.availableWidgetTypes) {
         if ([type.lowercaseString hasPrefix:string.lowercaseString]) {
             return type;

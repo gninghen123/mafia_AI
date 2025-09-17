@@ -344,7 +344,9 @@
         self.symbolTextField.stringValue = savedData.symbol;
         
         // Update timeframe segmented control
-        self.timeframeSegmented.selectedSegment = savedData.timeframe;
+        NSInteger segmentIndex = [self barTimeframeToSegmentIndex:savedData.timeframe];
+            self.timeframeSegmented.selectedSegment = segmentIndex;
+        
         
         // Apply data using the public method (it handles viewport setup internally)
         [self updateWithHistoricalBars:savedData.historicalBars];

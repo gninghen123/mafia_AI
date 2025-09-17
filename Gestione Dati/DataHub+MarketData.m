@@ -1108,6 +1108,8 @@
 }
 
 
+// ✅ FIX: Metodo saveHistoricalBarsModelToCoreData con logging chiarito
+
 - (void)saveHistoricalBarsModelToCoreData:(NSArray<HistoricalBarModel *> *)bars
                                    symbol:(NSString *)symbol
                                 timeframe:(BarTimeframe)timeframe {
@@ -1136,31 +1138,38 @@
                                         inContext:backgroundContext];
             }
             
-            // ✅ STEP 4: Save with error handling
+            // ✅ STEP 4: Save background context
             NSError *saveError = nil;
             if (![backgroundContext save:&saveError]) {
-                NSLog(@"❌ Error saving historical bars to Core Data: %@", saveError);
+                NSLog(@"❌ Error saving historical bars to background context: %@", saveError);
                 
                 // Retry once on conflict
                 if (saveError.code == NSManagedObjectMergeError) {
                     [backgroundContext rollback];
                     // Could implement retry logic here if needed
                 }
+                return; // Exit if background save fails
             } else {
-                NSLog(@"✅ Successfully saved %lu deduplicated bars to Core Data for %@",
+                NSLog(@"📝 Background context: Prepared %lu deduplicated bars for %@",
                       (unsigned long)deduplicatedBars.count, symbol);
                 
-                // ✅ STEP 5: Save to parent context
+                // ✅ STEP 5: Save to parent context (main context) - THIS IS THE REAL SAVE
                 dispatch_async(dispatch_get_main_queue(), ^{
                     NSError *parentSaveError = nil;
                     if (![self.mainContext save:&parentSaveError]) {
-                        NSLog(@"❌ Error saving to main context: %@", parentSaveError);
+                        NSLog(@"❌ Error saving to persistent store: %@", parentSaveError);
+                    } else {
+                        // ✅ UNICO LOG DI SUCCESSO FINALE
+                        NSLog(@"✅ Successfully saved %lu deduplicated bars to Core Data for %@",
+                              (unsigned long)deduplicatedBars.count, symbol);
                     }
                 });
             }
         }];
     });
 }
+
+
 - (NSArray<HistoricalBarModel *> *)removeDuplicatesFromBars:(NSArray<HistoricalBarModel *> *)bars {
     if (bars.count <= 1) return bars;
     

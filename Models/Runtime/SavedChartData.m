@@ -9,6 +9,7 @@
 #import "ChartWidget.h"
 #import <compression.h>
 #import "ChartWidget+SaveData.h"
+#import "SavedChartData+FilenameParsing.h"
 
 
 // Forward declaration to access private properties
@@ -273,8 +274,8 @@
         return nil;
     }
     
-    NSLog(@"📂 Loading SavedChartData from: %@ (%.1f KB)",
-          [filePath lastPathComponent], fileData.length / 1024.0);
+    NSString *filename = [filePath lastPathComponent];
+    NSLog(@"📂 Loading SavedChartData from: %@ (%.1f KB)", filename, fileData.length / 1024.0);
     
     // 🗜️ TRY TO DECOMPRESS (LZFSE format detection)
     NSData *plistData = [self decompressData:fileData];
@@ -297,26 +298,121 @@
         return nil;
     }
     
-    SavedChartData *savedData = [[self alloc] initWithDictionary:dictionary];
+    // ✅ STEP 1: Extract authoritative metadata from filename using existing parsing methods
+    NSString *filenameSymbol = nil;
+    BarTimeframe filenameTimeframe = BarTimeframeDaily;
+    SavedChartDataType filenameDataType = SavedChartDataTypeSnapshot;
+    BOOL filenameExtendedHours = NO;
+    BOOL hasFilenameMetadata = NO;
+    
+    if ([self isNewFormatFilename:filename]) {
+        filenameSymbol = [self symbolFromFilename:filename];
+        filenameTimeframe = [self timeframeEnumFromFilename:filename];
+        
+        NSString *typeStr = [self typeFromFilename:filename];
+        filenameDataType = [typeStr isEqualToString:@"Continuous"] ?
+                          SavedChartDataTypeContinuous : SavedChartDataTypeSnapshot;
+        
+        filenameExtendedHours = [self extendedHoursFromFilename:filename];
+        hasFilenameMetadata = YES;
+        
+        NSLog(@"📋 Filename metadata: symbol=%@, timeframe=%ld, type=%@, extendedHours=%@",
+              filenameSymbol, (long)filenameTimeframe, typeStr, filenameExtendedHours ? @"YES" : @"NO");
+    }
+    
+    // ✅ STEP 2: Create corrected dictionary with filename metadata as priority
+    NSMutableDictionary *correctedDictionary = [dictionary mutableCopy];
+    BOOL hadInconsistencies = NO;
+    
+    if (hasFilenameMetadata) {
+        
+        // Correct symbol if inconsistent
+        NSString *internalSymbol = dictionary[@"symbol"];
+        if (filenameSymbol && ![internalSymbol isEqualToString:filenameSymbol]) {
+            correctedDictionary[@"symbol"] = filenameSymbol;
+            hadInconsistencies = YES;
+            NSLog(@"🔧 FIXED: symbol %@ → %@ (from filename)", internalSymbol, filenameSymbol);
+        }
+        
+        // Correct timeframe if inconsistent
+        NSNumber *internalTimeframe = dictionary[@"timeframe"];
+        if (internalTimeframe.integerValue != filenameTimeframe) {
+            correctedDictionary[@"timeframe"] = @(filenameTimeframe);
+            hadInconsistencies = YES;
+            NSLog(@"🔧 FIXED: timeframe %@ → %ld (from filename)", internalTimeframe, (long)filenameTimeframe);
+        }
+        
+        // Correct dataType if inconsistent
+        NSNumber *internalDataType = dictionary[@"dataType"];
+        if (internalDataType.integerValue != filenameDataType) {
+            correctedDictionary[@"dataType"] = @(filenameDataType);
+            hadInconsistencies = YES;
+            NSLog(@"🔧 FIXED: dataType %@ → %d (from filename)", internalDataType, (int)filenameDataType);
+        }
+        
+        // Correct extendedHours if inconsistent
+        NSNumber *internalExtendedHours = dictionary[@"includesExtendedHours"];
+        if (internalExtendedHours.boolValue != filenameExtendedHours) {
+            correctedDictionary[@"includesExtendedHours"] = @(filenameExtendedHours);
+            hadInconsistencies = YES;
+            NSLog(@"🔧 FIXED: includesExtendedHours %@ → %@ (from filename)",
+                  internalExtendedHours, filenameExtendedHours ? @"YES" : @"NO");
+        }
+        
+        // ✅ STEP 3: Fix timeframe in ALL historical bars if timeframe was inconsistent
+        NSArray *barsData = dictionary[@"historicalBars"];
+        if (barsData && internalTimeframe.integerValue != filenameTimeframe) {
+            NSMutableArray *correctedBarsData = [NSMutableArray array];
+            NSInteger correctedBarCount = 0;
+            
+            for (NSDictionary *barDict in barsData) {
+                NSMutableDictionary *correctedBarDict = [barDict mutableCopy];
+                NSNumber *barTimeframe = barDict[@"timeframe"];
+                
+                if (barTimeframe.integerValue != filenameTimeframe) {
+                    correctedBarDict[@"timeframe"] = @(filenameTimeframe);
+                    correctedBarCount++;
+                }
+                
+                [correctedBarsData addObject:[correctedBarDict copy]];
+            }
+            
+            correctedDictionary[@"historicalBars"] = [correctedBarsData copy];
+            
+            if (correctedBarCount > 0) {
+                NSLog(@"🔧 FIXED: timeframe in %ld historical bars", (long)correctedBarCount);
+            }
+        }
+    }
+    
+    // ✅ STEP 4: Create SavedChartData with corrected metadata
+    SavedChartData *savedData = [[self alloc] initWithDictionary:[correctedDictionary copy]];
+    
     if (savedData) {
         savedData.isCompressed = wasCompressed;
         
+        // ✅ STEP 5: Log results
+        if (hadInconsistencies) {
+            NSLog(@"✅ Loaded SavedChartData with CORRECTED metadata: %@ [%@] %ld bars",
+                  savedData.symbol, savedData.timeframeDescription, (long)savedData.barCount);
+            NSLog(@"   🔧 Fixed inconsistencies using filename as authoritative source");
+        } else {
+            NSLog(@"✅ Loaded SavedChartData: %@ [%@] %ld bars (no corrections needed)",
+                  savedData.symbol, savedData.timeframeDescription, (long)savedData.barCount);
+        }
+        
         if (wasCompressed) {
             CGFloat compressionRatio = (CGFloat)fileData.length / (CGFloat)plistData.length;
-            NSLog(@"✅ Loaded compressed SavedChartData: %@ [%@] %ld bars",
-                  savedData.symbol, savedData.timeframeDescription, (long)savedData.barCount);
             NSLog(@"   📦 Decompressed: %.1f KB → %.1f KB (%.1fx expansion)",
                   fileData.length / 1024.0,
                   plistData.length / 1024.0,
                   1.0 / compressionRatio);
-        } else {
-            NSLog(@"✅ Loaded uncompressed SavedChartData: %@ [%@] %ld bars",
-                  savedData.symbol, savedData.timeframeDescription, (long)savedData.barCount);
         }
     }
     
     return savedData;
 }
+
 
 #pragma mark - Properties
 

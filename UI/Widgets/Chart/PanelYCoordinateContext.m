@@ -19,21 +19,17 @@
     
     // ✅ Cache dei valori logaritmici (solo se necessari)
     if (self.useLogScale && self.yRangeMin > 0 && self.yRangeMax > 0) {
-        self.cachedLogMin = log(self.yRangeMin);
-        self.cachedLogMax = log(self.yRangeMax);
-        double logRange = self.cachedLogMax - self.cachedLogMin;
-        self.cachedLogRangeInv = (logRange > 0) ? (1.0 / logRange) : 0.0;
+        double logMin = log(self.yRangeMin);
+        double logMax = log(self.yRangeMax);
+        self.cachedLogRange = logMax - logMin;
     } else {
-        // Reset dei valori log se non in uso
-        self.cachedLogMin = 0.0;
-        self.cachedLogMax = 0.0;
-        self.cachedLogRangeInv = 0.0;
+        self.cachedLogRange = 0.0;
     }
     
     self.cacheValid = YES;
     
-    NSLog(@"📊 PanelYContext: Cache updated - Range:%.3f, Height:%.0f, LogScale:%@",
-          self.cachedLinearRange, self.cachedUsableHeight, self.useLogScale ? @"YES" : @"NO");
+    NSLog(@"📊 PanelYContext: Cache updated - Range:%.3f, Height:%.0f, LogRange:%.3f, LogScale:%@",
+          self.cachedLinearRange, self.cachedUsableHeight, self.cachedLogRange, self.useLogScale ? @"YES" : @"NO");
 }
 
 #pragma mark - Optimized Conversion Methods
@@ -52,12 +48,12 @@
     
     double normalizedValue;
     
-    if (self.useLogScale && value > 0 && self.yRangeMin > 0 && self.yRangeMax > 0 && self.cachedLogRangeInv > 0.0) {
-        // 🔢 SCALA LOGARITMICA OTTIMIZZATA - usa cache
+    if (self.useLogScale && value > 0 && self.yRangeMin > 0 && self.yRangeMax > 0 && self.cachedLogRange > 0.0) {
+        double logMin = log(self.yRangeMin);
+        double logMax = log(self.yRangeMax);
         double logValue = log(value);
-        normalizedValue = (logValue - self.cachedLogMin) * self.cachedLogRangeInv;
+        normalizedValue = (logValue - logMin) / (logMax - logMin);
     } else {
-        // 📏 SCALA LINEARE OTTIMIZZATA - usa cache
         normalizedValue = (value - self.yRangeMin) / self.cachedLinearRange;
     }
     
@@ -82,12 +78,12 @@
     double normalizedY = (screenY - 10.0) / self.cachedUsableHeight;
     normalizedY = fmax(0.0, fmin(1.0, normalizedY));
     
-    if (self.useLogScale && self.yRangeMin > 0 && self.yRangeMax > 0 && self.cachedLogRangeInv > 0.0) {
-        // 🔢 SCALA LOGARITMICA INVERSA OTTIMIZZATA - usa cache
-        double logValue = self.cachedLogMin + (normalizedY / self.cachedLogRangeInv);
+    if (self.useLogScale && self.yRangeMin > 0 && self.yRangeMax > 0 && self.cachedLogRange > 0.0) {
+        double logMin = log(self.yRangeMin);
+        double logMax = log(self.yRangeMax);
+        double logValue = logMin + (normalizedY * (logMax - logMin));
         return exp(logValue);
     } else {
-        // 📏 SCALA LINEARE INVERSA OTTIMIZZATA - usa cache
         return self.yRangeMin + (normalizedY * self.cachedLinearRange);
     }
 }
@@ -141,7 +137,7 @@
         @"useLogScale": @(self.useLogScale),
         @"linearRange": @(self.cachedLinearRange),
         @"usableHeight": @(self.cachedUsableHeight),
-        @"logRangeInv": @(self.cachedLogRangeInv)
+        @"logRange": @(self.cachedLogRange)
     };
 }
 - (double)valueForNormalizedY:(double)normalizedY {

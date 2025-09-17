@@ -50,6 +50,38 @@
     
     return [relatedSymbols allObjects];
 }
+- (void)awakeFromInsert {
+    [super awakeFromInsert];
+    
+    // ✅ FIX: Imposta sempre creationDate per evitare l'errore "creationDate is a required value"
+    NSDate *now = [NSDate date];
+    if (!self.creationDate) {
+        self.creationDate = now;
+    }
+    
+    // Imposta anche firstInteraction se non presente
+    if (!self.firstInteraction) {
+        self.firstInteraction = now;
+    }
+    
+    // Imposta lastInteraction se non presente
+    if (!self.lastInteraction) {
+        self.lastInteraction = now;
+    }
+    
+    // Inizializza interactionCount se è 0
+    if (self.interactionCount == 0) {
+        self.interactionCount = 1;
+    }
+    
+    // Inizializza isFavorite se non impostato
+    // (il valore di default sarà NO)
+    
+    // Inizializza tags se non presente
+    if (!self.tags) {
+        self.tags = @[];
+    }
+}
 
 - (NSInteger)activeConnectionsCount {
     NSInteger count = 0;

@@ -501,45 +501,46 @@
         [labelText drawAtPoint:textPoint withAttributes:textAttributes];
     }
 }
+// Safe log scale tick generator
 - (NSArray<NSNumber *> *)generateLogScaleTickValues {
-    NSMutableArray *values = [NSMutableArray array];
+    if (self.yRangeMax <= 0 || self.yRangeMax <= self.yRangeMin) return @[];
     
-    // Trova la prima potenza di 10 nel range
-    double logMin = log10(self.yRangeMin);
-    double logMax = log10(self.yRangeMax);
+    // Ensure positive minimum for log scale
+    double safeMin = fmax(self.yRangeMin, 0.000001);
+    double safeMax = fmax(self.yRangeMax, safeMin * 10.0); // avoid collapse
     
-    NSInteger startDecade = (NSInteger)floor(logMin);
-    NSInteger endDecade = (NSInteger)ceil(logMax);
+    double logMin = log10(safeMin);
+    double logMax = log10(safeMax);
     
-    // Genera valori: 1, 2, 5, 10, 20, 50, 100, etc.
-    for (NSInteger decade = startDecade; decade <= endDecade; decade++) {
-        double base = pow(10, decade);
-        NSArray *multipliers = @[@1, @2, @5];
-        
-        for (NSNumber *mult in multipliers) {
-            double value = base * mult.doubleValue;
-            if (value >= self.yRangeMin && value <= self.yRangeMax) {
-                [values addObject:@(value)];
-            }
-        }
+    NSInteger tickCount = 5; // or dynamic
+    double step = (logMax - logMin) / (tickCount - 1);
+    
+    NSMutableArray<NSNumber *> *ticks = [NSMutableArray array];
+    for (NSInteger i = 0; i < tickCount; i++) {
+        double logValue = logMin + step * i;
+        double value = pow(10.0, logValue);
+        [ticks addObject:@(value)];
     }
-    
-    return values;
+    return ticks;
 }
 
+// Evenly spaced linear scale ticks, clamped at 0 for safety
 - (NSArray<NSNumber *> *)generateLinearScaleTickValues {
-    NSMutableArray *values = [NSMutableArray array];
+    if (self.yRangeMax <= self.yRangeMin) return @[];
     
-    // Genera 8 tick lineari semplici
-    NSInteger tickCount = 8;
-    double step = (self.yRangeMax - self.yRangeMin) / (tickCount - 1);
+    NSInteger tickCount = 5; // can be adjusted dynamically based on height
+    double range = self.yRangeMax - self.yRangeMin;
+    if (range <= 0) return @[];
+    
+    double step = range / (tickCount - 1);
+    NSMutableArray<NSNumber *> *ticks = [NSMutableArray array];
     
     for (NSInteger i = 0; i < tickCount; i++) {
-        double value = self.yRangeMin + (i * step);
-        [values addObject:@(value)];
+        double value = self.yRangeMin + step * i;
+        if (value < 0) value = 0; // clamp to 0 for safety
+        [ticks addObject:@(value)];
     }
-    
-    return values;
+    return ticks;
 }
 
 - (void)drawYAxisTicksWithValues:(NSArray<NSNumber *> *)tickValues {

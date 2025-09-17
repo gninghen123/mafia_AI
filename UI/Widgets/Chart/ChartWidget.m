@@ -2502,7 +2502,6 @@ extern NSString *const DataHubDataLoadedNotification;
     NSString *savedDataReference = data[@"savedDataReference"];
     NSDate *patternStartDate = data[@"patternStartDate"];
     NSDate *patternEndDate = data[@"patternEndDate"];
-    NSNumber *timeframeNumber = data[@"timeframe"];
     NSString *patternType = data[@"patternType"];
     
     // ✅ Validate essential data

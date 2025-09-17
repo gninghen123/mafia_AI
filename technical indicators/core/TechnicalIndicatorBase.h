@@ -11,6 +11,12 @@
 
 @class IndicatorDataModel;
 
+typedef NS_ENUM(NSInteger, PriceDirection) {
+    PriceDirectionNeutral = 0,    // Grigio: close == previousClose
+    PriceDirectionUp = 1,         // Verde: close > previousClose
+    PriceDirectionDown = -1       // Rosso: close < previousClose
+};
+
 typedef NS_ENUM(NSInteger, IndicatorType) {
     IndicatorTypeHardcoded,      // Built-in indicators (EMA, SMA, etc.)
     IndicatorTypePineScript      // Custom PineScript indicators
@@ -119,6 +125,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, nullable) NSColor *color;   // Display color
 @property (nonatomic, assign) double anchorValue;         // For relative positioning
 @property (nonatomic, assign) BOOL isSignal;              // For buy/sell signals
+@property (nonatomic, assign) PriceDirection priceDirection;  // ✅ NUOVO: Direzione prezzo per colori
 
 // Convenience initializers
 + (instancetype)dataWithTimestamp:(NSDate *)timestamp
@@ -131,7 +138,12 @@ NS_ASSUME_NONNULL_BEGIN
                        seriesName:(NSString *)seriesName
                        seriesType:(VisualizationType)type
                             color:(NSColor *)color;
-
++ (instancetype)dataWithTimestamp:(NSDate *)timestamp
+                            value:(double)value
+                       seriesName:(NSString *)seriesName
+                       seriesType:(VisualizationType)type
+                            color:(nullable NSColor *)color
+                   priceDirection:(PriceDirection)priceDirection;
 @end
 
 NS_ASSUME_NONNULL_END

@@ -32,6 +32,58 @@
 
 #pragma mark - TechnicalIndicatorBase Overrides
 
+- (void)calculateWithBars:(NSArray<HistoricalBarModel *> *)bars {
+    [self reset];
+    
+    if (![self canCalculateWithBars:bars]) {
+        NSString *errorMsg = [NSString stringWithFormat:@"Insufficient data: need %ld bars, got %lu",
+                              (long)[self minimumBarsRequired], (unsigned long)bars.count];
+        self.lastError = [NSError errorWithDomain:@"VolumeIndicatorError"
+                                             code:1001
+                                         userInfo:@{NSLocalizedDescriptionKey: errorMsg}];
+        return;
+    }
+    
+    NSMutableArray<IndicatorDataModel *> *outputData = [[NSMutableArray alloc] init];
+    
+    // ✅ NUOVO: Calcola volume con direzione prezzo
+    for (NSInteger i = 0; i < bars.count; i++) {
+        HistoricalBarModel *currentBar = bars[i];
+        
+        // Estrai il valore del volume (usando il metodo ereditato)
+        double volumeValue = [self extractValueFromBar:currentBar];
+        
+        // ✅ NUOVO: Determina la direzione del prezzo
+        PriceDirection direction = PriceDirectionNeutral;
+        if (i > 0) {
+            HistoricalBarModel *previousBar = bars[i - 1];
+            if (currentBar.close > previousBar.close) {
+                direction = PriceDirectionUp;
+            } else if (currentBar.close < previousBar.close) {
+                direction = PriceDirectionDown;
+            }
+            // Se close == previousClose rimane PriceDirectionNeutral
+        }
+        
+        // ✅ NUOVO: Crea IndicatorDataModel con direzione prezzo
+        IndicatorDataModel *dataPoint = [IndicatorDataModel dataWithTimestamp:currentBar.date
+                                                                        value:volumeValue
+                                                                   seriesName:@"Volume"
+                                                                   seriesType:VisualizationTypeHistogram
+                                                                        color:nil
+                                                               priceDirection:direction];
+        
+        [outputData addObject:dataPoint];
+    }
+    
+    // Set output and mark as calculated
+    self.outputSeries = [outputData copy];
+    self.isCalculated = YES;
+    
+    NSLog(@"✅ VolumeIndicator calculated with %lu bars (with price direction coloring)",
+          (unsigned long)outputData.count);
+}
+
 + (NSDictionary<NSString *, id> *)defaultParameters {
     return @{
         @"dataType": @(RawDataTypeVolume),

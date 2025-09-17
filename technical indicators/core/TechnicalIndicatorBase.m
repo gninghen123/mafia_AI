@@ -130,7 +130,8 @@
                              value:value
                         seriesName:seriesName
                         seriesType:type
-                             color:nil];
+                             color:nil
+                    priceDirection:PriceDirectionNeutral];
 }
 
 + (instancetype)dataWithTimestamp:(NSDate *)timestamp
@@ -138,14 +139,29 @@
                        seriesName:(NSString *)seriesName
                        seriesType:(VisualizationType)type
                             color:(NSColor *)color {
+    return [self dataWithTimestamp:timestamp
+                             value:value
+                        seriesName:seriesName
+                        seriesType:type
+                             color:color
+                    priceDirection:PriceDirectionNeutral];
+}
+
++ (instancetype)dataWithTimestamp:(NSDate *)timestamp
+                            value:(double)value
+                       seriesName:(NSString *)seriesName
+                       seriesType:(VisualizationType)type
+                            color:(NSColor *)color
+                   priceDirection:(PriceDirection)priceDirection {
     IndicatorDataModel *model = [[self alloc] init];
     model.timestamp = timestamp;
     model.value = value;
     model.seriesName = seriesName;
     model.seriesType = type;
-    model.color = color ?: [NSColor systemBlueColor];  // Default color
+    model.color = color ?: [NSColor systemBlueColor];
     model.anchorValue = 0.0;
     model.isSignal = NO;
+    model.priceDirection = priceDirection;  // ✅ NUOVO
     return model;
 }
 

@@ -78,13 +78,13 @@
             filePath = "UI/Widgets/Chart/ChartWidget+IndicatorsUI.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "632"
-            endingLineNumber = "632"
+            startingLineNumber = "630"
+            endingLineNumber = "630"
             landmarkName = "-deleteTemplateWithConfirmation:"
             landmarkType = "7">
             <Locations>
                <Location
-                  uuid = "D272F23F-D83F-42F3-95F3-291C6098AE59 - 3f1fdfbe44b64831"
+                  uuid = "D272F23F-D83F-42F3-95F3-291C6098AE59 - 3f1fdfbe44b6486f"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
@@ -94,11 +94,11 @@
                   urlString = "file:///Users/fabiogattone/Documents/mafia_AI/UI/Widgets/Chart/ChartWidget+IndicatorsUI.m"
                   startingColumnNumber = "9223372036854775807"
                   endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "632"
-                  endingLineNumber = "632">
+                  startingLineNumber = "630"
+                  endingLineNumber = "630">
                </Location>
                <Location
-                  uuid = "D272F23F-D83F-42F3-95F3-291C6098AE59 - 7ab6216ab5b2ebf"
+                  uuid = "D272F23F-D83F-42F3-95F3-291C6098AE59 - 7ab6216ab5b2ee1"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
@@ -108,8 +108,8 @@
                   urlString = "file:///Users/fabiogattone/Documents/mafia_AI/UI/Widgets/Chart/ChartWidget+IndicatorsUI.m"
                   startingColumnNumber = "9223372036854775807"
                   endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "633"
-                  endingLineNumber = "633">
+                  startingLineNumber = "631"
+                  endingLineNumber = "631">
                </Location>
             </Locations>
          </BreakpointContent>
@@ -159,84 +159,6 @@
             startingLineNumber = "696"
             endingLineNumber = "696"
             landmarkName = "-handleChartSelection:"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "733EEC6B-316E-4E90-B0FB-3217100BA01F"
-            shouldBeEnabled = "Yes"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "UI/Widgets/Chart/IndicatorsPanel.m"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1267"
-            endingLineNumber = "1267"
-            landmarkName = "-configureIndicator:"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "735B32D4-AD50-4A72-84A7-049E4A235BC3"
-            shouldBeEnabled = "Yes"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "UI/Widgets/Chart/IndicatorsPanel.m"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1983"
-            endingLineNumber = "1983"
-            landmarkName = "-updateChildIndicatorDataForIndicator:withParameters:"
-            landmarkType = "7">
-            <Locations>
-               <Location
-                  uuid = "735B32D4-AD50-4A72-84A7-049E4A235BC3 - 8aca4467b4d1f35d"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "-[IndicatorsPanel updateChildIndicatorDataForIndicator:withParameters:]"
-                  moduleName = "mafia_AI"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/fabiogattone/Documents/mafia_AI/UI/Widgets/Chart/IndicatorsPanel.m"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "1984"
-                  endingLineNumber = "1984">
-               </Location>
-               <Location
-                  uuid = "735B32D4-AD50-4A72-84A7-049E4A235BC3 - 8aca4467b4d1f35d"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "-[IndicatorsPanel updateChildIndicatorDataForIndicator:withParameters:]"
-                  moduleName = "mafia_AI"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/fabiogattone/Documents/mafia_AI/UI/Widgets/Chart/IndicatorsPanel.m"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "1984"
-                  endingLineNumber = "1984">
-               </Location>
-            </Locations>
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "4D3D2317-9154-474C-8731-A8790BA174BB"
-            shouldBeEnabled = "Yes"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "UI/Widgets/Chart/IndicatorsPanel.m"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1990"
-            endingLineNumber = "1990"
-            landmarkName = "-updateChildIndicatorDataForIndicator:withParameters:"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

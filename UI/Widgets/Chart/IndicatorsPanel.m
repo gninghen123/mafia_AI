@@ -431,21 +431,32 @@
         if (index < panel.childIndicatorsData.count) {
             NSDictionary *childIndicatorData = panel.childIndicatorsData[index];
             
-            // ✅ CONVERTIRE: Da dictionary a TechnicalIndicatorBase reale
-            NSString *indicatorID = childIndicatorData[@"indicatorID"];
+            // ✅ USA PRIMA "type", poi fallback a "indicatorID" per retrocompatibilità
+            NSString *indicatorType = childIndicatorData[@"type"] ?: childIndicatorData[@"indicatorID"];
+            NSString *instanceID = childIndicatorData[@"instanceID"];
             NSDictionary *parameters = childIndicatorData[@"parameters"];
             
+            if (!indicatorType) {
+                NSLog(@"❌ IndicatorsPanel: Missing indicator type in childIndicatorData");
+                return nil;
+            }
+            
             IndicatorRegistry *registry = [IndicatorRegistry sharedRegistry];
-            TechnicalIndicatorBase *indicator = [registry createIndicatorWithIdentifier:indicatorID parameters:parameters];
+            TechnicalIndicatorBase *indicator = [registry createIndicatorWithIdentifier:indicatorType parameters:parameters];
             
             if (indicator) {
+                // ✅ ASSEGNA L'instanceID COME indicatorID (se esiste)
+                if (instanceID) {
+                    indicator.indicatorID = instanceID;
+                }
                 // Set additional properties from metadata
                 indicator.isVisible = [childIndicatorData[@"isVisible"] boolValue];
                 
-                NSLog(@"📋 IndicatorsPanel: Panel '%@' child %ld: %@ indicator", panel.displayName, (long)index, indicatorID);
+                NSLog(@"📋 IndicatorsPanel: Panel '%@' child %ld: %@ indicator (instanceID: %@)",
+                      panel.displayName, (long)index, indicatorType, instanceID);
                 return indicator;
             } else {
-                NSLog(@"❌ IndicatorsPanel: Failed to create indicator %@ from registry", indicatorID);
+                NSLog(@"❌ IndicatorsPanel: Failed to create indicator %@ from registry", indicatorType);
                 return nil;
             }
         }
@@ -1174,12 +1185,12 @@
     
     NSLog(@"✅ Adding %@ indicator to panel: %@", indicatorID, panel.displayName);
     
-    // ✅ AGGIUNTA REALE: Aggiungi ai childIndicatorsData del panel
+    // ✅ STRUTTURA STANDARDIZZATA
     NSMutableArray *childIndicators = [panel.childIndicatorsData mutableCopy] ?: [NSMutableArray array];
     
     NSDictionary *newIndicator = @{
-        @"indicatorID": indicatorID,
-        @"type": indicatorID,
+        @"type": indicatorID,                               // ✅ Type per la creazione
+        @"instanceID": [[NSUUID UUID] UUIDString],         // ✅ UUID unico
         @"parameters": indicatorInfo[@"defaultParameters"] ?: @{},
         @"isVisible": @YES,
         @"displayOrder": @(childIndicators.count)
@@ -1196,7 +1207,7 @@
     self.applyButton.enabled = YES;
     self.resetButton.enabled = YES;
     
-    NSLog(@"✅ Indicator added to panel data. Panel now has %ld child indicators", (long)childIndicators.count);
+    NSLog(@"✅ Indicator added to panel data. Panel now has %ld indicators", (long)childIndicators.count);
 }
 
 - (void)configurePanelSettings:(NSMenuItem *)sender {
@@ -1322,9 +1333,8 @@
         for (NSUInteger i = 0; i < childIndicators.count; i++) {
             NSDictionary *childData = childIndicators[i];
             
-            // Match by instance ID or class name
-            if ([childData[@"instanceID"] isEqualToString:indicator.indicatorID] ||
-                [childData[@"indicatorID"] isEqualToString:NSStringFromClass([indicator class])]) {
+            // ✅ MATCH CORRETTO: Usa instanceID (che ora è l'indicatorID dell'istanza)
+            if ([childData[@"instanceID"] isEqualToString:indicator.indicatorID]) {
                 
                 // Remove from array
                 [childIndicators removeObjectAtIndex:i];
@@ -1332,13 +1342,16 @@
                 // Update panel
                 panel.childIndicatorsData = [childIndicators copy];
                 
+                NSLog(@"✅ Removed indicator with instanceID: %@", indicator.indicatorID);
                 return YES;
             }
         }
     }
     
+    NSLog(@"⚠️ Could not find indicator to remove with instanceID: %@", indicator.indicatorID);
     return NO;
 }
+
 
 
 - (void)showAddChildIndicatorDialog:(NSMenuItem *)sender {
@@ -1762,16 +1775,16 @@
         return;
     }
     
-    // ✅ AGGIUNGI AI CHILD INDICATORS DATA
+    // ✅ STRUTTURA STANDARDIZZATA (come addChildIndicator)
     NSMutableArray *childIndicators = [containingPanel.childIndicatorsData mutableCopy] ?: [NSMutableArray array];
     
     NSDictionary *newChildIndicator = @{
-        @"indicatorID": indicatorID,
-        @"type": indicatorID,
+        @"type": indicatorID,                               // ✅ Type per la creazione
+        @"instanceID": [[NSUUID UUID] UUIDString],         // ✅ UUID unico
         @"parameters": indicatorInfo[@"defaultParameters"] ?: @{},
         @"isVisible": @YES,
         @"displayOrder": @(childIndicators.count),
-        @"parentIndicatorID": parentIndicator.indicatorID  // ✅ LINK al parent
+        @"parentIndicatorID": parentIndicator.indicatorID
     };
     
     [childIndicators addObject:newChildIndicator];
@@ -1787,7 +1800,6 @@
     
     NSLog(@"✅ Child indicator added. Panel now has %ld child indicators", (long)childIndicators.count);
 }
-
 #pragma mark - Helper Methods per Child Indicators
 
 - (NSArray<NSString *> *)filterIndicatorsCompatibleWithParent:(NSArray<NSString *> *)indicators
@@ -1949,12 +1961,12 @@
         return;
     }
     
-    // Create new child indicator data
+    // ✅ STRUTTURA STANDARDIZZATA
     NSMutableArray *childIndicators = [containingPanel.childIndicatorsData mutableCopy] ?: [NSMutableArray array];
     
     NSDictionary *newChildIndicator = @{
-        @"indicatorID": indicatorID,
-        @"instanceID": [[NSUUID UUID] UUIDString],
+        @"type": indicatorID,                               // ✅ Type per la creazione
+        @"instanceID": [[NSUUID UUID] UUIDString],         // ✅ UUID unico
         @"parameters": parameters,
         @"isVisible": @YES,
         @"displayOrder": @(childIndicators.count),
@@ -1987,9 +1999,8 @@
         for (NSUInteger i = 0; i < childIndicators.count; i++) {
             NSMutableDictionary *childData = [childIndicators[i] mutableCopy];
             
-            // Match by instance ID or indicator ID
-            if ([childData[@"instanceID"] isEqualToString:indicator.indicatorID] ||
-                [childData[@"indicatorID"] isEqualToString:NSStringFromClass([indicator class])]) {
+            // ✅ MATCH CORRETTO: Usa instanceID (che ora è l'indicatorID dell'istanza)
+            if ([childData[@"instanceID"] isEqualToString:indicator.indicatorID]) {
                 
                 // Update parameters
                 childData[@"parameters"] = parameters;
@@ -2003,7 +2014,10 @@
             }
         }
     }
+    
+    NSLog(@"⚠️ Could not find child indicator data to update for: %@", indicator.shortName);
 }
+
 
 // ✅ NUOVO METODO: Helper per nomi friendly
 - (NSString *)friendlyNameForIndicatorType:(NSString *)indicatorType {

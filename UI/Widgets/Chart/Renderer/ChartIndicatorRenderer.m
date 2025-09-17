@@ -49,7 +49,7 @@
 // 🆕 NEW: Setup warning messages layer
 - (void)setupWarningMessagesLayer {
     self.warningMessagesLayer = [CATextLayer layer];
-    self.warningMessagesLayer.fontSize = 12.0;
+    self.warningMessagesLayer.fontSize = 10.0;
     self.warningMessagesLayer.foregroundColor = [NSColor systemOrangeColor].CGColor;
     self.warningMessagesLayer.backgroundColor = [[NSColor systemOrangeColor] colorWithAlphaComponent:0.1].CGColor;
     self.warningMessagesLayer.borderColor = [NSColor systemOrangeColor].CGColor;
@@ -77,8 +77,8 @@
     if (!self.warningMessagesLayer) return;
     
     CGRect panelBounds = self.panelView.bounds;
-    CGFloat warningWidth = 250;
-    CGFloat warningHeight = 30;
+    CGFloat warningWidth = 150;
+    CGFloat warningHeight = 24;
     CGFloat margin = 10;
     
     CGRect warningFrame = CGRectMake(margin,
@@ -153,7 +153,7 @@
     
     // Adjust layer height based on number of warnings
     CGRect currentFrame = self.warningMessagesLayer.frame;
-    CGFloat newHeight = MAX(30, self.activeWarnings.count * 18 + 12); // 18px per line + padding
+    CGFloat newHeight = MAX(30, self.activeWarnings.count * 16 + 12); // 18px per line + padding
     self.warningMessagesLayer.frame = CGRectMake(currentFrame.origin.x,
                                                currentFrame.origin.y,
                                                currentFrame.size.width,
@@ -422,7 +422,6 @@
 - (void)drawHistogramIndicator:(TechnicalIndicatorBase *)indicator {
     if (!indicator.outputSeries.count) return;
     
-    // ✅ USA GLI INDICI DIRETTAMENTE - NO ARRAY ALLOCATION
     NSRange visibleRange = [self validVisibleRangeForIndicator:indicator
                                                    startIndex:self.lastVisibleStartIndex
                                                      endIndex:self.lastVisibleEndIndex];
@@ -430,6 +429,66 @@
     if (visibleRange.length == 0) return;
     
     CGFloat baselineY = [self yCoordinateForValue:0.0];
+    CGFloat barWidth = [self.sharedXContext barWidth] * 0.8;
+    
+    // ✅ NUOVO: Check se è un VolumeIndicator per rendering colorato
+    BOOL isVolumeIndicator = [indicator isKindOfClass:NSClassFromString(@"VolumeIndicator")];
+    
+    if (isVolumeIndicator) {
+        // ✅ NUOVO: Disegna barre colorate individualmente
+        [self drawColoredHistogramBars:indicator visibleRange:visibleRange baselineY:baselineY barWidth:barWidth];
+    } else {
+        // ✅ ESISTENTE: Mantieni il rendering normale per altri indicatori
+        [self drawStandardHistogramBars:indicator visibleRange:visibleRange baselineY:baselineY];
+    }
+    
+    NSLog(@"📊 Drew %@ histogram indicator: %@ with range [%ld-%ld] (%ld bars)",
+          isVolumeIndicator ? @"colored" : @"standard",
+          indicator.displayName, (long)visibleRange.location,
+          (long)(visibleRange.location + visibleRange.length - 1), (long)visibleRange.length);
+}
+
+// ✅ NUOVO: Metodo per disegnare barre colorate
+- (void)drawColoredHistogramBars:(TechnicalIndicatorBase *)indicator
+                    visibleRange:(NSRange)visibleRange
+                       baselineY:(CGFloat)baselineY
+                        barWidth:(CGFloat)barWidth {
+    
+    for (NSInteger i = visibleRange.location; i < visibleRange.location + visibleRange.length; i++) {
+        IndicatorDataModel *dataPoint = indicator.outputSeries[i];
+        
+        if (isnan(dataPoint.value)) continue;
+        
+        CGFloat x = [self.sharedXContext screenXForBarIndex:i];
+        CGFloat y = [self yCoordinateForValue:dataPoint.value];
+        
+        if (x < -9999 || y < -9999) continue;
+        
+        // ✅ NUOVO: Determina colore basato su priceDirection
+        NSColor *barColor = [self colorForPriceDirection:dataPoint.priceDirection indicator:indicator];
+        
+        // Crea e disegna barra individuale
+        CGFloat barHeight = ABS(y - baselineY);
+        CGFloat barBottom = MIN(y, baselineY);
+        NSRect barRect = NSMakeRect(x - barWidth/2, barBottom, barWidth, barHeight);
+        
+        [barColor setFill];
+        NSBezierPath *barPath = [NSBezierPath bezierPathWithRect:barRect];
+        [barPath fill];
+        
+        // Opzionale: Bordo sottile per definire meglio le barre
+        [[NSColor colorWithWhite:0.0 alpha:0.1] setStroke];
+        barPath.lineWidth = 0.5;
+        [barPath stroke];
+    }
+}
+
+// ✅ NUOVO: Metodo per disegnare barre standard (non colorate)
+- (void)drawStandardHistogramBars:(TechnicalIndicatorBase *)indicator
+                     visibleRange:(NSRange)visibleRange
+                        baselineY:(CGFloat)baselineY {
+    
+    // Usa il metodo esistente createHistogramPathFromIndicator
     NSBezierPath *path = [self createHistogramPathFromIndicator:indicator
                                                      startIndex:visibleRange.location
                                                        endIndex:visibleRange.location + visibleRange.length - 1
@@ -444,11 +503,21 @@
     // Draw
     [path fill];
     [path stroke];
-    
-    NSLog(@"📊 Drew histogram indicator: %@ with range [%ld-%ld] (%ld bars)",
-          indicator.displayName, (long)visibleRange.location,
-          (long)(visibleRange.location + visibleRange.length - 1), (long)visibleRange.length);
 }
+
+// ✅ NUOVO: Helper method per determinare colori
+- (NSColor *)colorForPriceDirection:(PriceDirection)direction indicator:(TechnicalIndicatorBase *)indicator {
+    switch (direction) {
+        case PriceDirectionUp:
+            return [NSColor systemGreenColor];    // Verde per up
+        case PriceDirectionDown:
+            return [NSColor systemRedColor];      // Rosso per down
+        case PriceDirectionNeutral:
+        default:
+            return [NSColor systemGrayColor];     // Grigio per neutral/unknown
+    }
+}
+
 
 - (void)drawAreaIndicator:(TechnicalIndicatorBase *)indicator {
     if (!indicator.outputSeries.count) return;

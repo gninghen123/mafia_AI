@@ -222,6 +222,13 @@ NS_ASSUME_NONNULL_BEGIN
 /// @param indicator Indicator providing style preferences
 - (void)applyStyleToPath:(NSBezierPath *)path forIndicator:(TechnicalIndicatorBase *)indicator;
 
+/// Get color for price direction (for colored volume bars)
+/// @param direction Price direction enum
+/// @param indicator Indicator instance (for potential customization)
+/// @return Appropriate color for the direction
+- (NSColor *)colorForPriceDirection:(PriceDirection)direction indicator:(TechnicalIndicatorBase *)indicator;
+
+
 #pragma mark - Visible Data Optimization
 /// Extract visible data points for rendering
 /// @param dataPoints Full indicator data array

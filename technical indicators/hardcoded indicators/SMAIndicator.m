@@ -20,7 +20,7 @@
 
 + (NSDictionary<NSString *, id> *)defaultParameters {
     return @{
-        @"period": @20,          // Standard SMA period
+        @"period": @5,          // Standard SMA period
         @"source": @"close"      // Price source (open/high/low/close)
     };
 }

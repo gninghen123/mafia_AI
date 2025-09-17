@@ -314,8 +314,8 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
         rootIndicator.indicatorID = panelTemplate.panelID; // Use panel ID as root indicator ID
         rootIndicator.isVisible = YES;
         
-        NSLog(@"✅ Created root indicator: %@ (%@)",
-              rootIndicator.shortName, panelTemplate.rootIndicatorType);
+        NSLog(@"✅ Created root indicator: %@ (type: %@, finalID: %@)",
+              rootIndicator.shortName, panelTemplate.rootIndicatorType, rootIndicator.indicatorID);
     } else {
         NSLog(@"❌ Failed to create root indicator: %@", panelTemplate.rootIndicatorType);
     }
@@ -356,46 +356,44 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     IndicatorRegistry *registry = [IndicatorRegistry sharedRegistry];
     
     for (NSDictionary *childData in childIndicatorsData) {
-        NSString *indicatorID = childData[@"indicatorID"];
+        // ✅ USA PRIMA "type", poi fallback a "indicatorID" per retrocompatibilità
+        NSString *indicatorType = childData[@"type"] ?: childData[@"indicatorID"];
+        NSString *instanceID = childData[@"instanceID"];
         NSDictionary *parameters = childData[@"parameters"];
         
-        if (!indicatorID) {
-            NSLog(@"⚠️ Skipping child indicator with missing indicatorID");
+        if (!indicatorType) {
+            NSLog(@"⚠️ Skipping child indicator with missing type/indicatorID");
             continue;
         }
         
-        // Create the indicator
-        TechnicalIndicatorBase *childIndicator = [registry createIndicatorWithIdentifier:indicatorID
+        // ✅ CREA L'INDICATORE usando il TYPE
+        TechnicalIndicatorBase *childIndicator = [registry createIndicatorWithIdentifier:indicatorType
                                                                               parameters:parameters];
         
         if (childIndicator) {
-            // Set additional properties from metadata
-            childIndicator.indicatorID = childData[@"instanceID"] ?: [[NSUUID UUID] UUIDString];
-            childIndicator.isVisible = [childData[@"isVisible"] boolValue] ?: YES;
-            
-            // Set display properties if available
-            if (childData[@"displayColor"]) {
-                NSData *colorData = childData[@"displayColor"];
-                NSColor *color = [NSUnarchiver unarchiveObjectWithData:colorData];
-                if (color) {
-                    childIndicator.displayColor = color;
-                }
+            // ✅ CORREZIONE PRINCIPALE: Usa instanceID se disponibile, altrimenti mantieni l'UUID generato
+            if (instanceID) {
+                // Sovrascrivi l'UUID auto-generato con l'instanceID salvato
+                childIndicator.indicatorID = instanceID;
             }
+            // Se instanceID non esiste, mantieni l'UUID generato automaticamente da TechnicalIndicatorBase
             
-            if (childData[@"lineWidth"]) {
-                childIndicator.lineWidth = [childData[@"lineWidth"] floatValue];
-            }
+            // Set visibility
+            childIndicator.isVisible = [childData[@"isVisible"] boolValue] ? YES : NO;
             
             [childIndicators addObject:childIndicator];
-            NSLog(@"✅ Created child indicator: %@ from %@", childIndicator.shortName, indicatorID);
+            
+            NSLog(@"✅ Created child indicator: %@ (type: %@, instanceID: %@, finalID: %@)",
+                  childIndicator.shortName, indicatorType, instanceID ?: @"auto-generated", childIndicator.indicatorID);
         } else {
-            NSLog(@"❌ Failed to create child indicator: %@", indicatorID);
+            NSLog(@"❌ Failed to create child indicator of type: %@", indicatorType);
         }
     }
     
     NSLog(@"📊 Created %lu child indicators from data", (unsigned long)childIndicators.count);
     return [childIndicators copy];
 }
+
 
 // ✅ HELPER: Determine panel type from root indicator type
 - (NSString *)panelTypeForRootIndicator:(NSString *)rootIndicatorType {

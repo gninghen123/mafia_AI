@@ -31,7 +31,7 @@
 
 + (NSDictionary<NSString *, id> *)defaultParameters {
     return @{
-        @"period": @20,          // Standard EMA period
+        @"period": @10,          // Standard EMA period
         @"source": @"close"      // Price source (open/high/low/close)
     };
 }

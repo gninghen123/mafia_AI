@@ -23,9 +23,6 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong) CALayer *indicatorsLayer;
 @property (nonatomic, strong, nullable) TechnicalIndicatorBase *rootIndicator;
 
-// ✅ NEW: Coordinate contexts (matching other renderers)
-@property (nonatomic, strong, nullable) SharedXCoordinateContext *sharedXContext;
-@property (nonatomic, strong, nullable) PanelYCoordinateContext *panelYContext;
 
 // ✅ NEW: Cached data for performance
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSArray<IndicatorDataModel *> *> *cachedVisibleData;
@@ -79,29 +76,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Update layer bounds when panel resizes
 - (void)updateLayerBounds;
-
-#pragma mark - Coordinate System Integration
-/// Update coordinate contexts with auto-rendering
-/// @param chartData Current chart data
-/// @param startIndex Visible start index
-/// @param endIndex Visible end index
-/// @param yMin Y-axis minimum value
-/// @param yMax Y-axis maximum value
-/// @param bounds Panel bounds
-- (void)updateCoordinateContext:(NSArray<HistoricalBarModel *> *)chartData
-                     startIndex:(NSInteger)startIndex
-                       endIndex:(NSInteger)endIndex
-                      yRangeMin:(double)yMin
-                      yRangeMax:(double)yMax
-                         bounds:(CGRect)bounds;
-
-/// Update shared X context reference with auto-rendering
-/// @param sharedXContext Updated shared X coordinate context
-- (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext;
-
-/// Update panel Y context reference with auto-rendering
-/// @param panelYContext Updated panel Y coordinate context
-- (void)updatePanelYContext:(PanelYCoordinateContext *)panelYContext;
 
 #pragma mark - Drawing Implementation (CALayerDelegate)
 /// Main drawing method called by CALayer

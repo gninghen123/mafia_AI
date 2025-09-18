@@ -26,7 +26,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 
 @property (nonatomic, weak) SharedXCoordinateContext *sharedXContext;      // WEAK - shared
-@property (nonatomic, strong) PanelYCoordinateContext *panelYContext;       // STRONG - owned
+@property (nonatomic, weak) PanelYCoordinateContext *panelYContext;       // STRONG - owned
 
 // Rendering layers (will be added to ChartPanelView)
 @property (nonatomic, strong) CALayer *alertsLayer;        // Static alerts

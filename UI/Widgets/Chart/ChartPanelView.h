@@ -66,13 +66,11 @@ typedef NS_OPTIONS(NSUInteger, ChartLayerInvalidationOptions) {
 @interface ChartPanelView : NSView
 
 #pragma mark - Properties (from .m file)
-@property (nonatomic, strong, nullable) ChartIndicatorRenderer *indicatorRenderer;
 @property (nonatomic, strong, nullable) ChartPanelTemplate *panelTemplate;
 @property (nonatomic, strong) CALayer *yAxisLayer;
 @property (nonatomic, weak) SharedXCoordinateContext *sharedXContext;
 @property (nonatomic, strong) PanelYCoordinateContext *panelYContext;
 @property (nonatomic, weak) ChartObjectSettingsWindow *objectSettingsWindow;
-@property (nonatomic, strong) ChartAlertRenderer *alertRenderer;
 
 // Panel configuration
 @property (nonatomic, strong) NSString *panelType;
@@ -97,8 +95,11 @@ typedef NS_OPTIONS(NSUInteger, ChartLayerInvalidationOptions) {
 @property (nonatomic, strong) CALayer *crosshairLayer;
 @property (nonatomic, strong) CALayer *chartPortionSelectionLayer;
 
-// Objects rendering
+//  renderers
 @property (nonatomic, strong) ChartObjectRenderer *objectRenderer;
+@property (nonatomic, strong) ChartIndicatorRenderer *indicatorRenderer;
+@property (nonatomic, strong) ChartAlertRenderer *alertRenderer;
+
 @property (nonatomic, strong, nullable) ChartObjectSettingsWindow *activeSettingsWindow;
 
 #pragma mark - Initialization

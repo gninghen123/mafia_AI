@@ -23,7 +23,6 @@
         _cachedVisibleData = [NSMutableDictionary dictionary];
         _lastVisibleStartIndex = NSNotFound;
         _lastVisibleEndIndex = NSNotFound;
-        _panelYContext = [[PanelYCoordinateContext alloc] init];
         _activeWarnings = [[NSMutableArray alloc] init];
         [self setupIndicatorsLayer];
         [self setupWarningMessagesLayer];
@@ -76,7 +75,6 @@
 - (void)updateWarningMessagesLayerFrame {
     if (!self.warningMessagesLayer) return;
     
-    CGRect panelBounds = self.panelView.bounds;
     CGFloat warningWidth = 150;
     CGFloat warningHeight = 24;
     CGFloat margin = 10;
@@ -165,67 +163,10 @@
 
 
 
-#pragma mark - Coordinate System Integration
 
-- (void)updateCoordinateContext:(NSArray<HistoricalBarModel *> *)chartData
-                     startIndex:(NSInteger)startIndex
-                       endIndex:(NSInteger)endIndex
-                      yRangeMin:(double)yMin
-                      yRangeMax:(double)yMax
-                         bounds:(CGRect)bounds {
-    
-    // Update layer bounds if needed
-    [self updateLayerBounds];
-    
-    // Check if visible range changed to optimize rendering
-    BOOL visibleRangeChanged = [self hasVisibleRangeChanged:startIndex endIndex:endIndex];
-    
-    // Update cached visible range
-    self.lastVisibleStartIndex = startIndex;
-    self.lastVisibleEndIndex = endIndex;
-    
-    self.panelYContext.yRangeMin = yMin;
-    self.panelYContext.yRangeMax = yMax;
-    self.panelYContext.panelHeight = bounds.size.height;
-    self.panelYContext.panelType = self.panelView.panelType;
-    
-    // Trigger re-rendering if rootIndicator exists
-    if (self.rootIndicator) {
-        if (visibleRangeChanged) {
-            // Clear cached visible data when range changes
-            [self.cachedVisibleData removeAllObjects];
-        }
-        
-        [self invalidateIndicatorLayers];
-    }
-    
-    NSLog(@"🔄 ChartIndicatorRenderer: Coordinate contexts updated - Y Range: %.2f-%.2f, Visible: [%ld-%ld]",
-          yMin, yMax, (long)startIndex, (long)endIndex);
-}
 
-- (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext {
-    self.sharedXContext = sharedXContext;
-    
-    [self clearWarningMessages];
 
-    // Trigger re-rendering if rootIndicator exists
-    if (self.rootIndicator) {
-        [self invalidateIndicatorLayers];
-    }
-    
-    NSLog(@"🔄 ChartIndicatorRenderer: SharedXContext updated");
-}
 
-- (void)updatePanelYContext:(PanelYCoordinateContext *)panelYContext {
-    self.panelYContext = panelYContext;
-    
-    // Trigger re-rendering if rootIndicator exists
-    if (self.rootIndicator) {
-        [self invalidateIndicatorLayers];
-    }
-    
-    NSLog(@"🔄 ChartIndicatorRenderer: PanelYContext updated");
-}
 
 #pragma mark - Rendering Management
 
@@ -275,7 +216,7 @@
     [NSGraphicsContext setCurrentContext:nsContext];
     
     // Verify coordinate contexts are available
-    if (!self.sharedXContext || !self.panelYContext) {
+    if (!self.panelView.sharedXContext || !self.panelView.panelYContext) {
         NSLog(@"⚠️ IndicatorRenderer: Missing coordinate contexts - skipping draw");
         [NSGraphicsContext restoreGraphicsState];
         return;
@@ -429,7 +370,7 @@
     if (visibleRange.length == 0) return;
     
     CGFloat baselineY = [self yCoordinateForValue:0.0];
-    CGFloat barWidth = [self.sharedXContext barWidth] * 0.8;
+    CGFloat barWidth = [self.panelView.sharedXContext barWidth] * 0.8;
     
     // ✅ NUOVO: Check se è un VolumeIndicator per rendering colorato
     BOOL isVolumeIndicator = [indicator isKindOfClass:NSClassFromString(@"VolumeIndicator")];
@@ -459,7 +400,7 @@
         
         if (isnan(dataPoint.value)) continue;
         
-        CGFloat x = [self.sharedXContext screenXForBarIndex:i];
+        CGFloat x = [self.panelView.sharedXContext screenXForBarIndex:i];
         CGFloat y = [self yCoordinateForValue:dataPoint.value];
         
         if (x < -9999 || y < -9999) continue;
@@ -587,13 +528,13 @@
                                    startIndex:(NSInteger)startIndex
                                      endIndex:(NSInteger)endIndex {
     if (!indicator.outputSeries.count) return nil;
-    if (!self.sharedXContext) return nil;
+    if (!self.panelView.sharedXContext) return nil;
     NSBezierPath *path = [NSBezierPath bezierPath];
     BOOL isFirstPoint = YES;
 
     // Calcola X iniziale a partire da endIndex
-    CGFloat x0 = [self.sharedXContext screenXForBarIndex:endIndex] + ([self.sharedXContext barWidth] / 2.0);
-    CGFloat dx = [self.sharedXContext barWidth];
+    CGFloat x0 = [self.panelView.sharedXContext screenXForBarIndex:endIndex] + ([self.panelView.sharedXContext barWidth] / 2.0);
+    CGFloat dx = [self.panelView.sharedXContext barWidth];
     CGFloat x = x0;
     // Itera da endIndex verso startIndex (inclusivo)
     for (NSInteger i = endIndex; i >= startIndex; i--) {
@@ -620,12 +561,12 @@
                                          baselineY:(CGFloat)baselineY {
 
     if (!indicator.outputSeries.count) return nil;
-    if (!self.sharedXContext) return nil;
+    if (!self.panelView.sharedXContext) return nil;
 
     NSBezierPath *path = [NSBezierPath bezierPath];
-    CGFloat barWidth = [self.sharedXContext barWidth] * 0.8;
-    CGFloat x0 = [self.sharedXContext screenXForBarIndex:startIndex] + ([self.sharedXContext barWidth] / 2.0);
-    CGFloat dx = [self.sharedXContext barWidth];
+    CGFloat barWidth = [self.panelView.sharedXContext barWidth] * 0.8;
+    CGFloat x0 = [self.panelView.sharedXContext screenXForBarIndex:startIndex] + ([self.panelView.sharedXContext barWidth] / 2.0);
+    CGFloat dx = [self.panelView.sharedXContext barWidth];
     CGFloat x = x0;
 
     for (NSInteger i = startIndex; i <= endIndex; i++) {
@@ -659,11 +600,11 @@
                                      endIndex:(NSInteger)endIndex
                                     baselineY:(CGFloat)baselineY {
     if (!indicator.outputSeries.count) return nil;
-    if (!self.sharedXContext) return nil;
+    if (!self.panelView.sharedXContext) return nil;
     NSBezierPath *path = [NSBezierPath bezierPath];
     NSMutableArray *validPoints = [NSMutableArray array];
-    CGFloat x0 = [self.sharedXContext screenXForBarIndex:startIndex] + ([self.sharedXContext barWidth] / 2.0);
-    CGFloat dx = [self.sharedXContext barWidth];
+    CGFloat x0 = [self.panelView.sharedXContext screenXForBarIndex:startIndex] + ([self.panelView.sharedXContext barWidth] / 2.0);
+    CGFloat dx = [self.panelView.sharedXContext barWidth];
     CGFloat x = x0;
     for (NSInteger i = startIndex; i <= endIndex; i++) {
         IndicatorDataModel *dataPoint = indicator.outputSeries[i];
@@ -691,11 +632,11 @@
                                      startIndex:(NSInteger)startIndex
                                        endIndex:(NSInteger)endIndex {
     if (!indicator.outputSeries.count) return nil;
-    if (!self.sharedXContext) return nil;
+    if (!self.panelView.sharedXContext) return nil;
     NSBezierPath *path = [NSBezierPath bezierPath];
     CGFloat markerSize = 6.0;
-    CGFloat x0 = [self.sharedXContext screenXForBarIndex:startIndex] + ([self.sharedXContext barWidth] / 2.0);
-    CGFloat dx = [self.sharedXContext barWidth];
+    CGFloat x0 = [self.panelView.sharedXContext screenXForBarIndex:startIndex] + ([self.panelView.sharedXContext barWidth] / 2.0);
+    CGFloat dx = [self.panelView.sharedXContext barWidth];
     CGFloat x = x0;
     for (NSInteger i = startIndex; i <= endIndex; i++) {
         IndicatorDataModel *dataPoint = indicator.outputSeries[i];
@@ -757,7 +698,7 @@
     if (!dataPoints.count) return nil;
     
     NSBezierPath *path = [NSBezierPath bezierPath];
-    CGFloat barWidth = [self.sharedXContext barWidth] * 0.8; // Slightly smaller than candle width
+    CGFloat barWidth = [self.panelView.sharedXContext barWidth] * 0.8; // Slightly smaller than candle width
     
     for (IndicatorDataModel *dataPoint in dataPoints) {
         // ✅ SKIP NaN VALUES
@@ -862,14 +803,14 @@
     }
     
     // Verifica che i coordinate contexts siano disponibili
-    if (!self.sharedXContext || !self.panelYContext) {
+    if (!self.panelView.sharedXContext || !self.panelView.panelYContext) {
         NSLog(@"⚠️ Missing coordinate contexts for candlestick rendering");
         return;
     }
     
     // ✅ Calcola barWidth per ottimizzazione
-    CGFloat barWidth = [self.sharedXContext barWidth];
-    barWidth -= [self.sharedXContext barSpacing];
+    CGFloat barWidth = [self.panelView.sharedXContext barWidth];
+    barWidth -= [self.panelView.sharedXContext barSpacing];
     
     // 🚀 OTTIMIZZAZIONE: Se barWidth <= 1px, disegna solo linee semplici
     if (barWidth <= 1.0) {
@@ -899,11 +840,11 @@
         HistoricalBarModel *bar = chartData[i];
         
         // ✅ COORDINATE X - dal sharedXContext
-        CGFloat centerX = [self.sharedXContext screenXForBarIndex:i] + ([self.sharedXContext barWidth] / 2.0);
+        CGFloat centerX = [self.panelView.sharedXContext screenXForBarIndex:i] + ([self.panelView.sharedXContext barWidth] / 2.0);
         
         // ✅ COORDINATE Y - dal panelYContext
-        CGFloat highY = [self.panelYContext screenYForValue:bar.high];
-        CGFloat lowY = [self.panelYContext screenYForValue:bar.low];
+        CGFloat highY = [self.panelView.panelYContext screenYForValue:bar.high];
+        CGFloat lowY = [self.panelView.panelYContext screenYForValue:bar.low];
         
         // Disegna solo una linea verticale da high a low
         [simplePath moveToPoint:NSMakePoint(centerX, highY)];
@@ -934,13 +875,13 @@
         HistoricalBarModel *bar = chartData[i];
         
         // ✅ COORDINATE X - dal sharedXContext
-        CGFloat x = [self.sharedXContext screenXForBarIndex:i];
+        CGFloat x = [self.panelView.sharedXContext screenXForBarIndex:i];
         
         // ✅ COORDINATE Y - dal panelYContext
-        CGFloat openY = [self.panelYContext screenYForValue:bar.open];
-        CGFloat closeY = [self.panelYContext screenYForValue:bar.close];
-        CGFloat highY = [self.panelYContext screenYForValue:bar.high];
-        CGFloat lowY = [self.panelYContext screenYForValue:bar.low];
+        CGFloat openY = [self.panelView.panelYContext screenYForValue:bar.open];
+        CGFloat closeY = [self.panelView.panelYContext screenYForValue:bar.close];
+        CGFloat highY = [self.panelView.panelYContext screenYForValue:bar.high];
+        CGFloat lowY = [self.panelView.panelYContext screenYForValue:bar.low];
         
         NSColor *bodyColor = (bar.close >= bar.open) ? greenColor : redColor;
         CGFloat centerX = x + halfBarWidth;
@@ -972,19 +913,19 @@
 #pragma mark - Coordinate Conversion
 
 - (CGFloat)xCoordinateForTimestamp:(NSDate *)timestamp {
-    if (!self.sharedXContext || !timestamp) {
+    if (!self.panelView.sharedXContext || !timestamp) {
         return -9999;
     }
     
-    return [self.sharedXContext screenXForDate:timestamp];
+    return [self.panelView.sharedXContext screenXForDate:timestamp];
 }
 
 - (CGFloat)yCoordinateForValue:(double)value {
-    if (!self.panelYContext) {
+    if (!self.panelView.panelYContext) {
         return -9999;
     }
     
-    return [self.panelYContext screenYForValue:value];
+    return [self.panelView.panelYContext screenYForValue:value];
 }
 
 #pragma mark - Style and Color Helpers
@@ -1068,8 +1009,6 @@
           self.warningMessagesLayer = nil;
       }
     
-    self.sharedXContext = nil;
-    self.panelYContext = nil;
     self.panelView = nil;
     
     NSLog(@"🧹 ChartIndicatorRenderer: Cleanup completed");

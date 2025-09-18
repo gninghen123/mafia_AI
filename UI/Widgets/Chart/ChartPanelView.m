@@ -157,12 +157,7 @@
         
         // Update bounds in coordinate context (use chart area, not full bounds)
         if (self.chartData) {
-            [self.objectRenderer updateCoordinateContext:self.chartData
-                                              startIndex:self.visibleStartIndex
-                                                endIndex:self.visibleEndIndex
-                                               yRangeMin:self.yRangeMin
-                                               yRangeMax:self.yRangeMax
-                                                  bounds:chartContentBounds]; // Use chart area
+           //todo invalidate renderers layers?
         }
     }
 }
@@ -222,40 +217,8 @@
     self.panelYContext.yRangeMax = self.yRangeMax;
     self.panelYContext.panelHeight = self.bounds.size.height;
     
-    // ✅ ESISTENTE: Update object renderer
-    if (self.objectRenderer) {
-        [self.objectRenderer updateCoordinateContext:data
-                                          startIndex:startIndex
-                                            endIndex:endIndex
-                                           yRangeMin:self.yRangeMin
-                                           yRangeMax:self.yRangeMax
-                                              bounds:self.bounds];
-    }
+ 
     
-    // ✅ ESISTENTE: Update alert renderer
-    if (self.alertRenderer) {
-        [self.alertRenderer updateCoordinateContext:data
-                                         startIndex:startIndex
-                                           endIndex:endIndex
-                                          yRangeMin:self.yRangeMin
-                                          yRangeMax:self.yRangeMax
-                                             bounds:self.bounds
-                                      currentSymbol:self.chartWidget.currentSymbol];
-        [self.alertRenderer updateSharedXContext:self.sharedXContext];
-    }
-    
-    // ✅ NUOVO: Update indicator renderer (ora uniformato agli altri)
-    if (self.indicatorRenderer) {
-        [self.indicatorRenderer updateCoordinateContext:data
-                                              startIndex:startIndex
-                                                endIndex:endIndex
-                                               yRangeMin:self.yRangeMin
-                                               yRangeMax:self.yRangeMax
-                                                  bounds:self.bounds];
-        [self.indicatorRenderer updateSharedXContext:self.sharedXContext];
-    }
-    
-    // ✅ ESISTENTE: Invalida layer dipendenti dalle coordinate
     [self invalidateCoordinateDependentLayersWithReason:@"data updated"];
 }
 
@@ -1666,23 +1629,14 @@
 #pragma mark - Objects Renderer Setup
 
 - (void)setupObjectsRendererWithManager:(ChartObjectsManager *)objectsManager {
-    if (!objectsManager) {
-        NSLog(@"⚠️ ChartPanelView: Cannot setup objects renderer without manager");
-        return;
-    }
-    
-    self.objectRenderer = [[ChartObjectRenderer alloc] initWithPanelView:self
-                                                          objectsManager:objectsManager];
-    
-    // CRITICO: Initialize coordinate context with current data if available
-    if (self.chartData) {
-        [self.objectRenderer updateCoordinateContext:self.chartData
-                                          startIndex:self.visibleStartIndex
-                                            endIndex:self.visibleEndIndex
-                                           yRangeMin:self.yRangeMin
-                                           yRangeMax:self.yRangeMax
-                                              bounds:self.bounds];
-        NSLog(@"🎨 ChartObjectRenderer initialized with existing data (%lu bars)", (unsigned long)self.chartData.count);
+    if (!self.objectRenderer) {
+        self.objectRenderer = [[ChartObjectRenderer alloc] initWithPanelView:self
+                                                              objectsManager:objectsManager];
+        
+        // ✅ IMMEDIATELY share PanelYContext reference
+        
+      //  [self.objectRenderer setupObjectsLayers];
+        NSLog(@"🎯 ChartPanelView: Objects renderer setup completed (shared PanelYContext)");
     }
 }
 
@@ -2000,23 +1954,27 @@
 #pragma mark - Alert Renderer Setup
 
 - (void)setupAlertRenderer {
-    self.alertRenderer = [[ChartAlertRenderer alloc] initWithPanelView:self];
-    
-    // CRITICO: Initialize coordinate context with current data if available
-    if (self.chartData && self.chartWidget.currentSymbol) {
-        [self.alertRenderer updateCoordinateContext:self.chartData
-                                         startIndex:self.visibleStartIndex
-                                           endIndex:self.visibleEndIndex
-                                          yRangeMin:self.yRangeMin
-                                          yRangeMax:self.yRangeMax
-                                             bounds:self.bounds
-                                      currentSymbol:self.chartWidget.currentSymbol];
-        NSLog(@"🚨 ChartAlertRenderer initialized with existing data (%lu bars) for %@",
-              (unsigned long)self.chartData.count, self.chartWidget.currentSymbol);
-    }
-    
-    NSLog(@"🚨 ChartPanelView (%@): Alert renderer setup completed", self.panelType);
+   if (!self.alertRenderer) {
+       self.alertRenderer = [[ChartAlertRenderer alloc] initWithPanelView:self];
+       
+       // ✅ IMMEDIATELY share PanelYContext reference
+       self.alertRenderer.panelYContext = self.panelYContext;
+       
+      // [self.alertRenderer setupAlertLayers];
+       NSLog(@"🚨 ChartPanelView: Alert renderer setup completed (shared PanelYContext)");
+   }
 }
+
+
+#pragma mark - setup indicatorrenderer
+
+- (void)setIndicatorRenderer:(ChartIndicatorRenderer *)indicatorRenderer {
+    if (!self.indicatorRenderer) {
+        self.indicatorRenderer = [[ChartIndicatorRenderer alloc] initWithPanelView:self];
+    }
+  
+}
+
 #pragma mark - showGeneralContextMenuAtPoint - MODIFICA ESISTENTE
 
 - (void)showGeneralContextMenuAtPoint:(NSPoint)point withEvent:(NSEvent *)event {
@@ -2685,14 +2643,17 @@
     
     NSLog(@"🔢 Panel %@ - Log scale %@", self.panelType, useLogScale ? @"ENABLED" : @"DISABLED");
     
-    // ✅ Applica al PanelYCoordinateContext di questo pannello
+    // ✅ Applica al PanelYCoordinateContext condiviso
     if (self.panelYContext) {
         self.panelYContext.useLogScale = useLogScale;
+        NSLog(@"🔗 Updated shared PanelYContext - useLogScale: %@", useLogScale ? @"YES" : @"NO");
     }
+    
+    // ✅ IMPORTANTE: I renderer ora vedono automaticamente il cambiamento!
+    // Non serve propagare manualmente perché usano lo stesso oggetto PanelYContext
     
     // ✅ Invalida e ridisegna per applicare la nuova scala
     [self setNeedsDisplay:YES];
-    
     [self invalidateCoordinateDependentLayersWithReason:@"log scale changed"];
     
     // ✅ Notifica il ChartWidget del cambiamento (per eventuali coordinazioni future)
@@ -2896,15 +2857,7 @@
         }
     }
    
-    /*
-    // Step 4: Log invalidation for debugging
-    if (invalidatedLayers.count > 0) {
-      NSLog(@"🎨 ChartPanelView (%@): Invalidated layers: [%@] - %@",
-              self.panelType,
-              [invalidatedLayers componentsJoinedByString:@", "],
-              reason ?: @"no reason");
-    }
-     */
+   
 }
 
 
@@ -3001,21 +2954,41 @@
 }
 
 #pragma mark - Internal Helper Methods
+- (void)updateExternalRenderersCoordinateContext:(NSArray<HistoricalBarModel *> *)data
+                                      startIndex:(NSInteger)startIndex
+                                        endIndex:(NSInteger)endIndex {
+    
+    // ✅ FIXED: Prima aggiorniamo il nostro PanelYCoordinateContext
+    if (self.panelYContext) {
+        self.panelYContext.yRangeMin = self.yRangeMin;
+        self.panelYContext.yRangeMax = self.yRangeMax;
+        self.panelYContext.panelHeight = self.bounds.size.height;
+        self.panelYContext.panelType = self.panelType;
+        // ✅ IMPORTANTE: useLogScale è già impostato dal logScaleToggled
+        
+        NSLog(@"🔄 ChartPanelView (%@): Updated shared PanelYContext - Y Range: [%.2f-%.2f], LogScale: %@",
+              self.panelType, self.yRangeMin, self.yRangeMax,
+              self.panelYContext.useLogScale ? @"YES" : @"NO");
+    }
+    // ✅ ESISTENTE: Invalida layer dipendenti dalle coordinate
+    [self invalidateCoordinateDependentLayersWithReason:@"data updated"];
+}
 
 /// Updates SharedXContext for all external renderers
 - (void)updateExternalRenderersSharedXContext {
+    // ✅ Aggiorna tutti i renderer con il nuovo SharedXContext
     if (self.objectRenderer) {
-        [self.objectRenderer updateSharedXContext:self.sharedXContext];
+        [self.objectRenderer invalidateEditingLayer];
+        [self.objectRenderer invalidateObjectsLayer];
+        
     }
     
     if (self.alertRenderer) {
         [self.alertRenderer updateSharedXContext:self.sharedXContext];
     }
     
-    // ✅ MIGLIORAMENTO: Ora usa il metodo unificato invece di solo invalidateIndicatorLayers
     if (self.indicatorRenderer) {
-        [self.indicatorRenderer updateSharedXContext:self.sharedXContext];
-        // Note: updateSharedXContext già chiama invalidateIndicatorLayers internamente
+        [self.indicatorRenderer invalidateIndicatorLayers];
     }
 }
 

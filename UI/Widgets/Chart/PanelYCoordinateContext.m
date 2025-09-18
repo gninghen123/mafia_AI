@@ -13,11 +13,9 @@
 - (void)updateCacheIfNeeded {
     if (self.cacheValid) return;
     
-    // ✅ Cache dei valori base
     self.cachedLinearRange = self.yRangeMax - self.yRangeMin;
     self.cachedUsableHeight = self.panelHeight - 20.0;
     
-    // ✅ Cache dei valori logaritmici (solo se necessari)
     if (self.useLogScale && self.yRangeMin > 0 && self.yRangeMax > 0) {
         double logMin = log(self.yRangeMin);
         double logMax = log(self.yRangeMax);

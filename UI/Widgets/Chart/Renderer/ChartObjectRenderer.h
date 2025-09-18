@@ -40,9 +40,6 @@ NS_ASSUME_NONNULL_BEGIN
 // NEW: Unified CP state management
 @property (nonatomic, strong, nullable) ControlPointModel *currentCPSelected;
 
-@property (nonatomic, weak) SharedXCoordinateContext *sharedXContext;      // WEAK - shared
-@property (nonatomic, strong) PanelYCoordinateContext *panelYContext;
-
 //-----
 
 @property (nonatomic, assign, readwrite) ChartObjectType currentCreationObjectType;
@@ -64,24 +61,6 @@ NS_ASSUME_NONNULL_BEGIN
 /// @return New control point model
 - (ControlPointModel *)controlPointFromScreenPoint:(NSPoint)screenPoint
                                        indicatorRef:(NSString *)indicatorRef;
-
-/// ✅ UPDATED: Update coordinate contexts (split X and Y)
-/// @param chartData Current chart data
-/// @param startIndex Visible start index
-/// @param endIndex Visible end index
-/// @param yMin Y-axis minimum value
-/// @param yMax Y-axis maximum value
-/// @param bounds Panel bounds
-- (void)updateCoordinateContext:(NSArray<HistoricalBarModel *> *)chartData
-                     startIndex:(NSInteger)startIndex
-                       endIndex:(NSInteger)endIndex
-                      yRangeMin:(double)yMin
-                      yRangeMax:(double)yMax
-                         bounds:(CGRect)bounds;
-
-/// Update shared X context reference (called when zoom/pan changes)
-/// @param sharedXContext Updated shared X coordinate context
-- (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext;
 
 #pragma mark - Rendering
 

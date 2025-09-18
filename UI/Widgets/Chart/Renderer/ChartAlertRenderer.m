@@ -28,7 +28,6 @@
     self = [super init];
     if (self) {
         _panelView = panelView;
-        _panelYContext = [[PanelYCoordinateContext alloc] init];
         _alerts = @[];
         
         [self setupLayersInPanelView];
@@ -94,11 +93,7 @@
                          bounds:(CGRect)bounds
                   currentSymbol:(NSString *)symbol {
     
-    // ✅ NUOVO: Aggiorna panel Y context
-    self.panelYContext.yRangeMin = yMin;
-    self.panelYContext.yRangeMax = yMax;
-    self.panelYContext.panelHeight = bounds.size.height;
-    self.panelYContext.currentSymbol = symbol;
+   
     
     // ✅ NUOVO: Shared X context viene passato dal panel view separatamente
     // (Il panelView lo aggiorna tramite updateSharedXContext)

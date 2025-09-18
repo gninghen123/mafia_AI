@@ -270,4 +270,27 @@ typedef NS_OPTIONS(NSUInteger, ChartLayerInvalidationOptions) {
 /// @return Object that contains the control point
 - (ChartObjectModel *)findObjectOwningControlPoint:(ControlPointModel *)controlPoint;
 
+
+#pragma mark - Data Interface (NEW)
+
+/// Notify panel that chart data has changed
+/// @param chartData New chart data
+- (void)dataDidChange:(NSArray<HistoricalBarModel *> *)chartData;
+#pragma mark - Data Interface (NEW - LAZY)
+/// Update panel with calculated root indicator from ChartWidget
+/// @param rootIndicator Calculated root indicator with child hierarchy
+- (void)updateWithRootIndicator:(TechnicalIndicatorBase *)rootIndicator;
+
+/// Update panel with objects (security panels only)
+/// @param objects Array of chart objects
+- (void)updateWithObjects:(NSArray<ChartObjectModel *> *)objects;
+
+/// Update panel with alerts (security panels only)
+/// @param alerts Array of alerts
+- (void)updateWithAlerts:(NSArray<AlertModel *> *)alerts;
+
+/// Notify panel that chart data has changed
+/// @param chartData New chart data
+- (void)dataDidChange:(NSArray<HistoricalBarModel *> *)chartData;
+
 @end

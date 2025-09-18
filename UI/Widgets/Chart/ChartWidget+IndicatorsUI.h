@@ -26,8 +26,6 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, nullable) ChartTemplateModel *currentChartTemplate;  // ✅ Runtime model
 @property (nonatomic, strong) NSMutableArray<ChartTemplateModel *> *availableTemplates;  // ✅ Runtime models
 
-#pragma mark - Rendering
-@property (nonatomic, strong) NSMutableDictionary<NSString *, ChartIndicatorRenderer *> *indicatorRenderers; // panelID -> renderer
 
 #pragma mark - Setup and Initialization
 
@@ -56,9 +54,6 @@ NS_ASSUME_NONNULL_BEGIN
 /// Update indicators panel with current state
 - (void)updateIndicatorsPanel;
 
-/// Refresh indicators rendering in all panels
-- (void)refreshIndicatorsRendering;
-
 #pragma mark - Panel Management
 
 /// Create chart panel from template
@@ -74,9 +69,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// @param template ChartTemplateModel with height specifications
 - (void)redistributePanelHeights:(ChartTemplateModel *)template;  // ✅ Runtime model
 
-
-
-- (void)recalculateAllIndicators;
+- (void)updateIndicatorsWithChartData:(NSArray<HistoricalBarModel *> *)chartData;
 
 @end
 

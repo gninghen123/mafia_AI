@@ -78,13 +78,13 @@
             filePath = "UI/Widgets/Chart/ChartWidget+IndicatorsUI.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "630"
-            endingLineNumber = "630"
+            startingLineNumber = "581"
+            endingLineNumber = "581"
             landmarkName = "-deleteTemplateWithConfirmation:"
             landmarkType = "7">
             <Locations>
                <Location
-                  uuid = "D272F23F-D83F-42F3-95F3-291C6098AE59 - 3f1fdfbe44b6486f"
+                  uuid = "D272F23F-D83F-42F3-95F3-291C6098AE59 - 3f1fdfbe44b671dc"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
@@ -94,11 +94,11 @@
                   urlString = "file:///Users/fabiogattone/Documents/mafia_AI/UI/Widgets/Chart/ChartWidget+IndicatorsUI.m"
                   startingColumnNumber = "9223372036854775807"
                   endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "630"
-                  endingLineNumber = "630">
+                  startingLineNumber = "581"
+                  endingLineNumber = "581">
                </Location>
                <Location
-                  uuid = "D272F23F-D83F-42F3-95F3-291C6098AE59 - 7ab6216ab5b2ee1"
+                  uuid = "D272F23F-D83F-42F3-95F3-291C6098AE59 - 7ab6216ab5b1710"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
@@ -108,8 +108,8 @@
                   urlString = "file:///Users/fabiogattone/Documents/mafia_AI/UI/Widgets/Chart/ChartWidget+IndicatorsUI.m"
                   startingColumnNumber = "9223372036854775807"
                   endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "631"
-                  endingLineNumber = "631">
+                  startingLineNumber = "582"
+                  endingLineNumber = "582">
                </Location>
             </Locations>
          </BreakpointContent>
@@ -204,8 +204,8 @@
             filePath = "UI/Widgets/Chart/ChartPanelView.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "2991"
-            endingLineNumber = "2991"
+            startingLineNumber = "3043"
+            endingLineNumber = "3043"
             landmarkName = "-invalidateLayers:updateSharedXContext:reason:"
             landmarkType = "7">
          </BreakpointContent>
@@ -239,6 +239,38 @@
             startingLineNumber = "194"
             endingLineNumber = "194"
             landmarkName = "-clearIndicatorLayers"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "B2734B4B-36B1-4EF7-9BCC-11B0D1F95EBE"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "UI/Widgets/Chart/Renderer/ChartIndicatorRenderer.m"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "21"
+            endingLineNumber = "21"
+            landmarkName = "-initWithPanelView:"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "AD009A50-FD64-4BD9-AF60-B27C1E07696A"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "UI/Widgets/Chart/ChartPanelView.m"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "1974"
+            endingLineNumber = "1974"
+            landmarkName = "-updateWithRootIndicator:"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

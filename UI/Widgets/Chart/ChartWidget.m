@@ -680,65 +680,6 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 
-
-- (void)setupRenderersForAllPanels {
-    if (self.renderersInitialized) {
-        NSLog(@"⚠️ Renderers already initialized, skipping");
-        return;
-    }
-    
-    NSLog(@"🎨 Setting up renderers for all panels...");
-    
-    for (ChartPanelView *panel in self.chartPanels) {
-        // Objects renderer (solo security)
-        if ([panel.panelType isEqualToString:@"security"]) {
-            if (!panel.objectRenderer) {
-                [panel setupObjectsRendererWithManager:self.objectsManager];
-            }
-        }
-        
-        // Alert renderer (solo security)
-        if ([panel.panelType isEqualToString:@"security"]) {
-            if (!panel.alertRenderer) {
-                [panel setupAlertRenderer];
-            }
-        }
-        
-        // Indicator renderer (tutti i pannelli)
-        [self setupIndicatorRendererForPanel:panel];
-    }
-    
-    self.renderersInitialized = YES;
-    NSLog(@"✅ All renderers setup completed");
-}
-
-
-
-- (void)setupIndicatorRendererForPanel:(ChartPanelView *)panel {
-    if (!panel) {
-        NSLog(@"⚠️ Cannot setup indicator renderer - panel is nil");
-        return;
-    }
-    
-    // Generate unique key for this panel
-    NSString *panelKey = [NSString stringWithFormat:@"%@_%p", panel.panelType, (void *)panel];
-    
-    // Note: self.indicatorRenderers is managed by ChartWidget+IndicatorsUI
-    // We'll access it through the indicators extension
-    if ([self respondsToSelector:@selector(indicatorRenderers)]) {
-        NSMutableDictionary *renderers = [(ChartWidget *)self indicatorRenderers];
-        
-        ChartIndicatorRenderer *renderer = renderers[panelKey];
-        if (!renderer) {
-            renderer = [[ChartIndicatorRenderer alloc] initWithPanelView:panel];
-            renderers[panelKey] = renderer;
-            NSLog(@"🎨 Created indicator renderer for panel: %@", panel.panelType);
-        } else {
-            NSLog(@"♻️ Reusing existing indicator renderer for panel: %@", panel.panelType);
-        }
-    }
-}
-
 - (void)viewDidAppear {
     [super viewDidAppear];
     
@@ -813,7 +754,6 @@ extern NSString *const DataHubDataLoadedNotification;
         }
         
         [self.chartPanels removeAllObjects];
-        self.renderersInitialized = NO;
     }
 }
 
@@ -844,13 +784,8 @@ extern NSString *const DataHubDataLoadedNotification;
     [self.chartPanels addObject:volumePanel];
     [self.panelsSplitView addSubview:volumePanel];
     
-    // Setup renderers
-    [self setupRenderersForAllPanels];
-    
-
-    NSLog(@"✅ Fallback panels created");
+    NSLog(@"✅ Fallback panels created (renderers will be setup lazily)");
 }
-
 
 // Helper per aggiornare la visibilità del placeholder
 - (void)updatePlaceholderVisibility {
@@ -2901,20 +2836,14 @@ extern NSString *const DataHubDataLoadedNotification;
 #pragma mark - indicator visibility
 
 
-- (IBAction)toggleIndicatorsVisibility:(id)sender {
-    NSButton *button = (NSButton *)sender;
-    BOOL shouldShow = (button.state == NSControlStateValueOn);
+- (IBAction)indicatorsVisibilityToggled:(id)sender {
+    NSButton *toggle = (NSButton *)sender;
+    NSLog(@"🎯 Indicators visibility toggled: %@",
+          toggle.state == NSControlStateValueOn ? @"VISIBLE" : @"HIDDEN");
     
-    NSLog(@"📈 Toggling indicators visibility: %@", shouldShow ? @"ON" : @"OFF");
-    
-    // Agisce su tutti i renderer
-    for (ChartIndicatorRenderer *renderer in self.indicatorRenderers.allValues) {
-        [renderer invalidateIndicatorLayers];
-    }
-    
-    // Force redraw dei panel
-    for (ChartPanelView *panel in self.chartPanels) {
-        [panel setNeedsDisplay:YES];
+    // Simply trigger indicator update - panels will check visibility internally
+    if (self.currentChartData) {
+        [self updateIndicatorsWithChartData:self.currentChartData];
     }
 }
 

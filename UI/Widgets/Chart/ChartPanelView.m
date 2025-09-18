@@ -1626,19 +1626,6 @@
 }
 
 
-#pragma mark - Objects Renderer Setup
-
-- (void)setupObjectsRendererWithManager:(ChartObjectsManager *)objectsManager {
-    if (!self.objectRenderer) {
-        self.objectRenderer = [[ChartObjectRenderer alloc] initWithPanelView:self
-                                                              objectsManager:objectsManager];
-        
-        // ✅ IMMEDIATELY share PanelYContext reference
-        
-      //  [self.objectRenderer setupObjectsLayers];
-        NSLog(@"🎯 ChartPanelView: Objects renderer setup completed (shared PanelYContext)");
-    }
-}
 
 #pragma mark - Objects Interaction (NEW)
 
@@ -1951,28 +1938,93 @@
     return nil;
 }
 
-#pragma mark - Alert Renderer Setup
+#pragma mark - Renderer Setup Methods (UPDATED)
 
-- (void)setupAlertRenderer {
-   if (!self.alertRenderer) {
-       self.alertRenderer = [[ChartAlertRenderer alloc] initWithPanelView:self];
-       
-       // ✅ IMMEDIATELY share PanelYContext reference
-       self.alertRenderer.panelYContext = self.panelYContext;
-       
-      // [self.alertRenderer setupAlertLayers];
-       NSLog(@"🚨 ChartPanelView: Alert renderer setup completed (shared PanelYContext)");
-   }
-}
-
-
-#pragma mark - setup indicatorrenderer
-
-- (void)setIndicatorRenderer:(ChartIndicatorRenderer *)indicatorRenderer {
+- (void)setupIndicatorRenderer {
     if (!self.indicatorRenderer) {
         self.indicatorRenderer = [[ChartIndicatorRenderer alloc] initWithPanelView:self];
+        NSLog(@"🎨 ChartPanelView (%@): Created indicator renderer", self.panelType);
+    } else {
+        NSLog(@"♻️ ChartPanelView (%@): Indicator renderer already exists", self.panelType);
     }
-  
+}
+
+- (void)setupObjectsRendererWithManager:(ChartObjectsManager *)objectsManager {
+    if (!self.objectRenderer) {
+        self.objectRenderer = [[ChartObjectRenderer alloc] initWithPanelView:self
+                                                              objectsManager:objectsManager];
+       //todo [self.objectRenderer setupObjectsLayers];
+        NSLog(@"🔧 ChartPanelView (%@): Objects renderer setup completed", self.panelType);
+    }
+}
+
+- (void)setupAlertRenderer {
+    if (!self.alertRenderer) {
+        self.alertRenderer = [[ChartAlertRenderer alloc] initWithPanelView:self];
+        //todo[self.alertRenderer setupAlertLayers];
+        NSLog(@"🚨 ChartPanelView (%@): Alert renderer setup completed", self.panelType);
+    }
+}
+#pragma mark - renderer managment
+
+
+/// Interface method for ChartWidget to pass calculated indicators
+/// @param rootIndicator Calculated root indicator with child hierarchy
+- (void)updateWithRootIndicator:(TechnicalIndicatorBase *)rootIndicator {
+    // ✅ LAZY: Setup indicator renderer only when needed
+    [self setupIndicatorRenderer];
+    
+    // Pass the calculated indicator tree to our renderer
+    if (self.indicatorRenderer) {
+        [self.indicatorRenderer renderIndicatorTree:rootIndicator];
+        NSLog(@"📊 ChartPanelView (%@): Updated with root indicator: %@",
+              self.panelType, rootIndicator.name);
+    } else {
+        NSLog(@"⚠️ ChartPanelView (%@): Failed to setup indicator renderer", self.panelType);
+    }
+}
+
+/// Update panel with objects (for security panels)
+/// @param objects Array of chart objects
+- (void)updateWithObjects:(NSArray<ChartObjectModel *> *)objects {
+    if (![self.panelType isEqualToString:@"security"]) {
+        return; // Only security panels have objects
+    }
+    
+    // ✅ LAZY: Setup objects renderer only when needed
+    [self setupObjectsRendererWithManager:self.chartWidget.objectsManager];
+    
+    if (self.objectRenderer) {
+        // TODO: Pass objects to renderer
+        NSLog(@"📐 ChartPanelView (%@): Updated with %ld objects",
+              self.panelType, (long)objects.count);
+    }
+}
+
+/// Update panel with alerts (for security panels)
+/// @param alerts Array of alerts
+- (void)updateWithAlerts:(NSArray<AlertModel *> *)alerts {
+    if (![self.panelType isEqualToString:@"security"]) {
+        return; // Only security panels have alerts
+    }
+    
+    // ✅ LAZY: Setup alert renderer only when needed
+    [self setupAlertRenderer];
+    
+    if (self.alertRenderer) {
+        // TODO: Pass alerts to renderer
+        NSLog(@"🚨 ChartPanelView (%@): Updated with %ld alerts",
+              self.panelType, (long)alerts.count);
+    }
+}
+/// Notify panel that chart data has changed
+/// @param chartData New chart data (for potential future use)
+- (void)dataDidChange:(NSArray<HistoricalBarModel *> *)chartData {
+    // For now, just log. ChartWidget will call updateWithRootIndicator with recalculated indicators
+    NSLog(@"📈 ChartPanelView (%@): Notified of data change (%ld bars)",
+          self.panelType, (long)chartData.count);
+    
+    // Future: Potentially handle panel-specific data updates here
 }
 
 #pragma mark - showGeneralContextMenuAtPoint - MODIFICA ESISTENTE

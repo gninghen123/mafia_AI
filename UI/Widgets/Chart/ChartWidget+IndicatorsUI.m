@@ -76,18 +76,6 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     objc_setAssociatedObject(self, kAvailableTemplatesKey, templates, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
-- (NSMutableDictionary<NSString *, ChartIndicatorRenderer *> *)indicatorRenderers {
-    NSMutableDictionary *renderers = objc_getAssociatedObject(self, kIndicatorRenderersKey);
-    if (!renderers) {
-        renderers = [NSMutableDictionary dictionary];
-        [self setIndicatorRenderers:renderers];
-    }
-    return renderers;
-}
-
-- (void)setIndicatorRenderers:(NSMutableDictionary<NSString *, ChartIndicatorRenderer *> *)renderers {
-    objc_setAssociatedObject(self, kIndicatorRenderersKey, renderers, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
 
 #pragma mark - Setup and Initialization
 
@@ -166,8 +154,7 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     // ✅ STEP 3: Redistribute panel heights
     [self redistributePanelHeights:template];
     
-    // ✅ STEP 4: Setup renderers for all panels
-    [self setupRenderersForAllPanels];
+  
     
     // ✅ STEP 5: Set current template
     self.currentChartTemplate = template;
@@ -180,7 +167,6 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     // ✅ STEP 6: Update with chart data if available
     if (self.currentChartData && self.currentChartData.count > 0) {
         [self updateIndicatorsWithChartData:self.currentChartData];
-        [self updateAllPanelsWithCurrentData];
     }
     
     NSLog(@"✅ Template applied successfully: %@ (%ld panels created)",
@@ -231,74 +217,39 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     rootIndicator.needsRendering = YES;
     NSLog(@"✅ Set needsRendering=YES for root indicator: %@", rootIndicator.shortName);
     
-    NSLog(@"📊 Created panel with %ld child indicators total", (long)childIndicators.count);
     
-    // ✅ STEP 5: Create indicator renderer and give it the root indicator
-    ChartIndicatorRenderer *renderer = [[ChartIndicatorRenderer alloc] initWithPanelView:panelView];
-    renderer.rootIndicator = rootIndicator;
-    
-    // ✅ STEP 6: Set renderer on panel view
-    panelView.indicatorRenderer = renderer;
-    
-    // ✅ STEP 7: Store renderer in ChartWidget dictionary with panel ID
-    if (!self.indicatorRenderers) {
-        self.indicatorRenderers = [[NSMutableDictionary alloc] init];
-    }
-    self.indicatorRenderers[panelTemplate.panelID] = renderer;
-    
-    // ✅ STEP 8: Calculate and render indicators if we have chart data
-    if (self.currentChartData && self.currentChartData.count > 0) {
-        NSLog(@"🧮 About to calculate indicators with %ld bars", (long)self.currentChartData.count);
-        [self calculateAndRenderIndicatorsForRenderer:renderer withData:self.currentChartData];
-    } else {
-        NSLog(@"⚠️ No chart data available for calculation");
-    }
+ 
     
     return panelView;
 }
 
-- (void)calculateAndRenderIndicatorsForRenderer:(ChartIndicatorRenderer *)renderer
-                                       withData:(NSArray<HistoricalBarModel *> *)chartData {
-    if (self.indicatorsVisibilityToggle.state != NSControlStateValueOn) {
-           NSLog(@"📈 Indicators disabled - skipping calculation");
-           return;
-       }
-    if (!renderer.rootIndicator) {
-        NSLog(@"⚠️ No root indicator to calculate and render");
-        return;
-    }
-    
-    NSLog(@"🧮 Calculating indicator tree with %lu data points", (unsigned long)chartData.count);
-    NSLog(@"🔍 Root indicator: %@, has %ld children",
-          renderer.rootIndicator.shortName,
-          (long)renderer.rootIndicator.childIndicators.count);
-    
-    @try {
-        // ✅ CALCULATE ROOT INDICATOR
-        [renderer.rootIndicator calculateWithBars:chartData];
-        NSLog(@"✅ Calculated root indicator: %@", renderer.rootIndicator.shortName);
-        
-        // ✅ CALCULATE ALL CHILD INDICATORS
-        for (TechnicalIndicatorBase *childIndicator in renderer.rootIndicator.childIndicators) {
-            NSLog(@"🧮 Calculating child indicator: %@", childIndicator.shortName);
-            [childIndicator calculateWithBars:chartData];
-            NSLog(@"✅ Calculated child indicator: %@", childIndicator.shortName);
-        }
-        
-    } @catch (NSException *exception) {
-        NSLog(@"❌ Failed to calculate indicator tree %@: %@", renderer.rootIndicator.shortName, exception.reason);
-        return;
-    }
-    
-    // ✅ RENDER THE ENTIRE TREE
-    @try {
-        [renderer renderIndicatorTree:renderer.rootIndicator];
-        NSLog(@"✅ Rendered indicator tree for: %@", renderer.rootIndicator.shortName);
-    } @catch (NSException *exception) {
-        NSLog(@"❌ Failed to render indicators: %@", exception.reason);
-    }
-}
 
+#pragma mark - Helper Methods (NEW)
+
+/// Create root indicator for specific panel based on panel type
+/// @param panel Target panel
+/// @return Root indicator for this panel type
+- (TechnicalIndicatorBase *)createRootIndicatorForPanel:(ChartPanelView *)panel {
+    if (!panel) {
+        return nil;
+    }
+    
+    // TODO: This should use the template system to determine the correct root indicator
+    // For now, hardcoded based on panel type
+    
+    IndicatorRegistry *registry = [IndicatorRegistry sharedRegistry];
+    
+    if ([panel.panelType isEqualToString:@"security"]) {
+        return [registry createIndicatorWithIdentifier:@"SecurityIndicator" parameters:@{}];
+    } else if ([panel.panelType isEqualToString:@"volume"]) {
+        return [registry createIndicatorWithIdentifier:@"VolumeIndicator" parameters:@{}];
+    } else if ([panel.panelType isEqualToString:@"rsi"]) {
+        return [registry createIndicatorWithIdentifier:@"RSIIndicator" parameters:@{@"period": @14}];
+    }
+    
+    NSLog(@"⚠️ Unknown panel type for indicator creation: %@", panel.panelType);
+    return nil;
+}
 
 #pragma mark - Helper Methods for Indicator Creation
 
@@ -858,8 +809,6 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     // Clear the array
     [self.chartPanels removeAllObjects];
     
-    // Reset renderers dictionary
-    [self.indicatorRenderers removeAllObjects];
     
     // ✅ ALTERNATIVE: Remove ALL subviews from split view to be sure
     NSArray *allSubviews = [self.panelsSplitView.subviews copy];
@@ -872,52 +821,7 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 }
 
 
-- (void)setupRenderersForAllPanels {
-    NSLog(@"🎨 Setting up renderers for all panels...");
-    
-    for (ChartPanelView *panel in self.chartPanels) {
-        // ✅ Setup indicator renderer
-        [self setupIndicatorRendererForPanel:panel];
-        
-        // ✅ Setup objects renderer (only for security panel)
-        if ([panel.panelType isEqualToString:@"security"]) {
-            if (!panel.objectRenderer) {
-                [panel setupObjectsRendererWithManager:self.objectsManager];
-                NSLog(@"🔧 Setup objects renderer for security panel");
-            }
-        }
-        
-        // ✅ Setup alert renderer (only for security panel)
-        if ([panel.panelType isEqualToString:@"security"]) {
-            if (!panel.alertRenderer) {
-                [panel setupAlertRenderer];
-                NSLog(@"🚨 Setup alert renderer for security panel");
-            }
-        }
-    }
-    
-    NSLog(@"✅ All renderers setup completed");
-}
 
-- (void)setupIndicatorRendererForPanel:(ChartPanelView *)panelView {
-    if (!panelView) {
-        NSLog(@"⚠️ Cannot setup indicator renderer - panel view is nil");
-        return;
-    }
-    
-    // Generate unique key for this panel
-    NSString *panelKey = [NSString stringWithFormat:@"%@_%p", panelView.panelType, (void *)panelView];
-    
-    // Create renderer if it doesn't exist
-    ChartIndicatorRenderer *renderer = self.indicatorRenderers[panelKey];
-    if (!renderer) {
-        renderer = [[ChartIndicatorRenderer alloc] initWithPanelView:panelView];
-        self.indicatorRenderers[panelKey] = renderer;
-        NSLog(@"🎨 Created indicator renderer for panel: %@", panelView.panelType);
-    } else {
-        NSLog(@"♻️ Reusing existing indicator renderer for panel: %@", panelView.panelType);
-    }
-}
 
 - (void)updateIndicatorsWithChartData:(NSArray<HistoricalBarModel *> *)chartData {
     
@@ -931,39 +835,39 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
         return;
     }
     
-    NSLog(@"🔄 Updating indicators with %ld data points...", (long)chartData.count);
+    NSLog(@"🔄 Updating indicators with chart data (%lu bars) - NEW ARCHITECTURE",
+          (unsigned long)chartData.count);
     
-    // ✅ Update all indicator renderers
-    for (NSString *panelKey in self.indicatorRenderers.allKeys) {
-        ChartIndicatorRenderer *renderer = self.indicatorRenderers[panelKey];
-        [renderer invalidateIndicatorLayers];
-        NSLog(@"📊 Updated indicators for panel: %@", panelKey);
+    // ✅ NEW APPROACH: Create and calculate indicators, then pass to panels
+    for (ChartPanelView *panel in self.chartPanels) {
+        // 1. Create root indicator for this panel (business logic)
+        TechnicalIndicatorBase *rootIndicator = [self createRootIndicatorForPanel:panel];
+        
+        if (rootIndicator) {
+            // 2. Calculate indicator with chart data (business logic)
+            @try {
+                [rootIndicator calculateWithBars:chartData];
+                
+                // Also calculate children
+                for (TechnicalIndicatorBase *child in rootIndicator.childIndicators) {
+                    [child calculateWithBars:chartData];
+                }
+                
+                // 3. Pass calculated indicator to panel (delegation)
+                [panel updateWithRootIndicator:rootIndicator];
+                
+                NSLog(@"✅ Updated panel %@ with calculated indicators", panel.panelType);
+                
+            } @catch (NSException *exception) {
+                NSLog(@"❌ Failed to calculate indicators for panel %@: %@",
+                      panel.panelType, exception.reason);
+            }
+        } else {
+            NSLog(@"⚠️ No root indicator created for panel: %@", panel.panelType);
+        }
     }
     
-    NSLog(@"✅ All indicators updated with new data");
-}
-
-- (void)updateAllPanelsWithCurrentData {
-    NSLog(@"🔄 Updating all panels with current chart data");
-    
-    if (!self.currentChartData || self.currentChartData.count == 0) {
-        NSLog(@"⚠️ No chart data available for panel update");
-        return;
-    }
-    
-    if (self.chartPanels.count == 0) {
-        NSLog(@"⚠️ No chart panels available for update");
-        return;
-    }
-    
-    // ✅ SIMPLIFIED: Use existing ChartWidget method that now handles indicators automatically
-    [self synchronizePanels];
-    
-    // ✅ REMOVED: Manual indicator refresh - now automatic
-    // ❌ LEGACY: [self refreshIndicatorsRendering]; // ← NOT NEEDED ANYMORE
-    
-    NSLog(@"✅ All panels updated with current data (%ld bars) - indicators included automatically",
-          (long)self.currentChartData.count);
+    NSLog(@"✅ All panels updated with calculated indicators");
 }
 
 
@@ -971,11 +875,7 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
 #pragma mark - Cleanup
 
 - (void)cleanupIndicatorsUI {
-    // Clean up renderers
-    for (ChartIndicatorRenderer *renderer in self.indicatorRenderers.allValues) {
-        [renderer cleanup];
-    }
-    [self.indicatorRenderers removeAllObjects];
+    // ✅ UPDATED: No more renderer dictionary to clean - panels handle their own cleanup
     
     // Remove UI components
     [self.indicatorsPanel removeFromSuperview];
@@ -987,69 +887,11 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     self.currentChartTemplate = nil;
     [self.availableTemplates removeAllObjects];
     
-    NSLog(@"🧹 Indicators UI cleanup completed");
+    NSLog(@"🧹 Indicators UI cleanup completed (NEW ARCHITECTURE)");
 }
 
 
-- (void)recalculateAllIndicators {
-    
-    if (self.indicatorsVisibilityToggle.state != NSControlStateValueOn) {
-           NSLog(@"📈 Indicators disabled - skipping recalculation");
-           return;
-       }
-    
-    
-    NSLog(@"🧮 Starting indicator recalculation for all panels");
-    
-    // ✅ STEP 1: Ottieni i dati correnti (potrebbero essere appena cambiati)
-    NSArray<HistoricalBarModel *> *currentData = [self valueForKey:@"chartData"]; // Usa KVC per accedere ai dati privati
-    
-    if (!currentData || currentData.count == 0) {
-        NSLog(@"⚠️ No chart data available for indicator recalculation");
-        return;
-    }
-    
-    NSLog(@"📊 Recalculating indicators with %ld bars of data", (long)currentData.count);
-    
-    // ✅ STEP 2: Recalcola TUTTI gli indicatori per ogni panel
-    NSInteger recalculatedCount = 0;
-    
-    for (NSString *panelID in self.indicatorRenderers.allKeys) {
-        ChartIndicatorRenderer *renderer = self.indicatorRenderers[panelID];
-        
-        if (!renderer.rootIndicator) {
-            NSLog(@"⚠️ Panel %@ has no root indicator to recalculate", panelID);
-            continue;
-        }
-        
-        NSLog(@"🧮 Recalculating indicators for panel: %@", panelID);
-        
-        @try {
-            // ✅ RECALCULATE ROOT INDICATOR con i nuovi dati
-            [renderer.rootIndicator calculateWithBars:currentData];
-            NSLog(@"✅ Recalculated root indicator: %@", renderer.rootIndicator.shortName);
-            
-            // ✅ RECALCULATE ALL CHILD INDICATORS ricorsivamente
-            for (TechnicalIndicatorBase *childIndicator in renderer.rootIndicator.childIndicators) {
-                [self recalculateIndicatorRecursively:childIndicator withData:currentData];
-            }
-            
-            // ✅ STEP 3: Marca che serve re-rendering
-            [renderer markAllIndicatorsForRerendering];
-            
-            // ✅ STEP 4: Force immediate re-rendering
-            [renderer renderIndicatorTree:renderer.rootIndicator];
-            
-            recalculatedCount++;
-            NSLog(@"✅ Panel %@ indicators recalculated and re-rendered", panelID);
-            
-        } @catch (NSException *exception) {
-            NSLog(@"❌ Failed to recalculate indicators for panel %@: %@", panelID, exception.reason);
-        }
-    }
-    
-    NSLog(@"🎯 Indicator recalculation completed - %ld panels processed", (long)recalculatedCount);
-}
+
 
 - (void)recalculateIndicatorRecursively:(TechnicalIndicatorBase *)indicator
                                 withData:(NSArray<HistoricalBarModel *> *)chartData {
@@ -1068,40 +910,5 @@ static const void *kIndicatorRenderersKey = &kIndicatorRenderersKey;
     }
 }
 
-
-// ✅ METODO AGGIUNTIVO: Per forzare recalcolo con dati specifici
-- (void)recalculateAllIndicatorsWithNewData:(NSArray<HistoricalBarModel *> *)newData {
-    if (!newData || newData.count == 0) {
-        NSLog(@"⚠️ No data provided for indicator recalculation");
-        return;
-    }
-    
-    NSLog(@"🧮 Force recalculating indicators with %ld new bars", (long)newData.count);
-    
-    for (NSString *panelID in self.indicatorRenderers.allKeys) {
-        ChartIndicatorRenderer *renderer = self.indicatorRenderers[panelID];
-        
-        if (renderer.rootIndicator) {
-            @try {
-                // Calcola con i nuovi dati
-                [renderer.rootIndicator calculateWithBars:newData];
-                
-                // Calcola i figli
-                for (TechnicalIndicatorBase *child in renderer.rootIndicator.childIndicators) {
-                    [self recalculateIndicatorRecursively:child withData:newData];
-                }
-                
-                // Re-render
-                [renderer markAllIndicatorsForRerendering];
-                [renderer renderIndicatorTree:renderer.rootIndicator];
-                
-                NSLog(@"✅ Panel %@ recalculated with new data", panelID);
-                
-            } @catch (NSException *exception) {
-                NSLog(@"❌ Failed to recalculate panel %@ with new data: %@", panelID, exception.reason);
-            }
-        }
-    }
-}
 
 @end

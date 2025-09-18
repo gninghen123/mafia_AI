@@ -44,7 +44,6 @@ typedef struct {
 @property (nonatomic, strong) SharedXCoordinateContext *  sharedXContext;
 
 @property (nonatomic, assign) BOOL isStaticMode;
-@property (nonatomic, assign) BOOL renderersInitialized;
 
 @property (nonatomic, assign) BOOL yRangeCacheValid;
 @property (nonatomic, assign) NSInteger cachedStartIndex;

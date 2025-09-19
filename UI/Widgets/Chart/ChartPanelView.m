@@ -68,6 +68,29 @@
     return self;
 }
 
+#pragma mark - Template Configuration (NEW ARCHITECTURE)
+
+- (void)configureWithPanelTemplate:(ChartPanelTemplateModel *)panelTemplate {
+    if (!panelTemplate) {
+        NSLog(@"❌ ChartPanelView: Cannot configure with nil panel template");
+        return;
+    }
+    
+    NSLog(@"🏗️ ChartPanelView: Configuring panel %@ with template: %@",
+          self.panelType, [panelTemplate displayName]);
+    
+    // ✅ STEP 1: Create indicator renderer if not exists
+    if (!self.indicatorRenderer) {
+        self.indicatorRenderer = [[ChartIndicatorRenderer alloc] init];
+        NSLog(@"✅ Created indicator renderer for panel: %@", self.panelType);
+    }
+    
+    // ✅ STEP 2: Configure renderer with template data
+    [self.indicatorRenderer configureWithPanelTemplate:panelTemplate];
+    
+    NSLog(@"✅ ChartPanelView configured with template: %@", [panelTemplate displayName]);
+}
+
 - (void)setupPanel {
     self.wantsLayer = YES;
     self.layer.backgroundColor = [NSColor controlBackgroundColor].CGColor;
@@ -2016,15 +2039,6 @@
         NSLog(@"🚨 ChartPanelView (%@): Updated with %ld alerts",
               self.panelType, (long)alerts.count);
     }
-}
-/// Notify panel that chart data has changed
-/// @param chartData New chart data (for potential future use)
-- (void)dataDidChange:(NSArray<HistoricalBarModel *> *)chartData {
-    // For now, just log. ChartWidget will call updateWithRootIndicator with recalculated indicators
-    NSLog(@"📈 ChartPanelView (%@): Notified of data change (%ld bars)",
-          self.panelType, (long)chartData.count);
-    
-    // Future: Potentially handle panel-specific data updates here
 }
 
 #pragma mark - showGeneralContextMenuAtPoint - MODIFICA ESISTENTE

@@ -107,6 +107,12 @@ typedef NS_OPTIONS(NSUInteger, ChartLayerInvalidationOptions) {
 /// @param type Panel type ("security", "volume", etc.)
 - (instancetype)initWithType:(NSString *)type;
 
+#pragma mark - Template Configuration (NEW)
+/// Configure panel with template data - NEW ARCHITECTURE
+/// Panel receives template data and configures itself autonomously
+/// @param panelTemplate Template data containing root + child indicators
+- (void)configureWithPanelTemplate:(ChartPanelTemplateModel *)panelTemplate;
+
 #pragma mark - Setup Methods
 /// Setup alert renderer
 - (void)setupAlertRenderer;
@@ -289,8 +295,5 @@ typedef NS_OPTIONS(NSUInteger, ChartLayerInvalidationOptions) {
 /// @param alerts Array of alerts
 - (void)updateWithAlerts:(NSArray<AlertModel *> *)alerts;
 
-/// Notify panel that chart data has changed
-/// @param chartData New chart data
-- (void)dataDidChange:(NSArray<HistoricalBarModel *> *)chartData;
 
 @end

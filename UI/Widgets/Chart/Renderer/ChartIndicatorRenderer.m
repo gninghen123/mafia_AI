@@ -87,6 +87,152 @@
     self.warningMessagesLayer.frame = warningFrame;
 }
 
+#pragma mark - Template Configuration (NEW)
+
+- (void)configureWithPanelTemplate:(ChartPanelTemplateModel *)panelTemplate {
+    if (!panelTemplate) {
+        NSLog(@"❌ IndicatorRenderer: Cannot configure with nil panel template");
+        return;
+    }
+    
+    NSLog(@"🏗️ IndicatorRenderer: Configuring with template: %@ (%@)",
+          [panelTemplate displayName], panelTemplate.rootIndicatorType);
+    
+    // ✅ STEP 1: Create root indicator from template data
+    TechnicalIndicatorBase *rootIndicator = [self createRootIndicatorFromTemplate:panelTemplate];
+    
+    if (!rootIndicator) {
+        NSLog(@"❌ Failed to create root indicator from template: %@", panelTemplate.rootIndicatorType);
+        return;
+    }
+    
+    // ✅ STEP 2: Configure child indicators if present
+    if (panelTemplate.childIndicatorsData && panelTemplate.childIndicatorsData.count > 0) {
+        [self configureChildIndicators:panelTemplate.childIndicatorsData forRootIndicator:rootIndicator];
+    }
+    
+    // ✅ STEP 3: Store the configured indicator
+    self.rootIndicator = rootIndicator;
+    
+    
+    NSLog(@"✅ IndicatorRenderer configured with root indicator: %@", rootIndicator.displayName);
+}
+
+
+#pragma mark - Helper Methods (NEW)
+
+- (TechnicalIndicatorBase *)createRootIndicatorFromTemplate:(ChartPanelTemplateModel *)panelTemplate {
+    NSString *indicatorType = panelTemplate.rootIndicatorType;
+    NSDictionary *parameters = panelTemplate.rootIndicatorParams;
+    
+    if (!indicatorType || indicatorType.length == 0) {
+        NSLog(@"⚠️ No root indicator type specified in template");
+        return nil;
+    }
+    
+    // ✅ STEP 1: Get indicator class from registry or class name
+    Class indicatorClass = NSClassFromString(indicatorType);
+    
+    if (!indicatorClass) {
+        NSLog(@"❌ Unknown indicator class: %@", indicatorType);
+        return nil;
+    }
+    
+    // ✅ STEP 2: Verify it's a valid indicator class
+    if (![indicatorClass isSubclassOfClass:[TechnicalIndicatorBase class]]) {
+        NSLog(@"❌ Class %@ is not a TechnicalIndicatorBase subclass", indicatorType);
+        return nil;
+    }
+    
+    // ✅ STEP 3: Create indicator instance with parameters
+    TechnicalIndicatorBase *indicator;
+    if (parameters && parameters.count > 0) {
+        indicator = [[indicatorClass alloc] initWithParameters:parameters];
+    } else {
+        indicator = [[indicatorClass alloc] init];
+    }
+    
+    NSLog(@"✅ Created root indicator: %@ (%@)", indicator.displayName, indicatorType);
+    
+    return indicator;
+}
+
+
+
+- (void)applyParametersManually:(NSDictionary *)parameters toIndicator:(TechnicalIndicatorBase *)indicator {
+    // ✅ Common parameters mapping
+    NSArray *parameterKeys = @[@"period", @"multiplier", @"kPeriod", @"dPeriod",
+                              @"fastPeriod", @"slowPeriod", @"signalPeriod",
+                              @"isVisible", @"color", @"lineWidth"];
+    
+    for (NSString *key in parameterKeys) {
+        id value = parameters[key];
+        if (value && ![value isKindOfClass:[NSNull class]]) {
+            @try {
+                [indicator setValue:value forKey:key];
+                NSLog(@"📝 Set %@.%@ = %@", indicator.displayName, key, value);
+            } @catch (NSException *exception) {
+                // Key doesn't exist for this indicator - continue silently
+            }
+        }
+    }
+}
+
+- (void)configureChildIndicators:(NSArray *)childIndicatorsData forRootIndicator:(TechnicalIndicatorBase *)rootIndicator {
+    if (!childIndicatorsData || childIndicatorsData.count == 0) {
+        return;
+    }
+    
+    NSLog(@"👶 Configuring %ld child indicators for %@", childIndicatorsData.count, rootIndicator.displayName);
+    
+    NSMutableArray *childIndicators = [NSMutableArray array];
+    
+    for (id childData in childIndicatorsData) {
+        if (![childData isKindOfClass:[NSDictionary class]]) {
+            NSLog(@"⚠️ Invalid child indicator data: %@", childData);
+            continue;
+        }
+        
+        NSDictionary *childDict = (NSDictionary *)childData;
+        TechnicalIndicatorBase *childIndicator = [self createChildIndicatorFromDictionary:childDict];
+        
+        if (childIndicator) {
+            [childIndicators addObject:childIndicator];
+            NSLog(@"✅ Created child indicator: %@", childIndicator.displayName);
+        }
+    }
+    
+    // ✅ Set child indicators on root
+    if (childIndicators.count > 0) {
+        rootIndicator.childIndicators = [childIndicators copy];
+        NSLog(@"✅ Assigned %ld child indicators to %@", childIndicators.count, rootIndicator.displayName);
+    }
+}
+
+- (TechnicalIndicatorBase *)createChildIndicatorFromDictionary:(NSDictionary *)childDict {
+    NSString *indicatorType = childDict[@"type"] ?: childDict[@"indicatorType"];
+    NSDictionary *parameters = childDict[@"parameters"] ?: childDict;
+    
+    if (!indicatorType) {
+        NSLog(@"⚠️ Child indicator missing type");
+        return nil;
+    }
+    
+    // ✅ Create child indicator same way as root
+    Class indicatorClass = NSClassFromString(indicatorType);
+    if (!indicatorClass || ![indicatorClass isSubclassOfClass:[TechnicalIndicatorBase class]]) {
+        NSLog(@"❌ Invalid child indicator class: %@", indicatorType);
+        return nil;
+    }
+    
+    TechnicalIndicatorBase *childIndicator = [[indicatorClass alloc] init];
+    
+    if (parameters && parameters.count > 0) {
+        [self configureIndicator:childIndicator withParameters:parameters];
+    }
+    
+    return childIndicator;
+}
 #pragma mark - Period Optimization (NEW)
 
 - (BOOL)isPeriodTooShortForIndicator:(TechnicalIndicatorBase *)indicator visibleRange:(NSInteger)visibleRange {
@@ -171,8 +317,6 @@
 #pragma mark - Rendering Management
 
 - (void)renderIndicatorTree:(TechnicalIndicatorBase *)rootIndicator {
-    
-   
     self.rootIndicator = rootIndicator;
     
     if (!rootIndicator) {
@@ -180,7 +324,6 @@
         return;
     }
     
-
     // Mark all indicators for rendering
     [self markAllIndicatorsForRerendering];
     
@@ -1015,6 +1158,31 @@
 }
 
 
+#pragma mark - Data Calculation (NEW)
 
+- (void)recalculateIndicatorsWithData:(NSArray<HistoricalBarModel *> *)chartData {
+    if (!self.rootIndicator || !chartData || chartData.count == 0) {
+        NSLog(@"⚠️ IndicatorRenderer: Cannot recalculate - missing rootIndicator or chartData");
+        return;
+    }
+    
+    NSLog(@"🔄 Recalculating indicators with %ld bars", chartData.count);
+    
+    // Calculate root indicator
+    [self.rootIndicator calculateWithBars:chartData];
+    
+    // Calculate children recursively
+    [self recalculateChildrenForIndicator:self.rootIndicator withData:chartData];
+    
+    // Trigger redraw
+    [self invalidateIndicatorLayers];
+}
+
+- (void)recalculateChildrenForIndicator:(TechnicalIndicatorBase *)indicator withData:(NSArray<HistoricalBarModel *> *)chartData {
+    for (TechnicalIndicatorBase *child in indicator.childIndicators) {
+        [child calculateWithBars:chartData];
+        [self recalculateChildrenForIndicator:child withData:chartData];
+    }
+}
 
 @end

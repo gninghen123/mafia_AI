@@ -2809,10 +2809,6 @@ extern NSString *const DataHubDataLoadedNotification;
 
 
 
-
-
-
-
 // ✅ MIGLIORE PRATICA: Metodo centralizzato per update coordinate
 - (void)updateCoordinatesIfNeeded:(NSString *)source {
     if (!self.chartData || self.chartData.count == 0) {

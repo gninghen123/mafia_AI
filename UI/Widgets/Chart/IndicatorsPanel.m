@@ -1779,7 +1779,8 @@
     NSMutableArray *childIndicators = [containingPanel.childIndicatorsData mutableCopy] ?: [NSMutableArray array];
     
     NSDictionary *newChildIndicator = @{
-        @"type": indicatorID,                               // ✅ Type per la creazione
+        @"type": indicatorID,
+        @"class": [NSString stringWithFormat:@"%@Indicator", indicatorID],
         @"instanceID": [[NSUUID UUID] UUIDString],         // ✅ UUID unico
         @"parameters": indicatorInfo[@"defaultParameters"] ?: @{},
         @"isVisible": @YES,
@@ -1965,7 +1966,8 @@
     NSMutableArray *childIndicators = [containingPanel.childIndicatorsData mutableCopy] ?: [NSMutableArray array];
     
     NSDictionary *newChildIndicator = @{
-        @"type": indicatorID,                               // ✅ Type per la creazione
+        @"type": indicatorID,
+        @"class": [NSString stringWithFormat:@"%@Indicator", indicatorID],
         @"instanceID": [[NSUUID UUID] UUIDString],         // ✅ UUID unico
         @"parameters": parameters,
         @"isVisible": @YES,

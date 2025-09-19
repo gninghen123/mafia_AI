@@ -84,7 +84,7 @@
             landmarkType = "7">
             <Locations>
                <Location
-                  uuid = "D272F23F-D83F-42F3-95F3-291C6098AE59 - 3f1fdfbe44b671dc"
+                  uuid = "D272F23F-D83F-42F3-95F3-291C6098AE59 - 3f1fdfbe44b6617d"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
@@ -94,11 +94,11 @@
                   urlString = "file:///Users/fabiogattone/Documents/mafia_AI/UI/Widgets/Chart/ChartWidget+IndicatorsUI.m"
                   startingColumnNumber = "9223372036854775807"
                   endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "581"
-                  endingLineNumber = "581">
+                  startingLineNumber = "452"
+                  endingLineNumber = "452">
                </Location>
                <Location
-                  uuid = "D272F23F-D83F-42F3-95F3-291C6098AE59 - 7ab6216ab5b1710"
+                  uuid = "D272F23F-D83F-42F3-95F3-291C6098AE59 - 7ab6216ab5b07f3"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
@@ -108,8 +108,8 @@
                   urlString = "file:///Users/fabiogattone/Documents/mafia_AI/UI/Widgets/Chart/ChartWidget+IndicatorsUI.m"
                   startingColumnNumber = "9223372036854775807"
                   endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "582"
-                  endingLineNumber = "582">
+                  startingLineNumber = "453"
+                  endingLineNumber = "453">
                </Location>
             </Locations>
          </BreakpointContent>
@@ -165,64 +165,48 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "57A6FDC0-BB27-457E-ADE3-6D0A6031A72D"
+            uuid = "62D65A51-7C79-41D3-AE50-93C999E9F34D"
             shouldBeEnabled = "Yes"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "UI/Widgets/Chart/Renderer/ChartIndicatorRenderer.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "789"
-            endingLineNumber = "789"
-            landmarkName = "-drawCandlestickIndicator:"
+            startingLineNumber = "320"
+            endingLineNumber = "320"
+            landmarkName = "-updateWarningMessagesDisplay"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "F88602EF-DC47-4D67-85A6-3CDB24F7FAB8"
+            uuid = "961A33AA-2A71-43F3-9AF9-51EB7E0DCDE8"
             shouldBeEnabled = "Yes"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "UI/Widgets/Chart/Renderer/ChartIndicatorRenderer.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "209"
-            endingLineNumber = "209"
-            landmarkName = "-drawLayer:inContext:"
+            startingLineNumber = "507"
+            endingLineNumber = "507"
+            landmarkName = "-drawLineIndicator:"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "81BBBB54-865A-459E-959A-61DD04BE31C8"
-            shouldBeEnabled = "Yes"
+            uuid = "A664D41B-FF0A-4A31-9B69-30AEE56654FA"
+            shouldBeEnabled = "No"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
             filePath = "UI/Widgets/Chart/Renderer/ChartIndicatorRenderer.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "202"
-            endingLineNumber = "202"
-            landmarkName = "-invalidateIndicatorLayers"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "550AF99A-F994-4EDC-9C31-B886B1AB1430"
-            shouldBeEnabled = "Yes"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "UI/Widgets/Chart/Renderer/ChartIndicatorRenderer.m"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "194"
-            endingLineNumber = "194"
-            landmarkName = "-clearIndicatorLayers"
+            startingLineNumber = "308"
+            endingLineNumber = "308"
+            landmarkName = "-clearWarningMessages"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

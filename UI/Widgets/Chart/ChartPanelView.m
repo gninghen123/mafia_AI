@@ -79,15 +79,18 @@
     NSLog(@"🏗️ ChartPanelView: Configuring panel %@ with template: %@",
           self.panelType, [panelTemplate displayName]);
     
-    // ✅ STEP 1: Create indicator renderer if not exists
+    // ✅ FIX: Create indicator renderer with proper initializer
     if (!self.indicatorRenderer) {
-        self.indicatorRenderer = [[ChartIndicatorRenderer alloc] init];
+        self.indicatorRenderer = [[ChartIndicatorRenderer alloc] initWithPanelView:self];
         NSLog(@"✅ Created indicator renderer for panel: %@", self.panelType);
     }
     
     // ✅ STEP 2: Configure renderer with template data
     [self.indicatorRenderer configureWithPanelTemplate:panelTemplate];
     
+    NSRect bb = self.bounds;
+    
+   
     NSLog(@"✅ ChartPanelView configured with template: %@", [panelTemplate displayName]);
 }
 
@@ -240,7 +243,9 @@
     self.panelYContext.yRangeMax = self.yRangeMax;
     self.panelYContext.panelHeight = self.bounds.size.height;
     
- 
+    if (self.indicatorRenderer) {
+        [self.indicatorRenderer recalculateIndicatorsWithData:data];
+    }
     
     [self invalidateCoordinateDependentLayersWithReason:@"data updated"];
 }
@@ -3053,6 +3058,10 @@
         [self.alertRenderer updateSharedXContext:self.sharedXContext];
     }
     
+    if (self.bounds.size.width > 0 && self.bounds.size.height > 0) {
+        [self.indicatorRenderer updateLayerBounds];
+        [self.indicatorRenderer.indicatorsLayer setNeedsDisplay];
+    }
     if (self.indicatorRenderer) {
         [self.indicatorRenderer invalidateIndicatorLayers];
     }

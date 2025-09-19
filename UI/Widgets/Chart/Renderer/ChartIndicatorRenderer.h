@@ -9,6 +9,7 @@
 #import <Cocoa/Cocoa.h>
 #import <QuartzCore/QuartzCore.h>
 #import "TechnicalIndicatorBase.h"  // ✅ IndicatorDataModel è dentro qui
+#import "ChartTemplateModels.h"     // ✅ NEW: Per ChartPanelTemplateModel
 
 @class ChartPanelView;
 @class SharedXCoordinateContext;
@@ -58,6 +59,18 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Update warning messages display
 - (void)updateWarningMessagesDisplay;
+
+
+- (void)recalculateIndicatorsWithData:(NSArray<HistoricalBarModel *> *)chartData;
+
+
+#pragma mark - Template Configuration (NEW)
+
+/// Configure renderer with panel template data
+/// Creates and configures root indicator from template specifications
+/// @param panelTemplate Template data containing indicator type and parameters
+- (void)configureWithPanelTemplate:(ChartPanelTemplateModel *)panelTemplate;
+
 
 #pragma mark - Rendering Management
 /// Render entire indicator tree

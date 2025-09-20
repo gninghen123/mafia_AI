@@ -63,9 +63,31 @@
         _panelType = type;
         [self setupPanel];
         [self setupLogScaleCheckbox];  // 🆕 NEW: Aggiungi questa linea
+        [self setupAllRenderers];
 
     }
     return self;
+}
+
+- (void)setupAllRenderers {
+    NSLog(@"🎨 ChartPanelView (%@): Setting up all renderers...", self.panelType);
+    
+    // 1. SEMPRE: Indicator renderer (tutti i panel types)
+    [self setupIndicatorRenderer];
+    
+    // 2. CONDIZIONALE: Objects renderer (solo security panels)
+    if ([self.panelType isEqualToString:@"security"]) {
+        // Objects renderer sarà inizializzato quando il chartWidget sarà impostato
+        // perché ha bisogno di objectsManager dal widget
+        NSLog(@"🔧 Security panel - objects renderer will be setup when chartWidget is set");
+    }
+    
+    // 3. CONDIZIONALE: Alert renderer (solo security panels)
+    if ([self.panelType isEqualToString:@"security"]) {
+        [self setupAlertRenderer];
+    }
+    
+    NSLog(@"✅ ChartPanelView (%@): All applicable renderers setup completed", self.panelType);
 }
 
 #pragma mark - Template Configuration (NEW ARCHITECTURE)
@@ -363,7 +385,7 @@
                                   textSize.width + 12, textSize.height + 6);
     
     // Colore distintivo per il tempo
-    [[NSColor systemGreenColor] setFill];
+    [[NSColor systemYellowColor] setFill];
     NSBezierPath *bubblePath = [NSBezierPath bezierPathWithRoundedRect:bubbleRect
                                                               xRadius:4 yRadius:4];
     [bubblePath fill];
@@ -2115,22 +2137,44 @@
                                                       keyEquivalent:@""];
     createImageItem.target = self;
     createImageItem.enabled = (self.chartWidget.currentSymbol != nil && self.chartWidget.chartPanels.count > 0);
+    
     [contextMenu addItem:createImageItem];
     
-    // Alert creation
-    if (self.alertRenderer) {
+   
         [contextMenu addItem:[NSMenuItem separatorItem]];
         
-        AlertModel *alertTemplate = [self.alertRenderer createAlertTemplateAtScreenPoint:point];
-        NSString *alertTitle = [NSString stringWithFormat:@"🚨 Create Alert at %.2f", alertTemplate.triggerValue];
-        
-        NSMenuItem *createAlertItem = [[NSMenuItem alloc] initWithTitle:alertTitle
-                                                                 action:@selector(contextMenuCreateAlert:)
-                                                          keyEquivalent:@""];
-        createAlertItem.target = self;
-        createAlertItem.representedObject = alertTemplate;
-        [contextMenu addItem:createAlertItem];
-    }
+    if (self.chartWidget.currentSymbol) {
+          [contextMenu addItem:[NSMenuItem separatorItem]];
+          
+          // Calcola il prezzo dal punto Y (senza dipendere dall'alert renderer)
+          double price = [self priceForYCoordinate:point.y];
+          
+          // Format prezzo con cifre appropriate
+          NSString *priceString;
+          if (price >= 1000) {
+              priceString = [NSString stringWithFormat:@"%.0f", price];
+          } else if (price >= 10) {
+              priceString = [NSString stringWithFormat:@"%.2f", price];
+          } else {
+              priceString = [NSString stringWithFormat:@"%.4f", price];
+          }
+          
+          NSString *alertTitle = [NSString stringWithFormat:@"🚨 Create Alert at %@", priceString];
+          
+          NSMenuItem *createAlertItem = [[NSMenuItem alloc] initWithTitle:alertTitle
+                                                                   action:@selector(contextMenuCreateAlert:)
+                                                            keyEquivalent:@""];
+          createAlertItem.target = self;
+          
+          // Passa le informazioni necessarie tramite representedObject
+          NSDictionary *alertInfo = @{
+              @"price": @(price),
+              @"point": [NSValue valueWithPoint:point],
+              @"symbol": self.chartWidget.currentSymbol
+          };
+          createAlertItem.representedObject = alertInfo;
+          [contextMenu addItem:createAlertItem];
+      }
     
     // Show the context menu
     [NSMenu popUpContextMenu:contextMenu withEvent:event forView:self];
@@ -2225,14 +2269,17 @@
     AlertModel *alert = menuItem.representedObject;
     NSLog(@"✏️ ChartPanelView: Editing alert %@ %.2f", alert.symbol, alert.triggerValue);
     
-    AlertEditController *editor = [[AlertEditController alloc] initWithAlert:alert];
-    editor.completionHandler = ^(AlertModel *editedAlert, BOOL saved) {
+    self.alertEditController = [[AlertEditController alloc] initWithAlert:alert
+                                                                   isEditing:YES];
+
+    self.alertEditController.completionHandler = ^(AlertModel *editedAlert, BOOL saved) {
         if (saved) {
             [self.alertRenderer refreshAlerts];
         }
     };
     
-    [self.window beginSheet:editor.window completionHandler:nil];
+    [self.window beginSheet:self.alertEditController
+     .window completionHandler:nil];
 }
 
 - (void)deleteAlertFromContextMenu:(NSMenuItem *)menuItem {
@@ -2605,15 +2652,7 @@
     }
 }
 
-- (IBAction)contextMenuCreateAlert:(id)sender {
-    NSMenuItem *menuItem = (NSMenuItem *)sender;
-    AlertModel *alertTemplate = menuItem.representedObject;
-    
-    if (alertTemplate && self.alertRenderer) {
-        [self startEditingAlertAtPoint:NSZeroPoint]; // Will use the template
-        NSLog(@"🚨 Creating alert at %.2f for %@", alertTemplate.triggerValue, alertTemplate.symbol);
-    }
-}
+
 
 - (CGFloat)calculateChartAreaWidthWithDynamicBuffer {
     if (self.visibleStartIndex >= self.visibleEndIndex) {
@@ -3049,20 +3088,24 @@
 - (void)updateExternalRenderersSharedXContext {
     // ✅ Aggiorna tutti i renderer con il nuovo SharedXContext
     if (self.objectRenderer) {
+        [self.objectRenderer updateLayerFrames];
         [self.objectRenderer invalidateEditingLayer];
         [self.objectRenderer invalidateObjectsLayer];
         
     }
     
     if (self.alertRenderer) {
-        [self.alertRenderer updateSharedXContext:self.sharedXContext];
+        [self.alertRenderer updateLayerFrames];
+        [self.alertRenderer invalidateAlertsLayer];
     }
     
     if (self.bounds.size.width > 0 && self.bounds.size.height > 0) {
         [self.indicatorRenderer updateLayerBounds];
-        [self.indicatorRenderer.indicatorsLayer setNeedsDisplay];
     }
     if (self.indicatorRenderer) {
+        if (self.bounds.size.width > 0 && self.bounds.size.height > 0) {
+            [self.indicatorRenderer updateLayerBounds];
+        }
         [self.indicatorRenderer invalidateIndicatorLayers];
     }
 }
@@ -3087,6 +3130,67 @@
 
 - (NSInteger)visibleEndIndex{
     return self.chartWidget.visibleEndIndex;
+}
+#pragma mark - alert creation
+
+- (IBAction)contextMenuCreateAlert:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    NSDictionary *alertInfo = menuItem.representedObject;
+    
+    if (!alertInfo) {
+        NSLog(@"⚠️ No alert info available in menu item");
+        return;
+    }
+    
+    double price = [alertInfo[@"price"] doubleValue];
+    NSString *symbol = alertInfo[@"symbol"];
+    
+    NSLog(@"🚨 Creating alert at %.2f for %@", price, symbol);
+    
+    
+    // 🆕 STEP 2: Crea template alert manualmente (non dipende dal renderer)
+    AlertModel *alertTemplate = [self createAlertTemplateWithPrice:price symbol:symbol];
+    
+    if (!alertTemplate) {
+        NSLog(@"⚠️ Failed to create alert template");
+        return;
+    }
+    
+    // STEP 3: Mostra AlertEditController
+    self.alertEditController = [[AlertEditController alloc] initWithAlert:alertTemplate
+                                                                    isEditing:NO];
+    __weak typeof(self) weakSelf = self;
+    self.alertEditController.completionHandler = ^(AlertModel *editedAlert, BOOL saved) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (saved && editedAlert && strongSelf) {
+            // Refresh alerts nel chart renderer
+            [strongSelf.alertRenderer refreshAlerts];
+            NSLog(@"✅ Alert created from context menu: %@ at %.2f",
+                  editedAlert.symbol, editedAlert.triggerValue);
+        }
+    };
+    
+    // Show as modal window
+    [self.alertEditController showAlertEditWindow];
+}
+
+
+// 🆕 NUOVO: Metodo per creare template alert senza dipendere dal renderer
+- (AlertModel *)createAlertTemplateWithPrice:(double)price symbol:(NSString *)symbol {
+    if (!symbol) {
+        return nil;
+    }
+    
+    AlertModel *template = [[AlertModel alloc] init];
+    template.symbol = symbol;
+    template.triggerValue = price;
+    template.conditionString = @"above"; // Default condition
+    template.isActive = YES;
+    template.notificationEnabled = YES;
+    template.creationDate = [NSDate date];
+    template.notes = nil;
+    
+    return template;
 }
 
 @end

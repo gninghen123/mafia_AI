@@ -280,7 +280,11 @@
 
 - (void)coordinateSymbolDependencies:(NSString *)newSymbol {
     NSLog(@"🔗 Coordinating symbol dependencies for '%@'", newSymbol);
+    if ([self.currentSymbol isEqualToString:[newSymbol uppercaseString]]){
+        return;
+    }
     
+    self.currentSymbol = [newSymbol uppercaseString];
     // ✅ COORDINATE OBJECTS MANAGER
     if (self.objectsManager) {
         self.objectsManager.currentSymbol = newSymbol;

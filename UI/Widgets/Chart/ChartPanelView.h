@@ -72,6 +72,10 @@ typedef NS_OPTIONS(NSUInteger, ChartLayerInvalidationOptions) {
 @property (nonatomic, strong) PanelYCoordinateContext *panelYContext;
 @property (nonatomic, weak) ChartObjectSettingsWindow *objectSettingsWindow;
 
+
+
+@property (nonatomic, strong, nullable) AlertEditController *alertEditController;
+
 // Panel configuration
 @property (nonatomic, strong) NSString *panelType;
 @property (nonatomic, weak) ChartWidget *chartWidget;

@@ -75,6 +75,7 @@ typedef NS_ENUM(NSInteger, RawDataType) {
 + (NSString *)displayNameForDataType:(RawDataType)dataType;
 
 
++ (NSDictionary<NSString *, id> *)defaultParameters;
 
 @end
 

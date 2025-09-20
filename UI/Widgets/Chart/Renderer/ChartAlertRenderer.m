@@ -83,39 +83,13 @@
     });
 }
 
-#pragma mark - Coordinate Context
 
-- (void)updateCoordinateContext:(NSArray<HistoricalBarModel *> *)chartData
-                     startIndex:(NSInteger)startIndex
-                       endIndex:(NSInteger)endIndex
-                      yRangeMin:(double)yMin
-                      yRangeMax:(double)yMax
-                         bounds:(CGRect)bounds
-                  currentSymbol:(NSString *)symbol {
-    
-   
-    
-    // ✅ NUOVO: Shared X context viene passato dal panel view separatamente
-    // (Il panelView lo aggiorna tramite updateSharedXContext)
-    
-    [self updateLayerFrames];
-    
-    // Refresh alerts if symbol changed
-    static NSString *lastSymbol = nil;
-    if (![symbol isEqualToString:lastSymbol]) {
-        lastSymbol = symbol;
-        [self loadAlertsForSymbol:symbol];
-    }
-    
-    // Redraw with new coordinates
-    [self invalidateAlertsLayer];
-}
 
 #pragma mark - Data Management
 
 - (void)refreshAlerts {
-    if (self.panelYContext.currentSymbol) {
-        [self loadAlertsForSymbol:self.panelYContext.currentSymbol];
+    if (self.panelView.panelYContext.currentSymbol) {
+        [self loadAlertsForSymbol:self.panelView.panelYContext.currentSymbol];
     }
 }
 
@@ -140,7 +114,7 @@
 #pragma mark - Rendering
 
 - (void)renderAllAlerts {
-    if (!self.sharedXContext || !self.panelYContext || self.alerts.count == 0) {
+    if (!self.panelView.sharedXContext || !self.panelView.panelYContext || self.alerts.count == 0) {
         return;
     }
     
@@ -171,11 +145,7 @@
 }
 
 
-#pragma mark - Shared X Context Update
 
-- (void)updateSharedXContext:(SharedXCoordinateContext *)sharedXContext {
-    self.sharedXContext = sharedXContext; // Weak reference
-}
 
 #pragma mark - CALayerDelegate
 
@@ -196,8 +166,8 @@
 
 - (void)drawAlert:(AlertModel *)alert {
     CGFloat y = [self screenYForTriggerValue:alert.triggerValue];
-    if (y < 0 || y > self.panelYContext.panelHeight) return;
-    CGRect bounds = CGRectMake(0, 0, self.sharedXContext.containerWidth, self.panelYContext.panelHeight);
+    if (y < 0 || y > self.panelView.panelYContext.panelHeight) return;
+    CGRect bounds = CGRectMake(0, 0, self.panelView.sharedXContext.containerWidth, self.panelView.panelYContext.panelHeight);
     
     
     // Draw horizontal line
@@ -209,7 +179,7 @@
 
 - (void)drawAlertWithDragStyle:(AlertModel *)alert {
     CGFloat y = [self screenYForTriggerValue:alert.triggerValue];
-    CGRect bounds = CGRectMake(0, 0, self.sharedXContext.containerWidth, self.panelYContext.panelHeight);
+    CGRect bounds = CGRectMake(0, 0, self.panelView.sharedXContext.containerWidth, self.panelView.panelYContext.panelHeight);
 
     // Set drag preview style
     CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
@@ -234,7 +204,7 @@
     linePath.lineWidth = 1.5;
     
     // Draw line from left edge to label start
-    CGFloat labelWidth = 80;
+    CGFloat labelWidth = 60;
     [linePath moveToPoint:NSMakePoint(10, y)];
     [linePath lineToPoint:NSMakePoint(bounds.size.width - labelWidth - 5, y)];
     [linePath stroke];
@@ -242,7 +212,7 @@
 
 - (void)drawAlertLabel:(AlertModel *)alert atY:(CGFloat)y bounds:(CGRect)bounds {
     // ThinkOrSwim-style label on the right
-    CGFloat labelWidth = 80;
+    CGFloat labelWidth = 60;
     CGFloat labelHeight = 20;
     CGFloat labelX = bounds.size.width - labelWidth - 5;
     CGFloat labelY = y - labelHeight/2;
@@ -313,7 +283,7 @@
         // Check Y proximity for horizontal line
         if (ABS(screenPoint.y - alertY) <= tolerance) {
             // Check if click is on label area (easier to grab)
-            CGFloat labelX = self.sharedXContext.containerWidth - 85;
+            CGFloat labelX = self.panelView.sharedXContext.containerWidth - 85;
             if (screenPoint.x >= labelX) {
                 return alert;
             }
@@ -329,11 +299,11 @@
 #pragma mark - Coordinate Conversion
 
 - (CGFloat)screenYForTriggerValue:(double)triggerValue {
-    return [self.panelYContext screenYForValue:triggerValue];
+    return [self.panelView.panelYContext screenYForValue:triggerValue];
 }
 
 - (double)triggerValueForScreenY:(CGFloat)screenY {
-    return [self.panelYContext valueForScreenY:screenY];
+    return [self.panelView.panelYContext valueForScreenY:screenY];
 }
 
 #pragma mark - Alert Drag Operations
@@ -414,21 +384,6 @@
     [self invalidateAlertsLayer];        // Redraw static layer
 }
 
-#pragma mark - Alert Creation Helper
 
-- (AlertModel *)createAlertTemplateAtScreenPoint:(NSPoint)screenPoint {
-    if (!self.panelYContext.currentSymbol) return nil;
-    double price = [self triggerValueForScreenY:screenPoint.y];
-    
-    AlertModel *template = [[AlertModel alloc] init];
-    template.symbol = self.panelYContext.currentSymbol;
-    template.triggerValue = price;
-    template.conditionString = @"above"; // Default
-    template.isActive = YES;
-    template.notificationEnabled = YES;
-    template.creationDate = [NSDate date];
-    
-    return template;
-}
 
 @end

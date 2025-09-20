@@ -7,6 +7,7 @@
 
 #import "ChartWidget+ImageExport.h"
 #import "ChartPanelView.h" // Import necessario per risolvere forward declaration
+#import "ChartIndicatorRenderer.h" // Added to access indicatorsLayer and rootIndicator
 
 // Forward declaration per accedere a metodi privati di ChartWidget+SaveData
 @interface ChartWidget (SaveDataPrivate)
@@ -179,32 +180,38 @@
     // Manually render layer content by triggering the drawing methods
     // This bypasses the CALayer system and renders directly to the current graphics context
     
-    // 1. Render chart content
+    // 1. Render chart content (candlesticks/volume)
     if (panel.chartContentLayer && panel.chartData && panel.chartData.count > 0) {
         [self renderLayerContent:panel forLayerType:@"chartContent"];
     }
     
-    // 2. Render Y-axis
+    // 🆕 2. Render INDICATORS (MISSING BEFORE!)
+    if (panel.indicatorRenderer && panel.indicatorRenderer.indicatorsLayer && panel.indicatorRenderer.rootIndicator) {
+        [self renderLayerContent:panel forLayerType:@"indicators"];
+    }
+    
+    // 3. Render Y-axis
     if (panel.yAxisLayer) {
         [self renderLayerContent:panel forLayerType:@"yAxis"];
     }
     
-    // 3. Render objects if present (but not crosshair since it's hidden)
+    // 4. Render objects if present (but not crosshair since it's hidden)
     if (panel.objectRenderer && panel.objectRenderer.objectsLayer) {
         [self renderLayerContent:panel forLayerType:@"objects"];
     }
     
-    // 4. Render alerts if present
+    // 5. Render alerts if present
     if (panel.alertRenderer && panel.alertRenderer.alertsLayer) {
         [self renderLayerContent:panel forLayerType:@"alerts"];
     }
     
-    // Skip crosshair layer since it's temporarily hidden
+    // Skip crosshair layer since it's temporarily hidden during export
     
     [panelImage unlockFocus];
     
     return panelImage;
 }
+
 
 // 🆕 NEW: Helper method to render specific layer content
 - (void)renderLayerContent:(ChartPanelView *)panel forLayerType:(NSString *)layerType {
@@ -212,24 +219,56 @@
         // Call the appropriate drawing method directly
         if ([layerType isEqualToString:@"chartContent"]) {
             [panel drawChartContent];
+            
+        } else if ([layerType isEqualToString:@"indicators"]) {
+            // 🆕 NUOVO: Render indicators manually
+            if (panel.indicatorRenderer && panel.indicatorRenderer.rootIndicator) {
+                [self renderIndicatorsForPanel:panel];
+            }
+            
         } else if ([layerType isEqualToString:@"yAxis"]) {
             if ([panel respondsToSelector:@selector(drawYAxisContent)]) {
                 [panel performSelector:@selector(drawYAxisContent)];
             }
+            
         } else if ([layerType isEqualToString:@"objects"]) {
             // Render objects through their renderer
             if (panel.objectRenderer && [panel.objectRenderer respondsToSelector:@selector(renderAllObjects)]) {
                 [panel.objectRenderer performSelector:@selector(renderAllObjects)];
             }
+            
         } else if ([layerType isEqualToString:@"alerts"]) {
             // Render alerts through their renderer
             if (panel.alertRenderer && [panel.alertRenderer respondsToSelector:@selector(renderAllAlerts)]) {
                 [panel.alertRenderer performSelector:@selector(renderAllAlerts)];
             }
         }
+        
     } @catch (NSException *exception) {
         NSLog(@"⚠️ Failed to render layer %@ for panel %@: %@", layerType, panel.panelType, exception.reason);
     }
+}
+
+- (void)renderIndicatorsForPanel:(ChartPanelView *)panel {
+    ChartIndicatorRenderer *indicatorRenderer = panel.indicatorRenderer;
+    
+    if (!indicatorRenderer || !indicatorRenderer.rootIndicator) {
+        NSLog(@"⚠️ No indicators to render for panel %@", panel.panelType);
+        return;
+    }
+    
+    // Get current graphics context (from image export)
+    CGContextRef ctx = [[NSGraphicsContext currentContext] CGContext];
+    if (!ctx) {
+        NSLog(@"⚠️ No graphics context available for indicator rendering");
+        return;
+    }
+    
+    // Call the indicator renderer's drawing method directly
+    // This is the same method used by the CALayer delegate
+    [indicatorRenderer drawLayer:indicatorRenderer.indicatorsLayer inContext:ctx];
+    
+    NSLog(@"🎨 Rendered indicators for image export in panel %@", panel.panelType);
 }
 
 - (void)drawTextOverlayInRect:(NSRect)rect {

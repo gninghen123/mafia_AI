@@ -9,6 +9,8 @@
 #import "DataHub+ChartTemplates.h"
 #import "ChartTemplate+CoreDataClass.h"
 #import "ChartPanelTemplate+CoreDataClass.h"
+#import "securityindicator.h"
+#import "volumeindicator.h"
 
 @implementation DataHub (ChartTemplates)
 
@@ -655,7 +657,9 @@
     securityPanel.displayOrder = 0;
     
     // Empty parameters as JSON
-    securityPanel.rootIndicatorParams = [NSJSONSerialization dataWithJSONObject:@{} options:0 error:nil];
+    // ✅ CORRETTO:
+    NSDictionary *securityParams = [SecurityIndicator defaultParameters];
+    securityPanel.rootIndicatorParams = [NSJSONSerialization dataWithJSONObject:securityParams options:0 error:nil];
     securityPanel.childIndicatorsData = [NSJSONSerialization dataWithJSONObject:@[] options:0 error:nil];
     
     [coreDataTemplate addPanelsObject:securityPanel];
@@ -670,7 +674,9 @@
     volumePanel.displayOrder = 1;
     
     // Empty parameters as JSON
-    volumePanel.rootIndicatorParams = [NSJSONSerialization dataWithJSONObject:@{} options:0 error:nil];
+    // ✅ CORRETTO:
+    NSDictionary *volumeParams = [VolumeIndicator defaultParameters];
+    volumePanel.rootIndicatorParams = [NSJSONSerialization dataWithJSONObject:volumeParams options:0 error:nil];
     volumePanel.childIndicatorsData = [NSJSONSerialization dataWithJSONObject:@[] options:0 error:nil];
     
     [coreDataTemplate addPanelsObject:volumePanel];

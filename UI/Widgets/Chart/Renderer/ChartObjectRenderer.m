@@ -770,57 +770,80 @@ typedef NS_ENUM(NSUInteger, SnapType) {
         [path fill]; // Point is filled, not stroked
         
     } else if (object.controlPoints.count == 2) {
-        // CP1 + CP2 - disegna prima trendline
-        NSBezierPath *path = [NSBezierPath bezierPath];
-        [path moveToPoint:point1];
-        [path lineToPoint:point2];
-        [self strokePath:path withStyle:object.style];
+        // CP1 + CP2 - disegna linea base estesa a destra
+            NSPoint baseStart = NSZeroPoint, baseEnd = NSZeroPoint;
+            [self calculateExtendedLineFromPoint:point1
+                                          toPoint:point2
+                                       startPoint:&baseStart
+                                         endPoint:&baseEnd
+                                       extendLeft:NO
+                                      extendRight:YES];
+
+            NSBezierPath *path = [NSBezierPath bezierPath];
+            [path moveToPoint:baseStart];
+            [path lineToPoint:baseEnd];
+            [self strokePath:path withStyle:object.style];
         
     } else {
         // Tutti e 3 CP - disegna channel completo
-        
-        // Prima trendline (CP1 - CP2)
-        NSBezierPath *path1 = [NSBezierPath bezierPath];
-        [path1 moveToPoint:point1];
-        [path1 lineToPoint:point2];
-        [self strokePath:path1 withStyle:object.style];
-        
-        // Calcola parallela attraverso CP3
-        CGFloat dx = point2.x - point1.x;
-        CGFloat dy = point2.y - point1.y;
-        
-        CGFloat panelWidth = self.panelView.bounds.size.width;
-        CGFloat lineLength = sqrt(dx*dx + dy*dy);
-        CGFloat extensionFactor = panelWidth / lineLength * 2;
-        
-        CGFloat dirX = dx / lineLength;
-        CGFloat dirY = dy / lineLength;
-        
-        CGFloat extendedDx = dirX * extensionFactor * lineLength;
-        CGFloat extendedDy = dirY * extensionFactor * lineLength;
-        
-        NSPoint parallelStart = NSMakePoint(point3.x - extendedDx/2, point3.y - extendedDy/2);
-        NSPoint parallelEnd = NSMakePoint(point3.x + extendedDx/2, point3.y + extendedDy/2);
-        
-        // Seconda trendline (parallela attraverso CP3)
-        NSBezierPath *path2 = [NSBezierPath bezierPath];
-        [path2 moveToPoint:parallelStart];
-        [path2 lineToPoint:parallelEnd];
-        [self strokePath:path2 withStyle:object.style];
-        
-        // Linee di connessione (tratteggiate)
-        ObjectStyleModel *dashStyle = [object.style copy];
-        dashStyle.lineType = ChartLineTypeDashed;
-        dashStyle.opacity = 0.5;
-        
-        NSBezierPath *connectionPath = [NSBezierPath bezierPath];
-        [connectionPath moveToPoint:point1];
-        [connectionPath lineToPoint:point3];
-        
-        // Apply dashed style temporarily
-        CGContextSetAlpha([[NSGraphicsContext currentContext] CGContext], dashStyle.opacity);
-        [self strokePath:connectionPath withStyle:dashStyle];
-        CGContextSetAlpha([[NSGraphicsContext currentContext] CGContext], object.style.opacity); // Restore
+
+            // 1) Estendi la linea base (CP1-CP2) verso destra
+            NSPoint baseStart = NSZeroPoint, baseEnd = NSZeroPoint;
+            [self calculateExtendedLineFromPoint:point1
+                                          toPoint:point2
+                                       startPoint:&baseStart
+                                         endPoint:&baseEnd
+                                       extendLeft:NO
+                                      extendRight:YES];
+
+            NSBezierPath *path1 = [NSBezierPath bezierPath];
+            [path1 moveToPoint:baseStart];
+            [path1 lineToPoint:baseEnd];
+            [self strokePath:path1 withStyle:object.style];
+
+            // 2) Costruisci la parallela che passa per CP3 e estendila verso destra
+            CGFloat dx = point2.x - point1.x;
+            CGFloat dy = point2.y - point1.y;
+
+            NSPoint parallelStart = NSZeroPoint, parallelEnd = NSZeroPoint;
+            if (fabs(dx) < 0.001) {
+                // Base verticale: parallela verticale passando per CP3
+                parallelStart = NSMakePoint(point3.x, self.panelView.bounds.origin.y - 50);
+                parallelEnd   = NSMakePoint(point3.x, NSMaxY(self.panelView.bounds) + 50);
+            } else {
+                // Stessa pendenza, intercetta calcolata su CP3
+                CGFloat m = dy / dx;
+                CGFloat c3 = point3.y - m * point3.x;
+
+                // Due punti vicini su questa parallela attorno a CP3, poi estensione
+                CGFloat span = 100.0;
+                NSPoint q1 = NSMakePoint(point3.x - span, m * (point3.x - span) + c3);
+                NSPoint q2 = NSMakePoint(point3.x + span, m * (point3.x + span) + c3);
+
+                [self calculateExtendedLineFromPoint:q1
+                                              toPoint:q2
+                                           startPoint:&parallelStart
+                                             endPoint:&parallelEnd
+                                           extendLeft:NO
+                                          extendRight:YES];
+            }
+
+            NSBezierPath *path2 = [NSBezierPath bezierPath];
+            [path2 moveToPoint:parallelStart];
+            [path2 lineToPoint:parallelEnd];
+            [self strokePath:path2 withStyle:object.style];
+
+            // 3) Linee di connessione tratteggiate (come riferimento visivo)
+            ObjectStyleModel *dashStyle = [object.style copy];
+            dashStyle.lineType = ChartLineTypeDashed;
+            dashStyle.opacity = 0.5;
+
+            NSBezierPath *connectionPath = [NSBezierPath bezierPath];
+            [connectionPath moveToPoint:point1];
+            [connectionPath lineToPoint:point3];
+            CGContextSetAlpha([[NSGraphicsContext currentContext] CGContext], dashStyle.opacity);
+            [self strokePath:connectionPath withStyle:dashStyle];
+            CGContextSetAlpha([[NSGraphicsContext currentContext] CGContext], object.style.opacity);
     }
     
     NSLog(@"🎨 Drew channel with %lu CPs", (unsigned long)object.controlPoints.count);
@@ -2206,40 +2229,184 @@ typedef NS_ENUM(NSUInteger, SnapType) {
                                                indicatorRef:(NSString *)indicatorRef
                                               snapIntensity:(CGFloat)snapIntensity {
     
-    // 1. Trova candela target
-    NSInteger barIndex = [self barIndexForXCoordinate:screenPoint.x];
-    if (barIndex < 0 || barIndex >= self.panelView.sharedXContext.chartData.count) {
-        return nil;
+    // 1. Calcola radius di ricerca basato su intensità
+    CGFloat searchRadius = [self calculateSearchRadiusForIntensity:snapIntensity];
+    
+    // 2. Trova tutte le candele che ricadono nel radius
+    NSArray<HistoricalBarModel *> *barsInRadius = [self findBarsInRadius:searchRadius
+                                                            aroundPoint:screenPoint];
+    
+    if (barsInRadius.count == 0) {
+        // Fallback: nessuna candela nel radius, usa logica senza snap
+        return [self controlPointFromScreenPointWithoutSnap:screenPoint indicatorRef:indicatorRef];
     }
     
-    HistoricalBarModel *targetBar = self.panelView.sharedXContext.chartData[barIndex];
-    NSDate *dateAnchor = targetBar.date;
-    
-    // 2. Converti Y in prezzo senza snap
+    // 3. Converti Y in prezzo richiesto (target di snap)
     double requestedPrice = [self.panelView.panelYContext valueForScreenY:screenPoint.y];
     
-    // 3. Determina tipo di snap basato su zoom e chart type
+    // 4. Determina tipo di snap
     SnapType snapType = [self determineSnapTypeForCurrentContext];
     
-    // 4. Se snap type è None, ritorna valore esatto
-    if (snapType == SnapTypeNone) {
-        return [ControlPointModel pointWithDate:dateAnchor absoluteValue:requestedPrice indicator:indicatorRef];
+    // 5. Trova il miglior snap point (X + Y) tra tutte le candele nel radius
+    SnapResult bestSnap = [self findBestSnapInBars:barsInRadius
+                                      targetPoint:screenPoint
+                                    requestedPrice:requestedPrice
+                                          snapType:snapType
+                                      searchRadius:searchRadius];
+    
+    NSLog(@"🧲 RADIAL SNAP: radius=%.1fpx, bars=%lu, bestBar=index %ld, value=%.4f",
+          searchRadius, barsInRadius.count, bestSnap.barIndex, bestSnap.snappedValue);
+    
+    return [ControlPointModel pointWithDate:bestSnap.snappedDate
+                                absoluteValue:bestSnap.snappedValue
+                                    indicator:indicatorRef];
+}
+
+#pragma mark - NUOVI METODI per Snap Radiale
+
+- (CGFloat)calculateSearchRadiusForIntensity:(CGFloat)intensity {
+    // Intensità 0-10 → radius 0-40px
+    CGFloat maxRadius = 40.0;  // Radius massimo (intensità 10)
+    CGFloat minRadius = 0.0;   // Radius minimo (intensità 0)
+    
+    // Scala lineare semplice
+    CGFloat radius = minRadius + (intensity / 10.0) * (maxRadius - minRadius);
+    
+    NSLog(@"🧲 SEARCH RADIUS: intensity=%.0f → radius=%.1fpx", intensity, radius);
+    return radius;
+}
+
+- (NSArray<HistoricalBarModel *> *)findBarsInRadius:(CGFloat)radius
+                                       aroundPoint:(NSPoint)screenPoint {
+    
+    NSMutableArray<HistoricalBarModel *> *barsInRadius = [NSMutableArray array];
+    
+    // Calcola range X screen da esplorare
+    CGFloat minX = screenPoint.x - radius;
+    CGFloat maxX = screenPoint.x + radius;
+    
+    // Converti in indici barre
+    NSInteger startBarIndex = [self.panelView.sharedXContext barIndexForScreenX:minX];
+    NSInteger endBarIndex = [self.panelView.sharedXContext barIndexForScreenX:maxX];
+    
+    // Bounds checking
+    startBarIndex = MAX(0, startBarIndex);
+    endBarIndex = MIN(self.panelView.sharedXContext.chartData.count - 1, endBarIndex);
+    
+    // Raccoglie tutte le barre nel range
+    for (NSInteger i = startBarIndex; i <= endBarIndex; i++) {
+        HistoricalBarModel *bar = self.panelView.sharedXContext.chartData[i];
+        
+        // Verifica se il centro della barra è effettivamente nel radius
+        CGFloat barCenterX = [self.panelView.sharedXContext screenXForBarCenter:i];
+        CGFloat distanceX = fabs(barCenterX - screenPoint.x);
+        
+        if (distanceX <= radius) {
+            [barsInRadius addObject:bar];
+        }
     }
     
-    // 5. Calcola tolleranza snap basata su intensità
-    CGFloat snapTolerance = [self calculateSnapToleranceForIntensity:snapIntensity];
+    NSLog(@"🔍 BARS IN RADIUS: found %lu bars in %.1fpx radius",
+          barsInRadius.count, radius);
     
-    // 6. Trova il miglior valore snap nella candela
-    double snappedValue = [self findBestSnapValue:requestedPrice
-                                          fromBar:targetBar
-                                         snapType:snapType
-                                        tolerance:snapTolerance];
-    
-    NSLog(@"🧲 SNAP: requested=%.4f, snapped=%.4f, type=%ld, tolerance=%.1f",
-          requestedPrice, snappedValue, (long)snapType, snapTolerance);
-    
-    return [ControlPointModel pointWithDate:dateAnchor absoluteValue:snappedValue indicator:indicatorRef];
+    return [barsInRadius copy];
 }
+
+// Struct per risultato snap
+typedef struct {
+    NSInteger barIndex;
+    NSDate *snappedDate;
+    double snappedValue;
+    CGFloat totalDistance; // Distanza euclidea totale
+} SnapResult;
+
+- (SnapResult)findBestSnapInBars:(NSArray<HistoricalBarModel *> *)bars
+                     targetPoint:(NSPoint)screenPoint
+                   requestedPrice:(double)requestedPrice
+                        snapType:(SnapType)snapType
+                    searchRadius:(CGFloat)radius {
+    
+    SnapResult bestSnap = {-1, nil, requestedPrice, CGFLOAT_MAX};
+    
+    for (HistoricalBarModel *bar in bars) {
+        // Trova indice della barra
+        NSInteger barIndex = [self.panelView.sharedXContext.chartData indexOfObject:bar];
+        if (barIndex == NSNotFound) continue;
+        
+        // Coordinate X del centro della barra
+        CGFloat barCenterX = [self.panelView.sharedXContext screenXForBarCenter:barIndex];
+        
+        // Prepara candidati Y per questa barra
+        NSArray<NSNumber *> *yCandidates = [self getSnapCandidatesForBar:bar snapType:snapType];
+        
+        // Testa ogni candidato Y
+        for (NSNumber *candidateValue in yCandidates) {
+            double value = candidateValue.doubleValue;
+            
+            // Coordinate Y del candidato
+            CGFloat candidateY = [self.panelView.panelYContext screenYForValue:value];
+            
+            // Calcola distanza euclidea dal punto target
+            CGFloat deltaX = barCenterX - screenPoint.x;
+            CGFloat deltaY = candidateY - screenPoint.y;
+            CGFloat totalDistance = sqrt(deltaX * deltaX + deltaY * deltaY);
+            
+            // Verifica se è dentro il radius e migliore del precedente
+            if (totalDistance <= radius && totalDistance < bestSnap.totalDistance) {
+                bestSnap.barIndex = barIndex;
+                bestSnap.snappedDate = bar.date;
+                bestSnap.snappedValue = value;
+                bestSnap.totalDistance = totalDistance;
+            }
+        }
+    }
+    
+    // Se non trova nulla nel radius, usa la barra più vicina senza snap Y
+    if (bestSnap.barIndex == -1) {
+        NSInteger centerBarIndex = [self.panelView.sharedXContext barIndexForScreenX:screenPoint.x];
+        if (centerBarIndex >= 0 && centerBarIndex < self.panelView.sharedXContext.chartData.count) {
+            HistoricalBarModel *centerBar = self.panelView.sharedXContext.chartData[centerBarIndex];
+            bestSnap.barIndex = centerBarIndex;
+            bestSnap.snappedDate = centerBar.date;
+            bestSnap.snappedValue = requestedPrice; // Nessuno snap Y
+            bestSnap.totalDistance = 0.0;
+        }
+    }
+    
+    return bestSnap;
+}
+
+- (NSArray<NSNumber *> *)getSnapCandidatesForBar:(HistoricalBarModel *)bar
+                                         snapType:(SnapType)snapType {
+    
+    NSMutableArray<NSNumber *> *candidates = [NSMutableArray array];
+    
+    switch (snapType) {
+        case SnapTypeOHLC:
+            [candidates addObject:@(bar.open)];
+            [candidates addObject:@(bar.high)];
+            [candidates addObject:@(bar.low)];
+            [candidates addObject:@(bar.close)];
+            break;
+            
+        case SnapTypeHL:
+            [candidates addObject:@(bar.high)];
+            [candidates addObject:@(bar.low)];
+            break;
+            
+        case SnapTypeClose:
+            [candidates addObject:@(bar.close)];
+            break;
+            
+        case SnapTypeNone:
+        default:
+            // Non dovrebbe mai accadere, ma per sicurezza
+            break;
+    }
+    
+    return [candidates copy];
+}
+
 
 - (SnapType)determineSnapTypeForCurrentContext {
     // Calcola larghezza visibile di una candela in pixel
@@ -2281,120 +2448,6 @@ typedef NS_ENUM(NSUInteger, SnapType) {
           intensity, tolerance, curvedIntensity);
     
     return tolerance;
-}
-
-- (double)findBestSnapValue:(double)requestedPrice
-                    fromBar:(HistoricalBarModel *)bar
-                   snapType:(SnapType)snapType
-                  tolerance:(CGFloat)tolerancePixels {
-    
-    // Array di valori candidati per snap
-    NSMutableArray<NSNumber *> *candidates = [NSMutableArray array];
-    
-    switch (snapType) {
-        case SnapTypeOHLC:
-            [candidates addObject:@(bar.open)];
-            [candidates addObject:@(bar.high)];
-            [candidates addObject:@(bar.low)];
-            [candidates addObject:@(bar.close)];
-            break;
-            
-        case SnapTypeHL:
-            [candidates addObject:@(bar.high)];
-            [candidates addObject:@(bar.low)];
-            break;
-            
-        case SnapTypeClose:
-            [candidates addObject:@(bar.close)];
-            break;
-            
-        case SnapTypeNone:
-        default:
-            return requestedPrice; // No snap
-    }
-    
-    // Converti tolleranza da pixel a unità di prezzo
-    double tolerancePrice = [self pixelToleranceToPriceTolerance:tolerancePixels];
-    
-    // 🧲 NUOVO: Per intensità alte, espandi la ricerca alle candele vicine
-    if (tolerancePixels > 40.0) { // Intensità ~7-10
-        [self addNearbyBarsToSnapCandidates:candidates
-                                 sourceBar:bar
-                                  snapType:snapType
-                             tolerancePrice:tolerancePrice];
-    }
-    
-    // Trova il candidato più vicino dentro la tolleranza
-    double bestValue = requestedPrice;
-    double smallestDelta = tolerancePrice + 1; // Inizia fuori tolleranza
-    
-    for (NSNumber *candidate in candidates) {
-        double candidateValue = candidate.doubleValue;
-        double delta = fabs(requestedPrice - candidateValue);
-        
-        if (delta < smallestDelta && delta <= tolerancePrice) {
-            bestValue = candidateValue;
-            smallestDelta = delta;
-        }
-    }
-    
-    return bestValue;
-}
-
-// NUOVO: Aggiunge candele vicine per snap super-aggressivo
-- (void)addNearbyBarsToSnapCandidates:(NSMutableArray<NSNumber *> *)candidates
-                             sourceBar:(HistoricalBarModel *)sourceBar
-                              snapType:(SnapType)snapType
-                         tolerancePrice:(double)tolerancePrice {
-    
-    // Trova l'indice della candela source
-    NSInteger sourceIndex = [self.panelView.sharedXContext.chartData indexOfObject:sourceBar];
-    if (sourceIndex == NSNotFound) return;
-    
-    // Cerca nelle 3 candele precedenti e successive
-    NSInteger searchRange = 3;
-    NSInteger startIndex = MAX(0, sourceIndex - searchRange);
-    NSInteger endIndex = MIN(self.panelView.sharedXContext.chartData.count - 1, sourceIndex + searchRange);
-    
-    for (NSInteger i = startIndex; i <= endIndex; i++) {
-        if (i == sourceIndex) continue; // Skip source bar
-        
-        HistoricalBarModel *nearbyBar = self.panelView.sharedXContext.chartData[i];
-        
-        switch (snapType) {
-            case SnapTypeOHLC:
-                [candidates addObject:@(nearbyBar.open)];
-                [candidates addObject:@(nearbyBar.high)];
-                [candidates addObject:@(nearbyBar.low)];
-                [candidates addObject:@(nearbyBar.close)];
-                break;
-                
-            case SnapTypeHL:
-                [candidates addObject:@(nearbyBar.high)];
-                [candidates addObject:@(nearbyBar.low)];
-                break;
-                
-            case SnapTypeClose:
-                [candidates addObject:@(nearbyBar.close)];
-                break;
-                
-            default:
-                break;
-        }
-    }
-    
-    NSLog(@"🧲 EXPANDED SEARCH: Added %lu nearby bars for super-aggressive snap",
-          (unsigned long)(endIndex - startIndex));
-}
-
-- (double)pixelToleranceToPriceTolerance:(CGFloat)pixels {
-    // Converti pixel in unità di prezzo basandosi sul range Y corrente
-    double yRange = self.panelView.panelYContext.yRangeMax - self.panelView.panelYContext.yRangeMin;
-    CGFloat panelHeight = self.panelView.bounds.size.height;
-    
-    if (panelHeight <= 0) return 0.01; // Fallback
-    
-    return (pixels / panelHeight) * yRange;
 }
 
 // Aggiorna anche updateCurrentCPCoordinates per usare snap

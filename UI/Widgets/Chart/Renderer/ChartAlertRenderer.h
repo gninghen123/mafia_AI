@@ -24,10 +24,6 @@ NS_ASSUME_NONNULL_BEGIN
 // Context and dependencies
 @property (nonatomic, weak) ChartPanelView *panelView;
 
-
-@property (nonatomic, weak) SharedXCoordinateContext *sharedXContext;      // WEAK - shared
-@property (nonatomic, weak) PanelYCoordinateContext *panelYContext;       // STRONG - owned
-
 // Rendering layers (will be added to ChartPanelView)
 @property (nonatomic, strong) CALayer *alertsLayer;        // Static alerts
 @property (nonatomic, strong) CALayer *alertsEditingLayer; // Alert being dragged
@@ -47,23 +43,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// @param panelView The chart panel view that will contain alert layers
 - (instancetype)initWithPanelView:(ChartPanelView *)panelView;
 
-#pragma mark - Coordinate Context
-
-/// Update coordinate context for price/screen conversions
-/// @param chartData Current chart data
-/// @param startIndex Visible start index
-/// @param endIndex Visible end index
-/// @param yMin Y-axis minimum value
-/// @param yMax Y-axis maximum value
-/// @param bounds Panel bounds
-/// @param symbol Current symbol
-- (void)updateCoordinateContext:(NSArray<HistoricalBarModel *> *)chartData
-                     startIndex:(NSInteger)startIndex
-                       endIndex:(NSInteger)endIndex
-                      yRangeMin:(double)yMin
-                      yRangeMax:(double)yMax
-                         bounds:(CGRect)bounds
-                  currentSymbol:(NSString *)symbol;
+- (void)updateLayerFrames;
 
 #pragma mark - Data Management
 

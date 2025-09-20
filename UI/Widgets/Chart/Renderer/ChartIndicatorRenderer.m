@@ -130,31 +130,71 @@
         return nil;
     }
     
-    // ✅ STEP 1: Get indicator class from registry or class name
-    Class indicatorClass = NSClassFromString(indicatorType);
-    
-    if (!indicatorClass) {
-        NSLog(@"❌ Unknown indicator class: %@", indicatorType);
-        return nil;
-    }
-    
-    // ✅ STEP 2: Verify it's a valid indicator class
-    if (![indicatorClass isSubclassOfClass:[TechnicalIndicatorBase class]]) {
-        NSLog(@"❌ Class %@ is not a TechnicalIndicatorBase subclass", indicatorType);
-        return nil;
-    }
-    
-    // ✅ STEP 3: Create indicator instance with parameters
-    TechnicalIndicatorBase *indicator;
+    // ✅ MIGLIORATO: Usa deserializeFromDictionary se possibile
     if (parameters && parameters.count > 0) {
-        indicator = [[indicatorClass alloc] initWithParameters:parameters];
-    } else {
-        indicator = [[indicatorClass alloc] init];
+        // Create dictionary for deserialization
+        NSDictionary *deserializeDict = @{
+            @"class": indicatorType,
+            @"parameters": parameters,
+            @"isVisible": @YES
+        };
+        
+        TechnicalIndicatorBase *indicator = [TechnicalIndicatorBase deserializeFromDictionary:deserializeDict];
+        if (indicator) {
+            NSLog(@"✅ Created root indicator via deserialization: %@", indicator.displayName);
+            return indicator;
+        }
     }
     
-    NSLog(@"✅ Created root indicator: %@ (%@)", indicator.displayName, indicatorType);
+    // ✅ FALLBACK: Manual creation
+    Class indicatorClass = NSClassFromString(indicatorType);
+    if (!indicatorClass || ![indicatorClass isSubclassOfClass:[TechnicalIndicatorBase class]]) {
+        NSLog(@"❌ Invalid indicator class: %@", indicatorType);
+        return nil;
+    }
     
+    TechnicalIndicatorBase *indicator = [[indicatorClass alloc] initWithParameters:parameters];
+    
+    
+    NSLog(@"✅ Created root indicator manually: %@", indicator.displayName);
     return indicator;
+}
+
+- (TechnicalIndicatorBase *)createChildIndicatorFromDictionary:(NSDictionary *)childDict {
+    NSLog(@"🔍 Creating child from dict: %@", childDict);
+    
+    // ✅ MIGLIORATO: Converte formato se necessario
+    NSMutableDictionary *deserializeDict = [NSMutableDictionary dictionary];
+    
+    // Map fields to expected format
+    NSString *className = childDict[@"class"];
+    if (!className) {
+        NSString *type = childDict[@"type"];
+        if (type) {
+            className = [NSString stringWithFormat:@"%@Indicator", type];
+        }
+    }
+    
+    if (!className) {
+        NSLog(@"❌ No class or type found in child dict: %@", childDict);
+        return nil;
+    }
+    
+    deserializeDict[@"class"] = className;
+    if (childDict[@"parameters"]) deserializeDict[@"parameters"] = childDict[@"parameters"];
+    if (childDict[@"instanceID"]) deserializeDict[@"indicatorID"] = childDict[@"instanceID"];
+    if (childDict[@"isVisible"]) deserializeDict[@"isVisible"] = childDict[@"isVisible"];
+    
+    // ✅ Use built-in deserialization
+    TechnicalIndicatorBase *childIndicator = [TechnicalIndicatorBase deserializeFromDictionary:deserializeDict];
+    
+    if (!childIndicator) {
+        NSLog(@"❌ Failed to deserialize child indicator from: %@", deserializeDict);
+    } else {
+        NSLog(@"✅ Created child indicator: %@", childIndicator.displayName);
+    }
+    
+    return childIndicator;
 }
 
 
@@ -209,30 +249,7 @@
     }
 }
 
-- (TechnicalIndicatorBase *)createChildIndicatorFromDictionary:(NSDictionary *)childDict {
-    NSString *indicatorType = childDict[@"type"] ?: childDict[@"indicatorType"];
-    NSDictionary *parameters = childDict[@"parameters"] ?: childDict;
-    
-    if (!indicatorType) {
-        NSLog(@"⚠️ Child indicator missing type");
-        return nil;
-    }
-    
-    // ✅ Create child indicator same way as root
-    Class indicatorClass = NSClassFromString(indicatorType);
-    if (!indicatorClass || ![indicatorClass isSubclassOfClass:[TechnicalIndicatorBase class]]) {
-        NSLog(@"❌ Invalid child indicator class: %@", indicatorType);
-        return nil;
-    }
-    
-    TechnicalIndicatorBase *childIndicator = [[indicatorClass alloc] init];
-    
-    if (parameters && parameters.count > 0) {
-        [self configureIndicator:childIndicator withParameters:parameters];
-    }
-    
-    return childIndicator;
-}
+
 #pragma mark - Period Optimization (NEW)
 
 - (BOOL)isPeriodTooShortForIndicator:(TechnicalIndicatorBase *)indicator visibleRange:(NSInteger)visibleRange {

@@ -577,6 +577,7 @@ extern NSString *const DataHubDataLoadedNotification;
     [self.contentView addSubview:self.panelsSplitView];
 }
 
+
 - (void)createDefaultPanels {
     // Inizializza l'array se non esiste
     if (!self.chartPanels) {
@@ -585,21 +586,21 @@ extern NSString *const DataHubDataLoadedNotification;
     
     // Security panel (candlestick) - 80% dell'altezza
     ChartPanelView *securityPanel = [[ChartPanelView alloc] initWithType:@"security"];
-    securityPanel.chartWidget = self;
+    securityPanel.chartWidget = self; // ← Questo trigger setupObjectsRenderer
     securityPanel.translatesAutoresizingMaskIntoConstraints = NO;
     [self.chartPanels addObject:securityPanel];
     [self.panelsSplitView addSubview:securityPanel];
     
     // Volume panel (histogram) - 20% dell'altezza
     ChartPanelView *volumePanel = [[ChartPanelView alloc] initWithType:@"volume"];
-    volumePanel.chartWidget = self;
+    volumePanel.chartWidget = self; // ← Renderer già inizializzati in init
     volumePanel.translatesAutoresizingMaskIntoConstraints = NO;
     [self.chartPanels addObject:volumePanel];
     [self.panelsSplitView addSubview:volumePanel];
     
+    // ✅ RIMOSSO: [self setupRenderersForAllPanels]; - non più necessario
     
-    
-    NSLog(@"🎯 Default panels created and added to split view");
+    NSLog(@"🎯 Default panels created with all renderers initialized");
 }
 
 

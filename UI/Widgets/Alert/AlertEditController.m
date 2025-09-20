@@ -39,7 +39,13 @@
 #pragma mark - Initialization
 
 - (instancetype)initWithAlert:(AlertModel *)alert {
-    // ✅ PATTERN ChartPreferencesWindow: Create window programmatically
+    // ✅ COMPORTAMENTO ORIGINALE per retrocompatibilità
+    return [self initWithAlert:alert isEditing:(alert != nil)];
+}
+
+// ✅ NUOVO: Init con mode esplicito
+- (instancetype)initWithAlert:(AlertModel *)alert isEditing:(BOOL)isEditing {
+    // Create window programmatically
     NSRect windowFrame = NSMakeRect(0, 0, 400, 300);
     NSWindow *window = [[NSWindow alloc] initWithContentRect:windowFrame
                                                    styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable
@@ -49,9 +55,9 @@
     self = [super initWithWindow:window];
     if (self) {
         _alert = alert;
-        _isEditing = (alert != nil);
+        _isEditing = isEditing; // ✅ USA IL PARAMETRO ESPLICITO, NON LA LOGICA ALERT != NIL
         
-        // ✅ Store original values for cancel (come ChartPreferencesWindow)
+        // Store original values for cancel
         if (alert) {
             _originalSymbol = alert.symbol;
             _originalTriggerValue = alert.triggerValue;
@@ -63,6 +69,9 @@
         [self setupWindow];
         [self createControls];
         [self loadCurrentValues];
+        
+        NSLog(@"🏗️ AlertEditController created - Alert: %@, IsEditing: %@",
+              alert ? @"YES" : @"NO", isEditing ? @"YES" : @"NO");
     }
     return self;
 }
@@ -72,14 +81,20 @@
 - (void)setupWindow {
     NSWindow *window = self.window;
     
-    // ✅ SETUP IDENTICO a ChartPreferencesWindow
+    // ✅ MODIFICATO: Non usare NSFloatingWindowLevel - causa problemi con eventi
     window.title = self.isEditing ? @"Edit Alert" : @"New Alert";
-    window.level = NSFloatingWindowLevel;
-    window.hidesOnDeactivate = YES;
+    window.level = NSNormalWindowLevel; // ← CAMBIATO da NSFloatingWindowLevel
+    
+    // ✅ AGGIUNTO: Assicura che la window possa ricevere eventi
+    [window makeKeyAndOrderFront:nil];
+    [window makeFirstResponder:self.symbolField];
     
     // Center on screen
     [window center];
+    
+    NSLog(@"🪟 AlertEditController window setup completed");
 }
+
 
 - (void)createControls {
     NSView *contentView = self.window.contentView;
@@ -128,24 +143,23 @@
     self.notesField.placeholderString = @"Optional notes...";
     [contentView addSubview:self.notesField];
     
-    // ✅ BUTTONS - CONFIGURAZIONE IDENTICA a ChartPreferencesWindow
     self.cancelButton = [[NSButton alloc] initWithFrame:NSMakeRect(190, 20, 80, 32)];
-    [self.cancelButton setTitle:@"Cancel"];
-    [self.cancelButton setBezelStyle:NSBezelStyleRounded];
-    [self.cancelButton setKeyEquivalent:@"\033"]; // Escape key
-    [self.cancelButton setTarget:self];
-    [self.cancelButton setAction:@selector(cancelAlert:)];
-    [self.cancelButton setEnabled:YES];
-    [contentView addSubview:self.cancelButton];
-    
-    self.saveButton = [[NSButton alloc] initWithFrame:NSMakeRect(280, 20, 80, 32)];
-    [self.saveButton setTitle:self.isEditing ? @"Update" : @"Create"];
-    [self.saveButton setBezelStyle:NSBezelStyleRounded];
-    [self.saveButton setKeyEquivalent:@"\r"]; // Enter key
-    [self.saveButton setTarget:self];
-    [self.saveButton setAction:@selector(saveAlert:)];
-    [self.saveButton setEnabled:YES];
-    [contentView addSubview:self.saveButton];
+        [self.cancelButton setTitle:@"Cancel"];
+        [self.cancelButton setBezelStyle:NSBezelStyleRounded];
+        [self.cancelButton setKeyEquivalent:@"\033"]; // Escape key
+        [self.cancelButton setTarget:self]; // ← Esplicito
+        [self.cancelButton setAction:@selector(cancelAlert:)]; // ← Esplicito
+        [self.cancelButton setEnabled:YES];
+        [contentView addSubview:self.cancelButton];
+        
+        self.saveButton = [[NSButton alloc] initWithFrame:NSMakeRect(280, 20, 80, 32)];
+        [self.saveButton setTitle:self.isEditing ? @"Update" : @"Create"];
+        [self.saveButton setBezelStyle:NSBezelStyleRounded];
+        [self.saveButton setKeyEquivalent:@"\r"]; // Enter key
+        [self.saveButton setTarget:self]; // ← Esplicito
+        [self.saveButton setAction:@selector(saveAlert:)]; // ← Esplicito
+        [self.saveButton setEnabled:YES];
+        [contentView addSubview:self.saveButton];
     
     NSLog(@"✅ Alert edit controls created - Save target: %@, Cancel target: %@",
           self.saveButton.target, self.cancelButton.target);
@@ -195,7 +209,14 @@
 #pragma mark - Actions
 
 - (IBAction)saveAlert:(id)sender {
-    NSLog(@"🚨 SAVE ALERT CALLED! Sender: %@", sender);
+    NSLog(@"🚨 SAVE ALERT CALLED! Sender: %@, Target: %@, Action: %@",
+          sender, [sender target], NSStringFromSelector([sender action]));
+    
+    // ✅ AGGIUNTO: Debug completo per capire perché non funziona
+    if (!sender) {
+        NSLog(@"❌ Sender is nil!");
+        return;
+    }
     
     // Validate input
     NSString *symbol = [self.symbolField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].uppercaseString;
@@ -258,45 +279,58 @@
         NSLog(@"✅ Created new alert: %@ at %.2f", symbol, triggerValue);
     }
     
-    // ✅ CLOSE WINDOW (ChartPreferencesWindow pattern)
-    [self closeWindow];
-    
-    // Call completion handler
-    if (self.completionHandler) {
-        self.completionHandler(resultAlert, YES);
-    }
+    // ✅ MIGLIORATO: Chiusura più robusta
+    [self closeWindowAndComplete:resultAlert saved:YES];
 }
 
 - (IBAction)cancelAlert:(id)sender {
     NSLog(@"❌ CANCEL ALERT CALLED! Sender: %@", sender);
     
-    // ✅ CLOSE WINDOW (ChartPreferencesWindow pattern)
-    [self closeWindow];
-    
-    // Call completion handler
-    if (self.completionHandler) {
-        self.completionHandler(nil, NO);
-    }
+    // ✅ MIGLIORATO: Chiusura più robusta
+    [self closeWindowAndComplete:nil saved:NO];
 }
 
 #pragma mark - Window Management
 
 - (void)showAlertEditWindow {
     [self loadCurrentValues];
-    [self.window center];  // Center before showing
-    [self.window makeKeyAndOrderFront:nil];  // ✅ PATTERN ChartPreferencesWindow
     
-    // Make window key and focused
-    [[NSApplication sharedApplication] activateIgnoringOtherApps:YES];
-    [self.window makeFirstResponder:self.symbolField];
+    // ✅ MIGLIORATO: Setup più robusto della window
+    NSWindow *window = self.window;
+    [window center];
+    [window makeKeyAndOrderFront:nil];
     
-    NSLog(@"🪟 Alert edit window opened");
+    // ✅ AGGIUNTO: Assicura focus sui controlli
+    [window makeFirstResponder:self.symbolField];
+    
+    // ✅ AGGIUNTO: Debug per verificare button targets
+    NSLog(@"🔍 Button debug - Save target: %@, action: %@",
+          self.saveButton.target, NSStringFromSelector(self.saveButton.action));
+    NSLog(@"🔍 Button debug - Cancel target: %@, action: %@",
+          self.cancelButton.target, NSStringFromSelector(self.cancelButton.action));
+    
+    NSLog(@"🪟 Alert edit window opened and focused");
+}
+- (void)closeWindowAndComplete:(AlertModel *)alert saved:(BOOL)saved {
+    NSLog(@"🔻 Closing alert edit window - saved: %@", saved ? @"YES" : @"NO");
+    
+    // Call completion handler BEFORE closing window
+    if (self.completionHandler) {
+        self.completionHandler(alert, saved);
+    }
+    
+    // ✅ MIGLIORATO: Chiusura più robusta
+    NSWindow *window = self.window;
+    [window orderOut:self];
+  
+    NSLog(@"✅ Alert edit window closed successfully");
 }
 
 - (void)closeWindow {
-    NSLog(@"🔻 Closing alert edit window");
-    [self.window orderOut:self];  // ✅ PATTERN ChartPreferencesWindow
+    // ✅ DEPRECATO: Usa il nuovo metodo unificato
+    [self closeWindowAndComplete:nil saved:NO];
 }
+
 
 #pragma mark - Error Handling
 

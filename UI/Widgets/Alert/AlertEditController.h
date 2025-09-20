@@ -16,6 +16,7 @@
 
 // Initialization
 - (instancetype)initWithAlert:(AlertModel *)alert;
+- (instancetype)initWithAlert:(AlertModel *)alert isEditing:(BOOL)isEditing; // ✅ NUOVO - mode esplicito
 
 // Window management
 - (void)showAlertEditWindow;

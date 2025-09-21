@@ -14,6 +14,8 @@
 
 static NSString *const kMultiChartItemWidthKey = @"MultiChart_ItemWidth";
 static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
+static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefreshEnabled";
+
 
 @interface MultiChartWidget ()
 
@@ -34,8 +36,6 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
     self = [super initWithType:type panelType:panelType];
     if (self) {
         [self setupMultiChartDefaults];
-        [self registerForNotifications];
-        // REMOVED: [self setupUI]; - Now handled in setupContentView
     }
     return self;
 }
@@ -46,6 +46,8 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
     _timeframe = MiniBarTimeframeDaily;
     _scaleType = MiniChartScaleLinear;
     self.timeRange = 3;  // NUOVO: Default 1 mese
+
+    _autoRefreshEnabled = NO;  // Default: disattivato
 
     _showVolume = YES;
     _symbols = @[];
@@ -172,6 +174,14 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
     self.refreshButton.translatesAutoresizingMaskIntoConstraints = NO;
     [self.controlsView addSubview:self.refreshButton];
     
+    
+    self.autoRefreshToggle = [[NSButton alloc] init];
+     self.autoRefreshToggle.translatesAutoresizingMaskIntoConstraints = NO;
+     self.autoRefreshToggle.buttonType = NSButtonTypeSwitch;
+     self.autoRefreshToggle.title = @"Auto Refresh";
+     self.autoRefreshToggle.target = self;
+     self.autoRefreshToggle.action = @selector(autoRefreshToggleChanged:);
+     [self.controlsView addSubview:self.autoRefreshToggle];
     [self setupControlsConstraints];
 }
 
@@ -251,6 +261,11 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
         [self.refreshButton.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
         [self.refreshButton.trailingAnchor constraintLessThanOrEqualToAnchor:self.controlsView.trailingAnchor constant:-spacing]
     ]];
+    
+    [NSLayoutConstraint activateConstraints:@[
+           [self.autoRefreshToggle.leadingAnchor constraintEqualToAnchor:self.refreshButton.trailingAnchor constant:15],
+           [self.autoRefreshToggle.centerYAnchor constraintEqualToAnchor:self.refreshButton.centerYAnchor]
+       ]];
 }
     
 
@@ -671,7 +686,7 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
     // Configura l'item con il MiniChart esistente
     [item configureMiniChart:miniChart];
     
-    /*
+    
     // ✅ AGGIUNTO: Setup callbacks
     __weak typeof(self) weakSelf = self;
     
@@ -685,7 +700,7 @@ static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
     item.onSetupContextMenu = ^(MiniChart *chart) {
         [weakSelf setupChartContextMenu:chart];
     };
-     */
+    
     
     NSLog(@"✅ Created collection item for: %@ with callbacks", miniChart.symbol);
     return item;
@@ -1207,7 +1222,12 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         self.scaleType = MiniChartScaleLinear; // Default
     }
     
-   
+    if ([defaults objectForKey:kMultiChartAutoRefreshEnabledKey] == nil) {
+           self.autoRefreshEnabled = NO;  // Default disabilitato
+       } else {
+           self.autoRefreshEnabled = [defaults boolForKey:kMultiChartAutoRefreshEnabledKey];
+       }
+       
     
     // Show Volume (default: YES se non salvato)
     // boolForKey ritorna NO se la key non esiste, quindi controlliamo se la key esiste
@@ -1248,6 +1268,8 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     [defaults setInteger:self.columnsCount forKey:kMultiChartColumnsCountKey];
     [defaults setInteger:self.itemWidth forKey:kMultiChartItemWidthKey];
        [defaults setInteger:self.itemHeight forKey:kMultiChartItemHeightKey];
+    [defaults setBool:self.autoRefreshEnabled forKey:kMultiChartAutoRefreshEnabledKey];
+
     // Forza la sincronizzazione immediata
     [defaults synchronize];
     
@@ -1272,7 +1294,9 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         [self.scaleTypePopup selectItemAtIndex:self.scaleType];
     }
     
-   
+    if (self.autoRefreshToggle) {
+          self.autoRefreshToggle.state = self.autoRefreshEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+      }
     
     // Volume Checkbox
     if (self.volumeCheckbox) {
@@ -1373,7 +1397,10 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         self.scaleTypePopup.target = self;
         self.scaleTypePopup.action = @selector(scaleTypeChangedWithAutoSave:);
     }
-    
+    if (self.autoRefreshToggle) {
+           self.autoRefreshToggle.target = self;
+           self.autoRefreshToggle.action = @selector(autoRefreshToggleChanged:);
+       }
   
     
     if (self.volumeCheckbox) {
@@ -1464,7 +1491,35 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     }];
 }
 
+#pragma mark - Enhanced Action Methods with Auto-Save (AGGIUNGI)
 
+// ✅ NUOVO: Action method per toggle autorefresh
+- (void)autoRefreshToggleChanged:(id)sender {
+    self.autoRefreshEnabled = (self.autoRefreshToggle.state == NSControlStateValueOn);
+    
+    NSLog(@"MultiChartWidget: AutoRefresh toggled to %@", self.autoRefreshEnabled ? @"ON" : @"OFF");
+    
+    // Salva automaticamente
+    [self saveSettingsToUserDefaults];
+    
+    // ✅ GESTIONE OBSERVER: Aggiungi/rimuovi observer in base allo stato
+    if (self.autoRefreshEnabled) {
+        [self registerForNotifications];
+        NSLog(@"MultiChartWidget: AutoRefresh enabled - observer registered");
+    } else {
+        [self unregisterFromNotifications];
+        NSLog(@"MultiChartWidget: AutoRefresh disabled - observer removed");
+    }
+}
 
+- (void)unregisterFromNotifications {
+    NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
+    
+    // Rimuovi solo gli observer per auto-refresh
+    [nc removeObserver:self name:@"DataHubQuoteUpdatedNotification" object:nil];
+    [nc removeObserver:self name:@"DataHubHistoricalDataUpdatedNotification" object:nil];
+    
+    NSLog(@"📊 MultiChartWidget: Unregistered from auto-refresh notifications");
+}
 
 @end

@@ -8,6 +8,8 @@
 #import "BaseWidget.h"
 #import "MiniChart.h"
 
+
+
 @interface MultiChartWidget : BaseWidget <NSCollectionViewDelegate, NSCollectionViewDataSource>
 
 
@@ -20,6 +22,11 @@
 @property (nonatomic, assign) MiniChartScaleType scaleType;
 @property (nonatomic, assign) BOOL showVolume;
 @property (nonatomic, assign) NSInteger columnsCount;  // Numero di colonne nella griglia
+
+
+// Auto-refresh control
+@property (nonatomic, strong) NSButton *autoRefreshToggle;  // Switch toggle
+@property (nonatomic, assign) BOOL autoRefreshEnabled;     // State (default: NO)
 
 // Symbols management
 @property (nonatomic, strong) NSArray<NSString *> *symbols;

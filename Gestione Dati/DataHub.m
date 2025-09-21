@@ -711,6 +711,8 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
  * - Fa UNA SOLA chiamata API per tutti i simboli
  * - Controlla tutti gli alert con i risultati
  */
+// Fix per DataHub.m - metodo checkAlertsOptimized
+
 - (void)checkAlertsOptimized {
     // Get all active alerts
     NSArray<Alert *> *activeAlerts = [self getActiveAlerts];
@@ -723,9 +725,34 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     // ✅ OPTIMIZATION: Collect ALL unique symbols from active alerts
     NSMutableSet<NSString *> *uniqueSymbols = [NSMutableSet set];
     for (Alert *alert in activeAlerts) {
-        // ✅ FIXED: Alert.symbol è una relazione Symbol entity, non una stringa
-        if (alert.symbol && alert.symbol.symbol && alert.symbol.symbol.length > 0) {
-            [uniqueSymbols addObject:alert.symbol.symbol.uppercaseString];
+        
+        // ✅ PROTEZIONE: Verifica che alert.symbol sia un'entità Symbol valida
+        @try {
+            if (alert.symbol &&
+                [alert.symbol isKindOfClass:[Symbol class]] &&
+                alert.symbol.symbol &&
+                [alert.symbol.symbol isKindOfClass:[NSString class]] &&
+                alert.symbol.symbol.length > 0) {
+                
+                [uniqueSymbols addObject:alert.symbol.symbol.uppercaseString];
+                
+            } else {
+                NSLog(@"⚠️ SKIPPING invalid alert: symbol=%@ (class=%@)",
+                      alert.symbol,
+                      NSStringFromClass([alert.symbol class]));
+                
+                // ✅ CLEANUP: Se l'alert ha un symbol invalido, prova a rimuoverlo
+                if (alert.symbol && ![alert.symbol isKindOfClass:[Symbol class]]) {
+                    NSLog(@"🧹 CLEANUP: Removing alert with invalid symbol type");
+                    [self.mainContext deleteObject:alert];
+                }
+            }
+        } @catch (NSException *exception) {
+            NSLog(@"❌ Exception in checkAlertsOptimized: %@", exception.reason);
+            NSLog(@"   Alert object: %@", alert);
+            NSLog(@"   Alert.symbol: %@ (class: %@)",
+                  alert.symbol,
+                  NSStringFromClass([alert.symbol class]));
         }
     }
     
@@ -754,7 +781,6 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
         [self checkAllAlertsWithBulkQuotes:quotes];
     }];
 }
-
 /**
  * NUOVO METODO: Controlla tutti gli alert con i dati delle quote bulk
  * @param bulkQuotes Dictionary con simbolo -> MarketQuoteModel dalle API bulk
@@ -764,34 +790,55 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
     NSInteger triggeredCount = 0;
     
     for (Alert *alert in activeAlerts) {
-        // ✅ FIXED: Alert.symbol è una relazione Symbol entity
-        NSString *symbolString = alert.symbol.symbol.uppercaseString;
-        MarketQuoteModel *quote = bulkQuotes[symbolString];
-        
-        if (!quote) {
-            NSLog(@"⚠️ No quote data for alert symbol: %@", symbolString);
-            continue;
-        }
-        
-        // ✅ FIXED: MarketQuoteModel.last è NSNumber, non double
-        double currentPrice = quote.last ? [quote.last doubleValue] : 0.0;
-        if (currentPrice <= 0.0) {
-            NSLog(@"⚠️ Invalid price (%.2f) for symbol: %@", currentPrice, symbolString);
-            continue;
-        }
-        
-        BOOL shouldTrigger = [self shouldAlertTrigger:alert withCurrentPrice:currentPrice];
-        
-        if (shouldTrigger && !alert.isTriggered) {
-            [self triggerAlert:alert];
-            triggeredCount++;
-            NSLog(@"🚨 Alert TRIGGERED: %@ %@ %.2f (current: %.2f)",
-                  symbolString, alert.conditionString, alert.triggerValue, currentPrice);
+        @try {
+            // ✅ PROTEZIONE: Verifica che alert.symbol sia un'entità Symbol valida
+            if (!alert.symbol ||
+                ![alert.symbol isKindOfClass:[Symbol class]] ||
+                !alert.symbol.symbol ||
+                ![alert.symbol.symbol isKindOfClass:[NSString class]]) {
+                
+                NSLog(@"⚠️ SKIPPING alert with invalid symbol: %@ (class=%@)",
+                      alert.symbol,
+                      NSStringFromClass([alert.symbol class]));
+                continue;
+            }
+            
+            NSString *symbolString = alert.symbol.symbol.uppercaseString;
+            MarketQuoteModel *quote = bulkQuotes[symbolString];
+            
+            if (!quote) {
+                NSLog(@"⚠️ No quote data for alert symbol: %@", symbolString);
+                continue;
+            }
+            
+            // ✅ FIXED: MarketQuoteModel.last è NSNumber, non double
+            double currentPrice = quote.last ? quote.last.doubleValue : 0.0;
+            
+            if (currentPrice > 0 && [self shouldAlertTrigger:alert withCurrentPrice:currentPrice]) {
+                triggeredCount++;
+                NSLog(@"🚨 Alert triggered for %@ at %.2f (condition: %.2f %@)",
+                      symbolString, currentPrice, alert.triggerValue, alert.conditionString);
+                
+                // Update alert status
+                alert.isTriggered = YES;
+                alert.triggerDate = [NSDate date];
+                
+                // Send notification
+                if (alert.notificationEnabled) {
+                    [self showNotificationForAlert:alert];
+                }
+            }
+            
+        } @catch (NSException *exception) {
+            NSLog(@"❌ Exception checking alert: %@", exception.reason);
+            NSLog(@"   Alert: %@", alert);
         }
     }
     
     if (triggeredCount > 0) {
-        NSLog(@"✅ Alert check complete: %ld alerts triggered", (long)triggeredCount);
+        [self saveContext];
+        NSLog(@"✅ Checked alerts: %ld triggered out of %ld active",
+              (long)triggeredCount, (long)activeAlerts.count);
     }
 }
 

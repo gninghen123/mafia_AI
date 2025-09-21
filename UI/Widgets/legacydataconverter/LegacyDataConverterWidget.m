@@ -9,7 +9,10 @@
 #import "SavedChartData.h"
 #import "RuntimeModels.h"
 #import "ChartWidget+SaveData.h"
-#import <objc/runtime.h>
+#import <objc/runtime.h>
+#import "StorageManager.h"
+#import "SavedChartData+FilenameParsing.h"
+
 
 @implementation LegacyFileInfo
 @end
@@ -829,23 +832,39 @@
 
 #pragma mark - Directory Scanning
 
+
+
 - (void)scanDirectoryAndBuildFileList:(NSString *)directory completion:(void(^)(NSArray<LegacyFileInfo *> *files, NSError *error))completion {
     NSFileManager *fileManager = [NSFileManager defaultManager];
     NSMutableArray<LegacyFileInfo *> *allFiles = [NSMutableArray array];
     
     @try {
-        // Get existing converted files to check conversion status
-        NSString *savedChartDataDir = [ChartWidget savedChartDataDirectory];
-        NSArray<NSString *> *existingChartDataFiles = [ChartWidget availableSavedChartDataFiles];
+        // ✅ NUOVO: Usa StorageManager + filename parsing invece di caricare file dal disco
+        StorageManager *storageManager = [StorageManager sharedManager];
         NSMutableSet<NSString *> *convertedSymbolTimeframes = [NSMutableSet set];
         
-        for (NSString *chartDataPath in existingChartDataFiles) {
-            SavedChartData *savedData = [SavedChartData loadFromFile:chartDataPath];
-            if (savedData) {
-                NSString *key = [NSString stringWithFormat:@"%@_%@", savedData.symbol, [self displayStringForTimeframe:savedData.timeframe]];
-                [convertedSymbolTimeframes addObject:key];
+        NSLog(@"📦 Checking %ld storages data for converted files...",
+              (long)storageManager.allStorageItems.count);
+        
+        // ✅ Estrai symbol+timeframe dal filepath usando filename parsing
+        for (ActiveStorageItem *item in storageManager.allStorageItems) {
+            NSString *filename = [item.filePath lastPathComponent];
+            
+            // Verifica che sia un file nel nuovo formato
+            if ([SavedChartData isNewFormatFilename:filename]) {
+                NSString *symbol = [SavedChartData symbolFromFilename:filename];
+                NSString *timeframeStr = [SavedChartData timeframeFromFilename:filename];
+                
+                if (symbol && timeframeStr) {
+                    NSString *key = [NSString stringWithFormat:@"%@_%@", symbol, timeframeStr];
+                    [convertedSymbolTimeframes addObject:key];
+                    NSLog(@"   ✅ Found converted: %@", key);
+                }
             }
         }
+        
+        NSLog(@"📦 Found %ld already converted symbol+timeframe combinations",
+              (unsigned long)convertedSymbolTimeframes.count);
         
         // Scan timeframe directories - FAST SCAN ONLY
         NSArray *timeframeDirs = [fileManager contentsOfDirectoryAtPath:directory error:nil];
@@ -874,7 +893,8 @@
             NSArray *symbolFiles = [fileManager contentsOfDirectoryAtPath:timeframePath error:nil];
             
             for (NSString *fileName in symbolFiles) {
-                if (![fileName.pathExtension.lowercaseString isEqualToString:@"txt"]) {
+                if (![fileName.pathExtension.lowercaseString isEqualToString:@"csv"] &&
+                    ![fileName.pathExtension.lowercaseString isEqualToString:@"txt"]) {
                     continue;
                 }
                 
@@ -900,9 +920,17 @@
                 fileInfo.isParsed = NO;
                 fileInfo.canBeContinuous = NO;
                 
-                // Check if already converted
-                NSString *conversionKey = [NSString stringWithFormat:@"%@_%@", symbol, [self displayStringForTimeframe:mappedTimeframe]];
+                // ✅ NUOVO: Check usando symbol + timeframe string del converter
+                NSString *legacyTimeframeString = [self displayStringForTimeframe:mappedTimeframe];
+                NSString *conversionKey = [NSString stringWithFormat:@"%@_%@", symbol, legacyTimeframeString];
                 fileInfo.isConverted = [convertedSymbolTimeframes containsObject:conversionKey];
+                
+                // ✅ DEBUG: Log del confronto
+                if (fileInfo.isConverted) {
+                    NSLog(@"   ✅ %@ marked as CONVERTED (key: %@)", symbol, conversionKey);
+                } else {
+                    NSLog(@"   ❌ %@ marked as NOT converted (key: %@)", symbol, conversionKey);
+                }
                 
                 [allFiles addObject:fileInfo];
             }
@@ -917,7 +945,13 @@
             return [@(obj1.mappedTimeframe) compare:@(obj2.mappedTimeframe)];
         }];
         
-        NSLog(@"📁 Fast scan complete: %lu files found (no parsing done)", (unsigned long)allFiles.count);
+        NSInteger convertedCount = 0;
+        for (LegacyFileInfo *file in allFiles) {
+            if (file.isConverted) convertedCount++;
+        }
+        
+        NSLog(@"📁 Fast scan complete: %lu files found (%ld already converted) - using StorageManager + filename parsing",
+              (unsigned long)allFiles.count, (long)convertedCount);
         
         if (completion) {
             completion([allFiles copy], nil);
@@ -926,12 +960,13 @@
     } @catch (NSException *exception) {
         NSError *error = [NSError errorWithDomain:@"LegacyConverter"
                                              code:1001
-                                         userInfo:@{NSLocalizedDescriptionKey: exception.reason ?: @"Unknown scanning error"}];
+                                         userInfo:@{NSLocalizedDescriptionKey: exception.reason ?: @"Unknown error"}];
         if (completion) {
-            completion(@[], error);
+            completion(nil, error);
         }
     }
 }
+
 
 #pragma mark - On-Demand Parsing
 
@@ -1239,17 +1274,24 @@
 
 #pragma mark - Utility Methods
 
+// Fix per LegacyDataConverterWidget.m - metodo mapTimeframeFolderToEnum
+
 - (BarTimeframe)mapTimeframeFolderToEnum:(NSString *)folderName {
+    // ✅ NORMALIZZA: converti a lowercase per essere case-insensitive
+    NSString *normalized = folderName.lowercaseString;
+    
     // Map folder names to BarTimeframe enum
-    if ([folderName isEqualToString:@"1"]) return BarTimeframe1Min;
-    if ([folderName isEqualToString:@"5"]) return BarTimeframe5Min;
-    if ([folderName isEqualToString:@"15"]) return BarTimeframe15Min;
-    if ([folderName isEqualToString:@"30"]) return BarTimeframe30Min;
-    if ([folderName isEqualToString:@"60"]) return BarTimeframe1Hour;
-    if ([folderName isEqualToString:@"240"]) return BarTimeframe4Hour;
-    if ([folderName isEqualToString:@"D"] || [folderName isEqualToString:@"daily"]) return BarTimeframeDaily;
-    if ([folderName isEqualToString:@"W"] || [folderName isEqualToString:@"weekly"]) return BarTimeframeWeekly;
-    if ([folderName isEqualToString:@"M"] || [folderName isEqualToString:@"monthly"]) return BarTimeframeMonthly;
+    if ([normalized isEqualToString:@"1"]) return BarTimeframe1Min;
+    if ([normalized isEqualToString:@"5"]) return BarTimeframe5Min;
+    if ([normalized isEqualToString:@"15"]) return BarTimeframe15Min;
+    if ([normalized isEqualToString:@"30"]) return BarTimeframe30Min;
+    if ([normalized isEqualToString:@"60"]) return BarTimeframe1Hour;
+    if ([normalized isEqualToString:@"240"]) return BarTimeframe4Hour;
+    
+    // ✅ FIXED: Ora funziona sia con 'd' che con 'D'
+    if ([normalized isEqualToString:@"d"] || [normalized isEqualToString:@"daily"]) return BarTimeframeDaily;
+    if ([normalized isEqualToString:@"w"] || [normalized isEqualToString:@"weekly"]) return BarTimeframeWeekly;
+    if ([normalized isEqualToString:@"m"] || [normalized isEqualToString:@"monthly"]) return BarTimeframeMonthly;
     
     return -1; // Unknown timeframe
 }

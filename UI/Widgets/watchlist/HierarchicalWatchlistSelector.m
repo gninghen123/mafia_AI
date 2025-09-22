@@ -71,7 +71,16 @@
 
 #pragma mark - ✅ LAZY MENU STRUCTURE
 
+
 - (void)buildLazyMenuStructure {
+    // ✅ AGGIORNATO: Controlla se siamo in modalità filtro
+    if (self.filterText.length > 0) {
+        NSLog(@"⚠️ buildLazyMenuStructure called while filter active - maintaining filter");
+        [self buildFilteredMenuStructure];
+        return;
+    }
+    
+    // ✅ ORIGINAL: Codice esistente per menu gerarchico
     if (self.isUpdatingMenu) {
         NSLog(@"⚠️ Menu update already in progress, skipping");
         return;
@@ -86,20 +95,20 @@
     
     // Define categories
     NSArray<NSString *> *categories = @[
-        @"Manual Watchlists",
-        @"Baskets",
-        @"Market Lists",
-       //todo @"Tag Lists",
-        @"Archives"
-    ];
+           @"Manual Watchlists",
+           @"Baskets",
+           @"Market Lists",
+           @"Tag Lists",        // ✅ ABILITATO: Tag-based dynamic lists
+           @"Archives"
+       ];
     
     NSArray<NSString *> *categoryDisplayNames = @[
-        @"📝 MY LISTS",
-        @"📅 BASKETS",
-        @"📊 MARKET LISTS",
-        //todo@"🏷️ TAG LISTS",
-        @"📦 ARCHIVES"
-    ];
+            @"📝 MY LISTS",
+            @"📅 BASKETS",
+            @"📊 MARKET LISTS",
+            @"🏷️ TAG LISTS",    // ✅ AGGIUNTO: Display name per Tag Lists
+            @"📦 ARCHIVES"
+        ];
     
     BOOL firstCategory = YES;
     
@@ -112,11 +121,11 @@
         }
         firstCategory = NO;
         
-        // ✅ FASE 1: Create category with EMPTY submenu
+        // ✅ Create category with EMPTY submenu
         NSMenuItem *categoryItem = [[NSMenuItem alloc] initWithTitle:displayName action:nil keyEquivalent:@""];
         NSMenu *submenu = [[NSMenu alloc] initWithTitle:displayName];
         
-        // ✅ CRITICAL: Set delegate to detect submenu opening
+        // ✅ Set delegate to detect submenu opening
         submenu.delegate = self;
         
         // ✅ Store category name for lazy loading
@@ -136,6 +145,7 @@
     self.isUpdatingMenu = NO;
     NSLog(@"🚀 LAZY menu structure completed - %ld categories ready for on-demand loading", (long)[[self menu] numberOfItems]);
 }
+
 
 #pragma mark - ✅ NSMenuDelegate - LAZY SUBMENU LOADING
 
@@ -456,8 +466,14 @@
 #pragma mark - Rebuild/Refresh Methods
 
 - (void)rebuildMenuStructure {
-    [self buildLazyMenuStructure];
+    // ✅ AGGIORNATO: Rispetta la modalità filtro corrente
+    if (self.filterText.length > 0) {
+        [self buildFilteredMenuStructure];
+    } else {
+        [self buildLazyMenuStructure];
+    }
 }
+
 
 - (void)updateProviderCounts {
     // Update counts for loaded categories only
@@ -486,13 +502,144 @@
 #pragma mark - Search Filtering (Stub Methods)
 
 - (void)setFilterText:(NSString *)filterText {
-    _filterText = filterText ?: @"";
-    // TODO: Implement search filtering if needed
+    NSString *newFilterText = filterText ?: @"";
+    
+    // Evita rebuild inutili se il testo non è cambiato
+    if ([self.filterText isEqualToString:newFilterText]) {
+        return;
+    }
+    
+    _filterText = newFilterText;
+    
+    NSLog(@"🔍 HierarchicalSelector: Filter text changed to: '%@'", self.filterText);
+    
+    // Rebuild del menu in base al filtro
+    if (self.filterText.length == 0) {
+        NSLog(@"   → Clearing filter - showing hierarchical menu");
+        [self buildLazyMenuStructure];
+    } else {
+        NSLog(@"   → Applying filter - showing flat filtered list");
+        [self buildFilteredMenuStructure];
+    }
 }
 
 - (void)clearFilter {
-    self.filterText = @"";
-    // TODO: Implement search clearing if needed
+    [self setFilterText:@""];
+}
+
+#pragma mark - Filtered Menu Structure
+
+- (void)buildFilteredMenuStructure {
+    if (self.isUpdatingMenu) {
+        NSLog(@"⚠️ Menu update already in progress, skipping filter");
+        return;
+    }
+    
+    self.isUpdatingMenu = YES;
+    NSLog(@"🔍 Building FILTERED menu structure for: '%@'", self.filterText);
+    
+    // Clear existing menu
+    [[self menu] removeAllItems];
+    
+    // Ottieni tutti i provider da tutte le categorie
+    NSArray<id<WatchlistProvider>> *allProviders = [self getAllProvidersForFiltering];
+    
+    // Filtra i provider che matchano il testo
+    NSArray<id<WatchlistProvider>> *filteredProviders = [self filterProviders:allProviders withText:self.filterText];
+    
+    NSLog(@"🔍 Found %lu matching providers out of %lu total",
+          (unsigned long)filteredProviders.count, (unsigned long)allProviders.count);
+    
+    if (filteredProviders.count == 0) {
+        // Nessun risultato
+        NSMenuItem *noResultsItem = [[NSMenuItem alloc] initWithTitle:@"No matching watchlists"
+                                                               action:nil
+                                                        keyEquivalent:@""];
+        noResultsItem.enabled = NO;
+        [[self menu] addItem:noResultsItem];
+    } else {
+        // Header per i risultati filtrati
+        NSMenuItem *headerItem = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"🔍 Filtered Results (%lu)", (unsigned long)filteredProviders.count]
+                                                            action:nil
+                                                     keyEquivalent:@""];
+        headerItem.enabled = NO;
+        [[self menu] addItem:headerItem];
+        
+        [[self menu] addItem:[NSMenuItem separatorItem]];
+        
+        // Aggiungi i provider filtrati
+        for (id<WatchlistProvider> provider in filteredProviders) {
+            NSMenuItem *item = [self createMenuItemForProvider:provider];
+            [[self menu] addItem:item];
+        }
+    }
+    
+    self.isUpdatingMenu = NO;
+    NSLog(@"✅ Filtered menu structure completed");
+}
+
+#pragma mark - Filter Helper Methods
+
+- (NSArray<id<WatchlistProvider>> *)getAllProvidersForFiltering {
+    NSMutableArray<id<WatchlistProvider>> *allProviders = [NSMutableArray array];
+    
+    // Categorie da includere nel filtro
+    NSArray<NSString *> *categories = @[
+        @"Manual Watchlists",
+        @"Baskets",
+        @"Market Lists",
+        @"Archives"
+    ];
+    
+    for (NSString *categoryName in categories) {
+        // Assicurati che i provider siano caricati per questa categoria
+        [self.providerManager ensureProvidersLoadedForCategory:categoryName];
+        
+        NSArray<id<WatchlistProvider>> *categoryProviders = [self.providerManager providersForCategory:categoryName];
+        
+        if (categoryProviders) {
+            [allProviders addObjectsFromArray:categoryProviders];
+        }
+    }
+    
+    return [allProviders copy];
+}
+
+- (NSArray<id<WatchlistProvider>> *)filterProviders:(NSArray<id<WatchlistProvider>> *)providers withText:(NSString *)filterText {
+    if (!filterText || filterText.length == 0) {
+        return providers;
+    }
+    
+    NSString *lowercaseFilter = [filterText lowercaseString];
+    
+    NSPredicate *filterPredicate = [NSPredicate predicateWithBlock:^BOOL(id<WatchlistProvider> provider, NSDictionary *bindings) {
+        NSString *displayName = [provider.displayName lowercaseString];
+        
+        // Match sia per nome che per contenuto parziale
+        BOOL nameMatches = [displayName containsString:lowercaseFilter];
+        
+        // Opzionale: potresti anche cercare nei simboli del provider se è già caricato
+        // BOOL symbolsMatch = NO;
+        // if (provider.isLoaded && provider.symbols.count > 0) {
+        //     for (NSString *symbol in provider.symbols) {
+        //         if ([[symbol lowercaseString] containsString:lowercaseFilter]) {
+        //             symbolsMatch = YES;
+        //             break;
+        //         }
+        //     }
+        // }
+        
+        return nameMatches; // || symbolsMatch;
+    }];
+    
+    NSArray<id<WatchlistProvider>> *filteredProviders = [providers filteredArrayUsingPredicate:filterPredicate];
+    
+    // Ordina i risultati alfabeticamente
+    NSSortDescriptor *sortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"displayName"
+                                                                     ascending:YES
+                                                                      selector:@selector(caseInsensitiveCompare:)];
+    
+    return [filteredProviders sortedArrayUsingDescriptors:@[sortDescriptor]];
 }
 
 @end

@@ -4,6 +4,7 @@
 //
 
 #import "TechnicalIndicatorBase.h"
+#import "TechnicalIndicatorBase+Hierarchy.h"  // ✅ IMPORT NECESSARIO
 
 @implementation TechnicalIndicatorBase
 
@@ -16,16 +17,75 @@
         _parameters = parameters ?: @{};
         _isCalculated = NO;
         
-        // ✅ NEW: Set default visualization type
+        // ✅ Set default visualization type
         _visualizationType = [self defaultVisualizationType];
-        
-        // Override from parameters if provided
         if (parameters[@"visualizationType"]) {
             _visualizationType = [parameters[@"visualizationType"] integerValue];
         }
+        
+        // ✅ NUOVO: Inizializza colore immediatamente
+        [self initializeDisplayColorFromParameters:parameters];
     }
     return self;
 }
+
+
+- (void)initializeDisplayColorFromParameters:(NSDictionary *)parameters {
+    NSColor *initialColor = nil;
+    
+    // ✅ Cerca colore nei parametri
+    if (parameters[@"color"]) {
+        id colorParam = parameters[@"color"];
+        if ([colorParam isKindOfClass:[NSColor class]]) {
+            initialColor = colorParam;
+        } else if ([colorParam isKindOfClass:[NSData class]]) {
+            initialColor = [NSUnarchiver unarchiveObjectWithData:colorParam];
+        }
+    }
+    
+    // ✅ Cerca displayColor nei parametri
+    if (!initialColor && parameters[@"displayColor"]) {
+        id colorParam = parameters[@"displayColor"];
+        if ([colorParam isKindOfClass:[NSColor class]]) {
+            initialColor = colorParam;
+        } else if ([colorParam isKindOfClass:[NSData class]]) {
+            initialColor = [NSUnarchiver unarchiveObjectWithData:colorParam];
+        }
+    }
+    
+    // ✅ Se non trovato, usa default per la classe
+    if (!initialColor) {
+        initialColor = [self getDefaultColorForIndicatorClass];
+    }
+    
+    // ✅ Imposta il colore usando la property (triggera l'Associated Object)
+    if (initialColor) {
+        self.displayColor = initialColor;
+        NSLog(@"🎨 Initialized %@ with color: %@", self.shortName, initialColor);
+    } else {
+        NSLog(@"⚠️ Could not initialize color for %@", self.shortName);
+    }
+}
+
+// ✅ NUOVO: Colore default per classe specifica
+- (NSColor *)getDefaultColorForIndicatorClass {
+    // ✅ Prova defaultParameters della classe
+    if ([self.class respondsToSelector:@selector(defaultParameters)]) {
+        @try {
+            NSDictionary *defaults = [self.class defaultParameters];
+            if (defaults[@"color"]) {
+                return defaults[@"color"];
+            }
+        } @catch (NSException *exception) {
+            // defaultParameters potrebbe non essere implementato
+            NSLog(@"⚠️ defaultParameters not implemented for %@", self.class);
+        }
+    }
+    
+    // ✅ Fallback su tipo indicator
+    return [self getColorBasedOnIndicatorType] ?: [NSColor systemBlueColor];
+}
+
 
 #pragma mark - Abstract Methods (Must be overridden)
 

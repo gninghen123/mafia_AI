@@ -22,24 +22,13 @@
         return;
     }
     
-    // Store previous symbol for logging
-    NSString *previousSymbol = self.currentSymbol;
+    // ✅ USA IL NUOVO METODO + carica dati
+    [self updateSymbolWithoutDataLoad:newSymbol];
     
-    // ✅ COORDINATE SYMBOL DEPENDENCIES FIRST (before data load)
-    [self coordinateSymbolDependencies:newSymbol];
-    
-    // ✅ UPDATE CURRENT SYMBOL
-    self.currentSymbol = newSymbol;
-    
-    // ✅ UPDATE UI IMMEDIATELY
-    [self processUIUpdate:ChartInvalidationSymbolChange];
-    
-    // ✅ LOAD NEW DATA
+    // ✅ LOAD DATA solo se necessario
     if (newSymbol && newSymbol.length > 0) {
         [self loadDataWithCurrentSettings];
     }
-    
-    NSLog(@"✅ Handler: Symbol change from '%@' to '%@' initiated", previousSymbol ?: @"(none)", newSymbol);
 }
 
 - (void)handleTimeframeChange:(BarTimeframe)newTimeframe {
@@ -50,31 +39,13 @@
         return;
     }
     
-    BarTimeframe previousTimeframe = self.currentTimeframe;
+    // ✅ USA IL NUOVO METODO + carica dati
+    [self updateTimeframeWithoutDataLoad:newTimeframe];
     
-    // ✅ UPDATE TIMEFRAME
-    self.currentTimeframe = newTimeframe;
-    
-    // ✅ UPDATE DATE RANGE PREFERENCES FOR NEW TIMEFRAME
-    if ([self respondsToSelector:@selector(updateDateRangeSegmentedForTimeframe:)]) {
-        [self updateDateRangeSegmentedForTimeframe:newTimeframe];
-    }
-    
-    // ✅ RESET VISIBLE RANGE FOR NEW TIMEFRAME
-    if ([self respondsToSelector:@selector(resetVisibleRangeForTimeframe)]) {
-        [self resetVisibleRangeForTimeframe];
-    }
-    
-    // ✅ UPDATE UI IMMEDIATELY
-    [self processUIUpdate:ChartInvalidationTimeframeChange];
-    
-    // ✅ LOAD NEW DATA
+    // ✅ LOAD DATA
     if (self.currentSymbol && self.currentSymbol.length > 0) {
         [self loadDataWithCurrentSettings];
     }
-    
-    NSLog(@"✅ Handler: Timeframe change from %ld to %ld initiated",
-          (long)previousTimeframe, (long)newTimeframe);
 }
 
 - (void)handleDataRangeChange:(NSInteger)newDays isExtension:(BOOL)isExtension {

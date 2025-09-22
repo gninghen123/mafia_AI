@@ -9,7 +9,7 @@
 
 #import "BaseWidget.h"
 #import "RuntimeModels.h"
-#import "WatchlistTypes.h"
+#import "commonTypes.h"
 #import "TradingAppTypes.h"
 
 NS_ASSUME_NONNULL_BEGIN

@@ -112,6 +112,7 @@ NS_ASSUME_NONNULL_BEGIN
 /// @return Default color for rendering
 - (NSColor *)defaultDisplayColor;
 
+- (NSColor *)getColorBasedOnIndicatorType;
 #pragma mark - Serialization Support
 
 /// Serialize indicator configuration to dictionary

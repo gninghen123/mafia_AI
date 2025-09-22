@@ -11,6 +11,8 @@
 #import "DataHub+MarketData.h"
 #import "DataHub+WatchlistProviders.h"
 #import "TradingAppTypes.h"
+#import "TagManager.h"
+
 
 @interface WatchlistProviderManager ()
 
@@ -93,9 +95,26 @@
         NSLog(@"⚡ Force loading: Market Lists");
         [self loadMarketListProviders];
     } else if ([categoryName isEqualToString:@"Tag Lists"]) {
-        // ✅ FIX: SEMPRE ricarica i tag (potrebbero essere cambiati)
-        NSLog(@"⚡ Force loading: Tag Lists (always reload)");
-        [self loadTagListProviders];
+        // ✅ UPDATED: Check TagManager state first
+        TagManager *tagManager = [TagManager sharedManager];
+        if (tagManager.state == TagManagerStateReady) {
+            NSLog(@"⚡ Force loading: Tag Lists (TagManager ready)");
+            [self loadTagListProviders];
+        } else {
+            NSLog(@"⚡ Tag Lists requested but TagManager not ready (state: %@)", [self tagManagerStateDescription:tagManager.state]);
+            
+            // Start TagManager build if not already building
+            if (tagManager.state == TagManagerStateEmpty) {
+                NSLog(@"⚡ Starting TagManager background build");
+                [tagManager buildCacheInBackground];
+            }
+            
+            // Listen for completion
+            [[NSNotificationCenter defaultCenter] addObserver:self
+                                                     selector:@selector(tagManagerDidFinishBuilding:)
+                                                         name:TagManagerDidFinishBuildingNotification
+                                                       object:nil];
+        }
     } else if ([categoryName isEqualToString:@"Archives"] && self.mutableArchiveProviders.count == 0) {
         NSLog(@"⚡ Force loading: Archives");
         [self loadArchiveProviders];
@@ -103,6 +122,7 @@
     
     NSLog(@"⚡ ensureProvidersLoadedForCategory completed: %@", categoryName);
 }
+
 
 #pragma mark - Provider Management
 
@@ -252,24 +272,11 @@
 
 - (void)loadTagListProvidersAsync {
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
-        NSArray<NSString *> *activeTags = [self discoverActiveTags];
-        
+        // ✅ SIMPLIFIED: TagManager handles async internally
         dispatch_async(dispatch_get_main_queue(), ^{
-            // Remove existing tag providers from cache
-            for (id<WatchlistProvider> provider in self.mutableTagListProviders) {
-                [self.providerCache removeObjectForKey:provider.providerId];
-            }
-            [self.mutableTagListProviders removeAllObjects];
+            [self loadTagListProviders];
             
-            for (NSString *tag in activeTags) {
-                TagListProvider *provider = [[TagListProvider alloc] initWithTag:tag];
-                [self.mutableTagListProviders addObject:provider];
-                self.providerCache[provider.providerId] = provider;
-            }
-            
-            NSLog(@"🏷️ Async loaded %lu tag list providers", (unsigned long)self.mutableTagListProviders.count);
-            
-            // Notify any waiting UI
+            // Notify completion
             [[NSNotificationCenter defaultCenter] postNotificationName:@"TagListProvidersLoaded"
                                                                 object:self];
         });
@@ -303,32 +310,80 @@
 }
 
 - (void)loadTagListProviders {
-    NSLog(@"🏷️ Loading tag list providers (SYNC VERSION)...");
+    NSLog(@"🏷️ Loading tag list providers using TagManager...");
     
-    // Remove existing tag providers from cache
+    // Clear existing tag providers from cache
     for (id<WatchlistProvider> provider in self.mutableTagListProviders) {
         [self.providerCache removeObjectForKey:provider.providerId];
     }
     [self.mutableTagListProviders removeAllObjects];
     
-    // ✅ FIX: Use sync version to avoid loading issues
-    NSArray<NSString *> *activeTags = [self discoverActiveTags];
-    NSLog(@"🏷️ Found %lu active tags to create providers for", (unsigned long)activeTags.count);
+    // ✅ NEW: Use TagManager instead of CoreData discovery
+    TagManager *tagManager = [TagManager sharedManager];
     
-    if (activeTags.count == 0) {
-        NSLog(@"⚠️ No active tags found - tag system might be empty or not working");
+    if (tagManager.state != TagManagerStateReady) {
+        NSLog(@"⚠️ TagManager not ready yet (state: %@) - will retry when ready", [self tagManagerStateDescription:tagManager.state]);
+        
+        // Listen for TagManager completion if building
+        if (tagManager.state == TagManagerStateBuilding) {
+            [[NSNotificationCenter defaultCenter] addObserver:self
+                                                     selector:@selector(tagManagerDidFinishBuilding:)
+                                                         name:TagManagerDidFinishBuildingNotification
+                                                       object:nil];
+        }
         return;
     }
     
+    // ✅ FAST: Get all active tags from TagManager (O(1))
+    NSArray<NSString *> *activeTags = [tagManager allActiveTags];
+    NSLog(@"🏷️ TagManager returned %lu active tags", (unsigned long)activeTags.count);
+    
+    if (activeTags.count == 0) {
+        NSLog(@"⚠️ No active tags found in TagManager");
+        return;
+    }
+    
+    // Create providers for each tag
     for (NSString *tag in activeTags) {
         TagListProvider *provider = [[TagListProvider alloc] initWithTag:tag];
         [self.mutableTagListProviders addObject:provider];
         self.providerCache[provider.providerId] = provider;
-        NSLog(@"🏷️ Created provider for tag: %@", tag);
+        NSLog(@"🏷️ Created provider for tag: %@ (%lu symbols)", tag, (unsigned long)[tagManager symbolCountForTag:tag]);
     }
     
-    NSLog(@"✅ Loaded %lu tag list providers", (unsigned long)self.mutableTagListProviders.count);
+    NSLog(@"✅ Loaded %lu tag list providers using TagManager", (unsigned long)self.mutableTagListProviders.count);
 }
+
+
+
+#pragma mark - ✅ NEW: TagManager Integration Support
+
+- (void)tagManagerDidFinishBuilding:(NSNotification *)notification {
+    NSLog(@"🏷️ WatchlistProviderManager: TagManager finished building - reloading tag providers");
+    
+    BOOL success = [notification.userInfo[@"success"] boolValue];
+    if (success) {
+        [self loadTagListProviders];
+        
+        // Remove observer (one-time use)
+        [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                         name:TagManagerDidFinishBuildingNotification
+                                                       object:nil];
+    } else {
+        NSLog(@"❌ TagManager build failed - tag providers not available");
+    }
+}
+
+- (NSString *)tagManagerStateDescription:(TagManagerState)state {
+    switch (state) {
+        case TagManagerStateEmpty: return @"Empty";
+        case TagManagerStateBuilding: return @"Building";
+        case TagManagerStateReady: return @"Ready";
+        case TagManagerStateError: return @"Error";
+        default: return @"Unknown";
+    }
+}
+
 
 - (void)loadArchiveProviders {
     NSLog(@"📦 Loading Archive Providers (Archive- prefixed only)");
@@ -561,31 +616,7 @@
     [self loadArchiveProvidersAsync];
 }
 
-- (NSArray<NSString *> *)discoverActiveTags {
-    NSLog(@"🏷️ Starting tag discovery...");
-    
-    __block NSArray<NSString *> *discoveredTags = @[];
-    
-    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-    
-    [[DataHub shared] discoverAllActiveTagsWithCompletion:^(NSArray<NSString *> *tags) {
-        discoveredTags = tags ?: @[];
-        NSLog(@"🏷️ DataHub returned %lu tags: %@", (unsigned long)discoveredTags.count, discoveredTags);
-        dispatch_semaphore_signal(semaphore);
-    }];
-    
-    // ✅ FIX: Increase timeout for tag discovery
-    dispatch_time_t timeout = dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC);
-    long result = dispatch_semaphore_wait(semaphore, timeout);
-    
-    if (result != 0) {
-        NSLog(@"❌ Tag discovery TIMEOUT after 5 seconds!");
-        return @[];
-    }
-    
-    NSLog(@"✅ Tag discovery completed with %lu tags", (unsigned long)discoveredTags.count);
-    return discoveredTags;
-}
+
 
 - (NSArray<NSString *> *)discoverAvailableArchives {
     // Synchronous version for backward compatibility

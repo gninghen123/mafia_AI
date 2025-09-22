@@ -25,10 +25,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, nullable) TechnicalIndicatorBase *rootIndicator;
 
 
-// ✅ NEW: Cached data for performance
-@property (nonatomic, strong) NSMutableDictionary<NSString *, NSArray<IndicatorDataModel *> *> *cachedVisibleData;
-@property (nonatomic, assign) NSInteger lastVisibleStartIndex;
-@property (nonatomic, assign) NSInteger lastVisibleEndIndex;
+
 
 @property (nonatomic, strong) CATextLayer *warningMessagesLayer;
 @property (nonatomic, strong) NSMutableArray<NSString *> *activeWarnings;

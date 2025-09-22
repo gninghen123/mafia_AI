@@ -74,26 +74,6 @@
 		95F1AFC52E32037F00D96BDD /* CommonTypes.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CommonTypes.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		958F70322E7EB68B008D286E /* Exceptions for "Gestione Dati" folder in "mafia_AI" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				coredata/TradingDataModel.xcdatamodeld,
-			);
-			target = 954D2FFF2E28514A00C7DC88 /* mafia_AI */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
-/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
-		958F70332E7EB68B008D286E /* Exceptions for "Gestione Dati" folder in "Compile Sources" phase from "mafia_AI" target */ = {
-			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
-			buildPhase = 954D2FFC2E28514A00C7DC88 /* Sources */;
-			membershipExceptions = (
-				coredata/TradingDataModel.xcdatamodeld,
-			);
-		};
-/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		954391052E71D42B0015F05A /* spotlight */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -132,10 +112,6 @@
 		};
 		95F1AFB42E31131100D96BDD /* Gestione Dati */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				958F70322E7EB68B008D286E /* Exceptions for "Gestione Dati" folder in "mafia_AI" target */,
-				958F70332E7EB68B008D286E /* Exceptions for "Gestione Dati" folder in "Compile Sources" phase from "mafia_AI" target */,
-			);
 			path = "Gestione Dati";
 			sourceTree = "<group>";
 		};

@@ -7,6 +7,10 @@
 #import "DataHub.h"
 #import "DataHub+WatchlistProviders.h"
 #import "datahub+marketdata.h"
+#import "TagManager.h"
+#import "WatchlistProviderManager.h"
+
+@class TagManager;
 
 #pragma mark - Manual Watchlist Provider
 
@@ -375,6 +379,14 @@
 }
 
 - (NSString *)displayName {
+    // ✅ ENHANCED: Show count if TagManager is ready
+    TagManager *tagManager = [TagManager sharedManager];
+    if (tagManager.state == TagManagerStateReady) {
+        NSUInteger count = [tagManager symbolCountForTag:self.tag];
+        if (count > 0) {
+            return [NSString stringWithFormat:@"🏷️ %@ (%lu)", self.tag, (unsigned long)count];
+        }
+    }
     return [NSString stringWithFormat:@"🏷️ %@", self.tag];
 }
 
@@ -385,103 +397,102 @@
 - (BOOL)canAddSymbols { return NO; }
 - (BOOL)canRemoveSymbols { return NO; }
 - (BOOL)isAutoUpdating { return YES; }
-- (BOOL)showCount { return NO; } // Don't show count until loaded
+
+- (BOOL)showCount {
+    // ✅ UPDATED: Show count when TagManager is ready
+    return [[TagManager sharedManager] state] == TagManagerStateReady;
+}
 
 - (NSArray<NSString *> *)symbols {
-    return nil; // Will be loaded on demand
-}
-
-- (BOOL)isLoaded {
-    return NO; // Always load fresh from tag system
-}
-
-- (void)loadSymbolsWithCompletion:(void(^)(NSArray<NSString *> * _Nullable symbols, NSError * _Nullable error))completion {
-    [[DataHub shared] getSymbolsWithTag:self.tag completion:^(NSArray<NSString *> *symbols) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            NSLog(@"✅ TagListProvider (%@): Loaded %lu symbols with tag '%@'",
-                  [self displayName], (unsigned long)symbols.count, self.tag);
-            if (completion) {
-                completion(symbols ?: @[], nil);
-            }
-        });
-    }];
-}
-
-@end
-
-#pragma mark - Archive Provider
-
-@implementation ArchiveProvider
-
-- (instancetype)initWithArchiveKey:(NSString *)archiveKey {
-    if (self = [super init]) {
-        _archiveKey = archiveKey;
+    // ✅ UPDATED: Get symbols directly from TagManager
+    TagManager *tagManager = [TagManager sharedManager];
+    if (tagManager.state == TagManagerStateReady) {
+        return [tagManager symbolsWithTag:self.tag];
     }
-    return self;
-}
-
-#pragma mark - WatchlistProvider Protocol
-
-- (NSString *)providerId {
-    return [NSString stringWithFormat:@"archive:%@", self.archiveKey];
-}
-
-- (NSString *)displayName {
-    return [NSString stringWithFormat:@"📦 %@", self.archiveKey];
-}
-
-- (NSString *)categoryName {
-    return @"Archives";
-}
-
-- (BOOL)canAddSymbols { return NO; }
-- (BOOL)canRemoveSymbols { return NO; }
-- (BOOL)isAutoUpdating { return NO; }
-- (BOOL)showCount { return YES; }
-
-- (NSArray<NSString *> *)symbols {
-    return nil; // Will be loaded on demand
+    return @[]; // Empty if TagManager not ready
 }
 
 - (BOOL)isLoaded {
-    return NO; // Always load fresh from archive system
+    // ✅ UPDATED: Consider loaded if TagManager is ready and has this tag
+    TagManager *tagManager = [TagManager sharedManager];
+    return (tagManager.state == TagManagerStateReady) && [tagManager tagExists:self.tag];
 }
 
 - (void)loadSymbolsWithCompletion:(void(^)(NSArray<NSString *> * _Nullable symbols, NSError * _Nullable error))completion {
+    // ✅ UPDATED: Use TagManager instead of DataHub async query
+    TagManager *tagManager = [TagManager sharedManager];
     
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+    if (tagManager.state == TagManagerStateReady) {
+        // ✅ IMMEDIATE: TagManager is ready, return symbols immediately
+        NSArray<NSString *> *symbols = [tagManager symbolsWithTag:self.tag];
+        NSLog(@"✅ TagListProvider (%@): Loaded %lu symbols with tag '%@' from TagManager",
+              [self displayName], (unsigned long)symbols.count, self.tag);
         
-        // ✅ FIX: Load symbols from DataHub Archive- watchlist instead of placeholder
-        NSString *archiveWatchlistName = [NSString stringWithFormat:@"Archive-%@", self.archiveKey];
+        if (completion) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion(symbols ?: @[], nil);
+            });
+        }
+        return;
+    }
+    
+    if (tagManager.state == TagManagerStateBuilding) {
+        // ✅ WAIT: TagManager is building, wait for completion
+        NSLog(@"⏳ TagListProvider (%@): TagManager building, waiting for completion...", [self displayName]);
         
-        // Find the archive watchlist in DataHub
-        NSArray<WatchlistModel *> *watchlists = [[DataHub shared] getAllWatchlistModels];
-        WatchlistModel *archiveWatchlist = nil;
-        
-        for (WatchlistModel *watchlist in watchlists) {
-            if ([watchlist.name isEqualToString:archiveWatchlistName]) {
-                archiveWatchlist = watchlist;
-                break;
+        __weak typeof(self) weakSelf = self;
+        [[NSNotificationCenter defaultCenter] addObserverForName:TagManagerDidFinishBuildingNotification
+                                                          object:nil
+                                                           queue:[NSOperationQueue mainQueue]
+                                                      usingBlock:^(NSNotification *note) {
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf) return;
+            
+            // Remove observer (one-time use)
+            [[NSNotificationCenter defaultCenter] removeObserver:strongSelf
+                                                             name:TagManagerDidFinishBuildingNotification
+                                                           object:nil];
+            
+            BOOL success = [note.userInfo[@"success"] boolValue];
+            if (success) {
+                // TagManager ready, try again
+                [strongSelf loadSymbolsWithCompletion:completion];
+            } else {
+                // TagManager failed, return empty
+                NSLog(@"❌ TagListProvider (%@): TagManager build failed", [strongSelf displayName]);
+                if (completion) {
+                    completion(@[], [NSError errorWithDomain:@"TagListProvider"
+                                                        code:1
+                                                    userInfo:@{NSLocalizedDescriptionKey: @"TagManager build failed"}]);
+                }
             }
-        }
-        
-        NSArray<NSString *> *archivedSymbols = @[];
-        
-        if (archiveWatchlist) {
-            archivedSymbols = archiveWatchlist.symbols ?: @[];
-            NSLog(@"✅ Found archive watchlist '%@' with %lu symbols",
-                  archiveWatchlistName, (unsigned long)archivedSymbols.count);
-        } else {
-            NSLog(@"⚠️ Archive watchlist '%@' not found in DataHub", archiveWatchlistName);
-        }
-        
+        }];
+        return;
+    }
+    
+    // ✅ ERROR: TagManager is in error state or empty
+    NSLog(@"❌ TagListProvider (%@): TagManager not available (state: %@)",
+          [self displayName], [self tagManagerStateDescription:tagManager.state]);
+    
+    if (completion) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            NSLog(@"✅ ArchiveProvider (%@): Loaded %lu symbols from archive '%@'",
-                  [self displayName], (unsigned long)archivedSymbols.count, self.archiveKey);
-            if (completion) {
-                completion(archivedSymbols, nil);
-            }
+            completion(@[], [NSError errorWithDomain:@"TagListProvider"
+                                                code:2
+                                            userInfo:@{NSLocalizedDescriptionKey: @"TagManager not ready"}]);
         });
-    });
+    }
 }
+
+#pragma mark - Helper Methods
+
+- (NSString *)tagManagerStateDescription:(TagManagerState)state {
+    switch (state) {
+        case TagManagerStateEmpty: return @"Empty";
+        case TagManagerStateBuilding: return @"Building";
+        case TagManagerStateReady: return @"Ready";
+        case TagManagerStateError: return @"Error";
+        default: return @"Unknown";
+    }
+}
+
 @end

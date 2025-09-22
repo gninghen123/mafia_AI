@@ -641,7 +641,7 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 
 - (void)startAlertMonitoring {
     // Check alerts every 10 seconds
-    self.alertCheckTimer = [NSTimer scheduledTimerWithTimeInterval:10.0
+    self.alertCheckTimer = [NSTimer scheduledTimerWithTimeInterval:50.0
                                                             target:self
                                                           selector:@selector(checkAlertsOptimized)
                                                           userInfo:nil
@@ -714,20 +714,21 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 // Fix per DataHub.m - metodo checkAlertsOptimized
 
 - (void)checkAlertsOptimized {
-    // Get all active alerts
-    NSArray<Alert *> *activeAlerts = [self getActiveAlerts];
+    // ✅ FIX CRITICO: Usa nuovo metodo che restituisce Alert (Core Data) invece di AlertModel
+    NSArray<Alert *> *activeAlerts = [self getActiveCoreDataAlerts];
     
     if (activeAlerts.count == 0) {
         NSLog(@"📊 No active alerts to check");
         return;
     }
     
-    // ✅ OPTIMIZATION: Collect ALL unique symbols from active alerts
+    // ✅ NUOVO: Array per raccogliere alert invalidi da rimuovere
+    NSMutableArray<Alert *> *alertsToRemove = [NSMutableArray array];
     NSMutableSet<NSString *> *uniqueSymbols = [NSMutableSet set];
+    
     for (Alert *alert in activeAlerts) {
-        
-        // ✅ PROTEZIONE: Verifica che alert.symbol sia un'entità Symbol valida
         @try {
+            // ✅ PROTEZIONE: Verifica che alert.symbol sia un'entità Symbol valida
             if (alert.symbol &&
                 [alert.symbol isKindOfClass:[Symbol class]] &&
                 alert.symbol.symbol &&
@@ -741,11 +742,8 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
                       alert.symbol,
                       NSStringFromClass([alert.symbol class]));
                 
-                // ✅ CLEANUP: Se l'alert ha un symbol invalido, prova a rimuoverlo
-                if (alert.symbol && ![alert.symbol isKindOfClass:[Symbol class]]) {
-                    NSLog(@"🧹 CLEANUP: Removing alert with invalid symbol type");
-                    [self.mainContext deleteObject:alert];
-                }
+                // ✅ FIX CRITICO: Aggiungi alla lista per rimozione sicura
+                [alertsToRemove addObject:alert];
             }
         } @catch (NSException *exception) {
             NSLog(@"❌ Exception in checkAlertsOptimized: %@", exception.reason);
@@ -753,7 +751,16 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
             NSLog(@"   Alert.symbol: %@ (class: %@)",
                   alert.symbol,
                   NSStringFromClass([alert.symbol class]));
+            
+            // ✅ FIX: Aggiungi anche gli alert con eccezioni alla lista di rimozione
+            [alertsToRemove addObject:alert];
         }
+    }
+    
+    // ✅ NUOVO: Rimozione sicura degli alert invalidi
+    if (alertsToRemove.count > 0) {
+        NSLog(@"🧹 CLEANUP: Safely removing %lu invalid alerts", (unsigned long)alertsToRemove.count);
+        [self safelyRemoveCoreDataAlerts:alertsToRemove];
     }
     
     if (uniqueSymbols.count == 0) {
@@ -778,15 +785,77 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
         NSLog(@"✅ Received %lu quotes for alert checking", (unsigned long)quotes.count);
         
         // ✅ EFFICIENT: Check all alerts with the bulk quote results
-        [self checkAllAlertsWithBulkQuotes:quotes];
+        [self checkAllCoreDataAlertsWithBulkQuotes:quotes];
+    }];
+}
+
+- (NSArray<Alert *> *)getActiveCoreDataAlerts {
+    NSFetchRequest *request = [Alert fetchRequest];
+    request.predicate = [NSPredicate predicateWithFormat:@"isActive == YES AND isTriggered == NO"];
+    request.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"creationDate" ascending:NO]];
+    
+    NSError *error;
+    NSArray<Alert *> *alerts = [self.mainContext executeFetchRequest:request error:&error];
+    if (error) {
+        NSLog(@"❌ Error fetching active Core Data alerts: %@", error);
+        return @[];
+    }
+    
+    NSLog(@"📋 Found %lu active Core Data alerts", (unsigned long)alerts.count);
+    return alerts ?: @[];
+}
+
+
+- (void)safelyRemoveCoreDataAlerts:(NSArray<Alert *> *)alertsToRemove {
+    if (!alertsToRemove || alertsToRemove.count == 0) return;
+    
+    NSLog(@"🗑️ SAFE CLEANUP: Starting removal of %lu invalid Core Data alerts", (unsigned long)alertsToRemove.count);
+    
+    // ✅ SICUREZZA: Usa performBlockAndWait per garantire thread safety
+    [self.mainContext performBlockAndWait:^{
+        NSInteger successCount = 0;
+        NSInteger errorCount = 0;
+        
+        for (Alert *alert in alertsToRemove) {
+            @try {
+                // ✅ VALIDAZIONE: Verifica che l'oggetto appartenga al context corrente
+                if (alert.managedObjectContext == self.mainContext) {
+                    [self.mainContext deleteObject:alert];
+                    successCount++;
+                    NSLog(@"✅ DELETED invalid alert: %@ (context match)", alert.objectID);
+                } else {
+                    NSLog(@"⚠️ CONTEXT MISMATCH: Alert belongs to different context, skipping");
+                    errorCount++;
+                }
+            } @catch (NSException *exception) {
+                NSLog(@"❌ Exception deleting alert: %@ - %@", exception.name, exception.reason);
+                errorCount++;
+            }
+        }
+        
+        // ✅ SAVE: Salva solo se ci sono state modifiche con successo
+        if (successCount > 0) {
+            NSError *saveError = nil;
+            BOOL saved = [self.mainContext save:&saveError];
+            
+            if (saved) {
+                NSLog(@"✅ CLEANUP SUCCESS: Removed %ld invalid alerts", (long)successCount);
+            } else {
+                NSLog(@"❌ CLEANUP SAVE ERROR: %@", saveError.localizedDescription);
+            }
+        }
+        
+        if (errorCount > 0) {
+            NSLog(@"⚠️ CLEANUP WARNING: %ld alerts could not be removed", (long)errorCount);
+        }
     }];
 }
 /**
  * NUOVO METODO: Controlla tutti gli alert con i dati delle quote bulk
  * @param bulkQuotes Dictionary con simbolo -> MarketQuoteModel dalle API bulk
  */
-- (void)checkAllAlertsWithBulkQuotes:(NSDictionary<NSString *, MarketQuoteModel *> *)bulkQuotes {
-    NSArray<Alert *> *activeAlerts = [self getActiveAlerts];
+- (void)checkAllCoreDataAlertsWithBulkQuotes:(NSDictionary<NSString *, MarketQuoteModel *> *)bulkQuotes {
+    NSArray<Alert *> *activeAlerts = [self getActiveCoreDataAlerts];
     NSInteger triggeredCount = 0;
     
     for (Alert *alert in activeAlerts) {
@@ -814,31 +883,42 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
             // ✅ FIXED: MarketQuoteModel.last è NSNumber, non double
             double currentPrice = quote.last ? quote.last.doubleValue : 0.0;
             
-            if (currentPrice > 0 && [self shouldAlertTrigger:alert withCurrentPrice:currentPrice]) {
-                triggeredCount++;
-                NSLog(@"🚨 Alert triggered for %@ at %.2f (condition: %.2f %@)",
-                      symbolString, currentPrice, alert.triggerValue, alert.conditionString);
+            if (currentPrice <= 0) {
+                NSLog(@"⚠️ Invalid price for %@: %.2f", symbolString, currentPrice);
+                continue;
+            }
+            
+            // ✅ CHECK: Verifica se l'alert dovrebbe scattare
+            BOOL shouldTrigger = [self shouldAlertTrigger:alert withCurrentPrice:currentPrice];
+            
+            if (shouldTrigger && !alert.isTriggered) {
+                NSLog(@"🚨 ALERT TRIGGERED: %@ %.2f %@ (current: %.2f)",
+                      symbolString,
+                      alert.triggerValue,
+                      alert.conditionString,
+                      currentPrice);
                 
-                // Update alert status
                 alert.isTriggered = YES;
-                alert.triggerDate = [NSDate date];
+                triggeredCount++;
                 
-                // Send notification
-                if (alert.notificationEnabled) {
-                    [self showNotificationForAlert:alert];
+                // ✅ NOTIFICATION: Notifica l'UI dell'alert scattato
+                AlertModel *alertModel = [self convertCoreDataToRuntimeModel:alert];
+                if (alertModel) {
+                    [[NSNotificationCenter defaultCenter] postNotificationName:DataHubAlertTriggeredNotification
+                                                                        object:self
+                                                                      userInfo:@{@"alert": alertModel}];
                 }
             }
             
         } @catch (NSException *exception) {
-            NSLog(@"❌ Exception checking alert: %@", exception.reason);
-            NSLog(@"   Alert: %@", alert);
+            NSLog(@"❌ Exception checking alert: %@ - %@", exception.name, exception.reason);
         }
     }
     
+    // ✅ SAVE: Salva le modifiche agli alert triggered
     if (triggeredCount > 0) {
         [self saveContext];
-        NSLog(@"✅ Checked alerts: %ld triggered out of %ld active",
-              (long)triggeredCount, (long)activeAlerts.count);
+        NSLog(@"✅ Triggered %ld alerts and saved changes", (long)triggeredCount);
     }
 }
 

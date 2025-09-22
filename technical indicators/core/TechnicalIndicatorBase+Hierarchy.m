@@ -58,11 +58,158 @@ static const void *kNeedsRenderingKey = &kNeedsRenderingKey;  // ✅ AGGIUNTO
 
 - (NSColor *)displayColor {
     NSColor *color = objc_getAssociatedObject(self, kDisplayColorKey);
-    return color ?: [self defaultDisplayColor];
+    
+    if (color) {
+        // ✅ Colore già impostato
+        return color;
+    }
+    
+    // ✅ NUOVO: Inizializzazione lazy del colore se non esiste
+    NSColor *initialColor = [self computeInitialDisplayColor];
+    if (initialColor) {
+        // ✅ SALVA il colore calcolato per le prossime volte
+        objc_setAssociatedObject(self, kDisplayColorKey, initialColor, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        
+        NSLog(@"🎨 Initialized displayColor for %@: %@", self.shortName, initialColor);
+        return initialColor;
+    }
+    
+    // ✅ Fallback finale
+    NSColor *fallback = [NSColor systemBlueColor];
+    objc_setAssociatedObject(self, kDisplayColorKey, fallback, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    
+    NSLog(@"⚠️ Using fallback color for %@: %@", self.shortName, fallback);
+    return fallback;
 }
 
+- (NSColor *)computeInitialDisplayColor {
+    // ✅ PRIORITY 1: Parameters (da template o configurazione)
+    if (self.parameters[@"color"]) {
+        id colorParam = self.parameters[@"color"];
+        
+        // Se è NSData serializzato (da template)
+        if ([colorParam isKindOfClass:[NSData class]]) {
+            NSColor *deserializedColor = [NSUnarchiver unarchiveObjectWithData:colorParam];
+            if (deserializedColor) {
+                NSLog(@"   Color from parameters (serialized): %@", deserializedColor);
+                return deserializedColor;
+            }
+        }
+        // Se è già NSColor
+        else if ([colorParam isKindOfClass:[NSColor class]]) {
+            NSLog(@"   Color from parameters (direct): %@", colorParam);
+            return colorParam;
+        }
+    }
+    
+    if (self.parameters[@"displayColor"]) {
+        id colorParam = self.parameters[@"displayColor"];
+        
+        if ([colorParam isKindOfClass:[NSData class]]) {
+            NSColor *deserializedColor = [NSUnarchiver unarchiveObjectWithData:colorParam];
+            if (deserializedColor) {
+                NSLog(@"   Color from parameters[displayColor] (serialized): %@", deserializedColor);
+                return deserializedColor;
+            }
+        } else if ([colorParam isKindOfClass:[NSColor class]]) {
+            NSLog(@"   Color from parameters[displayColor] (direct): %@", colorParam);
+            return colorParam;
+        }
+    }
+    
+    // ✅ PRIORITY 2: Default method (se implementato)
+    if ([self respondsToSelector:@selector(defaultDisplayColor)]) {
+        NSColor *defaultColor = [self performSelector:@selector(defaultDisplayColor)];
+        if (defaultColor) {
+            NSLog(@"   Color from defaultDisplayColor method: %@", defaultColor);
+            return defaultColor;
+        }
+    }
+    
+    // ✅ PRIORITY 3: Class default parameters
+    if ([self.class respondsToSelector:@selector(defaultParameters)]) {
+        NSDictionary *defaults = [self.class defaultParameters];
+        if (defaults[@"color"]) {
+            NSLog(@"   Color from class default parameters: %@", defaults[@"color"]);
+            return defaults[@"color"];
+        }
+    }
+    
+    // ✅ PRIORITY 4: Type-based colore
+    NSColor *typeBasedColor = [self getColorBasedOnIndicatorType];
+    if (typeBasedColor) {
+        NSLog(@"   Color from indicator type: %@", typeBasedColor);
+        return typeBasedColor;
+    }
+    
+    // ✅ PRIORITY 5: Hierarchy level colore
+    NSColor *hierarchyColor = [self getColorBasedOnHierarchyLevel];
+    if (hierarchyColor) {
+        NSLog(@"   Color from hierarchy level: %@", hierarchyColor);
+        return hierarchyColor;
+    }
+    
+    NSLog(@"   No color source found, returning nil");
+    return nil;
+}
+- (NSColor *)getColorBasedOnIndicatorType {
+    NSString *className = NSStringFromClass([self class]);
+    
+    // ✅ Colori specifici per tipo di indicator
+    if ([className containsString:@"SMA"] || [className containsString:@"EMA"]) {
+        return [NSColor systemBlueColor];
+    } else if ([className containsString:@"RSI"]) {
+        return [NSColor systemPurpleColor];
+    } else if ([className containsString:@"MACD"]) {
+        return [NSColor systemOrangeColor];
+    } else if ([className containsString:@"Volume"]) {
+        return [NSColor systemGrayColor];
+    } else if ([className containsString:@"Security"]) {
+        return [NSColor systemGreenColor];
+    } else if ([className containsString:@"Bollinger"]) {
+        return [NSColor systemTealColor];
+    }
+    
+    return nil;
+}
+
+- (NSColor *)getColorBasedOnHierarchyLevel {
+    NSInteger level = [self getInheritanceLevel];
+    switch (level) {
+        case 0: return [NSColor systemBlueColor];      // Root
+        case 1: return [NSColor systemOrangeColor];    // Child
+        case 2: return [NSColor systemGreenColor];     // Grandchild
+        default: return [NSColor systemPurpleColor];   // Great-grandchild+
+    }
+}
+
+- (NSColor *)safeDefaultDisplayColor {
+    // ✅ STRATEGY 1: Prova a chiamare defaultDisplayColor se esiste
+    if ([self respondsToSelector:@selector(defaultDisplayColor)]) {
+        return [self performSelector:@selector(defaultDisplayColor)];
+    }
+    
+    // ✅ STRATEGY 2: Usa logica inline basata su hierarchy level
+    NSInteger level = [self getInheritanceLevel];
+    switch (level) {
+        case 0: return [NSColor systemBlueColor];      // Root
+        case 1: return [NSColor systemOrangeColor];    // Child
+        case 2: return [NSColor systemGreenColor];     // Grandchild
+        default: return [NSColor systemPurpleColor];   // Great-grandchild+
+    }
+}
+
+
+
 - (void)setDisplayColor:(NSColor *)displayColor {
+    NSColor *oldColor = objc_getAssociatedObject(self, kDisplayColorKey);
     objc_setAssociatedObject(self, kDisplayColorKey, displayColor, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    
+    NSLog(@"🎨 DisplayColor changed for %@: %@ → %@",
+          self.shortName, oldColor ?: @"nil", displayColor ?: @"nil");
+    
+    // ✅ MARK for re-rendering
+    self.needsRendering = YES;
 }
 
 - (CGFloat)lineWidth {

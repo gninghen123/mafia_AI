@@ -252,6 +252,12 @@ typedef struct {
 - (void)updateViewport;
 - (void)broadcastSymbolToChain:(NSString *)symbol;
 
+
+
+- (void)updateSymbolWithoutDataLoad:(NSString *)newSymbol;
+- (void)updateTimeframeWithoutDataLoad:(BarTimeframe)newTimeframe;
+- (void)updateDataRangeWithoutDataLoad:(NSInteger)newDays;
+
 // ✅ Conditional methods (check if exist before calling)
 - (void)recalculateAllIndicators;
 - (void)refreshIndicatorsRendering;

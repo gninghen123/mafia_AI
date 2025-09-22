@@ -14,6 +14,8 @@
 #import "DataHub+WatchlistProviders.h"
 #import "TradingAppTypes.h"
 #import "WatchlistProviders.h"
+#import "TagManager.h"
+
 
 @interface WatchlistWidget () <HierarchicalWatchlistSelectorDelegate>
 

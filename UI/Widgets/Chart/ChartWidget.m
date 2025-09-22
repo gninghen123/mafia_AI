@@ -1776,51 +1776,111 @@ extern NSString *const DataHubDataLoadedNotification;
     BOOL timeframeChanged = params.hasTimeframe && (params.timeframe != self.currentTimeframe);
     BOOL daysChanged = params.hasDaysSpecified && (params.daysToDownload != self.currentDateRangeDays);
     
-    // ✅ STRATEGY: Process changes in logical order
+    // ✅ FIX CRITICO: Coordina TUTTI i cambiamenti PRIMA di caricare dati
     
-    // 1️⃣ SYMBOL CHANGE (if any) - do this first as it affects everything
+    // STEP 1: Aggiorna TUTTI i parametri senza caricare dati
     if (symbolChanged) {
         NSLog(@"📊 Smart input: Symbol change to %@", params.symbol);
-        [self handleSymbolChange:params.symbol forceReload:NO];
+        [self updateSymbolWithoutDataLoad:params.symbol];  // ✅ NUOVO: Non carica dati
     }
     
-    // 2️⃣ TIMEFRAME CHANGE (if any) - affects data range preferences
     if (timeframeChanged) {
         NSLog(@"⏰ Smart input: Timeframe change to %ld", (long)params.timeframe);
-        [self handleTimeframeChange:params.timeframe];
+        [self updateTimeframeWithoutDataLoad:params.timeframe];  // ✅ NUOVO: Non carica dati
     }
     
-    // 3️⃣ DATA RANGE CHANGE (if any) - least impactful
     if (daysChanged) {
         NSLog(@"📅 Smart input: Data range change to %ld days", (long)params.daysToDownload);
-        
-        // ✅ Update custom segment to reflect the new days
-        if ([self respondsToSelector:@selector(updateCustomSegmentWithDays:)]) {
-            [self performSelector:@selector(updateCustomSegmentWithDays:) withObject:@(params.daysToDownload)];
-        }
-        
-        // Determine if extension
-        BOOL isExtension = (params.daysToDownload > self.currentDateRangeDays);
-        [self handleDataRangeChange:params.daysToDownload isExtension:isExtension];
+        [self updateDataRangeWithoutDataLoad:params.daysToDownload];  // ✅ NUOVO: Non carica dati
     }
     
-    // 4️⃣ IF ONLY SYMBOL (no timeframe/days specified) - simple symbol change
-    if (symbolChanged && !timeframeChanged && !daysChanged) {
-        NSLog(@"📊 Smart input: Simple symbol change only");
-        // Already handled by handleSymbolChange above
+    // STEP 2: UNA SOLA chiamata dati con TUTTI i parametri aggiornati
+    if (symbolChanged || timeframeChanged || daysChanged) {
+        NSLog(@"🔄 Smart input: Loading data with coordinated parameters");
+        [self loadDataWithCurrentSettings];  // ✅ UNA SOLA CHIAMATA
     }
     
-    // ✅ UPDATE UI to show clean symbol (remove any parameters)
-    [self updateSymbolTextFieldAfterSmartInput:params];
-    
-    // ✅ BROADCAST to chain if symbol changed
+    // STEP 3: Broadcast to chain se simbolo è cambiato
     if (symbolChanged) {
         if ([self respondsToSelector:@selector(broadcastSymbolToChain:)]) {
             [self performSelector:@selector(broadcastSymbolToChain:) withObject:params.symbol];
         }
     }
     
-    NSLog(@"✅ Smart symbol parameters processed via handlers");
+    NSLog(@"✅ Smart symbol parameters processed via coordinated handlers");
+}
+
+- (void)updateSymbolWithoutDataLoad:(NSString *)newSymbol {
+    if ([newSymbol isEqualToString:self.currentSymbol]) {
+        NSLog(@"🔄 Chain symbol %@ ignored (duplicate within 300s)", newSymbol);
+        return;
+    }
+    
+    NSString *previousSymbol = self.currentSymbol;
+    
+    // ✅ COORDINATE SYMBOL DEPENDENCIES
+    [self coordinateSymbolDependencies:newSymbol];
+    
+    // ✅ UPDATE CURRENT SYMBOL
+    self.currentSymbol = newSymbol;
+    
+    // ✅ UPDATE UI (but don't load data yet)
+    [self processUIUpdate:ChartInvalidationSymbolChange];
+    
+    NSLog(@"✅ Handler: Symbol change from '%@' to '%@' initiated", previousSymbol ?: @"(none)", newSymbol);
+}
+
+// ✅ NUOVO: Aggiorna timeframe senza caricare dati
+- (void)updateTimeframeWithoutDataLoad:(BarTimeframe)newTimeframe {
+    if (newTimeframe == self.currentTimeframe) {
+        NSLog(@"⏭️ Same timeframe, skipping");
+        return;
+    }
+    
+    BarTimeframe previousTimeframe = self.currentTimeframe;
+    
+    // ✅ UPDATE TIMEFRAME
+    self.currentTimeframe = newTimeframe;
+    
+    // ✅ UPDATE DATE RANGE PREFERENCES FOR NEW TIMEFRAME
+    if ([self respondsToSelector:@selector(updateDateRangeSegmentedForTimeframe:)]) {
+        [self updateDateRangeSegmentedForTimeframe:newTimeframe];
+    }
+    
+    // ✅ RESET VISIBLE RANGE FOR NEW TIMEFRAME
+    if ([self respondsToSelector:@selector(resetVisibleRangeForTimeframe)]) {
+        [self resetVisibleRangeForTimeframe];
+    }
+    
+    // ✅ UPDATE UI (but don't load data yet)
+    [self processUIUpdate:ChartInvalidationTimeframeChange];
+    
+    NSLog(@"✅ Handler: Timeframe change from %ld to %ld initiated",
+          (long)previousTimeframe, (long)newTimeframe);
+}
+
+// ✅ NUOVO: Aggiorna data range senza caricare dati
+- (void)updateDataRangeWithoutDataLoad:(NSInteger)newDays {
+    if (newDays == self.currentDateRangeDays) {
+        NSLog(@"⏭️ Same data range, skipping");
+        return;
+    }
+    
+    NSInteger previousDays = self.currentDateRangeDays;
+    
+    // ✅ UPDATE DATA RANGE
+    self.currentDateRangeDays = newDays;
+    
+    // ✅ UPDATE CUSTOM SEGMENT
+    if ([self respondsToSelector:@selector(updateCustomSegmentWithDays:)]) {
+        [self updateCustomSegmentWithDays:newDays];
+    }
+    
+    // ✅ UPDATE UI (but don't load data yet)
+    [self processUIUpdate:ChartInvalidationDataRangeChange];
+    
+    NSLog(@"✅ Handler: Data range change from %ld to %ld days initiated",
+          (long)previousDays, (long)newDays);
 }
 
 - (void)updateSymbolTextFieldAfterSmartInput:(SmartSymbolParameters)params {
@@ -2115,6 +2175,7 @@ extern NSString *const DataHubDataLoadedNotification;
 
 #pragma mark - New Loading Method with Date Range
 
+
 - (void)loadSymbolWithDateRange:(SmartSymbolParameters)params {
     
     // Determine if we need extended hours
@@ -2299,14 +2360,14 @@ extern NSString *const DataHubDataLoadedNotification;
 - (NSInteger)getMaxDaysForTimeframe:(BarTimeframe)timeframe {
     switch (timeframe) {
         case BarTimeframe1Min:
-            return 60;
+            return 100;
             
         case BarTimeframe5Min:
         case BarTimeframe15Min:
         case BarTimeframe30Min:
         case BarTimeframe1Hour:
         case BarTimeframe4Hour:
-            return 300;
+            return 370;
             
         case BarTimeframeDaily:
         case BarTimeframeWeekly:

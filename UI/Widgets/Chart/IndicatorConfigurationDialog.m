@@ -448,14 +448,151 @@
 #pragma mark - Actions (semplificati)
 
 - (IBAction)saveAction:(NSButton *)sender {
-    // ✅ CON I BINDINGS NON SERVE PIÙ RACCOGLIERE MANUALMENTE I VALORI!
-    // I parametri sono già stati applicati in real-time
+    NSLog(@"💾 Save action - applying all changes");
     
-    // ✅ Sincronizza i parameters proxy con l'indicatore
+    // ✅ 1. Sincronizza parametri tradizionali
     [self syncParametersFromProxyToIndicator];
+    
+    // ✅ 2. NUOVO: Sincronizza appearance esplicitamente
+    [self syncAppearanceProperties];
+    
+    // ✅ 3. Marca per re-rendering
+    self.indicator.needsRendering = YES;
+    
+    // ✅ 4. LOG finale per debugging
+   // [self debugCurrentIndicatorState];
     
     [self.window.sheetParent endSheet:self.window returnCode:NSModalResponseOK];
 }
+
+- (void)setupAppearanceTab {
+    NSLog(@"🔧 Setting up appearance tab with FORCED color initialization");
+    
+    // ✅ FORCE inizializzazione del colore se è nil
+    if (!self.indicator.displayColor) {
+        NSLog(@"⚠️ Indicator has no color, forcing initialization...");
+        
+        // ✅ Triggera il lazy loading del colore
+        NSColor *forcedColor = self.indicator.displayColor; // Chiama il getter che inizializza
+        NSLog(@"✅ Forced color initialization result: %@", forcedColor);
+    }
+    
+    // ✅ Setup controls con colore garantito
+    NSColor *actualColor = self.indicator.displayColor; // Ora dovrebbe esistere sempre
+    if (self.colorWell) {
+        self.colorWell.color = actualColor;
+        NSLog(@"   ColorWell set to GUARANTEED color: %@", actualColor);
+    }
+    
+    // ✅ Altri controls...
+    CGFloat actualLineWidth = self.indicator.lineWidth > 0 ? self.indicator.lineWidth : 2.0;
+    if (self.lineWidthSlider) {
+        self.lineWidthSlider.doubleValue = actualLineWidth;
+        if (self.lineWidthLabel) {
+            self.lineWidthLabel.stringValue = [NSString stringWithFormat:@"%.1f pt", actualLineWidth];
+        }
+    }
+    
+    BOOL actualVisibility = self.indicator.isVisible;
+    if (self.visibilityToggle) {
+        self.visibilityToggle.state = actualVisibility ? NSControlStateValueOn : NSControlStateValueOff;
+    }
+    
+    NSLog(@"✅ Appearance tab setup completed with GUARANTEED color");
+}
+
+
+- (CGFloat)getActualIndicatorLineWidth {
+    // Strategy 1: lineWidth property
+    if (self.indicator.lineWidth > 0) {
+        NSLog(@"   LineWidth from lineWidth property: %.1f", self.indicator.lineWidth);
+        return self.indicator.lineWidth;
+    }
+    
+    // Strategy 2: parameters
+    if (self.indicator.parameters[@"lineWidth"]) {
+        CGFloat paramWidth = [self.indicator.parameters[@"lineWidth"] floatValue];
+        if (paramWidth > 0) {
+            NSLog(@"   LineWidth from parameters: %.1f", paramWidth);
+            return paramWidth;
+        }
+    }
+    
+    // Strategy 3: Default
+    CGFloat defaultWidth = 2.0;
+    NSLog(@"   LineWidth from default: %.1f", defaultWidth);
+    return defaultWidth;
+}
+
+- (BOOL)getActualIndicatorVisibility {
+    // Strategy 1: isVisible property
+    NSLog(@"   Visibility from isVisible property: %@", self.indicator.isVisible ? @"YES" : @"NO");
+    return self.indicator.isVisible;
+}
+
+#pragma mark - AGGIORNAMENTO: Inizializzazione
+
+
+
+
+- (NSColor *)getActualIndicatorColor {
+    // Strategy 1: displayColor property
+    if (self.indicator.displayColor) {
+        NSLog(@"   Color from displayColor property: %@", self.indicator.displayColor);
+        return self.indicator.displayColor;
+    }
+    
+    // Strategy 2: parameters
+    if (self.indicator.parameters[@"color"]) {
+        NSLog(@"   Color from parameters[color]: %@", self.indicator.parameters[@"color"]);
+        return self.indicator.parameters[@"color"];
+    }
+    
+    if (self.indicator.parameters[@"displayColor"]) {
+        NSLog(@"   Color from parameters[displayColor]: %@", self.indicator.parameters[@"displayColor"]);
+        return self.indicator.parameters[@"displayColor"];
+    }
+    
+    // Strategy 3: Default color method
+    if ([self.indicator respondsToSelector:@selector(defaultDisplayColor)]) {
+        NSColor *defaultColor = [self.indicator performSelector:@selector(defaultDisplayColor)];
+        if (defaultColor) {
+            NSLog(@"   Color from defaultDisplayColor: %@", defaultColor);
+            return defaultColor;
+        }
+    }
+    
+    // Strategy 4: Fallback
+    NSColor *fallbackColor = [NSColor systemOrangeColor]; // Molto visibile per debug
+    NSLog(@"   Color from fallback: %@", fallbackColor);
+    return fallbackColor;
+}
+
+
+- (void)syncAppearanceProperties {
+    NSLog(@"🎨 Syncing appearance properties to indicator");
+    
+    // ✅ Color Well → Indicator
+    if (self.colorWell && self.colorWell.color) {
+        self.indicator.displayColor = self.colorWell.color;
+        NSLog(@"   Color: %@", self.indicator.displayColor);
+    }
+    
+    // ✅ Line Width Slider → Indicator
+    if (self.lineWidthSlider) {
+        self.indicator.lineWidth = self.lineWidthSlider.doubleValue;
+        NSLog(@"   Line Width: %.1f", self.indicator.lineWidth);
+    }
+    
+    // ✅ Visibility Toggle → Indicator
+    if (self.visibilityToggle) {
+        self.indicator.isVisible = (self.visibilityToggle.state == NSControlStateValueOn);
+        NSLog(@"   Visible: %@", self.indicator.isVisible ? @"YES" : @"NO");
+    }
+    
+    NSLog(@"✅ Appearance properties synced");
+}
+
 
 - (IBAction)cancelAction:(NSButton *)sender {
     // ✅ Ripristina i valori originali
@@ -648,6 +785,58 @@
     return YES;
 }
 
+- (IBAction)colorChanged:(NSColorWell *)sender {
+    NSColor *newColor = sender.color;
+    NSLog(@"🎨 Color changed to: %@", newColor);
+    
+    // ✅ AGGIORNA IMMEDIATAMENTE L'INDICATOR
+    self.indicator.displayColor = newColor;
+    self.indicator.needsRendering = YES;
+    
+    // ✅ OPTIONAL: Aggiorna anche il proxy per coerenza
+    if (self.parametersProxy) {
+        self.parametersProxy[@"displayColor"] = newColor;
+    }
+    
+    NSLog(@"✅ Indicator displayColor updated to: %@", self.indicator.displayColor);
+}
+
+- (IBAction)lineWidthChanged:(NSSlider *)sender {
+    CGFloat newWidth = sender.doubleValue;
+    NSLog(@"📏 Line width changed to: %.1f", newWidth);
+    
+    // ✅ AGGIORNA L'INDICATOR
+    self.indicator.lineWidth = newWidth;
+    self.indicator.needsRendering = YES;
+    
+    // ✅ AGGIORNA LABEL
+    self.lineWidthLabel.stringValue = [NSString stringWithFormat:@"%.1f pt", newWidth];
+    
+    // ✅ OPTIONAL: Aggiorna anche il proxy per coerenza
+    if (self.parametersProxy) {
+        self.parametersProxy[@"lineWidth"] = @(newWidth);
+    }
+    
+    NSLog(@"✅ Indicator lineWidth updated to: %.1f", self.indicator.lineWidth);
+}
+- (IBAction)visibilityToggled:(NSButton *)sender {
+    BOOL isVisible = (sender.state == NSControlStateValueOn);
+    NSLog(@"👁️ Visibility toggled to: %@", isVisible ? @"YES" : @"NO");
+    
+    // ✅ AGGIORNA L'INDICATOR
+    self.indicator.isVisible = isVisible;
+    self.indicator.needsRendering = YES;
+    
+    // ✅ OPTIONAL: Aggiorna anche il proxy per coerenza
+    if (self.parametersProxy) {
+        self.parametersProxy[@"isVisible"] = @(isVisible);
+    }
+    
+    NSLog(@"✅ Indicator isVisible updated to: %@", self.indicator.isVisible ? @"YES" : @"NO");
+}
+
+
+
 - (void)updateParametersFromControls {
     // Placeholder - implement if not using bindings
     NSLog(@"updateParametersFromControls called");
@@ -743,6 +932,8 @@
     
     appearanceTab.view = tabContentView;
     [self.tabView addTabViewItem:appearanceTab];
+    
+    [self setupAppearanceTab];
 }
 
 - (void)createAdvancedTab {
@@ -968,5 +1159,9 @@
     }
     return @"0.0 pt";
 }
+
+
+
+
 
 @end

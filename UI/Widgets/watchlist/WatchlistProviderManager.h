@@ -4,7 +4,7 @@
 
 #import <Foundation/Foundation.h>
 #import "RuntimeModels.h"
-#import "WatchlistTypes.h"
+#import "commonTypes.h"
 
 NS_ASSUME_NONNULL_BEGIN
 

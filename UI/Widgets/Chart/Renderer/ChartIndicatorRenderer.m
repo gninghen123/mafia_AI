@@ -13,6 +13,10 @@
 #import "TechnicalIndicatorBase+Hierarchy.h"
 #import "rawdataseriesindicator.h"
 
+static const CGFloat SIMPLIFIED_DRAWING_THRESHOLD = 1.0f;
+static NSColor *SIMPLIFIED_DRAWING_COLOR = nil;
+
+
 @implementation ChartIndicatorRenderer
 
 #pragma mark - Initialization
@@ -20,12 +24,11 @@
 - (instancetype)initWithPanelView:(ChartPanelView *)panelView {
     if (self = [super init]) {
         _panelView = panelView;
-        _cachedVisibleData = [NSMutableDictionary dictionary];
-        _lastVisibleStartIndex = NSNotFound;
-        _lastVisibleEndIndex = NSNotFound;
+      
         _activeWarnings = [[NSMutableArray alloc] init];
         [self setupIndicatorsLayer];
         [self setupWarningMessagesLayer];
+        SIMPLIFIED_DRAWING_COLOR = [NSColor labelColor]; // Colore neutro standard
 
         NSLog(@"🎨 ChartIndicatorRenderer: Initialized for panel: %@", panelView.panelType);
     }
@@ -352,7 +355,6 @@
 
 - (void)clearIndicatorLayers {
     self.rootIndicator = nil;
-    [self.cachedVisibleData removeAllObjects];
     [self.indicatorsLayer setNeedsDisplay];
     
     NSLog(@"🧹 Cleared all indicator layers");
@@ -412,7 +414,7 @@
        }
        
        // 🆕 NEW: PERIOD OPTIMIZATION - Skip rendering if period too short
-       NSInteger visibleRange = self.lastVisibleEndIndex - self.lastVisibleStartIndex + 1;
+       NSInteger visibleRange = self.panelView.visibleEndIndex - self.panelView.visibleStartIndex + 1;
        if (visibleRange > 0 && [self isPeriodTooShortForIndicator:indicator visibleRange:visibleRange]) {
            
            // Add warning message
@@ -471,7 +473,7 @@
 #pragma mark - Visible Data Optimization (UPDATED)
 
 - (BOOL)hasVisibleRangeChanged:(NSInteger)startIndex endIndex:(NSInteger)endIndex {
-    return (self.lastVisibleStartIndex != startIndex || self.lastVisibleEndIndex != endIndex);
+    return (self.panelView.visibleStartIndex != startIndex || self.panelView.visibleEndIndex != endIndex);
 }
 
 - (NSRange)validVisibleRangeForIndicator:(TechnicalIndicatorBase *)indicator
@@ -499,8 +501,8 @@
     
     // ✅ USA GLI INDICI DIRETTAMENTE - NO ARRAY ALLOCATION
     NSRange visibleRange = [self validVisibleRangeForIndicator:indicator
-                                                   startIndex:self.lastVisibleStartIndex
-                                                     endIndex:self.lastVisibleEndIndex];
+                                                   startIndex:self.panelView.visibleStartIndex
+                                                     endIndex:self.panelView.visibleEndIndex];
     
     if (visibleRange.length == 0) return;
     
@@ -524,8 +526,8 @@
     if (!indicator.outputSeries.count) return;
     
     NSRange visibleRange = [self validVisibleRangeForIndicator:indicator
-                                                   startIndex:self.lastVisibleStartIndex
-                                                     endIndex:self.lastVisibleEndIndex];
+                                                    startIndex:self.panelView.visibleStartIndex
+                                                      endIndex:self.panelView.visibleEndIndex];
     
     if (visibleRange.length == 0) return;
     
@@ -625,8 +627,8 @@
     
     // ✅ USA GLI INDICI DIRETTAMENTE - NO ARRAY ALLOCATION
     NSRange visibleRange = [self validVisibleRangeForIndicator:indicator
-                                                   startIndex:self.lastVisibleStartIndex
-                                                     endIndex:self.lastVisibleEndIndex];
+                                                    startIndex:self.panelView.visibleStartIndex
+                                                      endIndex:self.panelView.visibleEndIndex];
     
     if (visibleRange.length == 0) return;
     
@@ -657,8 +659,8 @@
     
     // ✅ USA GLI INDICI DIRETTAMENTE - NO ARRAY ALLOCATION
     NSRange visibleRange = [self validVisibleRangeForIndicator:indicator
-                                                   startIndex:self.lastVisibleStartIndex
-                                                     endIndex:self.lastVisibleEndIndex];
+                                                    startIndex:self.panelView.visibleStartIndex
+                                                      endIndex:self.panelView.visibleEndIndex];
     
     if (visibleRange.length == 0) return;
     
@@ -730,28 +732,28 @@
     CGFloat x = x0;
 
     for (NSInteger i = startIndex; i <= endIndex; i++) {
-        IndicatorDataModel *dataPoint = indicator.outputSeries[i];
-        if (isnan(dataPoint.value)) { x += dx; continue; }
+           IndicatorDataModel *dataPoint = indicator.outputSeries[i];
+           if (isnan(dataPoint.value)) { x += dx; continue; }
 
-        CGFloat y = [self yCoordinateForValue:dataPoint.value];
-        if (x < -9999 || y < -9999) { x += dx; continue; }
+           CGFloat y = [self yCoordinateForValue:dataPoint.value];
+           if (x < -9999 || y < -9999) { x += dx; continue; }
 
-        if (barWidth < 2.0) {
-            // Draw a simple vertical line
-            [path moveToPoint:NSMakePoint(x, baselineY)];
-            [path lineToPoint:NSMakePoint(x, y)];
-        } else {
-            // Draw full rectangle
-            CGFloat barHeight = ABS(y - baselineY);
-            CGFloat barBottom = MIN(y, baselineY);
-            NSRect barRect = NSMakeRect(x - barWidth/2, barBottom, barWidth, barHeight);
-            [path appendBezierPathWithRect:barRect];
-        }
+           if (barWidth <= SIMPLIFIED_DRAWING_THRESHOLD) { // ✅ USA COSTANTE UNIFICATA
+               // Draw a simple vertical line
+               [path moveToPoint:NSMakePoint(x, baselineY)];
+               [path lineToPoint:NSMakePoint(x, y)];
+           } else {
+               // Draw full rectangle
+               CGFloat barHeight = ABS(y - baselineY);
+               CGFloat barBottom = MIN(y, baselineY);
+               NSRect barRect = NSMakeRect(x - barWidth/2, barBottom, barWidth, barHeight);
+               [path appendBezierPathWithRect:barRect];
+           }
 
-        x += dx;
-    }
+           x += dx;
+       }
 
-    return path.elementCount > 0 ? path : nil;
+       return path.elementCount > 0 ? path : nil;
 }
 
 // OPTIMIZED: Use sequential X coordinates (no per-point timestamp lookup)
@@ -851,7 +853,7 @@
     barWidth -= [self.panelView.sharedXContext barSpacing];
     
     // 🚀 OTTIMIZZAZIONE: Se barWidth <= 1px, disegna solo linee semplici
-    if (barWidth <= 1.0) {
+    if (barWidth <= SIMPLIFIED_DRAWING_THRESHOLD) {
         [self drawSimplifiedCandlesticks:chartData startIndex:startIndex endIndex:endIndex];
         return;
     }
@@ -868,7 +870,8 @@
                         startIndex:(NSInteger)startIndex
                           endIndex:(NSInteger)endIndex {
     
-    NSColor *neutralColor = [NSColor labelColor]; // Colore neutro
+    NSColor *neutralColor = SIMPLIFIED_DRAWING_COLOR ; // Colore neutro standard
+
     NSBezierPath *simplePath = [NSBezierPath bezierPath];
     simplePath.lineWidth = 1.0;
     
@@ -970,10 +973,28 @@
 #pragma mark - Style and Color Helpers
 
 - (NSColor *)defaultStrokeColorForIndicator:(TechnicalIndicatorBase *)indicator {
-    // Return indicator-specific color or default
-    return indicator.displayColor ?: [NSColor systemBlueColor];
+    NSColor *displayColor = nil;
+    
+    // ✅ STRATEGY 1: Prova displayColor property
+    if ([indicator respondsToSelector:@selector(displayColor)]) {
+        displayColor = indicator.displayColor;
+    }
+    
+    // ✅ STRATEGY 2: Cerca nei parametri
+    if (!displayColor && indicator.parameters) {
+        displayColor = indicator.parameters[@"color"] ?: indicator.parameters[@"displayColor"];
+    }
+    
+    // ✅ STRATEGY 3: Default sicuro
+    if (!displayColor) {
+        displayColor = [NSColor systemBlueColor];
+    }
+    
+    NSLog(@"🎨 defaultStrokeColorForIndicator %@: %@",
+          indicator.shortName ?: @"Unknown", displayColor);
+    
+    return displayColor;
 }
-
 - (CGFloat)defaultLineWidthForIndicator:(TechnicalIndicatorBase *)indicator {
     // Return indicator-specific width or default
     return indicator.lineWidth > 0 ? indicator.lineWidth : 2.0;

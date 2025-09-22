@@ -74,6 +74,16 @@
 }
 
 
+- (void)forceConsistencyCheck {
+    [self.metadataCache performConsistencyCheck:self.storageDirectory
+                                     completion:^(NSInteger inconsistencies) {
+        if (inconsistencies > 0) {
+            NSLog(@"🔧 Fixed %ld inconsistencies at startup", (long)inconsistencies);
+            [self.metadataCache saveToUserDefaults];
+        }
+    }];
+}
+
 
 - (void)initializeStorageManager {
     if (_isInitialized) return;

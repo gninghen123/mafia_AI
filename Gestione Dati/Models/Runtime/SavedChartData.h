@@ -146,7 +146,6 @@ typedef NS_ENUM(NSInteger, SavedChartDataType) {
 
 + (NSString *)canonicalTimeframeString:(BarTimeframe)timeframe;
 + (BarTimeframe)timeframeFromCanonicalString:(NSString *)timeframeStr;
-+ (void)smartTimeframeRecoveryWithUserInput;
 
 @end
 

@@ -153,6 +153,11 @@ NS_ASSUME_NONNULL_BEGIN
 /// Storage con prossimo update più vicino
 @property (nonatomic, readonly, nullable) ActiveStorageItem *nextStorageToUpdate;
 
+
+
+- (void)forceConsistencyCheck;
+
+
 @end
 
 NS_ASSUME_NONNULL_END

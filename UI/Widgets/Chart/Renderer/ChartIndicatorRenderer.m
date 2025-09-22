@@ -693,7 +693,7 @@
     BOOL isFirstPoint = YES;
 
     // Calcola X iniziale a partire da endIndex
-    CGFloat x0 = [self.panelView.sharedXContext screenXForBarIndex:endIndex] + ([self.panelView.sharedXContext barWidth] / 2.0);
+    CGFloat x0 = [self.panelView.sharedXContext screenXForBarCenter:endIndex];
     CGFloat dx = [self.panelView.sharedXContext barWidth];
     CGFloat x = x0;
     // Itera da endIndex verso startIndex (inclusivo)
@@ -725,7 +725,7 @@
 
     NSBezierPath *path = [NSBezierPath bezierPath];
     CGFloat barWidth = [self.panelView.sharedXContext barWidth] * 0.8;
-    CGFloat x0 = [self.panelView.sharedXContext screenXForBarIndex:startIndex] + ([self.panelView.sharedXContext barWidth] / 2.0);
+    CGFloat x0 = [self.panelView.sharedXContext screenXForBarCenter:startIndex];
     CGFloat dx = [self.panelView.sharedXContext barWidth];
     CGFloat x = x0;
 
@@ -763,7 +763,7 @@
     if (!self.panelView.sharedXContext) return nil;
     NSBezierPath *path = [NSBezierPath bezierPath];
     NSMutableArray *validPoints = [NSMutableArray array];
-    CGFloat x0 = [self.panelView.sharedXContext screenXForBarIndex:startIndex] + ([self.panelView.sharedXContext barWidth] / 2.0);
+    CGFloat x0 = [self.panelView.sharedXContext screenXForBarCenter:startIndex];
     CGFloat dx = [self.panelView.sharedXContext barWidth];
     CGFloat x = x0;
     for (NSInteger i = startIndex; i <= endIndex; i++) {
@@ -795,7 +795,7 @@
     if (!self.panelView.sharedXContext) return nil;
     NSBezierPath *path = [NSBezierPath bezierPath];
     CGFloat markerSize = 6.0;
-    CGFloat x0 = [self.panelView.sharedXContext screenXForBarIndex:startIndex] + ([self.panelView.sharedXContext barWidth] / 2.0);
+    CGFloat x0 = [self.panelView.sharedXContext screenXForBarCenter:startIndex];
     CGFloat dx = [self.panelView.sharedXContext barWidth];
     CGFloat x = x0;
     for (NSInteger i = startIndex; i <= endIndex; i++) {
@@ -820,129 +820,7 @@
     NSLog(@"📏 Drew bands indicator: %@", indicator.displayName);
 }
 
-#pragma mark - BezierPath Creation Helpers
 
-- (NSBezierPath *)createLinePathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints {
-    if (!dataPoints.count) return nil;
-    
-    NSBezierPath *path = [NSBezierPath bezierPath];
-    BOOL isFirstPoint = YES;
-    
-    for (IndicatorDataModel *dataPoint in dataPoints) {
-        // ✅ CRITICAL FIX: Skip NaN values FIRST before any coordinate conversion
-        if (isnan(dataPoint.value)) {
-            continue;
-        }
-        
-        CGFloat x = [self xCoordinateForTimestamp:dataPoint.timestamp];
-        CGFloat y = [self yCoordinateForValue:dataPoint.value];
-        
-        // Skip invalid coordinates (coordinate conversion problems)
-        if (x < -9999 || y < -9999) continue;
-        
-        NSPoint point = NSMakePoint(x, y);
-        
-        if (isFirstPoint) {
-            [path moveToPoint:point];
-            isFirstPoint = NO;
-        } else {
-            [path lineToPoint:point];
-        }
-    }
-    
-    return path.elementCount > 0 ? path : nil;
-}
-
-- (NSBezierPath *)createHistogramPathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints
-                                          baselineY:(CGFloat)baselineY {
-    if (!dataPoints.count) return nil;
-    
-    NSBezierPath *path = [NSBezierPath bezierPath];
-    CGFloat barWidth = [self.panelView.sharedXContext barWidth] * 0.8; // Slightly smaller than candle width
-    
-    for (IndicatorDataModel *dataPoint in dataPoints) {
-        // ✅ SKIP NaN VALUES
-        if (isnan(dataPoint.value)) continue;
-        
-        CGFloat x = [self xCoordinateForTimestamp:dataPoint.timestamp];
-        CGFloat y = [self yCoordinateForValue:dataPoint.value];
-        
-        // Skip invalid coordinates
-        if (x < -9999 || y < -9999) continue;
-        
-        // Create bar rectangle
-        CGFloat barHeight = ABS(y - baselineY);
-        CGFloat barBottom = MIN(y, baselineY);
-        
-        NSRect barRect = NSMakeRect(x - barWidth/2, barBottom, barWidth, barHeight);
-        [path appendBezierPathWithRect:barRect];
-    }
-    
-    return path.elementCount > 0 ? path : nil;
-}
-
-- (NSBezierPath *)createAreaPathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints
-                                     baselineY:(CGFloat)baselineY {
-    if (!dataPoints.count) return nil;
-    
-    NSBezierPath *path = [NSBezierPath bezierPath];
-    NSMutableArray *validPoints = [NSMutableArray array];
-    
-    // Collect valid points (skip NaN values)
-    for (IndicatorDataModel *dataPoint in dataPoints) {
-        // ✅ SKIP NaN VALUES
-        if (isnan(dataPoint.value)) continue;
-        
-        CGFloat x = [self xCoordinateForTimestamp:dataPoint.timestamp];
-        CGFloat y = [self yCoordinateForValue:dataPoint.value];
-        
-        if (x > -9999 && y > -9999) {
-            [validPoints addObject:[NSValue valueWithPoint:NSMakePoint(x, y)]];
-        }
-    }
-    
-    if (!validPoints.count) return nil;
-    
-    // Start from baseline at first point
-    NSPoint firstPoint = [[validPoints firstObject] pointValue];
-    [path moveToPoint:NSMakePoint(firstPoint.x, baselineY)];
-    
-    // Draw line through all points
-    for (NSValue *pointValue in validPoints) {
-        [path lineToPoint:[pointValue pointValue]];
-    }
-    
-    // Close area back to baseline
-    NSPoint lastPoint = [[validPoints lastObject] pointValue];
-    [path lineToPoint:NSMakePoint(lastPoint.x, baselineY)];
-    [path closePath];
-    
-    return path;
-}
-
-- (NSBezierPath *)createSignalPathFromDataPoints:(NSArray<IndicatorDataModel *> *)dataPoints {
-    if (!dataPoints.count) return nil;
-    
-    NSBezierPath *path = [NSBezierPath bezierPath];
-    CGFloat markerSize = 6.0;
-    
-    for (IndicatorDataModel *dataPoint in dataPoints) {
-        // Only draw signals where value is non-zero
-        if (ABS(dataPoint.value) < 0.001) continue;
-        
-        CGFloat x = [self xCoordinateForTimestamp:dataPoint.timestamp];
-        CGFloat y = [self yCoordinateForValue:dataPoint.value];
-        
-        // Skip invalid coordinates
-        if (x < -9999 || y < -9999) continue;
-        
-        // Create marker (circle for now, could be arrows based on value sign)
-        NSRect markerRect = NSMakeRect(x - markerSize/2, y - markerSize/2, markerSize, markerSize);
-        [path appendBezierPathWithOvalInRect:markerRect];
-    }
-    
-    return path.elementCount > 0 ? path : nil;
-}
 #pragma mark - Specialized Drawing Methods
 
 - (void)drawCandlestickIndicator:(TechnicalIndicatorBase *)indicator {
@@ -1000,8 +878,8 @@
         HistoricalBarModel *bar = chartData[i];
         
         // ✅ COORDINATE X - dal sharedXContext
-        CGFloat centerX = [self.panelView.sharedXContext screenXForBarIndex:i] + ([self.panelView.sharedXContext barWidth] / 2.0);
-        
+        CGFloat centerX = [self.panelView.sharedXContext screenXForBarCenter:i];
+
         // ✅ COORDINATE Y - dal panelYContext
         CGFloat highY = [self.panelView.panelYContext screenYForValue:bar.high];
         CGFloat lowY = [self.panelView.panelYContext screenYForValue:bar.low];
@@ -1035,7 +913,9 @@
         HistoricalBarModel *bar = chartData[i];
         
         // ✅ COORDINATE X - dal sharedXContext
-        CGFloat x = [self.panelView.sharedXContext screenXForBarIndex:i];
+        CGFloat centerX = [self.panelView.sharedXContext screenXForBarCenter:i];
+        CGFloat x = centerX - halfBarWidth;
+        
         
         // ✅ COORDINATE Y - dal panelYContext
         CGFloat openY = [self.panelView.panelYContext screenYForValue:bar.open];
@@ -1044,7 +924,6 @@
         CGFloat lowY = [self.panelView.panelYContext screenYForValue:bar.low];
         
         NSColor *bodyColor = (bar.close >= bar.open) ? greenColor : redColor;
-        CGFloat centerX = x + halfBarWidth;
         
         // ✅ Draw high-low line (wick)
         [strokeColor setStroke];

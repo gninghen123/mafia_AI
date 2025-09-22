@@ -23,7 +23,7 @@
 #import "yahooDataSource.h"
 #import "StorageSystemInitializer.h"  // ← AGGIUNGI QUESTA RIGA
 #import "AppDelegate+SpotlightIntegration.h"  // ← AGGIUNGI QUESTA LINEA
-
+#import "storagemanager.h"
 
 
 @interface AppDelegate ()
@@ -32,6 +32,8 @@
 @implementation AppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
+   // forza aggiornamento banca datio sotrage
+    //[[StorageManager sharedManager] forceConsistencyCheck];
 
     NSLog(@"AppDelegate: applicationDidFinishLaunching called");
     
@@ -49,8 +51,6 @@
             NSLog(@"❌ Failed to initialize storage system: %@", error.localizedDescription);
         }
     }];
-//todo
-    [SavedChartData smartTimeframeRecoveryWithUserInput];
     [self registerDataSources];
     self.floatingWindows = [[NSMutableArray alloc] init];
     self.widgetTypeManager = [WidgetTypeManager sharedManager];

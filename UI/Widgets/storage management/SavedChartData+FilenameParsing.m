@@ -18,17 +18,8 @@
     NSString *timeframeStr = [self timeframeFromFilename:filename];
     if (!timeframeStr) return BarTimeframeDaily;
     
-    if ([timeframeStr isEqualToString:@"1min"]) return BarTimeframe1Min;
-    if ([timeframeStr isEqualToString:@"5min"]) return BarTimeframe5Min;
-    if ([timeframeStr isEqualToString:@"15min"]) return BarTimeframe15Min;
-    if ([timeframeStr isEqualToString:@"30min"]) return BarTimeframe30Min;
-    if ([timeframeStr isEqualToString:@"1h"]) return BarTimeframe1Hour;
-    if ([timeframeStr isEqualToString:@"4h"]) return BarTimeframe4Hour;
-    if ([timeframeStr isEqualToString:@"1d"]) return BarTimeframeDaily;
-    if ([timeframeStr isEqualToString:@"1w"]) return BarTimeframeWeekly;
-    if ([timeframeStr isEqualToString:@"1M"]) return BarTimeframeMonthly;
-    
-    return BarTimeframeDaily;
+    // ✅ USA IL METODO CANONICO INVERSO
+    return [SavedChartData timeframeFromCanonicalString:timeframeStr];
 }
 
 + (nullable NSString *)typeFromFilename:(NSString *)filename {

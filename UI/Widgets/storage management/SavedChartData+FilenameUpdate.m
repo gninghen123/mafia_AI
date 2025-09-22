@@ -108,18 +108,8 @@
 #pragma mark - Helper Methods
 
 - (NSString *)timeframeToString:(BarTimeframe)timeframe {
-    switch (timeframe) {
-        case BarTimeframe1Min: return @"1min";
-        case BarTimeframe5Min: return @"5min";
-        case BarTimeframe15Min: return @"15min";
-        case BarTimeframe30Min: return @"30min";
-        case BarTimeframe1Hour: return @"1h";
-        case BarTimeframe4Hour: return @"4h";
-        case BarTimeframeDaily: return @"1d";
-        case BarTimeframeWeekly: return @"1w";
-        case BarTimeframeMonthly: return @"1M";
-        default: return @"unknown";
-    }
+    // ✅ USA IL METODO CANONICO
+    return [SavedChartData canonicalTimeframeString:timeframe];
 }
 
 - (BOOL)datesAreEqual:(NSDate *)date1 other:(NSDate *)date2 {

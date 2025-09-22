@@ -10,6 +10,7 @@
 #import <compression.h>
 #import "ChartWidget+SaveData.h"
 #import "SavedChartData+FilenameParsing.h"
+#import "SavedChartData+FilenameUpdate.h"
 
 
 // Forward declaration to access private properties
@@ -151,10 +152,10 @@
     }
     
     /* validazione non serve perche timeframe delel barre e' un dato mock
-    if (![self isCompatibleWithBars:newBars]) {
-        NSLog(@"❌ Merge failed: Incompatible bar data");
-        return NO;
-    }*/
+     if (![self isCompatibleWithBars:newBars]) {
+     NSLog(@"❌ Merge failed: Incompatible bar data");
+     return NO;
+     }*/
     
     if (self.dataType != SavedChartDataTypeContinuous) {
         NSLog(@"❌ Merge failed: Can only merge with continuous storage");
@@ -311,7 +312,7 @@
         
         NSString *typeStr = [self typeFromFilename:filename];
         filenameDataType = [typeStr isEqualToString:@"Continuous"] ?
-                          SavedChartDataTypeContinuous : SavedChartDataTypeSnapshot;
+        SavedChartDataTypeContinuous : SavedChartDataTypeSnapshot;
         
         filenameExtendedHours = [self extendedHoursFromFilename:filename];
         hasFilenameMetadata = YES;
@@ -452,16 +453,8 @@
 #pragma mark - Helper Methods
 
 - (NSString *)suggestedFilename {
-    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-    formatter.dateFormat = @"yyyyMMdd_HHmm";
-    NSString *timestamp = [formatter stringFromDate:self.creationDate];
+    return [self generateCurrentFilename];
     
-    NSString *typePrefix = (self.dataType == SavedChartDataTypeSnapshot) ? @"snapshot" : @"continuous";
-    NSString *extendedSuffix = self.includesExtendedHours ? @"_extended" : @"";
-    
-    return [NSString stringWithFormat:@"%@_%@_%@_%@_%ldbars%@.chartdata",
-            self.symbol, [self timeframeDescription], typePrefix, timestamp,
-            (long)self.barCount, extendedSuffix];
 }
 
 - (NSString *)formattedDateRange {
@@ -597,8 +590,8 @@
     
     // Perform LZFSE compression
     size_t compressedSize = compression_encode_buffer(compressedBuffer, bufferSize,
-                                                     inputData.bytes, inputData.length,
-                                                     NULL, COMPRESSION_LZFSE);
+                                                      inputData.bytes, inputData.length,
+                                                      NULL, COMPRESSION_LZFSE);
     
     if (compressedSize == 0) {
         free(compressedBuffer);
@@ -630,7 +623,7 @@
     
     // Check for LZFSE magic bytes
     BOOL isLZFSE = (bytes[0] == 'b' && bytes[1] == 'v' && bytes[2] == 'x' &&
-                   (bytes[3] == '-' || bytes[3] == '2'));
+                    (bytes[3] == '-' || bytes[3] == '2'));
     
     if (!isLZFSE) {
         return nil; // Not LZFSE compressed
@@ -647,8 +640,8 @@
         }
         
         size_t decompressedSize = compression_decode_buffer(decompressedBuffer, estimatedSize,
-                                                           compressedData.bytes, compressedData.length,
-                                                           NULL, COMPRESSION_LZFSE);
+                                                            compressedData.bytes, compressedData.length,
+                                                            NULL, COMPRESSION_LZFSE);
         
         if (decompressedSize > 0) {
             // Success!
@@ -677,9 +670,9 @@
     
     // Serialize to binary plist
     NSData *plistData = [NSPropertyListSerialization dataWithPropertyList:dictionary
-                                                                    format:NSPropertyListBinaryFormat_v1_0
-                                                                   options:0
-                                                                     error:error];
+                                                                   format:NSPropertyListBinaryFormat_v1_0
+                                                                  options:0
+                                                                    error:error];
     if (!plistData) {
         NSLog(@"❌ Failed to serialize SavedChartData to binary plist: %@", error ? (*error).localizedDescription : @"Unknown error");
         return NO;
@@ -719,7 +712,316 @@
     return success;
 }
 
++ (NSString *)canonicalTimeframeString:(BarTimeframe)timeframe {
+    // ✅ FORMATO UNICO E DEFINITIVO - da usare OVUNQUE
+    switch (timeframe) {
+        case BarTimeframe1Min: return @"1m";
+        case BarTimeframe5Min: return @"5m";
+        case BarTimeframe15Min: return @"15m";
+        case BarTimeframe30Min: return @"30m";
+        case BarTimeframe1Hour: return @"1h";
+        case BarTimeframe4Hour: return @"4h";
+        case BarTimeframeDaily: return @"1d";
+        case BarTimeframeWeekly: return @"1w";
+        case BarTimeframeMonthly: return @"1M";
+            // ✅ Aggiungi eventuali nuovi timeframe
+            // case BarTimeframeQuarterly: return @"1q";
+            // case BarTimeframeYearly: return @"1y";
+        default: return @"1d";
+    }
+}
+
++ (BarTimeframe)timeframeFromCanonicalString:(NSString *)timeframeStr {
+    // ✅ PARSING INVERSO dal formato canonico
+    if ([timeframeStr isEqualToString:@"1m"]) return BarTimeframe1Min;
+    if ([timeframeStr isEqualToString:@"5m"]) return BarTimeframe5Min;
+    if ([timeframeStr isEqualToString:@"15m"]) return BarTimeframe15Min;
+    if ([timeframeStr isEqualToString:@"30m"]) return BarTimeframe30Min;
+    if ([timeframeStr isEqualToString:@"1h"]) return BarTimeframe1Hour;
+    if ([timeframeStr isEqualToString:@"4h"]) return BarTimeframe4Hour;
+    if ([timeframeStr isEqualToString:@"1d"]) return BarTimeframeDaily;
+    if ([timeframeStr isEqualToString:@"1w"]) return BarTimeframeWeekly;
+    if ([timeframeStr isEqualToString:@"1M"]) return BarTimeframeMonthly;
+    // if ([timeframeStr isEqualToString:@"1q"]) return BarTimeframeQuarterly;
+    // if ([timeframeStr isEqualToString:@"1y"]) return BarTimeframeYearly;
+    
+    return BarTimeframeDaily; // Default fallback
+}
 
 
++ (void)migrateAllFilesToCanonicalTimeframeFormat {
+    NSLog(@"🔄 Starting migration of all SavedChartData files to canonical timeframe format...");
+    
+    NSString *directory = [ChartWidget savedChartDataDirectory];
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSError *error;
+    NSArray<NSString *> *files = [fileManager contentsOfDirectoryAtPath:directory error:&error];
+    
+    if (!files) {
+        NSLog(@"❌ Cannot read SavedChartData directory: %@", error.localizedDescription);
+        return;
+    }
+    
+    NSArray<NSString *> *chartDataFiles = [files filteredArrayUsingPredicate:
+                                           [NSPredicate predicateWithFormat:@"self ENDSWITH '.chartdata'"]];
+    
+    NSInteger migratedCount = 0;
+    NSInteger errorCount = 0;
+    
+    for (NSString *filename in chartDataFiles) {
+        NSString *filePath = [directory stringByAppendingPathComponent:filename];
+        
+        // ✅ Controlla se il file ha formato timeframe non canonico
+        if ([self fileNeedsTimeframeMigration:filename]) {
+            if ([self migrateFileTimeframeFormat:filePath]) {
+                migratedCount++;
+                NSLog(@"   ✅ Migrated: %@", filename);
+            } else {
+                errorCount++;
+                NSLog(@"   ❌ Failed to migrate: %@", filename);
+            }
+        }
+    }
+    
+    NSLog(@"🏁 Migration complete: %ld files migrated, %ld errors",
+          (long)migratedCount, (long)errorCount);
+}
++ (BOOL)fileNeedsTimeframeMigration:(NSString *)filename {
+    // ✅ Controlla se il filename contiene timeframe non canonici
+    NSArray *oldFormats = @[@"1min", @"5min", @"15min", @"30min", @"1hour", @"4hour",
+                            @"daily", @"weekly", @"monthly"];
+    
+    for (NSString *oldFormat in oldFormats) {
+        if ([filename containsString:[NSString stringWithFormat:@"_%@_", oldFormat]]) {
+            return YES;
+        }
+    }
+    
+    return NO;
+}
+
++ (void)smartTimeframeRecoveryWithUserInput {
+    NSLog(@"🔍 SMART TIMEFRAME RECOVERY STARTING...");
+    NSLog(@"Using existing metadata + analysis of last 3 bars");
+    
+    NSString *directory = [ChartWidget savedChartDataDirectory];
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSArray<NSString *> *files = [fileManager contentsOfDirectoryAtPath:directory error:nil];
+    
+    NSArray<NSString *> *chartDataFiles = [files filteredArrayUsingPredicate:
+                                           [NSPredicate predicateWithFormat:@"self ENDSWITH '.chartdata'"]];
+    
+    NSLog(@"📁 Analyzing %ld files...", (long)chartDataFiles.count);
+    
+    NSInteger autoFixedCount = 0;
+    NSInteger manualNeededCount = 0;
+    NSMutableArray<NSDictionary *> *manualCases = [NSMutableArray array];
+    
+    for (NSString *filename in chartDataFiles) {
+        NSString *filePath = [directory stringByAppendingPathComponent:filename];
+        
+        @autoreleasepool {
+            NSDictionary *analysisResult = [self analyzeFileForTimeframeRecovery:filePath];
+            
+            if (analysisResult[@"autoTimeframe"]) {
+                // Caso automatico - timeframe chiaro
+                BarTimeframe deducedTF = [analysisResult[@"autoTimeframe"] integerValue];
+                if ([self fixFileWithCorrectTimeframe:filePath
+                                            timeframe:deducedTF
+                                preserveOtherMetadata:YES]) {
+                    autoFixedCount++;
+                    NSLog(@"✅ Auto-fixed: %@ → %@",
+                          [filePath lastPathComponent],
+                          [self canonicalTimeframeString:deducedTF]);
+                }
+            } else {
+                // Caso manuale - serve input utente
+                manualNeededCount++;
+                [manualCases addObject:@{
+                    @"filePath": filePath,
+                    @"filename": filename,
+                    @"analysis": analysisResult
+                }];
+            }
+        }
+    }
+    
+    NSLog(@"📊 Phase 1 complete:");
+    NSLog(@"   ✅ Auto-fixed: %ld files", (long)autoFixedCount);
+    NSLog(@"   ❓ Need manual input: %ld files", (long)manualNeededCount);
+    
+    // Mostra UI per i casi manuali
+    if (manualCases.count > 0) {
+        [self showManualTimeframeSelectionUI:manualCases];
+    } else {
+        NSLog(@"🎉 All files recovered automatically!");
+        [self rebuildCacheAndFinish];
+    }
+}
+
++ (NSDictionary *)analyzeFileForTimeframeRecovery:(NSString *)filePath {
+    @try {
+        NSString *filename = [filePath lastPathComponent];
+        
+        // 1. Estrai metadata corretti dal filename (tutto tranne timeframe)
+        NSString *symbol = [self extractSymbolFromCorruptedFilename:filename];
+        NSString *type = [self extractTypeFromCorruptedFilename:filename];
+        NSInteger barCount = [self extractBarCountFromCorruptedFilename:filename];
+        NSDate *startDate = [self extractStartDateFromCorruptedFilename:filename];
+        NSDate *endDate = [self extractEndDateFromCorruptedFilename:filename];
+        
+        // 2. Carica e analizza le ultime 3 barre
+        SavedChartData *data = [SavedChartData loadFromFile:filePath];
+        if (!data || data.historicalBars.count < 3) {
+            return @{@"error": @"Insufficient data"};
+        }
+        
+        NSArray<HistoricalBarModel *> *bars = data.historicalBars;
+        NSInteger count = bars.count;
+        
+        // Analizza le ultime 3 barre
+        NSMutableArray<NSNumber *> *intervals = [NSMutableArray array];
+        NSMutableArray<NSString *> *dateStrings = [NSMutableArray array];
+        
+        for (NSInteger i = count - 3; i < count; i++) {
+            HistoricalBarModel *bar = bars[i];
+            NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+            formatter.dateFormat = @"yyyy-MM-dd HH:mm:ss";
+            [dateStrings addObject:[formatter stringFromDate:bar.date]];
+            
+            if (i > count - 3) {
+                NSTimeInterval interval = [bar.date timeIntervalSinceDate:bars[i-1].date];
+                [intervals addObject:@(interval)];
+            }
+        }
+        
+        // 3. Deduce timeframe dagli intervalli
+        BarTimeframe deducedTF = [self deduceTimeframeFromIntervals:intervals];
+        
+        NSMutableDictionary *result = [NSMutableDictionary dictionary];
+        result[@"symbol"] = symbol ?: @"Unknown";
+        result[@"type"] = type ?: @"Unknown";
+        result[@"barCount"] = @(barCount);
+        result[@"startDate"] = startDate;
+        result[@"endDate"] = endDate;
+        result[@"lastDates"] = dateStrings;
+        result[@"intervals"] = intervals;
+        result[@"intervalSeconds"] = intervals.count > 0 ? intervals[0] : @0;
+        
+        if (deducedTF != -1) {
+            result[@"autoTimeframe"] = @(deducedTF);
+            result[@"confidence"] = @"HIGH";
+        } else {
+            result[@"confidence"] = @"LOW - NEEDS MANUAL INPUT";
+        }
+        
+        return [result copy];
+        
+    } @catch (NSException *exception) {
+        return @{@"error": exception.reason};
+    }
+}
+
++ (BarTimeframe)deduceTimeframeFromIntervals:(NSArray<NSNumber *> *)intervals {
+    if (intervals.count == 0) return -1;
+    
+    // Calcola intervallo medio
+    double totalSeconds = 0;
+    for (NSNumber *interval in intervals) {
+        totalSeconds += interval.doubleValue;
+    }
+    double avgSeconds = totalSeconds / intervals.count;
+    double avgMinutes = avgSeconds / 60.0;
+    
+    // Mappa agli standard con tolleranza
+    if (avgMinutes >= 0.8 && avgMinutes <= 1.2) return BarTimeframe1Min;      // ~1 min
+    if (avgMinutes >= 4.5 && avgMinutes <= 5.5) return BarTimeframe5Min;      // ~5 min
+    if (avgMinutes >= 14 && avgMinutes <= 16) return BarTimeframe15Min;       // ~15 min
+    if (avgMinutes >= 28 && avgMinutes <= 32) return BarTimeframe30Min;       // ~30 min
+    if (avgMinutes >= 55 && avgMinutes <= 65) return BarTimeframe1Hour;       // ~1 hour
+    if (avgMinutes >= 220 && avgMinutes <= 260) return BarTimeframe4Hour;     // ~4 hours
+    if (avgMinutes >= 1200 && avgMinutes <= 1600) return BarTimeframeDaily;   // ~1 day
+    
+    // Se non rientra nei pattern standard, richiede input manuale
+    return -1;
+}
+
++ (void)showManualTimeframeSelectionUI:(NSArray<NSDictionary *> *)manualCases {
+    // Crea una finestra di dialogo per ogni caso manuale
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self processNextManualCase:manualCases index:0];
+    });
+}
+
++ (void)processNextManualCase:(NSArray<NSDictionary *> *)cases index:(NSInteger)index {
+    if (index >= cases.count) {
+        NSLog(@"🎉 Manual recovery complete!");
+        return;
+    }
+    
+    NSDictionary *caseData = cases[index];
+    NSDictionary *analysis = caseData[@"analysis"];
+    NSString *filename = caseData[@"filename"];
+    
+    // Crea dialog con info dettagliate
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Manual Timeframe Selection Required";
+    
+    NSArray<NSString *> *dates = analysis[@"lastDates"];
+    NSArray<NSNumber *> *intervals = analysis[@"intervals"];
+    double intervalSecs = [analysis[@"intervalSeconds"] doubleValue];
+    double intervalMins = intervalSecs / 60.0;
+    
+    alert.informativeText = [NSString stringWithFormat:
+                             @"File: %@\n"
+                             @"Symbol: %@\n"
+                             @"Bars: %@\n\n"
+                             @"Last 3 timestamps:\n%@\n%@\n%@\n\n"
+                             @"Interval detected: %.1f minutes (%.0f seconds)\n\n"
+                             @"Please select the correct timeframe:",
+                             filename,
+                             analysis[@"symbol"],
+                             analysis[@"barCount"],
+                             dates[0], dates[1], dates[2],
+                             intervalMins, intervalSecs];
+    
+    // Aggiungi bottoni per tutti i timeframe possibili
+    [alert addButtonWithTitle:@"1 minute"];
+    [alert addButtonWithTitle:@"5 minutes"];
+    [alert addButtonWithTitle:@"15 minutes"];
+    [alert addButtonWithTitle:@"30 minutes"];
+    [alert addButtonWithTitle:@"1 hour"];
+    [alert addButtonWithTitle:@"4 hours"];
+    [alert addButtonWithTitle:@"1 day"];
+    [alert addButtonWithTitle:@"Skip this file"];
+    
+    NSModalResponse response = [alert runModal];
+    
+    // Processa la risposta
+    BarTimeframe selectedTF = -1;
+    switch (response - NSAlertFirstButtonReturn) {
+        case 0: selectedTF = BarTimeframe1Min; break;
+        case 1: selectedTF = BarTimeframe5Min; break;
+        case 2: selectedTF = BarTimeframe15Min; break;
+        case 3: selectedTF = BarTimeframe30Min; break;
+        case 4: selectedTF = BarTimeframe1Hour; break;
+        case 5: selectedTF = BarTimeframe4Hour; break;
+        case 6: selectedTF = BarTimeframeDaily; break;
+        case 7: selectedTF = -1; break; // Skip
+    }
+    
+    // Applica la correzione se selezionato un timeframe valido
+    if (selectedTF != -1) {
+        NSString *filePath = caseData[@"filePath"];
+        [self fixFileWithCorrectTimeframe:filePath
+                                timeframe:selectedTF
+                    preserveOtherMetadata:YES];
+        NSLog(@"✅ Manually fixed: %@ → %@",
+              filename, [self canonicalTimeframeString:selectedTF]);
+    }
+    
+    // Processa il prossimo caso
+    [self processNextManualCase:cases index:index + 1];
+}
 
 @end

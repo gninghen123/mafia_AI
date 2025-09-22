@@ -49,8 +49,8 @@
             NSLog(@"❌ Failed to initialize storage system: %@", error.localizedDescription);
         }
     }];
-
-    
+//todo
+    [SavedChartData smartTimeframeRecoveryWithUserInput];
     [self registerDataSources];
     self.floatingWindows = [[NSMutableArray alloc] init];
     self.widgetTypeManager = [WidgetTypeManager sharedManager];

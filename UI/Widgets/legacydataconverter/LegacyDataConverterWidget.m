@@ -1297,18 +1297,7 @@
 }
 
 - (NSString *)displayStringForTimeframe:(BarTimeframe)timeframe {
-    switch (timeframe) {
-        case BarTimeframe1Min: return @"1min";
-        case BarTimeframe5Min: return @"5min";
-        case BarTimeframe15Min: return @"15min";
-        case BarTimeframe30Min: return @"30min";
-        case BarTimeframe1Hour: return @"1hour";
-        case BarTimeframe4Hour: return @"4hour";
-        case BarTimeframeDaily: return @"daily";
-        case BarTimeframeWeekly: return @"weekly";
-        case BarTimeframeMonthly: return @"monthly";
-        default: return @"unknown";
-    }
+    return [SavedChartData canonicalTimeframeString:timeframe];
 }
 
 - (NSString *)formatFileSize:(long long)bytes {

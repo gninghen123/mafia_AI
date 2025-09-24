@@ -233,4 +233,26 @@ typedef NS_ENUM(NSInteger, ModelStatus) {
 - (void)addSymbols:(NSArray<NSString *> *)symbols toWatchlistModel:(WatchlistModel *)watchlistModel;
 
 
+#pragma mark - Runtime Tag Interface for TagManager
+
+/**
+ * Get all symbols that have tags, with their tag information
+ * Returns array of dictionaries: @[@{@"symbol": @"AAPL", @"tags": @[tag1, tag2], @"lastInteraction": date}, ...]
+ * Sorted by lastInteraction descending
+ */
+- (NSArray<NSDictionary *> *)getAllSymbolsWithTagsInfo;
+
+/**
+ * Get all unique tags across all symbols (runtime-friendly)
+ * Returns sorted array of tag strings
+ */
+- (NSArray<NSString *> *)getAllUniqueTagsRuntime;
+
+/**
+ * Get symbol names that contain a specific tag (runtime-friendly)
+ * @param tag The tag to search for
+ * @return Array of symbol name strings, sorted by lastInteraction
+ */
+- (NSArray<NSString *> *)getSymbolNamesWithTagRuntime:(NSString *)tag;
+
 @end

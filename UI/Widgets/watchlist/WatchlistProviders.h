@@ -5,11 +5,11 @@
 
 #import <Foundation/Foundation.h>
 #import "RuntimeModels.h"
-#import "commonTypes.h"
+#import "CommonTypes.h"
+#import "WatchlistProviderManager.h"  // Per avere il WatchlistProvider protocol
 
 NS_ASSUME_NONNULL_BEGIN
 
-@protocol WatchlistProvider;
 @class TagManager;
 
 #pragma mark - Manual Watchlist Provider

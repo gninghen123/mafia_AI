@@ -15,6 +15,8 @@
 #import "TradingAppTypes.h"
 #import "WatchlistProviders.h"
 #import "TagManager.h"
+#import "OtherDataSource.h"           // ✅ AGGIUNGERE QUESTO IMPORT
+#import "DownloadManager.h"            // ✅ AGGIUNGERE ANCHE QUESTO SE NON GIÀ PRESENTE
 
 
 @interface WatchlistWidget () <HierarchicalWatchlistSelectorDelegate>
@@ -691,6 +693,18 @@
     createWatchlistItem.target = self;
     [menu addItem:createWatchlistItem];
     
+    NSMenuItem *importFinvizItem = [[NSMenuItem alloc] initWithTitle:@"🔍 Import from Finviz..."
+                                                                action:@selector(showFinvizImportDialog:)
+                                                         keyEquivalent:@""];
+      importFinvizItem.target = self;
+      [menu addItem:importFinvizItem];
+      
+      NSMenuItem *createFromFinvizItem = [[NSMenuItem alloc] initWithTitle:@"📈 Create List from Finviz..."
+                                                                    action:@selector(showFinvizCreateListDialog:)
+                                                             keyEquivalent:@""];
+      createFromFinvizItem.target = self;
+      [menu addItem:createFromFinvizItem];
+    
     // Solo per watchlist manuali - mostra Remove option
     BOOL isManualWatchlist = [self.currentProvider isKindOfClass:[ManualWatchlistProvider class]];
     if (isManualWatchlist) {
@@ -796,6 +810,231 @@
     }
 }
 
+#pragma mark - ✅ NUOVI METODI FINVIZ
+
+- (void)showFinvizImportDialog:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Import Symbols from Finviz";
+    alert.informativeText = @"Enter a keyword to search for related stocks:";
+    alert.alertStyle = NSAlertStyleInformational;
+    
+    // Input field per keyword
+    NSTextField *keywordInput = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 300, 24)];
+    keywordInput.placeholderString = @"e.g., lidar, ev, solar";
+    alert.accessoryView = keywordInput;
+    
+    [alert addButtonWithTitle:@"Search"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSModalResponse response = [alert runModal];
+    
+    if (response == NSAlertFirstButtonReturn) {
+        NSString *keyword = keywordInput.stringValue.lowercaseString;
+        if (keyword.length > 0) {
+            [self performFinvizSearch:keyword forAction:@"import"];
+        }
+    }
+}
+
+- (void)showFinvizCreateListDialog:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Create Watchlist from Finviz";
+    alert.informativeText = @"Enter a keyword to create a new watchlist:";
+    alert.alertStyle = NSAlertStyleInformational;
+    
+    // Input field per keyword
+    NSTextField *keywordInput = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 300, 24)];
+    keywordInput.placeholderString = @"e.g., lidar, ev, solar";
+    alert.accessoryView = keywordInput;
+    
+    [alert addButtonWithTitle:@"Create"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSModalResponse response = [alert runModal];
+    
+    if (response == NSAlertFirstButtonReturn) {
+        NSString *keyword = keywordInput.stringValue.lowercaseString;
+        if (keyword.length > 0) {
+            [self performFinvizSearch:keyword forAction:@"create"];
+        }
+    }
+}
+
+- (void)performFinvizSearch:(NSString *)keyword forAction:(NSString *)action {
+    // Show loading indicator
+    [self showLoadingMessage:[NSString stringWithFormat:@"Searching Finviz for '%@'...", keyword]];
+    
+    // Get OtherDataSource instance
+    DownloadManager *downloadManager = [DownloadManager sharedManager];
+    OtherDataSource *otherDataSource = (OtherDataSource *)[downloadManager dataSourceForType:DataSourceTypeOther];
+    
+    if (!otherDataSource) {
+        [self hideLoadingMessage];
+        [self showErrorMessage:@"Finviz search not available"];
+        return;
+    }
+    
+    // Perform search
+    [otherDataSource fetchFinvizSearchResultsForKeyword:keyword
+                                             completion:^(NSArray<NSString *> *symbols, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self hideLoadingMessage];
+            
+            if (error) {
+                [self showErrorMessage:error.localizedDescription];
+                return;
+            }
+            
+            if (symbols.count == 0) {
+                [self showErrorMessage:[NSString stringWithFormat:@"No symbols found for '%@'", keyword]];
+                return;
+            }
+            
+            // Show confirmation dialog
+            if ([action isEqualToString:@"import"]) {
+                [self showImportConfirmationForSymbols:symbols keyword:keyword];
+            } else if ([action isEqualToString:@"create"]) {
+                [self showCreateConfirmationForSymbols:symbols keyword:keyword];
+            }
+        });
+    }];
+}
+
+- (void)showImportConfirmationForSymbols:(NSArray<NSString *> *)symbols keyword:(NSString *)keyword {
+    NSString *symbolsList = [symbols componentsJoinedByString:@", "];
+    NSString *message = [NSString stringWithFormat:@"Add %lu symbols to current watchlist?", (unsigned long)symbols.count];
+    NSString *details = [NSString stringWithFormat:@"Symbols found for '%@':\n%@", keyword, symbolsList];
+    
+    NSAlert *confirmAlert = [[NSAlert alloc] init];
+    confirmAlert.messageText = message;
+    confirmAlert.informativeText = details;
+    confirmAlert.alertStyle = NSAlertStyleInformational;
+    [confirmAlert addButtonWithTitle:@"Add Symbols"];
+    [confirmAlert addButtonWithTitle:@"Cancel"];
+    
+    NSModalResponse response = [confirmAlert runModal];
+    
+    if (response == NSAlertFirstButtonReturn) {
+        [self addSymbolsToCurrentWatchlist:symbols];
+    }
+}
+
+- (void)showCreateConfirmationForSymbols:(NSArray<NSString *> *)symbols keyword:(NSString *)keyword {
+    NSString *symbolsList = [symbols componentsJoinedByString:@", "];
+    NSString *watchlistName = keyword.uppercaseString;
+    NSString *message = [NSString stringWithFormat:@"Create watchlist '%@' with %lu symbols?", watchlistName, (unsigned long)symbols.count];
+    NSString *details = [NSString stringWithFormat:@"Symbols found:\n%@", symbolsList];
+    
+    NSAlert *confirmAlert = [[NSAlert alloc] init];
+    confirmAlert.messageText = message;
+    confirmAlert.informativeText = details;
+    confirmAlert.alertStyle = NSAlertStyleInformational;
+    [confirmAlert addButtonWithTitle:@"Create Watchlist"];
+    [confirmAlert addButtonWithTitle:@"Cancel"];
+    
+    NSModalResponse response = [confirmAlert runModal];
+    
+    if (response == NSAlertFirstButtonReturn) {
+        [self createNewWatchlistWithName:watchlistName symbols:symbols];
+    }
+}
+
+- (void)addSymbolsToCurrentWatchlist:(NSArray<NSString *> *)symbols {
+    if (![self.currentProvider isKindOfClass:[ManualWatchlistProvider class]]) {
+        [self showErrorMessage:@"Can only add symbols to manual watchlists"];
+        return;
+    }
+    
+    ManualWatchlistProvider *manualProvider = (ManualWatchlistProvider *)self.currentProvider;
+    DataHub *dataHub = [DataHub shared];
+    
+    for (NSString *symbol in symbols) {
+        [dataHub addSymbol:symbol toWatchlistModel:manualProvider.watchlistModel];
+    }
+    
+    // Refresh current view
+    [self refreshCurrentProvider];
+    
+    // Show success message
+    [self showSuccessMessage:[NSString stringWithFormat:@"Added %lu symbols to watchlist", (unsigned long)symbols.count]];
+}
+
+- (void)createNewWatchlistWithName:(NSString *)name symbols:(NSArray<NSString *> *)symbols {
+    DataHub *dataHub = [DataHub shared];
+    
+    // ✅ FIX: Usa createWatchlistModelWithName invece di createWatchlistWithName
+    // Questo restituisce WatchlistModel (runtime), non Watchlist (CoreData)
+    WatchlistModel *newWatchlist = [dataHub createWatchlistModelWithName:name];
+    
+    if (!newWatchlist) {
+        [self showErrorMessage:@"Failed to create watchlist"];
+        return;
+    }
+    
+    // Add all symbols
+    for (NSString *symbol in symbols) {
+        [dataHub addSymbol:symbol toWatchlistModel:newWatchlist];
+    }
+    
+    // ✅ FIX: Usa selectProvider: invece di switchToProvider:
+    ManualWatchlistProvider *newProvider = [[ManualWatchlistProvider alloc] initWithWatchlistModel:newWatchlist];
+    [self selectProvider:newProvider];
+    
+    // Show success message
+    [self showSuccessMessage:[NSString stringWithFormat:@"Created watchlist '%@' with %lu symbols", name, (unsigned long)symbols.count]];
+}
+
+
+
+
+#pragma mark - ✅ UTILITY METHODS FOR MESSAGES
+
+- (void)showLoadingMessage:(NSString *)message {
+    // Use existing loading indicator or create temporary status
+    if (self.statusLabel) {
+        self.statusLabel.stringValue = message;
+    }
+    [self.loadingIndicator startAnimation:nil];
+}
+
+- (void)hideLoadingMessage {
+    [self.loadingIndicator stopAnimation:nil];
+    [self updateStatusDisplay]; // ✅ FIX: Usa metodo corretto invece di updateStatusLabel
+}
+
+- (void)showErrorMessage:(NSString *)message {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Finviz Search Error";
+    alert.informativeText = message;
+    alert.alertStyle = NSAlertStyleWarning;
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+}
+
+- (void)showSuccessMessage:(NSString *)message {
+    // Could use temporary status label or notification
+    if (self.statusLabel) {
+        self.statusLabel.stringValue = message;
+    }
+    
+    // Auto-clear after 3 seconds
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        [self updateStatusDisplay]; // ✅ FIX: Usa metodo corretto invece di updateStatusLabel
+    });
+}
+
+// ✅ NUOVO: Implementa il metodo updateStatusDisplay se non esiste
+- (void)updateStatusDisplay {
+    if (!self.statusLabel) return;
+    
+    if (self.isLoadingProvider) {
+        self.statusLabel.stringValue = @"Loading...";
+    } else if (self.displaySymbols.count > 0) {
+        self.statusLabel.stringValue = [NSString stringWithFormat:@"%lu symbols", (unsigned long)self.displaySymbols.count];
+    } else {
+        self.statusLabel.stringValue = @"No symbols";
+    }
+}
 - (void)createWatchlistFromCurrentSelection {
     NSArray<NSString *> *selectedSymbols = [self selectedSymbols];
     if (selectedSymbols.count == 0) return;
@@ -907,55 +1146,47 @@
 
 #pragma mark - Watchlist Management Actions
 
-- (void)showCreateWatchlistDialog:(NSMenuItem *)sender {
+- (void)showCreateWatchlistDialog:(id)sender {
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"Create New Watchlist";
-    alert.informativeText = @"Enter a name for your new watchlist:";
+    alert.informativeText = @"Enter name for the new watchlist:";
     alert.alertStyle = NSAlertStyleInformational;
     
-    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 300, 24)];
-    input.placeholderString = @"My Custom Watchlist";
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.placeholderString = @"My Watchlist";
     alert.accessoryView = input;
     
     [alert addButtonWithTitle:@"Create"];
     [alert addButtonWithTitle:@"Cancel"];
     
     if ([alert runModal] == NSAlertFirstButtonReturn) {
-        NSString *watchlistName = [input.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        
-        if (watchlistName.length == 0) {
-            [self showErrorAlert:@"Invalid Name" message:@"Watchlist name cannot be empty."];
-            return;
-        }
-        
-        // Check if name already exists
-        NSArray<WatchlistModel *> *existingWatchlists = [[DataHub shared] getAllWatchlistModels];
-        for (WatchlistModel *existing in existingWatchlists) {
-            if ([existing.name.lowercaseString isEqualToString:watchlistName.lowercaseString]) {
-                [self showErrorAlert:@"Name Already Exists"
-                              message:[NSString stringWithFormat:@"A watchlist named '%@' already exists.", watchlistName]];
-                return;
+        NSString *watchlistName = input.stringValue;
+        if (watchlistName.length > 0) {
+            // Check if name already exists
+            NSArray<WatchlistModel *> *existingWatchlists = [[DataHub shared] getAllWatchlistModels];
+            for (WatchlistModel *existing in existingWatchlists) {
+                if ([existing.name.lowercaseString isEqualToString:watchlistName.lowercaseString]) {
+                    [self showErrorMessage:[NSString stringWithFormat:@"A watchlist named '%@' already exists.", watchlistName]];
+                    return;
+                }
             }
-        }
-        
-        // Create new watchlist
-        WatchlistModel *newWatchlist = [[DataHub shared] createWatchlistModelWithName:watchlistName];
-        if (newWatchlist) {
-            // Refresh provider manager and selector
-            [self.providerManager refreshAllProviders];
-            [self.providerSelector rebuildMenuStructure];
             
-            // Auto-select the new watchlist
-            NSString *providerId = [NSString stringWithFormat:@"manual:%@", watchlistName];
-            [self.providerSelector selectProviderWithId:providerId];
-            
-            NSLog(@"✅ Created new watchlist: %@", watchlistName);
-            
-            // Show success notification
-            [self showSuccessAlert:@"Watchlist Created"
-                           message:[NSString stringWithFormat:@"'%@' has been created successfully.", watchlistName]];
-        } else {
-            [self showErrorAlert:@"Creation Failed" message:@"Failed to create watchlist. Please try again."];
+            // ✅ FIX: Usa createWatchlistModelWithName (restituisce WatchlistModel)
+            WatchlistModel *newWatchlist = [[DataHub shared] createWatchlistModelWithName:watchlistName];
+            if (newWatchlist) {
+                // Refresh provider manager to include new watchlist
+                [self.providerManager refreshAllProviders];
+                [self.providerSelector rebuildMenuStructure];
+                
+                // Auto-select the new watchlist
+                NSString *providerId = [NSString stringWithFormat:@"manual:%@", watchlistName];
+                [self.providerSelector selectProviderWithId:providerId];
+                
+                NSLog(@"✅ Created new watchlist: %@", watchlistName);
+                [self showSuccessMessage:[NSString stringWithFormat:@"'%@' has been created successfully.", watchlistName]];
+            } else {
+                [self showErrorMessage:@"Failed to create watchlist. Please try again."];
+            }
         }
     }
 }

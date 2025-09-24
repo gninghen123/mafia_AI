@@ -105,7 +105,8 @@
 - (void)fetchFinvizStatementForSymbol:(NSString *)symbol
                             statement:(NSString *)statement // IA, IQ, BA, BQ, CA, CQ
                            completion:(void (^)(NSDictionary *data, NSError *error))completion;
-
+- (void)fetchFinvizSearchResultsForKeyword:(NSString *)keyword
+                                completion:(void (^)(NSArray<NSString *> *symbols, NSError *error))completion;
 #pragma mark - Zacks Data
 
 // Zacks chart data

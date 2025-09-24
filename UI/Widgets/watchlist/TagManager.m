@@ -148,6 +148,13 @@ NSString * const TagManagerDidUpdateNotification = @"TagManagerDidUpdate";
     });
 }
 
+//
+//  TagManager.m - VERSIONE OTTIMIZZATA
+//  TradingApp
+//
+//  SOSTITUIRE IL METODO performCacheBuild CON QUESTA VERSIONE
+
+
 - (BOOL)performCacheBuild {
     @try {
         // Clear existing cache
@@ -156,29 +163,34 @@ NSString * const TagManagerDidUpdateNotification = @"TagManagerDidUpdate";
         [self.sortedTags removeAllObjects];
         [self.sortedSymbolsForTag removeAllObjects];
         
-        // Fetch all symbols with tags from CoreData
-        NSFetchRequest *request = [NSFetchRequest fetchRequestWithEntityName:@"Symbol"];
-        request.predicate = [NSPredicate predicateWithFormat:@"tags != NULL AND tags.@count > 0"];
-        request.sortDescriptors = @[[NSSortDescriptor sortDescriptorWithKey:@"lastInteraction" ascending:NO]];
+        // ✅ RUNTIME APPROACH: Usa i metodi runtime-friendly di DataHub
+        // Niente Core Data objects, solo stringhe e dizionari
+        DataHub *dataHub = [DataHub shared];
         
-        NSError *error = nil;
-        NSArray *symbols = [[[DataHub shared] mainContext] executeFetchRequest:request error:&error];
+        NSLog(@"🚀 TagManager: Using DataHub runtime methods (no Core Data objects)");
         
-        if (error) {
-            NSLog(@"❌ TagManager: CoreData fetch error: %@", error);
-            return NO;
+        // ✅ GET SYMBOLS WITH TAGS: Usa metodo runtime-friendly
+        NSArray<NSDictionary *> *symbolsWithTagsInfo = [dataHub getAllSymbolsWithTagsInfo];
+        
+        if (!symbolsWithTagsInfo || symbolsWithTagsInfo.count == 0) {
+            NSLog(@"⚠️ TagManager: No symbols with tags found");
+            self.totalUniqueTags = 0;
+            self.totalSymbolsWithTags = 0;
+            return YES; // Success but empty
         }
+        
+        NSLog(@"📊 TagManager: Found %lu symbols with tags (runtime method)",
+              (unsigned long)symbolsWithTagsInfo.count);
         
         NSMutableSet<NSString *> *allTagsSet = [NSMutableSet set];
         NSUInteger processedSymbols = 0;
         
-        // Process each symbol
-        for (Symbol *symbol in symbols) {
-            NSString *symbolName = symbol.symbol;
-            if (!symbolName || symbolName.length == 0) continue;
+        // ✅ PROCESS SYMBOLS: Solo stringhe, niente Core Data objects
+        for (NSDictionary *symbolInfo in symbolsWithTagsInfo) {
+            NSString *symbolName = symbolInfo[@"symbol"];
+            NSArray<NSString *> *symbolTags = symbolInfo[@"tags"];
             
-            NSArray *symbolTags = symbol.tags;
-            if (!symbolTags || symbolTags.count == 0) continue;
+            if (!symbolName || !symbolTags || symbolTags.count == 0) continue;
             
             // Initialize symbol entry
             if (!self.symbolToTags[symbolName]) {
@@ -205,30 +217,33 @@ NSString * const TagManagerDidUpdateNotification = @"TagManagerDidUpdate";
             processedSymbols++;
         }
         
-        // Create sorted arrays for fast enumeration
+        // ✅ CREATE SORTED ARRAYS: Per fast enumeration
         [self.sortedTags addObjectsFromArray:[[allTagsSet allObjects] sortedArrayUsingSelector:@selector(compare:)]];
         
-        // Create sorted symbol arrays for each tag (by lastInteraction)
+        // ✅ CREATE SORTED SYMBOL ARRAYS: Per ogni tag (già ordinati per lastInteraction)
         for (NSString *tag in self.sortedTags) {
             NSSet<NSString *> *symbolsForTag = self.tagToSymbols[tag];
             
-            // Sort symbols by lastInteraction (most recent first)
-            NSMutableArray<NSString *> *sortedSymbols = [NSMutableArray array];
-            for (Symbol *symbol in symbols) {
-                if ([symbolsForTag containsObject:symbol.symbol]) {
-                    [sortedSymbols addObject:symbol.symbol];
+            // Crea array ordinato mantenendo l'ordine di lastInteraction da symbolsWithTagsInfo
+            NSMutableArray<NSString *> *sortedSymbolsForTag = [NSMutableArray array];
+            for (NSDictionary *symbolInfo in symbolsWithTagsInfo) {
+                NSString *symbolName = symbolInfo[@"symbol"];
+                if ([symbolsForTag containsObject:symbolName]) {
+                    [sortedSymbolsForTag addObject:symbolName];
                 }
             }
             
-            self.sortedSymbolsForTag[tag] = sortedSymbols;
+            self.sortedSymbolsForTag[tag] = sortedSymbolsForTag;
         }
         
-        // Update statistics
+        // ✅ UPDATE STATISTICS
         self.totalUniqueTags = self.sortedTags.count;
         self.totalSymbolsWithTags = processedSymbols;
         
-        NSLog(@"✅ TagManager: Cache build successful - processed %lu symbols, found %lu unique tags",
+        NSLog(@"✅ TagManager: RUNTIME-OPTIMIZED cache build successful!");
+        NSLog(@"   📊 Processed %lu symbols with tags, found %lu unique tags",
               (unsigned long)processedSymbols, (unsigned long)self.totalUniqueTags);
+        NSLog(@"   🚀 Used DataHub runtime methods (no Core Data object exposure)");
         
         return YES;
         
@@ -237,6 +252,8 @@ NSString * const TagManagerDidUpdateNotification = @"TagManagerDidUpdate";
         return NO;
     }
 }
+
+
 
 - (void)rebuildCacheSync {
     dispatch_sync(self.cacheQueue, ^{

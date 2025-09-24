@@ -32,6 +32,8 @@ static NSString *const kNasdaqAnalystMomentumURL = @"https://api.nasdaq.com/api/
 
 // Finviz Endpoints
 static NSString *const kFinvizStatementURL = @"https://finviz.com/api/statement.ashx";
+static NSString *const kFinvizSearchURL = @"https://finviz.com/screener.ashx";
+
 
 // Zacks Endpoints
 static NSString *const kZacksChartURL = @"https://www.zacks.com//data_handler/charts/";
@@ -992,6 +994,236 @@ static NSString *const kSeekingAlphaNewsURL = @"https://seekingalpha.com/api/sa/
         NSDictionary *data = @{@"raw_data": response};
         if (completion) completion(data, nil);
     }];
+}
+
+- (void)fetchFinvizSearchResultsForKeyword:(NSString *)keyword
+                                completion:(void (^)(NSArray<NSString *> *symbols, NSError *error))completion {
+    
+    if (!keyword || keyword.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"OtherDataSource"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Keyword is required"}];
+        if (completion) completion(@[], error);
+        return;
+    }
+    
+    // Step 1: Search for keyword to get symbols list
+    NSString *searchURL = [NSString stringWithFormat:@"https://finviz.com/search.ashx?p=%@",
+                          [keyword stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLQueryAllowedCharacterSet]]];
+    
+    NSLog(@"🔍 Finviz: Searching for keyword '%@' at %@", keyword, searchURL);
+    
+    [self executeFinvizRequest:searchURL completion:^(NSString *htmlResponse, NSError *error) {
+        if (error) {
+            NSLog(@"❌ Finviz search failed for '%@': %@", keyword, error.localizedDescription);
+            if (completion) completion(@[], error);
+            return;
+        }
+        
+        // Step 2: Parse HTML to extract symbols from search results
+        NSArray<NSString *> *symbols = [self parseFinvizSearchResults:htmlResponse];
+        
+        if (symbols.count == 0) {
+            NSError *noResultsError = [NSError errorWithDomain:@"OtherDataSource"
+                                                          code:404
+                                                      userInfo:@{NSLocalizedDescriptionKey:
+                                                               [NSString stringWithFormat:@"No symbols found for keyword '%@'", keyword]}];
+            NSLog(@"📭 Finviz: No results found for '%@'", keyword);
+            if (completion) completion(@[], noResultsError);
+            return;
+        }
+        
+        NSLog(@"✅ Finviz: Found %lu symbols for '%@': %@",
+              (unsigned long)symbols.count, keyword, [symbols componentsJoinedByString:@", "]);
+        
+        if (completion) completion(symbols, nil);
+    }];
+}
+
+
+- (void)executeFinvizRequest:(NSString *)urlString
+                  completion:(void (^)(NSString *htmlResponse, NSError *error))completion {
+    
+    NSURL *url = [NSURL URLWithString:urlString];
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    
+    // Use enhanced headers to bypass robots.txt blocking
+    NSDictionary *finvizHeaders = [self finvizUserAgentHeaders];
+    for (NSString *key in finvizHeaders.allKeys) {
+        [request setValue:finvizHeaders[key] forHTTPHeaderField:key];
+    }
+    
+    // Add specific headers that Finviz expects
+    [request setValue:@"https://finviz.com" forHTTPHeaderField:@"Referer"];
+    [request setValue:@"same-origin" forHTTPHeaderField:@"Sec-Fetch-Site"];
+    [request setValue:@"navigate" forHTTPHeaderField:@"Sec-Fetch-Mode"];
+    
+    [[self.session dataTaskWithRequest:request completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        if (error) {
+            NSLog(@"❌ Finviz request network error: %@", error.localizedDescription);
+            if (completion) completion(nil, error);
+            return;
+        }
+        
+        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+        if (httpResponse.statusCode != 200) {
+            NSError *httpError = [NSError errorWithDomain:@"OtherDataSource"
+                                                     code:httpResponse.statusCode
+                                                 userInfo:@{NSLocalizedDescriptionKey:
+                                                           [NSString stringWithFormat:@"Finviz returned HTTP %ld", (long)httpResponse.statusCode]}];
+            NSLog(@"❌ Finviz HTTP error: %ld", (long)httpResponse.statusCode);
+            if (completion) completion(nil, httpError);
+            return;
+        }
+        
+        NSString *htmlResponse = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+        if (completion) completion(htmlResponse, nil);
+        
+    }] resume];
+}
+
+- (NSDictionary *)finvizUserAgentHeaders {
+    // Enhanced headers specifically for Finviz
+    NSArray *userAgents = @[
+        @"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        @"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+        @"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    ];
+    
+    NSString *randomUA = userAgents[arc4random_uniform((uint32_t)userAgents.count)];
+    
+    return @{
+        @"User-Agent": randomUA,
+        @"Accept": @"text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+        @"Accept-Language": @"en-US,en;q=0.9",
+        @"Accept-Encoding": @"gzip, deflate, br",
+        @"Cache-Control": @"max-age=0",
+        @"Upgrade-Insecure-Requests": @"1",
+        @"Sec-Fetch-User": @"?1"
+    };
+}
+
+- (NSArray<NSString *> *)parseFinvizSearchResults:(NSString *)htmlContent {
+    NSMutableArray<NSString *> *symbols = [NSMutableArray array];
+    
+    if (!htmlContent || htmlContent.length == 0) {
+        NSLog(@"❌ Finviz parser: Empty HTML content");
+        return @[];
+    }
+    
+    // Pattern 1: JavaScript redirect - window.location.href = 'screener.ashx?t=SYMBOLS'
+    NSString *jsPattern = @"window\\.location\\.href\\s*=\\s*['\"]([^'\"]*screener\\.ashx[^'\"]*t=([A-Z0-9,]+)[^'\"]*)['\"]";
+    
+    // Pattern 2: Meta refresh - <meta http-equiv="refresh" content="0; url=screener.ashx?t=SYMBOLS">
+    NSString *metaPattern = @"<meta[^>]*content\\s*=\\s*['\"][^'\"]*url\\s*=\\s*([^'\"]*screener\\.ashx[^'\"]*t=([A-Z0-9,]+)[^'\"]*)['\"]";
+    
+    // Pattern 3: Direct href - <a href="screener.ashx?t=SYMBOLS">
+    NSString *hrefPattern = @"href\\s*=\\s*['\"]([^'\"]*screener\\.ashx[^'\"]*t=([A-Z0-9,]+)[^'\"]*)['\"]";
+    
+    NSArray<NSString *> *patterns = @[jsPattern, metaPattern, hrefPattern];
+    
+    // Try URL-based patterns first (more reliable)
+    for (NSString *pattern in patterns) {
+        NSError *regexError;
+        NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern
+                                                                               options:NSRegularExpressionCaseInsensitive
+                                                                                 error:&regexError];
+        
+        if (regexError) {
+            NSLog(@"❌ Finviz regex error for pattern '%@': %@", pattern, regexError.localizedDescription);
+            continue;
+        }
+        
+        NSArray<NSTextCheckingResult *> *matches = [regex matchesInString:htmlContent
+                                                                  options:0
+                                                                    range:NSMakeRange(0, htmlContent.length)];
+        
+        for (NSTextCheckingResult *match in matches) {
+            if (match.numberOfRanges >= 3) {
+                NSRange symbolsRange = [match rangeAtIndex:2]; // Second capture group has the symbols
+                NSString *symbolsString = [htmlContent substringWithRange:symbolsRange];
+                
+                // Split by comma and add to results
+                NSArray<NSString *> *foundSymbols = [self extractSymbolsFromString:symbolsString];
+                for (NSString *symbol in foundSymbols) {
+                    if (![symbols containsObject:symbol]) {
+                        [symbols addObject:symbol];
+                    }
+                }
+                
+                NSLog(@"🎯 Finviz parser: Found %lu symbols using URL pattern", (unsigned long)foundSymbols.count);
+            }
+        }
+        
+        // If we found symbols with URL patterns, return them (most reliable)
+        if (symbols.count > 0) {
+            break;
+        }
+    }
+    
+    // Fallback: Try table parsing if no URL patterns matched
+    if (symbols.count == 0) {
+        NSString *tablePattern = @"<td[^>]*>\\s*<a[^>]*>([A-Z]{1,8})</a>\\s*</td>";
+        NSError *regexError;
+        NSRegularExpression *tableRegex = [NSRegularExpression regularExpressionWithPattern:tablePattern
+                                                                                    options:NSRegularExpressionCaseInsensitive
+                                                                                      error:&regexError];
+        
+        if (!regexError) {
+            NSArray<NSTextCheckingResult *> *tableMatches = [tableRegex matchesInString:htmlContent
+                                                                                options:0
+                                                                                  range:NSMakeRange(0, htmlContent.length)];
+            
+            for (NSTextCheckingResult *match in tableMatches) {
+                if (match.numberOfRanges >= 2) {
+                    NSRange symbolRange = [match rangeAtIndex:1];
+                    NSString *symbol = [htmlContent substringWithRange:symbolRange];
+                    NSString *cleanSymbol = [self cleanSymbol:symbol];
+                    if (cleanSymbol && ![symbols containsObject:cleanSymbol]) {
+                        [symbols addObject:cleanSymbol];
+                    }
+                }
+            }
+            
+            if (symbols.count > 0) {
+                NSLog(@"📊 Finviz parser: Found %lu symbols using table fallback", (unsigned long)symbols.count);
+            }
+        }
+    }
+    
+    NSLog(@"🔍 Finviz parser final result: %lu symbols", (unsigned long)symbols.count);
+    return [symbols copy];
+}
+
+- (NSArray<NSString *> *)extractSymbolsFromString:(NSString *)symbolsString {
+    NSMutableArray<NSString *> *symbols = [NSMutableArray array];
+    
+    NSArray<NSString *> *components = [symbolsString componentsSeparatedByString:@","];
+    for (NSString *component in components) {
+        NSString *cleanSymbol = [self cleanSymbol:component];
+        if (cleanSymbol) {
+            [symbols addObject:cleanSymbol];
+        }
+    }
+    
+    return [symbols copy];
+}
+
+- (NSString *)cleanSymbol:(NSString *)symbol {
+    if (!symbol) return nil;
+    
+    NSString *cleaned = [symbol stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    cleaned = [cleaned uppercaseString];
+    
+    // Validate symbol format (1-8 characters, letters/numbers only)
+    if (cleaned.length == 0 || cleaned.length > 8) return nil;
+    
+    NSRegularExpression *validSymbol = [NSRegularExpression regularExpressionWithPattern:@"^[A-Z0-9]{1,8}$" options:0 error:nil];
+    if (![validSymbol firstMatchInString:cleaned options:0 range:NSMakeRange(0, cleaned.length)]) {
+        return nil;
+    }
+    
+    return cleaned;
 }
 
 #pragma mark - Zacks Data

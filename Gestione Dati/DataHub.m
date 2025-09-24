@@ -1811,6 +1811,68 @@ NSString *const DataHubDataLoadedNotification = @"DataHubDataLoadedNotification"
 }
 
 
+#pragma mark - Runtime Tag Interface for TagManager
+
+- (NSArray<NSDictionary *> *)getAllSymbolsWithTagsInfo {
+    NSMutableArray<NSDictionary *> *result = [NSMutableArray array];
+    
+    // ✅ Usa la lista symbols già in memoria, filtra per tag
+    NSPredicate *hasTagsPredicate = [NSPredicate predicateWithFormat:@"tags != NULL AND tags.@count > 0"];
+    NSArray<Symbol *> *symbolsWithTags = [self.symbols filteredArrayUsingPredicate:hasTagsPredicate];
+    
+    // ✅ Ordina per lastInteraction
+    NSSortDescriptor *interactionSort = [NSSortDescriptor sortDescriptorWithKey:@"lastInteraction" ascending:NO];
+    NSArray<Symbol *> *sortedSymbols = [symbolsWithTags sortedArrayUsingDescriptors:@[interactionSort]];
+    
+    // ✅ Converti in formato runtime-friendly
+    for (Symbol *symbol in sortedSymbols) {
+        if (!symbol.symbol || symbol.symbol.length == 0) continue;
+        
+        NSDictionary *symbolInfo = @{
+            @"symbol": symbol.symbol,
+            @"tags": symbol.tags ?: @[],
+            @"lastInteraction": symbol.lastInteraction ?: [NSDate distantPast],
+            @"interactionCount": @(symbol.interactionCount)
+        };
+        [result addObject:symbolInfo];
+    }
+    
+    NSLog(@"🏷️ DataHub: Returning %lu symbols with tags for TagManager", (unsigned long)result.count);
+    return [result copy];
+}
+
+- (NSArray<NSString *> *)getAllUniqueTagsRuntime {
+    // ✅ Riusa il metodo esistente getAllTags che già restituisce stringhe
+    return [self getAllTags];
+}
+
+- (NSArray<NSString *> *)getSymbolNamesWithTagRuntime:(NSString *)tag {
+    if (!tag || tag.length == 0) return @[];
+    
+    // ✅ Usa la lista symbols già in memoria invece di fetch Core Data
+    NSString *normalizedTag = tag.lowercaseString;
+    NSMutableArray<Symbol *> *matchingSymbols = [NSMutableArray array];
+    
+    for (Symbol *symbol in self.symbols) {
+        if ([symbol.tags containsObject:normalizedTag]) {
+            [matchingSymbols addObject:symbol];
+        }
+    }
+    
+    // ✅ Ordina per lastInteraction
+    NSSortDescriptor *interactionSort = [NSSortDescriptor sortDescriptorWithKey:@"lastInteraction" ascending:NO];
+    NSArray<Symbol *> *sortedSymbols = [matchingSymbols sortedArrayUsingDescriptors:@[interactionSort]];
+    
+    // ✅ Converti a stringhe
+    NSMutableArray<NSString *> *symbolNames = [NSMutableArray array];
+    for (Symbol *symbol in sortedSymbols) {
+        if (symbol.symbol && symbol.symbol.length > 0) {
+            [symbolNames addObject:symbol.symbol];
+        }
+    }
+    
+    return [symbolNames copy];
+}
 
 
 

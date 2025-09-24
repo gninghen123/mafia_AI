@@ -4,7 +4,7 @@
 
 #import <Foundation/Foundation.h>
 #import "RuntimeModels.h"
-#import "commonTypes.h"
+#import "CommonTypes.h"
 
 NS_ASSUME_NONNULL_BEGIN
 

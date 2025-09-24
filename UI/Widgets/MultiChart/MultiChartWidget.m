@@ -11,6 +11,8 @@
 #import "DataHub+MarketData.h"
 #import "RuntimeModels.h"
 #import "MiniChartCollectionItem.h"
+#import "OtherDataSource.h"           // ✅ AGGIUNGERE QUESTO IMPORT
+#import "DownloadManager.h"            // ✅ AGGIUNGERE ANCHE QUESTO SE NON GIÀ PRESENTE
 
 static NSString *const kMultiChartItemWidthKey = @"MultiChart_ItemWidth";
 static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
@@ -934,7 +936,40 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
 #pragma mark - Actions
 
 - (void)symbolsChanged:(id)sender {
-    [self setSymbolsFromString:self.symbolsTextField.stringValue];
+    NSString *input = self.symbolsTextField.stringValue;
+    
+    // ✅ NUOVO: Check for Finviz search pattern
+    if ([input hasPrefix:@"?"]) {
+        NSString *keyword = [input substringFromIndex:1]; // Remove the '?'
+        keyword = [keyword stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        
+        if (keyword.length > 0) {
+            [self performFinvizSearch:keyword];
+            return;
+        } else {
+            NSLog(@"⚠️ Empty keyword after '?' - ignoring");
+            return;
+        }
+    }
+    
+    // ✅ FALLBACK: Existing logic for normal symbol input
+    NSArray<NSString *> *newSymbols = [self parseSymbolsFromInput:input];
+    
+    if ([newSymbols isEqualToArray:self.symbols]) {
+        NSLog(@"MultiChartWidget: Symbols unchanged, skipping update");
+        return;
+    }
+    
+    self.symbols = newSymbols;
+    self.symbolsString = [newSymbols componentsJoinedByString:@", "];
+    
+    [self rebuildMiniCharts];
+    [self loadDataFromDataHub];
+    
+    // Auto-save settings if enabled
+    [self saveSettingsToUserDefaults];
+    
+    NSLog(@"MultiChartWidget: Updated symbols: %@", self.symbolsString);
 }
 
 - (void)chartTypeChanged:(id)sender {
@@ -1520,6 +1555,126 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     [nc removeObserver:self name:@"DataHubHistoricalDataUpdatedNotification" object:nil];
     
     NSLog(@"📊 MultiChartWidget: Unregistered from auto-refresh notifications");
+}
+
+#pragma mark - ✅ FINVIZ SEARCH IMPLEMENTATION
+
+- (void)performFinvizSearch:(NSString *)keyword {
+    NSLog(@"🔍 MultiChartWidget: Performing Finviz search for '%@'", keyword);
+    
+    // Show loading state in text field
+    self.symbolsTextField.stringValue = [NSString stringWithFormat:@"Searching '%@'...", keyword];
+    self.symbolsTextField.enabled = NO;
+    
+    // Get OtherDataSource instance
+    DownloadManager *downloadManager = [DownloadManager sharedManager];
+    OtherDataSource *otherDataSource = (OtherDataSource *)[downloadManager dataSourceForType:DataSourceTypeOther];
+    
+    if (!otherDataSource) {
+        [self handleFinvizSearchError:@"Finviz search not available" keyword:keyword];
+        return;
+    }
+    
+    // Perform the search
+    [otherDataSource fetchFinvizSearchResultsForKeyword:keyword
+                                             completion:^(NSArray<NSString *> *symbols, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            // Restore text field
+            self.symbolsTextField.enabled = YES;
+            
+            if (error) {
+                [self handleFinvizSearchError:error.localizedDescription keyword:keyword];
+                return;
+            }
+            
+            if (symbols.count == 0) {
+                [self handleFinvizSearchError:[NSString stringWithFormat:@"No symbols found for '%@'", keyword] keyword:keyword];
+                return;
+            }
+            
+            // Success - update with found symbols
+            [self applyFinvizSearchResults:symbols keyword:keyword];
+        });
+    }];
+}
+
+- (void)handleFinvizSearchError:(NSString *)errorMessage keyword:(NSString *)keyword {
+    NSLog(@"❌ MultiChartWidget Finviz search error: %@", errorMessage);
+    
+    // Restore original text field state
+    self.symbolsTextField.stringValue = [NSString stringWithFormat:@"?%@", keyword];
+    
+    // Show error in a non-intrusive way
+    NSString *errorText = [NSString stringWithFormat:@"❌ %@", errorMessage];
+    self.symbolsTextField.stringValue = errorText;
+    
+    // Auto-clear error after 3 seconds
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        self.symbolsTextField.stringValue = @"";
+    });
+}
+
+- (void)applyFinvizSearchResults:(NSArray<NSString *> *)symbols keyword:(NSString *)keyword {
+    NSLog(@"✅ MultiChartWidget: Finviz found %lu symbols for '%@': %@",
+          (unsigned long)symbols.count, keyword, [symbols componentsJoinedByString:@", "]);
+    
+    // Update symbols array and UI
+    self.symbols = symbols;
+    self.symbolsString = [symbols componentsJoinedByString:@", "];
+    self.symbolsTextField.stringValue = self.symbolsString;
+    
+    // Rebuild charts with new symbols
+    [self rebuildMiniCharts];
+    [self loadDataFromDataHub];
+    
+    // Save settings
+    [self saveSettingsToUserDefaults];
+    
+    // Show temporary success feedback
+    NSString *successMessage = [NSString stringWithFormat:@"✅ Found %lu symbols for '%@'", (unsigned long)symbols.count, keyword];
+    
+    // Use temporary message if available, otherwise log
+    if ([self respondsToSelector:@selector(showTemporaryMessage:)]) {
+        [self performSelector:@selector(showTemporaryMessage:) withObject:successMessage];
+    } else {
+        NSLog(@"📊 %@", successMessage);
+    }
+    
+    // Broadcast to chain if active
+    if (self.chainActive) {
+        [self broadcastSymbolToChain:symbols];
+    }
+}
+
+#pragma mark - ✅ UTILITY METHODS
+
+- (NSArray<NSString *> *)parseSymbolsFromInput:(NSString *)input {
+    if (!input || input.length == 0) {
+        return @[];
+    }
+    
+    // Split by comma and clean up
+    NSArray<NSString *> *components = [input componentsSeparatedByString:@","];
+    NSMutableArray<NSString *> *symbols = [NSMutableArray array];
+    
+    for (NSString *component in components) {
+        NSString *cleanSymbol = [[component stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] uppercaseString];
+        if (cleanSymbol.length > 0) {
+            [symbols addObject:cleanSymbol];
+        }
+    }
+    
+    return [symbols copy];
+}
+
+- (void)broadcastSymbolToChain:(NSArray<NSString *> *)symbols {
+    // Send symbols to chain if active
+    [self broadcastUpdate:@{
+        @"action": @"setSymbols",
+        @"symbols": symbols
+    }];
+    
+    NSLog(@"🔗 MultiChartWidget: Finviz results sent to chain: %@", [symbols componentsJoinedByString:@", "]);
 }
 
 @end

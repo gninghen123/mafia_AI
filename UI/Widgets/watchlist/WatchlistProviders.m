@@ -6,9 +6,8 @@
 #import "WatchlistProviders.h"
 #import "DataHub.h"
 #import "DataHub+WatchlistProviders.h"
-#import "datahub+marketdata.h"
+#import "DataHub+MarketData.h"
 #import "TagManager.h"
-#import "WatchlistProviderManager.h"
 
 @class TagManager;
 
@@ -493,6 +492,83 @@
         case TagManagerStateError: return @"Error";
         default: return @"Unknown";
     }
+}
+
+@end
+
+
+#pragma mark - Archive Provider
+
+@implementation ArchiveProvider
+
+- (instancetype)initWithArchiveKey:(NSString *)archiveKey {
+    if (self = [super init]) {
+        _archiveKey = archiveKey;
+    }
+    return self;
+}
+
+#pragma mark - WatchlistProvider Protocol
+
+- (NSString *)providerId {
+    return [NSString stringWithFormat:@"archive:%@", self.archiveKey];
+}
+
+- (NSString *)displayName {
+    return [NSString stringWithFormat:@"📦 Archive-%@", self.archiveKey];
+}
+
+- (NSString *)categoryName {
+    return @"Archives";
+}
+
+- (BOOL)canAddSymbols { return NO; }
+- (BOOL)canRemoveSymbols { return NO; }
+- (BOOL)isAutoUpdating { return NO; }
+- (BOOL)showCount { return YES; }
+
+- (NSArray<NSString *> *)symbols {
+    // ✅ Get symbols from archived watchlist via DataHub
+    WatchlistModel *archiveWatchlist = [self getArchiveWatchlist];
+    return archiveWatchlist ? archiveWatchlist.symbols : @[];
+}
+
+- (BOOL)isLoaded {
+    WatchlistModel *archiveWatchlist = [self getArchiveWatchlist];
+    return archiveWatchlist != nil && archiveWatchlist.symbols != nil;
+}
+
+- (void)loadSymbolsWithCompletion:(void(^)(NSArray<NSString *> * _Nullable symbols, NSError * _Nullable error))completion {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        WatchlistModel *archiveWatchlist = [self getArchiveWatchlist];
+        NSArray<NSString *> *symbols = archiveWatchlist ? archiveWatchlist.symbols : @[];
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSLog(@"✅ ArchiveProvider (%@): Loaded %lu symbols from archive",
+                  [self displayName], (unsigned long)symbols.count);
+            
+            if (completion) {
+                completion(symbols, nil);
+            }
+        });
+    });
+}
+
+#pragma mark - Private Helper Methods
+
+- (WatchlistModel *)getArchiveWatchlist {
+    // ✅ Find the watchlist with "Archive-{archiveKey}" name
+    NSString *archiveWatchlistName = [NSString stringWithFormat:@"Archive-%@", self.archiveKey];
+    
+    NSArray<WatchlistModel *> *allWatchlists = [[DataHub shared] getAllWatchlistModels];
+    for (WatchlistModel *watchlist in allWatchlists) {
+        if ([watchlist.name isEqualToString:archiveWatchlistName]) {
+            return watchlist;
+        }
+    }
+    
+    NSLog(@"⚠️ ArchiveProvider: No watchlist found with name '%@'", archiveWatchlistName);
+    return nil;
 }
 
 @end

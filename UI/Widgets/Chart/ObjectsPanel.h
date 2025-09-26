@@ -52,6 +52,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 // NEW: Lock toggle
 @property (nonatomic, strong) NSButton *lockCreationToggle;
+@property (nonatomic, strong) NSButton *clearAllButton;
 
 // NEW: Snap controls
 @property (nonatomic, strong) NSSlider *snapIntensitySlider;
@@ -94,7 +95,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)clearActiveButton;
 - (void)setActiveButton:(NSButton *)button forType:(ChartObjectType)type;
 
-- (void)clearAllObjects;
+- (IBAction)clearAllObjects:(id)sender;
 
 - (void)updateManagerForSymbol:(NSString *)symbol;
 - (void)refreshObjectManager;

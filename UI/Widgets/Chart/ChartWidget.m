@@ -629,7 +629,7 @@ extern NSString *const DataHubDataLoadedNotification;
             [self.objectsPanel.topAnchor constraintEqualToAnchor:self.panelsSplitView.topAnchor],
             [self.objectsPanel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:8],
             [self.objectsPanel.bottomAnchor constraintEqualToAnchor:self.panelsSplitView.bottomAnchor],
-            [self.objectsPanel.widthAnchor constraintEqualToConstant:150]
+            [self.objectsPanel.widthAnchor constraintEqualToConstant:100]
         ]];
 
         // Split view dopo objectsPanel

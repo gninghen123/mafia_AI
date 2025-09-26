@@ -41,7 +41,6 @@
 }
 
 - (void)commonInit {
-    _panelWidth = 180;
     
     [self setupBackgroundView];
     [self setupLayout];
@@ -89,18 +88,6 @@
     controlsRow.translatesAutoresizingMaskIntoConstraints = NO;
     [self addSubview:controlsRow];
     
-    // Objects visible toggle
-    NSButton *visibilityToggle = [NSButton buttonWithTitle:@"👁️"
-                                                    target:self
-                                                    action:@selector(toggleObjectsVisibility:)];
-    visibilityToggle.translatesAutoresizingMaskIntoConstraints = NO;
-    visibilityToggle.bezelStyle = NSBezelStyleRounded;
-    visibilityToggle.buttonType = NSButtonTypePushOnPushOff;
-    visibilityToggle.state = NSControlStateValueOn;
-    visibilityToggle.font = [NSFont systemFontOfSize:12];
-    visibilityToggle.toolTip = @"Show/Hide all objects";
-    [controlsRow addSubview:visibilityToggle];
-    
     // Lock mode toggle
     self.lockCreationToggle = [NSButton buttonWithTitle:@"🔒 Lock"
                                                  target:self
@@ -116,11 +103,12 @@
     NSButton *clearAllButton = [NSButton buttonWithTitle:@"Clear All"
                                                   target:self
                                                   action:@selector(clearAllObjects:)];
-    clearAllButton.translatesAutoresizingMaskIntoConstraints = NO;
-    clearAllButton.bezelStyle = NSBezelStyleRounded;
-    clearAllButton.font = [NSFont systemFontOfSize:10];
-    clearAllButton.toolTip = @"Delete all objects";
-    [controlsRow addSubview:clearAllButton];
+    self.clearAllButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.clearAllButton.bezelStyle = NSBezelStyleRounded;
+    self.clearAllButton.font = [NSFont systemFontOfSize:10];
+    self.clearAllButton.toolTip = @"Delete all objects";
+    self.clearAllButton.bezelColor = NSColor.systemRedColor; // sfondo rosso
+    [controlsRow addSubview:self.clearAllButton];
     
     // NEW: Snap controls row
     NSView *snapRow = [[NSView alloc] init];
@@ -150,7 +138,7 @@
     
     self.snapIntensitySlider.target = self;
     self.snapIntensitySlider.action = @selector(snapIntensityChanged:);
-    self.snapIntensitySlider.toolTip = @"Snap intensity: 0=off, 10=strong";
+    self.snapIntensitySlider.toolTip = @"Snap: 0=off, 10=strong";
     [snapRow addSubview:self.snapIntensitySlider];
     
     // Snap value label
@@ -177,7 +165,7 @@
     [self addSubview:self.separatorView];
     
     // Object Manager button
-    self.objectManagerButton = [NSButton buttonWithTitle:@"📊 Object Manager..."
+    self.objectManagerButton = [NSButton buttonWithTitle:@"Obj Manager"
                                                   target:self
                                                   action:@selector(showObjectManager:)];
     self.objectManagerButton.translatesAutoresizingMaskIntoConstraints = NO;
@@ -198,24 +186,19 @@
         [controlsRow.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
         [controlsRow.heightAnchor constraintEqualToConstant:22],
         
-        // Controls within row
-        [visibilityToggle.leadingAnchor constraintEqualToAnchor:controlsRow.leadingAnchor],
-        [visibilityToggle.centerYAnchor constraintEqualToAnchor:controlsRow.centerYAnchor],
-        [visibilityToggle.widthAnchor constraintEqualToConstant:30],
-        [visibilityToggle.heightAnchor constraintEqualToConstant:20],
-        
-        [self.lockCreationToggle.leadingAnchor constraintEqualToAnchor:visibilityToggle.trailingAnchor constant:4],
+        // Solo Lock sulla prima riga
+        [self.lockCreationToggle.leadingAnchor constraintEqualToAnchor:controlsRow.leadingAnchor],
         [self.lockCreationToggle.centerYAnchor constraintEqualToAnchor:controlsRow.centerYAnchor],
-        [self.lockCreationToggle.widthAnchor constraintEqualToConstant:55],
-        [self.lockCreationToggle.heightAnchor constraintEqualToConstant:20],
+        [self.lockCreationToggle.widthAnchor constraintEqualToConstant:45],
         
-        [clearAllButton.trailingAnchor constraintEqualToAnchor:controlsRow.trailingAnchor],
-        [clearAllButton.centerYAnchor constraintEqualToAnchor:controlsRow.centerYAnchor],
-        [clearAllButton.widthAnchor constraintEqualToConstant:75],
+        // Clear all button (nuova riga sotto controlsRow)
+        [clearAllButton.topAnchor constraintEqualToAnchor:controlsRow.bottomAnchor constant:4],
+        [clearAllButton.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
+        [clearAllButton.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
         [clearAllButton.heightAnchor constraintEqualToConstant:20],
         
-        // NEW: Snap row
-        [snapRow.topAnchor constraintEqualToAnchor:controlsRow.bottomAnchor constant:8],
+        // Snap row
+        [snapRow.topAnchor constraintEqualToAnchor:clearAllButton.bottomAnchor constant:8],
         [snapRow.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
         [snapRow.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
         [snapRow.heightAnchor constraintEqualToConstant:22],
@@ -233,7 +216,7 @@
         [self.snapValueLabel.centerYAnchor constraintEqualToAnchor:snapRow.centerYAnchor],
         [self.snapValueLabel.widthAnchor constraintEqualToConstant:20],
         
-        // Buttons stack (updated constraint)
+        // Buttons stack
         [self.buttonsStackView.topAnchor constraintEqualToAnchor:snapRow.bottomAnchor constant:12],
         [self.buttonsStackView.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
         [self.buttonsStackView.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
@@ -287,7 +270,7 @@
         [self.buttonsStackView addArrangedSubview:button];
         [buttons addObject:button];
         
-        [button.widthAnchor constraintEqualToConstant:164].active = YES;
+        [button.widthAnchor constraintEqualToConstant:100].active = YES;
     }
     
     self.objectButtons = [buttons copy];
@@ -474,7 +457,7 @@
 }
 
 
-- (void)clearAllObjects:(NSButton *)sender {
+- (IBAction)clearAllObjects:(NSButton *)sender {
     NSLog(@"🗑️ ObjectsPanel: Clear All objects requested");
     
     // Conferma dialog (codice esistente)
@@ -579,5 +562,7 @@
     self.snapIntensitySlider.doubleValue = intensity;
     [self snapIntensityChanged:self.snapIntensitySlider];
 }
+
+
 
 @end

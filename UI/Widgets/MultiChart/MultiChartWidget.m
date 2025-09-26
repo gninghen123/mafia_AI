@@ -13,6 +13,8 @@
 #import "MiniChartCollectionItem.h"
 #import "OtherDataSource.h"           // ✅ AGGIUNGERE QUESTO IMPORT
 #import "DownloadManager.h"            // ✅ AGGIUNGERE ANCHE QUESTO SE NON GIÀ PRESENTE
+#import "SavedChartData.h"
+
 
 static NSString *const kMultiChartItemWidthKey = @"MultiChart_ItemWidth";
 static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
@@ -1107,7 +1109,140 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
 }
 
 #pragma mark - Chain Integration
+- (void)handleChainAction:(NSString *)action withData:(id)data fromWidget:(BaseWidget *)sender {
+    if ([action isEqualToString:@"loadChartPattern"]) {
+        [self loadChartPatternFromChainData:data fromWidget:sender];
+    } else {
+        [super handleChainAction:action withData:data fromWidget:sender];
+    }
+}
 
+- (void)loadChartPatternFromChainData:(NSDictionary *)data fromWidget:(BaseWidget *)sender {
+    // 1️⃣ VALIDAZIONE DATI
+    if (!data || ![data isKindOfClass:[NSDictionary class]]) {
+        NSLog(@"❌ MultiChartWidget: Invalid pattern data received from %@", NSStringFromClass([sender class]));
+        return;
+    }
+    
+    NSString *patternID = data[@"patternID"];
+    NSString *symbol = data[@"symbol"];
+    NSString *savedDataReference = data[@"savedDataReference"];
+    NSDate *patternStartDate = data[@"patternStartDate"];
+    NSDate *patternEndDate = data[@"patternEndDate"];
+    NSString *patternType = data[@"patternType"];
+    
+    if (!patternID || !savedDataReference || !symbol) {
+        NSLog(@"❌ MultiChartWidget: Missing essential pattern data");
+        return;
+    }
+    
+    // 2️⃣ CARICA SAVEDCHARTDATA
+    NSString *directory = [CommonTypes savedChartDataDirectory];
+    NSString *filename = [NSString stringWithFormat:@"%@.chartdata", savedDataReference];
+    NSString *filePath = [directory stringByAppendingPathComponent:filename];
+    
+    SavedChartData *savedData = [SavedChartData loadFromFile:filePath];
+    if (!savedData || !savedData.isDataValid) {
+        NSLog(@"❌ MultiChartWidget: Failed to load SavedChartData for pattern %@", patternID);
+        [self showTemporaryMessageForCollectionView:@"❌ Failed to load pattern data"];
+        return;
+    }
+    
+    // 3️⃣ CREA MINICHART CON DATI STATICI
+    MiniChart *miniChart = [[MiniChart alloc] initWithFrame:CGRectMake(0, 0, self.itemWidth, self.itemHeight)];
+    
+    // ✅ DENOMINAZIONE: "PatternType Symbol" o "Saved Symbol"
+    NSString *displayName;
+    if (patternType && patternType.length > 0) {
+        displayName = [NSString stringWithFormat:@"%@ %@", patternType, symbol];
+    } else {
+        displayName = [NSString stringWithFormat:@"Saved %@", symbol];
+    }
+    
+    // Configura il MiniChart
+    miniChart.symbol = displayName;  // ✅ Usa display name invece del simbolo originale
+    miniChart.chartType = self.chartType;
+    miniChart.timeframe = [self convertFromBarTimeframe:savedData.timeframe];
+    miniChart.scaleType = self.scaleType;
+    miniChart.showVolume = self.showVolume;
+    
+    // 4️⃣ CARICA DATI STATICI
+    NSArray<HistoricalBarModel *> *barsToShow = savedData.historicalBars;
+    
+    // Se ci sono date pattern specifiche, estrai solo quel range
+    if (patternStartDate && patternEndDate && barsToShow.count > 0) {
+        NSInteger startIndex = NSNotFound;
+        NSInteger endIndex = NSNotFound;
+        
+        for (NSInteger i = 0; i < barsToShow.count; i++) {
+            HistoricalBarModel *bar = barsToShow[i];
+            if (startIndex == NSNotFound && [bar.date compare:patternStartDate] != NSOrderedAscending) {
+                startIndex = i;
+            }
+            if ([bar.date compare:patternEndDate] != NSOrderedDescending) {
+                endIndex = i;
+            }
+        }
+        
+        if (startIndex != NSNotFound && endIndex != NSNotFound && startIndex <= endIndex) {
+            NSInteger padding = MAX(1, (endIndex - startIndex + 1) / 10); // 10% padding
+            NSInteger paddedStart = MAX(0, startIndex - padding);
+            NSInteger paddedEnd = MIN(barsToShow.count - 1, endIndex + padding);
+            
+            NSRange range = NSMakeRange(paddedStart, paddedEnd - paddedStart + 1);
+            barsToShow = [barsToShow subarrayWithRange:range];
+            
+            NSLog(@"📊 MultiChartWidget: Using pattern range [%ld-%ld] with padding", (long)startIndex, (long)endIndex);
+        }
+    }
+    
+    // Carica i dati nel MiniChart
+    [miniChart updateWithHistoricalBars:barsToShow];
+    
+    // 5️⃣ AGGIUNGI ALLA COLLEZIONE
+    [self.miniCharts addObject:miniChart];
+    
+    // Aggiorna la UI
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.collectionView reloadData];
+        
+        // Scroll all'ultimo item aggiunto
+        NSInteger lastIndex = self.miniCharts.count - 1;
+        NSIndexPath *lastIndexPath = [NSIndexPath indexPathForItem:lastIndex inSection:0];
+        [self.collectionView scrollToItemsAtIndexPaths:@[lastIndexPath]
+                                        scrollPosition:NSCollectionViewScrollPositionBottom];
+        
+        // Feedback all'utente
+        NSString *feedbackMessage = [NSString stringWithFormat:@"📊 Added %@", displayName];
+        [self showTemporaryMessageForCollectionView:feedbackMessage];
+        
+        NSLog(@"✅ MultiChartWidget: Added pattern chart '%@' from %@", displayName, NSStringFromClass([sender class]));
+    });
+}
+
+// ✅ HELPER METHOD: Converte da BarTimeframe a MiniBarTimeframe
+- (MiniBarTimeframe)convertFromBarTimeframe:(BarTimeframe)timeframe {
+    switch (timeframe) {
+        case BarTimeframe1Min:
+            return MiniBarTimeframe1Min;
+        case BarTimeframe5Min:
+            return MiniBarTimeframe5Min;
+        case BarTimeframe15Min:
+            return MiniBarTimeframe15Min;
+        case BarTimeframe30Min:
+            return MiniBarTimeframe30Min;
+        case BarTimeframe1Hour:
+            return MiniBarTimeframe1Hour;
+        case BarTimeframeDaily:
+            return MiniBarTimeframeDaily;
+        case BarTimeframeWeekly:
+            return MiniBarTimeframeWeekly;
+        case BarTimeframeMonthly:
+            return MiniBarTimeframeMonthly;
+        default:
+            return MiniBarTimeframeDaily;
+    }
+}
 
 - (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
     NSLog(@"MultiChartWidget: Received %lu symbols from chain", (unsigned long)symbols.count);

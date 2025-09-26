@@ -71,7 +71,53 @@
     // NEW: Initialize search and sorting
     self.searchText = @"";
     self.pendingWidth = 0;
+    [self startTagManagerBackgroundBuild];
 
+}
+
+// ✅ NUOVO METODO: Avvia il build del TagManager in background
+- (void)startTagManagerBackgroundBuild {
+    NSLog(@"🏷️ WatchlistWidget: Starting TagManager background build at widget initialization");
+    
+    TagManager *tagManager = [TagManager sharedManager];
+    
+    // Controlla lo stato attuale del TagManager
+    if (tagManager.state == TagManagerStateEmpty) {
+        NSLog(@"🏷️ TagManager is empty - starting background build");
+        [tagManager buildCacheInBackground];
+    } else if (tagManager.state == TagManagerStateReady) {
+        NSLog(@"🏷️ TagManager already ready - no build needed");
+    } else if (tagManager.state == TagManagerStateBuilding) {
+        NSLog(@"🏷️ TagManager already building - will wait for completion");
+    } else {
+        NSLog(@"🏷️ TagManager in error state - triggering rebuild");
+        [tagManager invalidateAndRebuild];
+    }
+    
+    // Ascolta per la notifica di completamento (utile per debug e eventual UI updates)
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(tagManagerBuildCompleted:)
+                                                 name:TagManagerDidFinishBuildingNotification
+                                               object:nil];
+}
+
+// ✅ NUOVO METODO: Gestisce il completamento del build del TagManager
+- (void)tagManagerBuildCompleted:(NSNotification *)notification {
+    BOOL success = [notification.userInfo[@"success"] boolValue];
+    
+    if (success) {
+        NSLog(@"✅ WatchlistWidget: TagManager build completed successfully");
+        
+        // Opzionale: Aggiorna i provider se il selector è già configurato
+        // La prossima volta che l'utente apre "Tag Lists", i provider saranno già pronti
+    } else {
+        NSLog(@"❌ WatchlistWidget: TagManager build failed");
+    }
+    
+    // Rimuovi l'observer dopo il primo completamento
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                     name:TagManagerDidFinishBuildingNotification
+                                                   object:nil];
 }
 
 #pragma mark - BaseWidget Lifecycle
@@ -441,12 +487,7 @@
 
 #pragma mark - Provider Management
 
-- (void)setupInitialProvider {
-    id<WatchlistProvider> defaultProvider = [self.providerManager defaultProvider];
-    if (defaultProvider) {
-        [self selectProvider:defaultProvider];
-    }
-}
+
 
 - (void)selectProvider:(id<WatchlistProvider>)provider {
     if (!provider) {
@@ -1141,9 +1182,56 @@
     [self stopDataRefreshTimer];
     [self.resizeThrottleTimer invalidate];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
+    [[NSNotificationCenter defaultCenter] removeObserver:self
+                                                       name:TagManagerDidFinishBuildingNotification
+                                                     object:nil];
 }
 
+#pragma mark - setup inital provider
 
+// ✅ SOSTITUZIONE SEMPLICE del metodo setupInitialProvider in WatchlistWidget.m
+
+- (void)setupInitialProvider {
+    // Determina quale Top Gainers caricare basandosi sull'orario di New York
+    NSDate *now = [NSDate date];
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    calendar.timeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
+    
+    NSDateComponents *components = [calendar components:(NSCalendarUnitHour | NSCalendarUnitMinute) fromDate:now];
+    NSInteger hour = components.hour;
+    NSInteger minute = components.minute;
+    NSInteger totalMinutes = hour * 60 + minute;
+    
+    MarketTimeframe timeframe;
+    NSString *sessionName;
+    
+    if (totalMinutes < 570) { // Prima delle 9:30
+        timeframe = MarketTimeframePreMarket;
+        sessionName = @"Pre-Market";
+    } else if (totalMinutes < 960) { // 9:30 - 16:00
+        timeframe = MarketTimeframeOneDay;
+        sessionName = @"Regular Hours";
+    } else { // Dopo le 16:00
+        timeframe = MarketTimeframeAfterHours;
+        sessionName = @"After Hours";
+    }
+    
+    NSLog(@"🕐 Current time: %02ld:%02ld ET - Loading Top Gainers %@", (long)hour, (long)minute, sessionName);
+    
+    // Crea il provider Top Gainers con il timeframe appropriato
+    id<WatchlistProvider> provider = [self.providerManager createMarketListProvider:MarketListTypeTopGainers
+                                                                          timeframe:timeframe];
+    
+    if (provider) {
+        [self selectProvider:provider];
+    } else {
+        // Fallback al provider di default normale
+        id<WatchlistProvider> defaultProvider = [self.providerManager defaultProvider];
+        if (defaultProvider) {
+            [self selectProvider:defaultProvider];
+        }
+    }
+}
 #pragma mark - Watchlist Management Actions
 
 - (void)showCreateWatchlistDialog:(id)sender {

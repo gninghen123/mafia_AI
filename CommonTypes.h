@@ -13,6 +13,7 @@
 #import <Foundation/Foundation.h>
 
 
+
 #pragma mark - Data Source Types
 typedef NS_ENUM(NSInteger, DataSourceType) {
     DataSourceTypeUnknown = -1,    // ✅ AGGIUNTO: Per casi di errore/fallback
@@ -382,5 +383,19 @@ static inline NSString* DataSourceTypeToString(DataSourceType sourceType) {
         default: return [NSString stringWithFormat:@"Unknown(%ld)", (long)sourceType];
     }
 }
+
+#pragma mark - Utility Class
+
+@interface CommonTypes : NSObject
+
+#pragma mark - Directory Management
+
+/// Get the default directory for saved chart data
++ (NSString *)savedChartDataDirectory;
+
+/// Ensure the saved chart data directory exists
++ (BOOL)ensureSavedChartDataDirectoryExists:(NSError **)error;
+
+@end
 
 #endif /* CommonTypes_h */

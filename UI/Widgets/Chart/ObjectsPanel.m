@@ -101,14 +101,15 @@
     
     // Clear all button
     NSButton *clearAllButton = [NSButton buttonWithTitle:@"Clear All"
-                                                  target:self
-                                                  action:@selector(clearAllObjects:)];
-    self.clearAllButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.clearAllButton.bezelStyle = NSBezelStyleRounded;
-    self.clearAllButton.font = [NSFont systemFontOfSize:10];
-    self.clearAllButton.toolTip = @"Delete all objects";
-    self.clearAllButton.bezelColor = NSColor.systemRedColor; // sfondo rosso
-    [controlsRow addSubview:self.clearAllButton];
+                                                 target:self
+                                                 action:@selector(clearAllObjects:)];
+    clearAllButton.translatesAutoresizingMaskIntoConstraints = NO;
+    clearAllButton.bezelStyle = NSBezelStyleRounded;
+    clearAllButton.font = [NSFont systemFontOfSize:10];
+    clearAllButton.toolTip = @"Delete all objects";
+    clearAllButton.bezelColor = NSColor.systemRedColor; // sfondo rosso
+    // Sposta clearAllButton come subview di self invece che controlsRow
+    [self addSubview:clearAllButton];
     
     // NEW: Snap controls row
     NSView *snapRow = [[NSView alloc] init];
@@ -189,10 +190,10 @@
         // Solo Lock sulla prima riga
         [self.lockCreationToggle.leadingAnchor constraintEqualToAnchor:controlsRow.leadingAnchor],
         [self.lockCreationToggle.centerYAnchor constraintEqualToAnchor:controlsRow.centerYAnchor],
-        [self.lockCreationToggle.widthAnchor constraintEqualToConstant:45],
+        [self.lockCreationToggle.widthAnchor constraintEqualToConstant:65],
         
-        // Clear all button (nuova riga sotto controlsRow)
-        [clearAllButton.topAnchor constraintEqualToAnchor:controlsRow.bottomAnchor constant:4],
+        // Clear all button (nuova riga sotto controlsRow, come subview di self)
+        [clearAllButton.topAnchor constraintEqualToAnchor:controlsRow.bottomAnchor constant:8],
         [clearAllButton.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
         [clearAllButton.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
         [clearAllButton.heightAnchor constraintEqualToConstant:20],
@@ -244,7 +245,7 @@
         @{@"title": @"Rectangle", @"type": @(ChartObjectTypeRectangle)},
         @{@"title": @"Fibonacci", @"type": @(ChartObjectTypeFibonacci)},
         @{@"title": @"Trailing Fibo", @"type": @(ChartObjectTypeTrailingFibo)},
-        @{@"title": @"Trailing Between", @"type": @(ChartObjectTypeTrailingFiboBetween)},
+        @{@"title": @"Trailing F 2CP", @"type": @(ChartObjectTypeTrailingFiboBetween)},
         @{@"title": @"Channel", @"type": @(ChartObjectTypeChannel)},        // AGGIUNTO
         @{@"title": @"Target", @"type": @(ChartObjectTypeTarget)},
         @{@"title": @"Free Draw", @"type": @(ChartObjectTypeFreeDrawing)},
@@ -270,7 +271,7 @@
         [self.buttonsStackView addArrangedSubview:button];
         [buttons addObject:button];
         
-        [button.widthAnchor constraintEqualToConstant:100].active = YES;
+        [button.widthAnchor constraintEqualToConstant:90].active = YES;
     }
     
     self.objectButtons = [buttons copy];

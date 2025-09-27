@@ -52,7 +52,6 @@ NS_ASSUME_NONNULL_BEGIN
 
 // NEW: Lock toggle
 @property (nonatomic, strong) NSButton *lockCreationToggle;
-@property (nonatomic, strong) NSButton *clearAllButton;
 
 // NEW: Snap controls
 @property (nonatomic, strong) NSSlider *snapIntensitySlider;

@@ -10,6 +10,18 @@
 @class NSTableView, NSTabView, NSTextField, NSButton, NSProgressIndicator, NSPopUpButton, NSSegmentedControl, NSScrollView;
 
 // ============================================================================
+// MISSING ENUM DEFINITIONS - AGGIUNTI PER COMPILAZIONE
+// ============================================================================
+
+typedef NS_ENUM(NSInteger, YahooScreenerType) {
+    YahooScreenerTypeMostActive,
+    YahooScreenerTypeGainers,
+    YahooScreenerTypeLosers,
+    YahooScreenerTypeCustom
+};
+
+
+// ============================================================================
 // ADVANCED FILTER TYPES
 // ============================================================================
 
@@ -27,6 +39,7 @@ typedef NS_ENUM(NSInteger, AdvancedFilterComparison) {
     AdvancedFilterBetween,         // btwn
     AdvancedFilterContains         // contains
 };
+
 
 // ============================================================================
 // ADVANCED FILTER MODEL
@@ -111,6 +124,62 @@ typedef NS_ENUM(NSInteger, AdvancedFilterComparison) {
 @property (nonatomic, strong, readonly) NSMutableArray<YahooScreenerResult *> *currentResults;
 @property (nonatomic, strong, readonly) NSMutableArray<FilterCategory *> *filterCategories;
 @property (nonatomic, strong, readonly) NSMutableDictionary<NSString *, AdvancedScreenerFilter *> *activeFilters;
+
+
+
+// Filter UI Elements - BASIC FINANCIAL RATIOS
+@property (nonatomic, strong) NSTextField *peRatioMinField;
+@property (nonatomic, strong) NSTextField *peRatioMaxField;
+@property (nonatomic, strong) NSTextField *pegRatioMinField;
+@property (nonatomic, strong) NSTextField *pegRatioMaxField;
+@property (nonatomic, strong) NSTextField *priceToBookMinField;
+@property (nonatomic, strong) NSTextField *priceToBookMaxField;
+@property (nonatomic, strong) NSTextField *dividendYieldMinField;
+@property (nonatomic, strong) NSTextField *dividendYieldMaxField;
+@property (nonatomic, strong) NSTextField *betaMinField;
+@property (nonatomic, strong) NSTextField *betaMaxField;
+
+// EXPANDED FINANCIAL FILTERS
+@property (nonatomic, strong) NSTextField *forwardPEMinField;
+@property (nonatomic, strong) NSTextField *forwardPEMaxField;
+@property (nonatomic, strong) NSTextField *epsTrailingTwelveMonthsMinField;
+@property (nonatomic, strong) NSTextField *epsTrailingTwelveMonthsMaxField;
+@property (nonatomic, strong) NSTextField *epsForwardMinField;
+@property (nonatomic, strong) NSTextField *epsForwardMaxField;
+@property (nonatomic, strong) NSTextField *trailingAnnualDividendYieldMinField;
+@property (nonatomic, strong) NSTextField *trailingAnnualDividendYieldMaxField;
+@property (nonatomic, strong) NSTextField *dividendRateMinField;
+@property (nonatomic, strong) NSTextField *dividendRateMaxField;
+
+// PRICE & VOLUME FILTERS
+@property (nonatomic, strong) NSTextField *priceMinField;
+@property (nonatomic, strong) NSTextField *priceMaxField;
+@property (nonatomic, strong) NSTextField *intradayMarketCapMinField;
+@property (nonatomic, strong) NSTextField *intradayMarketCapMaxField;
+@property (nonatomic, strong) NSTextField *dayVolumeMinField;
+@property (nonatomic, strong) NSTextField *dayVolumeMaxField;
+@property (nonatomic, strong) NSTextField *averageDailyVolume3MonthMinField;
+@property (nonatomic, strong) NSTextField *averageDailyVolume3MonthMaxField;
+
+// PERFORMANCE FILTERS
+@property (nonatomic, strong) NSTextField *oneDayPercentChangeMinField;
+@property (nonatomic, strong) NSTextField *oneDayPercentChangeMaxField;
+@property (nonatomic, strong) NSTextField *fiveDayPercentChangeMinField;
+@property (nonatomic, strong) NSTextField *fiveDayPercentChangeMaxField;
+@property (nonatomic, strong) NSTextField *oneMonthPercentChangeMinField;
+@property (nonatomic, strong) NSTextField *oneMonthPercentChangeMaxField;
+@property (nonatomic, strong) NSTextField *threeMonthPercentChangeMinField;
+@property (nonatomic, strong) NSTextField *threeMonthPercentChangeMaxField;
+@property (nonatomic, strong) NSTextField *sixMonthPercentChangeMinField;
+@property (nonatomic, strong) NSTextField *sixMonthPercentChangeMaxField;
+@property (nonatomic, strong) NSTextField *fiftyTwoWeekPercentChangeMinField;
+@property (nonatomic, strong) NSTextField *fiftyTwoWeekPercentChangeMaxField;
+
+// CATEGORY FILTERS
+@property (nonatomic, strong) NSPopUpButton *secTypePopup;
+@property (nonatomic, strong) NSPopUpButton *exchangePopup;
+@property (nonatomic, strong) NSPopUpButton *industryPopup;
+@property (nonatomic, strong) NSPopUpButton *peerGroupPopup;
 
 #pragma mark - Public Methods
 

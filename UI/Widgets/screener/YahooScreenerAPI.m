@@ -24,7 +24,23 @@
 
 @implementation YahooScreenerCacheEntry
 @end
+// ============================================================================
+// YAHOO SCREENER FILTER IMPLEMENTATION
+// ============================================================================
 
+@implementation YahooScreenerFilter
+
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _field = @"";
+        _comparison = YahooFilterEqual;
+        _values = @[];
+    }
+    return self;
+}
+
+@end
 // ============================================================================
 // MAIN IMPLEMENTATION
 // ============================================================================

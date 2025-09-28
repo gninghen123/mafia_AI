@@ -8,6 +8,13 @@
 
 #import <Foundation/Foundation.h>
 
+
+typedef NS_ENUM(NSInteger, YahooFilterComparison) {
+    YahooFilterEqual,
+    YahooFilterGreaterThan,
+    YahooFilterLessThan,
+    YahooFilterBetween
+};
 @class YahooScreenerResult, YahooScreenerFilter;
 
 NS_ASSUME_NONNULL_BEGIN
@@ -27,7 +34,15 @@ typedef NS_ENUM(NSInteger, YahooScreenerPreset) {
     YahooScreenerPresetMostShorted,
     YahooScreenerPresetCustom
 };
+// ============================================================================
+// YAHOO SCREENER FILTER CLASS
+// ============================================================================
 
+@interface YahooScreenerFilter : NSObject
+@property (nonatomic, strong) NSString *field;
+@property (nonatomic, assign) YahooFilterComparison comparison;
+@property (nonatomic, strong) NSArray *values;
+@end
 // ============================================================================
 // SCREENER API MANAGER
 // ============================================================================

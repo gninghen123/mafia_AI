@@ -181,6 +181,9 @@ typedef NS_ENUM(NSInteger, AdvancedFilterComparison) {
 @property (nonatomic, strong) NSPopUpButton *industryPopup;
 @property (nonatomic, strong) NSPopUpButton *peerGroupPopup;
 
+
+@property (nonatomic, strong) NSButton *combineWithBasicCheckbox;
+
 #pragma mark - Public Methods
 
 /**

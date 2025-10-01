@@ -85,6 +85,14 @@ typedef NS_ENUM(NSInteger, YahooScreenerPreset) {
                 maxResults:(NSInteger)maxResults
                 completion:(void (^)(NSArray<YahooScreenerResult *> *results, NSError *_Nullable error))completion;
 
+
+
+- (void)fetchAdvancedScreenerWithFilters:(NSArray<YahooScreenerFilter *> *)filters
+                          combineWithBasic:(BOOL)combineWithBasic
+                                maxResults:(NSInteger)maxResults
+                              completion:(void (^)(NSArray<YahooScreenerResult *> *results, NSError *_Nullable error))completion;
+
+
 #pragma mark - Utility Methods
 
 /**

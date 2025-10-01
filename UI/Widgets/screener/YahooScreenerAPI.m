@@ -325,6 +325,56 @@
     [task resume];
 }
 
+
+- (void)fetchAdvancedScreenerWithFilters:(NSArray<YahooScreenerFilter *> *)filters
+                          combineWithBasic:(BOOL)combineWithBasic
+                                maxResults:(NSInteger)maxResults
+                                completion:(void (^)(NSArray<YahooScreenerResult *> *results, NSError *_Nullable error))completion {
+    
+    NSString *cacheKey = [NSString stringWithFormat:@"advanced_%@_%lu_%ld",
+                         combineWithBasic ? @"combined" : @"standalone",
+                         (unsigned long)filters.count,
+                         (long)maxResults];
+    
+    // Check cache
+    if ([self shouldUseCachedResult:cacheKey]) {
+        YahooScreenerCacheEntry *entry = self.cache[cacheKey];
+        [self logInfo:@"Returning cached advanced screener results"];
+        completion(entry.results, nil);
+        return;
+    }
+    
+    [self logInfo:@"Fetching advanced screener with %lu filters (combineWithBasic=%@, max=%ld)",
+          (unsigned long)filters.count, combineWithBasic ? @"YES" : @"NO", (long)maxResults];
+    
+    // Build request URL
+    NSString *endpoint = @"screener/custom";
+    NSString *urlString = [NSString stringWithFormat:@"%@/%@", self.baseURL, endpoint];
+    NSURL *url = [NSURL URLWithString:urlString];
+    NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:url];
+    request.HTTPMethod = @"POST";
+    
+    // Convert filters to API format
+    NSMutableArray *filterArray = [NSMutableArray array];
+    for (YahooScreenerFilter *filter in filters) {
+        NSDictionary *filterDict = [self filterToDictionary:filter];
+        [filterArray addObject:filterDict];
+    }
+    
+    // Request body
+    NSDictionary *requestBody = @{
+        @"maxResults": @(maxResults),
+        @"filters": filterArray,
+        @"combineWithBasic": @(combineWithBasic)
+    };
+    
+    [self executeRequest:request
+                withBody:requestBody
+                cacheKey:cacheKey
+              completion:completion];
+}
+
+
 #pragma mark - Response Parsing
 
 - (NSArray<YahooScreenerResult *> *)parseScreenerResults:(id)jsonResponse {

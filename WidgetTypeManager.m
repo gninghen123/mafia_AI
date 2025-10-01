@@ -23,6 +23,7 @@
 #import "NewsWidget.h"
 #import "pinescripteditorwidget.h"
 #import "screenerwidget.h"
+#import "stooqscreenerwidget.h"
 
 @interface WidgetTypeManager ()
 @property (nonatomic, strong) NSDictionary<NSString *, NSArray<NSString *> *> *widgetCategories;
@@ -77,6 +78,7 @@
         @"Analysis": @[
             @"Technical Indicators",
             @"Screener",
+            @"Stooq Screener",
             @"Alerts",
             @"Alerts",
             @"Strategy Tester",
@@ -142,6 +144,7 @@
     typeToClass[@"IBKR Test Widget"]= [IBKRTestWidget class];
     typeToClass[@"News"] = [NewsWidget class];
     typeToClass[@"Screener"] = [ScreenerWidget class];
+    typeToClass[@"Stooq Screener"] = [StooqScreenerWidget class];
     typeToClass[@"PineScript Editor"] = [PineScriptEditorWidget class];
 
     // Map all other types to BaseWidget for now
@@ -184,6 +187,7 @@
 
         @"Technical Indicators": @"waveform.path.ecg",
         @"Screener": @"magnifyingglass",
+        @"Stooq Screener": @"magnifyingglass",
         @"Alerts": @"bell",
         @"Strategy Tester": @"play.rectangle",
         @"Correlation Matrix": @"square.grid.3x3",

@@ -365,7 +365,7 @@
     
     self.sectorPopup = [[NSPopUpButton alloc] init];
     self.sectorPopup.translatesAutoresizingMaskIntoConstraints = NO;
-    [self setupSectorPopup];
+   // [self setupSectorPopup];
     [self.basicFiltersTabView addSubview:self.sectorPopup];
     
     // Filter action buttons
@@ -449,7 +449,7 @@
     self.applyAdvancedFiltersButton.target = self;
     self.applyAdvancedFiltersButton.action = @selector(applyAdvancedFilters);
     [self.advancedFiltersTabView addSubview:self.applyAdvancedFiltersButton];
-    
+
     self.clearAdvancedFiltersButton = [[NSButton alloc] init];
     self.clearAdvancedFiltersButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.clearAdvancedFiltersButton.title = @"Clear Advanced";
@@ -457,7 +457,16 @@
     self.clearAdvancedFiltersButton.target = self;
     self.clearAdvancedFiltersButton.action = @selector(clearAdvancedFilters);
     [self.advancedFiltersTabView addSubview:self.clearAdvancedFiltersButton];
-    
+
+    // NUOVO CHECKBOX - Aggiungi questo dopo clearAdvancedFiltersButton
+    self.combineWithBasicCheckbox = [[NSButton alloc] init];
+    self.combineWithBasicCheckbox.translatesAutoresizingMaskIntoConstraints = NO;
+    self.combineWithBasicCheckbox.buttonType = NSButtonTypeSwitch;
+    self.combineWithBasicCheckbox.title = @"Combine with basic filters (most active)";
+    self.combineWithBasicCheckbox.state = NSControlStateValueOn; // Default: combinare
+    self.combineWithBasicCheckbox.font = [NSFont systemFontOfSize:11];
+    [self.advancedFiltersTabView addSubview:self.combineWithBasicCheckbox];
+
     // Setup advanced filters constraints
     [self setupAdvancedFiltersConstraints:titleLabel];
     
@@ -546,11 +555,166 @@
 }
 
 // Ora il setupFinancialRatioFilters completo ma compatto:
+// NUOVI METODI HELPER SENZA DOPPI PUNTATORI
+// Sostituiscono i vecchi metodi addRangeFilterWithLabel e addDropdownWithLabel
+
+#pragma mark - Helper Methods per Filtri (Versione Pulita)
+
+/**
+ * Crea un filtro range e lo aggiunge alla UI
+ * Ritorna i field creati in un array [minField, maxField]
+ */
+- (NSArray<NSTextField *> *)addRangeFilterWithLabel:(NSString *)labelText
+                                         atPosition:(CGFloat *)yPosition
+                                            spacing:(CGFloat)spacing {
+    
+    // Crea la label principale
+    NSTextField *label = [self createLabel:labelText];
+    [self.advancedFiltersTabView addSubview:label];
+    
+    // Crea le label min/max
+    NSTextField *minLabel = [self createSmallLabel:@"Min:"];
+    [self.advancedFiltersTabView addSubview:minLabel];
+    
+    NSTextField *maxLabel = [self createSmallLabel:@"Max:"];
+    [self.advancedFiltersTabView addSubview:maxLabel];
+    
+    // Crea i field min/max
+    NSTextField *minField = [[NSTextField alloc] init];
+    minField.translatesAutoresizingMaskIntoConstraints = NO;
+    minField.placeholderString = @"0";
+    [self.advancedFiltersTabView addSubview:minField];
+    
+    NSTextField *maxField = [[NSTextField alloc] init];
+    maxField.translatesAutoresizingMaskIntoConstraints = NO;
+    maxField.placeholderString = @"∞";
+    [self.advancedFiltersTabView addSubview:maxField];
+    
+    // Constraints
+    [NSLayoutConstraint activateConstraints:@[
+        // Label principale
+        [label.leadingAnchor constraintEqualToAnchor:self.advancedFiltersTabView.leadingAnchor constant:20],
+        [label.topAnchor constraintEqualToAnchor:self.advancedFiltersTabView.topAnchor constant:*yPosition],
+        [label.widthAnchor constraintEqualToConstant:130],
+        
+        // Min label e field
+        [minLabel.leadingAnchor constraintEqualToAnchor:label.trailingAnchor constant:10],
+        [minLabel.centerYAnchor constraintEqualToAnchor:label.centerYAnchor],
+        [minLabel.widthAnchor constraintEqualToConstant:35],
+        
+        [minField.leadingAnchor constraintEqualToAnchor:minLabel.trailingAnchor constant:5],
+        [minField.centerYAnchor constraintEqualToAnchor:label.centerYAnchor],
+        [minField.widthAnchor constraintEqualToConstant:80],
+        
+        // Max label e field
+        [maxLabel.leadingAnchor constraintEqualToAnchor:minField.trailingAnchor constant:10],
+        [maxLabel.centerYAnchor constraintEqualToAnchor:label.centerYAnchor],
+        [maxLabel.widthAnchor constraintEqualToConstant:35],
+        
+        [maxField.leadingAnchor constraintEqualToAnchor:maxLabel.trailingAnchor constant:5],
+        [maxField.centerYAnchor constraintEqualToAnchor:label.centerYAnchor],
+        [maxField.widthAnchor constraintEqualToConstant:80]
+    ]];
+    
+    // Aggiorna la posizione Y
+    *yPosition += spacing;
+    
+    // Ritorna i field creati
+    return @[minField, maxField];
+}
+
+/**
+ * Crea un dropdown filter e lo aggiunge alla UI
+ * Ritorna il popup button creato
+ */
+- (NSPopUpButton *)addDropdownWithLabel:(NSString *)labelText
+                                options:(NSArray<NSString *> *)options
+                             atPosition:(CGFloat *)yPosition
+                                spacing:(CGFloat)spacing {
+    
+    // Crea la label
+    NSTextField *label = [self createLabel:labelText];
+    [self.advancedFiltersTabView addSubview:label];
+    
+    // Crea il popup button
+    NSPopUpButton *popupButton = [[NSPopUpButton alloc] init];
+    popupButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [popupButton removeAllItems];
+    for (NSString *option in options) {
+        [popupButton addItemWithTitle:option];
+    }
+    [self.advancedFiltersTabView addSubview:popupButton];
+    
+    // Constraints
+    [NSLayoutConstraint activateConstraints:@[
+        [label.leadingAnchor constraintEqualToAnchor:self.advancedFiltersTabView.leadingAnchor constant:20],
+        [label.topAnchor constraintEqualToAnchor:self.advancedFiltersTabView.topAnchor constant:*yPosition],
+        [label.widthAnchor constraintEqualToConstant:130],
+        
+        [popupButton.leadingAnchor constraintEqualToAnchor:label.trailingAnchor constant:10],
+        [popupButton.centerYAnchor constraintEqualToAnchor:label.centerYAnchor],
+        [popupButton.widthAnchor constraintEqualToConstant:200]
+    ]];
+    
+    // Aggiorna la posizione Y
+    *yPosition += spacing;
+    
+    // Ritorna il popup creato
+    return popupButton;
+}
+
+/**
+ * Crea una label di sezione con stile bold
+ */
+- (NSTextField *)createSectionLabel:(NSString *)text {
+    NSTextField *label = [[NSTextField alloc] init];
+    label.stringValue = text;
+    label.editable = NO;
+    label.selectable = NO;
+    label.bordered = NO;
+    label.backgroundColor = [NSColor clearColor];
+    label.font = [NSFont boldSystemFontOfSize:14];
+    label.textColor = [NSColor labelColor];
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    return label;
+}
+
+/**
+ * Crea una label normale
+ */
+- (NSTextField *)createLabel:(NSString *)text {
+    NSTextField *label = [[NSTextField alloc] init];
+    label.stringValue = text;
+    label.editable = NO;
+    label.selectable = NO;
+    label.bordered = NO;
+    label.backgroundColor = [NSColor clearColor];
+    label.font = [NSFont systemFontOfSize:12];
+    label.textColor = [NSColor labelColor];
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    return label;
+}
+
+/**
+ * Crea una piccola label per Min/Max
+ */
+- (NSTextField *)createSmallLabel:(NSString *)text {
+    NSTextField *label = [self createLabel:text];
+    label.font = [NSFont systemFontOfSize:10];
+    label.textColor = [NSColor secondaryLabelColor];
+    return label;
+}
+
+#pragma mark - setupFinancialRatioFilters (VERSIONE PULITA)
+
 - (void)setupFinancialRatioFilters {
     CGFloat yPosition = 60;
     CGFloat spacing = 35;
     
+    // ========================================================================
     // SEZIONE 1: BASIC FINANCIAL RATIOS
+    // ========================================================================
+    
     NSTextField *basicLabel = [self createSectionLabel:@"Basic Financial Ratios"];
     [self.advancedFiltersTabView addSubview:basicLabel];
     [NSLayoutConstraint activateConstraints:@[
@@ -559,15 +723,37 @@
     ]];
     yPosition += 40;
     
-    [self addRangeFilterWithLabel:@"P/E Ratio:" minField:&_peRatioMinField maxField:&_peRatioMaxField atPosition:&yPosition spacing:spacing];
-    [self addRangeFilterWithLabel:@"Forward P/E:" minField:&_forwardPEMinField maxField:&_forwardPEMaxField atPosition:&yPosition spacing:spacing];
-    [self addRangeFilterWithLabel:@"PEG Ratio:" minField:&_pegRatioMinField maxField:&_pegRatioMaxField atPosition:&yPosition spacing:spacing];
-    [self addRangeFilterWithLabel:@"Price-to-Book:" minField:&_priceToBookMinField maxField:&_priceToBookMaxField atPosition:&yPosition spacing:spacing];
-    [self addRangeFilterWithLabel:@"Beta:" minField:&_betaMinField maxField:&_betaMaxField atPosition:&yPosition spacing:spacing];
+    // P/E Ratio
+    NSArray *peFields = [self addRangeFilterWithLabel:@"P/E Ratio:" atPosition:&yPosition spacing:spacing];
+    self.peRatioMinField = peFields[0];
+    self.peRatioMaxField = peFields[1];
+    
+    // Forward P/E
+    NSArray *forwardPEFields = [self addRangeFilterWithLabel:@"Forward P/E:" atPosition:&yPosition spacing:spacing];
+    self.forwardPEMinField = forwardPEFields[0];
+    self.forwardPEMaxField = forwardPEFields[1];
+    
+    // PEG Ratio
+    NSArray *pegFields = [self addRangeFilterWithLabel:@"PEG Ratio:" atPosition:&yPosition spacing:spacing];
+    self.pegRatioMinField = pegFields[0];
+    self.pegRatioMaxField = pegFields[1];
+    
+    // Price-to-Book
+    NSArray *ptbFields = [self addRangeFilterWithLabel:@"Price-to-Book:" atPosition:&yPosition spacing:spacing];
+    self.priceToBookMinField = ptbFields[0];
+    self.priceToBookMaxField = ptbFields[1];
+    
+    // Beta
+    NSArray *betaFields = [self addRangeFilterWithLabel:@"Beta:" atPosition:&yPosition spacing:spacing];
+    self.betaMinField = betaFields[0];
+    self.betaMaxField = betaFields[1];
     
     yPosition += 20;
     
+    // ========================================================================
     // SEZIONE 2: EARNINGS & DIVIDENDS
+    // ========================================================================
+    
     NSTextField *earningsLabel = [self createSectionLabel:@"Earnings & Dividends"];
     [self.advancedFiltersTabView addSubview:earningsLabel];
     [NSLayoutConstraint activateConstraints:@[
@@ -576,15 +762,37 @@
     ]];
     yPosition += 40;
     
-    [self addRangeFilterWithLabel:@"EPS (TTM):" minField:&_epsTrailingTwelveMonthsMinField maxField:&_epsTrailingTwelveMonthsMaxField atPosition:&yPosition spacing:spacing];
-    [self addRangeFilterWithLabel:@"EPS (Forward):" minField:&_epsForwardMinField maxField:&_epsForwardMaxField atPosition:&yPosition spacing:spacing];
-    [self addRangeFilterWithLabel:@"Dividend Yield (%):" minField:&_dividendYieldMinField maxField:&_dividendYieldMaxField atPosition:&yPosition spacing:spacing];
-    [self addRangeFilterWithLabel:@"Annual Div Yield (%):" minField:&_trailingAnnualDividendYieldMinField maxField:&_trailingAnnualDividendYieldMaxField atPosition:&yPosition spacing:spacing];
-    [self addRangeFilterWithLabel:@"Dividend Rate ($):" minField:&_dividendRateMinField maxField:&_dividendRateMaxField atPosition:&yPosition spacing:spacing];
+    // EPS (TTM)
+    NSArray *epsFields = [self addRangeFilterWithLabel:@"EPS (TTM):" atPosition:&yPosition spacing:spacing];
+    self.epsTrailingTwelveMonthsMinField = epsFields[0];
+    self.epsTrailingTwelveMonthsMaxField = epsFields[1];
+    
+    // EPS (Forward)
+    NSArray *epsForwardFields = [self addRangeFilterWithLabel:@"EPS (Forward):" atPosition:&yPosition spacing:spacing];
+    self.epsForwardMinField = epsForwardFields[0];
+    self.epsForwardMaxField = epsForwardFields[1];
+    
+    // Dividend Yield (%)
+    NSArray *divYieldFields = [self addRangeFilterWithLabel:@"Dividend Yield (%):" atPosition:&yPosition spacing:spacing];
+    self.dividendYieldMinField = divYieldFields[0];
+    self.dividendYieldMaxField = divYieldFields[1];
+    
+    // Annual Dividend Yield (%)
+    NSArray *annualDivFields = [self addRangeFilterWithLabel:@"Annual Div Yield (%):" atPosition:&yPosition spacing:spacing];
+    self.trailingAnnualDividendYieldMinField = annualDivFields[0];
+    self.trailingAnnualDividendYieldMaxField = annualDivFields[1];
+    
+    // Dividend Rate ($)
+    NSArray *divRateFields = [self addRangeFilterWithLabel:@"Dividend Rate ($):" atPosition:&yPosition spacing:spacing];
+    self.dividendRateMinField = divRateFields[0];
+    self.dividendRateMaxField = divRateFields[1];
     
     yPosition += 20;
     
+    // ========================================================================
     // SEZIONE 3: PRICE & VOLUME
+    // ========================================================================
+    
     NSTextField *priceLabel = [self createSectionLabel:@"Price & Volume"];
     [self.advancedFiltersTabView addSubview:priceLabel];
     [NSLayoutConstraint activateConstraints:@[
@@ -593,14 +801,32 @@
     ]];
     yPosition += 40;
     
-    [self addRangeFilterWithLabel:@"Price ($):" minField:&_priceMinField maxField:&_priceMaxField atPosition:&yPosition spacing:spacing];
-    [self addRangeFilterWithLabel:@"Market Cap ($):" minField:&_intradayMarketCapMinField maxField:&_intradayMarketCapMaxField atPosition:&yPosition spacing:spacing];
-    [self addRangeFilterWithLabel:@"Day Volume:" minField:&_dayVolumeMinField maxField:&_dayVolumeMaxField atPosition:&yPosition spacing:spacing];
-    [self addRangeFilterWithLabel:@"Avg Vol (3M):" minField:&_averageDailyVolume3MonthMinField maxField:&_averageDailyVolume3MonthMaxField atPosition:&yPosition spacing:spacing];
+    // Price ($)
+    NSArray *priceFields = [self addRangeFilterWithLabel:@"Price ($):" atPosition:&yPosition spacing:spacing];
+    self.priceMinField = priceFields[0];
+    self.priceMaxField = priceFields[1];
+    
+    // Market Cap ($)
+    NSArray *marketCapFields = [self addRangeFilterWithLabel:@"Market Cap ($):" atPosition:&yPosition spacing:spacing];
+    self.intradayMarketCapMinField = marketCapFields[0];
+    self.intradayMarketCapMaxField = marketCapFields[1];
+    
+    // Day Volume
+    NSArray *volumeFields = [self addRangeFilterWithLabel:@"Day Volume:" atPosition:&yPosition spacing:spacing];
+    self.dayVolumeMinField = volumeFields[0];
+    self.dayVolumeMaxField = volumeFields[1];
+    
+    // Average Volume (3M)
+    NSArray *avgVolumeFields = [self addRangeFilterWithLabel:@"Avg Vol (3M):" atPosition:&yPosition spacing:spacing];
+    self.averageDailyVolume3MonthMinField = avgVolumeFields[0];
+    self.averageDailyVolume3MonthMaxField = avgVolumeFields[1];
     
     yPosition += 20;
     
-    // SEZIONE 4: PERFORMANCE
+    // ========================================================================
+    // SEZIONE 4: PERFORMANCE (% CHANGE)
+    // ========================================================================
+    
     NSTextField *perfLabel = [self createSectionLabel:@"Performance (% Change)"];
     [self.advancedFiltersTabView addSubview:perfLabel];
     [NSLayoutConstraint activateConstraints:@[
@@ -609,16 +835,42 @@
     ]];
     yPosition += 40;
     
-    [self addRangeFilterWithLabel:@"1 Day (%):" minField:&_oneDayPercentChangeMinField maxField:&_oneDayPercentChangeMaxField atPosition:&yPosition spacing:spacing];
-    [self addRangeFilterWithLabel:@"5 Day (%):" minField:&_fiveDayPercentChangeMinField maxField:&_fiveDayPercentChangeMaxField atPosition:&yPosition spacing:spacing];
-    [self addRangeFilterWithLabel:@"1 Month (%):" minField:&_oneMonthPercentChangeMinField maxField:&_oneMonthPercentChangeMaxField atPosition:&yPosition spacing:spacing];
-    [self addRangeFilterWithLabel:@"3 Month (%):" minField:&_threeMonthPercentChangeMinField maxField:&_threeMonthPercentChangeMaxField atPosition:&yPosition spacing:spacing];
-    [self addRangeFilterWithLabel:@"6 Month (%):" minField:&_sixMonthPercentChangeMinField maxField:&_sixMonthPercentChangeMaxField atPosition:&yPosition spacing:spacing];
-    [self addRangeFilterWithLabel:@"52 Week (%):" minField:&_fiftyTwoWeekPercentChangeMinField maxField:&_fiftyTwoWeekPercentChangeMaxField atPosition:&yPosition spacing:spacing];
+    // 1 Day (%)
+    NSArray *oneDayFields = [self addRangeFilterWithLabel:@"1 Day (%):" atPosition:&yPosition spacing:spacing];
+    self.oneDayPercentChangeMinField = oneDayFields[0];
+    self.oneDayPercentChangeMaxField = oneDayFields[1];
+    
+    // 5 Day (%)
+    NSArray *fiveDayFields = [self addRangeFilterWithLabel:@"5 Day (%):" atPosition:&yPosition spacing:spacing];
+    self.fiveDayPercentChangeMinField = fiveDayFields[0];
+    self.fiveDayPercentChangeMaxField = fiveDayFields[1];
+    
+    // 1 Month (%)
+    NSArray *oneMonthFields = [self addRangeFilterWithLabel:@"1 Month (%):" atPosition:&yPosition spacing:spacing];
+    self.oneMonthPercentChangeMinField = oneMonthFields[0];
+    self.oneMonthPercentChangeMaxField = oneMonthFields[1];
+    
+    // 3 Month (%)
+    NSArray *threeMonthFields = [self addRangeFilterWithLabel:@"3 Month (%):" atPosition:&yPosition spacing:spacing];
+    self.threeMonthPercentChangeMinField = threeMonthFields[0];
+    self.threeMonthPercentChangeMaxField = threeMonthFields[1];
+    
+    // 6 Month (%)
+    NSArray *sixMonthFields = [self addRangeFilterWithLabel:@"6 Month (%):" atPosition:&yPosition spacing:spacing];
+    self.sixMonthPercentChangeMinField = sixMonthFields[0];
+    self.sixMonthPercentChangeMaxField = sixMonthFields[1];
+    
+    // 52 Week (%)
+    NSArray *fiftyTwoWeekFields = [self addRangeFilterWithLabel:@"52 Week (%):" atPosition:&yPosition spacing:spacing];
+    self.fiftyTwoWeekPercentChangeMinField = fiftyTwoWeekFields[0];
+    self.fiftyTwoWeekPercentChangeMaxField = fiftyTwoWeekFields[1];
     
     yPosition += 20;
     
+    // ========================================================================
     // SEZIONE 5: CATEGORIES
+    // ========================================================================
+    
     NSTextField *catLabel = [self createSectionLabel:@"Categories"];
     [self.advancedFiltersTabView addSubview:catLabel];
     [NSLayoutConstraint activateConstraints:@[
@@ -627,15 +879,58 @@
     ]];
     yPosition += 40;
     
-    [self addDropdownWithLabel:@"Security Type:" popup:&_secTypePopup options:@[@"All Types", @"Stock", @"ETF", @"Index", @"Mutual Fund"] atPosition:&yPosition spacing:spacing];
-    [self addDropdownWithLabel:@"Exchange:" popup:&_exchangePopup options:@[@"All Exchanges", @"NYSE", @"NASDAQ", @"AMEX", @"OTC"] atPosition:&yPosition spacing:spacing];
-    [self addDropdownWithLabel:@"Industry:" popup:&_industryPopup options:[self getIndustryOptions] atPosition:&yPosition spacing:spacing];
-    [self addDropdownWithLabel:@"Peer Group:" popup:&_peerGroupPopup options:@[@"All Groups", @"Large Cap", @"Mid Cap", @"Small Cap", @"Micro Cap"] atPosition:&yPosition spacing:spacing];
+    // Security Type
+    self.secTypePopup = [self addDropdownWithLabel:@"Security Type:"
+                                           options:@[@"All Types", @"Stock", @"ETF", @"Index", @"Mutual Fund"]
+                                        atPosition:&yPosition
+                                           spacing:spacing];
+    
+    // Exchange
+    self.exchangePopup = [self addDropdownWithLabel:@"Exchange:"
+                                            options:@[@"All Exchanges", @"NYSE", @"NASDAQ", @"AMEX", @"OTC"]
+                                         atPosition:&yPosition
+                                            spacing:spacing];
+    
+    // Industry
+    self.industryPopup = [self addDropdownWithLabel:@"Industry:"
+                                            options:[self getIndustryOptions]
+                                         atPosition:&yPosition
+                                            spacing:spacing];
+    
+    // Peer Group
+    self.peerGroupPopup = [self addDropdownWithLabel:@"Peer Group:"
+                                             options:@[@"All Groups", @"Large Cap", @"Mid Cap", @"Small Cap", @"Micro Cap"]
+                                          atPosition:&yPosition
+                                             spacing:spacing];
 }
 
+#pragma mark - Helper per Industry Options
+
 - (NSArray<NSString *> *)getIndustryOptions {
-    return @[@"All Industries", @"Software", @"Semiconductors", @"Biotechnology", @"Pharmaceuticals", @"Banks", @"Insurance", @"Real Estate", @"Oil & Gas", @"Utilities", @"Retail", @"Automotive", @"Aerospace & Defense", @"Telecommunications", @"Media & Entertainment", @"Food & Beverage", @"Consumer Goods", @"Industrial Equipment", @"Construction", @"Transportation"];
+    return @[
+        @"All Industries",
+        @"Software",
+        @"Semiconductors",
+        @"Biotechnology",
+        @"Pharmaceuticals",
+        @"Banks",
+        @"Insurance",
+        @"Real Estate",
+        @"Oil & Gas",
+        @"Utilities",
+        @"Retail",
+        @"Automotive",
+        @"Aerospace & Defense",
+        @"Telecommunications",
+        @"Media & Entertainment",
+        @"Food & Beverage",
+        @"Consumer Goods",
+        @"Industrial Equipment",
+        @"Construction",
+        @"Transportation"
+    ];
 }
+
 - (void)addRangeFilter:(NSString *)labelText
               minField:(NSTextField **)minField
               maxField:(NSTextField **)maxField
@@ -815,16 +1110,57 @@
                   minField:(NSTextField *)minField
                   maxField:(NSTextField *)maxField {
     
-    if (minField.stringValue.length > 0 || maxField.stringValue.length > 0) {
-        AdvancedScreenerFilter *filter = [AdvancedScreenerFilter filterWithKey:key
-                                                                   displayName:displayName
-                                                                          type:AdvancedFilterTypeRange];
-        filter.minValue = minField.stringValue.length > 0 ? @([minField.stringValue doubleValue]) : nil;
-        filter.maxValue = maxField.stringValue.length > 0 ? @([maxField.stringValue doubleValue]) : nil;
-        filter.isActive = YES;
-        self.activeFilters[key] = filter;
+    // ✅ CONTROLLA che i field esistano
+    if (!minField || !maxField) {
+        NSLog(@"❌ collectRangeFilter: Field is nil for key %@", key);
+        return;
     }
+    
+    // ✅ CONTROLLA se almeno uno dei field ha un valore
+    BOOL hasMinValue = minField.stringValue.length > 0;
+    BOOL hasMaxValue = maxField.stringValue.length > 0;
+    
+    if (!hasMinValue && !hasMaxValue) {
+        // Nessun filtro da applicare
+        return;
+    }
+    
+    // ✅ CREA il filtro
+    AdvancedScreenerFilter *filter = [AdvancedScreenerFilter filterWithKey:key
+                                                               displayName:displayName
+                                                                      type:AdvancedFilterTypeRange];
+    
+    // ✅ GESTIONE SICURA dei valori NSNumber
+    if (hasMinValue) {
+        // Crea NSNumber e mantienilo in scope
+        double minValue = [minField.stringValue doubleValue];
+        filter.minValue = [NSNumber numberWithDouble:minValue];
+        NSLog(@"✅ Min value for %@: %.2f", key, minValue);
+    } else {
+        filter.minValue = nil;
+    }
+    
+    if (hasMaxValue) {
+        // Crea NSNumber e mantienilo in scope
+        double maxValue = [maxField.stringValue doubleValue];
+        filter.maxValue = [NSNumber numberWithDouble:maxValue];
+        NSLog(@"✅ Max value for %@: %.2f", key, maxValue);
+    } else {
+        filter.maxValue = nil;
+    }
+    
+    // ✅ IMPOSTA gli altri parametri
+    filter.isActive = YES;
+    
+    // ✅ SALVA il filtro
+    [self.activeFilters setObject:filter forKey:key];
+    
+    NSLog(@"✅ Added range filter: %@ (min=%@, max=%@)",
+          displayName,
+          filter.minValue ?: @"nil",
+          filter.maxValue ?: @"nil");
 }
+
 
 - (void)collectSelectFilter:(NSString *)key
                 displayName:(NSString *)displayName
@@ -851,30 +1187,7 @@
     *yPosition += 25;
 }
 
-- (NSArray<NSString *> *)getIndustryOptions {
-    return @[
-        @"All Industries",
-        @"Software",
-        @"Semiconductors",
-        @"Biotechnology",
-        @"Pharmaceuticals",
-        @"Banks",
-        @"Insurance",
-        @"Real Estate",
-        @"Oil & Gas",
-        @"Utilities",
-        @"Retail",
-        @"Automotive",
-        @"Aerospace & Defense",
-        @"Telecommunications",
-        @"Media & Entertainment",
-        @"Food & Beverage",
-        @"Consumer Goods",
-        @"Industrial Equipment",
-        @"Construction",
-        @"Transportation"
-    ];
-}
+
 
 - (void)addSelectFilterAtPosition:(CGFloat *)yPosition
                             label:(NSString *)labelText
@@ -999,6 +1312,7 @@
     [self addTableColumn:@"dividendYield" title:@"Div %" width:60];
     [self addTableColumn:@"beta" title:@"Beta" width:60];
     [self addTableColumn:@"sector" title:@"Sector" width:120];
+    
 }
 
 - (void)addTableColumn:(NSString *)identifier title:(NSString *)title width:(CGFloat)width {
@@ -1006,41 +1320,13 @@
     column.title = title;
     column.width = width;
     column.minWidth = width * 0.7;
+    column.sortDescriptorPrototype = [[NSSortDescriptor alloc] initWithKey:identifier ascending:YES];
     [self.resultsTable addTableColumn:column];
 }
 
 #pragma mark - Helper Methods
 
-- (NSTextField *)createLabel:(NSString *)text {
-    NSTextField *label = [[NSTextField alloc] init];
-    label.translatesAutoresizingMaskIntoConstraints = NO;
-    label.editable = NO;
-    label.bezeled = NO;
-    label.backgroundColor = [NSColor clearColor];
-    label.font = [NSFont systemFontOfSize:12 weight:NSFontWeightMedium];
-    label.stringValue = text;
-    return label;
-}
 
-- (NSTextField *)createSectionLabel:(NSString *)text {
-    NSTextField *label = [self createLabel:text];
-    label.font = [NSFont systemFontOfSize:14 weight:NSFontWeightSemibold];
-    return label;
-}
-
-- (NSTextField *)createSmallLabel:(NSString *)text {
-    NSTextField *label = [self createLabel:text];
-    label.font = [NSFont systemFontOfSize:11];
-    return label;
-}
-
-- (void)setupSectorPopup {
-    NSArray *sectors = [[YahooScreenerAPI sharedManager] availableSectors];
-    [self.sectorPopup removeAllItems];
-    for (NSString *sector in sectors) {
-        [self.sectorPopup addItemWithTitle:sector];
-    }
-}
 
 #pragma mark - Constraints Setup Methods
 
@@ -1134,16 +1420,22 @@
         [titleLabel.topAnchor constraintEqualToAnchor:self.advancedFiltersTabView.topAnchor constant:20],
         [titleLabel.leadingAnchor constraintEqualToAnchor:self.advancedFiltersTabView.leadingAnchor constant:20],
         
-        [self.applyAdvancedFiltersButton.bottomAnchor constraintEqualToAnchor:self.advancedFiltersTabView.bottomAnchor constant:-20],
+        // Bottom section con checkbox
+        [self.combineWithBasicCheckbox.bottomAnchor constraintEqualToAnchor:self.advancedFiltersTabView.bottomAnchor constant:-20],
+        [self.combineWithBasicCheckbox.leadingAnchor constraintEqualToAnchor:self.advancedFiltersTabView.leadingAnchor constant:20],
+        [self.combineWithBasicCheckbox.trailingAnchor constraintEqualToAnchor:self.advancedFiltersTabView.trailingAnchor constant:-20],
+        
+        // Apply button sopra checkbox
+        [self.applyAdvancedFiltersButton.bottomAnchor constraintEqualToAnchor:self.combineWithBasicCheckbox.topAnchor constant:-12],
         [self.applyAdvancedFiltersButton.leadingAnchor constraintEqualToAnchor:self.advancedFiltersTabView.leadingAnchor constant:20],
         [self.applyAdvancedFiltersButton.widthAnchor constraintEqualToConstant:160],
         
+        // Clear button accanto ad Apply
         [self.clearAdvancedFiltersButton.centerYAnchor constraintEqualToAnchor:self.applyAdvancedFiltersButton.centerYAnchor],
         [self.clearAdvancedFiltersButton.leadingAnchor constraintEqualToAnchor:self.applyAdvancedFiltersButton.trailingAnchor constant:12],
         [self.clearAdvancedFiltersButton.widthAnchor constraintEqualToConstant:130]
     ]];
 }
-
 #pragma mark - Data Methods
 
 - (void)refreshData {
@@ -1298,9 +1590,14 @@
     [self collectFinancialRatioFilters];
     
     if (self.activeFilters.count == 0) {
-        // No advanced filters, fall back to basic refresh
         [self refreshData];
         return;
+    }
+    
+    // AGGIUNGI QUESTA LINEA - Leggi maxResults dal campo UI
+    NSInteger maxResults = [self.maxResultsField.stringValue integerValue];
+    if (maxResults <= 0) {
+        maxResults = 100; // fallback
     }
     
     self.statusLabel.stringValue = @"Applying advanced filters...";
@@ -1316,16 +1613,29 @@
         }
     }
     
-    [[YahooScreenerAPI sharedManager] fetchCustomScreenerWithFilters:filters
-                                                          maxResults:self.maxResults
-                                                          completion:^(NSArray<YahooScreenerResult *> *results, NSError *error) {
+    BOOL combineWithBasic = (self.combineWithBasicCheckbox.state == NSControlStateValueOn);
+    
+    // USA maxResults dal campo UI invece di self.maxResults
+    [self fetchAdvancedScreenerWithFilters:filters
+                            combineWithBasic:combineWithBasic
+                                  maxResults:maxResults  // <- CORRETTO
+                                  completion:^(NSArray<YahooScreenerResult *> *results, NSError *error) {
         [self handleScreenerResults:results error:error];
     }];
-    
-    NSLog(@"🎯 ScreenerWidget: Applied %lu advanced filters", (unsigned long)filters.count);
 }
 
 
+- (void)fetchAdvancedScreenerWithFilters:(NSArray<YahooScreenerFilter *> *)filters
+                          combineWithBasic:(BOOL)combineWithBasic
+                                maxResults:(NSInteger)maxResults
+                                completion:(void (^)(NSArray<YahooScreenerResult *> *results, NSError *error))completion {
+    
+    // Chiama il nuovo metodo di YahooScreenerAPI
+    [[YahooScreenerAPI sharedManager] fetchAdvancedScreenerWithFilters:filters
+                                                        combineWithBasic:combineWithBasic
+                                                              maxResults:maxResults
+                                                              completion:completion];
+}
 
 - (YahooScreenerFilter *)convertToYahooFilter:(AdvancedScreenerFilter *)advFilter {
     YahooScreenerFilter *filter = [[YahooScreenerFilter alloc] init];

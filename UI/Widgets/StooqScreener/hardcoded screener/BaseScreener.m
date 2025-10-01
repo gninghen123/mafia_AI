@@ -74,4 +74,12 @@
     return self.parameters[key];
 }
 
+#pragma mark - Default Parameters
+
+- (NSDictionary *)defaultParameters {
+    // Base implementation returns empty
+    // Subclasses should override
+    return @{};
+}
+
 @end

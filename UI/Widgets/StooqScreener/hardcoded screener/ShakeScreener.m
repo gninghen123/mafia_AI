@@ -123,4 +123,14 @@
     return [results copy];
 }
 
+- (NSDictionary *)defaultParameters {
+    return @{
+        @"volume_multiplier": @2.0,
+        @"min_dollar_volume": @5000000,
+        @"min_volume": @1000000,
+        @"gap_threshold": @1.2,
+        @"lookback_days": @16
+    };
+}
+
 @end

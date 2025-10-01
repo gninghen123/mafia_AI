@@ -1,5 +1,5 @@
 //
-//  StooqScreenerWidget.m
+//  StooqScreenerWidget.m - PARTE 1
 //  TradingApp
 //
 
@@ -8,6 +8,8 @@
 #import "StooqDataManager.h"
 #import "ScreenerBatchRunner.h"
 #import "ScreenerModel.h"
+#import "ScreenerRegistry.h"
+#import "BaseScreener.h"
 
 @interface StooqScreenerWidget () <NSTableViewDelegate, NSTableViewDataSource, ScreenerBatchRunnerDelegate>
 
@@ -19,15 +21,33 @@
 // UI Components - Tabs
 @property (nonatomic, strong) NSTabView *tabView;
 
-// Tab 1: Models
+// Tab 1: Models - Split View
+@property (nonatomic, strong) NSSplitView *modelsSplitView;
+
+// Left side: Models list
 @property (nonatomic, strong) NSTableView *modelsTableView;
 @property (nonatomic, strong) NSScrollView *modelsScrollView;
-@property (nonatomic, strong) NSButton *runButton;
 @property (nonatomic, strong) NSButton *createModelButton;
-@property (nonatomic, strong) NSButton *editModelButton;
 @property (nonatomic, strong) NSButton *deleteModelButton;
+@property (nonatomic, strong) NSButton *duplicateModelButton;
+
+// Right side: Model editor - UPDATED
+@property (nonatomic, strong) NSTableView *screenersTableView;  // Screeners list
+@property (nonatomic, strong) NSScrollView *screenersScrollView;
+@property (nonatomic, strong) NSTableView *parametersTableView;  // Parameters for selected screener
+@property (nonatomic, strong) NSScrollView *parametersScrollView;
+@property (nonatomic, strong) NSButton *addScreenerButton;
+@property (nonatomic, strong) NSButton *removeScreenerButton;
+@property (nonatomic, strong) NSButton *saveChangesButton;
+@property (nonatomic, strong) NSButton *revertChangesButton;
+@property (nonatomic, strong) NSTextField *modelNameField;
+@property (nonatomic, strong) NSTextField *modelDescriptionField;
+
+// Bottom bar (Models tab)
+@property (nonatomic, strong) NSButton *runButton;
 @property (nonatomic, strong) NSButton *refreshButton;
 @property (nonatomic, strong) NSTextField *universeLabel;
+@property (nonatomic, strong) NSProgressIndicator *progressIndicator;
 
 // Tab 2: Results
 @property (nonatomic, strong) NSTableView *resultsTableView;
@@ -41,12 +61,17 @@
 @property (nonatomic, strong) NSButton *browseButton;
 @property (nonatomic, strong) NSButton *scanDatabaseButton;
 @property (nonatomic, strong) NSTextField *symbolCountLabel;
-@property (nonatomic, strong) NSProgressIndicator *progressIndicator;
 
 // Data
 @property (nonatomic, strong) NSMutableArray<ScreenerModel *> *models;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, ModelResult *> *executionResults;
 @property (nonatomic, strong) NSArray<NSString *> *availableSymbols;
+
+// Model Editor State
+@property (nonatomic, strong, nullable) ScreenerModel *selectedModel;
+@property (nonatomic, strong, nullable) ScreenerModel *editingModel;
+@property (nonatomic, strong, nullable) ScreenerStep *selectedStep;  // Currently selected screener step
+@property (nonatomic, assign) BOOL hasUnsavedChanges;
 
 @end
 
@@ -72,11 +97,11 @@
 }
 
 - (NSSize)defaultSize {
-    return NSMakeSize(900, 700);
+    return NSMakeSize(1000, 700);
 }
 
 - (NSSize)minimumSize {
-    return NSMakeSize(700, 500);
+    return NSMakeSize(800, 600);
 }
 
 - (void)setupContentView {
@@ -88,7 +113,6 @@
 #pragma mark - UI Setup
 
 - (void)setupUI {
-    // Create tab view
     self.tabView = [[NSTabView alloc] initWithFrame:NSZeroRect];
     self.tabView.translatesAutoresizingMaskIntoConstraints = NO;
     [self.contentView addSubview:self.tabView];
@@ -100,7 +124,6 @@
         [self.tabView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-10]
     ]];
     
-    // Create tabs
     [self setupModelsTab];
     [self setupResultsTab];
     [self setupSettingsTab];
@@ -109,112 +132,40 @@
 - (void)setupModelsTab {
     NSView *modelsView = [[NSView alloc] init];
     
-    // Table view for models
-    self.modelsTableView = [[NSTableView alloc] init];
-    self.modelsTableView.delegate = self;
-    self.modelsTableView.dataSource = self;
-    self.modelsTableView.allowsMultipleSelection = YES;
-    self.modelsTableView.usesAlternatingRowBackgroundColors = YES;
+    self.modelsSplitView = [[NSSplitView alloc] init];
+    self.modelsSplitView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.modelsSplitView.vertical = YES;
+    self.modelsSplitView.dividerStyle = NSSplitViewDividerStyleThin;
+    [modelsView addSubview:self.modelsSplitView];
     
-    // Columns
-    NSTableColumn *checkCol = [[NSTableColumn alloc] initWithIdentifier:@"enabled"];
-    checkCol.title = @"✓";
-    checkCol.width = 30;
-    [self.modelsTableView addTableColumn:checkCol];
+    NSView *leftView = [self setupModelsListView];
+    [self.modelsSplitView addArrangedSubview:leftView];
     
-    NSTableColumn *nameCol = [[NSTableColumn alloc] initWithIdentifier:@"name"];
-    nameCol.title = @"Model Name";
-    nameCol.width = 250;
-    [self.modelsTableView addTableColumn:nameCol];
+    NSView *rightView = [self setupModelEditorView];
+    [self.modelsSplitView addArrangedSubview:rightView];
     
-    NSTableColumn *stepsCol = [[NSTableColumn alloc] initWithIdentifier:@"steps"];
-    stepsCol.title = @"Steps";
-    stepsCol.width = 80;
-    [self.modelsTableView addTableColumn:stepsCol];
+    NSView *bottomBar = [self setupModelsBottomBar];
+    bottomBar.translatesAutoresizingMaskIntoConstraints = NO;
+    [modelsView addSubview:bottomBar];
     
-    NSTableColumn *descCol = [[NSTableColumn alloc] initWithIdentifier:@"description"];
-    descCol.title = @"Description";
-    descCol.width = 300;
-    [self.modelsTableView addTableColumn:descCol];
-    
-    self.modelsScrollView = [[NSScrollView alloc] init];
-    self.modelsScrollView.documentView = self.modelsTableView;
-    self.modelsScrollView.hasVerticalScroller = YES;
-    self.modelsScrollView.translatesAutoresizingMaskIntoConstraints = NO;
-    [modelsView addSubview:self.modelsScrollView];
-    
-    // Buttons
-    self.runButton = [NSButton buttonWithTitle:@"Run Selected Models" target:self action:@selector(runSelectedModels)];
-    self.runButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.runButton.bezelStyle = NSBezelStyleRounded;
-    [modelsView addSubview:self.runButton];
-    
-    self.createModelButton = [NSButton buttonWithTitle:@"New Model" target:self action:@selector(createNewModel:)];
-    self.createModelButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [modelsView addSubview:self.createModelButton];
-    
-    self.editModelButton = [NSButton buttonWithTitle:@"Edit" target:self action:@selector(editModel:)];
-    self.editModelButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [modelsView addSubview:self.editModelButton];
-    
-    self.deleteModelButton = [NSButton buttonWithTitle:@"Delete" target:self action:@selector(deleteModel:)];
-    self.deleteModelButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [modelsView addSubview:self.deleteModelButton];
-    
-    self.refreshButton = [NSButton buttonWithTitle:@"Refresh" target:self action:@selector(refreshModels)];
-    self.refreshButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [modelsView addSubview:self.refreshButton];
-    
-    // Universe info
-    self.universeLabel = [[NSTextField alloc] init];
-    self.universeLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.universeLabel.editable = NO;
-    self.universeLabel.bordered = NO;
-    self.universeLabel.backgroundColor = [NSColor clearColor];
-    self.universeLabel.stringValue = @"Universe: -- symbols";
-    [modelsView addSubview:self.universeLabel];
-    
-    // Progress indicator
-    self.progressIndicator = [[NSProgressIndicator alloc] init];
-    self.progressIndicator.translatesAutoresizingMaskIntoConstraints = NO;
-    self.progressIndicator.style = NSProgressIndicatorStyleBar;
-    self.progressIndicator.indeterminate = NO;
-    self.progressIndicator.minValue = 0.0;
-    self.progressIndicator.maxValue = 1.0;
-    self.progressIndicator.hidden = YES;
-    [modelsView addSubview:self.progressIndicator];
-    
-    // Layout
     [NSLayoutConstraint activateConstraints:@[
-        [self.modelsScrollView.topAnchor constraintEqualToAnchor:modelsView.topAnchor constant:10],
-        [self.modelsScrollView.leadingAnchor constraintEqualToAnchor:modelsView.leadingAnchor constant:10],
-        [self.modelsScrollView.trailingAnchor constraintEqualToAnchor:modelsView.trailingAnchor constant:-10],
-        [self.modelsScrollView.bottomAnchor constraintEqualToAnchor:self.runButton.topAnchor constant:-10],
+        [self.modelsSplitView.topAnchor constraintEqualToAnchor:modelsView.topAnchor constant:10],
+        [self.modelsSplitView.leadingAnchor constraintEqualToAnchor:modelsView.leadingAnchor constant:10],
+        [self.modelsSplitView.trailingAnchor constraintEqualToAnchor:modelsView.trailingAnchor constant:-10],
+        [self.modelsSplitView.bottomAnchor constraintEqualToAnchor:bottomBar.topAnchor constant:-10],
         
-        [self.runButton.leadingAnchor constraintEqualToAnchor:modelsView.leadingAnchor constant:10],
-        [self.runButton.bottomAnchor constraintEqualToAnchor:modelsView.bottomAnchor constant:-10],
-        [self.runButton.widthAnchor constraintEqualToConstant:180],
-        
-        [self.createModelButton.leadingAnchor constraintEqualToAnchor:self.runButton.trailingAnchor constant:10],
-        [self.createModelButton.centerYAnchor constraintEqualToAnchor:self.runButton.centerYAnchor],
-        
-        [self.editModelButton.leadingAnchor constraintEqualToAnchor:self.createModelButton.trailingAnchor constant:10],
-        [self.editModelButton.centerYAnchor constraintEqualToAnchor:self.runButton.centerYAnchor],
-        
-        [self.deleteModelButton.leadingAnchor constraintEqualToAnchor:self.editModelButton.trailingAnchor constant:10],
-        [self.deleteModelButton.centerYAnchor constraintEqualToAnchor:self.runButton.centerYAnchor],
-        
-        [self.refreshButton.leadingAnchor constraintEqualToAnchor:self.deleteModelButton.trailingAnchor constant:10],
-        [self.refreshButton.centerYAnchor constraintEqualToAnchor:self.runButton.centerYAnchor],
-        
-        [self.universeLabel.trailingAnchor constraintEqualToAnchor:modelsView.trailingAnchor constant:-10],
-        [self.universeLabel.centerYAnchor constraintEqualToAnchor:self.runButton.centerYAnchor],
-        
-        [self.progressIndicator.leadingAnchor constraintEqualToAnchor:modelsView.leadingAnchor constant:10],
-        [self.progressIndicator.trailingAnchor constraintEqualToAnchor:modelsView.trailingAnchor constant:-10],
-        [self.progressIndicator.bottomAnchor constraintEqualToAnchor:self.runButton.topAnchor constant:-5],
-        [self.progressIndicator.heightAnchor constraintEqualToConstant:20]
+        [bottomBar.leadingAnchor constraintEqualToAnchor:modelsView.leadingAnchor constant:10],
+        [bottomBar.trailingAnchor constraintEqualToAnchor:modelsView.trailingAnchor constant:-10],
+        [bottomBar.bottomAnchor constraintEqualToAnchor:modelsView.bottomAnchor constant:-10],
+        [bottomBar.heightAnchor constraintEqualToConstant:60]
     ]];
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        CGFloat totalWidth = self.modelsSplitView.frame.size.width;
+        if (totalWidth > 0) {
+            [self.modelsSplitView setPosition:totalWidth * 0.35 ofDividerAtIndex:0];
+        }
+    });
     
     NSTabViewItem *modelsTab = [[NSTabViewItem alloc] initWithIdentifier:@"models"];
     modelsTab.label = @"Models";
@@ -222,10 +173,80 @@
     [self.tabView addTabViewItem:modelsTab];
 }
 
+- (NSView *)setupModelsListView {
+    NSView *leftView = [[NSView alloc] init];
+    
+    NSTextField *label = [NSTextField labelWithString:@"Screener Models"];
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    label.font = [NSFont boldSystemFontOfSize:13];
+    [leftView addSubview:label];
+    
+    self.modelsTableView = [[NSTableView alloc] init];
+    self.modelsTableView.delegate = self;
+    self.modelsTableView.dataSource = self;
+    self.modelsTableView.allowsMultipleSelection = YES;
+    self.modelsTableView.usesAlternatingRowBackgroundColors = YES;
+    
+    NSTableColumn *checkCol = [[NSTableColumn alloc] initWithIdentifier:@"enabled"];
+    checkCol.title = @"✓";
+    checkCol.width = 30;
+    [self.modelsTableView addTableColumn:checkCol];
+    
+    NSTableColumn *nameCol = [[NSTableColumn alloc] initWithIdentifier:@"name"];
+    nameCol.title = @"Name";
+    nameCol.width = 180;
+    [self.modelsTableView addTableColumn:nameCol];
+    
+    NSTableColumn *stepsCol = [[NSTableColumn alloc] initWithIdentifier:@"steps"];
+    stepsCol.title = @"Steps";
+    stepsCol.width = 50;
+    [self.modelsTableView addTableColumn:stepsCol];
+    
+    self.modelsScrollView = [[NSScrollView alloc] init];
+    self.modelsScrollView.documentView = self.modelsTableView;
+    self.modelsScrollView.hasVerticalScroller = YES;
+    self.modelsScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    [leftView addSubview:self.modelsScrollView];
+    
+    self.createModelButton = [NSButton buttonWithTitle:@"+ New" target:self action:@selector(createNewModel:)];
+    self.createModelButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [leftView addSubview:self.createModelButton];
+    
+    self.duplicateModelButton = [NSButton buttonWithTitle:@"Duplicate" target:self action:@selector(duplicateModel:)];
+    self.duplicateModelButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.duplicateModelButton.enabled = NO;
+    [leftView addSubview:self.duplicateModelButton];
+    
+    self.deleteModelButton = [NSButton buttonWithTitle:@"Delete" target:self action:@selector(deleteModel:)];
+    self.deleteModelButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.deleteModelButton.enabled = NO;
+    [leftView addSubview:self.deleteModelButton];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [label.topAnchor constraintEqualToAnchor:leftView.topAnchor constant:5],
+        [label.leadingAnchor constraintEqualToAnchor:leftView.leadingAnchor constant:5],
+        
+        [self.modelsScrollView.topAnchor constraintEqualToAnchor:label.bottomAnchor constant:5],
+        [self.modelsScrollView.leadingAnchor constraintEqualToAnchor:leftView.leadingAnchor],
+        [self.modelsScrollView.trailingAnchor constraintEqualToAnchor:leftView.trailingAnchor],
+        [self.modelsScrollView.bottomAnchor constraintEqualToAnchor:self.createModelButton.topAnchor constant:-5],
+        
+        [self.createModelButton.leadingAnchor constraintEqualToAnchor:leftView.leadingAnchor constant:5],
+        [self.createModelButton.bottomAnchor constraintEqualToAnchor:leftView.bottomAnchor constant:-5],
+        
+        [self.duplicateModelButton.leadingAnchor constraintEqualToAnchor:self.createModelButton.trailingAnchor constant:5],
+        [self.duplicateModelButton.centerYAnchor constraintEqualToAnchor:self.createModelButton.centerYAnchor],
+        
+        [self.deleteModelButton.leadingAnchor constraintEqualToAnchor:self.duplicateModelButton.trailingAnchor constant:5],
+        [self.deleteModelButton.centerYAnchor constraintEqualToAnchor:self.createModelButton.centerYAnchor]
+    ]];
+    
+    return leftView;
+}
+
 - (void)setupResultsTab {
     NSView *resultsView = [[NSView alloc] init];
     
-    // Table view for results
     self.resultsTableView = [[NSTableView alloc] init];
     self.resultsTableView.delegate = self;
     self.resultsTableView.dataSource = self;
@@ -242,8 +263,8 @@
     [self.resultsTableView addTableColumn:countCol];
     
     NSTableColumn *timeCol = [[NSTableColumn alloc] initWithIdentifier:@"time"];
-    timeCol.title = @"Execution Time";
-    timeCol.width = 120;
+    timeCol.title = @"Time";
+    timeCol.width = 100;
     [self.resultsTableView addTableColumn:timeCol];
     
     NSTableColumn *symbolsCol = [[NSTableColumn alloc] initWithIdentifier:@"symbols"];
@@ -257,8 +278,7 @@
     self.resultsScrollView.translatesAutoresizingMaskIntoConstraints = NO;
     [resultsView addSubview:self.resultsScrollView];
     
-    // Buttons
-    self.exportButton = [NSButton buttonWithTitle:@"Export Results" target:self action:@selector(exportResults:)];
+    self.exportButton = [NSButton buttonWithTitle:@"Export" target:self action:@selector(exportResults:)];
     self.exportButton.translatesAutoresizingMaskIntoConstraints = NO;
     [resultsView addSubview:self.exportButton];
     
@@ -274,7 +294,6 @@
     self.resultsStatusLabel.stringValue = @"No results";
     [resultsView addSubview:self.resultsStatusLabel];
     
-    // Layout
     [NSLayoutConstraint activateConstraints:@[
         [self.resultsScrollView.topAnchor constraintEqualToAnchor:resultsView.topAnchor constant:10],
         [self.resultsScrollView.leadingAnchor constraintEqualToAnchor:resultsView.leadingAnchor constant:10],
@@ -300,7 +319,6 @@
 - (void)setupSettingsTab {
     NSView *settingsView = [[NSView alloc] init];
     
-    // Data path
     NSTextField *pathLabel = [NSTextField labelWithString:@"Stooq Data Directory:"];
     pathLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [settingsView addSubview:pathLabel];
@@ -326,7 +344,6 @@
     self.symbolCountLabel.stringValue = @"Symbols: --";
     [settingsView addSubview:self.symbolCountLabel];
     
-    // Layout
     [NSLayoutConstraint activateConstraints:@[
         [pathLabel.topAnchor constraintEqualToAnchor:settingsView.topAnchor constant:20],
         [pathLabel.leadingAnchor constraintEqualToAnchor:settingsView.leadingAnchor constant:20],
@@ -352,13 +369,219 @@
     [self.tabView addTabViewItem:settingsTab];
 }
 
+- (NSView *)setupModelEditorView {
+    NSView *rightView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 700, 800)];
+    
+    // Top: Model name and description
+    NSTextField *nameLabel = [NSTextField labelWithString:@"Name:"];
+    nameLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [rightView addSubview:nameLabel];
+    
+    self.modelNameField = [[NSTextField alloc] init];
+    self.modelNameField.translatesAutoresizingMaskIntoConstraints = NO;
+    self.modelNameField.placeholderString = @"Model name...";
+    self.modelNameField.enabled = NO;
+    [rightView addSubview:self.modelNameField];
+    
+    NSTextField *descLabel = [NSTextField labelWithString:@"Description:"];
+    descLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [rightView addSubview:descLabel];
+    
+    self.modelDescriptionField = [[NSTextField alloc] init];
+    self.modelDescriptionField.translatesAutoresizingMaskIntoConstraints = NO;
+    self.modelDescriptionField.placeholderString = @"Description...";
+    self.modelDescriptionField.enabled = NO;
+    [rightView addSubview:self.modelDescriptionField];
+    
+    // Screeners section
+    NSTextField *screenersLabel = [NSTextField labelWithString:@"Screener Pipeline:"];
+    screenersLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    screenersLabel.font = [NSFont boldSystemFontOfSize:11];
+    [rightView addSubview:screenersLabel];
+    
+    self.screenersTableView = [[NSTableView alloc] init];
+    self.screenersTableView.delegate = self;
+    self.screenersTableView.dataSource = self;
+    self.screenersTableView.usesAlternatingRowBackgroundColors = YES;
+    
+    NSTableColumn *stepCol = [[NSTableColumn alloc] initWithIdentifier:@"step"];
+    stepCol.title = @"#";
+    stepCol.width = 30;
+    [self.screenersTableView addTableColumn:stepCol];
+    
+    NSTableColumn *screenerCol = [[NSTableColumn alloc] initWithIdentifier:@"screener"];
+    screenerCol.title = @"Screener";
+    screenerCol.width = 200;
+    [self.screenersTableView addTableColumn:screenerCol];
+    
+    NSTableColumn *inputCol = [[NSTableColumn alloc] initWithIdentifier:@"input"];
+    inputCol.title = @"Input";
+    inputCol.width = 80;
+    [self.screenersTableView addTableColumn:inputCol];
+    
+    self.screenersScrollView = [[NSScrollView alloc] init];
+    self.screenersScrollView.documentView = self.screenersTableView;
+    self.screenersScrollView.hasVerticalScroller = YES;
+    self.screenersScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    [rightView addSubview:self.screenersScrollView];
+    
+    self.addScreenerButton = [NSButton buttonWithTitle:@"+ Add" target:self action:@selector(addScreener:)];
+    self.addScreenerButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.addScreenerButton.enabled = NO;
+    [rightView addSubview:self.addScreenerButton];
+    
+    self.removeScreenerButton = [NSButton buttonWithTitle:@"− Remove" target:self action:@selector(removeScreener:)];
+    self.removeScreenerButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.removeScreenerButton.enabled = NO;
+    [rightView addSubview:self.removeScreenerButton];
+    
+    // Parameters section
+    NSTextField *paramsLabel = [NSTextField labelWithString:@"Parameters:"];
+    paramsLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    paramsLabel.font = [NSFont boldSystemFontOfSize:11];
+    [rightView addSubview:paramsLabel];
+    
+    self.parametersTableView = [[NSTableView alloc] init];
+    self.parametersTableView.delegate = self;
+    self.parametersTableView.dataSource = self;
+    self.parametersTableView.usesAlternatingRowBackgroundColors = YES;
+    
+    NSTableColumn *paramNameCol = [[NSTableColumn alloc] initWithIdentifier:@"param_name"];
+    paramNameCol.title = @"Parameter";
+    paramNameCol.width = 150;
+    [self.parametersTableView addTableColumn:paramNameCol];
+    
+    NSTableColumn *paramValueCol = [[NSTableColumn alloc] initWithIdentifier:@"param_value"];
+    paramValueCol.title = @"Value";
+    paramValueCol.width = 150;
+    [self.parametersTableView addTableColumn:paramValueCol];
+    
+    self.parametersScrollView = [[NSScrollView alloc] init];
+    self.parametersScrollView.documentView = self.parametersTableView;
+    self.parametersScrollView.hasVerticalScroller = YES;
+    self.parametersScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    [rightView addSubview:self.parametersScrollView];
+    
+    // Bottom buttons
+    self.saveChangesButton = [NSButton buttonWithTitle:@"Save" target:self action:@selector(saveModelChanges:)];
+    self.saveChangesButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.saveChangesButton.enabled = NO;
+    [rightView addSubview:self.saveChangesButton];
+    
+    self.revertChangesButton = [NSButton buttonWithTitle:@"Revert" target:self action:@selector(revertModelChanges:)];
+    self.revertChangesButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.revertChangesButton.enabled = NO;
+    [rightView addSubview:self.revertChangesButton];
+    
+    // Layout constraints
+    [NSLayoutConstraint activateConstraints:@[
+        // Name
+        [nameLabel.topAnchor constraintEqualToAnchor:rightView.topAnchor constant:5],
+        [nameLabel.leadingAnchor constraintEqualToAnchor:rightView.leadingAnchor constant:5],
+        [self.modelNameField.centerYAnchor constraintEqualToAnchor:nameLabel.centerYAnchor],
+        [self.modelNameField.leadingAnchor constraintEqualToAnchor:nameLabel.trailingAnchor constant:5],
+        [self.modelNameField.trailingAnchor constraintEqualToAnchor:rightView.trailingAnchor constant:-5],
+        
+        // Description
+        [descLabel.topAnchor constraintEqualToAnchor:nameLabel.bottomAnchor constant:8],
+        [descLabel.leadingAnchor constraintEqualToAnchor:rightView.leadingAnchor constant:5],
+        [self.modelDescriptionField.centerYAnchor constraintEqualToAnchor:descLabel.centerYAnchor],
+        [self.modelDescriptionField.leadingAnchor constraintEqualToAnchor:descLabel.trailingAnchor constant:5],
+        [self.modelDescriptionField.trailingAnchor constraintEqualToAnchor:rightView.trailingAnchor constant:-5],
+        
+        // Screeners
+        [screenersLabel.topAnchor constraintEqualToAnchor:descLabel.bottomAnchor constant:15],
+        [screenersLabel.leadingAnchor constraintEqualToAnchor:rightView.leadingAnchor constant:5],
+        
+        [self.screenersScrollView.topAnchor constraintEqualToAnchor:screenersLabel.bottomAnchor constant:5],
+        [self.screenersScrollView.leadingAnchor constraintEqualToAnchor:rightView.leadingAnchor],
+        [self.screenersScrollView.trailingAnchor constraintEqualToAnchor:rightView.trailingAnchor],
+        [self.screenersScrollView.heightAnchor constraintEqualToConstant:120],
+        
+        [self.addScreenerButton.topAnchor constraintEqualToAnchor:self.screenersScrollView.bottomAnchor constant:5],
+        [self.addScreenerButton.leadingAnchor constraintEqualToAnchor:rightView.leadingAnchor constant:5],
+        
+        [self.removeScreenerButton.centerYAnchor constraintEqualToAnchor:self.addScreenerButton.centerYAnchor],
+        [self.removeScreenerButton.leadingAnchor constraintEqualToAnchor:self.addScreenerButton.trailingAnchor constant:5],
+        
+        // Parameters
+        [paramsLabel.topAnchor constraintEqualToAnchor:self.addScreenerButton.bottomAnchor constant:15],
+        [paramsLabel.leadingAnchor constraintEqualToAnchor:rightView.leadingAnchor constant:5],
+        
+        [self.parametersScrollView.topAnchor constraintEqualToAnchor:paramsLabel.bottomAnchor constant:5],
+        [self.parametersScrollView.leadingAnchor constraintEqualToAnchor:rightView.leadingAnchor],
+        [self.parametersScrollView.trailingAnchor constraintEqualToAnchor:rightView.trailingAnchor],
+        [self.parametersScrollView.bottomAnchor constraintEqualToAnchor:self.saveChangesButton.topAnchor constant:-10],
+        
+        // Save/Revert
+        [self.saveChangesButton.trailingAnchor constraintEqualToAnchor:rightView.trailingAnchor constant:-5],
+        [self.saveChangesButton.bottomAnchor constraintEqualToAnchor:rightView.bottomAnchor constant:-5],
+        
+        [self.revertChangesButton.trailingAnchor constraintEqualToAnchor:self.saveChangesButton.leadingAnchor constant:-5],
+        [self.revertChangesButton.centerYAnchor constraintEqualToAnchor:self.saveChangesButton.centerYAnchor]
+    ]];
+    
+    return rightView;
+}
+
+
+
+- (NSView *)setupModelsBottomBar {
+    NSView *bottomBar = [[NSView alloc] init];
+    
+    self.runButton = [NSButton buttonWithTitle:@"Run Selected Models" target:self action:@selector(runSelectedModels)];
+    self.runButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.runButton.bezelStyle = NSBezelStyleRounded;
+    [bottomBar addSubview:self.runButton];
+    
+    self.refreshButton = [NSButton buttonWithTitle:@"Refresh" target:self action:@selector(refreshModels)];
+    self.refreshButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [bottomBar addSubview:self.refreshButton];
+    
+    self.universeLabel = [[NSTextField alloc] init];
+    self.universeLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.universeLabel.editable = NO;
+    self.universeLabel.bordered = NO;
+    self.universeLabel.backgroundColor = [NSColor clearColor];
+    self.universeLabel.stringValue = @"Universe: -- symbols";
+    [bottomBar addSubview:self.universeLabel];
+    
+    self.progressIndicator = [[NSProgressIndicator alloc] init];
+    self.progressIndicator.translatesAutoresizingMaskIntoConstraints = NO;
+    self.progressIndicator.style = NSProgressIndicatorStyleBar;
+    self.progressIndicator.indeterminate = NO;
+    self.progressIndicator.minValue = 0.0;
+    self.progressIndicator.maxValue = 1.0;
+    self.progressIndicator.hidden = YES;
+    [bottomBar addSubview:self.progressIndicator];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [self.runButton.leadingAnchor constraintEqualToAnchor:bottomBar.leadingAnchor],
+        [self.runButton.bottomAnchor constraintEqualToAnchor:bottomBar.bottomAnchor],
+        [self.runButton.widthAnchor constraintEqualToConstant:180],
+        
+        [self.refreshButton.leadingAnchor constraintEqualToAnchor:self.runButton.trailingAnchor constant:10],
+        [self.refreshButton.centerYAnchor constraintEqualToAnchor:self.runButton.centerYAnchor],
+        
+        [self.universeLabel.trailingAnchor constraintEqualToAnchor:bottomBar.trailingAnchor],
+        [self.universeLabel.centerYAnchor constraintEqualToAnchor:self.runButton.centerYAnchor],
+        
+        [self.progressIndicator.leadingAnchor constraintEqualToAnchor:bottomBar.leadingAnchor],
+        [self.progressIndicator.trailingAnchor constraintEqualToAnchor:bottomBar.trailingAnchor],
+        [self.progressIndicator.bottomAnchor constraintEqualToAnchor:self.runButton.topAnchor constant:-5],
+        [self.progressIndicator.heightAnchor constraintEqualToConstant:20]
+    ]];
+    
+    return bottomBar;
+}
+
+
+
 #pragma mark - Data Loading
 
 - (void)loadInitialData {
-    // Load models
     [self refreshModels];
     
-    // Load saved data path
     NSString *savedPath = [[NSUserDefaults standardUserDefaults] stringForKey:@"StooqDataDirectory"];
     if (savedPath) {
         self.dataPathField.stringValue = savedPath;
@@ -370,28 +593,448 @@
     [self.modelManager refreshModels];
     self.models = [[self.modelManager allModels] mutableCopy];
     [self.modelsTableView reloadData];
-    
     NSLog(@"✅ Loaded %lu models", (unsigned long)self.models.count);
 }
 
 - (void)setDataDirectory:(NSString *)path {
     _dataDirectory = path;
-    
-    // Save to preferences
     [[NSUserDefaults standardUserDefaults] setObject:path forKey:@"StooqDataDirectory"];
     
-    // Create data manager
     self.dataManager = [[StooqDataManager alloc] initWithDataDirectory:path];
     self.dataManager.selectedExchanges = self.selectedExchanges;
     
-    // Create batch runner
     self.batchRunner = [[ScreenerBatchRunner alloc] initWithDataManager:self.dataManager];
     self.batchRunner.delegate = self;
     
     NSLog(@"✅ Data directory set: %@", path);
 }
 
-#pragma mark - Actions
+#pragma mark - Model Editor
+
+- (void)loadModelIntoEditor:(ScreenerModel *)model {
+    self.selectedModel = model;
+    
+    NSDictionary *dict = [model toDictionary];
+    self.editingModel = [ScreenerModel fromDictionary:dict];
+    
+    self.modelNameField.stringValue = model.displayName ?: @"";
+    self.modelDescriptionField.stringValue = model.modelDescription ?: @"";
+    self.modelNameField.enabled = YES;
+    self.modelDescriptionField.enabled = YES;
+    
+    self.selectedStep = nil;
+    
+    [self.screenersTableView reloadData];
+    [self.parametersTableView reloadData];
+    
+    self.addScreenerButton.enabled = YES;
+    self.removeScreenerButton.enabled = NO;
+    self.saveChangesButton.enabled = NO;
+    self.revertChangesButton.enabled = NO;
+    
+    self.hasUnsavedChanges = NO;
+    
+    NSLog(@"📝 Loaded model: %@ (%lu steps)", model.displayName, (unsigned long)self.editingModel.steps.count);
+}
+
+- (void)clearEditor {
+    self.selectedModel = nil;
+    self.editingModel = nil;
+    self.selectedStep = nil;
+    
+    self.modelNameField.stringValue = @"";
+    self.modelDescriptionField.stringValue = @"";
+    self.modelNameField.enabled = NO;
+    self.modelDescriptionField.enabled = NO;
+    
+    [self.screenersTableView reloadData];
+    [self.parametersTableView reloadData];
+    
+    self.addScreenerButton.enabled = NO;
+    self.removeScreenerButton.enabled = NO;
+    self.saveChangesButton.enabled = NO;
+    self.revertChangesButton.enabled = NO;
+    
+    self.hasUnsavedChanges = NO;
+}
+
+- (void)markAsModified {
+    self.hasUnsavedChanges = YES;
+    self.saveChangesButton.enabled = YES;
+    self.revertChangesButton.enabled = YES;
+}
+
+#pragma mark - NSTableViewDataSource
+
+- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
+    if (tableView == self.modelsTableView) {
+        return self.models.count;
+    } else if (tableView == self.screenersTableView) {
+        return self.editingModel ? self.editingModel.steps.count : 0;
+    } else if (tableView == self.parametersTableView) {
+        if (self.selectedStep) {
+            return self.selectedStep.parameters.allKeys.count;
+        }
+        return 0;
+    } else if (tableView == self.resultsTableView) {
+        return self.executionResults.count;
+    }
+    return 0;
+}
+
+- (nullable NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(nullable NSTableColumn *)tableColumn row:(NSInteger)row {
+    
+    NSTextField *textField = [[NSTextField alloc] init];
+    textField.editable = NO;
+    textField.bordered = NO;
+    textField.backgroundColor = [NSColor clearColor];
+    
+    // MODELS TABLE
+    if (tableView == self.modelsTableView) {
+        ScreenerModel *model = self.models[row];
+        
+        if ([tableColumn.identifier isEqualToString:@"enabled"]) {
+            textField.stringValue = model.isEnabled ? @"✓" : @"";
+        } else if ([tableColumn.identifier isEqualToString:@"name"]) {
+            textField.stringValue = model.displayName;
+        } else if ([tableColumn.identifier isEqualToString:@"steps"]) {
+            textField.stringValue = [NSString stringWithFormat:@"%lu", (unsigned long)model.steps.count];
+        }
+    }
+    
+    // SCREENERS TABLE
+    else if (tableView == self.screenersTableView) {
+        ScreenerStep *step = self.editingModel.steps[row];
+        
+        if ([tableColumn.identifier isEqualToString:@"step"]) {
+            textField.stringValue = [NSString stringWithFormat:@"%ld", (long)(row + 1)];
+            textField.alignment = NSTextAlignmentCenter;
+        } else if ([tableColumn.identifier isEqualToString:@"screener"]) {
+            BaseScreener *screener = [[ScreenerRegistry sharedRegistry] screenerWithID:step.screenerID];
+            textField.stringValue = screener ? screener.displayName : step.screenerID;
+        } else if ([tableColumn.identifier isEqualToString:@"input"]) {
+            textField.stringValue = [step.inputSource isEqualToString:@"universe"] ? @"Universe" : @"Previous";
+            textField.textColor = [step.inputSource isEqualToString:@"universe"] ? [NSColor systemBlueColor] : [NSColor systemGrayColor];
+        }
+    }
+    
+    // PARAMETERS TABLE
+    else if (tableView == self.parametersTableView) {
+        NSArray *keys = [self.selectedStep.parameters.allKeys sortedArrayUsingSelector:@selector(compare:)];
+        NSString *key = keys[row];
+        id value = self.selectedStep.parameters[key];
+        
+        if ([tableColumn.identifier isEqualToString:@"param_name"]) {
+            textField.stringValue = key;
+        } else if ([tableColumn.identifier isEqualToString:@"param_value"]) {
+            textField.stringValue = [NSString stringWithFormat:@"%@", value];
+            textField.editable = YES;
+            textField.bordered = YES;
+            textField.backgroundColor = [NSColor controlBackgroundColor];
+            textField.target = self;
+            textField.action = @selector(parameterValueChanged:);
+            textField.tag = row;  // Store row for later retrieval
+        }
+    }
+    
+    // RESULTS TABLE
+    else if (tableView == self.resultsTableView) {
+        NSArray *keys = [self.executionResults.allKeys sortedArrayUsingSelector:@selector(compare:)];
+        NSString *modelID = keys[row];
+        ModelResult *result = self.executionResults[modelID];
+        
+        if ([tableColumn.identifier isEqualToString:@"model"]) {
+            textField.stringValue = result.modelName;
+        } else if ([tableColumn.identifier isEqualToString:@"count"]) {
+            textField.stringValue = [NSString stringWithFormat:@"%lu", (unsigned long)result.finalSymbols.count];
+        } else if ([tableColumn.identifier isEqualToString:@"time"]) {
+            textField.stringValue = [NSString stringWithFormat:@"%.2fs", result.totalExecutionTime];
+        } else if ([tableColumn.identifier isEqualToString:@"symbols"]) {
+            NSArray *firstSymbols = [result.finalSymbols subarrayWithRange:NSMakeRange(0, MIN(10, result.finalSymbols.count))];
+            NSString *symbolsString = [firstSymbols componentsJoinedByString:@", "];
+            if (result.finalSymbols.count > 10) {
+                symbolsString = [symbolsString stringByAppendingFormat:@", ... (%lu more)", (unsigned long)(result.finalSymbols.count - 10)];
+            }
+            textField.stringValue = symbolsString;
+        }
+    }
+    
+    return textField;
+}
+
+#pragma mark - NSTableViewDelegate
+
+- (void)tableViewSelectionDidChange:(NSNotification *)notification {
+    NSTableView *tableView = notification.object;
+    
+    // MODELS TABLE
+    if (tableView == self.modelsTableView) {
+        NSInteger selectedRow = [self.modelsTableView selectedRow];
+        BOOL hasSelection = selectedRow >= 0;
+        
+        self.duplicateModelButton.enabled = hasSelection;
+        self.deleteModelButton.enabled = hasSelection;
+        self.runButton.enabled = hasSelection;
+        
+        if (hasSelection) {
+            ScreenerModel *model = self.models[selectedRow];
+            [self loadModelIntoEditor:model];
+        } else {
+            [self clearEditor];
+        }
+    }
+    
+    // SCREENERS TABLE
+    else if (tableView == self.screenersTableView) {
+        NSInteger selectedRow = [self.screenersTableView selectedRow];
+        
+        if (selectedRow >= 0 && self.editingModel) {
+            self.selectedStep = self.editingModel.steps[selectedRow];
+            self.removeScreenerButton.enabled = YES;
+            [self.parametersTableView reloadData];
+            NSLog(@"📝 Selected step: %@", self.selectedStep.screenerID);
+        } else {
+            self.selectedStep = nil;
+            self.removeScreenerButton.enabled = NO;
+            [self.parametersTableView reloadData];
+        }
+    }
+}
+
+#pragma mark - Actions - Parameter Editing
+
+- (void)parameterValueChanged:(NSTextField *)textField {
+    if (!self.selectedStep) return;
+    
+    NSInteger row = textField.tag;
+    NSArray *keys = [self.selectedStep.parameters.allKeys sortedArrayUsingSelector:@selector(compare:)];
+    
+    if (row < 0 || row >= keys.count) return;
+    
+    NSString *key = keys[row];
+    NSString *newValue = textField.stringValue;
+    
+    // Parse value (try number, then bool, then string)
+    id parsedValue = [self parameterValueFromString:newValue];
+    
+    // Update parameter
+    NSMutableDictionary *params = [self.selectedStep.parameters mutableCopy];
+    params[key] = parsedValue;
+    self.selectedStep.parameters = params;
+    
+    [self markAsModified];
+    
+    NSLog(@"✏️ Parameter changed: %@ = %@", key, parsedValue);
+}
+
+- (id)parameterValueFromString:(NSString *)string {
+    NSNumberFormatter *formatter = [[NSNumberFormatter alloc] init];
+    formatter.numberStyle = NSNumberFormatterDecimalStyle;
+    NSNumber *number = [formatter numberFromString:string];
+    
+    if (number) {
+        if ([string rangeOfString:@"."].location == NSNotFound) {
+            return @([number integerValue]);
+        }
+        return @([number doubleValue]);
+    }
+    
+    if ([string.lowercaseString isEqualToString:@"true"] || [string.lowercaseString isEqualToString:@"yes"]) {
+        return @YES;
+    }
+    if ([string.lowercaseString isEqualToString:@"false"] || [string.lowercaseString isEqualToString:@"no"]) {
+        return @NO;
+    }
+    
+    return string;
+}
+
+#pragma mark - Actions - Screeners
+
+- (void)addScreener:(id)sender {
+    if (!self.editingModel) return;
+    
+    NSMenu *menu = [[NSMenu alloc] init];
+    
+    NSArray<BaseScreener *> *screeners = [[ScreenerRegistry sharedRegistry] allScreeners];
+    for (BaseScreener *screener in screeners) {
+        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:screener.displayName
+                                                       action:@selector(addScreenerFromMenu:)
+                                                keyEquivalent:@""];
+        item.target = self;
+        item.representedObject = screener.screenerID;
+        [menu addItem:item];
+    }
+    
+    NSPoint location = NSMakePoint(0, self.addScreenerButton.bounds.size.height);
+    [menu popUpMenuPositioningItem:nil atLocation:location inView:self.addScreenerButton];
+}
+
+- (void)addScreenerFromMenu:(NSMenuItem *)menuItem {
+    NSString *screenerID = menuItem.representedObject;
+    
+    BaseScreener *screener = [[ScreenerRegistry sharedRegistry] screenerWithID:screenerID];
+    NSDictionary *defaultParams = screener ? [screener defaultParameters] : @{};
+    
+    ScreenerStep *newStep = [ScreenerStep stepWithScreenerID:screenerID
+                                                 inputSource:@"previous"
+                                                  parameters:defaultParams];
+    
+    NSMutableArray *steps = [self.editingModel.steps mutableCopy];
+    [steps addObject:newStep];
+    self.editingModel.steps = steps;
+    
+    [self.screenersTableView reloadData];
+    [self markAsModified];
+    
+    NSLog(@"➕ Added screener: %@ with %lu parameters", screenerID, (unsigned long)defaultParams.count);
+}
+
+- (void)removeScreener:(id)sender {
+    NSInteger selectedRow = [self.screenersTableView selectedRow];
+    if (selectedRow < 0 || !self.editingModel) return;
+    
+    ScreenerStep *step = self.editingModel.steps[selectedRow];
+    
+    NSMutableArray *steps = [self.editingModel.steps mutableCopy];
+    [steps removeObject:step];
+    self.editingModel.steps = steps;
+    
+    self.selectedStep = nil;
+    
+    [self.screenersTableView reloadData];
+    [self.parametersTableView reloadData];
+    [self markAsModified];
+    
+    NSLog(@"➖ Removed screener");
+}
+
+#pragma mark - Actions - Model Management
+
+- (void)saveModelChanges:(id)sender {
+    if (!self.editingModel || !self.selectedModel) return;
+    
+    self.editingModel.displayName = self.modelNameField.stringValue;
+    self.editingModel.modelDescription = self.modelDescriptionField.stringValue;
+    
+    NSError *error;
+    BOOL success = [self.modelManager saveModel:self.editingModel error:&error];
+    
+    if (success) {
+        NSLog(@"✅ Model saved: %@", self.editingModel.displayName);
+        
+        [self refreshModels];
+        
+        self.hasUnsavedChanges = NO;
+        self.saveChangesButton.enabled = NO;
+        self.revertChangesButton.enabled = NO;
+        
+        NSAlert *alert = [[NSAlert alloc] init];
+        if (self.editingModel.steps.count == 0) {
+            alert.messageText = @"Model Saved (Empty)";
+            alert.informativeText = [NSString stringWithFormat:@"'%@' has been saved.\n\n⚠️ This model has no screener steps yet. Add at least one screener before running.", self.editingModel.displayName];
+            alert.alertStyle = NSAlertStyleWarning;
+        } else {
+            alert.messageText = @"Model Saved";
+            alert.informativeText = [NSString stringWithFormat:@"'%@' has been saved with %lu step(s).",
+                                    self.editingModel.displayName,
+                                    (unsigned long)self.editingModel.steps.count];
+            alert.alertStyle = NSAlertStyleInformational;
+        }
+        [alert runModal];
+        
+    } else {
+        NSLog(@"❌ Failed to save: %@", error.localizedDescription);
+        
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"Save Failed";
+        alert.informativeText = error.localizedDescription;
+        alert.alertStyle = NSAlertStyleCritical;
+        [alert runModal];
+    }
+}
+
+- (void)revertModelChanges:(id)sender {
+    if (!self.selectedModel) return;
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Revert Changes";
+    alert.informativeText = @"Discard all unsaved changes?";
+    [alert addButtonWithTitle:@"Revert"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        [self loadModelIntoEditor:self.selectedModel];
+        NSLog(@"↩️  Reverted");
+    }
+}
+
+- (void)createNewModel:(id)sender {
+    ScreenerModel *newModel = [ScreenerModel modelWithID:[NSUUID UUID].UUIDString
+                                             displayName:@"New Model"
+                                                   steps:@[]];
+    
+    NSError *error;
+    BOOL success = [self.modelManager saveModel:newModel error:&error];
+    
+    if (success) {
+        [self refreshModels];
+        
+        NSInteger index = [self.models indexOfObject:newModel];
+        if (index != NSNotFound) {
+            [self.modelsTableView selectRowIndexes:[NSIndexSet indexSetWithIndex:index] byExtendingSelection:NO];
+        }
+        
+        NSLog(@"✅ Created new model");
+    } else {
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"Failed to Create Model";
+        alert.informativeText = error.localizedDescription;
+        [alert runModal];
+    }
+}
+
+- (void)duplicateModel:(id)sender {
+    NSInteger selectedRow = [self.modelsTableView selectedRow];
+    if (selectedRow < 0) return;
+    
+    ScreenerModel *original = self.models[selectedRow];
+    
+    NSDictionary *dict = [original toDictionary];
+    ScreenerModel *duplicate = [ScreenerModel fromDictionary:dict];
+    duplicate.modelID = [NSUUID UUID].UUIDString;
+    duplicate.displayName = [NSString stringWithFormat:@"%@ (Copy)", original.displayName];
+    
+    NSError *error;
+    BOOL success = [self.modelManager saveModel:duplicate error:&error];
+    
+    if (success) {
+        [self refreshModels];
+        NSLog(@"✅ Duplicated model");
+    }
+}
+
+- (void)deleteModel:(id)sender {
+    NSInteger selectedRow = [self.modelsTableView selectedRow];
+    if (selectedRow < 0) return;
+    
+    ScreenerModel *model = self.models[selectedRow];
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Delete Model";
+    alert.informativeText = [NSString stringWithFormat:@"Delete '%@'?", model.displayName];
+    [alert addButtonWithTitle:@"Delete"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        NSError *error;
+        [self.modelManager deleteModel:model.modelID error:&error];
+        [self refreshModels];
+        [self clearEditor];
+    }
+}
+
+#pragma mark - Actions - Execution
 
 - (void)runSelectedModels {
     if (!self.dataManager) {
@@ -402,7 +1045,6 @@
         return;
     }
     
-    // Get selected models
     NSIndexSet *selectedRows = [self.modelsTableView selectedRowIndexes];
     if (selectedRows.count == 0) {
         NSAlert *alert = [[NSAlert alloc] init];
@@ -419,12 +1061,10 @@
     
     NSLog(@"🚀 Running %lu models", (unsigned long)selectedModels.count);
     
-    // Show progress
     self.progressIndicator.hidden = NO;
     self.progressIndicator.doubleValue = 0.0;
     self.runButton.enabled = NO;
     
-    // Execute
     [self.batchRunner executeModels:selectedModels
                            universe:nil
                          completion:^(NSDictionary<NSString *,ModelResult *> *results, NSError *error) {
@@ -434,8 +1074,6 @@
             alert.messageText = @"Execution Failed";
             alert.informativeText = error.localizedDescription;
             [alert runModal];
-        } else {
-            NSLog(@"✅ Batch complete: %lu results", (unsigned long)results.count);
         }
         
         self.progressIndicator.hidden = YES;
@@ -447,34 +1085,7 @@
     [self.batchRunner cancel];
 }
 
-- (void)createNewModel:(id)sender {
-    // TODO: Show model editor dialog
-    NSLog(@"TODO: Create new model");
-}
-
-- (void)editModel:(id)sender {
-    // TODO: Show model editor for selected model
-    NSLog(@"TODO: Edit model");
-}
-
-- (void)deleteModel:(id)sender {
-    NSInteger selectedRow = [self.modelsTableView selectedRow];
-    if (selectedRow < 0) return;
-    
-    ScreenerModel *model = self.models[selectedRow];
-    
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Delete Model";
-    alert.informativeText = [NSString stringWithFormat:@"Are you sure you want to delete '%@'?", model.displayName];
-    [alert addButtonWithTitle:@"Delete"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    if ([alert runModal] == NSAlertFirstButtonReturn) {
-        NSError *error;
-        [self.modelManager deleteModel:model.modelID error:&error];
-        [self refreshModels];
-    }
-}
+#pragma mark - Actions - Settings
 
 - (void)browseDataDirectory:(id)sender {
     NSOpenPanel *panel = [NSOpenPanel openPanel];
@@ -520,7 +1131,6 @@
 }
 
 - (void)exportResults:(id)sender {
-    // TODO: Export results to CSV
     NSLog(@"TODO: Export results");
 }
 
@@ -530,147 +1140,56 @@
     self.resultsStatusLabel.stringValue = @"No results";
 }
 
-#pragma mark - NSTableViewDataSource
-
-- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
-    if (tableView == self.modelsTableView) {
-        return self.models.count;
-    } else if (tableView == self.resultsTableView) {
-        return self.executionResults.count;
-    }
-    return 0;
-}
-
-- (nullable NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(nullable NSTableColumn *)tableColumn row:(NSInteger)row {
-    
-    NSTextField *textField = [[NSTextField alloc] init];
-    textField.editable = NO;
-    textField.bordered = NO;
-    textField.backgroundColor = [NSColor clearColor];
-    
-    if (tableView == self.modelsTableView) {
-        ScreenerModel *model = self.models[row];
-        
-        if ([tableColumn.identifier isEqualToString:@"enabled"]) {
-            textField.stringValue = model.isEnabled ? @"✓" : @"";
-        } else if ([tableColumn.identifier isEqualToString:@"name"]) {
-            textField.stringValue = model.displayName;
-        } else if ([tableColumn.identifier isEqualToString:@"steps"]) {
-            textField.stringValue = [NSString stringWithFormat:@"%lu", (unsigned long)model.steps.count];
-        } else if ([tableColumn.identifier isEqualToString:@"description"]) {
-            textField.stringValue = model.modelDescription ?: @"";
-        }
-        
-    } else if (tableView == self.resultsTableView) {
-        NSArray *keys = [self.executionResults.allKeys sortedArrayUsingSelector:@selector(compare:)];
-        NSString *modelID = keys[row];
-        ModelResult *result = self.executionResults[modelID];
-        
-        if ([tableColumn.identifier isEqualToString:@"model"]) {
-            textField.stringValue = result.modelName;
-        } else if ([tableColumn.identifier isEqualToString:@"count"]) {
-            textField.stringValue = [NSString stringWithFormat:@"%lu", (unsigned long)result.finalSymbols.count];
-        } else if ([tableColumn.identifier isEqualToString:@"time"]) {
-            textField.stringValue = [NSString stringWithFormat:@"%.2fs", result.totalExecutionTime];
-        } else if ([tableColumn.identifier isEqualToString:@"symbols"]) {
-            // Show first 10 symbols
-            NSArray *firstSymbols = [result.finalSymbols subarrayWithRange:NSMakeRange(0, MIN(10, result.finalSymbols.count))];
-            NSString *symbolsString = [firstSymbols componentsJoinedByString:@", "];
-            if (result.finalSymbols.count > 10) {
-                symbolsString = [symbolsString stringByAppendingFormat:@", ... (%lu more)", (unsigned long)(result.finalSymbols.count - 10)];
-            }
-            textField.stringValue = symbolsString;
-        }
-    }
-    
-    return textField;
-}
-
-#pragma mark - NSTableViewDelegate
-
-- (void)tableViewSelectionDidChange:(NSNotification *)notification {
-    NSTableView *tableView = notification.object;
-    
-    if (tableView == self.modelsTableView) {
-        BOOL hasSelection = [self.modelsTableView selectedRow] >= 0;
-        self.editModelButton.enabled = hasSelection;
-        self.deleteModelButton.enabled = hasSelection;
-        self.runButton.enabled = hasSelection;
-    }
-}
-
 #pragma mark - ScreenerBatchRunnerDelegate
 
 - (void)batchRunnerDidStart:(ScreenerBatchRunner *)runner {
-    NSLog(@"🚀 Batch runner started");
-    self.resultsStatusLabel.stringValue = @"Execution started...";
+    self.resultsStatusLabel.stringValue = @"Starting...";
 }
 
 - (void)batchRunner:(ScreenerBatchRunner *)runner didStartLoadingDataForSymbols:(NSInteger)symbolCount {
-    NSLog(@"📥 Loading data for %ld symbols", (long)symbolCount);
-    self.resultsStatusLabel.stringValue = [NSString stringWithFormat:@"Loading data for %ld symbols...", (long)symbolCount];
+    self.resultsStatusLabel.stringValue = [NSString stringWithFormat:@"Loading %ld symbols...", (long)symbolCount];
 }
 
 - (void)batchRunner:(ScreenerBatchRunner *)runner didFinishLoadingData:(NSDictionary *)cache {
-    NSLog(@"✅ Data loaded: %lu symbols", (unsigned long)cache.count);
     self.resultsStatusLabel.stringValue = [NSString stringWithFormat:@"Data loaded: %lu symbols", (unsigned long)cache.count];
 }
 
 - (void)batchRunner:(ScreenerBatchRunner *)runner didStartModel:(ScreenerModel *)model {
-    NSLog(@"▶️  Executing: %@", model.displayName);
     self.resultsStatusLabel.stringValue = [NSString stringWithFormat:@"Executing: %@", model.displayName];
 }
 
 - (void)batchRunner:(ScreenerBatchRunner *)runner didFinishModel:(ModelResult *)result {
-    NSLog(@"✅ Model complete: %@ → %lu symbols", result.modelName, (unsigned long)result.finalSymbols.count);
-    
-    // Store result
     self.executionResults[result.modelID] = result;
-    
-    // Update results table
     [self.resultsTableView reloadData];
-    
-    // Update status
     self.resultsStatusLabel.stringValue = [NSString stringWithFormat:@"Completed: %@ (%lu symbols)",
                                            result.modelName,
                                            (unsigned long)result.finalSymbols.count];
 }
 
 - (void)batchRunner:(ScreenerBatchRunner *)runner didFinishWithResults:(NSDictionary<NSString *,ModelResult *> *)results {
-    NSLog(@"🎉 Batch execution complete: %lu models", (unsigned long)results.count);
-    
-    // Calculate totals
     NSInteger totalSymbols = 0;
     for (ModelResult *result in results.allValues) {
         totalSymbols += result.finalSymbols.count;
     }
     
-    self.resultsStatusLabel.stringValue = [NSString stringWithFormat:@"Complete: %lu models, %ld total symbols",
-                                           (unsigned long)results.count,
-                                           (long)totalSymbols];
+    self.resultsStatusLabel.stringValue = [NSString stringWithFormat:@"Complete: %lu models, %ld symbols",
+                                           (unsigned long)results.count, (long)totalSymbols];
     
-    // Switch to results tab
     [self.tabView selectTabViewItemAtIndex:1];
     
-    // Show alert
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"Execution Complete";
-    alert.informativeText = [NSString stringWithFormat:@"Successfully executed %lu models.\nTotal symbols found: %ld",
+    alert.informativeText = [NSString stringWithFormat:@"Executed %lu models.\nTotal symbols: %ld",
                             (unsigned long)results.count, (long)totalSymbols];
-    alert.alertStyle = NSAlertStyleInformational;
     [alert runModal];
 }
 
 - (void)batchRunner:(ScreenerBatchRunner *)runner didFailWithError:(NSError *)error {
-    NSLog(@"❌ Batch execution failed: %@", error.localizedDescription);
-    
-    self.resultsStatusLabel.stringValue = @"Execution failed";
-    self.resultsStatusLabel.textColor = [NSColor redColor];
+    self.resultsStatusLabel.stringValue = @"Failed";
     
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"Execution Failed";
     alert.informativeText = error.localizedDescription;
-    alert.alertStyle = NSAlertStyleCritical;
     [alert runModal];
 }
 
@@ -679,3 +1198,4 @@
 }
 
 @end
+

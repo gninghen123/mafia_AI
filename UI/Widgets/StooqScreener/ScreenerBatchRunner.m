@@ -40,6 +40,18 @@
         return;
     }
     
+    // Validate models before execution
+    for (ScreenerModel *model in models) {
+        if (!model.steps || model.steps.count == 0) {
+            NSError *error = [NSError errorWithDomain:@"ScreenerBatchRunner"
+                                                 code:2002
+                                             userInfo:@{NSLocalizedDescriptionKey:
+                                                 [NSString stringWithFormat:@"Model '%@' has no steps. Please add at least one screener.", model.displayName]}];
+            completion(nil, error);
+            return;
+        }
+    }
+    
     self.isRunning = YES;
     self.isCancelled = NO;
     

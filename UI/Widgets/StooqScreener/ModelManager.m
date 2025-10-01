@@ -191,14 +191,8 @@
         return NO;
     }
     
-    if (!model.steps || model.steps.count == 0) {
-        if (error) {
-            *error = [NSError errorWithDomain:@"ModelManagerError"
-                                         code:1003
-                                     userInfo:@{NSLocalizedDescriptionKey: @"Model must have at least one step"}];
-        }
-        return NO;
-    }
+    // Allow empty steps - user can add them in the editor
+    // Validation will happen at execution time instead
     
     return YES;
 }

@@ -40,6 +40,12 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSArray<NSString *> *)executeOnSymbols:(NSArray<NSString *> *)inputSymbols
                                cachedData:(NSDictionary<NSString *, NSArray<HistoricalBarModel *> *> *)cache;
 
+#pragma mark - Default Parameters
+
+/// Get default parameters for this screener
+/// Subclasses should override to provide their defaults
+- (NSDictionary *)defaultParameters;
+
 #pragma mark - Helper Methods (available to subclasses)
 
 /**

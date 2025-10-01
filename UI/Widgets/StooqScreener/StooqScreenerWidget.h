@@ -14,23 +14,24 @@ NS_ASSUME_NONNULL_BEGIN
 #pragma mark - Configuration
 
 /// Path to Stooq data directory
-@property (nonatomic, strong) NSString *dataDirectory;
+@property (nonatomic, strong, nullable) NSString *dataDirectory;
 
 /// Selected exchanges to screen (e.g., @[@"nasdaq", @"nyse"])
 @property (nonatomic, strong) NSArray<NSString *> *selectedExchanges;
 
 #pragma mark - Public Methods
 
-/// Set data directory and refresh
+/// Set data directory and initialize data manager
+/// @param path Path to Stooq data directory
 - (void)setDataDirectory:(NSString *)path;
 
-/// Refresh available models
+/// Refresh models list from disk
 - (void)refreshModels;
 
-/// Run selected models
+/// Run selected models on universe
 - (void)runSelectedModels;
 
-/// Cancel current execution
+/// Cancel current batch execution
 - (void)cancelExecution;
 
 @end

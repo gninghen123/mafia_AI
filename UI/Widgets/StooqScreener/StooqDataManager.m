@@ -304,13 +304,23 @@
     
     NSArray<NSString *> *lines = [csvContent componentsSeparatedByString:@"\n"];
     
-    // Parse lines in reverse order (most recent first) and collect up to maxBars
     NSMutableArray<HistoricalBarModel *> *bars = [NSMutableArray array];
     
-    // Start from end and work backwards
-    NSInteger startIdx = (maxBars > 0 && maxBars < lines.count) ? (lines.count - maxBars) : 0;
+    // Parse from END to START to get the most recent maxBars
+    // Skip last line if empty
+    NSInteger endIdx = lines.count - 1;
+    while (endIdx >= 0 && [[lines[endIdx] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] length] == 0) {
+        endIdx--;
+    }
     
-    for (NSInteger i = startIdx; i < lines.count; i++) {
+    NSInteger parsedCount = 0;
+    
+    for (NSInteger i = endIdx; i >= 0; i--) {
+        // Stop if we have enough bars
+        if (maxBars > 0 && parsedCount >= maxBars) {
+            break;
+        }
+        
         NSString *line = [lines[i] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
         
         if (line.length == 0) continue;
@@ -320,17 +330,13 @@
         if (components.count < 9) continue;
         
         @try {
-            // Format: <TICKER>,<PER>,<DATE>,<TIME>,<OPEN>,<HIGH>,<LOW>,<CLOSE>,<VOL>,<OPENINT>
-            // Example: AAPL.US,D,20161220,000000,10,10.15,8.3954,10,9648,0
-            
-            NSString *dateStr = components[2];      // YYYYMMDD
+            NSString *dateStr = components[2];
             double open = [components[4] doubleValue];
             double high = [components[5] doubleValue];
             double low = [components[6] doubleValue];
             double close = [components[7] doubleValue];
             long long volume = [components[8] longLongValue];
             
-            // Parse date (YYYYMMDD format)
             if (dateStr.length != 8) continue;
             
             NSString *year = [dateStr substringWithRange:NSMakeRange(0, 4)];
@@ -349,10 +355,9 @@
             
             // Validate OHLC
             if (high < low || high < open || high < close || low > open || low > close) {
-                continue;  // Invalid bar
+                continue;
             }
             
-            // Create bar
             HistoricalBarModel *bar = [[HistoricalBarModel alloc] init];
             bar.symbol = symbol;
             bar.date = date;
@@ -366,6 +371,7 @@
             bar.isPaddingBar = NO;
             
             [bars addObject:bar];
+            parsedCount++;
             
         } @catch (NSException *exception) {
             NSLog(@"⚠️ Parse error in %@: %@", filePath, exception.reason);
@@ -373,8 +379,10 @@
         }
     }
     
-    // Bars are already in chronological order (oldest to newest)
-    return [bars copy];
+    // Bars are in reverse chronological order, need to reverse to get oldest→newest
+    NSArray *reversedBars = [[bars reverseObjectEnumerator] allObjects];
+    
+    return reversedBars;
 }
 
 #pragma mark - File Path Resolution

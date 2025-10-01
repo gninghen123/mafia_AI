@@ -94,4 +94,11 @@
     return [results copy];
 }
 
+
+- (NSDictionary *)defaultParameters {
+    return @{
+        @"lookback_days": @5
+    };
+}
+
 @end

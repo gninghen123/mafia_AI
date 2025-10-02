@@ -8,6 +8,7 @@
 #import "ChartWidget+InteractionHandlers.h"
 #import "DataHub+MarketData.h"
 #import "ChartObjectManagerWindow.h"  
+#import "ChartPanelView.h"  // ← AGGIUNGI QUESTO
 
 @implementation ChartWidget (InteractionHandlers)
 
@@ -332,8 +333,17 @@
         [self processUIUpdate:flags];
     }
     
-    // ✅ ALERTS AND OBJECTS are handled by coordinateSymbolDependencies
-    
+    if (flags & (ChartInvalidationData | ChartInvalidationViewport)) {
+           NSLog(@"  ✓ Synchronizing panels and invalidating layers");
+           [self synchronizePanels];
+           
+           for (ChartPanelView *panel in self.chartPanels) {
+               if ([panel respondsToSelector:@selector(invalidateCoordinateDependentLayersWithReason:)]) {
+                   [panel performSelector:@selector(invalidateCoordinateDependentLayersWithReason:)
+                               withObject:@"data update"];
+               }
+           }
+       }
     NSLog(@"✅ Invalidations applied successfully");
 }
 

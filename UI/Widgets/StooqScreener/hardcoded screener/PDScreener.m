@@ -10,6 +10,7 @@
 //
 
 #import "PDScreener.h"
+#import "TechnicalIndicatorHelper.h"  // ← Aggiungi import
 
 @implementation PDScreener
 
@@ -62,13 +63,25 @@
         HistoricalBarModel *current = bars[0];
         HistoricalBarModel *prev = bars[1];
         
-        // Calculate highest(high, 5) and lowest(low, 5) for CURRENT bars
-        double highestHigh = [self highest:bars period:lookback offset:0 key:@"high"];
-        double lowestLow = [self lowest:bars period:lookback offset:0 key:@"low"];
+        // ✅ Calculate highest(high, 5) and lowest(low, 5) for CURRENT bars (index 0)
+        double highestHigh = [TechnicalIndicatorHelper highest:bars
+                                                         index:0
+                                                        period:lookback
+                                                      valueKey:@"high"];
+        double lowestLow = [TechnicalIndicatorHelper lowest:bars
+                                                       index:0
+                                                      period:lookback
+                                                    valueKey:@"low"];
         
-        // Calculate for PREVIOUS bars [1]
-        double highestHigh1 = [self highest:bars period:lookback offset:1 key:@"high"];
-        double lowestLow1 = [self lowest:bars period:lookback offset:1 key:@"low"];
+        // ✅ Calculate for PREVIOUS bars [1]
+        double highestHigh1 = [TechnicalIndicatorHelper highest:bars
+                                                          index:1
+                                                         period:lookback
+                                                       valueKey:@"high"];
+        double lowestLow1 = [TechnicalIndicatorHelper lowest:bars
+                                                        index:1
+                                                       period:lookback
+                                                     valueKey:@"low"];
         
         // Condition 1: highest(high,5) > lowest(low,5) * 2
         BOOL highLowCondition = highestHigh > (lowestLow * highLowRatio);
@@ -81,12 +94,24 @@
         double fibLevel_price = lowestLow1 + (range * fibLevel);
         BOOL aboveFibLevel = current.close > fibLevel_price;
         
-        // Condition 4: simpleMovingAvg(volume*close, 5) > 250000
-        double avgDollarVolume = [self smaOfDollarVolume:bars period:lookback];
+        // ✅ Condition 4: simpleMovingAvg(volume*close, 5) > 250000
+        // Calculate average dollar volume manually (TechnicalIndicatorHelper doesn't have smaOfDollarVolume)
+        double avgDollarVolume = 0.0;
+        if (bars.count >= lookback) {
+            double sum = 0.0;
+            for (NSInteger i = 0; i < lookback; i++) {
+                HistoricalBarModel *bar = bars[i];
+                sum += (bar.volume * bar.close);
+            }
+            avgDollarVolume = sum / (double)lookback;
+        }
         BOOL volumeCondition = avgDollarVolume > minAvgDollarVolume;
         
-        // Condition 5: close >= simpleMovingAvg(close, 20)
-        double sma20 = [self sma:bars period:smaPeriod offset:0 key:@"close"];
+        // ✅ Condition 5: close >= simpleMovingAvg(close, 20)
+        double sma20 = [TechnicalIndicatorHelper sma:bars
+                                                index:0
+                                               period:smaPeriod
+                                             valueKey:@"close"];
         BOOL aboveSMA = current.close >= sma20;
         
         if (highLowCondition && belowPrevClose && aboveFibLevel && volumeCondition && aboveSMA) {
@@ -97,59 +122,5 @@
     return [results copy];
 }
 
-#pragma mark - Helper Methods
-
-- (double)highest:(NSArray<HistoricalBarModel *> *)bars period:(NSInteger)period offset:(NSInteger)offset key:(NSString *)key {
-    double max = -INFINITY;
-    NSInteger end = MIN(offset + period, bars.count);
-    
-    for (NSInteger i = offset; i < end; i++) {
-        HistoricalBarModel *bar = bars[i];
-        double value = [key isEqualToString:@"high"] ? bar.high :
-                      [key isEqualToString:@"low"] ? bar.low :
-                      [key isEqualToString:@"close"] ? bar.close : bar.open;
-        if (value > max) max = value;
-    }
-    return max;
-}
-
-- (double)lowest:(NSArray<HistoricalBarModel *> *)bars period:(NSInteger)period offset:(NSInteger)offset key:(NSString *)key {
-    double min = INFINITY;
-    NSInteger end = MIN(offset + period, bars.count);
-    
-    for (NSInteger i = offset; i < end; i++) {
-        HistoricalBarModel *bar = bars[i];
-        double value = [key isEqualToString:@"high"] ? bar.high :
-                      [key isEqualToString:@"low"] ? bar.low :
-                      [key isEqualToString:@"close"] ? bar.close : bar.open;
-        if (value < min) min = value;
-    }
-    return min;
-}
-
-- (double)sma:(NSArray<HistoricalBarModel *> *)bars period:(NSInteger)period offset:(NSInteger)offset key:(NSString *)key {
-    if (bars.count < offset + period) return 0.0;
-    
-    double sum = 0.0;
-    for (NSInteger i = offset; i < offset + period; i++) {
-        HistoricalBarModel *bar = bars[i];
-        double value = [key isEqualToString:@"close"] ? bar.close :
-                      [key isEqualToString:@"high"] ? bar.high :
-                      [key isEqualToString:@"low"] ? bar.low : bar.open;
-        sum += value;
-    }
-    return sum / (double)period;
-}
-
-- (double)smaOfDollarVolume:(NSArray<HistoricalBarModel *> *)bars period:(NSInteger)period {
-    if (bars.count < period) return 0.0;
-    
-    double sum = 0.0;
-    for (NSInteger i = 0; i < period; i++) {
-        HistoricalBarModel *bar = bars[i];
-        sum += (bar.volume * bar.close);
-    }
-    return sum / (double)period;
-}
 
 @end

@@ -828,7 +828,6 @@ extern NSString *const DataHubDataLoadedNotification;
     }
 
     NSDictionary *userInfo = notification.userInfo;
-
     NSString *symbol = userInfo[@"symbol"];
     
     if (![symbol isEqualToString:self.currentSymbol]) {
@@ -838,10 +837,18 @@ extern NSString *const DataHubDataLoadedNotification;
     
     NSArray<HistoricalBarModel *> *bars = userInfo[@"bars"];
     
+    // ✅ FIX CRITICO: Usa processNewHistoricalData invece di updateWithHistoricalBars
+    // Questo assicura che venga chiamato applyInvalidations che invalida i layer
+    NSLog(@"🔄 handleHistoricalDataUpdate: Routing to processNewHistoricalData");
     
-    // Aggiorna la visualizzazione del chart
-    [self updateWithHistoricalBars:bars];
+    [self processNewHistoricalData:bars
+                     invalidations:(ChartInvalidationData |
+                                   ChartInvalidationIndicators |
+                                   ChartInvalidationViewport)];
+    
+    NSLog(@"✅ handleHistoricalDataUpdate: Data processed with proper invalidations");
 }
+
 
 #pragma mark - Chain Notifications
 

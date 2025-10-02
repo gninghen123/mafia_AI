@@ -9,10 +9,13 @@
 #import "FlyingBabyScreener.h"
 #import "PDScreener.h"
 #import "SMCScreener.h"
+#import "InsideBoxScreener.h"
+#import "PullbackToSMAScreener.h"
 
 
 @interface ScreenerRegistry ()
 @property (nonatomic, strong) NSMutableDictionary<NSString *, BaseScreener *> *screeners;
+
 @end
 
 @implementation ScreenerRegistry
@@ -41,12 +44,11 @@
     // Existing screeners
     [self registerScreenerClass:[ShakeScreener class]];
     [self registerScreenerClass:[WIRScreener class]];
-    
-    // NEW SCREENERS
     [self registerScreenerClass:[FlyingBabyScreener class]];
     [self registerScreenerClass:[PDScreener class]];
     [self registerScreenerClass:[SMCScreener class]];
-    
+    [self registerScreenerClass:[InsideBoxScreener class]];
+    [self registerScreenerClass:[PullbackToSMAScreener class]];
     NSLog(@"✅ Registered %lu default screeners", (unsigned long)self.screeners.count);
 }
 

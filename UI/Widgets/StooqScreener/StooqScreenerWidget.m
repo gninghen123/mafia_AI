@@ -10,9 +10,30 @@
 #import "ScreenerModel.h"
 #import "ScreenerRegistry.h"
 #import "BaseScreener.h"
+#import "datahub+marketdata.h"
 
 @interface StooqScreenerWidget () <NSTableViewDelegate, NSTableViewDataSource, ScreenerBatchRunnerDelegate>
+// Tab 4: Archive
+@property (nonatomic, strong) NSTableView *archiveTableView;
+@property (nonatomic, strong) NSScrollView *archiveScrollView;
+@property (nonatomic, strong) NSTableView *archiveSymbolsTableView;
+@property (nonatomic, strong) NSScrollView *archiveSymbolsScrollView;
+@property (nonatomic, strong) NSSplitView *archiveSplitView;
+@property (nonatomic, strong) NSTextField *archiveHeaderLabel;
+@property (nonatomic, strong) NSButton *deleteArchiveButton;
+@property (nonatomic, strong) NSButton *exportArchiveButton;
 
+
+@property (nonatomic, strong) NSArray<NSString *> *selectedModelSymbols;
+
+// Archive data
+@property (nonatomic, strong) NSMutableArray<NSDictionary *> *archivedResults;  // Array di {date, modelName, symbols}
+@property (nonatomic, strong) NSDictionary *selectedArchiveEntry;  // Entry selezionata
+@property (nonatomic, strong) StooqDataManager *currentPriceDataManager;  // Per calcolare var%
+
+// Aggiungi questa property all'interface
+@property (nonatomic, strong) NSMutableSet<NSString *> *selectedSymbolsForReport;
+@property (nonatomic, strong) NSButton *generateReportButton;
 // Managers
 @property (nonatomic, strong) ModelManager *modelManager;
 @property (nonatomic, strong) StooqDataManager *dataManager;
@@ -103,9 +124,16 @@
         _executionResults = [NSMutableDictionary dictionary];
         _selectedExchanges = @[@"nasdaq", @"nyse"];
         _modelManager = [ModelManager sharedManager];
+        [self initDataBase];
     }
     return self;
 }
+
+- (void)initDataBase{
+    [self loadInitialData];
+    [self scanDatabase:nil];
+}
+
 
 #pragma mark - BaseWidget Overrides
 
@@ -143,8 +171,175 @@
     
     [self setupModelsTab];
     [self setupResultsTab];
+    [self setupArchiveTab];  // ✅ NUOVO TAB
+
     [self setupSettingsTab];
 }
+
+- (void)setupArchiveTab {
+    NSView *archiveView = [[NSView alloc] init];
+    
+    // Split view: sinistra = lista archive, destra = simboli con var%
+    self.archiveSplitView = [[NSSplitView alloc] init];
+    self.archiveSplitView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.archiveSplitView.vertical = YES;
+    self.archiveSplitView.dividerStyle = NSSplitViewDividerStyleThin;
+    [archiveView addSubview:self.archiveSplitView];
+    
+    // Left side: Archive list
+    NSView *archiveListView = [self setupArchiveListView];
+    [self.archiveSplitView addArrangedSubview:archiveListView];
+    
+    // Right side: Symbols with var%
+    NSView *archiveSymbolsView = [self setupArchiveSymbolsView];
+    [self.archiveSplitView addArrangedSubview:archiveSymbolsView];
+    
+    // Bottom bar
+    self.deleteArchiveButton = [NSButton buttonWithTitle:@"Delete" target:self action:@selector(deleteArchiveEntry:)];
+    self.deleteArchiveButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.deleteArchiveButton.enabled = NO;
+    [archiveView addSubview:self.deleteArchiveButton];
+    
+    self.exportArchiveButton = [NSButton buttonWithTitle:@"Export" target:self action:@selector(exportArchive:)];
+    self.exportArchiveButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [archiveView addSubview:self.exportArchiveButton];
+    
+    // Layout
+    [NSLayoutConstraint activateConstraints:@[
+        [self.archiveSplitView.topAnchor constraintEqualToAnchor:archiveView.topAnchor constant:10],
+        [self.archiveSplitView.leadingAnchor constraintEqualToAnchor:archiveView.leadingAnchor constant:10],
+        [self.archiveSplitView.trailingAnchor constraintEqualToAnchor:archiveView.trailingAnchor constant:-10],
+        [self.archiveSplitView.bottomAnchor constraintEqualToAnchor:self.deleteArchiveButton.topAnchor constant:-10],
+        
+        [self.deleteArchiveButton.leadingAnchor constraintEqualToAnchor:archiveView.leadingAnchor constant:10],
+        [self.deleteArchiveButton.bottomAnchor constraintEqualToAnchor:archiveView.bottomAnchor constant:-10],
+        
+        [self.exportArchiveButton.leadingAnchor constraintEqualToAnchor:self.deleteArchiveButton.trailingAnchor constant:10],
+        [self.exportArchiveButton.centerYAnchor constraintEqualToAnchor:self.deleteArchiveButton.centerYAnchor]
+    ]];
+    
+    // Set split position
+    dispatch_async(dispatch_get_main_queue(), ^{
+        CGFloat totalWidth = self.archiveSplitView.frame.size.width;
+        if (totalWidth > 0) {
+            [self.archiveSplitView setPosition:totalWidth * 0.35 ofDividerAtIndex:0];
+        }
+    });
+    
+    NSTabViewItem *archiveTab = [[NSTabViewItem alloc] initWithIdentifier:@"archive"];
+    archiveTab.label = @"Archive";
+    archiveTab.view = archiveView;
+    [self.tabView addTabViewItem:archiveTab];
+    
+    // Inizializza array archivio
+    self.archivedResults = [NSMutableArray array];
+    [self loadArchivedResults];
+}
+
+- (NSView *)setupArchiveListView {
+    NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 500, 800)];
+    
+    NSTextField *label = [NSTextField labelWithString:@"Archived Results"];
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    label.font = [NSFont boldSystemFontOfSize:13];
+    [view addSubview:label];
+    
+    self.archiveTableView = [[NSTableView alloc] init];
+    self.archiveTableView.delegate = self;
+    self.archiveTableView.dataSource = self;
+    self.archiveTableView.allowsMultipleSelection = NO;
+    self.archiveTableView.usesAlternatingRowBackgroundColors = YES;
+    
+    NSTableColumn *dateCol = [[NSTableColumn alloc] initWithIdentifier:@"archive_date"];
+    dateCol.title = @"Date";
+    dateCol.width = 120;
+    [self.archiveTableView addTableColumn:dateCol];
+    
+    NSTableColumn *modelCol = [[NSTableColumn alloc] initWithIdentifier:@"archive_model"];
+    modelCol.title = @"Model";
+    modelCol.width = 150;
+    [self.archiveTableView addTableColumn:modelCol];
+    
+    NSTableColumn *countCol = [[NSTableColumn alloc] initWithIdentifier:@"archive_count"];
+    countCol.title = @"Symbols";
+    countCol.width = 70;
+    [self.archiveTableView addTableColumn:countCol];
+    
+    self.archiveScrollView = [[NSScrollView alloc] init];
+    self.archiveScrollView.documentView = self.archiveTableView;
+    self.archiveScrollView.hasVerticalScroller = YES;
+    self.archiveScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    [view addSubview:self.archiveScrollView];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [label.topAnchor constraintEqualToAnchor:view.topAnchor constant:5],
+        [label.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:5],
+        
+        [self.archiveScrollView.topAnchor constraintEqualToAnchor:label.bottomAnchor constant:5],
+        [self.archiveScrollView.leadingAnchor constraintEqualToAnchor:view.leadingAnchor],
+        [self.archiveScrollView.trailingAnchor constraintEqualToAnchor:view.trailingAnchor],
+        [self.archiveScrollView.bottomAnchor constraintEqualToAnchor:view.bottomAnchor]
+    ]];
+    
+    return view;
+}
+
+
+
+
+- (NSView *)setupArchiveSymbolsView {
+    NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 500, 800)];
+    
+    self.archiveHeaderLabel = [NSTextField labelWithString:@"Select an archive entry"];
+    self.archiveHeaderLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.archiveHeaderLabel.font = [NSFont boldSystemFontOfSize:13];
+    [view addSubview:self.archiveHeaderLabel];
+    
+    self.archiveSymbolsTableView = [[NSTableView alloc] initWithFrame:NSMakeRect(0, 0, 500, 800)];
+    self.archiveSymbolsTableView.delegate = self;
+    self.archiveSymbolsTableView.dataSource = self;
+    self.archiveSymbolsTableView.allowsMultipleSelection = YES;
+    self.archiveSymbolsTableView.usesAlternatingRowBackgroundColors = YES;
+    
+    NSTableColumn *symbolCol = [[NSTableColumn alloc] initWithIdentifier:@"archive_symbol"];
+    symbolCol.title = @"Symbol";
+    symbolCol.width = 100;
+    [self.archiveSymbolsTableView addTableColumn:symbolCol];
+    
+    NSTableColumn *signalPriceCol = [[NSTableColumn alloc] initWithIdentifier:@"signal_price"];
+    signalPriceCol.title = @"Signal Price";
+    signalPriceCol.width = 100;
+    [self.archiveSymbolsTableView addTableColumn:signalPriceCol];
+    
+    NSTableColumn *currentPriceCol = [[NSTableColumn alloc] initWithIdentifier:@"current_price"];
+    currentPriceCol.title = @"Current Price";
+    currentPriceCol.width = 100;
+    [self.archiveSymbolsTableView addTableColumn:currentPriceCol];
+    
+    NSTableColumn *varCol = [[NSTableColumn alloc] initWithIdentifier:@"var_percent"];
+    varCol.title = @"Var %";
+    varCol.width = 80;
+    [self.archiveSymbolsTableView addTableColumn:varCol];
+    
+    self.archiveSymbolsScrollView = [[NSScrollView alloc] init];
+    self.archiveSymbolsScrollView.documentView = self.archiveSymbolsTableView;
+    self.archiveSymbolsScrollView.hasVerticalScroller = YES;
+    self.archiveSymbolsScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    [view addSubview:self.archiveSymbolsScrollView];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [self.archiveHeaderLabel.topAnchor constraintEqualToAnchor:view.topAnchor constant:5],
+        [self.archiveHeaderLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:5],
+        
+        [self.archiveSymbolsScrollView.topAnchor constraintEqualToAnchor:self.archiveHeaderLabel.bottomAnchor constant:5],
+        [self.archiveSymbolsScrollView.leadingAnchor constraintEqualToAnchor:view.leadingAnchor],
+        [self.archiveSymbolsScrollView.trailingAnchor constraintEqualToAnchor:view.trailingAnchor],
+        [self.archiveSymbolsScrollView.bottomAnchor constraintEqualToAnchor:view.bottomAnchor]
+    ]];
+    
+    return view;
+}
+
 
 - (void)setupModelsTab {
     NSView *modelsView = [[NSView alloc] init];
@@ -279,10 +474,18 @@
     NSView *symbolsResultsView = [self setupResultsSymbolsView];
     [self.resultsSplitView addArrangedSubview:symbolsResultsView];
     
+    // ✅ Inizializza il set per i simboli selezionati
+    self.selectedSymbolsForReport = [NSMutableSet set];
+    
     // Bottom bar
     self.exportButton = [NSButton buttonWithTitle:@"Export" target:self action:@selector(exportResults:)];
     self.exportButton.translatesAutoresizingMaskIntoConstraints = NO;
     [resultsView addSubview:self.exportButton];
+    
+    // ✅ NUOVO BOTTONE: Generate Report
+    self.generateReportButton = [NSButton buttonWithTitle:@"📝 Generate Report" target:self action:@selector(generateReport:)];
+    self.generateReportButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [resultsView addSubview:self.generateReportButton];
     
     self.clearResultsButton = [NSButton buttonWithTitle:@"Clear" target:self action:@selector(clearResults:)];
     self.clearResultsButton.translatesAutoresizingMaskIntoConstraints = NO;
@@ -306,7 +509,11 @@
         [self.exportButton.leadingAnchor constraintEqualToAnchor:resultsView.leadingAnchor constant:10],
         [self.exportButton.bottomAnchor constraintEqualToAnchor:resultsView.bottomAnchor constant:-10],
         
-        [self.clearResultsButton.leadingAnchor constraintEqualToAnchor:self.exportButton.trailingAnchor constant:10],
+        // ✅ NUOVO CONSTRAINT per Generate Report
+        [self.generateReportButton.leadingAnchor constraintEqualToAnchor:self.exportButton.trailingAnchor constant:10],
+        [self.generateReportButton.centerYAnchor constraintEqualToAnchor:self.exportButton.centerYAnchor],
+        
+        [self.clearResultsButton.leadingAnchor constraintEqualToAnchor:self.generateReportButton.trailingAnchor constant:10],
         [self.clearResultsButton.centerYAnchor constraintEqualToAnchor:self.exportButton.centerYAnchor],
         
         [self.resultsStatusLabel.trailingAnchor constraintEqualToAnchor:resultsView.trailingAnchor constant:-10],
@@ -327,9 +534,8 @@
     [self.tabView addTabViewItem:resultsTab];
 }
 
-
 - (NSView *)setupResultsSymbolsView {
-    NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 600, 800)];
+    NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 500, 800)];
     
     // Header
     self.symbolsHeaderLabel = [NSTextField labelWithString:@"Select a model"];
@@ -343,6 +549,12 @@
     self.resultsSymbolsTableView.dataSource = self;
     self.resultsSymbolsTableView.allowsMultipleSelection = YES;
     self.resultsSymbolsTableView.usesAlternatingRowBackgroundColors = YES;
+    
+    // ✅ NUOVA COLONNA: Checkbox
+    NSTableColumn *selectCol = [[NSTableColumn alloc] initWithIdentifier:@"select"];
+    selectCol.title = @"✓";
+    selectCol.width = 30;
+    [self.resultsSymbolsTableView addTableColumn:selectCol];
     
     // Column
     NSTableColumn *symbolCol = [[NSTableColumn alloc] initWithIdentifier:@"symbol"];
@@ -371,7 +583,7 @@
     self.sendAllButton.enabled = NO;
     [view addSubview:self.sendAllButton];
     
-    // Layout
+    // Layout (invariato)
     [NSLayoutConstraint activateConstraints:@[
         [self.symbolsHeaderLabel.topAnchor constraintEqualToAnchor:view.topAnchor constant:5],
         [self.symbolsHeaderLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:5],
@@ -796,27 +1008,48 @@
 #pragma mark - NSTableViewDataSource
 
 - (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
+    
+    // MODELS TABLE
     if (tableView == self.modelsTableView) {
         return self.models.count;
-    } else if (tableView == self.screenersTableView) {
-        return self.editingModel ? self.editingModel.steps.count : 0;
-    } else if (tableView == self.parametersTableView) {
-        if (self.selectedStep) {
-            return self.selectedStep.parameters.allKeys.count;
-        }
-        return 0;
     }
-    // NEW: Results models table
-    else if (tableView == self.resultsModelsTableView) {
+    
+    // SCREENERS TABLE
+    if (tableView == self.screenersTableView) {
+        return self.editingModel ? self.editingModel.steps.count : 0;
+    }
+    
+    // PARAMETERS TABLE
+    if (tableView == self.parametersTableView) {
+        return self.selectedStep ? self.selectedStep.parameters.count : 0;
+    }
+    
+    // RESULTS MODELS TABLE
+    if (tableView == self.resultsModelsTableView) {
         return self.executionResults.count;
     }
-    // NEW: Results symbols table
-    else if (tableView == self.resultsSymbolsTableView) {
-        return self.currentModelSymbols ? self.currentModelSymbols.count : 0;
+    
+    // ✅ RESULTS SYMBOLS TABLE - AGGIUNGI QUESTO
+    if (tableView == self.resultsSymbolsTableView) {
+        return self.selectedModelSymbols ? self.selectedModelSymbols.count : 0;
     }
+    
+    // ARCHIVE TABLE
+    if (tableView == self.archiveTableView) {
+        return self.archivedResults.count;
+    }
+    
+    // ARCHIVE SYMBOLS TABLE
+    if (tableView == self.archiveSymbolsTableView) {
+        if (!self.selectedArchiveEntry) {
+            return 0;
+        }
+        NSDictionary *symbols = self.selectedArchiveEntry[@"symbols"];
+        return symbols.count;
+    }
+    
     return 0;
 }
-
 - (nullable NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(nullable NSTableColumn *)tableColumn row:(NSInteger)row {
     
     NSTextField *textField = [[NSTextField alloc] init];
@@ -868,40 +1101,96 @@
             textField.backgroundColor = [NSColor controlBackgroundColor];
             textField.target = self;
             textField.action = @selector(parameterValueChanged:);
-            textField.tag = row;  // Store row for later retrieval
+            textField.tag = row;
         }
     }
     
-    // RESULTS TABLE
+    // RESULTS MODELS TABLE
     else if (tableView == self.resultsModelsTableView) {
-          NSArray *keys = [self.executionResults.allKeys sortedArrayUsingSelector:@selector(compare:)];
-          NSString *modelID = keys[row];
-          ModelResult *result = self.executionResults[modelID];
-          
-          if ([tableColumn.identifier isEqualToString:@"model"]) {
-              textField.stringValue = result.modelName;
-          } else if ([tableColumn.identifier isEqualToString:@"count"]) {
-              textField.stringValue = [NSString stringWithFormat:@"%lu", (unsigned long)result.finalSymbols.count];
-              textField.alignment = NSTextAlignmentCenter;
-          } else if ([tableColumn.identifier isEqualToString:@"time"]) {
-              textField.stringValue = [NSString stringWithFormat:@"%.2fs", result.totalExecutionTime];
-              textField.alignment = NSTextAlignmentCenter;
-          }
-      }
-      
-      // RESULTS SYMBOLS TABLE
-    else if (tableView == self.resultsSymbolsTableView) {
-           if (self.currentModelSymbols && row < self.currentModelSymbols.count) {
-               NSString *symbol = self.currentModelSymbols[row];
-               // ✅ RIMUOVE SUFFISSO .us
-               textField.stringValue = [self cleanSymbol:symbol];
-           }
-       }
-
+        NSArray *keys = [self.executionResults.allKeys sortedArrayUsingSelector:@selector(compare:)];
+        NSString *modelID = keys[row];
+        ModelResult *result = self.executionResults[modelID];
+        
+        if ([tableColumn.identifier isEqualToString:@"model"]) {
+            textField.stringValue = result.modelName;
+        } else if ([tableColumn.identifier isEqualToString:@"count"]) {
+            textField.stringValue = [NSString stringWithFormat:@"%lu", (unsigned long)result.finalSymbols.count];
+            textField.alignment = NSTextAlignmentCenter;
+        } else if ([tableColumn.identifier isEqualToString:@"time"]) {
+            textField.stringValue = [NSString stringWithFormat:@"%.2fs", result.totalExecutionTime];
+            textField.alignment = NSTextAlignmentCenter;
+        }
+    }
     
+    // RESULTS SYMBOLS TABLE
+    else if (tableView == self.resultsSymbolsTableView) {
+        if (row < self.selectedModelSymbols.count) {
+            NSString *symbol = self.selectedModelSymbols[row];
+            
+            if ([tableColumn.identifier isEqualToString:@"select"]) {
+                NSButton *checkbox = [[NSButton alloc] init];
+                [checkbox setButtonType:NSButtonTypeSwitch];
+                checkbox.title = @"";
+                checkbox.tag = row;
+                checkbox.target = self;
+                checkbox.action = @selector(symbolCheckboxToggled:);
+                
+                BOOL isSelected = [self.selectedSymbols containsObject:symbol];
+                checkbox.state = isSelected ? NSControlStateValueOn : NSControlStateValueOff;
+                
+                return checkbox;
+            }
+            else if ([tableColumn.identifier isEqualToString:@"symbol"]) {
+                textField.stringValue = symbol;
+            }
+        }
+    }
+    
+    // ✅ ARCHIVE TABLE
+    else if (tableView == self.archiveTableView) {
+        if (row < self.archivedResults.count) {
+            NSDictionary *entry = self.archivedResults[row];
+            
+            if ([tableColumn.identifier isEqualToString:@"archive_date"]) {
+                NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+                formatter.dateStyle = NSDateFormatterMediumStyle;
+                formatter.timeStyle = NSDateFormatterShortStyle;
+                textField.stringValue = [formatter stringFromDate:entry[@"date"]];
+            } else if ([tableColumn.identifier isEqualToString:@"archive_model"]) {
+                textField.stringValue = entry[@"modelName"];
+            } else if ([tableColumn.identifier isEqualToString:@"archive_count"]) {
+                NSDictionary *symbols = entry[@"symbols"];
+                textField.stringValue = [NSString stringWithFormat:@"%lu", (unsigned long)symbols.count];
+            }
+        }
+    }
+    
+    // ✅ ARCHIVE SYMBOLS TABLE
+    // ARCHIVE SYMBOLS TABLE
+    else if (tableView == self.archiveSymbolsTableView) {
+        if (self.selectedArchiveEntry) {
+            NSDictionary *symbolsWithPrices = self.selectedArchiveEntry[@"symbols"];
+            NSArray *symbols = [symbolsWithPrices.allKeys sortedArrayUsingSelector:@selector(compare:)];
+            
+            if (row < symbols.count) {
+                NSString *symbol = symbols[row];
+                double signalPrice = [symbolsWithPrices[symbol] doubleValue];
+                
+                if ([tableColumn.identifier isEqualToString:@"archive_symbol"]) {
+                    textField.stringValue = symbol;
+                } else if ([tableColumn.identifier isEqualToString:@"signal_price"]) {
+                    textField.stringValue = [NSString stringWithFormat:@"%.2f", signalPrice];
+                } else if ([tableColumn.identifier isEqualToString:@"current_price"]) {
+                    // Mostra "--" inizialmente, verrà aggiornato dopo la batch request
+                    textField.stringValue = @"--";
+                } else if ([tableColumn.identifier isEqualToString:@"var_percent"]) {
+                    textField.stringValue = @"--";
+                }
+            }
+        }
+    }
     return textField;
 }
-
 #pragma mark - NSTableViewDelegate
 
 - (void)tableViewSelectionDidChange:(NSNotification *)notification {
@@ -998,6 +1287,35 @@
               self.sendSelectedButton.title = @"Send Selected to Chain";
           }
       }
+    // ARCHIVE TABLE SELECTION (NUOVO)
+
+    else if (tableView == self.archiveTableView) {
+        NSInteger selectedRow = tableView.selectedRow;
+        
+        if (selectedRow >= 0) {
+            self.selectedArchiveEntry = self.archivedResults[selectedRow];
+            self.deleteArchiveButton.enabled = YES;
+            
+            NSString *modelName = self.selectedArchiveEntry[@"modelName"];
+            self.archiveHeaderLabel.stringValue = [NSString stringWithFormat:@"Symbols from: %@", modelName];
+            
+            // Batch request - DataHub gestisce cache/freshness
+            NSDictionary *symbolsWithPrices = self.selectedArchiveEntry[@"symbols"];
+            NSArray *symbols = symbolsWithPrices.allKeys;
+            
+            if (symbols.count > 0) {
+                [[DataHub shared] getQuotesForSymbols:symbols
+                                              completion:^(NSDictionary<NSString *, MarketQuoteModel *> *quotes, BOOL allLive) {
+                    // I prezzi sono ora disponibili, reload della tabella per mostrarli
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        [self.archiveSymbolsTableView reloadData];
+                    });
+                }];
+            }
+            
+            [self.archiveSymbolsTableView reloadData];
+        }
+    }
 }
 
 - (void)sendSelectedSymbolsToChain:(id)sender {
@@ -1433,6 +1751,7 @@
     alert.informativeText = [NSString stringWithFormat:@"Executed %lu models.\nTotal symbols: %ld",
                             (unsigned long)results.count, (long)totalSymbols];
     [alert runModal];
+    [self saveCurrentResultsToArchive];  // ✅ Salva in archivio
 }
 
 - (void)batchRunner:(ScreenerBatchRunner *)runner didFailWithError:(NSError *)error {
@@ -1503,5 +1822,188 @@
     }
     return [cleaned copy];
 }
+
+#pragma mark - Symbol Selection
+
+- (void)symbolCheckboxToggled:(NSButton *)sender {
+    NSInteger row = sender.tag;
+    NSArray *keys = [self.executionResults.allKeys sortedArrayUsingSelector:@selector(compare:)];
+    NSString *modelID = keys[row];
+    ModelResult *result = self.executionResults[modelID];
+    
+    if (sender.state == NSControlStateValueOn) {
+        // Aggiungi tutti i simboli di questo modello
+        [self.selectedSymbolsForReport addObjectsFromArray:result.finalSymbols];
+    } else {
+        // Rimuovi tutti i simboli di questo modello
+        for (NSString *symbol in result.finalSymbols) {
+            [self.selectedSymbolsForReport removeObject:symbol];
+        }
+    }
+    
+    NSLog(@"Selected symbols count: %lu", (unsigned long)self.selectedSymbols.count);
+}
+
+- (void)generateReport:(id)sender {
+    if (self.selectedSymbols.count == 0) {
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"No symbols selected";
+        alert.informativeText = @"Please select at least one model to include in the report.";
+        alert.alertStyle = NSAlertStyleWarning;
+        [alert addButtonWithTitle:@"OK"];
+        [alert runModal];
+        return;
+    }
+    
+    // Chiedi dove salvare il report
+    NSSavePanel *savePanel = [NSSavePanel savePanel];
+    savePanel.allowedFileTypes = @[@"txt"];
+    savePanel.nameFieldStringValue = [NSString stringWithFormat:@"Screener_Report_%@.txt",
+                                      [[NSDate date] descriptionWithLocale:nil]];
+    
+    [savePanel beginWithCompletionHandler:^(NSModalResponse result) {
+        if (result == NSModalResponseOK) {
+            [self saveReportToURL:savePanel.URL];
+        }
+    }];
+}
+
+- (void)saveReportToURL:(NSURL *)url {
+    NSMutableString *report = [NSMutableString string];
+    
+    // Header
+    [report appendString:@"SCREENER REPORT\n"];
+    [report appendString:@"===============\n\n"];
+    [report appendFormat:@"Generated: %@\n\n", [[NSDate date] description]];
+    
+    // Per ogni modello con simboli selezionati
+    NSArray *keys = [self.executionResults.allKeys sortedArrayUsingSelector:@selector(compare:)];
+    for (NSString *modelID in keys) {
+        ModelResult *result = self.executionResults[modelID];
+        
+        // Trova simboli selezionati per questo modello
+        NSMutableArray *selectedForModel = [NSMutableArray array];
+        for (NSString *symbol in result.finalSymbols) {
+            if ([self.selectedSymbols containsObject:symbol]) {
+                [selectedForModel addObject:symbol];
+            }
+        }
+        
+        if (selectedForModel.count > 0) {
+            [report appendFormat:@"MODEL: %@\n", result.modelName];
+            [report appendFormat:@"Execution Time: %.2fs\n", result.totalExecutionTime];
+            [report appendFormat:@"Selected Symbols: %@\n\n", [selectedForModel componentsJoinedByString:@", "]];
+        }
+    }
+    
+    // Salva il file
+    NSError *error;
+    BOOL success = [report writeToURL:url atomically:YES encoding:NSUTF8StringEncoding error:&error];
+    
+    if (success) {
+        NSLog(@"Report saved successfully to %@", url.path);
+        
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"Report Generated";
+        alert.informativeText = [NSString stringWithFormat:@"Report saved with %lu symbols", (unsigned long)self.selectedSymbols.count];
+        alert.alertStyle = NSAlertStyleInformational;
+        [alert addButtonWithTitle:@"OK"];
+        [alert runModal];
+    } else {
+        NSLog(@"Error saving report: %@", error.localizedDescription);
+        
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"Error Saving Report";
+        alert.informativeText = error.localizedDescription;
+        alert.alertStyle = NSAlertStyleCritical;
+        [alert addButtonWithTitle:@"OK"];
+        [alert runModal];
+    }
+}
+
+
+#pragma mark - Archive Management
+
+- (void)saveCurrentResultsToArchive {
+    if (self.executionResults.count == 0) return;
+    
+    NSDate *now = [NSDate date];
+    
+    for (NSString *modelID in self.executionResults.allKeys) {
+        ModelResult *result = self.executionResults[modelID];
+        
+        // Salva prezzo corrente per ogni simbolo
+        NSMutableDictionary *symbolsWithPrices = [NSMutableDictionary dictionary];
+        for (NSString *symbol in result.finalSymbols) {
+            // ✅ CORRETTO: usa loadBarsForSymbol:minBars:
+            NSArray<HistoricalBarModel *> *bars = [self.dataManager loadBarsForSymbol:symbol minBars:1];
+            if (bars.count > 0) {
+                HistoricalBarModel *lastBar = bars[bars.count - 1];
+                symbolsWithPrices[symbol] = @(lastBar.close);
+            } else {
+                symbolsWithPrices[symbol] = @(0.0);
+            }
+        }
+        
+        NSDictionary *archiveEntry = @{
+            @"date": now,
+            @"modelName": result.modelName,
+            @"modelID": modelID,
+            @"symbols": symbolsWithPrices,
+            @"executionTime": @(result.totalExecutionTime)
+        };
+        
+        [self.archivedResults addObject:archiveEntry];
+    }
+    
+    [self persistArchivedResults];
+    [self.archiveTableView reloadData];
+    
+    NSLog(@"📦 Archived %lu model results", (unsigned long)self.executionResults.count);
+}
+
+- (void)loadArchivedResults {
+    NSString *archivePath = [self archiveFilePath];
+    if ([[NSFileManager defaultManager] fileExistsAtPath:archivePath]) {
+        NSArray *archived = [NSKeyedUnarchiver unarchiveObjectWithFile:archivePath];
+        if (archived) {
+            self.archivedResults = [archived mutableCopy];
+        }
+    }
+}
+
+- (void)persistArchivedResults {
+    NSString *archivePath = [self archiveFilePath];
+    [NSKeyedArchiver archiveRootObject:self.archivedResults toFile:archivePath];
+}
+
+- (NSString *)archiveFilePath {
+    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
+    NSString *appSupportDir = paths[0];
+    NSString *appDir = [appSupportDir stringByAppendingPathComponent:@"TradingApp"];
+    
+    [[NSFileManager defaultManager] createDirectoryAtPath:appDir
+                              withIntermediateDirectories:YES
+                                               attributes:nil
+                                                    error:nil];
+    
+    return [appDir stringByAppendingPathComponent:@"screener_archive.dat"];
+}
+
+- (void)deleteArchiveEntry:(id)sender {
+    NSInteger selectedRow = [self.archiveTableView selectedRow];
+    if (selectedRow >= 0 && selectedRow < self.archivedResults.count) {
+        [self.archivedResults removeObjectAtIndex:selectedRow];
+        [self persistArchivedResults];
+        [self.archiveTableView reloadData];
+        [self.archiveSymbolsTableView reloadData];
+        self.deleteArchiveButton.enabled = NO;
+    }
+}
+
+- (void)exportArchive:(id)sender {
+    // Implementazione simile a exportResults
+}
+
 @end
 

@@ -6,6 +6,8 @@
 #import "ScreenerBatchRunner.h"
 #import "ScreenerRegistry.h"
 #import "BaseScreener.h"
+#import "ScreenedSymbol.h"
+
 
 @interface ScreenerBatchRunner ()
 @property (nonatomic, assign) BOOL isRunning;
@@ -279,14 +281,27 @@
     }
     
     // Set final results
-    result.stepResults = [stepResults copy];
-    result.finalSymbols = stepResults.count > 0 ? stepResults.lastObject.symbols : @[];
-    result.totalExecutionTime = [[NSDate date] timeIntervalSinceDate:startTime];
+    // Set final results
+      result.stepResults = [stepResults copy];
+      result.modelDescription = model.modelDescription;
+      result.steps = [model.steps copy];
+      
+      // Converti simboli string in oggetti ScreenedSymbol
+      NSArray<NSString *> *finalSymbolStrings = stepResults.count > 0 ?
+          stepResults.lastObject.symbols : @[];
+      
+      NSMutableArray<ScreenedSymbol *> *screenedSymbols = [NSMutableArray array];
+      NSInteger lastStepIndex = stepResults.count - 1;
+      
+      for (NSString *symbolString in finalSymbolStrings) {
+          ScreenedSymbol *symbol = [ScreenedSymbol symbolWithName:symbolString
+                                                     addedAtStep:lastStepIndex];
+          [screenedSymbols addObject:symbol];
+      }
+      result.screenedSymbols = [screenedSymbols copy];
+      result.totalExecutionTime = [[NSDate date] timeIntervalSinceDate:startTime];
     
-    NSLog(@"✅ Model complete: %@ → %lu final symbols (%.2fs)",
-          model.displayName,
-          (unsigned long)result.finalSymbols.count,
-          result.totalExecutionTime);
+    
     
     return result;
 }

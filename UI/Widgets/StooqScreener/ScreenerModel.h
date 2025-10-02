@@ -6,6 +6,7 @@
 //
 
 #import <Foundation/Foundation.h>
+@class ScreenedSymbol;
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -70,11 +71,17 @@ NS_ASSUME_NONNULL_BEGIN
 /// Model display name
 @property (nonatomic, strong) NSString *modelName;
 
+/// Model description
+@property (nonatomic, strong, nullable) NSString *modelDescription;
+
 /// Execution timestamp
 @property (nonatomic, strong) NSDate *executionTime;
 
-/// Final symbols (output of last step)
-@property (nonatomic, strong) NSArray<NSString *> *finalSymbols;
+/// Steps with parameters used for this execution
+@property (nonatomic, strong) NSArray<ScreenerStep *> *steps;
+
+/// Screened symbols with selection state
+@property (nonatomic, strong) NSArray<ScreenedSymbol *> *screenedSymbols;
 
 /// Intermediate results from each step (for debugging/analysis)
 @property (nonatomic, strong) NSArray<StepResult *> *stepResults;
@@ -86,6 +93,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, assign) NSInteger initialUniverseSize;
 
 @end
+
 
 // ============================================================================
 // SCREENER MODEL

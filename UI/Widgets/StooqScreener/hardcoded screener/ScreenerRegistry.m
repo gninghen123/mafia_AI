@@ -11,6 +11,7 @@
 #import "SMCScreener.h"
 #import "InsideBoxScreener.h"
 #import "PullbackToSMAScreener.h"
+#import "VolumeLiquidityScreener.h"
 
 
 @interface ScreenerRegistry ()
@@ -49,6 +50,8 @@
     [self registerScreenerClass:[SMCScreener class]];
     [self registerScreenerClass:[InsideBoxScreener class]];
     [self registerScreenerClass:[PullbackToSMAScreener class]];
+    [self registerScreener:[[VolumeLiquidityScreener alloc] init]];
+
     NSLog(@"✅ Registered %lu default screeners", (unsigned long)self.screeners.count);
 }
 

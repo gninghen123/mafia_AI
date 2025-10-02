@@ -221,18 +221,27 @@
             continue;
         }
         
-        // Extract symbol from filename (e.g., "aapl.us.txt" → "AAPL.US")
-        NSString *symbol = [[filename stringByDeletingPathExtension] uppercaseString];
+        // Extract symbol from filename (e.g., "aapl.us.txt" → "AAPL.US" → "AAPL")
+        NSString *rawSymbol = [[filename stringByDeletingPathExtension] uppercaseString];
+        NSString *symbol = [self normalizeSymbol:rawSymbol];  // ✅ NORMALIZE HERE
         NSString *filePath = [directory stringByAppendingPathComponent:filename];
         
         [self.symbolIndex addObject:symbol];
         self.symbolToFilePath[symbol] = filePath;
+        
+        // ✅ ALSO map the raw symbol (with .US) to the file path for backward compatibility
+        // This allows lookups with both "AAPL" and "AAPL.US" to work
+        if (![rawSymbol isEqualToString:symbol]) {
+            self.symbolToFilePath[rawSymbol] = filePath;
+        }
+        
         symbolsAdded++;
     }
     
     NSLog(@"      📊 Files: %ld .txt, %ld .csv, %ld other", (long)txtCount, (long)csvCount, (long)otherCount);
-    NSLog(@"      ✅ Added %ld symbols", (long)symbolsAdded);
+    NSLog(@"      ✅ Added %ld symbols (normalized)", (long)symbolsAdded);
 }
+
 
 - (NSArray<NSString *> *)availableSymbols {
     return [self.symbolIndex copy];
@@ -388,8 +397,36 @@
 #pragma mark - File Path Resolution
 
 - (nullable NSString *)filePathForSymbol:(NSString *)symbol {
-    return self.symbolToFilePath[symbol];
+    if (!symbol || symbol.length == 0) {
+        return nil;
+    }
+    
+    // Try normalized symbol first
+    NSString *filePath = self.symbolToFilePath[symbol];
+    if (filePath) {
+        return filePath;
+    }
+    
+    // ✅ Try with .US suffix if not found
+    NSString *symbolWithUS = [symbol stringByAppendingString:@".US"];
+    filePath = self.symbolToFilePath[symbolWithUS];
+    if (filePath) {
+        return filePath;
+    }
+    
+    // ✅ Try removing .US suffix if it exists
+    NSString *normalizedSymbol = [self normalizeSymbol:symbol];
+    if (![normalizedSymbol isEqualToString:symbol]) {
+        filePath = self.symbolToFilePath[normalizedSymbol];
+        if (filePath) {
+            return filePath;
+        }
+    }
+    
+    NSLog(@"⚠️ File not found for symbol: %@", symbol);
+    return nil;
 }
+
 
 - (NSString *)exchangeFromSymbol:(NSString *)symbol {
     // Extract exchange suffix (e.g., "AAPL.US" → "us")
@@ -413,5 +450,26 @@
     
     return [filtered copy];
 }
+
+#pragma mark - Private Methods
+
+/**
+ * Normalize symbol by removing .US suffix from Stooq format
+ * @param symbol Symbol in Stooq format (e.g., "AAPL.US")
+ * @return Normalized symbol (e.g., "AAPL")
+ */
+- (NSString *)normalizeSymbol:(NSString *)symbol {
+    if (!symbol || symbol.length == 0) {
+        return symbol;
+    }
+    
+    // Remove .US suffix (case insensitive)
+    if ([symbol hasSuffix:@".US"] || [symbol hasSuffix:@".us"]) {
+        return [symbol substringToIndex:symbol.length - 3];
+    }
+    
+    return symbol;
+}
+
 
 @end

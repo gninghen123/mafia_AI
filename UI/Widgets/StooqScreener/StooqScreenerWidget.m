@@ -49,12 +49,29 @@
 @property (nonatomic, strong) NSTextField *universeLabel;
 @property (nonatomic, strong) NSProgressIndicator *progressIndicator;
 
-// Tab 2: Results
-@property (nonatomic, strong) NSTableView *resultsTableView;
-@property (nonatomic, strong) NSScrollView *resultsScrollView;
+// Tab 2: Results - NEW STRUCTURE
+@property (nonatomic, strong) NSSplitView *resultsSplitView;
+
+// Left side: Models results table
+@property (nonatomic, strong) NSTableView *resultsModelsTableView;
+@property (nonatomic, strong) NSScrollView *resultsModelsScrollView;
+
+// Right side: Symbols table
+@property (nonatomic, strong) NSTableView *resultsSymbolsTableView;
+@property (nonatomic, strong) NSScrollView *resultsSymbolsScrollView;
+@property (nonatomic, strong) NSTextField *symbolsHeaderLabel;
+@property (nonatomic, strong) NSButton *sendSelectedButton;
+@property (nonatomic, strong) NSButton *sendAllButton;
+
+// Results data
+@property (nonatomic, strong) NSString *selectedResultModelID;  // Currently selected model ID
+@property (nonatomic, strong) NSArray<NSString *> *currentModelSymbols;  // Symbols of selected model
+
+// Bottom bar
 @property (nonatomic, strong) NSButton *exportButton;
 @property (nonatomic, strong) NSButton *clearResultsButton;
 @property (nonatomic, strong) NSTextField *resultsStatusLabel;
+
 
 // Tab 3: Settings
 @property (nonatomic, strong) NSTextField *dataPathField;
@@ -247,37 +264,22 @@
 - (void)setupResultsTab {
     NSView *resultsView = [[NSView alloc] init];
     
-    self.resultsTableView = [[NSTableView alloc] init];
-    self.resultsTableView.delegate = self;
-    self.resultsTableView.dataSource = self;
-    self.resultsTableView.usesAlternatingRowBackgroundColors = YES;
+    // Split view per dividere modelli e simboli
+    self.resultsSplitView = [[NSSplitView alloc] init];
+    self.resultsSplitView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.resultsSplitView.vertical = YES;
+    self.resultsSplitView.dividerStyle = NSSplitViewDividerStyleThin;
+    [resultsView addSubview:self.resultsSplitView];
     
-    NSTableColumn *modelCol = [[NSTableColumn alloc] initWithIdentifier:@"model"];
-    modelCol.title = @"Model";
-    modelCol.width = 200;
-    [self.resultsTableView addTableColumn:modelCol];
+    // Left side: Models results
+    NSView *modelsResultsView = [self setupResultsModelsView];
+    [self.resultsSplitView addArrangedSubview:modelsResultsView];
     
-    NSTableColumn *countCol = [[NSTableColumn alloc] initWithIdentifier:@"count"];
-    countCol.title = @"Results";
-    countCol.width = 80;
-    [self.resultsTableView addTableColumn:countCol];
+    // Right side: Symbols
+    NSView *symbolsResultsView = [self setupResultsSymbolsView];
+    [self.resultsSplitView addArrangedSubview:symbolsResultsView];
     
-    NSTableColumn *timeCol = [[NSTableColumn alloc] initWithIdentifier:@"time"];
-    timeCol.title = @"Time";
-    timeCol.width = 100;
-    [self.resultsTableView addTableColumn:timeCol];
-    
-    NSTableColumn *symbolsCol = [[NSTableColumn alloc] initWithIdentifier:@"symbols"];
-    symbolsCol.title = @"Symbols";
-    symbolsCol.width = 400;
-    [self.resultsTableView addTableColumn:symbolsCol];
-    
-    self.resultsScrollView = [[NSScrollView alloc] init];
-    self.resultsScrollView.documentView = self.resultsTableView;
-    self.resultsScrollView.hasVerticalScroller = YES;
-    self.resultsScrollView.translatesAutoresizingMaskIntoConstraints = NO;
-    [resultsView addSubview:self.resultsScrollView];
-    
+    // Bottom bar
     self.exportButton = [NSButton buttonWithTitle:@"Export" target:self action:@selector(exportResults:)];
     self.exportButton.translatesAutoresizingMaskIntoConstraints = NO;
     [resultsView addSubview:self.exportButton];
@@ -294,11 +296,12 @@
     self.resultsStatusLabel.stringValue = @"No results";
     [resultsView addSubview:self.resultsStatusLabel];
     
+    // Layout constraints
     [NSLayoutConstraint activateConstraints:@[
-        [self.resultsScrollView.topAnchor constraintEqualToAnchor:resultsView.topAnchor constant:10],
-        [self.resultsScrollView.leadingAnchor constraintEqualToAnchor:resultsView.leadingAnchor constant:10],
-        [self.resultsScrollView.trailingAnchor constraintEqualToAnchor:resultsView.trailingAnchor constant:-10],
-        [self.resultsScrollView.bottomAnchor constraintEqualToAnchor:self.exportButton.topAnchor constant:-10],
+        [self.resultsSplitView.topAnchor constraintEqualToAnchor:resultsView.topAnchor constant:10],
+        [self.resultsSplitView.leadingAnchor constraintEqualToAnchor:resultsView.leadingAnchor constant:10],
+        [self.resultsSplitView.trailingAnchor constraintEqualToAnchor:resultsView.trailingAnchor constant:-10],
+        [self.resultsSplitView.bottomAnchor constraintEqualToAnchor:self.exportButton.topAnchor constant:-10],
         
         [self.exportButton.leadingAnchor constraintEqualToAnchor:resultsView.leadingAnchor constant:10],
         [self.exportButton.bottomAnchor constraintEqualToAnchor:resultsView.bottomAnchor constant:-10],
@@ -310,11 +313,137 @@
         [self.resultsStatusLabel.centerYAnchor constraintEqualToAnchor:self.exportButton.centerYAnchor]
     ]];
     
+    // Set split position (35% left, 65% right)
+    dispatch_async(dispatch_get_main_queue(), ^{
+        CGFloat totalWidth = self.resultsSplitView.frame.size.width;
+        if (totalWidth > 0) {
+            [self.resultsSplitView setPosition:totalWidth * 0.35 ofDividerAtIndex:0];
+        }
+    });
+    
     NSTabViewItem *resultsTab = [[NSTabViewItem alloc] initWithIdentifier:@"results"];
     resultsTab.label = @"Results";
     resultsTab.view = resultsView;
     [self.tabView addTabViewItem:resultsTab];
 }
+
+
+- (NSView *)setupResultsSymbolsView {
+    NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 600, 800)];
+    
+    // Header
+    self.symbolsHeaderLabel = [NSTextField labelWithString:@"Select a model"];
+    self.symbolsHeaderLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.symbolsHeaderLabel.font = [NSFont boldSystemFontOfSize:13];
+    [view addSubview:self.symbolsHeaderLabel];
+    
+    // Table view
+    self.resultsSymbolsTableView = [[NSTableView alloc] init];
+    self.resultsSymbolsTableView.delegate = self;
+    self.resultsSymbolsTableView.dataSource = self;
+    self.resultsSymbolsTableView.allowsMultipleSelection = YES;
+    self.resultsSymbolsTableView.usesAlternatingRowBackgroundColors = YES;
+    
+    // Column
+    NSTableColumn *symbolCol = [[NSTableColumn alloc] initWithIdentifier:@"symbol"];
+    symbolCol.title = @"Symbol";
+    symbolCol.width = 100;
+    [self.resultsSymbolsTableView addTableColumn:symbolCol];
+    
+    self.resultsSymbolsScrollView = [[NSScrollView alloc] init];
+    self.resultsSymbolsScrollView.documentView = self.resultsSymbolsTableView;
+    self.resultsSymbolsScrollView.hasVerticalScroller = YES;
+    self.resultsSymbolsScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    [view addSubview:self.resultsSymbolsScrollView];
+    
+    // Buttons
+    self.sendSelectedButton = [NSButton buttonWithTitle:@"Send Selected to Chain"
+                                                 target:self
+                                                 action:@selector(sendSelectedSymbolsToChain:)];
+    self.sendSelectedButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.sendSelectedButton.enabled = NO;
+    [view addSubview:self.sendSelectedButton];
+    
+    self.sendAllButton = [NSButton buttonWithTitle:@"Send All to Chain"
+                                            target:self
+                                            action:@selector(sendAllSymbolsToChain:)];
+    self.sendAllButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.sendAllButton.enabled = NO;
+    [view addSubview:self.sendAllButton];
+    
+    // Layout
+    [NSLayoutConstraint activateConstraints:@[
+        [self.symbolsHeaderLabel.topAnchor constraintEqualToAnchor:view.topAnchor constant:5],
+        [self.symbolsHeaderLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:5],
+        
+        [self.resultsSymbolsScrollView.topAnchor constraintEqualToAnchor:self.symbolsHeaderLabel.bottomAnchor constant:5],
+        [self.resultsSymbolsScrollView.leadingAnchor constraintEqualToAnchor:view.leadingAnchor],
+        [self.resultsSymbolsScrollView.trailingAnchor constraintEqualToAnchor:view.trailingAnchor],
+        [self.resultsSymbolsScrollView.bottomAnchor constraintEqualToAnchor:self.sendSelectedButton.topAnchor constant:-10],
+        
+        [self.sendSelectedButton.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:5],
+        [self.sendSelectedButton.bottomAnchor constraintEqualToAnchor:view.bottomAnchor constant:-5],
+        
+        [self.sendAllButton.leadingAnchor constraintEqualToAnchor:self.sendSelectedButton.trailingAnchor constant:10],
+        [self.sendAllButton.centerYAnchor constraintEqualToAnchor:self.sendSelectedButton.centerYAnchor]
+    ]];
+    
+    return view;
+}
+
+
+- (NSView *)setupResultsModelsView {
+    NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 250, 800)];
+    
+    // Header
+    NSTextField *label = [NSTextField labelWithString:@"Models Results"];
+    label.translatesAutoresizingMaskIntoConstraints = NO;
+    label.font = [NSFont boldSystemFontOfSize:13];
+    [view addSubview:label];
+    
+    // Table view
+    self.resultsModelsTableView = [[NSTableView alloc] init];
+    self.resultsModelsTableView.delegate = self;
+    self.resultsModelsTableView.dataSource = self;
+    self.resultsModelsTableView.allowsMultipleSelection = NO;
+    self.resultsModelsTableView.usesAlternatingRowBackgroundColors = YES;
+    
+    // Columns
+    NSTableColumn *nameCol = [[NSTableColumn alloc] initWithIdentifier:@"model"];
+    nameCol.title = @"Model";
+    nameCol.width = 150;
+    [self.resultsModelsTableView addTableColumn:nameCol];
+    
+    NSTableColumn *countCol = [[NSTableColumn alloc] initWithIdentifier:@"count"];
+    countCol.title = @"Symbols";
+    countCol.width = 70;
+    [self.resultsModelsTableView addTableColumn:countCol];
+    
+    NSTableColumn *timeCol = [[NSTableColumn alloc] initWithIdentifier:@"time"];
+    timeCol.title = @"Time";
+    timeCol.width = 80;
+    [self.resultsModelsTableView addTableColumn:timeCol];
+    
+    self.resultsModelsScrollView = [[NSScrollView alloc] init];
+    self.resultsModelsScrollView.documentView = self.resultsModelsTableView;
+    self.resultsModelsScrollView.hasVerticalScroller = YES;
+    self.resultsModelsScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    [view addSubview:self.resultsModelsScrollView];
+    
+    // Layout
+    [NSLayoutConstraint activateConstraints:@[
+        [label.topAnchor constraintEqualToAnchor:view.topAnchor constant:5],
+        [label.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:5],
+        
+        [self.resultsModelsScrollView.topAnchor constraintEqualToAnchor:label.bottomAnchor constant:5],
+        [self.resultsModelsScrollView.leadingAnchor constraintEqualToAnchor:view.leadingAnchor],
+        [self.resultsModelsScrollView.trailingAnchor constraintEqualToAnchor:view.trailingAnchor],
+        [self.resultsModelsScrollView.bottomAnchor constraintEqualToAnchor:view.bottomAnchor]
+    ]];
+    
+    return view;
+}
+
 
 - (void)setupSettingsTab {
     NSView *settingsView = [[NSView alloc] init];
@@ -676,8 +805,14 @@
             return self.selectedStep.parameters.allKeys.count;
         }
         return 0;
-    } else if (tableView == self.resultsTableView) {
+    }
+    // NEW: Results models table
+    else if (tableView == self.resultsModelsTableView) {
         return self.executionResults.count;
+    }
+    // NEW: Results symbols table
+    else if (tableView == self.resultsSymbolsTableView) {
+        return self.currentModelSymbols ? self.currentModelSymbols.count : 0;
     }
     return 0;
 }
@@ -738,26 +873,31 @@
     }
     
     // RESULTS TABLE
-    else if (tableView == self.resultsTableView) {
-        NSArray *keys = [self.executionResults.allKeys sortedArrayUsingSelector:@selector(compare:)];
-        NSString *modelID = keys[row];
-        ModelResult *result = self.executionResults[modelID];
-        
-        if ([tableColumn.identifier isEqualToString:@"model"]) {
-            textField.stringValue = result.modelName;
-        } else if ([tableColumn.identifier isEqualToString:@"count"]) {
-            textField.stringValue = [NSString stringWithFormat:@"%lu", (unsigned long)result.finalSymbols.count];
-        } else if ([tableColumn.identifier isEqualToString:@"time"]) {
-            textField.stringValue = [NSString stringWithFormat:@"%.2fs", result.totalExecutionTime];
-        } else if ([tableColumn.identifier isEqualToString:@"symbols"]) {
-            NSArray *firstSymbols = [result.finalSymbols subarrayWithRange:NSMakeRange(0, MIN(10, result.finalSymbols.count))];
-            NSString *symbolsString = [firstSymbols componentsJoinedByString:@", "];
-            if (result.finalSymbols.count > 10) {
-                symbolsString = [symbolsString stringByAppendingFormat:@", ... (%lu more)", (unsigned long)(result.finalSymbols.count - 10)];
-            }
-            textField.stringValue = symbolsString;
-        }
-    }
+    else if (tableView == self.resultsModelsTableView) {
+          NSArray *keys = [self.executionResults.allKeys sortedArrayUsingSelector:@selector(compare:)];
+          NSString *modelID = keys[row];
+          ModelResult *result = self.executionResults[modelID];
+          
+          if ([tableColumn.identifier isEqualToString:@"model"]) {
+              textField.stringValue = result.modelName;
+          } else if ([tableColumn.identifier isEqualToString:@"count"]) {
+              textField.stringValue = [NSString stringWithFormat:@"%lu", (unsigned long)result.finalSymbols.count];
+              textField.alignment = NSTextAlignmentCenter;
+          } else if ([tableColumn.identifier isEqualToString:@"time"]) {
+              textField.stringValue = [NSString stringWithFormat:@"%.2fs", result.totalExecutionTime];
+              textField.alignment = NSTextAlignmentCenter;
+          }
+      }
+      
+      // RESULTS SYMBOLS TABLE
+    else if (tableView == self.resultsSymbolsTableView) {
+           if (self.currentModelSymbols && row < self.currentModelSymbols.count) {
+               NSString *symbol = self.currentModelSymbols[row];
+               // ✅ RIMUOVE SUFFISSO .us
+               textField.stringValue = [self cleanSymbol:symbol];
+           }
+       }
+
     
     return textField;
 }
@@ -799,7 +939,116 @@
             [self.parametersTableView reloadData];
         }
     }
+    else if (tableView == self.resultsModelsTableView) {
+          NSInteger selectedRow = self.resultsModelsTableView.selectedRow;
+          
+          if (selectedRow >= 0) {
+              NSArray *keys = [self.executionResults.allKeys sortedArrayUsingSelector:@selector(compare:)];
+              NSString *modelID = keys[selectedRow];
+              ModelResult *result = self.executionResults[modelID];
+              
+              // Update state
+              self.selectedResultModelID = modelID;
+              self.currentModelSymbols = result.finalSymbols;
+              
+              // Update UI
+              self.symbolsHeaderLabel.stringValue = [NSString stringWithFormat:@"Symbols from: %@ (%lu)",
+                                                     result.modelName,
+                                                     (unsigned long)result.finalSymbols.count];
+              
+              [self.resultsSymbolsTableView reloadData];
+              [self.resultsSymbolsTableView deselectAll:nil];
+              
+              // Enable "Send All" button
+              self.sendAllButton.enabled = (result.finalSymbols.count > 0);
+              self.sendSelectedButton.enabled = NO;
+              
+              NSLog(@"📊 Selected model: %@ with %lu symbols", result.modelName, (unsigned long)result.finalSymbols.count);
+          } else {
+              [self clearSymbolsSelection];
+          }
+      }
+      
+      // RESULTS SYMBOLS TABLE
+    else if (tableView == self.resultsSymbolsTableView) {
+           NSInteger selectedRow = self.resultsSymbolsTableView.selectedRow;
+           NSIndexSet *selectedRows = self.resultsSymbolsTableView.selectedRowIndexes;
+           
+           if (selectedRow >= 0 && selectedRow < self.currentModelSymbols.count) {
+               NSString *symbol = self.currentModelSymbols[selectedRow];
+               
+               // ✅ INVIO IMMEDIATO ALLA CHAIN (usa simbolo pulito senza .us)
+               NSString *cleanedSymbol = [self cleanSymbol:symbol];
+               [self sendSymbolToChain:cleanedSymbol];
+               
+               // Feedback
+               [self showChainFeedback:[NSString stringWithFormat:@"Sent %@ to chain", cleanedSymbol]];
+               
+               NSLog(@"🔗 Sent symbol to chain: %@", cleanedSymbol);
+           }
+          
+          // Update button state
+          self.sendSelectedButton.enabled = (selectedRows.count > 0);
+          
+          // Update button title with count
+          if (selectedRows.count > 0) {
+              self.sendSelectedButton.title = [NSString stringWithFormat:@"Send Selected to Chain (%lu)",
+                                               (unsigned long)selectedRows.count];
+          } else {
+              self.sendSelectedButton.title = @"Send Selected to Chain";
+          }
+      }
 }
+
+- (void)sendSelectedSymbolsToChain:(id)sender {
+    NSIndexSet *selectedRows = self.resultsSymbolsTableView.selectedRowIndexes;
+    if (selectedRows.count == 0) return;
+    
+    NSMutableArray *selectedSymbols = [NSMutableArray array];
+    [selectedRows enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL *stop) {
+        if (idx < self.currentModelSymbols.count) {
+            // ✅ RIMUOVE .us prima di inviare
+            NSString *cleanedSymbol = [self cleanSymbol:self.currentModelSymbols[idx]];
+            [selectedSymbols addObject:cleanedSymbol];
+        }
+    }];
+    
+    if (selectedSymbols.count > 0) {
+        // ✅ USA METODO BASEWIDGET
+        [self sendSymbolsToChain:selectedSymbols];
+        
+        // Feedback
+        NSString *message = [NSString stringWithFormat:@"Sent %lu symbols to chain",
+                            (unsigned long)selectedSymbols.count];
+        [self showChainFeedback:message];
+        
+        NSLog(@"🔗 Sent %lu symbols to chain: %@", (unsigned long)selectedSymbols.count, selectedSymbols);
+    }
+}
+
+- (void)sendAllSymbolsToChain:(id)sender {
+    if (!self.currentModelSymbols || self.currentModelSymbols.count == 0) return;
+    
+    // ✅ RIMUOVE .us da tutti i simboli prima di inviare
+    NSArray<NSString *> *cleanedSymbols = [self cleanSymbols:self.currentModelSymbols];
+    [self sendSymbolsToChain:cleanedSymbols];
+    // Feedback
+    NSString *message = [NSString stringWithFormat:@"Sent all %lu symbols to chain",
+                        (unsigned long)self.currentModelSymbols.count];
+    [self showChainFeedback:message];
+    
+    NSLog(@"🔗 Sent all %lu symbols to chain", (unsigned long)self.currentModelSymbols.count);
+}
+
+- (void)clearSymbolsSelection {
+    self.selectedResultModelID = nil;
+    self.currentModelSymbols = nil;
+    self.symbolsHeaderLabel.stringValue = @"Select a model";
+    [self.resultsSymbolsTableView reloadData];
+    self.sendSelectedButton.enabled = NO;
+    self.sendAllButton.enabled = NO;
+}
+
 
 #pragma mark - Actions - Parameter Editing
 
@@ -1136,9 +1385,11 @@
 
 - (void)clearResults:(id)sender {
     [self.executionResults removeAllObjects];
-    [self.resultsTableView reloadData];
+    [self.resultsModelsTableView reloadData];
+    [self clearSymbolsSelection];
     self.resultsStatusLabel.stringValue = @"No results";
 }
+
 
 #pragma mark - ScreenerBatchRunnerDelegate
 
@@ -1160,7 +1411,7 @@
 
 - (void)batchRunner:(ScreenerBatchRunner *)runner didFinishModel:(ModelResult *)result {
     self.executionResults[result.modelID] = result;
-    [self.resultsTableView reloadData];
+    [self.resultsModelsTableView reloadData];
     self.resultsStatusLabel.stringValue = [NSString stringWithFormat:@"Completed: %@ (%lu symbols)",
                                            result.modelName,
                                            (unsigned long)result.finalSymbols.count];
@@ -1197,5 +1448,60 @@
     self.progressIndicator.doubleValue = progress;
 }
 
+
+- (NSArray<NSString *> *)selectedSymbols {
+    // Restituisce i simboli selezionati nella tabella simboli
+    NSMutableArray *selected = [NSMutableArray array];
+    NSIndexSet *selectedRows = self.resultsSymbolsTableView.selectedRowIndexes;
+    
+    [selectedRows enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL *stop) {
+        if (idx < self.currentModelSymbols.count) {
+            [selected addObject:self.currentModelSymbols[idx]];
+        }
+    }];
+    
+    return [selected copy];
+}
+
+- (NSArray<NSString *> *)contextualSymbols {
+    // Tutti i simboli del modello correntemente selezionato
+    if (self.currentModelSymbols && self.currentModelSymbols.count > 0) {
+        return self.currentModelSymbols;
+    }
+    return @[];
+}
+
+- (NSString *)contextMenuTitle {
+    NSArray<NSString *> *selected = [self selectedSymbols];
+    
+    if (selected.count == 1) {
+        return selected[0];
+    } else if (selected.count > 1) {
+        return [NSString stringWithFormat:@"Selection (%lu)", (unsigned long)selected.count];
+    } else if (self.selectedResultModelID) {
+        ModelResult *result = self.executionResults[self.selectedResultModelID];
+        return [NSString stringWithFormat:@"%@ (%lu symbols)",
+                result.modelName,
+                (unsigned long)result.finalSymbols.count];
+    }
+    
+    return @"Stooq Screener";
+}
+
+- (NSString *)cleanSymbol:(NSString *)symbol {
+    // Rimuove il suffisso .us dai simboli Stooq
+    if ([symbol hasSuffix:@".US"]) {
+        return [symbol substringToIndex:symbol.length - 3];
+    }
+    return symbol;
+}
+
+- (NSArray<NSString *> *)cleanSymbols:(NSArray<NSString *> *)symbols {
+    NSMutableArray *cleaned = [NSMutableArray arrayWithCapacity:symbols.count];
+    for (NSString *symbol in symbols) {
+        [cleaned addObject:[self cleanSymbol:symbol]];
+    }
+    return [cleaned copy];
+}
 @end
 

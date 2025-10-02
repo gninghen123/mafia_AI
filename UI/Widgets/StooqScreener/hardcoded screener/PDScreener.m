@@ -1,0 +1,155 @@
+//
+//  PDScreener.m
+//  TradingApp
+//
+//  Pattern: highest(high,5) > lowest(low,5)*2 &&
+//           high < close[1] &&
+//           close > (lowest(low,5)[1] + (highest(high,5)[1] - lowest(low,5)[1]) * 0.348) &&
+//           simpleMovingAvg(volume*close,5) > 250000 &&
+//           close >= simpleMovingAvg(close,20)
+//
+
+#import "PDScreener.h"
+
+@implementation PDScreener
+
+#pragma mark - BaseScreener Overrides
+
+- (NSString *)screenerID {
+    return @"pd";
+}
+
+- (NSString *)displayName {
+    return @"PD";
+}
+
+- (NSString *)descriptionText {
+    return @"PD pattern with high/low ratio, retracement level, and moving average filters";
+}
+
+- (NSInteger)minBarsRequired {
+    return 21; // Need 20 bars for SMA(20) + 1 current
+}
+
+- (NSDictionary *)defaultParameters {
+    return @{
+        @"lookbackPeriod": @5,           // Period for high/low calculation
+        @"highLowRatio": @2.0,           // highest > lowest * 2
+        @"fibLevel": @0.348,             // Fibonacci retracement level
+        @"minAvgDollarVolume": @250000.0,// Min average dollar volume
+        @"smaPeriod": @20                // SMA period for trend filter
+    };
+}
+
+#pragma mark - Execution
+
+- (NSArray<NSString *> *)executeOnSymbols:(NSArray<NSString *> *)inputSymbols
+                               cachedData:(NSDictionary<NSString *, NSArray<HistoricalBarModel *> *> *)cache {
+    
+    NSInteger lookback = [self parameterIntegerForKey:@"lookbackPeriod" defaultValue:5];
+    double highLowRatio = [self parameterDoubleForKey:@"highLowRatio" defaultValue:2.0];
+    double fibLevel = [self parameterDoubleForKey:@"fibLevel" defaultValue:0.348];
+    double minAvgDollarVolume = [self parameterDoubleForKey:@"minAvgDollarVolume" defaultValue:250000.0];
+    NSInteger smaPeriod = [self parameterIntegerForKey:@"smaPeriod" defaultValue:20];
+    
+    NSMutableArray<NSString *> *results = [NSMutableArray array];
+    
+    for (NSString *symbol in inputSymbols) {
+        NSArray<HistoricalBarModel *> *bars = [self barsForSymbol:symbol inCache:cache];
+        
+        if (!bars || bars.count < self.minBarsRequired) continue;
+        
+        HistoricalBarModel *current = bars[0];
+        HistoricalBarModel *prev = bars[1];
+        
+        // Calculate highest(high, 5) and lowest(low, 5) for CURRENT bars
+        double highestHigh = [self highest:bars period:lookback offset:0 key:@"high"];
+        double lowestLow = [self lowest:bars period:lookback offset:0 key:@"low"];
+        
+        // Calculate for PREVIOUS bars [1]
+        double highestHigh1 = [self highest:bars period:lookback offset:1 key:@"high"];
+        double lowestLow1 = [self lowest:bars period:lookback offset:1 key:@"low"];
+        
+        // Condition 1: highest(high,5) > lowest(low,5) * 2
+        BOOL highLowCondition = highestHigh > (lowestLow * highLowRatio);
+        
+        // Condition 2: high < close[1]
+        BOOL belowPrevClose = current.high < prev.close;
+        
+        // Condition 3: close > (lowest(low,5)[1] + (highest(high,5)[1] - lowest(low,5)[1]) * 0.348)
+        double range = highestHigh1 - lowestLow1;
+        double fibLevel_price = lowestLow1 + (range * fibLevel);
+        BOOL aboveFibLevel = current.close > fibLevel_price;
+        
+        // Condition 4: simpleMovingAvg(volume*close, 5) > 250000
+        double avgDollarVolume = [self smaOfDollarVolume:bars period:lookback];
+        BOOL volumeCondition = avgDollarVolume > minAvgDollarVolume;
+        
+        // Condition 5: close >= simpleMovingAvg(close, 20)
+        double sma20 = [self sma:bars period:smaPeriod offset:0 key:@"close"];
+        BOOL aboveSMA = current.close >= sma20;
+        
+        if (highLowCondition && belowPrevClose && aboveFibLevel && volumeCondition && aboveSMA) {
+            [results addObject:symbol];
+        }
+    }
+    
+    return [results copy];
+}
+
+#pragma mark - Helper Methods
+
+- (double)highest:(NSArray<HistoricalBarModel *> *)bars period:(NSInteger)period offset:(NSInteger)offset key:(NSString *)key {
+    double max = -INFINITY;
+    NSInteger end = MIN(offset + period, bars.count);
+    
+    for (NSInteger i = offset; i < end; i++) {
+        HistoricalBarModel *bar = bars[i];
+        double value = [key isEqualToString:@"high"] ? bar.high :
+                      [key isEqualToString:@"low"] ? bar.low :
+                      [key isEqualToString:@"close"] ? bar.close : bar.open;
+        if (value > max) max = value;
+    }
+    return max;
+}
+
+- (double)lowest:(NSArray<HistoricalBarModel *> *)bars period:(NSInteger)period offset:(NSInteger)offset key:(NSString *)key {
+    double min = INFINITY;
+    NSInteger end = MIN(offset + period, bars.count);
+    
+    for (NSInteger i = offset; i < end; i++) {
+        HistoricalBarModel *bar = bars[i];
+        double value = [key isEqualToString:@"high"] ? bar.high :
+                      [key isEqualToString:@"low"] ? bar.low :
+                      [key isEqualToString:@"close"] ? bar.close : bar.open;
+        if (value < min) min = value;
+    }
+    return min;
+}
+
+- (double)sma:(NSArray<HistoricalBarModel *> *)bars period:(NSInteger)period offset:(NSInteger)offset key:(NSString *)key {
+    if (bars.count < offset + period) return 0.0;
+    
+    double sum = 0.0;
+    for (NSInteger i = offset; i < offset + period; i++) {
+        HistoricalBarModel *bar = bars[i];
+        double value = [key isEqualToString:@"close"] ? bar.close :
+                      [key isEqualToString:@"high"] ? bar.high :
+                      [key isEqualToString:@"low"] ? bar.low : bar.open;
+        sum += value;
+    }
+    return sum / (double)period;
+}
+
+- (double)smaOfDollarVolume:(NSArray<HistoricalBarModel *> *)bars period:(NSInteger)period {
+    if (bars.count < period) return 0.0;
+    
+    double sum = 0.0;
+    for (NSInteger i = 0; i < period; i++) {
+        HistoricalBarModel *bar = bars[i];
+        sum += (bar.volume * bar.close);
+    }
+    return sum / (double)period;
+}
+
+@end

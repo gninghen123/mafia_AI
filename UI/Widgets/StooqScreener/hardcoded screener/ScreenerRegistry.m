@@ -13,7 +13,7 @@
 #import "PullbackToSMAScreener.h"
 #import "VolumeLiquidityScreener.h"
 #import "BreakoutScreener.h"  // ✅ NEW
-
+#import "APTRScreener.h"      // ✅ NEW
 
 @interface ScreenerRegistry ()
 @property (nonatomic, strong) NSMutableDictionary<NSString *, BaseScreener *> *screeners;
@@ -51,8 +51,9 @@
     [self registerScreenerClass:[SMCScreener class]];
     [self registerScreenerClass:[InsideBoxScreener class]];
     [self registerScreenerClass:[PullbackToSMAScreener class]];
-    [self registerScreener:[[VolumeLiquidityScreener alloc] init]];
+    [self registerScreenerClass:[VolumeLiquidityScreener class]];
     [self registerScreenerClass:[BreakoutScreener class]];  // ✅ NEW
+    [self registerScreenerClass:[APTRScreener class]];  // ✅ NEW
 
     NSLog(@"✅ Registered %lu default screeners", (unsigned long)self.screeners.count);
 }

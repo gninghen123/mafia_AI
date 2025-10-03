@@ -14,13 +14,15 @@
 #import "ScreenedSymbol.h"
 #import "ExecutionSession.h"
 
-@interface StooqScreenerWidget () <NSTableViewDelegate, NSTableViewDataSource, ScreenerBatchRunnerDelegate>
+@interface StooqScreenerWidget () <NSTableViewDelegate, NSTableViewDataSource,
+                                    NSOutlineViewDelegate, NSOutlineViewDataSource,  // ← AGGIUNGI
+                                    ScreenerBatchRunnerDelegate>
 
 @property (nonatomic, strong) NSArray<ScreenedSymbol *> *currentModelSymbols;
 
 
 // Tab 4: Archive
-@property (nonatomic, strong) NSTableView *archiveTableView;
+@property (nonatomic, strong) NSOutlineView *archiveOutlineView;  // ← CAMBIATO da NSTableView
 @property (nonatomic, strong) NSScrollView *archiveScrollView;
 @property (nonatomic, strong) NSTableView *archiveSymbolsTableView;
 @property (nonatomic, strong) NSScrollView *archiveSymbolsScrollView;
@@ -32,6 +34,7 @@
 // Archive data (NUOVO FORMATO)
 @property (nonatomic, strong) NSMutableArray<ExecutionSession *> *archivedSessions;
 @property (nonatomic, strong) ExecutionSession *selectedSession;
+@property (nonatomic, strong) ModelResult *selectedModelResult;  // ← NUOVO: modello selezionato
 
 // Archive data
 @property (nonatomic, strong) NSMutableArray<NSDictionary *> *archivedResults;  // Array di {date, modelName, symbols}
@@ -251,29 +254,39 @@
     label.font = [NSFont boldSystemFontOfSize:13];
     [view addSubview:label];
     
-    self.archiveTableView = [[NSTableView alloc] init];
-    self.archiveTableView.delegate = self;
-    self.archiveTableView.dataSource = self;
-    self.archiveTableView.allowsMultipleSelection = NO;
-    self.archiveTableView.usesAlternatingRowBackgroundColors = YES;
+    // OUTLINE VIEW invece di TableView
+    self.archiveOutlineView = [[NSOutlineView alloc] init];
+    self.archiveOutlineView.delegate = self;
+    self.archiveOutlineView.dataSource = self;
+    self.archiveOutlineView.allowsMultipleSelection = NO;
+    self.archiveOutlineView.usesAlternatingRowBackgroundColors = YES;
+    self.archiveOutlineView.indentationPerLevel = 16;
+    self.archiveOutlineView.autoresizesOutlineColumn = YES;
     
-    NSTableColumn *dateCol = [[NSTableColumn alloc] initWithIdentifier:@"archive_date"];
-    dateCol.title = @"Date";
-    dateCol.width = 120;
-    [self.archiveTableView addTableColumn:dateCol];
+    // Colonna principale (con disclosure triangle)
+    NSTableColumn *nameCol = [[NSTableColumn alloc] initWithIdentifier:@"name"];
+    nameCol.title = @"Date / Model";
+    nameCol.width = 250;
+    nameCol.minWidth = 150;
+    [self.archiveOutlineView addTableColumn:nameCol];
+    [self.archiveOutlineView setOutlineTableColumn:nameCol];
     
-    NSTableColumn *modelCol = [[NSTableColumn alloc] initWithIdentifier:@"archive_model"];
-    modelCol.title = @"Model";
-    modelCol.width = 150;
-    [self.archiveTableView addTableColumn:modelCol];
-    
-    NSTableColumn *countCol = [[NSTableColumn alloc] initWithIdentifier:@"archive_count"];
+    // Colonna simboli
+    NSTableColumn *countCol = [[NSTableColumn alloc] initWithIdentifier:@"count"];
     countCol.title = @"Symbols";
     countCol.width = 70;
-    [self.archiveTableView addTableColumn:countCol];
+    countCol.minWidth = 50;
+    [self.archiveOutlineView addTableColumn:countCol];
+    
+    // Colonna tempo
+    NSTableColumn *timeCol = [[NSTableColumn alloc] initWithIdentifier:@"time"];
+    timeCol.title = @"Time";
+    timeCol.width = 60;
+    timeCol.minWidth = 50;
+    [self.archiveOutlineView addTableColumn:timeCol];
     
     self.archiveScrollView = [[NSScrollView alloc] init];
-    self.archiveScrollView.documentView = self.archiveTableView;
+    self.archiveScrollView.documentView = self.archiveOutlineView;
     self.archiveScrollView.hasVerticalScroller = YES;
     self.archiveScrollView.translatesAutoresizingMaskIntoConstraints = NO;
     [view addSubview:self.archiveScrollView];
@@ -290,7 +303,6 @@
     
     return view;
 }
-
 
 
 
@@ -566,6 +578,12 @@
     NSTableColumn *symbolCol = [[NSTableColumn alloc] initWithIdentifier:@"symbol"];
     symbolCol.title = @"Symbol";
     symbolCol.width = 100;
+    
+    NSSortDescriptor *sortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"symbol"
+                                                                      ascending:YES
+                                                                       selector:@selector(localizedCaseInsensitiveCompare:)];
+     symbolCol.sortDescriptorPrototype = sortDescriptor;
+    
     [self.resultsSymbolsTableView addTableColumn:symbolCol];
     
     self.resultsSymbolsScrollView = [[NSScrollView alloc] init];
@@ -1109,20 +1127,23 @@
            return self.currentModelSymbols.count;
        }
     
-    // ARCHIVE TABLE
-    if (tableView == self.archiveTableView) {
-           return self.archivedSessions.count;  // ✅ NUOVO
-       }
-    
     // ARCHIVE SYMBOLS TABLE
-    if (tableView == self.archiveSymbolsTableView) {
-        if (!self.selectedArchiveEntry) {
-            return 0;
-        }
-        NSDictionary *symbols = self.selectedArchiveEntry[@"symbols"];
-        return symbols.count;
-    }
-    
+       if (tableView == self.archiveSymbolsTableView) {
+           if (self.selectedModelResult) {
+               // Se è selezionato un modello, mostra solo i suoi simboli
+               return self.selectedModelResult.screenedSymbols.count;
+           } else if (self.selectedSession) {
+               // Se è selezionata una sessione, conta tutti i simboli di tutti i modelli
+               NSInteger totalSymbols = 0;
+               for (ModelResult *result in self.selectedSession.modelResults) {
+                   totalSymbols += result.screenedSymbols.count;
+               }
+               return totalSymbols;
+           }
+           return 0;
+       }
+            
+          
     return 0;
 }
 - (nullable NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(nullable NSTableColumn *)tableColumn row:(NSInteger)row {
@@ -1224,49 +1245,215 @@
             }
         }
     
-    // ✅ ARCHIVE TABLE
-    else if (tableView == self.archiveTableView) {
-           if (row < self.archivedSessions.count) {
-               ExecutionSession *session = self.archivedSessions[row];
-               
-               if ([tableColumn.identifier isEqualToString:@"date"]) {
-                   textField.stringValue = [session formattedExecutionDate];
-               } else if ([tableColumn.identifier isEqualToString:@"models"]) {
-                   textField.stringValue = [NSString stringWithFormat:@"%ld", (long)session.totalModels];
-                   textField.alignment = NSTextAlignmentCenter;
-               } else if ([tableColumn.identifier isEqualToString:@"symbols"]) {
-                   textField.stringValue = [NSString stringWithFormat:@"%ld", (long)session.totalSymbols];
-                   textField.alignment = NSTextAlignmentCenter;
+    // ARCHIVE SYMBOLS TABLE
+       else if (tableView == self.archiveSymbolsTableView) {
+           NSTextField *textField = [[NSTextField alloc] init];
+           textField.editable = NO;
+           textField.bordered = NO;
+           textField.backgroundColor = [NSColor clearColor];
+           
+           ScreenedSymbol *symbol = nil;
+           
+           if (self.selectedModelResult) {
+               // Simboli del modello selezionato
+               if (row < self.selectedModelResult.screenedSymbols.count) {
+                   symbol = self.selectedModelResult.screenedSymbols[row];
+               }
+           } else if (self.selectedSession) {
+               // Simboli di tutti i modelli della sessione
+               NSInteger currentIndex = 0;
+               for (ModelResult *result in self.selectedSession.modelResults) {
+                   if (row < currentIndex + result.screenedSymbols.count) {
+                       symbol = result.screenedSymbols[row - currentIndex];
+                       break;
+                   }
+                   currentIndex += result.screenedSymbols.count;
                }
            }
+           
+           if (!symbol) return textField;
+           
+           if ([tableColumn.identifier isEqualToString:@"archive_symbol"]) {
+               textField.stringValue = symbol.symbol;
+               
+           } else if ([tableColumn.identifier isEqualToString:@"signal_price"]) {
+               if (symbol.metadata[@"signalPrice"]) {
+                   textField.stringValue = [NSString stringWithFormat:@"%.2f",
+                       [symbol.metadata[@"signalPrice"] doubleValue]];
+               } else {
+                   textField.stringValue = @"--";
+               }
+               
+           } else if ([tableColumn.identifier isEqualToString:@"current_price"]) {
+               textField.stringValue = @"--";
+               
+           } else if ([tableColumn.identifier isEqualToString:@"var_percent"]) {
+               textField.stringValue = @"--";
+           }
+           
+           return textField;
        }
-    
-    // ✅ ARCHIVE SYMBOLS TABLE
-    // ARCHIVE SYMBOLS TABLE
-    else if (tableView == self.archiveSymbolsTableView) {
-        if (self.selectedArchiveEntry) {
-            NSDictionary *symbolsWithPrices = self.selectedArchiveEntry[@"symbols"];
-            NSArray *symbols = [symbolsWithPrices.allKeys sortedArrayUsingSelector:@selector(compare:)];
-            
-            if (row < symbols.count) {
-                NSString *symbol = symbols[row];
-                double signalPrice = [symbolsWithPrices[symbol] doubleValue];
-                
-                if ([tableColumn.identifier isEqualToString:@"archive_symbol"]) {
-                    textField.stringValue = symbol;
-                } else if ([tableColumn.identifier isEqualToString:@"signal_price"]) {
-                    textField.stringValue = [NSString stringWithFormat:@"%.2f", signalPrice];
-                } else if ([tableColumn.identifier isEqualToString:@"current_price"]) {
-                    // Mostra "--" inizialmente, verrà aggiornato dopo la batch request
-                    textField.stringValue = @"--";
-                } else if ([tableColumn.identifier isEqualToString:@"var_percent"]) {
-                    textField.stringValue = @"--";
-                }
-            }
-        }
-    }
     return textField;
 }
+
+#pragma mark - NSOutlineViewDataSource
+
+- (NSInteger)outlineView:(NSOutlineView *)outlineView numberOfChildrenOfItem:(id)item {
+    if (outlineView != self.archiveOutlineView) return 0;
+    
+    if (item == nil) {
+        // Root level: numero di sessioni
+        return self.archivedSessions.count;
+    }
+    
+    if ([item isKindOfClass:[ExecutionSession class]]) {
+        // Session level: numero di modelli
+        ExecutionSession *session = (ExecutionSession *)item;
+        return session.modelResults.count;
+    }
+    
+    return 0;
+}
+
+- (id)outlineView:(NSOutlineView *)outlineView child:(NSInteger)index ofItem:(id)item {
+    if (outlineView != self.archiveOutlineView) return nil;
+    
+    if (item == nil) {
+        // Root level: ritorna session
+        return self.archivedSessions[index];
+    }
+    
+    if ([item isKindOfClass:[ExecutionSession class]]) {
+        // Session level: ritorna model result
+        ExecutionSession *session = (ExecutionSession *)item;
+        return session.modelResults[index];
+    }
+    
+    return nil;
+}
+
+- (BOOL)outlineView:(NSOutlineView *)outlineView isItemExpandable:(id)item {
+    if (outlineView != self.archiveOutlineView) return NO;
+    
+    // Solo le sessioni sono espandibili
+    return [item isKindOfClass:[ExecutionSession class]];
+}
+
+
+// 4️⃣ IMPLEMENTARE NSOutlineViewDelegate
+
+#pragma mark - NSOutlineViewDelegate
+
+- (NSView *)outlineView:(NSOutlineView *)outlineView
+     viewForTableColumn:(NSTableColumn *)tableColumn
+                   item:(id)item {
+    
+    if (outlineView != self.archiveOutlineView) return nil;
+    
+    NSTextField *textField = [[NSTextField alloc] init];
+    textField.editable = NO;
+    textField.bordered = NO;
+    textField.backgroundColor = [NSColor clearColor];
+    
+    // SESSION ROW (parent)
+    if ([item isKindOfClass:[ExecutionSession class]]) {
+        ExecutionSession *session = (ExecutionSession *)item;
+        
+        if ([tableColumn.identifier isEqualToString:@"name"]) {
+            textField.stringValue = [session formattedExecutionDate];
+            textField.font = [NSFont boldSystemFontOfSize:12];
+            
+        } else if ([tableColumn.identifier isEqualToString:@"count"]) {
+            textField.stringValue = [NSString stringWithFormat:@"%ld", (long)session.totalSymbols];
+            textField.alignment = NSTextAlignmentCenter;
+            textField.textColor = [NSColor secondaryLabelColor];
+            
+        } else if ([tableColumn.identifier isEqualToString:@"time"]) {
+            textField.stringValue = @"";
+        }
+    }
+    
+    // MODEL ROW (child)
+    else if ([item isKindOfClass:[ModelResult class]]) {
+        ModelResult *result = (ModelResult *)item;
+        
+        if ([tableColumn.identifier isEqualToString:@"name"]) {
+            textField.stringValue = result.modelName;
+            textField.font = [NSFont systemFontOfSize:11];
+            
+        } else if ([tableColumn.identifier isEqualToString:@"count"]) {
+            textField.stringValue = [NSString stringWithFormat:@"%lu",
+                                     (unsigned long)result.screenedSymbols.count];
+            textField.alignment = NSTextAlignmentCenter;
+            textField.font = [NSFont systemFontOfSize:11];
+            
+        } else if ([tableColumn.identifier isEqualToString:@"time"]) {
+            textField.stringValue = [NSString stringWithFormat:@"%.1fs", result.totalExecutionTime];
+            textField.alignment = NSTextAlignmentCenter;
+            textField.font = [NSFont systemFontOfSize:11];
+            textField.textColor = [NSColor secondaryLabelColor];
+        }
+    }
+    
+    return textField;
+}
+
+- (void)outlineViewSelectionDidChange:(NSNotification *)notification {
+    NSOutlineView *outlineView = notification.object;
+    
+    if (outlineView != self.archiveOutlineView) return;
+    
+    NSInteger selectedRow = outlineView.selectedRow;
+    if (selectedRow < 0) {
+        self.selectedSession = nil;
+        self.selectedModelResult = nil;
+        self.deleteArchiveButton.enabled = NO;
+        self.exportArchiveButton.enabled = NO;
+        self.archiveHeaderLabel.stringValue = @"Select a session or model";
+        [self.archiveSymbolsTableView reloadData];
+        return;
+    }
+    
+    id selectedItem = [outlineView itemAtRow:selectedRow];
+    
+    // SESSION SELECTED
+    if ([selectedItem isKindOfClass:[ExecutionSession class]]) {
+        self.selectedSession = (ExecutionSession *)selectedItem;
+        self.selectedModelResult = nil;
+        
+        self.deleteArchiveButton.enabled = YES;
+        self.exportArchiveButton.enabled = YES;
+        
+        // Mostra TUTTI i simboli della sessione
+        self.archiveHeaderLabel.stringValue = [NSString stringWithFormat:
+            @"Session: %@ (%ld symbols)",
+            [self.selectedSession formattedExecutionDate],
+            (long)self.selectedSession.totalSymbols];
+    }
+    
+    // MODEL SELECTED
+    else if ([selectedItem isKindOfClass:[ModelResult class]]) {
+        self.selectedModelResult = (ModelResult *)selectedItem;
+        
+        // Trova la session parent
+        NSInteger parentRow = [outlineView parentForItem:selectedItem];
+        if (parentRow >= 0) {
+            self.selectedSession = [outlineView itemAtRow:parentRow];
+        }
+        
+        self.deleteArchiveButton.enabled = YES;
+        self.exportArchiveButton.enabled = YES;
+        
+        // Mostra SOLO i simboli del modello
+        self.archiveHeaderLabel.stringValue = [NSString stringWithFormat:
+            @"Model: %@ (%lu symbols)",
+            self.selectedModelResult.modelName,
+            (unsigned long)self.selectedModelResult.screenedSymbols.count];
+    }
+    
+    [self.archiveSymbolsTableView reloadData];
+}
+
 #pragma mark - NSTableViewDelegate
 
 - (void)tableViewSelectionDidChange:(NSNotification *)notification {
@@ -1338,8 +1525,8 @@
            NSIndexSet *selectedRows = self.resultsSymbolsTableView.selectedRowIndexes;
            
            if (selectedRow >= 0 && selectedRow < self.currentModelSymbols.count) {
-               NSString *symbol = self.currentModelSymbols[selectedRow];
-               
+               ScreenedSymbol *screenedSymbol = self.currentModelSymbols[selectedRow];
+                          NSString *symbol = screenedSymbol.symbol;
                // ✅ INVIO IMMEDIATO ALLA CHAIN (usa simbolo pulito senza .us)
                [self sendSymbolToChain:symbol];
                
@@ -1360,25 +1547,8 @@
               self.sendSelectedButton.title = @"Send Selected to Chain";
           }
       }
-    // ARCHIVE TABLE SELECTION (NUOVO)
 
-    else if (tableView == self.archiveTableView) {
-           NSInteger selectedRow = self.archiveTableView.selectedRow;
-           
-           if (selectedRow >= 0 && selectedRow < self.archivedSessions.count) {
-               self.selectedSession = self.archivedSessions[selectedRow];
-               self.deleteArchiveButton.enabled = YES;
-               self.exportArchiveButton.enabled = YES;
-               
-               // TODO: Popola la tabella dei simboli con i dati della sessione
-               [self.archiveSymbolsTableView reloadData];
-           } else {
-               self.selectedSession = nil;
-               self.deleteArchiveButton.enabled = NO;
-               self.exportArchiveButton.enabled = NO;
-               [self.archiveSymbolsTableView reloadData];
-           }
-       }
+   
 }
 
 - (void)sendSelectedSymbolsToChain:(id)sender {
@@ -2245,7 +2415,7 @@
     NSLog(@"✅ Loaded %ld archived sessions (%ld errors)", (long)loadedCount, (long)errorCount);
     
     // Ricarica la tabella dell'archivio
-    [self.archiveTableView reloadData];
+    [self.archiveOutlineView reloadData];  // ← CAMBIATO
 }
 
 - (void)saveCurrentResultsToArchive {
@@ -2318,85 +2488,211 @@
     return archiveDir;
 }
 
+#pragma mark - Archive Actions (COMPLETI PER OUTLINEVIEW)
+
 - (void)deleteArchiveEntry:(id)sender {
-    NSInteger selectedRow = [self.archiveTableView selectedRow];
+    NSInteger selectedRow = [self.archiveOutlineView selectedRow];
     
-    if (selectedRow < 0 || selectedRow >= self.archivedSessions.count) {
+    if (selectedRow < 0) {
+        NSLog(@"⚠️ No selection to delete");
         return;
     }
     
-    ExecutionSession *session = self.archivedSessions[selectedRow];
+    id selectedItem = [self.archiveOutlineView itemAtRow:selectedRow];
     
+    // Determina quale sessione eliminare
+    ExecutionSession *sessionToDelete = nil;
+    
+    if ([selectedItem isKindOfClass:[ExecutionSession class]]) {
+        // È stata selezionata una sessione
+        sessionToDelete = (ExecutionSession *)selectedItem;
+    } else if ([selectedItem isKindOfClass:[ModelResult class]]) {
+        // È stato selezionato un modello - trova la sessione parent
+        id parentItem = [self.archiveOutlineView parentForItem:selectedItem];
+        if ([parentItem isKindOfClass:[ExecutionSession class]]) {
+            sessionToDelete = (ExecutionSession *)parentItem;
+        }
+    }
+    
+    if (!sessionToDelete) {
+        NSLog(@"⚠️ Could not determine session to delete");
+        return;
+    }
+    
+    // Conferma eliminazione
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"Delete Archive Entry?";
-    alert.informativeText = [NSString stringWithFormat:@"Delete session from %@?",
-                            [session formattedExecutionDate]];
+    alert.informativeText = [NSString stringWithFormat:
+        @"Delete entire session from %@?\n\n"
+        @"This will delete:\n"
+        @"• %ld models\n"
+        @"• %ld total symbols\n\n"
+        @"This action cannot be undone.",
+        [sessionToDelete formattedExecutionDate],
+        (long)sessionToDelete.totalModels,
+        (long)sessionToDelete.totalSymbols];
     alert.alertStyle = NSAlertStyleWarning;
     [alert addButtonWithTitle:@"Delete"];
     [alert addButtonWithTitle:@"Cancel"];
     
     if ([alert runModal] != NSAlertFirstButtonReturn) {
+        NSLog(@"ℹ️ Delete cancelled by user");
         return;
     }
     
-    // Trova e cancella il file
+    // Trova e elimina il file
     NSString *archiveDir = [self archiveDirectory];
     NSFileManager *fm = [NSFileManager defaultManager];
-    NSError *error;
+    NSError *readError;
     
-    NSArray<NSString *> *files = [fm contentsOfDirectoryAtPath:archiveDir error:nil];
+    NSArray<NSString *> *files = [fm contentsOfDirectoryAtPath:archiveDir error:&readError];
     
+    if (readError) {
+        NSLog(@"❌ Error reading archive directory: %@", readError);
+        
+        NSAlert *errorAlert = [[NSAlert alloc] init];
+        errorAlert.messageText = @"Delete Failed";
+        errorAlert.informativeText = [NSString stringWithFormat:@"Could not read archive directory:\n%@",
+                                     readError.localizedDescription];
+        errorAlert.alertStyle = NSAlertStyleCritical;
+        [errorAlert runModal];
+        return;
+    }
+    
+    // Cerca il file corrispondente alla sessione
+    BOOL fileFound = NO;
     for (NSString *filename in files) {
+        if (![filename hasPrefix:@"session_"] || ![filename hasSuffix:@".json"]) {
+            continue;
+        }
+        
         NSString *filepath = [archiveDir stringByAppendingPathComponent:filename];
         
-        // Verifica se questo file contiene la sessione corretta
-        ExecutionSession *fileSession = [ExecutionSession loadFromFile:filepath error:nil];
+        // Carica e verifica che sia la sessione corretta
+        NSError *loadError;
+        ExecutionSession *fileSession = [ExecutionSession loadFromFile:filepath error:&loadError];
         
-        if (fileSession && [fileSession.sessionID isEqualToString:session.sessionID]) {
-            if ([fm removeItemAtPath:filepath error:&error]) {
+        if (fileSession && [fileSession.sessionID isEqualToString:sessionToDelete.sessionID]) {
+            // Trovato il file - eliminalo
+            NSError *deleteError;
+            if ([fm removeItemAtPath:filepath error:&deleteError]) {
                 NSLog(@"✅ Deleted archive file: %@", filename);
+                fileFound = YES;
                 
-                // Rimuovi dall'array e ricarica UI
-                [self.archivedSessions removeObjectAtIndex:selectedRow];
+                // Rimuovi dall'array
+                [self.archivedSessions removeObject:sessionToDelete];
+                
+                // Reset selezione
                 self.selectedSession = nil;
+                self.selectedModelResult = nil;
                 
-                [self.archiveTableView reloadData];
+                // Aggiorna UI
+                [self.archiveOutlineView reloadData];
                 [self.archiveSymbolsTableView reloadData];
                 
+                self.archiveHeaderLabel.stringValue = @"Select a session or model";
                 self.deleteArchiveButton.enabled = NO;
+                self.exportArchiveButton.enabled = NO;
+                
+                NSLog(@"✅ Archive entry deleted successfully");
                 return;
+                
             } else {
-                NSLog(@"❌ Failed to delete file: %@", error);
+                NSLog(@"❌ Failed to delete file: %@", deleteError);
                 
                 NSAlert *errorAlert = [[NSAlert alloc] init];
                 errorAlert.messageText = @"Delete Failed";
-                errorAlert.informativeText = error.localizedDescription;
+                errorAlert.informativeText = [NSString stringWithFormat:@"Could not delete file:\n%@",
+                                             deleteError.localizedDescription];
+                errorAlert.alertStyle = NSAlertStyleCritical;
                 [errorAlert runModal];
                 return;
             }
         }
     }
     
-    NSLog(@"⚠️ Could not find file for session %@", session.sessionID);
+    if (!fileFound) {
+        NSLog(@"⚠️ Could not find archive file for session %@", sessionToDelete.sessionID);
+        
+        NSAlert *errorAlert = [[NSAlert alloc] init];
+        errorAlert.messageText = @"Delete Failed";
+        errorAlert.informativeText = @"Archive file not found on disk. The session may have been deleted externally.";
+        errorAlert.alertStyle = NSAlertStyleWarning;
+        [errorAlert runModal];
+        
+        // Rimuovi comunque dall'array visto che il file non esiste
+        [self.archivedSessions removeObject:sessionToDelete];
+        [self.archiveOutlineView reloadData];
+    }
 }
 
 - (void)exportArchive:(id)sender {
-    NSInteger selectedRow = [self.archiveTableView selectedRow];
+    NSInteger selectedRow = [self.archiveOutlineView selectedRow];
     
-    if (selectedRow < 0 || selectedRow >= self.archivedSessions.count) {
+    if (selectedRow < 0) {
+        NSLog(@"⚠️ No selection to export");
         return;
     }
     
-    ExecutionSession *session = self.archivedSessions[selectedRow];
+    id selectedItem = [self.archiveOutlineView itemAtRow:selectedRow];
     
+    // Determina cosa esportare
+    ExecutionSession *sessionToExport = nil;
+    ModelResult *singleModelToExport = nil;
+    
+    if ([selectedItem isKindOfClass:[ExecutionSession class]]) {
+        // Esporta intera sessione
+        sessionToExport = (ExecutionSession *)selectedItem;
+        
+    } else if ([selectedItem isKindOfClass:[ModelResult class]]) {
+        // Esporta solo il modello selezionato
+        singleModelToExport = (ModelResult *)selectedItem;
+        
+        // Trova anche la sessione parent per il contesto
+        id parentItem = [self.archiveOutlineView parentForItem:selectedItem];
+        if ([parentItem isKindOfClass:[ExecutionSession class]]) {
+            sessionToExport = (ExecutionSession *)parentItem;
+        }
+    }
+    
+    if (!sessionToExport) {
+        NSLog(@"⚠️ Could not determine session to export");
+        return;
+    }
+    
+    // Configura il save panel
     NSSavePanel *savePanel = [NSSavePanel savePanel];
     savePanel.allowedFileTypes = @[@"txt"];
-    savePanel.nameFieldStringValue = [NSString stringWithFormat:@"Archive_%@.txt",
-                                      [session formattedExecutionDate]];
+    
+    NSString *defaultName;
+    if (singleModelToExport) {
+        defaultName = [NSString stringWithFormat:@"Archive_%@_%@.txt",
+                      [sessionToExport formattedExecutionDate],
+                      singleModelToExport.modelName];
+    } else {
+        defaultName = [NSString stringWithFormat:@"Archive_%@.txt",
+                      [sessionToExport formattedExecutionDate]];
+    }
+    
+    // Pulisci il nome file (rimuovi caratteri non validi)
+    NSCharacterSet *invalidChars = [NSCharacterSet characterSetWithCharactersInString:@"/:*?\"<>|"];
+    defaultName = [[defaultName componentsSeparatedByCharactersInSet:invalidChars]
+                   componentsJoinedByString:@"_"];
+    
+    savePanel.nameFieldStringValue = defaultName;
+    savePanel.message = singleModelToExport ?
+        @"Export single model from archive" :
+        @"Export entire session from archive";
     
     [savePanel beginWithCompletionHandler:^(NSModalResponse result) {
         if (result == NSModalResponseOK) {
-            [self exportSession:session toURL:savePanel.URL];
+            if (singleModelToExport) {
+                [self exportSingleModel:singleModelToExport
+                            fromSession:sessionToExport
+                                  toURL:savePanel.URL];
+            } else {
+                [self exportSession:sessionToExport toURL:savePanel.URL];
+            }
         }
     }];
 }
@@ -2404,35 +2700,266 @@
 - (void)exportSession:(ExecutionSession *)session toURL:(NSURL *)url {
     NSMutableString *report = [NSMutableString string];
     
+    // Header
     [report appendString:@"═══════════════════════════════════════════════════\n"];
     [report appendString:@"           ARCHIVED SCREENING SESSION\n"];
     [report appendString:@"═══════════════════════════════════════════════════\n\n"];
     
     [report appendFormat:@"Execution Date: %@\n", [session formattedExecutionDate]];
     [report appendFormat:@"Session ID: %@\n", session.sessionID];
-    [report appendFormat:@"%@\n\n", [session summaryString]];
+    [report appendFormat:@"Total Models: %ld\n", (long)session.totalModels];
+    [report appendFormat:@"Total Symbols: %ld\n", (long)session.totalSymbols];
+    [report appendFormat:@"Universe Size: %ld\n\n", (long)session.universe.count];
     [report appendString:@"───────────────────────────────────────────────────\n\n"];
     
     // Per ogni modello
     NSInteger modelNumber = 1;
     for (ModelResult *result in session.modelResults) {
-        [report appendFormat:@"%ld. %@\n", (long)modelNumber++, result.modelName];
-        [report appendFormat:@"   Symbols: %lu\n", (unsigned long)result.screenedSymbols.count];
-        [report appendFormat:@"   Time: %.2fs\n\n", result.totalExecutionTime];
+        [report appendFormat:@"%ld. MODEL: %@\n", (long)modelNumber++, result.modelName];
+        
+        if (result.modelDescription && result.modelDescription.length > 0) {
+            [report appendFormat:@"   Description: %@\n", result.modelDescription];
+        }
+        
+        [report appendFormat:@"   Execution Time: %.2fs\n", result.totalExecutionTime];
+        [report appendFormat:@"   Initial Universe: %ld symbols\n", (long)result.initialUniverseSize];
+        [report appendFormat:@"   Final Symbols: %lu\n\n", (unsigned long)result.screenedSymbols.count];
+        
+        // Step details
+        if (result.steps && result.steps.count > 0) {
+            [report appendString:@"   Screening Pipeline:\n"];
+            for (NSInteger i = 0; i < result.steps.count; i++) {
+                ScreenerStep *step = result.steps[i];
+                [report appendFormat:@"      Step %ld: %@", (long)(i + 1), step.screenerID];
+                [report appendFormat:@" (Input: %@)\n",
+                    [step.inputSource isEqualToString:@"universe"] ? @"Universe" : @"Previous"];
+                
+                if (step.parameters.count > 0) {
+                    NSArray *sortedKeys = [step.parameters.allKeys sortedArrayUsingSelector:@selector(compare:)];
+                    for (NSString *key in sortedKeys) {
+                        [report appendFormat:@"         • %@ = %@\n", key, step.parameters[key]];
+                    }
+                }
+            }
+            [report appendString:@"\n"];
+        }
         
         // Lista simboli
+        [report appendFormat:@"   Symbols (%lu):\n", (unsigned long)result.screenedSymbols.count];
+        
+        NSArray *sortedSymbols = [result.screenedSymbols sortedArrayUsingComparator:
+            ^NSComparisonResult(ScreenedSymbol *s1, ScreenedSymbol *s2) {
+                return [s1.symbol compare:s2.symbol];
+            }];
+        
+        for (ScreenedSymbol *symbol in sortedSymbols) {
+            [report appendFormat:@"      • %@", symbol.symbol];
+            
+            // Aggiungi metadata se disponibile
+            if (symbol.metadata.count > 0) {
+                NSMutableArray *metadataStrings = [NSMutableArray array];
+                for (NSString *key in symbol.metadata.allKeys) {
+                    [metadataStrings addObject:[NSString stringWithFormat:@"%@: %@",
+                                               key, symbol.metadata[key]]];
+                }
+                [report appendFormat:@" (%@)", [metadataStrings componentsJoinedByString:@", "]];
+            }
+            
+            [report appendString:@"\n"];
+        }
+        
+        [report appendString:@"\n───────────────────────────────────────────────────\n\n"];
+    }
+    
+    // Footer con tutti i simboli unici
+    NSMutableSet<NSString *> *uniqueSymbols = [NSMutableSet set];
+    for (ModelResult *result in session.modelResults) {
         for (ScreenedSymbol *symbol in result.screenedSymbols) {
-            [report appendFormat:@"      • %@\n", symbol.symbol];
+            [uniqueSymbols addObject:symbol.symbol];
+        }
+    }
+    
+    [report appendString:@"═══════════════════════════════════════════════════\n"];
+    [report appendFormat:@"      ALL UNIQUE SYMBOLS (%lu)\n", (unsigned long)uniqueSymbols.count];
+    [report appendString:@"═══════════════════════════════════════════════════\n\n"];
+    
+    NSArray *sortedUniqueSymbols = [[uniqueSymbols allObjects] sortedArrayUsingSelector:@selector(compare:)];
+    
+    // Stampa in colonne (5 simboli per riga)
+    NSInteger column = 0;
+    for (NSString *symbol in sortedUniqueSymbols) {
+        [report appendFormat:@"%-12s", [symbol UTF8String]];
+        column++;
+        if (column >= 5) {
+            [report appendString:@"\n"];
+            column = 0;
+        }
+    }
+    
+    if (column > 0) {
+        [report appendString:@"\n"];
+    }
+    
+    [report appendString:@"\n═══════════════════════════════════════════════════\n"];
+    [report appendString:@"                  END OF REPORT\n"];
+    [report appendString:@"═══════════════════════════════════════════════════\n"];
+    
+    // Salva il file
+    NSError *error;
+    BOOL success = [report writeToURL:url atomically:YES encoding:NSUTF8StringEncoding error:&error];
+    
+    if (success) {
+        NSLog(@"✅ Exported session to: %@", url.path);
+        
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"Export Successful";
+        alert.informativeText = [NSString stringWithFormat:
+            @"Session exported:\n"
+            @"• %ld models\n"
+            @"• %ld total symbols\n"
+            @"• %lu unique symbols",
+            (long)session.totalModels,
+            (long)session.totalSymbols,
+            (unsigned long)uniqueSymbols.count];
+        alert.alertStyle = NSAlertStyleInformational;
+        [alert addButtonWithTitle:@"Open"];
+        [alert addButtonWithTitle:@"OK"];
+        
+        if ([alert runModal] == NSAlertFirstButtonReturn) {
+            [[NSWorkspace sharedWorkspace] openURL:url];
+        }
+        
+    } else {
+        NSLog(@"❌ Failed to export: %@", error);
+        
+        NSAlert *errorAlert = [[NSAlert alloc] init];
+        errorAlert.messageText = @"Export Failed";
+        errorAlert.informativeText = error.localizedDescription;
+        errorAlert.alertStyle = NSAlertStyleCritical;
+        [errorAlert runModal];
+    }
+}
+
+- (void)exportSingleModel:(ModelResult *)modelResult
+              fromSession:(ExecutionSession *)session
+                    toURL:(NSURL *)url {
+    
+    NSMutableString *report = [NSMutableString string];
+    
+    // Header
+    [report appendString:@"═══════════════════════════════════════════════════\n"];
+    [report appendString:@"           ARCHIVED MODEL EXPORT\n"];
+    [report appendString:@"═══════════════════════════════════════════════════\n\n"];
+    
+    [report appendFormat:@"Session Date: %@\n", [session formattedExecutionDate]];
+    [report appendFormat:@"Model: %@\n", modelResult.modelName];
+    
+    if (modelResult.modelDescription && modelResult.modelDescription.length > 0) {
+        [report appendFormat:@"Description: %@\n", modelResult.modelDescription];
+    }
+    
+    [report appendFormat:@"Execution Time: %.2fs\n", modelResult.totalExecutionTime];
+    [report appendFormat:@"Initial Universe: %ld symbols\n", (long)modelResult.initialUniverseSize];
+    [report appendFormat:@"Final Symbols: %lu\n\n", (unsigned long)modelResult.screenedSymbols.count];
+    [report appendString:@"───────────────────────────────────────────────────\n\n"];
+    
+    // Step details
+    if (modelResult.steps && modelResult.steps.count > 0) {
+        [report appendString:@"Screening Pipeline:\n\n"];
+        for (NSInteger i = 0; i < modelResult.steps.count; i++) {
+            ScreenerStep *step = modelResult.steps[i];
+            [report appendFormat:@"Step %ld: %@\n", (long)(i + 1), step.screenerID];
+            [report appendFormat:@"   Input Source: %@\n",
+                [step.inputSource isEqualToString:@"universe"] ? @"Universe" : @"Previous Step"];
+            
+            if (step.parameters.count > 0) {
+                [report appendString:@"   Parameters:\n"];
+                NSArray *sortedKeys = [step.parameters.allKeys sortedArrayUsingSelector:@selector(compare:)];
+                for (NSString *key in sortedKeys) {
+                    [report appendFormat:@"      • %@ = %@\n", key, step.parameters[key]];
+                }
+            }
+            [report appendString:@"\n"];
+        }
+        [report appendString:@"───────────────────────────────────────────────────\n\n"];
+    }
+    
+    // Lista simboli
+    [report appendFormat:@"Screened Symbols (%lu):\n\n", (unsigned long)modelResult.screenedSymbols.count];
+    
+    NSArray *sortedSymbols = [modelResult.screenedSymbols sortedArrayUsingComparator:
+        ^NSComparisonResult(ScreenedSymbol *s1, ScreenedSymbol *s2) {
+            return [s1.symbol compare:s2.symbol];
+        }];
+    
+    for (ScreenedSymbol *symbol in sortedSymbols) {
+        [report appendFormat:@"   • %@", symbol.symbol];
+        
+        // Aggiungi metadata se disponibile
+        if (symbol.metadata.count > 0) {
+            NSMutableArray *metadataStrings = [NSMutableArray array];
+            for (NSString *key in symbol.metadata.allKeys) {
+                [metadataStrings addObject:[NSString stringWithFormat:@"%@: %@",
+                                           key, symbol.metadata[key]]];
+            }
+            [report appendFormat:@" (%@)", [metadataStrings componentsJoinedByString:@", "]];
         }
         
         [report appendString:@"\n"];
     }
     
+    [report appendString:@"\n═══════════════════════════════════════════════════\n"];
+    [report appendString:@"                  END OF REPORT\n"];
+    [report appendString:@"═══════════════════════════════════════════════════\n"];
+    
+    // Salva il file
     NSError *error;
-    if ([report writeToURL:url atomically:YES encoding:NSUTF8StringEncoding error:&error]) {
-        NSLog(@"✅ Exported session to: %@", url.path);
+    BOOL success = [report writeToURL:url atomically:YES encoding:NSUTF8StringEncoding error:&error];
+    
+    if (success) {
+        NSLog(@"✅ Exported model to: %@", url.path);
+        
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"Export Successful";
+        alert.informativeText = [NSString stringWithFormat:
+            @"Model '%@' exported:\n"
+            @"• %lu symbols\n"
+            @"• %ld screening steps",
+            modelResult.modelName,
+            (unsigned long)modelResult.screenedSymbols.count,
+            (long)modelResult.steps.count];
+        alert.alertStyle = NSAlertStyleInformational;
+        [alert addButtonWithTitle:@"Open"];
+        [alert addButtonWithTitle:@"OK"];
+        
+        if ([alert runModal] == NSAlertFirstButtonReturn) {
+            [[NSWorkspace sharedWorkspace] openURL:url];
+        }
+        
     } else {
         NSLog(@"❌ Failed to export: %@", error);
+        
+        NSAlert *errorAlert = [[NSAlert alloc] init];
+        errorAlert.messageText = @"Export Failed";
+        errorAlert.informativeText = error.localizedDescription;
+        errorAlert.alertStyle = NSAlertStyleCritical;
+        [errorAlert runModal];
+    }
+}
+
+- (void)tableView:(NSTableView *)tableView sortDescriptorsDidChange:(NSArray<NSSortDescriptor *> *)oldDescriptors {
+    
+    // RESULTS SYMBOLS TABLE
+    if (tableView == self.resultsSymbolsTableView) {
+        if (!self.currentModelSymbols || self.currentModelSymbols.count == 0) return;
+        
+        // Ordina l'array usando i sort descriptors
+        self.currentModelSymbols = [self.currentModelSymbols sortedArrayUsingDescriptors:tableView.sortDescriptors];
+        
+        // Ricarica la tabella
+        [self.resultsSymbolsTableView reloadData];
+        
+        NSLog(@"📊 Symbols sorted: %@", tableView.sortDescriptors.firstObject);
     }
 }
 

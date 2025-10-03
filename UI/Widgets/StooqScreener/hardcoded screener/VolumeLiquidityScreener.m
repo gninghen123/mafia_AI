@@ -15,33 +15,40 @@
 }
 
 - (NSString *)descriptionText {
-    return @"Filters symbols where average volume (SMA) * close price exceeds threshold. Measures daily dollar volume traded.";
+    return @"Filters symbols by: 1) SMA(volume, period) * close > minDollarVolume (M) AND 2) SMA(volume, period) > minVolume (M)";
 }
 
 - (NSInteger)minBarsRequired {
-    NSInteger smaPeriod = [self.parameters[@"sma_period"] integerValue];
+    NSInteger smaPeriod = [self parameterIntegerForKey:@"smaPeriod" defaultValue:10];
     return smaPeriod;  // Serve almeno smaPeriod giorni
 }
 
-- (NSArray<NSString *> *)executeOnSymbols:(NSArray<NSString *> *)symbols
+- (NSArray<NSString *> *)executeOnSymbols:(NSArray<NSString *> *)inputSymbols
                                cachedData:(NSDictionary<NSString *, NSArray<HistoricalBarModel *> *> *)cache {
     
-    // Leggi parametri
-    NSInteger smaPeriod = [self.parameters[@"sma_period"] integerValue];
-    double thresholdMillions = [self.parameters[@"threshold_millions"] doubleValue];
-    double threshold = thresholdMillions * 1000000.0;  // Converti in dollari
+    // Leggi parametri (espressi in milioni)
+    NSInteger smaPeriod = [self parameterIntegerForKey:@"smaPeriod" defaultValue:10];
+    double minDollarVolumeM = [self parameterDoubleForKey:@"minDollarVolume" defaultValue:4.0];
+    double minVolumeM = [self parameterDoubleForKey:@"minVolume" defaultValue:1.0];
     
-    NSLog(@"🔍 %@ screening %lu symbols (SMA period: %ld, threshold: $%.1fM)",
+    // Converti in valori assoluti
+    double minDollarVolume = minDollarVolumeM * 1000000.0;
+    double minVolume = minVolumeM * 1000000.0;
+    
+    NSLog(@"🔍 %@ screening %lu symbols (SMA period: %ld, minDollarVol: $%.1fM, minVol: %.1fM)",
           self.displayName,
-          (unsigned long)symbols.count,
+          (unsigned long)inputSymbols.count,
           (long)smaPeriod,
-          thresholdMillions);
+          minDollarVolumeM,  // Log il valore in milioni
+          minVolumeM);
     
-    NSMutableArray<NSString *> *passed = [NSMutableArray array];
+    NSMutableArray<NSString *> *results = [NSMutableArray array];
     NSInteger skippedCount = 0;
+    NSInteger failedDollarVol = 0;
+    NSInteger failedMinVol = 0;
     
-    for (NSString *symbol in symbols) {
-        NSArray<HistoricalBarModel *> *bars = cache[symbol];
+    for (NSString *symbol in inputSymbols) {
+        NSArray<HistoricalBarModel *> *bars = [self barsForSymbol:symbol inCache:cache];
         
         if (!bars || bars.count < smaPeriod) {
             skippedCount++;
@@ -50,43 +57,55 @@
         
         // Calcola SMA del volume sugli ultimi smaPeriod giorni
         double volumeSum = 0.0;
-        for (NSInteger i = bars.count - smaPeriod; i < bars.count; i++) {
+        for (NSInteger i = 0; i < smaPeriod; i++) {
             volumeSum += bars[i].volume;
         }
-        double avgVolume = volumeSum / smaPeriod;
+        double avgVolume = volumeSum / (double)smaPeriod;
         
-        // Prezzo di chiusura più recente
-        double lastClose = bars.lastObject.close;
+        // Prezzo di chiusura corrente (barra più recente = index 0)
+        double currentClose = bars[0].close;
         
-        // Calcola dollar volume
-        double dollarVolume = avgVolume * lastClose;
+        // Calcola dollar volume = SMA(volume) * close
+        double dollarVolume = avgVolume * currentClose;
         
-        // Controlla se supera la soglia
-        if (dollarVolume > threshold) {
-            [passed addObject:symbol];
+        // CONDIZIONE 1: SMA(volume, period) * close > minDollarVolume
+        BOOL dollarVolumeCondition = dollarVolume >= minDollarVolume;
+        
+        // CONDIZIONE 2: SMA(volume, period) > minVolume
+        BOOL volumeCondition = avgVolume >= minVolume;
+        
+        // Entrambe le condizioni devono essere vere
+        if (dollarVolumeCondition && volumeCondition) {
+            [results addObject:symbol];
             
-            NSLog(@"  ✓ %@: avg_volume=%.0f, close=$%.2f, $volume=$%.2fM",
+            NSLog(@"  ✓ %@: avgVol=%.0f (%.1fM), close=$%.2f, $vol=$%.2fM",
                   symbol,
                   avgVolume,
-                  lastClose,
+                  avgVolume / 1000000.0,
+                  currentClose,
                   dollarVolume / 1000000.0);
+        } else {
+            if (!dollarVolumeCondition) failedDollarVol++;
+            if (!volumeCondition) failedMinVol++;
         }
     }
     
-    NSLog(@"✅ %@: %lu/%lu passed (skipped: %ld)",
+    NSLog(@"✅ %@: %lu/%lu passed (skipped: %ld, failed $vol: %ld, failed vol: %ld)",
           self.displayName,
-          (unsigned long)passed.count,
-          (unsigned long)symbols.count,
-          (long)skippedCount);
+          (unsigned long)results.count,
+          (unsigned long)inputSymbols.count,
+          (long)skippedCount,
+          (long)failedDollarVol,
+          (long)failedMinVol);
     
-    return [passed copy];
+    return [results copy];
 }
 
 - (NSDictionary *)defaultParameters {
     return @{
-        @"sma_period": @5,
-        @"threshold_millions": @4.0
-        
+        @"smaPeriod": @10,          // Periodo SMA per calcolare volume medio
+        @"minDollarVolume": @4.0,   // 4M - SMA(volume) * close > $4M
+        @"minVolume": @1.0          // 1M - SMA(volume) > 1M shares
     };
 }
 

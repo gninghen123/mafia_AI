@@ -38,7 +38,7 @@
         @"length": @2,                    // Window to check pattern
         @"priceGainPercent": @7.0,        // close[1] > close[2] * 1.07
         @"lowThreshold": @0.99,           // low >= high[1] * 0.99
-        @"minDollarVolume": @4000000.0    // volume[1] * close[1] > 4M
+        @"minDollarVolume": @4.0    // volume[1] * close[1] > 4M
     };
 }
 
@@ -50,7 +50,7 @@
     NSInteger length = [self parameterIntegerForKey:@"length" defaultValue:2];
     double priceGainPercent = [self parameterDoubleForKey:@"priceGainPercent" defaultValue:7.0];
     double lowThreshold = [self parameterDoubleForKey:@"lowThreshold" defaultValue:0.99];
-    double minDollarVolume = [self parameterDoubleForKey:@"minDollarVolume" defaultValue:4000000.0];
+    double minDollarVolume = [self parameterDoubleForKey:@"minDollarVolume" defaultValue:4.0] * 1000000;
     
     NSMutableArray<NSString *> *results = [NSMutableArray array];
     

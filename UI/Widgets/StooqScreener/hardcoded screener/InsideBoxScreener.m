@@ -40,7 +40,7 @@
         @"maxLookback": @15,
         @"minConsolidationDays": @5,
         @"minBoxRangePercent": @10.0,
-        @"minMotherDollarVolume": @3000000.0,
+        @"minMotherDollarVolume": @3.0,
         @"onlyBreakouts": @NO,
         @"minMotherVolumeSpike": @30.0  // ✅ Volume madre deve essere +30% rispetto a prima/dopo
     };
@@ -55,7 +55,7 @@
     NSInteger maxLookback = [self parameterIntegerForKey:@"maxLookback" defaultValue:15];
     NSInteger minConsolidationDays = [self parameterIntegerForKey:@"minConsolidationDays" defaultValue:5];
     double minBoxRangePercent = [self parameterDoubleForKey:@"minBoxRangePercent" defaultValue:10.0];
-    double minMotherDollarVolume = [self parameterDoubleForKey:@"minMotherDollarVolume" defaultValue:3000000.0];
+    double minMotherDollarVolume = [self parameterDoubleForKey:@"minMotherDollarVolume" defaultValue:3.0] * 1000000;
     
     NSMutableArray<NSString *> *results = [NSMutableArray array];
     

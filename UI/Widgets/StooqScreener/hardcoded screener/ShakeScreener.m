@@ -37,8 +37,8 @@
     
     // Get parameters with defaults
     double volumeMultiplier = [self parameterDoubleForKey:@"volume_multiplier" defaultValue:2.0];
-    double minDollarVolume = [self parameterDoubleForKey:@"min_dollar_volume" defaultValue:5000000.0];
-    double minVolume = [self parameterDoubleForKey:@"min_volume" defaultValue:1000000.0];
+    double minDollarVolume = [self parameterDoubleForKey:@"min_dollar_volume" defaultValue:5.0] * 1000000;
+    double minVolume = [self parameterDoubleForKey:@"min_volume" defaultValue:1.0] * 1000000;
     double gapThreshold = [self parameterDoubleForKey:@"gap_threshold" defaultValue:1.2];
     NSInteger lookbackDays = [self parameterIntegerForKey:@"lookback_days" defaultValue:16];
     
@@ -126,8 +126,8 @@
 - (NSDictionary *)defaultParameters {
     return @{
         @"volume_multiplier": @2.0,
-        @"min_dollar_volume": @5000000,
-        @"min_volume": @1000000,
+        @"min_dollar_volume": @5.0,
+        @"min_volume": @1.0,
         @"gap_threshold": @1.2,
         @"lookback_days": @16
     };

@@ -52,7 +52,7 @@
         
         if (!bars || bars.count < self.minBarsRequired) continue;
         
-        HistoricalBarModel *current = bars[0];  // [0] = current bar
+        HistoricalBarModel *current = bars[bars.count-1];  
         
         // Calculate highest(close[1], lookbackPeriod)
         // Index 1 = previous bar, then look back 'lookbackPeriod' bars from there

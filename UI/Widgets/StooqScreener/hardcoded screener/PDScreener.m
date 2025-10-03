@@ -37,7 +37,7 @@
         @"lookbackPeriod": @5,           // Period for high/low calculation
         @"highLowRatio": @2.0,           // highest > lowest * 2
         @"fibLevel": @0.348,             // Fibonacci retracement level
-        @"minAvgDollarVolume": @250000.0,// Min average dollar volume
+        @"minAvgDollarVolume": @2.5,// Min average dollar volume
         @"smaPeriod": @20                // SMA period for trend filter
     };
 }
@@ -50,7 +50,7 @@
     NSInteger lookback = [self parameterIntegerForKey:@"lookbackPeriod" defaultValue:5];
     double highLowRatio = [self parameterDoubleForKey:@"highLowRatio" defaultValue:2.0];
     double fibLevel = [self parameterDoubleForKey:@"fibLevel" defaultValue:0.348];
-    double minAvgDollarVolume = [self parameterDoubleForKey:@"minAvgDollarVolume" defaultValue:250000.0];
+    double minAvgDollarVolume = [self parameterDoubleForKey:@"minAvgDollarVolume" defaultValue:2.5] * 1000000;
     NSInteger smaPeriod = [self parameterIntegerForKey:@"smaPeriod" defaultValue:20];
     
     NSMutableArray<NSString *> *results = [NSMutableArray array];

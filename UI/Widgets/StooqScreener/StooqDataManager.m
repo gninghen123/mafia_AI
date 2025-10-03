@@ -292,7 +292,10 @@
     if (!filePath) {
         return nil;
     }
-    
+    if (![self shouldParseFile:filePath]) {
+        NSLog(@"⚠️ Skipping %@: outdated last bar", symbol);
+        return nil;
+    }
     return [self parseCSVFile:filePath symbol:symbol maxBars:minBars];
 }
 
@@ -357,7 +360,8 @@
             dateComponents.month = [month integerValue];
             dateComponents.day = [day integerValue];
             
-            NSCalendar *calendar = [NSCalendar currentCalendar];
+            NSCalendar *calendar = [[NSCalendar alloc] initWithCalendarIdentifier:NSCalendarIdentifierGregorian];
+            calendar.timeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
             NSDate *date = [calendar dateFromComponents:dateComponents];
             
             if (!date) continue;
@@ -366,6 +370,7 @@
             if (high < low || high < open || high < close || low > open || low > close) {
                 continue;
             }
+         
             
             HistoricalBarModel *bar = [[HistoricalBarModel alloc] init];
             bar.symbol = symbol;
@@ -471,5 +476,94 @@
     return symbol;
 }
 
+- (NSDate *)expectedLastCloseDate {
+    NSDate *now = [NSDate date];
+    
+    // Usa calendario US/Eastern
+    NSTimeZone *nyTimeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
+    NSCalendar *calendar = [[NSCalendar alloc] initWithCalendarIdentifier:NSCalendarIdentifierGregorian];
+    calendar.timeZone = nyTimeZone;
+    
+    NSDateComponents *components = [calendar components:NSCalendarUnitYear|NSCalendarUnitMonth|NSCalendarUnitDay|NSCalendarUnitHour|NSCalendarUnitMinute
+                                               fromDate:now];
+    
+    // Orari chiusura mercato (16:00 NY)
+    NSDateComponents *marketCloseComponents = [[NSDateComponents alloc] init];
+    marketCloseComponents.year = components.year;
+    marketCloseComponents.month = components.month;
+    marketCloseComponents.day = components.day;
+    marketCloseComponents.hour = 16;
+    marketCloseComponents.minute = 0;
+    NSDate *todayClose = [calendar dateFromComponents:marketCloseComponents];
+    
+    if ([now compare:todayClose] == NSOrderedDescending) {
+        // Dopo la chiusura → ultimo close è oggi
+        return [calendar startOfDayForDate:now];
+    } else {
+        // Prima della chiusura → ultimo close è giorno di trading precedente
+        return [self previousTradingDayFromDate:now inCalendar:calendar];
+    }
+}
 
+
+/**
+ * Returns the previous trading day before the given date, skipping weekends.
+ * US market holidays are not yet implemented.
+ * @param date The reference date.
+ * @param calendar The calendar to use (should be set to US/Eastern time zone).
+ * @return The previous trading day (start of day).
+ */
+- (NSDate *)previousTradingDayFromDate:(NSDate *)date inCalendar:(NSCalendar *)calendar {
+    NSDate *prevDate = [calendar dateByAddingUnit:NSCalendarUnitDay value:-1 toDate:date options:0];
+    NSDateComponents *components = [calendar components:NSCalendarUnitWeekday fromDate:prevDate];
+    NSInteger weekday = components.weekday;
+    // Weekday: 1=Sunday, 2=Monday, ..., 7=Saturday (per Apple docs)
+    while (weekday == 1 || weekday == 7) {
+        // Skip Sunday (1) and Saturday (7)
+        prevDate = [calendar dateByAddingUnit:NSCalendarUnitDay value:-1 toDate:prevDate options:0];
+        components = [calendar components:NSCalendarUnitWeekday fromDate:prevDate];
+        weekday = components.weekday;
+    }
+    // TODO: Check for US market holidays and skip them as well.
+    return [calendar startOfDayForDate:prevDate];
+}
+
+- (BOOL)shouldParseFile:(NSString *)filePath {
+    NSError *error;
+    NSString *content = [NSString stringWithContentsOfFile:filePath encoding:NSUTF8StringEncoding error:&error];
+    if (!content) return NO;
+    
+    NSArray<NSString *> *lines = [content componentsSeparatedByString:@"\n"];
+    
+    // Cerca l'ultima riga valida
+    for (NSInteger i = lines.count - 1; i >= 0; i--) {
+        NSString *line = [lines[i] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (line.length == 0 || [line hasPrefix:@"<TICKER>"]) continue;
+        
+        NSArray *components = [line componentsSeparatedByString:@","];
+        if (components.count < 3) continue;
+        
+        NSString *dateStr = components[2];
+        if (dateStr.length != 8) continue;
+        
+        // Converti la data in NSDate
+        NSInteger year = [[dateStr substringWithRange:NSMakeRange(0, 4)] integerValue];
+        NSInteger month = [[dateStr substringWithRange:NSMakeRange(4, 2)] integerValue];
+        NSInteger day = [[dateStr substringWithRange:NSMakeRange(6, 2)] integerValue];
+        
+        NSCalendar *calendar = [NSCalendar currentCalendar];
+        NSDateComponents *dc = [[NSDateComponents alloc] init];
+        dc.year = year; dc.month = month; dc.day = day;
+        NSDate *barDate = [calendar dateFromComponents:dc];
+        
+        NSDate *expected = [self expectedLastCloseDate];
+        
+        NSDateComponents *barComp = [calendar components:NSCalendarUnitYear|NSCalendarUnitMonth|NSCalendarUnitDay fromDate:barDate];
+        NSDateComponents *expComp = [calendar components:NSCalendarUnitYear|NSCalendarUnitMonth|NSCalendarUnitDay fromDate:expected];
+        
+        return (barComp.year == expComp.year && barComp.month == expComp.month && barComp.day == expComp.day);
+    }
+    
+    return NO;
+}
 @end

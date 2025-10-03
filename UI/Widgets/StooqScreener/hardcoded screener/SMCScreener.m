@@ -38,7 +38,7 @@
     return @{
         @"priceGainPercent": @10.0,       // close[2] > close[3] * 1.10
         @"rangePercent": @45.0,           // 45% of range[2]
-        @"minDollarVolume": @2000000.0    // volume[2] * close[2] > 2M
+        @"minDollarVolume": @2.0    // volume[2] * close[2] > 2M
     };
 }
 
@@ -49,7 +49,7 @@
     
     double priceGainPercent = [self parameterDoubleForKey:@"priceGainPercent" defaultValue:10.0];
     double rangePercent = [self parameterDoubleForKey:@"rangePercent" defaultValue:45.0];
-    double minDollarVolume = [self parameterDoubleForKey:@"minDollarVolume" defaultValue:2000000.0];
+    double minDollarVolume = [self parameterDoubleForKey:@"minDollarVolume" defaultValue:2.0] * 1000000;
     
     NSMutableArray<NSString *> *results = [NSMutableArray array];
     

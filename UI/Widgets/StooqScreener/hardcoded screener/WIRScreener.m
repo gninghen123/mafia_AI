@@ -17,11 +17,11 @@
 }
 
 - (NSString *)displayName {
-    return @"WIR (Within Inside Reversal)";
+    return @"WIR (woman In Red)(Within Inside Reversal)";
 }
 
 - (NSString *)descriptionText {
-    return @"Inside bar after breaking low within lookback period";
+    return @"Inside bar after breaking low (bear trap) within lookback period";
 }
 
 - (NSInteger)minBarsRequired {

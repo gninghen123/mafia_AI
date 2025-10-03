@@ -261,6 +261,21 @@ NS_ASSUME_NONNULL_BEGIN
                     index:(NSInteger)index
              requiredBars:(NSInteger)requiredBars;
 
+/**
+ * Wilders Smoothing (Smoothed Moving Average - SMMA)
+ * Used in indicators like ATR, RSI
+ * @param bars Array of HistoricalBarModel objects
+ * @param index Index at which to calculate Wilders MA
+ * @param period Smoothing period
+ * @param valueKey Key to use: "open", "high", "low", "close"
+ * @return Wilders MA value, or 0.0 if insufficient data
+ */
++ (double)wilders:(NSArray<HistoricalBarModel *> *)bars
+            index:(NSInteger)index
+           period:(NSInteger)period
+         valueKey:(NSString *)valueKey;
+
+
 @end
 
 NS_ASSUME_NONNULL_END

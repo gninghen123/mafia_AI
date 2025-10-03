@@ -6,21 +6,16 @@
 
 @implementation VolumeLiquidityScreener
 
-- (instancetype)init {
-    self = [super init];
-    if (self) {
-        self.screenerID = @"volume_liquidity";
-        self.displayName = @"$Volume (Liquidity)";
-        self.category = @"Volume";
-        self.detailedDescription = @"Filters symbols where average volume (SMA) * close price exceeds threshold. Measures daily dollar volume traded.";
-        
-        // Parametri di default
-        self.parameters = @{
-            @"sma_period": @5,           // Periodo per SMA del volume
-            @"threshold_millions": @4.0   // Soglia in milioni di dollari
-        };
-    }
-    return self;
+- (NSString *)screenerID {
+    return @"volume_liquidity";
+}
+
+- (NSString *)displayName {
+    return @"$Volume (Liquidity)";
+}
+
+- (NSString *)descriptionText {
+    return @"Filters symbols where average volume (SMA) * close price exceeds threshold. Measures daily dollar volume traded.";
 }
 
 - (NSInteger)minBarsRequired {
@@ -87,22 +82,11 @@
     return [passed copy];
 }
 
-- (NSDictionary *)availableParameters {
+- (NSDictionary *)defaultParameters {
     return @{
-        @"sma_period": @{
-            @"type": @"integer",
-            @"min": @1,
-            @"max": @50,
-            @"default": @5,
-            @"description": @"Period for volume SMA"
-        },
-        @"threshold_millions": @{
-            @"type": @"number",
-            @"min": @0.1,
-            @"max": @1000.0,
-            @"default": @4.0,
-            @"description": @"Minimum dollar volume in millions"
-        }
+        @"sma_period": @5,
+        @"threshold_millions": @4.0
+        
     };
 }
 

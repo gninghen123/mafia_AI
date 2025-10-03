@@ -23,9 +23,10 @@
     return smaPeriod;  // Serve almeno smaPeriod giorni
 }
 
+
 - (NSArray<NSString *> *)executeOnSymbols:(NSArray<NSString *> *)inputSymbols
                                cachedData:(NSDictionary<NSString *, NSArray<HistoricalBarModel *> *> *)cache {
-    
+
     // Leggi parametri (espressi in milioni)
     NSInteger smaPeriod = [self parameterIntegerForKey:@"smaPeriod" defaultValue:10];
     double minDollarVolumeM = [self parameterDoubleForKey:@"minDollarVolume" defaultValue:4.0];
@@ -39,7 +40,7 @@
           self.displayName,
           (unsigned long)inputSymbols.count,
           (long)smaPeriod,
-          minDollarVolumeM,  // Log il valore in milioni
+          minDollarVolumeM,
           minVolumeM);
     
     NSMutableArray<NSString *> *results = [NSMutableArray array];
@@ -55,15 +56,16 @@
             continue;
         }
         
-        // Calcola SMA del volume sugli ultimi smaPeriod giorni
+        // Calcola SMA del volume sugli ultimi smaPeriod giorni (ultime barre)
         double volumeSum = 0.0;
         for (NSInteger i = 0; i < smaPeriod; i++) {
-            volumeSum += bars[i].volume;
+            NSInteger idx = bars.count - 1 - i;   // partendo dall’ultima barra
+            volumeSum += bars[idx].volume;
         }
         double avgVolume = volumeSum / (double)smaPeriod;
         
-        // Prezzo di chiusura corrente (barra più recente = index 0)
-        double currentClose = bars[0].close;
+        // Prezzo di chiusura corrente (ultima barra = più recente)
+        double currentClose = bars.lastObject.close;
         
         // Calcola dollar volume = SMA(volume) * close
         double dollarVolume = avgVolume * currentClose;
@@ -100,7 +102,6 @@
     
     return [results copy];
 }
-
 - (NSDictionary *)defaultParameters {
     return @{
         @"smaPeriod": @10,          // Periodo SMA per calcolare volume medio

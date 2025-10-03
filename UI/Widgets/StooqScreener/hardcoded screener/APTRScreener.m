@@ -63,8 +63,7 @@
         if (!bars || bars.count < self.minBarsRequired) continue;
         
         // Calculate APTR for current bar (index 0)
-        double aptr = [self calculateAPTR:bars index:0 length:length];
-        
+        double aptr = [self calculateAPTR:bars length:length];
         // Apply filters
         if (aptr >= minAPTR && aptr <= maxAPTR) {
             [results addObject:symbol];
@@ -83,19 +82,21 @@
 #pragma mark - APTR Calculation
 
 - (double)calculateAPTR:(NSArray<HistoricalBarModel *> *)bars
-                  index:(NSInteger)index
-                 length:(NSInteger)length {
+                  length:(NSInteger)length {
     
-    if (bars.count < index + length + 1) return 0.0;
+    if (bars.count < length + 1) return 0.0;
     
-    // Calculate PTR values for each bar
     NSMutableArray<NSNumber *> *ptrValues = [NSMutableArray arrayWithCapacity:length];
     
-    for (NSInteger i = index; i < index + length; i++) {
-        if (i >= bars.count - 1) break;  // Need previous bar
+    // L'ultima barra è la più recente
+    for (NSInteger i = 0; i < length; i++) {
+        NSInteger currentIndex = bars.count - 1 - i;
+        NSInteger previousIndex = bars.count - 2 - i;
         
-        HistoricalBarModel *current = bars[i];
-        HistoricalBarModel *previous = bars[i + 1];
+        if (previousIndex < 0) break;  // Safety check
+        
+        HistoricalBarModel *current = bars[currentIndex];   // più recente
+        HistoricalBarModel *previous = bars[previousIndex]; // barra precedente
         
         // bottom = Min(close[1], low)
         double bottom = fmin(previous.close, current.low);
@@ -110,7 +111,7 @@
         [ptrValues addObject:@(ptr)];
     }
     
-    // Apply Wilders smoothing (SMMA) to PTR values
+    // Wilders smoothing (SMMA)
     double aptr = [self wildersSmoothing:ptrValues period:length];
     
     return aptr;

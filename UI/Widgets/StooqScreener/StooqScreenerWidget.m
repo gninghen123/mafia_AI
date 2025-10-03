@@ -2167,9 +2167,7 @@
     NSMutableString *report = [NSMutableString string];
     
     // Header
-    [report appendString:@"═══════════════════════════════════════════════════\n"];
     [report appendString:@"           SCREENER EXECUTION REPORT\n"];
-    [report appendString:@"═══════════════════════════════════════════════════\n\n"];
     
     NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
     dateFormatter.dateFormat = @"EEEE, MMMM d, yyyy 'at' HH:mm:ss";
@@ -2202,7 +2200,7 @@
     [report appendFormat:@"Models: %ld\n", (long)totalModels];
     [report appendFormat:@"Total symbols: %ld\n", (long)totalSymbols];
     [report appendFormat:@"Unique symbols: %ld\n\n", (long)uniqueSymbols.count];
-    [report appendString:@"───────────────────────────────────────────────────\n\n"];
+    [report appendString:@"────────────────────────────────\n\n"];
     
     // Determina quali modelli processare
     NSArray<NSString *> *modelIDsToProcess;
@@ -2294,13 +2292,11 @@
             [report appendString:@"\n"];
         }
         
-        [report appendString:@"───────────────────────────────────────────────────\n\n"];
+        [report appendString:@"─────────────────────────────────────\n\n"];
     }
     
     // Footer con tutti i simboli unici
-    [report appendString:@"═══════════════════════════════════════════════════\n"];
     [report appendString:@"           ALL UNIQUE SYMBOLS\n"];
-    [report appendString:@"═══════════════════════════════════════════════════\n\n"];
     
     NSArray *sortedUniqueSymbols = [[uniqueSymbols allObjects] sortedArrayUsingSelector:@selector(compare:)];
     
@@ -2318,10 +2314,6 @@
     if (column > 0) {
         [report appendString:@"\n"];
     }
-    
-    [report appendString:@"\n═══════════════════════════════════════════════════\n"];
-    [report appendString:@"                  END OF REPORT\n"];
-    [report appendString:@"═══════════════════════════════════════════════════\n"];
     
     // Salva il file
     NSError *error;
@@ -2701,9 +2693,7 @@
     NSMutableString *report = [NSMutableString string];
     
     // Header
-    [report appendString:@"═══════════════════════════════════════════════════\n"];
     [report appendString:@"           ARCHIVED SCREENING SESSION\n"];
-    [report appendString:@"═══════════════════════════════════════════════════\n\n"];
     
     [report appendFormat:@"Execution Date: %@\n", [session formattedExecutionDate]];
     [report appendFormat:@"Session ID: %@\n", session.sessionID];
@@ -2779,9 +2769,7 @@
         }
     }
     
-    [report appendString:@"═══════════════════════════════════════════════════\n"];
     [report appendFormat:@"      ALL UNIQUE SYMBOLS (%lu)\n", (unsigned long)uniqueSymbols.count];
-    [report appendString:@"═══════════════════════════════════════════════════\n\n"];
     
     NSArray *sortedUniqueSymbols = [[uniqueSymbols allObjects] sortedArrayUsingSelector:@selector(compare:)];
     
@@ -2800,9 +2788,7 @@
         [report appendString:@"\n"];
     }
     
-    [report appendString:@"\n═══════════════════════════════════════════════════\n"];
-    [report appendString:@"                  END OF REPORT\n"];
-    [report appendString:@"═══════════════════════════════════════════════════\n"];
+   
     
     // Salva il file
     NSError *error;
@@ -2847,9 +2833,7 @@
     NSMutableString *report = [NSMutableString string];
     
     // Header
-    [report appendString:@"═══════════════════════════════════════════════════\n"];
     [report appendString:@"           ARCHIVED MODEL EXPORT\n"];
-    [report appendString:@"═══════════════════════════════════════════════════\n\n"];
     
     [report appendFormat:@"Session Date: %@\n", [session formattedExecutionDate]];
     [report appendFormat:@"Model: %@\n", modelResult.modelName];
@@ -2908,9 +2892,7 @@
         [report appendString:@"\n"];
     }
     
-    [report appendString:@"\n═══════════════════════════════════════════════════\n"];
-    [report appendString:@"                  END OF REPORT\n"];
-    [report appendString:@"═══════════════════════════════════════════════════\n"];
+  
     
     // Salva il file
     NSError *error;

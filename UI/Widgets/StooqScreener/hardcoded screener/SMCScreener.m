@@ -46,59 +46,59 @@
 
 - (NSArray<NSString *> *)executeOnSymbols:(NSArray<NSString *> *)inputSymbols
                                cachedData:(NSDictionary<NSString *, NSArray<HistoricalBarModel *> *> *)cache {
-    
+
     double priceGainPercent = [self parameterDoubleForKey:@"priceGainPercent" defaultValue:10.0];
     double rangePercent = [self parameterDoubleForKey:@"rangePercent" defaultValue:45.0];
     double minDollarVolume = [self parameterDoubleForKey:@"minDollarVolume" defaultValue:2.0] * 1000000;
-    
+
     NSMutableArray<NSString *> *results = [NSMutableArray array];
-    
+
     for (NSString *symbol in inputSymbols) {
         NSArray<HistoricalBarModel *> *bars = [self barsForSymbol:symbol inCache:cache];
-        
         if (!bars || bars.count < self.minBarsRequired) continue;
-        
-        HistoricalBarModel *current = bars[0];  // [0]
-        HistoricalBarModel *prev1 = bars[1];    // [1]
-        HistoricalBarModel *prev2 = bars[2];    // [2]
-        HistoricalBarModel *prev3 = bars[3];    // [3]
-        
-        // Condition 1: close[2] > (close[3] * 1.10)
+
+        // Aggiornato per ultima barra = più recente
+        HistoricalBarModel *current = bars.lastObject;            // [0] -> ultima barra
+        HistoricalBarModel *prev1 = bars[bars.count - 2];         // [1] -> penultima
+        HistoricalBarModel *prev2 = bars[bars.count - 3];         // [2] -> due barre fa
+        HistoricalBarModel *prev3 = bars[bars.count - 4];         // [3] -> tre barre fa
+
+        // Condizione 1: close[2] > (close[3] * 1.10)
         BOOL strongMove = prev2.close > (prev3.close * (1.0 + priceGainPercent / 100.0));
-        
-        // Calculate 45% level of prev2 range
+
+        // Calcolo livello 45% di prev2
         double range2 = prev2.high - prev2.low;
         double level45 = (range2 * (rangePercent / 100.0)) + prev2.low;
-        
-        // Condition 2: low[1] > ((high[2] - low[2]) * 0.45) + low[2]
+
+        // Condizione 2: low[1] > level45
         BOOL prev1Above45 = prev1.low > level45;
-        
-        // Condition 3: low > ((high[2] - low[2]) * 0.45) + low[2]
+
+        // Condizione 3: low > level45
         BOOL currentAbove45 = current.low > level45;
-        
-        // Condition 4: close < high[2]
+
+        // Condizione 4: close < high[2]
         BOOL closeBelowHigh2 = current.close < prev2.high;
-        
-        // Condition 5: close[1] < high[2]
+
+        // Condizione 5: close[1] < high[2]
         BOOL close1BelowHigh2 = prev1.close < prev2.high;
-        
-        // Condition 6: volume[2] * close[2] > 2000000
+
+        // Condizione 6: volume[2] * close[2] > minDollarVolume
         double dollarVolume2 = prev2.volume * prev2.close;
         BOOL volumeCondition = dollarVolume2 > minDollarVolume;
-        
-        // Condition 7: volume < volume[2]
+
+        // Condizione 7: volume < volume[2]
         BOOL volumeDecreasing = current.volume < prev2.volume;
-        
-        // Condition 8: volume[1] < volume[2]
+
+        // Condizione 8: volume[1] < volume[2]
         BOOL volume1Decreasing = prev1.volume < prev2.volume;
-        
+
         if (strongMove && prev1Above45 && currentAbove45 &&
             closeBelowHigh2 && close1BelowHigh2 &&
             volumeCondition && volumeDecreasing && volume1Decreasing) {
             [results addObject:symbol];
         }
     }
-    
+
     return [results copy];
 }
 

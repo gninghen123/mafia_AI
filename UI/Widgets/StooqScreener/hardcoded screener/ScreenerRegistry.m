@@ -14,6 +14,7 @@
 #import "VolumeLiquidityScreener.h"
 #import "BreakoutScreener.h"  // ✅ NEW
 #import "APTRScreener.h"      // ✅ NEW
+#import "AlignedSMAScreener.h"
 
 @interface ScreenerRegistry ()
 @property (nonatomic, strong) NSMutableDictionary<NSString *, BaseScreener *> *screeners;
@@ -54,6 +55,7 @@
     [self registerScreenerClass:[VolumeLiquidityScreener class]];
     [self registerScreenerClass:[BreakoutScreener class]];  // ✅ NEW
     [self registerScreenerClass:[APTRScreener class]];  // ✅ NEW
+    [self registerScreenerClass:[AlignedSMAScreener class]];  // ✅ NEW
 
     NSLog(@"✅ Registered %lu default screeners", (unsigned long)self.screeners.count);
 }

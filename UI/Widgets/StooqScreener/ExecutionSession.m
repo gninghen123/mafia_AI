@@ -143,22 +143,100 @@
 #pragma mark - Persistence
 
 - (NSDictionary *)toDictionary {
-    NSMutableArray *modelResultsArray = [NSMutableArray array];
-    for (ModelResult *result in self.modelResults) {
-        [modelResultsArray addObject:[self modelResultToDictionary:result]];
+    NSMutableDictionary *dict = [NSMutableDictionary dictionary];
+    
+    // Date formatter per convertire NSDate in stringa ISO8601
+    NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
+    dateFormatter.dateFormat = @"yyyy-MM-dd'T'HH:mm:ss.SSS'Z'";
+    dateFormatter.timeZone = [NSTimeZone timeZoneWithAbbreviation:@"UTC"];
+    
+    // Converti execution_date
+    if (self.executionDate) {
+        dict[@"execution_date"] = [dateFormatter stringFromDate:self.executionDate];
     }
     
-    return @{
-        @"session_id": self.sessionID,
-        @"execution_date": @([self.executionDate timeIntervalSince1970]),
-        @"total_models": @(self.totalModels),
-        @"total_symbols": @(self.totalSymbols),
-        @"total_execution_time": @(self.totalExecutionTime),
-        @"universe": self.universe ?: @[],
-        @"model_results": modelResultsArray,
-        @"notes": self.notes ?: @"",
-        @"version": @1  // For future compatibility
-    };
+    // Converti model_results
+    NSMutableArray *modelResults = [NSMutableArray array];
+    for (ModelResult *result in self.modelResults) {
+        // Crea manualmente il dizionario invece di chiamare toDictionary
+        NSMutableDictionary *resultDict = [NSMutableDictionary dictionary];
+        
+        resultDict[@"model_id"] = result.modelID ?: @"";
+        resultDict[@"model_name"] = result.modelName ?: @"";
+        resultDict[@"model_description"] = result.modelDescription ?: @"";
+        resultDict[@"initial_universe_size"] = @(result.initialUniverseSize);
+        resultDict[@"total_execution_time"] = @(result.totalExecutionTime);
+        
+        // Converti execution_time
+        if (result.executionTime) {
+            resultDict[@"execution_time"] = [dateFormatter stringFromDate:result.executionTime];
+        }
+        
+        // Aggiungi steps se esistono
+        if (result.steps) {
+            resultDict[@"steps"] = result.steps;
+        }
+        
+        // Converti screened_symbols con le date nei metadata
+        if (result.screenedSymbols) {
+            NSMutableArray *symbols = [NSMutableArray array];
+            for (ScreenedSymbol *symbol in result.screenedSymbols) {
+                NSMutableDictionary *symbolDict = [NSMutableDictionary dictionary];
+                
+                symbolDict[@"symbol"] = symbol.symbol ?: @"";
+                symbolDict[@"added_at_step"] = @(symbol.addedAtStep);
+                symbolDict[@"is_selected"] = @(symbol.isSelected);
+                
+                // Converti metadata con signalDate
+                if (symbol.metadata) {
+                    NSMutableDictionary *metadata = [symbol.metadata mutableCopy];
+                    if ([metadata[@"signalDate"] isKindOfClass:[NSDate class]]) {
+                        metadata[@"signalDate"] = [dateFormatter stringFromDate:metadata[@"signalDate"]];
+                    }
+                    symbolDict[@"metadata"] = metadata;
+                }
+                
+                [symbols addObject:symbolDict];
+            }
+            resultDict[@"screened_symbols"] = symbols;
+        }
+        
+        // Converti step_results
+        if (result.stepResults) {
+            NSMutableArray *stepResults = [NSMutableArray array];
+            for (StepResult *stepResult in result.stepResults) {
+                NSMutableDictionary *stepDict = [NSMutableDictionary dictionary];
+                
+                stepDict[@"screener_id"] = stepResult.screenerID ?: @"";
+                stepDict[@"screener_name"] = stepResult.screenerName ?: @"";
+                stepDict[@"input_count"] = @(stepResult.inputCount);
+                stepDict[@"execution_time"] = @(stepResult.executionTime);
+                
+                // Aggiungi symbols se esistono
+                if (stepResult.symbols) {
+                    stepDict[@"symbols"] = stepResult.symbols;
+                }
+                
+                [stepResults addObject:stepDict];
+            }
+            resultDict[@"step_results"] = stepResults;
+        }
+    }
+    
+    dict[@"model_results"] = modelResults;
+    
+    // Altri campi (nota: sessionID non sessionId, e rimuovo version)
+    dict[@"session_id"] = self.sessionID ?: @"";
+    dict[@"notes"] = self.notes ?: @"";
+    dict[@"total_execution_time"] = @(self.totalExecutionTime);
+    dict[@"total_models"] = @(self.totalModels);
+    dict[@"total_symbols"] = @(self.totalSymbols);
+    
+    if (self.universe) {
+        dict[@"universe"] = self.universe;
+    }
+    
+    return dict;
 }
 
 - (NSDictionary *)modelResultToDictionary:(ModelResult *)result {

@@ -320,6 +320,13 @@
     self.archiveSymbolsTableView.allowsMultipleSelection = YES;
     self.archiveSymbolsTableView.usesAlternatingRowBackgroundColors = YES;
     
+    NSTableColumn *selectCol = [[NSTableColumn alloc] initWithIdentifier:@"archive_select"];
+       selectCol.title = @"✓";
+       selectCol.width = 30;
+       selectCol.minWidth = 30;
+       selectCol.maxWidth = 30;
+       [self.archiveSymbolsTableView addTableColumn:selectCol];
+    
     NSTableColumn *symbolCol = [[NSTableColumn alloc] initWithIdentifier:@"archive_symbol"];
     symbolCol.title = @"Symbol";
     symbolCol.width = 100;
@@ -1275,53 +1282,85 @@
         }
     
     // ARCHIVE SYMBOLS TABLE
-       else if (tableView == self.archiveSymbolsTableView) {
-           NSTextField *textField = [[NSTextField alloc] init];
-           textField.editable = NO;
-           textField.bordered = NO;
-           textField.backgroundColor = [NSColor clearColor];
-           
-           ScreenedSymbol *symbol = nil;
-           
-           if (self.selectedModelResult) {
-               // Simboli del modello selezionato
-               if (row < self.selectedModelResult.screenedSymbols.count) {
-                   symbol = self.selectedModelResult.screenedSymbols[row];
-               }
-           } else if (self.selectedSession) {
-               // Simboli di tutti i modelli della sessione
-               NSInteger currentIndex = 0;
-               for (ModelResult *result in self.selectedSession.modelResults) {
-                   if (row < currentIndex + result.screenedSymbols.count) {
-                       symbol = result.screenedSymbols[row - currentIndex];
-                       break;
-                   }
-                   currentIndex += result.screenedSymbols.count;
-               }
-           }
-           
-           if (!symbol) return textField;
-           
-           if ([tableColumn.identifier isEqualToString:@"archive_symbol"]) {
-               textField.stringValue = symbol.symbol;
-               
-           } else if ([tableColumn.identifier isEqualToString:@"signal_price"]) {
-               if (symbol.metadata[@"signalPrice"]) {
-                   textField.stringValue = [NSString stringWithFormat:@"%.2f",
-                       [symbol.metadata[@"signalPrice"] doubleValue]];
-               } else {
-                   textField.stringValue = @"--";
-               }
-               
-           } else if ([tableColumn.identifier isEqualToString:@"current_price"]) {
-               textField.stringValue = @"--";
-               
-           } else if ([tableColumn.identifier isEqualToString:@"var_percent"]) {
-               textField.stringValue = @"--";
-           }
-           
-           return textField;
-       }
+    else if (tableView == self.archiveSymbolsTableView) {
+        ScreenedSymbol *symbol = nil;
+        
+        if (self.selectedModelResult) {
+            // Simboli del modello selezionato
+            if (row < self.selectedModelResult.screenedSymbols.count) {
+                symbol = self.selectedModelResult.screenedSymbols[row];
+            }
+        } else if (self.selectedSession) {
+            // Simboli di tutti i modelli della sessione
+            NSInteger currentIndex = 0;
+            for (ModelResult *result in self.selectedSession.modelResults) {
+                if (row < currentIndex + result.screenedSymbols.count) {
+                    symbol = result.screenedSymbols[row - currentIndex];
+                    break;
+                }
+                currentIndex += result.screenedSymbols.count;
+            }
+        }
+        
+        if (!symbol) {
+            NSTextField *textField = [[NSTextField alloc] init];
+            textField.editable = NO;
+            textField.bordered = NO;
+            textField.backgroundColor = [NSColor clearColor];
+            return textField;
+        }
+        
+        // ✅ NUOVA GESTIONE: Checkbox per colonna "archive_select"
+        if ([tableColumn.identifier isEqualToString:@"archive_select"]) {
+            NSButton *checkbox = [[NSButton alloc] init];
+            checkbox.buttonType = NSButtonTypeSwitch;
+            checkbox.title = @"";
+            checkbox.target = self;
+            checkbox.action = @selector(archiveSymbolCheckboxChanged:);
+            checkbox.tag = row;  // Salva row per identificare il simbolo
+            checkbox.state = symbol.isSelected ? NSControlStateValueOn : NSControlStateValueOff;
+            return checkbox;
+        }
+        
+        // Gestione delle altre colonne (codice esistente)
+        NSTextField *textField = [[NSTextField alloc] init];
+        textField.editable = NO;
+        textField.bordered = NO;
+        textField.backgroundColor = [NSColor clearColor];
+        
+        if ([tableColumn.identifier isEqualToString:@"archive_symbol"]) {
+            textField.stringValue = symbol.symbol;
+            
+        } else if ([tableColumn.identifier isEqualToString:@"signal_price"]) {
+            if (symbol.metadata[@"signalPrice"]) {
+                textField.stringValue = [NSString stringWithFormat:@"%.2f",
+                    [symbol.metadata[@"signalPrice"] doubleValue]];
+            } else {
+                textField.stringValue = @"--";
+            }
+            
+        } else if ([tableColumn.identifier isEqualToString:@"current_price"]) {
+            if (symbol.metadata[@"currentPrice"]) {
+                textField.stringValue = [NSString stringWithFormat:@"%.2f",
+                    [symbol.metadata[@"currentPrice"] doubleValue]];
+            } else {
+                textField.stringValue = @"--";
+            }
+            
+        } else if ([tableColumn.identifier isEqualToString:@"change_percent"]) {
+            if (symbol.metadata[@"changePercent"]) {
+                double changePercent = [symbol.metadata[@"changePercent"] doubleValue];
+                textField.stringValue = [NSString stringWithFormat:@"%.2f%%", changePercent];
+                textField.textColor = (changePercent >= 0) ?
+                    [NSColor colorWithRed:0.0 green:0.7 blue:0.0 alpha:1.0] :
+                    [NSColor colorWithRed:0.9 green:0.0 blue:0.0 alpha:1.0];
+            } else {
+                textField.stringValue = @"--";
+            }
+        }
+        
+        return textField;
+    }
     return textField;
 }
 
@@ -1432,7 +1471,8 @@
     
     if (outlineView != self.archiveOutlineView) return;
     
-    NSInteger selectedRow = outlineView.selectedRow;
+    NSInteger selectedRow = [self.archiveOutlineView selectedRow];
+    
     if (selectedRow < 0) {
         self.selectedSession = nil;
         self.selectedModelResult = nil;
@@ -1453,11 +1493,13 @@
         self.deleteArchiveButton.enabled = YES;
         self.exportArchiveButton.enabled = YES;
         
-        // Mostra TUTTI i simboli della sessione
         self.archiveHeaderLabel.stringValue = [NSString stringWithFormat:
             @"Session: %@ (%ld symbols)",
             [self.selectedSession formattedExecutionDate],
             (long)self.selectedSession.totalSymbols];
+        
+        // ✅ AGGIUNTA: Aggiorna i prezzi correnti per tutti i simboli della sessione
+        [self updateCurrentPricesForSession:self.selectedSession];
     }
     
     // MODEL SELECTED
@@ -1473,15 +1515,112 @@
         self.deleteArchiveButton.enabled = YES;
         self.exportArchiveButton.enabled = YES;
         
-        // Mostra SOLO i simboli del modello
         self.archiveHeaderLabel.stringValue = [NSString stringWithFormat:
             @"Model: %@ (%lu symbols)",
             self.selectedModelResult.modelName,
             (unsigned long)self.selectedModelResult.screenedSymbols.count];
+        
+        // ✅ AGGIUNTA: Aggiorna i prezzi correnti solo per i simboli del modello selezionato
+        [self updateCurrentPricesForModelResult:self.selectedModelResult];
     }
     
     [self.archiveSymbolsTableView reloadData];
 }
+
+
+- (void)updateCurrentPricesForSession:(ExecutionSession *)session {
+    NSLog(@"💰 Updating current prices for session...");
+    
+    // Raccogli tutti i simboli unici dalla sessione
+    NSMutableSet *uniqueSymbols = [NSMutableSet set];
+    for (ModelResult *result in session.modelResults) {
+        for (ScreenedSymbol *symbol in result.screenedSymbols) {
+            [uniqueSymbols addObject:symbol.symbol];
+        }
+    }
+    
+    // Aggiorna i prezzi per ogni simbolo
+    for (NSString *symbolString in uniqueSymbols) {
+        [self fetchAndUpdateCurrentPriceForSymbol:symbolString inSession:session];
+    }
+}
+
+- (void)updateCurrentPricesForModelResult:(ModelResult *)modelResult {
+    NSLog(@"💰 Updating current prices for model: %@", modelResult.modelName);
+    
+    for (ScreenedSymbol *symbol in modelResult.screenedSymbols) {
+        [self fetchAndUpdateCurrentPriceForSymbol:symbol.symbol inModelResult:modelResult];
+    }
+}
+
+- (void)fetchAndUpdateCurrentPriceForSymbol:(NSString *)symbolString
+                                  inSession:(ExecutionSession *)session {
+    // Recupera il prezzo corrente da DataHub
+    [[DataHub shared] getQuoteForSymbol:symbolString completion:^(MarketQuoteModel *quote, BOOL isLive) {
+        if (quote && quote.last) {
+            double currentPrice = [quote.last doubleValue];
+            
+            // Aggiorna il metadata per tutti i ScreenedSymbol con questo simbolo
+            for (ModelResult *result in session.modelResults) {
+                for (ScreenedSymbol *symbol in result.screenedSymbols) {
+                    if ([symbol.symbol isEqualToString:symbolString]) {
+                        [symbol setMetadataValue:@(currentPrice) forKey:@"currentPrice"];
+                        
+                        // Calcola la variazione percentuale se esiste signalPrice
+                        NSNumber *signalPrice = [symbol metadataValueForKey:@"signalPrice"];
+                        if (signalPrice) {
+                            double signal = [signalPrice doubleValue];
+                            if (signal > 0) {
+                                double changePercent = ((currentPrice - signal) / signal) * 100.0;
+                                [symbol setMetadataValue:@(changePercent) forKey:@"changePercent"];
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Ricarica la tabella
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self.archiveSymbolsTableView reloadData];
+            });
+            
+            NSLog(@"💰 Updated %@: Current = $%.2f", symbolString, currentPrice);
+        }
+    }];
+}
+
+- (void)fetchAndUpdateCurrentPriceForSymbol:(NSString *)symbolString
+                              inModelResult:(ModelResult *)modelResult {
+    [[DataHub shared] getQuoteForSymbol:symbolString completion:^(MarketQuoteModel *quote, BOOL isLive) {
+        if (quote && quote.last) {
+            double currentPrice = [quote.last doubleValue];
+            
+            // Aggiorna il metadata per il ScreenedSymbol
+            for (ScreenedSymbol *symbol in modelResult.screenedSymbols) {
+                if ([symbol.symbol isEqualToString:symbolString]) {
+                    [symbol setMetadataValue:@(currentPrice) forKey:@"currentPrice"];
+                    
+                    // Calcola la variazione percentuale
+                    NSNumber *signalPrice = [symbol metadataValueForKey:@"signalPrice"];
+                    if (signalPrice) {
+                        double signal = [signalPrice doubleValue];
+                        if (signal > 0) {
+                            double changePercent = ((currentPrice - signal) / signal) * 100.0;
+                            [symbol setMetadataValue:@(changePercent) forKey:@"changePercent"];
+                        }
+                    }
+                }
+            }
+            
+            // Ricarica la tabella
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self.archiveSymbolsTableView reloadData];
+            });
+        }
+    }];
+}
+
+
 
 #pragma mark - NSTableViewDelegate
 
@@ -1576,8 +1715,37 @@
               self.sendSelectedButton.title = @"Send Selected to Chain";
           }
       }
-
-   
+    else if (tableView == self.archiveSymbolsTableView) {
+            NSInteger selectedRow = self.archiveSymbolsTableView.selectedRow;
+            
+            if (selectedRow >= 0) {
+                ScreenedSymbol *symbol = nil;
+                
+                if (self.selectedModelResult) {
+                    // Simboli del modello selezionato
+                    if (selectedRow < self.selectedModelResult.screenedSymbols.count) {
+                        symbol = self.selectedModelResult.screenedSymbols[selectedRow];
+                    }
+                } else if (self.selectedSession) {
+                    // Simboli di tutti i modelli della sessione
+                    NSInteger currentIndex = 0;
+                    for (ModelResult *result in self.selectedSession.modelResults) {
+                        if (selectedRow < currentIndex + result.screenedSymbols.count) {
+                            symbol = result.screenedSymbols[selectedRow - currentIndex];
+                            break;
+                        }
+                        currentIndex += result.screenedSymbols.count;
+                    }
+                }
+                
+                if (symbol) {
+                    // ✅ INVIO AUTOMATICO ALLA CHAIN
+                    [self sendSymbolToChain:symbol.symbol];
+                    [self showChainFeedback:[NSString stringWithFormat:@"Sent %@ to chain", symbol.symbol]];
+                    NSLog(@"🔗 Sent archive symbol to chain: %@", symbol.symbol);
+                }
+            }
+        }
 }
 
 - (void)sendSelectedSymbolsToChain:(id)sender {
@@ -2091,6 +2259,42 @@
 
 
 #pragma mark - Symbol Selection
+
+- (void)archiveSymbolCheckboxChanged:(NSButton *)checkbox {
+    NSInteger row = checkbox.tag;
+    
+    ScreenedSymbol *symbol = nil;
+    
+    if (self.selectedModelResult) {
+        // Simboli del modello selezionato
+        if (row < self.selectedModelResult.screenedSymbols.count) {
+            symbol = self.selectedModelResult.screenedSymbols[row];
+        }
+    } else if (self.selectedSession) {
+        // Simboli di tutti i modelli della sessione
+        NSInteger currentIndex = 0;
+        for (ModelResult *result in self.selectedSession.modelResults) {
+            if (row < currentIndex + result.screenedSymbols.count) {
+                symbol = result.screenedSymbols[row - currentIndex];
+                break;
+            }
+            currentIndex += result.screenedSymbols.count;
+        }
+    }
+    
+    if (!symbol) return;
+    
+    // Toggle selection
+    symbol.isSelected = (checkbox.state == NSControlStateValueOn);
+    
+    NSLog(@"📋 Archive symbol %@ %@",
+          symbol.isSelected ? @"✅ Selected" : @"❌ Deselected",
+          symbol.symbol);
+    
+    // ⚠️ NOTA: Se vuoi aggiornare i pulsanti di azione,
+    // implementa un metodo simile a updateSymbolSelectionButtons
+    // [self updateArchiveSymbolSelectionButtons];
+}
 
 - (void)symbolCheckboxToggled:(NSButton *)sender {
     NSInteger row = sender.tag;

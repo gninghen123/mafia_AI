@@ -235,10 +235,8 @@
         
         // Determine input for this step
         if ([step.inputSource isEqualToString:@"previous"] && stepIdx > 0) {
-            // Use output from previous step
             currentInput = stepResults[stepIdx - 1].symbols;
         } else {
-            // Use full universe
             currentInput = universe;
         }
         
@@ -281,27 +279,40 @@
     }
     
     // Set final results
-    // Set final results
-      result.stepResults = [stepResults copy];
-      result.modelDescription = model.modelDescription;
-      result.steps = [model.steps copy];
-      
-      // Converti simboli string in oggetti ScreenedSymbol
-      NSArray<NSString *> *finalSymbolStrings = stepResults.count > 0 ?
-          stepResults.lastObject.symbols : @[];
-      
-      NSMutableArray<ScreenedSymbol *> *screenedSymbols = [NSMutableArray array];
-      NSInteger lastStepIndex = stepResults.count - 1;
-      
-      for (NSString *symbolString in finalSymbolStrings) {
-          ScreenedSymbol *symbol = [ScreenedSymbol symbolWithName:symbolString
-                                                     addedAtStep:lastStepIndex];
-          [screenedSymbols addObject:symbol];
-      }
-      result.screenedSymbols = [screenedSymbols copy];
-      result.totalExecutionTime = [[NSDate date] timeIntervalSinceDate:startTime];
+    result.stepResults = [stepResults copy];
+    result.modelDescription = model.modelDescription;
+    result.steps = [model.steps copy];
     
+    // ✅ MODIFICA: Converti simboli string in oggetti ScreenedSymbol CON METADATA PREZZI
+    NSArray<NSString *> *finalSymbolStrings = stepResults.count > 0 ?
+        stepResults.lastObject.symbols : @[];
     
+    NSMutableArray<ScreenedSymbol *> *screenedSymbols = [NSMutableArray array];
+    NSInteger lastStepIndex = stepResults.count - 1;
+    
+    for (NSString *symbolString in finalSymbolStrings) {
+        ScreenedSymbol *symbol = [ScreenedSymbol symbolWithName:symbolString
+                                                   addedAtStep:lastStepIndex];
+        
+        // ✅ AGGIUNTA: Recupera il prezzo di segnalazione dai dati storici
+        // ✅ AGGIUNTA: Recupera il prezzo di segnalazione dai dati storici
+        NSArray<HistoricalBarModel *> *bars = cachedData[symbolString];
+        if (bars && bars.count > 0) {
+            // Prendi l'ultima barra disponibile (prezzo al momento della segnalazione)
+            HistoricalBarModel *lastBar = bars.lastObject;
+            [symbol setMetadataValue:@(lastBar.close) forKey:@"signalPrice"];
+            [symbol setMetadataValue:lastBar.date forKey:@"signalDate"];  // ✅ date non timestamp
+            
+            NSLog(@"💰 %@: Signal price = $%.2f (from %@)",
+                  symbolString, lastBar.close,
+                  lastBar.date);  // ✅ date non timestamp
+        }
+        
+        [screenedSymbols addObject:symbol];
+    }
+    
+    result.screenedSymbols = [screenedSymbols copy];
+    result.totalExecutionTime = [[NSDate date] timeIntervalSinceDate:startTime];
     
     return result;
 }

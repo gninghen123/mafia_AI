@@ -20,7 +20,7 @@
 
 @property (nonatomic, strong) NSArray<ScreenedSymbol *> *currentModelSymbols;
 
-
+@property (nonatomic, strong) IBOutlet NSPopUpButton *compactReportButton;
 // Tab 4: Archive
 @property (nonatomic, strong) NSOutlineView *archiveOutlineView;  // ← CAMBIATO da NSTableView
 @property (nonatomic, strong) NSScrollView *archiveScrollView;
@@ -505,6 +505,26 @@
     self.generateReportButton.translatesAutoresizingMaskIntoConstraints = NO;
     [resultsView addSubview:self.generateReportButton];
     
+    // Compact Report to Clipboard
+    self.compactReportButton = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:YES];
+    [self.compactReportButton addItemWithTitle:@"Compact Report"];
+    [self.compactReportButton.menu addItem:[NSMenuItem separatorItem]];
+
+    // Menu items
+    NSMenuItem *allItem = [[NSMenuItem alloc] initWithTitle:@"All Symbols" action:@selector(copyAllSymbols:) keyEquivalent:@""];
+    allItem.target = self;
+    [self.compactReportButton.menu addItem:allItem];
+
+    NSMenuItem *selectedItem = [[NSMenuItem alloc] initWithTitle:@"Selected Only" action:@selector(copySelectedSymbols:) keyEquivalent:@""];
+    selectedItem.target = self;
+    [self.compactReportButton.menu addItem:selectedItem];
+
+    // Aggiungi alla view
+    [resultsView addSubview:self.compactReportButton];
+    self.compactReportButton.translatesAutoresizingMaskIntoConstraints = NO;
+
+   
+
     self.clearResultsButton = [NSButton buttonWithTitle:@"Clear" target:self action:@selector(clearResults:)];
     self.clearResultsButton.translatesAutoresizingMaskIntoConstraints = NO;
     [resultsView addSubview:self.clearResultsButton];
@@ -516,6 +536,8 @@
     self.resultsStatusLabel.backgroundColor = [NSColor clearColor];
     self.resultsStatusLabel.stringValue = @"No results";
     [resultsView addSubview:self.resultsStatusLabel];
+    
+    
     
     // Layout constraints
     [NSLayoutConstraint activateConstraints:@[
@@ -530,10 +552,17 @@
         // ✅ NUOVO CONSTRAINT per Generate Report
         [self.generateReportButton.leadingAnchor constraintEqualToAnchor:self.exportButton.trailingAnchor constant:10],
         [self.generateReportButton.centerYAnchor constraintEqualToAnchor:self.exportButton.centerYAnchor],
+        [self.compactReportButton.leadingAnchor constraintEqualToAnchor:self.generateReportButton.trailingAnchor constant:10],
+        [self.compactReportButton.centerYAnchor constraintEqualToAnchor:self.exportButton.centerYAnchor],
+
+        [self.clearResultsButton.leadingAnchor constraintEqualToAnchor:self.compactReportButton.trailingAnchor constant:10],
         
-        [self.clearResultsButton.leadingAnchor constraintEqualToAnchor:self.generateReportButton.trailingAnchor constant:10],
         [self.clearResultsButton.centerYAnchor constraintEqualToAnchor:self.exportButton.centerYAnchor],
+
         
+
+       
+
         [self.resultsStatusLabel.trailingAnchor constraintEqualToAnchor:resultsView.trailingAnchor constant:-10],
         [self.resultsStatusLabel.centerYAnchor constraintEqualToAnchor:self.exportButton.centerYAnchor]
     ]];
@@ -2946,7 +2975,44 @@
 }
 
 
+#pragma mark - Compact Report to Clipboard
+    
+- (void)copyAllSymbols:(id)sender {
+    [self copyCompactReportToClipboardWithSelectedOnly:NO];
+}
 
+- (void)copySelectedSymbols:(id)sender {
+    [self copyCompactReportToClipboardWithSelectedOnly:YES];
+}
+    
+- (void)copyCompactReportToClipboardWithSelectedOnly:(BOOL)onlySelectedSymbols {
+    NSMutableString *reportString = [NSMutableString string];
+
+    // Itera tutti i modelli
+    for (NSString *modelID in self.executionResults) {
+        ModelResult *result = self.executionResults[modelID];
+        NSMutableArray<NSString *> *symbolsToInclude = [NSMutableArray array];
+
+        for (ScreenedSymbol *symbol in result.screenedSymbols) {
+            if (!onlySelectedSymbols || symbol.isSelected) {
+                [symbolsToInclude addObject:symbol.symbol];
+            }
+        }
+
+        // Salta se non ci sono simboli da includere
+        if (symbolsToInclude.count == 0) continue;
+
+        NSString *line = [NSString stringWithFormat:@"%@: %@\n", result.modelName, [symbolsToInclude componentsJoinedByString:@","]];
+        [reportString appendString:line];
+    }
+
+    // Copia negli appunti
+    NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+    [pasteboard clearContents];
+    [pasteboard setString:reportString forType:NSPasteboardTypeString];
+
+    NSLog(@"📋 Compact report copied to clipboard (%@ symbols)", onlySelectedSymbols ? @"selected only" : @"all");
+}
 
 /*
 #pragma mark - per cancellare archivio

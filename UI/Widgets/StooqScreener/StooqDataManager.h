@@ -20,6 +20,9 @@ NS_ASSUME_NONNULL_BEGIN
 /// Exchanges to include (e.g., @[@"nasdaq", @"nyse"])
 @property (nonatomic, strong) NSArray<NSString *> *selectedExchanges;
 
+@property (nonatomic, strong, nullable) NSDate *targetDate;  // Data target per lo screening
+
+
 #pragma mark - Initialization
 
 - (instancetype)initWithDataDirectory:(NSString *)dataDirectory;
@@ -41,6 +44,8 @@ NS_ASSUME_NONNULL_BEGIN
  * Get symbol count
  */
 - (NSInteger)symbolCount;
+
+- (NSDate *)expectedLastCloseDate;
 
 #pragma mark - Data Loading
 

@@ -12,7 +12,8 @@ NS_ASSUME_NONNULL_BEGIN
 @interface StooqScreenerWidget : BaseWidget
 
 #pragma mark - Configuration
-
+// StooqScreenerWidget.h - @interface
+@property (nonatomic, strong) NSDatePicker *targetDatePicker;
 /// Path to Stooq data directory
 @property (nonatomic, strong, nullable) NSString *dataDirectory;
 

@@ -174,7 +174,11 @@
         
         // Aggiungi steps se esistono
         if (result.steps) {
-            resultDict[@"steps"] = result.steps;
+            NSMutableArray *stepsArray = [NSMutableArray array];
+            for (ScreenerStep *step in result.steps) {
+                [stepsArray addObject:[step toDictionary]];
+            }
+            resultDict[@"steps"] = stepsArray;
         }
         
         // Converti screened_symbols con le date nei metadata
@@ -221,6 +225,9 @@
             }
             resultDict[@"step_results"] = stepResults;
         }
+        
+        // ✅ FIX CRITICO: Aggiungi resultDict all'array modelResults!
+        [modelResults addObject:resultDict];
     }
     
     dict[@"model_results"] = modelResults;
@@ -239,58 +246,29 @@
     return dict;
 }
 
-- (NSDictionary *)modelResultToDictionary:(ModelResult *)result {
-    NSMutableDictionary *dict = [NSMutableDictionary dictionary];
-    
-    dict[@"model_id"] = result.modelID ?: @"";
-    dict[@"model_name"] = result.modelName ?: @"";
-    dict[@"model_description"] = result.modelDescription ?: @"";
-    dict[@"execution_time"] = @([result.executionTime timeIntervalSince1970]);
-    dict[@"total_execution_time"] = @(result.totalExecutionTime);
-    dict[@"initial_universe_size"] = @(result.initialUniverseSize);
-    
-    // Serialize steps (parameters)
-    if (result.steps) {
-        NSMutableArray *stepsArray = [NSMutableArray array];
-        for (ScreenerStep *step in result.steps) {
-            [stepsArray addObject:[step toDictionary]];
-        }
-        dict[@"steps"] = stepsArray;
-    }
-    
-    // Serialize step results
-    if (result.stepResults) {
-        NSMutableArray *stepResultsArray = [NSMutableArray array];
-        for (StepResult *stepResult in result.stepResults) {
-            [stepResultsArray addObject:@{
-                @"screener_id": stepResult.screenerID ?: @"",
-                @"screener_name": stepResult.screenerName ?: @"",
-                @"symbols": stepResult.symbols ?: @[],
-                @"input_count": @(stepResult.inputCount),
-                @"execution_time": @(stepResult.executionTime)
-            }];
-        }
-        dict[@"step_results"] = stepResultsArray;
-    }
-    
-    // Serialize screened symbols
-    if (result.screenedSymbols) {
-        NSMutableArray *symbolsArray = [NSMutableArray array];
-        for (ScreenedSymbol *symbol in result.screenedSymbols) {
-            [symbolsArray addObject:[symbol toDictionary]];
-        }
-        dict[@"screened_symbols"] = symbolsArray;
-    }
-    
-    return [dict copy];
-}
-
 + (nullable instancetype)fromDictionary:(NSDictionary *)dict {
     if (!dict) return nil;
     
+    // ✅ FIX: Gestisci sia formato ISO8601 (stringa) che timestamp (numero)
+    NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
+    dateFormatter.dateFormat = @"yyyy-MM-dd'T'HH:mm:ss.SSS'Z'";
+    dateFormatter.timeZone = [NSTimeZone timeZoneWithAbbreviation:@"UTC"];
+    
     ExecutionSession *session = [[ExecutionSession alloc] init];
     session.sessionID = dict[@"session_id"] ?: [[NSUUID UUID] UUIDString];
-    session.executionDate = [NSDate dateWithTimeIntervalSince1970:[dict[@"execution_date"] doubleValue]];
+    
+    // Parse execution_date (supporta sia stringa ISO che numero timestamp)
+    id executionDateValue = dict[@"execution_date"];
+    if ([executionDateValue isKindOfClass:[NSString class]]) {
+        session.executionDate = [dateFormatter dateFromString:executionDateValue];
+    } else if ([executionDateValue isKindOfClass:[NSNumber class]]) {
+        session.executionDate = [NSDate dateWithTimeIntervalSince1970:[executionDateValue doubleValue]];
+    }
+    
+    if (!session.executionDate) {
+        session.executionDate = [NSDate date]; // Fallback
+    }
+    
     session.totalModels = [dict[@"total_models"] integerValue];
     session.totalSymbols = [dict[@"total_symbols"] integerValue];
     session.totalExecutionTime = [dict[@"total_execution_time"] doubleValue];
@@ -316,11 +294,28 @@
 + (nullable ModelResult *)modelResultFromDictionary:(NSDictionary *)dict {
     if (!dict) return nil;
     
+    // ✅ FIX: Date parser per supportare formato ISO8601
+    NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
+    dateFormatter.dateFormat = @"yyyy-MM-dd'T'HH:mm:ss.SSS'Z'";
+    dateFormatter.timeZone = [NSTimeZone timeZoneWithAbbreviation:@"UTC"];
+    
     ModelResult *result = [[ModelResult alloc] init];
     result.modelID = dict[@"model_id"];
     result.modelName = dict[@"model_name"];
     result.modelDescription = dict[@"model_description"];
-    result.executionTime = [NSDate dateWithTimeIntervalSince1970:[dict[@"execution_time"] doubleValue]];
+    
+    // Parse execution_time (supporta sia stringa ISO che numero timestamp)
+    id executionTimeValue = dict[@"execution_time"];
+    if ([executionTimeValue isKindOfClass:[NSString class]]) {
+        result.executionTime = [dateFormatter dateFromString:executionTimeValue];
+    } else if ([executionTimeValue isKindOfClass:[NSNumber class]]) {
+        result.executionTime = [NSDate dateWithTimeIntervalSince1970:[executionTimeValue doubleValue]];
+    }
+    
+    if (!result.executionTime) {
+        result.executionTime = [NSDate date]; // Fallback
+    }
+    
     result.totalExecutionTime = [dict[@"total_execution_time"] doubleValue];
     result.initialUniverseSize = [dict[@"initial_universe_size"] integerValue];
     

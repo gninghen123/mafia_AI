@@ -8,6 +8,7 @@
 @interface StooqDataManager ()
 @property (nonatomic, strong) NSMutableArray<NSString *> *symbolIndex;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSString *> *symbolToFilePath;
+// StooqDataManager.h
 @end
 
 @implementation StooqDataManager
@@ -292,9 +293,7 @@
     if (!filePath) {
         return nil;
     }
-    if (![self shouldParseFile:filePath]) {
-        return nil;
-    }
+   
     return [self parseCSVFile:filePath symbol:symbol maxBars:minBars];
 }
 
@@ -315,19 +314,73 @@
     
     NSArray<NSString *> *lines = [csvContent componentsSeparatedByString:@"\n"];
     
-    NSMutableArray<HistoricalBarModel *> *bars = [NSMutableArray array];
+    // ✅ STEP 1: Converti target date in stringa formato Stooq YYYYMMDD
+    NSString *targetDateString = [self dateToStooqString:self.targetDate ?: [self expectedLastCloseDate]];
     
-    // Parse from END to START to get the most recent maxBars
-    // Skip last line if empty
-    NSInteger endIdx = lines.count - 1;
-    while (endIdx >= 0 && [[lines[endIdx] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] length] == 0) {
-        endIdx--;
+    // ✅ STEP 2: Trova l'ultima riga valida del file
+    NSInteger lastValidLineIndex = -1;
+    NSString *lastBarDateString = nil;
+    
+    for (NSInteger i = lines.count - 1; i >= 0; i--) {
+        NSString *line = [lines[i] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (line.length == 0 || [line hasPrefix:@"<TICKER>"]) continue;
+        
+        NSArray *components = [line componentsSeparatedByString:@","];
+        if (components.count < 3) continue;
+        
+        NSString *dateStr = components[2];
+        if (dateStr.length != 8) continue;
+        
+        lastBarDateString = dateStr;
+        lastValidLineIndex = i;
+        break;
     }
     
-    NSInteger parsedCount = 0;
+    if (lastValidLineIndex == -1 || !lastBarDateString) {
+        return nil;
+    }
     
-    for (NSInteger i = endIdx; i >= 0; i--) {
-        // Stop if we have enough bars
+    // ✅ STEP 3: Confronto stringhe DIRETTO - se ultima barra < target → exit
+    if ([lastBarDateString compare:targetDateString] == NSOrderedAscending) {
+        // lastBarDateString < targetDateString → file troppo vecchio
+        return nil;
+    }
+    
+    // ✅ STEP 4: Cerca la riga con ESATTAMENTE la target date (confronto stringhe)
+    NSInteger targetLineIndex = -1;
+    
+    for (NSInteger i = lastValidLineIndex; i >= 0; i--) {
+        NSString *line = [lines[i] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        if (line.length == 0 || [line hasPrefix:@"<TICKER>"]) continue;
+        
+        NSArray *components = [line componentsSeparatedByString:@","];
+        if (components.count < 3) continue;
+        
+        NSString *dateStr = components[2];
+        if (dateStr.length != 8) continue;
+        
+        // ⚡ CONFRONTO STRINGHE DIRETTO
+        if ([dateStr isEqualToString:targetDateString]) {
+            targetLineIndex = i;
+            break;
+        }
+        
+        // Se siamo andati troppo indietro, stoppa
+        if ([dateStr compare:targetDateString] == NSOrderedAscending) {
+            break;
+        }
+    }
+    
+    if (targetLineIndex == -1) {
+        return nil;
+    }
+    
+    // ✅ STEP 5: Parsa DA target date INDIETRO per maxBars
+    NSMutableArray<HistoricalBarModel *> *bars = [NSMutableArray array];
+    NSInteger parsedCount = 0;
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    
+    for (NSInteger i = targetLineIndex; i >= 0; i--) {
         if (maxBars > 0 && parsedCount >= maxBars) {
             break;
         }
@@ -335,41 +388,40 @@
         NSString *line = [lines[i] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
         
         if (line.length == 0) continue;
-        if ([line hasPrefix:@"<TICKER>"]) continue;  // Skip header
-        
-        NSArray *components = [line componentsSeparatedByString:@","];
-        if (components.count < 9) continue;
+        if ([line hasPrefix:@"<TICKER>"]) continue;
         
         @try {
+            NSArray<NSString *> *components = [line componentsSeparatedByString:@","];
+            if (components.count < 9) continue;
+            
+            // Parse date
             NSString *dateStr = components[2];
+            if (dateStr.length != 8) continue;
+            
+            NSInteger year = [[dateStr substringWithRange:NSMakeRange(0, 4)] integerValue];
+            NSInteger month = [[dateStr substringWithRange:NSMakeRange(4, 2)] integerValue];
+            NSInteger day = [[dateStr substringWithRange:NSMakeRange(6, 2)] integerValue];
+            
+            NSDateComponents *dc = [[NSDateComponents alloc] init];
+            dc.year = year;
+            dc.month = month;
+            dc.day = day;
+            NSDate *date = [calendar dateFromComponents:dc];
+            
+            // Parse OHLCV
             double open = [components[4] doubleValue];
             double high = [components[5] doubleValue];
             double low = [components[6] doubleValue];
             double close = [components[7] doubleValue];
             long long volume = [components[8] longLongValue];
             
-            if (dateStr.length != 8) continue;
-            
-            NSString *year = [dateStr substringWithRange:NSMakeRange(0, 4)];
-            NSString *month = [dateStr substringWithRange:NSMakeRange(4, 2)];
-            NSString *day = [dateStr substringWithRange:NSMakeRange(6, 2)];
-            
-            NSDateComponents *dateComponents = [[NSDateComponents alloc] init];
-            dateComponents.year = [year integerValue];
-            dateComponents.month = [month integerValue];
-            dateComponents.day = [day integerValue];
-            
-            NSCalendar *calendar = [[NSCalendar alloc] initWithCalendarIdentifier:NSCalendarIdentifierGregorian];
-            calendar.timeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
-            NSDate *date = [calendar dateFromComponents:dateComponents];
-            
-            if (!date) continue;
-            
-            // Validate OHLC
-            if (high < low || high < open || high < close || low > open || low > close) {
+            // Validazione base
+            if (open <= 0 || high <= 0 || low <= 0 || close <= 0) {
                 continue;
             }
-         
+            if (high < low || open < low || close < low || high < open || high < close || low > open || low > close) {
+                continue;
+            }
             
             HistoricalBarModel *bar = [[HistoricalBarModel alloc] init];
             bar.symbol = symbol;
@@ -387,17 +439,29 @@
             parsedCount++;
             
         } @catch (NSException *exception) {
-            NSLog(@"⚠️ Parse error in %@: %@", filePath, exception.reason);
             continue;
         }
     }
     
-    // Bars are in reverse chronological order, need to reverse to get oldest→newest
+    // ✅ STEP 6: Reverse per ordine cronologico (oldest → newest)
     NSArray *reversedBars = [[bars reverseObjectEnumerator] allObjects];
     
     return reversedBars;
 }
 
+#pragma mark - Date Helpers
+
+// ✅ NUOVO: Converti NSDate in stringa formato Stooq "YYYYMMDD"
+- (NSString *)dateToStooqString:(NSDate *)date {
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDateComponents *components = [calendar components:NSCalendarUnitYear|NSCalendarUnitMonth|NSCalendarUnitDay
+                                               fromDate:date];
+    
+    return [NSString stringWithFormat:@"%04ld%02ld%02ld",
+            (long)components.year,
+            (long)components.month,
+            (long)components.day];
+}
 #pragma mark - File Path Resolution
 
 - (nullable NSString *)filePathForSymbol:(NSString *)symbol {
@@ -475,6 +539,8 @@
     return symbol;
 }
 
+#pragma mark - lastdate
+
 - (NSDate *)expectedLastCloseDate {
     NSDate *now = [NSDate date];
     
@@ -527,42 +593,6 @@
     return [calendar startOfDayForDate:prevDate];
 }
 
-- (BOOL)shouldParseFile:(NSString *)filePath {
-    NSError *error;
-    NSString *content = [NSString stringWithContentsOfFile:filePath encoding:NSUTF8StringEncoding error:&error];
-    if (!content) return NO;
-    
-    NSArray<NSString *> *lines = [content componentsSeparatedByString:@"\n"];
-    
-    // Cerca l'ultima riga valida
-    for (NSInteger i = lines.count - 1; i >= 0; i--) {
-        NSString *line = [lines[i] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        if (line.length == 0 || [line hasPrefix:@"<TICKER>"]) continue;
-        
-        NSArray *components = [line componentsSeparatedByString:@","];
-        if (components.count < 3) continue;
-        
-        NSString *dateStr = components[2];
-        if (dateStr.length != 8) continue;
-        
-        // Converti la data in NSDate
-        NSInteger year = [[dateStr substringWithRange:NSMakeRange(0, 4)] integerValue];
-        NSInteger month = [[dateStr substringWithRange:NSMakeRange(4, 2)] integerValue];
-        NSInteger day = [[dateStr substringWithRange:NSMakeRange(6, 2)] integerValue];
-        
-        NSCalendar *calendar = [NSCalendar currentCalendar];
-        NSDateComponents *dc = [[NSDateComponents alloc] init];
-        dc.year = year; dc.month = month; dc.day = day;
-        NSDate *barDate = [calendar dateFromComponents:dc];
-        
-        NSDate *expected = [self expectedLastCloseDate];
-        
-        NSDateComponents *barComp = [calendar components:NSCalendarUnitYear|NSCalendarUnitMonth|NSCalendarUnitDay fromDate:barDate];
-        NSDateComponents *expComp = [calendar components:NSCalendarUnitYear|NSCalendarUnitMonth|NSCalendarUnitDay fromDate:expected];
-        
-        return (barComp.year == expComp.year && barComp.month == expComp.month && barComp.day == expComp.day);
-    }
-    
-    return NO;
-}
+
+
 @end

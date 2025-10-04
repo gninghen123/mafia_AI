@@ -386,17 +386,57 @@
     bottomBar.translatesAutoresizingMaskIntoConstraints = NO;
     [modelsView addSubview:bottomBar];
     
+    NSTextField *dateLabel = [NSTextField labelWithString:@"Target Date:"];
+      dateLabel.translatesAutoresizingMaskIntoConstraints = NO;
+      [bottomBar addSubview:dateLabel];
+    
+    self.targetDatePicker = [[NSDatePicker alloc] init];
+        self.targetDatePicker.translatesAutoresizingMaskIntoConstraints = NO;
+        self.targetDatePicker.datePickerStyle = NSDatePickerStyleTextFieldAndStepper;
+        self.targetDatePicker.datePickerElements = NSDatePickerElementFlagYearMonthDay;
+        self.targetDatePicker.dateValue = [self.dataManager expectedLastCloseDate]; // Inizializza con data calcolata
+        self.targetDatePicker.target = self;
+        self.targetDatePicker.action = @selector(targetDateChanged:);
+        [bottomBar addSubview:self.targetDatePicker];
+    
+    
     [NSLayoutConstraint activateConstraints:@[
-        [self.modelsSplitView.topAnchor constraintEqualToAnchor:modelsView.topAnchor constant:10],
-        [self.modelsSplitView.leadingAnchor constraintEqualToAnchor:modelsView.leadingAnchor constant:10],
-        [self.modelsSplitView.trailingAnchor constraintEqualToAnchor:modelsView.trailingAnchor constant:-10],
+        [self.modelsSplitView.topAnchor constraintEqualToAnchor:modelsView.topAnchor],
+        [self.modelsSplitView.leadingAnchor constraintEqualToAnchor:modelsView.leadingAnchor],
+        [self.modelsSplitView.trailingAnchor constraintEqualToAnchor:modelsView.trailingAnchor],
         [self.modelsSplitView.bottomAnchor constraintEqualToAnchor:bottomBar.topAnchor constant:-10],
         
         [bottomBar.leadingAnchor constraintEqualToAnchor:modelsView.leadingAnchor constant:10],
         [bottomBar.trailingAnchor constraintEqualToAnchor:modelsView.trailingAnchor constant:-10],
         [bottomBar.bottomAnchor constraintEqualToAnchor:modelsView.bottomAnchor constant:-10],
-        [bottomBar.heightAnchor constraintEqualToConstant:60]
+        [bottomBar.heightAnchor constraintEqualToConstant:60],
+        
+        // Label "Target Date:"
+        [dateLabel.leadingAnchor constraintEqualToAnchor:bottomBar.leadingAnchor constant:10],
+        [dateLabel.centerYAnchor constraintEqualToAnchor:bottomBar.centerYAnchor],
+        
+        // Run button accanto alla label
+        [self.runButton.leadingAnchor constraintEqualToAnchor:dateLabel.trailingAnchor constant:20],
+        [self.runButton.centerYAnchor constraintEqualToAnchor:bottomBar.centerYAnchor],
+        
+        // Refresh accanto a Run
+        [self.refreshButton.leadingAnchor constraintEqualToAnchor:self.runButton.trailingAnchor constant:10],
+        [self.refreshButton.centerYAnchor constraintEqualToAnchor:bottomBar.centerYAnchor],
+        
+        // ✅ DatePicker DOPO Refresh
+        [self.targetDatePicker.leadingAnchor constraintEqualToAnchor:self.refreshButton.trailingAnchor constant:20],
+        [self.targetDatePicker.centerYAnchor constraintEqualToAnchor:bottomBar.centerYAnchor],
+        [self.targetDatePicker.widthAnchor constraintEqualToConstant:160],
+        
+        // Universe label DOPO il datepicker
+        [self.universeLabel.leadingAnchor constraintEqualToAnchor:self.targetDatePicker.trailingAnchor constant:20],
+        [self.universeLabel.centerYAnchor constraintEqualToAnchor:bottomBar.centerYAnchor],
+        
+        // Progress indicator in fondo a destra
+        [self.progressIndicator.trailingAnchor constraintEqualToAnchor:bottomBar.trailingAnchor constant:-10],
+        [self.progressIndicator.centerYAnchor constraintEqualToAnchor:bottomBar.centerYAnchor]
     ]];
+        
     
     dispatch_async(dispatch_get_main_queue(), ^{
         CGFloat totalWidth = self.modelsSplitView.frame.size.width;
@@ -983,6 +1023,18 @@
 - (void)loadInitialData {
     [self refreshModels];
     
+    // ✅ NUOVO: Inizializza la data target del datepicker PRIMA dello scan
+    NSDate *initialDate = [self.dataManager expectedLastCloseDate];
+    if (self.targetDatePicker) {
+        self.targetDatePicker.dateValue = initialDate;
+    }
+    self.dataManager.targetDate = initialDate;
+    
+    NSLog(@"📅 Target date initialized to: %@", 
+          [NSDateFormatter localizedStringFromDate:initialDate
+                                         dateStyle:NSDateFormatterShortStyle
+                                         timeStyle:NSDateFormatterNoStyle]);
+    
     // ✅ Carica il path salvato
     NSString *savedPath = [[NSUserDefaults standardUserDefaults] stringForKey:@"StooqDataDirectory"];
     if (savedPath) {
@@ -996,7 +1048,7 @@
             self.dataPathField.stringValue = savedPath;
             [self setDataDirectory:savedPath];
             
-            // ✅ NUOVO: Avvia automaticamente lo scan
+            // ✅ Avvia automaticamente lo scan con la data target impostata
             [self autoScanDatabase];
         } else {
             NSLog(@"⚠️ Saved directory no longer exists: %@", savedPath);
@@ -1133,6 +1185,8 @@
     self.saveChangesButton.enabled = YES;
     self.revertChangesButton.enabled = YES;
 }
+
+
 
 #pragma mark - NSTableViewDataSource
 
@@ -2651,10 +2705,19 @@
     
     NSLog(@"📦 Saving execution session to archive...");
     
-    // Crea ExecutionSession
+    // ✅ FIX: Usa la targetDate dal dataManager (fonte di verità)
+    NSDate *targetDate = self.dataManager.targetDate ?: [NSDate date];
+    
+    // Crea ExecutionSession CON LA DATA TARGET
     NSArray<ModelResult *> *results = [self.executionResults.allValues copy];
     ExecutionSession *session = [ExecutionSession sessionWithModelResults:results
-                                                                 universe:self.availableSymbols];
+                                                                 universe:self.availableSymbols
+                                                                     date:targetDate];  // ✅ PASSA LA DATA
+    
+    NSLog(@"   🎯 Target date: %@",
+          [NSDateFormatter localizedStringFromDate:targetDate
+                                         dateStyle:NSDateFormatterMediumStyle
+                                         timeStyle:NSDateFormatterNoStyle]);
     
     // Crea directory se non esiste
     NSString *archiveDir = [self archiveDirectory];
@@ -2671,10 +2734,10 @@
         }
     }
     
-    // Genera nome file
+    // Genera nome file usando la TARGET DATE (non timestamp corrente)
     NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
     dateFormatter.dateFormat = @"yyyy-MM-dd_HHmmss";
-    NSString *dateString = [dateFormatter stringFromDate:session.executionDate];
+    NSString *dateString = [dateFormatter stringFromDate:targetDate];  // ✅ USA TARGET DATE
     
     NSString *filename = [NSString stringWithFormat:@"session_%@_%@.json",
                          dateString,
@@ -2687,10 +2750,26 @@
         NSLog(@"✅ Saved execution session to archive:");
         NSLog(@"   📄 File: %@", filename);
         NSLog(@"   📊 %@", [session summaryString]);
+        NSLog(@"   🎯 Target: %@",
+              [NSDateFormatter localizedStringFromDate:targetDate
+                                             dateStyle:NSDateFormatterShortStyle
+                                             timeStyle:NSDateFormatterNoStyle]);
         NSLog(@"   💾 Path: %@", filepath);
         
         // ✅ Ricarica l'archivio
         [self loadArchivedSessions];
+        
+        // ✅ NUOVO: Mostra alert di conferma
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"Results Archived Successfully";
+        alert.informativeText = [NSString stringWithFormat:@"Saved %ld model results for %@\n\n%@",
+                                (long)results.count,
+                                [NSDateFormatter localizedStringFromDate:targetDate
+                                                               dateStyle:NSDateFormatterMediumStyle
+                                                               timeStyle:NSDateFormatterNoStyle],
+                                [session summaryString]];
+        [alert addButtonWithTitle:@"OK"];
+        [alert runModal];
         
     } else {
         NSLog(@"❌ Failed to save session: %@", error.localizedDescription);
@@ -2703,7 +2782,6 @@
         [alert runModal];
     }
 }
-
 - (NSString *)archiveDirectory {
     NSArray *paths = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory,
                                                          NSUserDomainMask, YES);
@@ -3217,6 +3295,32 @@
 
     NSLog(@"📋 Compact report copied to clipboard (%@ symbols)", onlySelectedSymbols ? @"selected only" : @"all");
 }
+
+- (void)targetDateChanged:(NSDatePicker *)sender {
+    NSLog(@"📅 Target date changed to: %@", sender.dateValue);
+    
+    // Aggiorna la data target nel dataManager
+    self.dataManager.targetDate = sender.dateValue;
+    
+    // Invalida il database corrente - deve essere riscansionato
+    [self.dataManager scanDatabaseWithCompletion:^(NSArray<NSString *> *symbols, NSError *error) {
+        if (error) {
+            NSLog(@"❌ Error rescanning database: %@", error);
+            return;
+        }
+        
+        self.availableSymbols = symbols;
+        self.universeLabel.stringValue = [NSString stringWithFormat:@"Universe: %ld symbols (for %@)",
+                                          (long)symbols.count,
+                                          [NSDateFormatter localizedStringFromDate:sender.dateValue
+                                                                         dateStyle:NSDateFormatterShortStyle
+                                                                         timeStyle:NSDateFormatterNoStyle]];
+        
+        NSLog(@"✅ Database rescanned for target date: %ld symbols available", (long)symbols.count);
+    }];
+}
+
+
 
 /*
 #pragma mark - per cancellare archivio

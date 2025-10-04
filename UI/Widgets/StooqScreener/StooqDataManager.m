@@ -293,7 +293,6 @@
         return nil;
     }
     if (![self shouldParseFile:filePath]) {
-        NSLog(@"⚠️ Skipping %@: outdated last bar", symbol);
         return nil;
     }
     return [self parseCSVFile:filePath symbol:symbol maxBars:minBars];

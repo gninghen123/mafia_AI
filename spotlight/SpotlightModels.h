@@ -7,7 +7,6 @@
 
 #import <Foundation/Foundation.h>
 #import <Cocoa/Cocoa.h>
-#import "TradingAppTypes.h"
 #import "CommonTypes.h"        // ← AGGIUNGI QUESTA LINEA
 #import "SpotlightCategoryButton.h"  // ← AGGIUNGI QUESTA LINEA
 

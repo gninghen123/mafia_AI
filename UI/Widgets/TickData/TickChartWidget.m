@@ -58,8 +58,8 @@
 
 #pragma mark - Initialization
 
-- (instancetype)initWithType:(NSString *)widgetType panelType:(PanelType)panelType {
-    self = [super initWithType:widgetType panelType:panelType];
+- (instancetype)initWithType:(NSString *)widgetType {
+    self = [super initWithType:widgetType];
     if (self) {
         [self setupTickChartWidget];
     }

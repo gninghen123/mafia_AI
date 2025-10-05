@@ -24,6 +24,7 @@
 #import "pinescripteditorwidget.h"
 #import "screenerwidget.h"
 #import "stooqscreenerwidget.h"
+#import "ComparisonChartWidget.h"
 
 @interface WidgetTypeManager ()
 @property (nonatomic, strong) NSDictionary<NSString *, NSArray<NSString *> *> *widgetCategories;
@@ -62,6 +63,7 @@
             @"Market Depth",
             @"Volume Profile",
             @"Heatmap",
+            @"comparison Chart",
             @"Seasonal Chart",       // NUOVO: Aggiunto SeasonalChart
             @"Tick Chart"           // NEW: Added TickChart
         ],
@@ -146,6 +148,7 @@
     typeToClass[@"Screener"] = [ScreenerWidget class];
     typeToClass[@"Stooq Screener"] = [StooqScreenerWidget class];
     typeToClass[@"PineScript Editor"] = [PineScriptEditorWidget class];
+    typeToClass[@"comparison Chart"] = [ComparisonChartWidget class];
 
     // Map all other types to BaseWidget for now
     for (NSArray *types in self.widgetCategories.allValues) {
@@ -169,6 +172,7 @@
         @"Heatmap": @"square.grid.3x3.fill.square",
         @"MultiChart Widget": @"square.grid.3x3",
         @"Connections": @"link",
+        @"comparison Chart": @"chart.bar.fill",
         @"SymbolDatabase":@"tray.2",
         @"Tick Chart": @"list.bullet.rectangle",
         @"Order Entry": @"plus.square",

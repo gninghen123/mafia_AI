@@ -2564,8 +2564,7 @@
                            dateRange:(NSArray<NSDate *> *)dateRange {
     
     // Crea ChartWidget per la finestra microscopio
-    ChartWidget *microscopeChart = [[ChartWidget alloc] initWithType:@"chart"
-                                                           panelType:PanelTypeCenter];
+    ChartWidget *microscopeChart = [[ChartWidget alloc] initWithType:@"chart"];
    
     
     [microscopeChart setChainActive:NO withColor:nil];

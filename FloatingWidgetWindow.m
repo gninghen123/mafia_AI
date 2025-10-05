@@ -9,6 +9,7 @@
 #import "BaseWidget.h"
 #import "AppDelegate.h"
 #import "ChartWidget.h"
+#import "WidgetTypeManager.h"
 
 @interface FloatingWidgetWindow ()
 @property (nonatomic, strong) NSView *containerView;
@@ -34,10 +35,20 @@
                                 defer:NO];
     
     if (self) {
-        self.containedWidget = widget;
-        self.appDelegate = appDelegate;
-        self.widgetType = NSStringFromClass([widget class]);
-        
+           self.containedWidget = widget;
+           self.appDelegate = appDelegate;
+           self.widgetType = NSStringFromClass([widget class]);
+           
+           // ✅ AGGIUNGI: Setup callback per trasformazione widget
+           __weak typeof(self) weakSelf = self;
+           widget.onTypeChange = ^(BaseWidget *sourceWidget, NSString *newType) {
+               [weakSelf transformWidgetToType:newType];
+           };
+           
+           // ✅ AGGIUNGI: Setup callback per chiusura widget
+           widget.onRemoveRequest = ^(BaseWidget *widgetToRemove) {
+               [weakSelf close];
+           };
         // Basic window setup
         self.title = title;
         self.delegate = self;
@@ -57,6 +68,57 @@
     
     return self;
 }
+
+
+// FloatingWidgetWindow.m - AGGIUNGI questo metodo
+
+- (void)transformWidgetToType:(NSString *)newType {
+    NSLog(@"🔄 FloatingWindow: Transforming widget to type: %@", newType);
+    
+    // 1. Ottieni la classe del nuovo widget
+    Class widgetClass = [[WidgetTypeManager sharedManager] classForWidgetType:newType];
+    if (!widgetClass) {
+        NSLog(@"❌ FloatingWindow: No class found for type: %@", newType);
+        return;
+    }
+    
+    // 2. Salva stato del vecchio widget
+    NSDictionary *oldState = [self.containedWidget serializeState];
+    NSRect oldFrame = self.frame;
+    
+    // 3. Crea nuovo widget
+    BaseWidget *newWidget = [[widgetClass alloc] initWithType:newType];
+    [newWidget loadView];
+    
+    // 4. Ripristina stato (widgetID, chain, ecc.)
+    newWidget.widgetID = self.containedWidget.widgetID;
+    newWidget.chainActive = self.containedWidget.chainActive;
+    newWidget.chainColor = self.containedWidget.chainColor;
+    
+    // 5. Rimuovi vecchio widget dalla finestra
+    [self.containedWidget.view removeFromSuperview];
+    
+    // 6. Setup nuovo widget
+    self.containedWidget = newWidget;
+    
+    // ✅ CRITICAL: Riassegna i callback al nuovo widget
+    __weak typeof(self) weakSelf = self;
+    newWidget.onTypeChange = ^(BaseWidget *sourceWidget, NSString *newType) {
+        [weakSelf transformWidgetToType:newType];
+    };
+    newWidget.onRemoveRequest = ^(BaseWidget *widgetToRemove) {
+        [weakSelf close];
+    };
+    
+    // 7. Aggiungi alla finestra
+    [self setupWidgetContainer];
+    
+    // 8. Aggiorna titolo finestra
+    self.title = newType;
+    
+    NSLog(@"✅ FloatingWindow: Widget transformed successfully to %@", newType);
+}
+
 
 #pragma mark - Widget Management
 
@@ -102,33 +164,27 @@
 }
 
 - (void)configureWindowBehavior {
-    // Window appearance
     self.backgroundColor = [NSColor windowBackgroundColor];
     self.hasShadow = YES;
     self.movableByWindowBackground = YES;
     
-    // Window level - stay above main window but below other floating windows
-    self.level = NSFloatingWindowLevel;
+    // ✅ FIX: Normal window level (non più floating)
+    self.level = NSNormalWindowLevel;
     
-    // Collection behavior
-    self.collectionBehavior = NSWindowCollectionBehaviorMoveToActiveSpace |
-                             NSWindowCollectionBehaviorFullScreenAuxiliary;
+    // ✅ FIX: Normal collection behavior
+    self.collectionBehavior = NSWindowCollectionBehaviorManaged |
+                             NSWindowCollectionBehaviorParticipatesInCycle |
+                             NSWindowCollectionBehaviorFullScreenPrimary;
     
-    // Minimum size
     self.minSize = NSMakeSize(300, 200);
     
-    // ✅ FIX: SIMPLIFIED restoration setup to avoid crash
-    // Only set restoration if we properly implement the protocol
+    // Window restoration
     if ([FloatingWidgetWindow conformsToProtocol:@protocol(NSWindowRestoration)]) {
         self.restorationClass = [FloatingWidgetWindow class];
         self.identifier = [NSString stringWithFormat:@"FloatingWidget_%@_%p",
                           self.widgetType, (void *)self];
-        NSLog(@"✅ FloatingWidgetWindow: Window restoration enabled");
-    } else {
-        NSLog(@"⚠️ FloatingWidgetWindow: Window restoration disabled (protocol not implemented)");
     }
 }
-
 #pragma mark - Window State Management
 
 - (void)saveWindowState {

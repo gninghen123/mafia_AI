@@ -19,6 +19,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Selected exchanges to screen (e.g., @[@"nasdaq", @"nyse"])
 @property (nonatomic, strong) NSArray<NSString *> *selectedExchanges;
+@property (nonatomic, strong) NSView *archiveStatsPanel;
+@property (nonatomic, strong) NSTextField *statsAllLabel;
+@property (nonatomic, strong) NSTextField *statsSelectedLabel;
+
 
 #pragma mark - Public Methods
 

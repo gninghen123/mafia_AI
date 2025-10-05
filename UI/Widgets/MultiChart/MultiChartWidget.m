@@ -36,8 +36,8 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
 
 #pragma mark - Initialization
 
-- (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType {
-    self = [super initWithType:type panelType:panelType];
+- (instancetype)initWithType:(NSString *)type {
+    self = [super initWithType:type];
     if (self) {
         [self setupMultiChartDefaults];
     }
@@ -1109,12 +1109,80 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
 }
 
 #pragma mark - Chain Integration
+
+
 - (void)handleChainAction:(NSString *)action withData:(id)data fromWidget:(BaseWidget *)sender {
     if ([action isEqualToString:@"loadChartPattern"]) {
         [self loadChartPatternFromChainData:data fromWidget:sender];
+    } else if ([action isEqualToString:@"loadScreenerData"]) {
+        // ✅ NUOVO: Gestisce dati screener con historicalBars già caricati
+        [self loadScreenerDataFromChainData:data fromWidget:sender];
     } else {
         [super handleChainAction:action withData:data fromWidget:sender];
     }
+}
+
+- (void)loadScreenerDataFromChainData:(NSDictionary *)data fromWidget:(BaseWidget *)sender {
+    // 1️⃣ VALIDAZIONE DATI
+    if (!data || ![data isKindOfClass:[NSDictionary class]]) {
+        NSLog(@"❌ MultiChartWidget: Invalid screener data received from %@", NSStringFromClass([sender class]));
+        return;
+    }
+    
+    NSString *symbol = data[@"symbol"];
+    NSArray<HistoricalBarModel *> *historicalBars = data[@"historicalBars"];
+    NSNumber *timeframeNum = data[@"timeframe"];
+    NSString *source = data[@"source"] ?: @"Unknown";
+    NSString *patternType = data[@"patternType"] ?: @"Screener";
+    
+    // Validazione campi essenziali
+    if (!symbol || !historicalBars || historicalBars.count == 0) {
+        NSLog(@"❌ MultiChartWidget: Missing essential screener data - symbol:%@ bars:%lu",
+              symbol, (unsigned long)historicalBars.count);
+        [self showTemporaryMessageForCollectionView:@"❌ Missing screener data"];
+        return;
+    }
+    
+    BarTimeframe timeframe = timeframeNum ? [timeframeNum integerValue] : BarTimeframeDaily;
+    
+    NSLog(@"📊 MultiChartWidget: Loading screener data for %@ (%lu bars) from %@",
+          symbol, (unsigned long)historicalBars.count, source);
+    
+    // 2️⃣ CREA MINICHART CON DATI STATICI
+    MiniChart *miniChart = [[MiniChart alloc] initWithFrame:CGRectMake(0, 0, self.itemWidth, self.itemHeight)];
+    
+    // ✅ DENOMINAZIONE: "PatternType Symbol" per chiarezza
+    NSString *displayName = [NSString stringWithFormat:@"%@ %@", patternType, symbol];
+    
+    // Configura il MiniChart
+    miniChart.symbol = displayName;  // ✅ Usa display name per identificazione
+    miniChart.chartType = self.chartType;
+    miniChart.timeframe = [self convertFromBarTimeframe:timeframe];
+    miniChart.scaleType = self.scaleType;
+    miniChart.showVolume = self.showVolume;
+    
+    // 3️⃣ CARICA DATI STATICI (già pronti, non serve fetch)
+    [miniChart updateWithHistoricalBars:historicalBars];
+    
+    // 4️⃣ AGGIUNGI ALLA COLLEZIONE
+    [self.miniCharts addObject:miniChart];
+    
+    // 5️⃣ AGGIORNA UI
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.collectionView reloadData];
+        
+        // Scroll all'ultimo item aggiunto
+        NSInteger lastIndex = self.miniCharts.count - 1;
+        NSIndexPath *lastIndexPath = [NSIndexPath indexPathForItem:lastIndex inSection:0];
+        [self.collectionView scrollToItemsAtIndexPaths:@[lastIndexPath]
+                                        scrollPosition:NSCollectionViewScrollPositionBottom];
+        
+        // Feedback all'utente
+        NSString *feedbackMessage = [NSString stringWithFormat:@"📊 Added %@", displayName];
+        [self showTemporaryMessageForCollectionView:feedbackMessage];
+        
+        NSLog(@"✅ MultiChartWidget: Added screener chart '%@' from %@", displayName, source);
+    });
 }
 
 - (void)loadChartPatternFromChainData:(NSDictionary *)data fromWidget:(BaseWidget *)sender {

@@ -230,18 +230,6 @@
     }
 }
 
-+ (PanelType)panelTypeForWidgetTarget:(SpotlightWidgetTarget)target {
-    switch (target) {
-        case SpotlightWidgetTargetLeftPanel:
-            return PanelTypeLeft;
-        case SpotlightWidgetTargetRightPanel:
-            return PanelTypeRight;
-        case SpotlightWidgetTargetCenterPanel:
-            return PanelTypeCenter;
-        case SpotlightWidgetTargetFloating:
-        default:
-            return PanelTypeCenter; // Default fallback
-    }
-}
+
 
 @end

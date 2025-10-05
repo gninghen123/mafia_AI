@@ -10,7 +10,6 @@
 #import "DataHub.h"
 #import "DataHub+MarketData.h"
 #import "DataHub+WatchlistProviders.h"
-#import "TradingAppTypes.h"
 #import "TagManager.h"
 
 

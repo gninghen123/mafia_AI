@@ -15,8 +15,8 @@
 
 @implementation AlertWidget
 
-- (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType {
-    self = [super initWithType:type panelType:panelType];
+- (instancetype)initWithType:(NSString *)type {
+    self = [super initWithType:type];
     if (self) {
         _currentFilter = 0; // Default to "All"
         _alerts = @[];

@@ -37,7 +37,6 @@ typedef struct {
     NSDate *endDate;
 } SmartSymbolParameters;
 
-// ❌ REMOVED: BarTimeframe enum - use BarTimeframe from CommonTypes.h
 
 @interface ChartWidget : BaseWidget <NSComboBoxDataSource,NSComboBoxDelegate>
 

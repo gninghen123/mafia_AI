@@ -12,7 +12,6 @@
 #import "DataHub.h"
 #import "DataHub+MarketData.h"
 #import "DataHub+WatchlistProviders.h"
-#import "TradingAppTypes.h"
 #import "WatchlistProviders.h"
 #import "TagManager.h"
 #import "OtherDataSource.h"           // ✅ AGGIUNGERE QUESTO IMPORT
@@ -36,8 +35,8 @@
 
 #pragma mark - Initialization
 
-- (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType {
-    if (self = [super initWithType:type panelType:panelType]) {
+- (instancetype)initWithType:(NSString *)type {
+    if (self = [super initWithType:type]) {
         [self commonInit];
     }
     return self;
@@ -45,7 +44,7 @@
 
 - (instancetype)initWithFrame:(NSRect)frameRect {
     // BaseWidget doesn't support initWithFrame, use default init
-    if (self = [super initWithType:@"WatchlistWidget" panelType:PanelTypeLeft]) {
+    if (self = [super initWithType:@"WatchlistWidget"]) {
         [self commonInit];
     }
     return self;

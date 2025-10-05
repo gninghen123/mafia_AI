@@ -24,8 +24,8 @@ static NSString * const kDateColumn = @"Date";
 
 #pragma mark - BaseWidget Override
 
-- (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType {
-    self = [super initWithType:type panelType:panelType];
+- (instancetype)initWithType:(NSString *)type {
+    self = [super initWithType:type];
     if (self) {
         self.patternManager = [ChartPatternManager shared];
         self.allPatterns = @[];

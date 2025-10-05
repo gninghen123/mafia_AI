@@ -204,25 +204,9 @@
             filePath = "UI/Widgets/watchlist/WatchlistWidget.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1224"
-            endingLineNumber = "1224"
+            startingLineNumber = "1223"
+            endingLineNumber = "1223"
             landmarkName = "-setupInitialProvider"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "A97726B0-4BFF-474D-96FA-2B08DCD31DF2"
-            shouldBeEnabled = "No"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "UI/Widgets/StooqScreener/StooqScreenerWidget.m"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1524"
-            endingLineNumber = "1524"
-            landmarkName = "-outlineViewSelectionDidChange:"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
@@ -236,8 +220,8 @@
             filePath = "UI/Widgets/StooqScreener/StooqScreenerWidget.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1424"
-            endingLineNumber = "1424"
+            startingLineNumber = "1249"
+            endingLineNumber = "1249"
             landmarkName = "-outlineView:numberOfChildrenOfItem:"
             landmarkType = "7">
          </BreakpointContent>

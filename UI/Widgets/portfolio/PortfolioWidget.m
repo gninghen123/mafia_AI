@@ -25,8 +25,8 @@
 
 #pragma mark - Widget Lifecycle
 
-- (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType {
-    self = [super initWithType:type panelType:panelType];
+- (instancetype)initWithType:(NSString *)type {
+    self = [super initWithType:type];
     if (self) {
         // Initialize arrays
         _availableAccounts = @[];

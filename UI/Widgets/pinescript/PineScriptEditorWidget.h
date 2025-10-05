@@ -78,8 +78,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, strong, nullable) NSURL *currentFileURL;
 
 #pragma mark - Initialization
-// ✅ CORRETTO: Usa il pattern standard di BaseWidget
-- (instancetype)initWithType:(NSString *)widgetType panelType:(PanelType)panelType;
+
 
 // ✅ METODO per impostare il delegate dopo l'inizializzazione
 - (void)setDelegate:(nullable id<PineScriptEditorDelegate>)delegate;

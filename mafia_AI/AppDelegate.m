@@ -1,5 +1,4 @@
 #import "AppDelegate.h"
-#import "MainWindowController.h"
 #import "DownloadManager.h"
 #import "SchwabDataSource.h"
 #import "WebullDataSource.h"
@@ -22,9 +21,10 @@
 #import "ibkrconfiguration.h"
 #import "yahooDataSource.h"
 #import "StorageSystemInitializer.h"  // ← AGGIUNGI QUESTA RIGA
-#import "AppDelegate+SpotlightIntegration.h"  // ← AGGIUNGI QUESTA LINEA
 #import "storagemanager.h"
 
+#import "GridWindow.h"  // ✅ NUOVO
+#import "GridTemplate.h"  // ✅ NUOVO
 
 @interface AppDelegate ()
 @end
@@ -34,6 +34,9 @@
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
    // forza aggiornamento banca datio sotrage
     //[[StorageManager sharedManager] forceConsistencyCheck];
+
+    
+    self.gridWindows = [NSMutableArray array];  // ✅ NUOVO
 
     NSLog(@"AppDelegate: applicationDidFinishLaunching called");
     
@@ -54,11 +57,7 @@
     [self registerDataSources];
     self.floatingWindows = [[NSMutableArray alloc] init];
     self.widgetTypeManager = [WidgetTypeManager sharedManager];
-    NSLog(@"AppDelegate: Creating MainWindowController");
-    self.mainWindowController = [[MainWindowController alloc] init];
-    
-    NSLog(@"AppDelegate: Showing window");
-    [self.mainWindowController showWindow:self];
+   
     
     [NSApp activateIgnoringOtherApps:YES];
     
@@ -67,7 +66,7 @@
         [self autoConnectToIBKRWithPreferences];
 
     });
-    [self initializeSpotlightSearch];
+   // [self initializeSpotlightSearch];
 
     [self setupClaudeDataSource];
     if (self.window) {
@@ -78,10 +77,90 @@
     } else {
         NSLog(@"❌ AppDelegate: Main window outlet not connected!");
     }
-    static dispatch_once_t onceToken;
+    [self setupGridMenus];
+
 }
 
+- (void)setupGridMenus {
+    NSMenu *mainMenu = [NSApp mainMenu];
+    
+    // Find File menu
+    NSMenuItem *fileMenuItem = [mainMenu itemWithTitle:@"File"];
+    if (!fileMenuItem) {
+        NSLog(@"⚠️ File menu not found");
+        return;
+    }
+    
+    NSMenu *fileMenu = [fileMenuItem submenu];
+    
+    // Create "New Grid" submenu
+    NSMenuItem *newGridItem = [[NSMenuItem alloc] initWithTitle:@"New Grid"
+                                                         action:nil
+                                                  keyEquivalent:@""];
+    
+    NSMenu *gridSubmenu = [[NSMenu alloc] initWithTitle:@"New Grid"];
+    
+    // Add template options
+    NSArray *templates = @[
+        @"List + Chart",
+        @"List + Dual Charts",
+        @"Triple Horizontal",
+        @"2x2 Grid"
+    ];
+    
+    for (NSString *template in templates) {
+        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:template
+                                                      action:@selector(openGrid:)
+                                               keyEquivalent:@""];
+        item.target = self;
+        [gridSubmenu addItem:item];
+    }
+    
+    [newGridItem setSubmenu:gridSubmenu];
+    
+    // Add to File menu (after "New Widget" if exists, or at index 1)
+    NSInteger insertIndex = 1; // After "New"
+    for (NSInteger i = 0; i < fileMenu.numberOfItems; i++) {
+        NSMenuItem *item = [fileMenu itemAtIndex:i];
+        if ([item.title isEqualToString:@"New Widget"]) {
+            insertIndex = i + 1;
+            break;
+        }
+    }
+    
+    [fileMenu insertItem:newGridItem atIndex:insertIndex];
+    
+    NSLog(@"✅ Grid menus setup complete");
+    
+    // Add Window menu items
+    [self setupWindowMenuItems];
+}
 
+- (void)setupWindowMenuItems {
+    NSMenu *mainMenu = [NSApp mainMenu];
+    NSMenuItem *windowMenuItem = [mainMenu itemWithTitle:@"Window"];
+    
+    if (!windowMenuItem) {
+        NSLog(@"⚠️ Window menu not found");
+        return;
+    }
+    
+    NSMenu *windowMenu = [windowMenuItem submenu];
+    
+    // Add separator if not already there
+    if (windowMenu.numberOfItems > 0) {
+        [windowMenu addItem:[NSMenuItem separatorItem]];
+    }
+    
+    // Add "Close All Grids"
+    NSMenuItem *closeAllGridsItem = [[NSMenuItem alloc] initWithTitle:@"Close All Grids"
+                                                               action:@selector(closeAllGrids:)
+                                                        keyEquivalent:@""];
+    closeAllGridsItem.target = self;
+    [windowMenu addItem:closeAllGridsItem];
+    
+    NSLog(@"✅ Window menu items setup complete");
+}
 
 
 - (void)registerDataSources {
@@ -227,18 +306,7 @@
     alert.informativeText = message;
     alert.alertStyle = success ? NSAlertStyleInformational : NSAlertStyleWarning;
     
-    // Mostra come sheet invece di modal (meno invasivo)
-    if (self.mainWindowController.window) {
-        [alert beginSheetModalForWindow:self.mainWindowController.window
-                      completionHandler:nil];
-        
-        // Auto-chiudi dopo 3 secondi se successo
-        if (success) {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                [self.mainWindowController.window endSheet:alert.window];
-            });
-        }
-    }
+   
 }
 
 #pragma mark - cluade api
@@ -418,6 +486,80 @@
    
    NSLog(@"✅ AppDelegate: Successfully opened floating %@ widget", widgetTitle);
 }
+#pragma mark - Grid Actions
+
+- (IBAction)openGrid:(id)sender {
+    NSString *templateName = [sender title];
+    NSLog(@"🏗️ AppDelegate: Opening grid with template: %@", templateName);
+    
+    // Map menu title to template type
+    GridTemplateType templateType = [self templateTypeFromMenuTitle:templateName];
+    
+    // Create grid window
+    GridWindow *gridWindow = [self createGridWindowWithTemplate:templateType
+                                                           name:templateName];
+    
+    [gridWindow makeKeyAndOrderFront:self];
+    
+    NSLog(@"✅ AppDelegate: Grid window opened");
+}
+
+- (GridTemplateType)templateTypeFromMenuTitle:(NSString *)menuTitle {
+    if ([menuTitle isEqualToString:@"List + Chart"]) {
+        return GridTemplateTypeListChart;
+    } else if ([menuTitle isEqualToString:@"List + Dual Charts"]) {
+        return GridTemplateTypeListDualChart;
+    } else if ([menuTitle isEqualToString:@"Triple Horizontal"]) {
+        return GridTemplateTypeTripleHorizontal;
+    } else if ([menuTitle isEqualToString:@"2x2 Grid"]) {
+        return GridTemplateTypeQuad;
+    }
+    
+    return GridTemplateTypeListChart; // Default
+}
+
+#pragma mark - Grid Window Management
+
+- (GridWindow *)createGridWindowWithTemplate:(NSString *)templateType
+                                        name:(NSString *)name {
+    
+    GridWindow *window = [[GridWindow alloc] initWithTemplate:templateType
+                                                         name:name
+                                                  appDelegate:self];
+    
+    [self registerGridWindow:window];
+    
+    NSLog(@"🏗️ AppDelegate: Created grid window: %@", name);
+    return window;
+}
+
+- (void)registerGridWindow:(GridWindow *)window {
+    if (window && ![self.gridWindows containsObject:window]) {
+        [self.gridWindows addObject:window];
+        NSLog(@"📝 AppDelegate: Registered grid window (total: %ld)",
+              (long)self.gridWindows.count);
+    }
+}
+
+- (void)unregisterGridWindow:(GridWindow *)window {
+    if (window && [self.gridWindows containsObject:window]) {
+        [self.gridWindows removeObject:window];
+        NSLog(@"🗑️ AppDelegate: Unregistered grid window (remaining: %ld)",
+              (long)self.gridWindows.count);
+    }
+}
+
+- (IBAction)closeAllGrids:(id)sender {
+    NSLog(@"🗑️ AppDelegate: Closing all grid windows");
+    
+    NSArray *windowsCopy = [self.gridWindows copy];
+    
+    for (GridWindow *window in windowsCopy) {
+        [window close];
+    }
+    
+    NSLog(@"✅ AppDelegate: Closed %ld grid windows", (long)windowsCopy.count);
+}
 
 #pragma mark - Widget Creation Helper
 
@@ -431,7 +573,7 @@
    }
    
    // ✅ CORRETTO: Usa il metodo di inizializzazione corretto di BaseWidget
-   BaseWidget *widget = [[widgetClass alloc] initWithType:widgetType panelType:PanelTypeCenter];
+   BaseWidget *widget = [[widgetClass alloc] initWithType:widgetType];
    
    NSLog(@"🔧 AppDelegate: Created widget: %@ -> %@", widgetType, NSStringFromClass(widgetClass));
    
@@ -571,8 +713,11 @@
     for (FloatingWidgetWindow *window in self.floatingWindows) {
         [window saveWindowState];
     }
-    
-    NSLog(@"💾 AppDelegate: Saved state for %ld floating windows",
+    for (GridWindow *window in self.gridWindows) {
+            NSDictionary *state = [window serializeState];
+            NSString *key = [NSString stringWithFormat:@"GridWindow_%@", window.gridName];
+            [[NSUserDefaults standardUserDefaults] setObject:state forKey:key];
+        }    NSLog(@"💾 AppDelegate: Saved state for %ld floating windows",
           (long)self.floatingWindows.count);
 }
 
@@ -583,11 +728,17 @@
         menuItem.action == @selector(closeAllFloatingWindows:)) {
         return self.floatingWindows.count > 0;
     }
+    for (GridWindow *window in self.gridWindows) {
+            NSDictionary *state = [window serializeState];
+            NSString *key = [NSString stringWithFormat:@"GridWindow_%@", window.gridName];
+            [[NSUserDefaults standardUserDefaults] setObject:state forKey:key];
+        }
     
-    // Enable all widget menu items
-    if (menuItem.action == @selector(openFloatingWidget:)) {
-        return YES;
-    }
+    if (menuItem.action == @selector(openFloatingWidget:) ||
+            menuItem.action == @selector(openGrid:)) {
+            return YES;
+        }
+        
     
     return YES;
 }
@@ -693,26 +844,9 @@
         [alert addButtonWithTitle:@"OK"];
     }
     
-    // Show as sheet if main window is available
-    if (self.mainWindowController.window) {
-        [alert beginSheetModalForWindow:self.mainWindowController.window
-                      completionHandler:^(NSModalResponse returnCode) {
-                          if (!success && returnCode == NSAlertFirstButtonReturn) {
-                              // User clicked Retry
-                              [self autoConnectToIBKR];
-                          }
-                      }];
-        
-        // Auto-close success alerts after 3 seconds
-        if (success) {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                [self.mainWindowController.window endSheet:alert.window];
-            });
-        }
-    } else {
+  
         // Fallback to modal if no main window
         [alert runModal];
-    }
 }
 
 // Optional: Method to test IBKR connection manually

@@ -8,7 +8,6 @@
 
 #import "DataHub.h"
 #import "SpotlightModels.h"
-#import "TradingAppTypes.h"
 
 NS_ASSUME_NONNULL_BEGIN
 

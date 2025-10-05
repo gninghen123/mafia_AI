@@ -21,16 +21,11 @@ static NSString *const kChainSenderKey = @"sender";
 @interface BaseWidget () <NSTextFieldDelegate, NSTextViewDelegate, NSComboBoxDataSource, NSComboBoxDelegate, NSDraggingSource, NSDraggingDestination,TagManagementDelegate>
 
 - (NSButton *)createHeaderButton:(NSString *)title action:(SEL)action;
-+ (instancetype)widgetWithType:(NSString *)type
-                     panelType:(PanelType)panelType
-                  onTypeChange:(void (^)(BaseWidget *widget, NSString *newType))handler;
 
 @property (nonatomic, strong) NSButton *closeButton;
-@property (nonatomic, strong) NSButton *collapseButton;
 @property (nonatomic, strong) NSButton *chainButton;
 @property (nonatomic, strong) NSButton *addButton;
 @property (nonatomic, strong) NSPopover *addPopover;
-@property (nonatomic, assign) CGFloat savedHeight;
 @property (nonatomic, strong) NSView *headerViewInternal;
 @property (nonatomic, strong) NSView *contentViewInternal;
 @property (nonatomic, strong) NSTextField *titleFieldInternal;
@@ -46,24 +41,13 @@ static NSString *const kChainSenderKey = @"sender";
 
 @implementation BaseWidget
 
-+ (instancetype)widgetWithType:(NSString *)type
-                     panelType:(PanelType)panelType
-                  onTypeChange:(void (^)(BaseWidget *widget, NSString *newType))handler {
-    BaseWidget *widget = [[self alloc] initWithType:type panelType:panelType];
-    widget.onTypeChange = handler;
-    return widget;
-}
-
-- (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType {
+- (instancetype)initWithType:(NSString *)type{
     self = [super init];
     if (self) {
         _widgetType = type;
-        _panelType = panelType;
         _widgetID = [[NSUUID UUID] UUIDString];
         _chainActive = YES;
         _chainColor = [NSColor systemRedColor]; // Default color
-        _collapsed = NO;
-        _savedHeight = 200;
         _availableWidgetTypes = [[WidgetTypeManager sharedManager] availableWidgetTypes];
         
         // Subscribe to chain notifications
@@ -146,9 +130,7 @@ static NSString *const kChainSenderKey = @"sender";
 
     self.closeButton = [self createHeaderButton:@"\u2715" action:@selector(closeWidget:)];
 
-    if (self.panelType != PanelTypeCenter) {
-        self.collapseButton = [self createHeaderButton:@"\u2212" action:@selector(toggleCollapse:)];
-    }
+   
 
     self.titleComboBox = [[NSComboBox alloc] init];
     self.titleComboBox.usesDataSource = YES;
@@ -193,9 +175,7 @@ static NSString *const kChainSenderKey = @"sender";
     self.addButton = [self createHeaderButton:@"+" action:@selector(showAddMenu:)];
 
     [headerStack addArrangedSubview:self.closeButton];
-    if (self.collapseButton) {
-        [headerStack addArrangedSubview:self.collapseButton];
-    }
+ 
     [headerStack addArrangedSubview:self.titleComboBox];
     [headerStack addArrangedSubview:self.chainButton];
     if (self.addButton) {
@@ -616,9 +596,7 @@ static NSString *const kChainSenderKey = @"sender";
     }
 }
 
-- (void)toggleCollapse:(id)sender {
-    [self toggleCollapse];
-}
+
 
 - (void)showChainMenu:(id)sender {
     NSMenu *menu = [[NSMenu alloc] init];
@@ -683,17 +661,6 @@ static NSString *const kChainSenderKey = @"sender";
     stack.spacing = 8;
     stack.edgeInsets = NSEdgeInsetsMake(8, 8, 8, 8);
     
-    if (self.panelType == PanelTypeCenter) {
-        // Center panel: all 4 directions
-        [stack addArrangedSubview:[self createAddButton:@"Add Top ↑" direction:WidgetAddDirectionTop]];
-        [stack addArrangedSubview:[self createAddButton:@"Add Bottom ↓" direction:WidgetAddDirectionBottom]];
-        [stack addArrangedSubview:[self createAddButton:@"Add Left ←" direction:WidgetAddDirectionLeft]];
-        [stack addArrangedSubview:[self createAddButton:@"Add Right →" direction:WidgetAddDirectionRight]];
-    } else {
-        // Side panels: only top/bottom
-        [stack addArrangedSubview:[self createAddButton:@"Add Top ↑" direction:WidgetAddDirectionTop]];
-        [stack addArrangedSubview:[self createAddButton:@"Add Bottom ↓" direction:WidgetAddDirectionBottom]];
-    }
     
     [menuView addSubview:stack];
     stack.translatesAutoresizingMaskIntoConstraints = NO;
@@ -715,42 +682,9 @@ static NSString *const kChainSenderKey = @"sender";
                           preferredEdge:NSRectEdgeMaxY];
 }
 
-- (NSButton *)createAddButton:(NSString *)title direction:(WidgetAddDirection)direction {
-    NSButton *button = [NSButton buttonWithTitle:title target:self action:@selector(addWidgetInDirection:)];
-    button.tag = direction;
-    return button;
-}
 
-- (void)addWidgetInDirection:(NSButton *)sender {
-    [self.addPopover close];
-    if (self.onAddRequest) {
-        self.onAddRequest(self, (WidgetAddDirection)sender.tag);
-    }
-}
 
-#pragma mark - Collapse functionality
 
-- (void)toggleCollapse {
-    self.collapsed = !self.collapsed;
-    
-    if (self.collapsed) {
-        self.contentViewInternal.hidden = YES;
-        self.collapseButton.title = @"+";
-        [self.view.heightAnchor constraintEqualToConstant:[self collapsedHeight]].active = YES;
-    } else {
-        self.contentViewInternal.hidden = NO;
-        self.collapseButton.title = @"\u2212";
-        [self.view.heightAnchor constraintGreaterThanOrEqualToConstant:[self expandedHeight]].active = YES;
-    }
-}
-
-- (CGFloat)collapsedHeight {
-    return 30; // Just header height
-}
-
-- (CGFloat)expandedHeight {
-    return self.savedHeight;
-}
 
 #pragma mark - Content View Setup
 
@@ -818,8 +752,6 @@ static NSString *const kChainSenderKey = @"sender";
     return @{
         @"widgetID": self.widgetID,
         @"widgetType": self.widgetType,
-        @"collapsed": @(self.collapsed),
-        @"savedHeight": @(self.savedHeight),
         @"chainActive": @(self.chainActive),
         @"chainColor": [NSArchiver archivedDataWithRootObject:self.chainColor]
     };
@@ -828,8 +760,6 @@ static NSString *const kChainSenderKey = @"sender";
 - (void)restoreState:(NSDictionary *)state {
     self.widgetID = state[@"widgetID"] ?: [[NSUUID UUID] UUIDString];
     self.widgetType = state[@"widgetType"] ?: @"Empty Widget";
-    self.collapsed = [state[@"collapsed"] boolValue];
-    self.savedHeight = [state[@"savedHeight"] doubleValue] ?: 200;
     self.chainActive = [state[@"chainActive"] boolValue];
     
     NSData *colorData = state[@"chainColor"];
@@ -848,9 +778,7 @@ static NSString *const kChainSenderKey = @"sender";
     [self updateContentForType:self.widgetType];
     [self updateChainButtonAppearance];
     
-    if (self.collapsed) {
-        [self toggleCollapse];
-    }
+   
 }
 
 // Continue with the rest of the implementation...

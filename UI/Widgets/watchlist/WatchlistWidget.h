@@ -10,7 +10,6 @@
 #import "BaseWidget.h"
 #import "RuntimeModels.h"
 #import "CommonTypes.h"
-#import "TradingAppTypes.h"
 
 NS_ASSUME_NONNULL_BEGIN
 

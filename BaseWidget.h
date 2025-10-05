@@ -4,7 +4,6 @@
 //
 
 #import <Cocoa/Cocoa.h>
-#import "TradingAppTypes.h"
 #import "TagManagementWindowController.h"
 
 
@@ -15,8 +14,6 @@
 
 @property (nonatomic, strong) NSString *widgetType;
 @property (nonatomic, strong) NSString *widgetID;
-@property (nonatomic, assign) PanelType panelType;
-@property (nonatomic, assign, getter=isCollapsed) BOOL collapsed;
 @property (nonatomic, weak, readonly) NSWindow *parentWindow;
 
 // UI Components
@@ -27,7 +24,6 @@
 
 // Callbacks
 @property (nonatomic, copy) void (^onRemoveRequest)(BaseWidget *widget);
-@property (nonatomic, copy) void (^onAddRequest)(BaseWidget *widget, WidgetAddDirection direction);
 @property (nonatomic, copy) void (^onTypeChange)(BaseWidget *widget, NSString *newType);
 
 // Chain system - NEW PROPERTIES
@@ -40,7 +36,7 @@
 
 
 
-- (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType;
+- (instancetype)initWithType:(NSString *)type;  // ✅ SEMPLIFICATO (no panelType)
 
 
 
@@ -82,10 +78,7 @@
 - (IBAction)contextMenuSendSymbolsToChain:(id)sender;
 - (IBAction)contextMenuSendToChainColor:(id)sender;
 
-// Collapse functionality
-- (void)toggleCollapse;
-- (CGFloat)collapsedHeight;
-- (CGFloat)expandedHeight;
+
 - (void)setupViews;
 
 #pragma mark - Drag & Drop Infrastructure

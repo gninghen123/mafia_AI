@@ -9,19 +9,15 @@
 /* Begin PBXBuildFile section */
 		9543903C2E7164AE0015F05A /* BaseWidget.m in Sources */ = {isa = PBXBuildFile; fileRef = 954390012E7164AE0015F05A /* BaseWidget.m */; };
 		9543903D2E7164AE0015F05A /* TagManagementWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954390032E7164AE0015F05A /* TagManagementWindowController.m */; };
-		9543903E2E7164AE0015F05A /* WidgetContainerView.m in Sources */ = {isa = PBXBuildFile; fileRef = 954390052E7164AE0015F05A /* WidgetContainerView.m */; };
 		9543903F2E7164AE0015F05A /* WidgetTypeManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 954390072E7164AE0015F05A /* WidgetTypeManager.m */; };
-		954D30D52E28531C00C7DC88 /* LayoutManager.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30CA2E28531C00C7DC88 /* LayoutManager.m */; };
-		954D30D72E28531C00C7DC88 /* ToolbarController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30C82E28531C00C7DC88 /* ToolbarController.m */; };
-		954D30D82E28531C00C7DC88 /* PanelHeaderView.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30C42E28531C00C7DC88 /* PanelHeaderView.m */; };
-		954D30DA2E28531C00C7DC88 /* PanelController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30CF2E28531C00C7DC88 /* PanelController.m */; };
-		954D30DB2E28531C00C7DC88 /* MainWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30D22E28531C00C7DC88 /* MainWindowController.m */; };
 		954D30DD2E28531C00C7DC88 /* PROJECT_ARCHITECTURE.md in Resources */ = {isa = PBXBuildFile; fileRef = 954D30C02E28531C00C7DC88 /* PROJECT_ARCHITECTURE.md */; };
 		954D30E32E2860F100C7DC88 /* PreferencesWindowController.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */; };
 		954D30E72E28612100C7DC88 /* AppSettings.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D30E62E28612100C7DC88 /* AppSettings.m */; };
 		954D388F2E50D1A6000454EF /* FloatingWidgetWindow.m in Sources */ = {isa = PBXBuildFile; fileRef = 954D388E2E50D1A6000454EF /* FloatingWidgetWindow.m */; };
 		956C84A42E867C81002FFB6F /* CommonTypes.m in Sources */ = {isa = PBXBuildFile; fileRef = 956C84A32E867C81002FFB6F /* CommonTypes.m */; };
 		958DF9D12E5B57F200720709 /* clientportal in Resources */ = {isa = PBXBuildFile; fileRef = 958DF9D02E5B57F200720709 /* clientportal */; };
+		95EAE0BF2E928ECB0048215D /* GridTemplate.m in Sources */ = {isa = PBXBuildFile; fileRef = 95EAE0BE2E928ECB0048215D /* GridTemplate.m */; };
+		95EAE0C22E928F4A0048215D /* GridWindow.m in Sources */ = {isa = PBXBuildFile; fileRef = 95EAE0C12E928F4A0048215D /* GridWindow.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -46,25 +42,12 @@
 		954390012E7164AE0015F05A /* BaseWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = BaseWidget.m; sourceTree = "<group>"; };
 		954390022E7164AE0015F05A /* TagManagementWindowController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TagManagementWindowController.h; sourceTree = "<group>"; };
 		954390032E7164AE0015F05A /* TagManagementWindowController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TagManagementWindowController.m; sourceTree = "<group>"; };
-		954390042E7164AE0015F05A /* WidgetContainerView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WidgetContainerView.h; sourceTree = "<group>"; };
-		954390052E7164AE0015F05A /* WidgetContainerView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WidgetContainerView.m; sourceTree = "<group>"; };
 		954390062E7164AE0015F05A /* WidgetTypeManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = WidgetTypeManager.h; sourceTree = "<group>"; };
 		954390072E7164AE0015F05A /* WidgetTypeManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = WidgetTypeManager.m; sourceTree = "<group>"; };
 		954D30002E28514A00C7DC88 /* mafia_AI.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = mafia_AI.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		954D30122E28514B00C7DC88 /* mafia_AITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = mafia_AITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		954D301C2E28514C00C7DC88 /* mafia_AIUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = mafia_AIUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		954D30BF2E28531C00C7DC88 /* TradingAppTypes.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = TradingAppTypes.h; sourceTree = "<group>"; };
 		954D30C02E28531C00C7DC88 /* PROJECT_ARCHITECTURE.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = PROJECT_ARCHITECTURE.md; sourceTree = "<group>"; };
-		954D30C32E28531C00C7DC88 /* PanelHeaderView.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PanelHeaderView.h; sourceTree = "<group>"; };
-		954D30C42E28531C00C7DC88 /* PanelHeaderView.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PanelHeaderView.m; sourceTree = "<group>"; };
-		954D30C72E28531C00C7DC88 /* ToolbarController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = ToolbarController.h; sourceTree = "<group>"; };
-		954D30C82E28531C00C7DC88 /* ToolbarController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = ToolbarController.m; sourceTree = "<group>"; };
-		954D30C92E28531C00C7DC88 /* LayoutManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = LayoutManager.h; sourceTree = "<group>"; };
-		954D30CA2E28531C00C7DC88 /* LayoutManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = LayoutManager.m; sourceTree = "<group>"; };
-		954D30CE2E28531C00C7DC88 /* PanelController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PanelController.h; sourceTree = "<group>"; };
-		954D30CF2E28531C00C7DC88 /* PanelController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PanelController.m; sourceTree = "<group>"; };
-		954D30D12E28531C00C7DC88 /* MainWindowController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = MainWindowController.h; sourceTree = "<group>"; };
-		954D30D22E28531C00C7DC88 /* MainWindowController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = MainWindowController.m; sourceTree = "<group>"; };
 		954D30E02E2860F100C7DC88 /* PreferencesWindowController.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PreferencesWindowController.h; sourceTree = "<group>"; };
 		954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PreferencesWindowController.m; sourceTree = "<group>"; };
 		954D30E52E28612100C7DC88 /* AppSettings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AppSettings.h; sourceTree = "<group>"; };
@@ -73,6 +56,10 @@
 		954D388E2E50D1A6000454EF /* FloatingWidgetWindow.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = FloatingWidgetWindow.m; sourceTree = "<group>"; };
 		956C84A32E867C81002FFB6F /* CommonTypes.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = CommonTypes.m; sourceTree = "<group>"; };
 		958DF9D02E5B57F200720709 /* clientportal */ = {isa = PBXFileReference; lastKnownFileType = folder; path = clientportal; sourceTree = "<group>"; };
+		95EAE0BD2E928ECB0048215D /* GridTemplate.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GridTemplate.h; sourceTree = "<group>"; };
+		95EAE0BE2E928ECB0048215D /* GridTemplate.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GridTemplate.m; sourceTree = "<group>"; };
+		95EAE0C02E928F4A0048215D /* GridWindow.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GridWindow.h; sourceTree = "<group>"; };
+		95EAE0C12E928F4A0048215D /* GridWindow.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GridWindow.m; sourceTree = "<group>"; };
 		95F1AFC52E32037F00D96BDD /* CommonTypes.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CommonTypes.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -153,30 +140,21 @@
 				958DF9D02E5B57F200720709 /* clientportal */,
 				95F1AFC52E32037F00D96BDD /* CommonTypes.h */,
 				956C84A32E867C81002FFB6F /* CommonTypes.m */,
+				95EAE0BD2E928ECB0048215D /* GridTemplate.h */,
+				95EAE0BE2E928ECB0048215D /* GridTemplate.m */,
+				95EAE0C02E928F4A0048215D /* GridWindow.h */,
+				95EAE0C12E928F4A0048215D /* GridWindow.m */,
 				954D30E52E28612100C7DC88 /* AppSettings.h */,
 				954D30E62E28612100C7DC88 /* AppSettings.m */,
 				954D388D2E50D1A6000454EF /* FloatingWidgetWindow.h */,
 				954D388E2E50D1A6000454EF /* FloatingWidgetWindow.m */,
 				954D30E02E2860F100C7DC88 /* PreferencesWindowController.h */,
 				954D30E12E2860F100C7DC88 /* PreferencesWindowController.m */,
-				954D30BF2E28531C00C7DC88 /* TradingAppTypes.h */,
 				954D30C02E28531C00C7DC88 /* PROJECT_ARCHITECTURE.md */,
-				954D30C32E28531C00C7DC88 /* PanelHeaderView.h */,
-				954D30C42E28531C00C7DC88 /* PanelHeaderView.m */,
-				954D30C72E28531C00C7DC88 /* ToolbarController.h */,
-				954D30C82E28531C00C7DC88 /* ToolbarController.m */,
-				954D30C92E28531C00C7DC88 /* LayoutManager.h */,
-				954D30CA2E28531C00C7DC88 /* LayoutManager.m */,
-				954D30CE2E28531C00C7DC88 /* PanelController.h */,
-				954D30CF2E28531C00C7DC88 /* PanelController.m */,
-				954D30D12E28531C00C7DC88 /* MainWindowController.h */,
-				954D30D22E28531C00C7DC88 /* MainWindowController.m */,
 				954390002E7164AE0015F05A /* BaseWidget.h */,
 				954390012E7164AE0015F05A /* BaseWidget.m */,
 				954390022E7164AE0015F05A /* TagManagementWindowController.h */,
 				954390032E7164AE0015F05A /* TagManagementWindowController.m */,
-				954390042E7164AE0015F05A /* WidgetContainerView.h */,
-				954390052E7164AE0015F05A /* WidgetContainerView.m */,
 				954390062E7164AE0015F05A /* WidgetTypeManager.h */,
 				954390072E7164AE0015F05A /* WidgetTypeManager.m */,
 				95F1AD762E2E517E00D96BDD /* UI */,
@@ -355,14 +333,10 @@
 				954D30E32E2860F100C7DC88 /* PreferencesWindowController.m in Sources */,
 				9543903C2E7164AE0015F05A /* BaseWidget.m in Sources */,
 				9543903D2E7164AE0015F05A /* TagManagementWindowController.m in Sources */,
-				9543903E2E7164AE0015F05A /* WidgetContainerView.m in Sources */,
 				9543903F2E7164AE0015F05A /* WidgetTypeManager.m in Sources */,
 				954D30E72E28612100C7DC88 /* AppSettings.m in Sources */,
-				954D30D52E28531C00C7DC88 /* LayoutManager.m in Sources */,
-				954D30D72E28531C00C7DC88 /* ToolbarController.m in Sources */,
-				954D30D82E28531C00C7DC88 /* PanelHeaderView.m in Sources */,
-				954D30DA2E28531C00C7DC88 /* PanelController.m in Sources */,
-				954D30DB2E28531C00C7DC88 /* MainWindowController.m in Sources */,
+				95EAE0C22E928F4A0048215D /* GridWindow.m in Sources */,
+				95EAE0BF2E928ECB0048215D /* GridTemplate.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

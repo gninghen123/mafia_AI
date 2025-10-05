@@ -18,6 +18,17 @@
                                     NSOutlineViewDelegate, NSOutlineViewDataSource,  // ← AGGIUNGI
                                     ScreenerBatchRunnerDelegate>
 
+
+/// Cache dei dati storici dell'ultimo screening
+@property (nonatomic, strong) NSDictionary<NSString *, NSArray<HistoricalBarModel *> *> *lastScreeningCache;
+
+/// Data di riferimento dell'ultimo screening (per validare la cache)
+@property (nonatomic, strong) NSDate *lastScreeningDate;
+
+/// ID della session a cui appartiene la cache corrente (nil se è uno screening recente)
+@property (nonatomic, strong, nullable) NSString *cachedSessionID;
+
+
 @property (nonatomic, strong) NSArray<ScreenedSymbol *> *currentModelSymbols;
 
 @property (nonatomic, strong) IBOutlet NSPopUpButton *compactReportButton;
@@ -30,6 +41,7 @@
 @property (nonatomic, strong) NSTextField *archiveHeaderLabel;
 @property (nonatomic, strong) NSButton *deleteArchiveButton;
 @property (nonatomic, strong) NSButton *exportArchiveButton;
+@property (nonatomic, strong) NSButton *updateArchiveButton;
 
 // Archive data (NUOVO FORMATO)
 @property (nonatomic, strong) NSMutableArray<ExecutionSession *> *archivedSessions;
@@ -80,21 +92,10 @@
 @property (nonatomic, strong) NSProgressIndicator *progressIndicator;
 
 // Tab 2: Results - NEW STRUCTURE
-@property (nonatomic, strong) NSSplitView *resultsSplitView;
 
-// Left side: Models results table
-@property (nonatomic, strong) NSTableView *resultsModelsTableView;
-@property (nonatomic, strong) NSScrollView *resultsModelsScrollView;
-
-// Right side: Symbols table
-@property (nonatomic, strong) NSTableView *resultsSymbolsTableView;
-@property (nonatomic, strong) NSScrollView *resultsSymbolsScrollView;
-@property (nonatomic, strong) NSTextField *symbolsHeaderLabel;
 @property (nonatomic, strong) NSButton *sendSelectedButton;
 @property (nonatomic, strong) NSButton *sendAllButton;
 
-// Results data
-@property (nonatomic, strong) NSString *selectedResultModelID;  // Currently selected model ID
 
 // Bottom bar
 @property (nonatomic, strong) NSButton *exportButton;
@@ -125,8 +126,8 @@
 
 #pragma mark - Initialization
 
-- (instancetype)initWithType:(NSString *)widgetType panelType:(PanelType)panelType {
-    self = [super initWithType:widgetType panelType:panelType];
+- (instancetype)initWithType:(NSString *)widgetType{
+    self = [super initWithType:widgetType];
     if (self) {
         _models = [NSMutableArray array];
         _executionResults = [NSMutableDictionary dictionary];
@@ -181,7 +182,6 @@
     ]];
     
     [self setupModelsTab];
-    [self setupResultsTab];
     [self setupArchiveTab];  // ✅ NUOVO TAB
 
     [self setupSettingsTab];
@@ -205,28 +205,90 @@
     NSView *archiveSymbolsView = [self setupArchiveSymbolsView];
     [self.archiveSplitView addArrangedSubview:archiveSymbolsView];
     
-    // Bottom bar
-    self.deleteArchiveButton = [NSButton buttonWithTitle:@"Delete" target:self action:@selector(deleteArchiveEntry:)];
+    // BOTTOM BAR - Tutti i bottoni
+    self.deleteArchiveButton = [NSButton buttonWithTitle:@"Delete"
+                                                   target:self
+                                                   action:@selector(deleteArchiveEntry:)];
     self.deleteArchiveButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.deleteArchiveButton.enabled = NO;
     [archiveView addSubview:self.deleteArchiveButton];
     
-    self.exportArchiveButton = [NSButton buttonWithTitle:@"Export" target:self action:@selector(exportArchive:)];
+    self.exportArchiveButton = [NSButton buttonWithTitle:@"Export"
+                                                   target:self
+                                                   action:@selector(exportArchive:)];
     self.exportArchiveButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.exportArchiveButton.enabled = NO;
     [archiveView addSubview:self.exportArchiveButton];
     
-    // Layout
+    // Generate Report Button
+    self.generateReportButton = [NSButton buttonWithTitle:@"Generate Report"
+                                                    target:self
+                                                    action:@selector(generateArchiveReport:)];
+    self.generateReportButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.generateReportButton.enabled = NO;
+    [archiveView addSubview:self.generateReportButton];
+    
+    // Compact Report PopUpButton
+    self.compactReportButton = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:YES];
+    [self.compactReportButton addItemWithTitle:@"Compact Report"];
+    [self.compactReportButton.menu addItem:[NSMenuItem separatorItem]];
+    
+    NSMenuItem *allItem = [[NSMenuItem alloc] initWithTitle:@"All Symbols"
+                                                      action:@selector(copyArchiveAllSymbols:)
+                                               keyEquivalent:@""];
+    allItem.target = self;
+    [self.compactReportButton.menu addItem:allItem];
+    
+    NSMenuItem *selectedItem = [[NSMenuItem alloc] initWithTitle:@"Selected Only"
+                                                           action:@selector(copyArchiveSelectedSymbols:)
+                                                    keyEquivalent:@""];
+    selectedItem.target = self;
+    [self.compactReportButton.menu addItem:selectedItem];
+    
+    self.compactReportButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.compactReportButton.enabled = NO;
+    [archiveView addSubview:self.compactReportButton];
+    
+    // Send buttons
+    self.sendSelectedButton = [NSButton buttonWithTitle:@"Send Selected"
+                                                  target:self
+                                                  action:@selector(sendSelectedSymbols:)];
+    self.sendSelectedButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.sendSelectedButton.enabled = NO;
+    [archiveView addSubview:self.sendSelectedButton];
+    
+    self.sendAllButton = [NSButton buttonWithTitle:@"Send All"
+                                             target:self
+                                             action:@selector(sendAllSymbols:)];
+    self.sendAllButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.sendAllButton.enabled = NO;
+    [archiveView addSubview:self.sendAllButton];
+    
+    // Layout constraints
     [NSLayoutConstraint activateConstraints:@[
         [self.archiveSplitView.topAnchor constraintEqualToAnchor:archiveView.topAnchor constant:10],
         [self.archiveSplitView.leadingAnchor constraintEqualToAnchor:archiveView.leadingAnchor constant:10],
         [self.archiveSplitView.trailingAnchor constraintEqualToAnchor:archiveView.trailingAnchor constant:-10],
         [self.archiveSplitView.bottomAnchor constraintEqualToAnchor:self.deleteArchiveButton.topAnchor constant:-10],
         
+        // Bottom bar buttons (da sinistra a destra)
         [self.deleteArchiveButton.leadingAnchor constraintEqualToAnchor:archiveView.leadingAnchor constant:10],
         [self.deleteArchiveButton.bottomAnchor constraintEqualToAnchor:archiveView.bottomAnchor constant:-10],
         
         [self.exportArchiveButton.leadingAnchor constraintEqualToAnchor:self.deleteArchiveButton.trailingAnchor constant:10],
-        [self.exportArchiveButton.centerYAnchor constraintEqualToAnchor:self.deleteArchiveButton.centerYAnchor]
+        [self.exportArchiveButton.centerYAnchor constraintEqualToAnchor:self.deleteArchiveButton.centerYAnchor],
+        
+        [self.generateReportButton.leadingAnchor constraintEqualToAnchor:self.exportArchiveButton.trailingAnchor constant:20],
+        [self.generateReportButton.centerYAnchor constraintEqualToAnchor:self.deleteArchiveButton.centerYAnchor],
+        
+        [self.compactReportButton.leadingAnchor constraintEqualToAnchor:self.generateReportButton.trailingAnchor constant:10],
+        [self.compactReportButton.centerYAnchor constraintEqualToAnchor:self.deleteArchiveButton.centerYAnchor],
+        
+        [self.sendSelectedButton.leadingAnchor constraintEqualToAnchor:self.compactReportButton.trailingAnchor constant:20],
+        [self.sendSelectedButton.centerYAnchor constraintEqualToAnchor:self.deleteArchiveButton.centerYAnchor],
+        
+        [self.sendAllButton.leadingAnchor constraintEqualToAnchor:self.sendSelectedButton.trailingAnchor constant:10],
+        [self.sendAllButton.centerYAnchor constraintEqualToAnchor:self.deleteArchiveButton.centerYAnchor]
     ]];
     
     // Set split position
@@ -237,10 +299,11 @@
         }
     });
     
-    NSTabViewItem *archiveTab = [[NSTabViewItem alloc] initWithIdentifier:@"archive"];
-    archiveTab.label = @"Archive";
-    archiveTab.view = archiveView;
-    [self.tabView addTabViewItem:archiveTab];
+    // Tab item
+    NSTabViewItem *resultsTab = [[NSTabViewItem alloc] initWithIdentifier:@"results"];
+    resultsTab.label = @"Results";
+    resultsTab.view = archiveView;
+    [self.tabView addTabViewItem:resultsTab];
     
     // Inizializza array archivio
     self.archivedResults = [NSMutableArray array];
@@ -249,12 +312,12 @@
 - (NSView *)setupArchiveListView {
     NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 500, 800)];
     
-    NSTextField *label = [NSTextField labelWithString:@"Archived Results"];
+    NSTextField *label = [NSTextField labelWithString:@"Screening Sessions"];
     label.translatesAutoresizingMaskIntoConstraints = NO;
     label.font = [NSFont boldSystemFontOfSize:13];
     [view addSubview:label];
     
-    // OUTLINE VIEW invece di TableView
+    // OUTLINE VIEW
     self.archiveOutlineView = [[NSOutlineView alloc] init];
     self.archiveOutlineView.delegate = self;
     self.archiveOutlineView.dataSource = self;
@@ -263,7 +326,6 @@
     self.archiveOutlineView.indentationPerLevel = 16;
     self.archiveOutlineView.autoresizesOutlineColumn = YES;
     
-    // Colonna principale (con disclosure triangle)
     NSTableColumn *nameCol = [[NSTableColumn alloc] initWithIdentifier:@"name"];
     nameCol.title = @"Date / Model";
     nameCol.width = 250;
@@ -271,14 +333,12 @@
     [self.archiveOutlineView addTableColumn:nameCol];
     [self.archiveOutlineView setOutlineTableColumn:nameCol];
     
-    // Colonna simboli
     NSTableColumn *countCol = [[NSTableColumn alloc] initWithIdentifier:@"count"];
     countCol.title = @"Symbols";
     countCol.width = 70;
     countCol.minWidth = 50;
     [self.archiveOutlineView addTableColumn:countCol];
     
-    // Colonna tempo
     NSTableColumn *timeCol = [[NSTableColumn alloc] initWithIdentifier:@"time"];
     timeCol.title = @"Time";
     timeCol.width = 60;
@@ -305,11 +365,10 @@
 }
 
 
-
 - (NSView *)setupArchiveSymbolsView {
     NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 500, 800)];
     
-    self.archiveHeaderLabel = [NSTextField labelWithString:@"Select an archive entry"];
+    self.archiveHeaderLabel = [NSTextField labelWithString:@"Select a session"];
     self.archiveHeaderLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.archiveHeaderLabel.font = [NSFont boldSystemFontOfSize:13];
     [view addSubview:self.archiveHeaderLabel];
@@ -320,31 +379,49 @@
     self.archiveSymbolsTableView.allowsMultipleSelection = YES;
     self.archiveSymbolsTableView.usesAlternatingRowBackgroundColors = YES;
     
+    // Colonna Select (checkbox)
     NSTableColumn *selectCol = [[NSTableColumn alloc] initWithIdentifier:@"archive_select"];
-       selectCol.title = @"✓";
-       selectCol.width = 30;
-       selectCol.minWidth = 30;
-       selectCol.maxWidth = 30;
-       [self.archiveSymbolsTableView addTableColumn:selectCol];
+    selectCol.title = @"✓";
+    selectCol.width = 30;
+    selectCol.minWidth = 30;
+    selectCol.maxWidth = 30;
+    [self.archiveSymbolsTableView addTableColumn:selectCol];
     
+    // Colonna Symbol (con sorting alfabetico)
     NSTableColumn *symbolCol = [[NSTableColumn alloc] initWithIdentifier:@"archive_symbol"];
     symbolCol.title = @"Symbol";
     symbolCol.width = 100;
+    NSSortDescriptor *symbolSort = [NSSortDescriptor sortDescriptorWithKey:@"symbol"
+                                                                  ascending:YES
+                                                                   selector:@selector(localizedCaseInsensitiveCompare:)];
+    symbolCol.sortDescriptorPrototype = symbolSort;
     [self.archiveSymbolsTableView addTableColumn:symbolCol];
     
+    // Colonna Signal Price (con sorting numerico)
     NSTableColumn *signalPriceCol = [[NSTableColumn alloc] initWithIdentifier:@"signal_price"];
     signalPriceCol.title = @"Signal Price";
     signalPriceCol.width = 100;
+    NSSortDescriptor *signalPriceSort = [NSSortDescriptor sortDescriptorWithKey:@"metadata.signalPrice"
+                                                                       ascending:NO];
+    signalPriceCol.sortDescriptorPrototype = signalPriceSort;
     [self.archiveSymbolsTableView addTableColumn:signalPriceCol];
     
+    // Colonna Current Price (con sorting numerico)
     NSTableColumn *currentPriceCol = [[NSTableColumn alloc] initWithIdentifier:@"current_price"];
     currentPriceCol.title = @"Current Price";
     currentPriceCol.width = 100;
+    NSSortDescriptor *currentPriceSort = [NSSortDescriptor sortDescriptorWithKey:@"metadata.currentPrice"
+                                                                        ascending:NO];
+    currentPriceCol.sortDescriptorPrototype = currentPriceSort;
     [self.archiveSymbolsTableView addTableColumn:currentPriceCol];
     
+    // Colonna Var % (con sorting numerico - migliori performance prima)
     NSTableColumn *varCol = [[NSTableColumn alloc] initWithIdentifier:@"var_percent"];
     varCol.title = @"Var %";
     varCol.width = 80;
+    NSSortDescriptor *varPercentSort = [NSSortDescriptor sortDescriptorWithKey:@"metadata.changePercent"
+                                                                      ascending:NO];
+    varCol.sortDescriptorPrototype = varPercentSort;
     [self.archiveSymbolsTableView addTableColumn:varCol];
     
     self.archiveSymbolsScrollView = [[NSScrollView alloc] init];
@@ -353,6 +430,27 @@
     self.archiveSymbolsScrollView.translatesAutoresizingMaskIntoConstraints = NO;
     [view addSubview:self.archiveSymbolsScrollView];
     
+    // Stats panel
+    self.archiveStatsPanel = [[NSView alloc] init];
+    self.archiveStatsPanel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.archiveStatsPanel.wantsLayer = YES;
+    self.archiveStatsPanel.layer.backgroundColor = [[NSColor colorWithWhite:0.15 alpha:1.0] CGColor];
+    self.archiveStatsPanel.layer.borderColor = [[NSColor colorWithWhite:0.25 alpha:1.0] CGColor];
+    self.archiveStatsPanel.layer.borderWidth = 1.0;
+    [view addSubview:self.archiveStatsPanel];
+    
+    self.statsAllLabel = [NSTextField labelWithString:@"All: --"];
+    self.statsAllLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.statsAllLabel.font = [NSFont systemFontOfSize:11];
+    self.statsAllLabel.textColor = [NSColor colorWithWhite:0.8 alpha:1.0];
+    [self.archiveStatsPanel addSubview:self.statsAllLabel];
+    
+    self.statsSelectedLabel = [NSTextField labelWithString:@"Selected: --"];
+    self.statsSelectedLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.statsSelectedLabel.font = [NSFont systemFontOfSize:11];
+    self.statsSelectedLabel.textColor = [NSColor colorWithWhite:0.8 alpha:1.0];
+    [self.archiveStatsPanel addSubview:self.statsSelectedLabel];
+    
     [NSLayoutConstraint activateConstraints:@[
         [self.archiveHeaderLabel.topAnchor constraintEqualToAnchor:view.topAnchor constant:5],
         [self.archiveHeaderLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:5],
@@ -360,12 +458,22 @@
         [self.archiveSymbolsScrollView.topAnchor constraintEqualToAnchor:self.archiveHeaderLabel.bottomAnchor constant:5],
         [self.archiveSymbolsScrollView.leadingAnchor constraintEqualToAnchor:view.leadingAnchor],
         [self.archiveSymbolsScrollView.trailingAnchor constraintEqualToAnchor:view.trailingAnchor],
-        [self.archiveSymbolsScrollView.bottomAnchor constraintEqualToAnchor:view.bottomAnchor]
+        [self.archiveSymbolsScrollView.bottomAnchor constraintEqualToAnchor:self.archiveStatsPanel.topAnchor],
+        
+        [self.archiveStatsPanel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor],
+        [self.archiveStatsPanel.trailingAnchor constraintEqualToAnchor:view.trailingAnchor],
+        [self.archiveStatsPanel.bottomAnchor constraintEqualToAnchor:view.bottomAnchor],
+        [self.archiveStatsPanel.heightAnchor constraintEqualToConstant:50],
+        
+        [self.statsAllLabel.leadingAnchor constraintEqualToAnchor:self.archiveStatsPanel.leadingAnchor constant:10],
+        [self.statsAllLabel.topAnchor constraintEqualToAnchor:self.archiveStatsPanel.topAnchor constant:5],
+        
+        [self.statsSelectedLabel.leadingAnchor constraintEqualToAnchor:self.archiveStatsPanel.leadingAnchor constant:10],
+        [self.statsSelectedLabel.topAnchor constraintEqualToAnchor:self.statsAllLabel.bottomAnchor constant:3]
     ]];
     
     return view;
 }
-
 
 - (void)setupModelsTab {
     NSView *modelsView = [[NSView alloc] init];
@@ -522,239 +630,7 @@
     return leftView;
 }
 
-- (void)setupResultsTab {
-    NSView *resultsView = [[NSView alloc] init];
-    
-    // Split view per dividere modelli e simboli
-    self.resultsSplitView = [[NSSplitView alloc] init];
-    self.resultsSplitView.translatesAutoresizingMaskIntoConstraints = NO;
-    self.resultsSplitView.vertical = YES;
-    self.resultsSplitView.dividerStyle = NSSplitViewDividerStyleThin;
-    [resultsView addSubview:self.resultsSplitView];
-    
-    // Left side: Models results
-    NSView *modelsResultsView = [self setupResultsModelsView];
-    [self.resultsSplitView addArrangedSubview:modelsResultsView];
-    
-    // Right side: Symbols
-    NSView *symbolsResultsView = [self setupResultsSymbolsView];
-    [self.resultsSplitView addArrangedSubview:symbolsResultsView];
-    
-    // ✅ Inizializza il set per i simboli selezionati
-    
-    // Bottom bar
-    self.exportButton = [NSButton buttonWithTitle:@"Export" target:self action:@selector(exportResults:)];
-    self.exportButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [resultsView addSubview:self.exportButton];
-    
-    // ✅ NUOVO BOTTONE: Generate Report
-    self.generateReportButton = [NSButton buttonWithTitle:@"📝 Generate Report" target:self action:@selector(generateReport:)];
-    self.generateReportButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [resultsView addSubview:self.generateReportButton];
-    
-    // Compact Report to Clipboard
-    self.compactReportButton = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:YES];
-    [self.compactReportButton addItemWithTitle:@"Compact Report"];
-    [self.compactReportButton.menu addItem:[NSMenuItem separatorItem]];
 
-    // Menu items
-    NSMenuItem *allItem = [[NSMenuItem alloc] initWithTitle:@"All Symbols" action:@selector(copyAllSymbols:) keyEquivalent:@""];
-    allItem.target = self;
-    [self.compactReportButton.menu addItem:allItem];
-
-    NSMenuItem *selectedItem = [[NSMenuItem alloc] initWithTitle:@"Selected Only" action:@selector(copySelectedSymbols:) keyEquivalent:@""];
-    selectedItem.target = self;
-    [self.compactReportButton.menu addItem:selectedItem];
-
-    // Aggiungi alla view
-    [resultsView addSubview:self.compactReportButton];
-    self.compactReportButton.translatesAutoresizingMaskIntoConstraints = NO;
-
-   
-
-    self.clearResultsButton = [NSButton buttonWithTitle:@"Clear" target:self action:@selector(clearResults:)];
-    self.clearResultsButton.translatesAutoresizingMaskIntoConstraints = NO;
-    [resultsView addSubview:self.clearResultsButton];
-    
-    self.resultsStatusLabel = [[NSTextField alloc] init];
-    self.resultsStatusLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.resultsStatusLabel.editable = NO;
-    self.resultsStatusLabel.bordered = NO;
-    self.resultsStatusLabel.backgroundColor = [NSColor clearColor];
-    self.resultsStatusLabel.stringValue = @"No results";
-    [resultsView addSubview:self.resultsStatusLabel];
-    
-    
-    
-    // Layout constraints
-    [NSLayoutConstraint activateConstraints:@[
-        [self.resultsSplitView.topAnchor constraintEqualToAnchor:resultsView.topAnchor constant:10],
-        [self.resultsSplitView.leadingAnchor constraintEqualToAnchor:resultsView.leadingAnchor constant:10],
-        [self.resultsSplitView.trailingAnchor constraintEqualToAnchor:resultsView.trailingAnchor constant:-10],
-        [self.resultsSplitView.bottomAnchor constraintEqualToAnchor:self.exportButton.topAnchor constant:-10],
-        
-        [self.exportButton.leadingAnchor constraintEqualToAnchor:resultsView.leadingAnchor constant:10],
-        [self.exportButton.bottomAnchor constraintEqualToAnchor:resultsView.bottomAnchor constant:-10],
-        
-        // ✅ NUOVO CONSTRAINT per Generate Report
-        [self.generateReportButton.leadingAnchor constraintEqualToAnchor:self.exportButton.trailingAnchor constant:10],
-        [self.generateReportButton.centerYAnchor constraintEqualToAnchor:self.exportButton.centerYAnchor],
-        [self.compactReportButton.leadingAnchor constraintEqualToAnchor:self.generateReportButton.trailingAnchor constant:10],
-        [self.compactReportButton.centerYAnchor constraintEqualToAnchor:self.exportButton.centerYAnchor],
-
-        [self.clearResultsButton.leadingAnchor constraintEqualToAnchor:self.compactReportButton.trailingAnchor constant:10],
-        
-        [self.clearResultsButton.centerYAnchor constraintEqualToAnchor:self.exportButton.centerYAnchor],
-
-        
-
-       
-
-        [self.resultsStatusLabel.trailingAnchor constraintEqualToAnchor:resultsView.trailingAnchor constant:-10],
-        [self.resultsStatusLabel.centerYAnchor constraintEqualToAnchor:self.exportButton.centerYAnchor]
-    ]];
-    
-    // Set split position (35% left, 65% right)
-    dispatch_async(dispatch_get_main_queue(), ^{
-        CGFloat totalWidth = self.resultsSplitView.frame.size.width;
-        if (totalWidth > 0) {
-            [self.resultsSplitView setPosition:totalWidth * 0.35 ofDividerAtIndex:0];
-        }
-    });
-    
-    NSTabViewItem *resultsTab = [[NSTabViewItem alloc] initWithIdentifier:@"results"];
-    resultsTab.label = @"Results";
-    resultsTab.view = resultsView;
-    [self.tabView addTabViewItem:resultsTab];
-}
-
-- (NSView *)setupResultsSymbolsView {
-    NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 500, 800)];
-    
-    // Header
-    self.symbolsHeaderLabel = [NSTextField labelWithString:@"Select a model"];
-    self.symbolsHeaderLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    self.symbolsHeaderLabel.font = [NSFont boldSystemFontOfSize:13];
-    [view addSubview:self.symbolsHeaderLabel];
-    
-    // Table view
-    self.resultsSymbolsTableView = [[NSTableView alloc] init];
-    self.resultsSymbolsTableView.delegate = self;
-    self.resultsSymbolsTableView.dataSource = self;
-    self.resultsSymbolsTableView.allowsMultipleSelection = YES;
-    self.resultsSymbolsTableView.usesAlternatingRowBackgroundColors = YES;
-    
-    // ✅ NUOVA COLONNA: Checkbox
-    NSTableColumn *selectCol = [[NSTableColumn alloc] initWithIdentifier:@"select"];
-    selectCol.title = @"✓";
-    selectCol.width = 30;
-    [self.resultsSymbolsTableView addTableColumn:selectCol];
-    
-    // Column
-    NSTableColumn *symbolCol = [[NSTableColumn alloc] initWithIdentifier:@"symbol"];
-    symbolCol.title = @"Symbol";
-    symbolCol.width = 100;
-    
-    NSSortDescriptor *sortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"symbol"
-                                                                      ascending:YES
-                                                                       selector:@selector(localizedCaseInsensitiveCompare:)];
-     symbolCol.sortDescriptorPrototype = sortDescriptor;
-    
-    [self.resultsSymbolsTableView addTableColumn:symbolCol];
-    
-    self.resultsSymbolsScrollView = [[NSScrollView alloc] init];
-    self.resultsSymbolsScrollView.documentView = self.resultsSymbolsTableView;
-    self.resultsSymbolsScrollView.hasVerticalScroller = YES;
-    self.resultsSymbolsScrollView.translatesAutoresizingMaskIntoConstraints = NO;
-    [view addSubview:self.resultsSymbolsScrollView];
-    
-    // Buttons
-    self.sendSelectedButton = [NSButton buttonWithTitle:@"Send Selected to Chain"
-                                                 target:self
-                                                 action:@selector(sendSelectedSymbolsToChain:)];
-    self.sendSelectedButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.sendSelectedButton.enabled = NO;
-    [view addSubview:self.sendSelectedButton];
-    
-    self.sendAllButton = [NSButton buttonWithTitle:@"Send All to Chain"
-                                            target:self
-                                            action:@selector(sendAllSymbolsToChain:)];
-    self.sendAllButton.translatesAutoresizingMaskIntoConstraints = NO;
-    self.sendAllButton.enabled = NO;
-    [view addSubview:self.sendAllButton];
-    
-    // Layout (invariato)
-    [NSLayoutConstraint activateConstraints:@[
-        [self.symbolsHeaderLabel.topAnchor constraintEqualToAnchor:view.topAnchor constant:5],
-        [self.symbolsHeaderLabel.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:5],
-        
-        [self.resultsSymbolsScrollView.topAnchor constraintEqualToAnchor:self.symbolsHeaderLabel.bottomAnchor constant:5],
-        [self.resultsSymbolsScrollView.leadingAnchor constraintEqualToAnchor:view.leadingAnchor],
-        [self.resultsSymbolsScrollView.trailingAnchor constraintEqualToAnchor:view.trailingAnchor],
-        [self.resultsSymbolsScrollView.bottomAnchor constraintEqualToAnchor:self.sendSelectedButton.topAnchor constant:-10],
-        
-        [self.sendSelectedButton.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:5],
-        [self.sendSelectedButton.bottomAnchor constraintEqualToAnchor:view.bottomAnchor constant:-5],
-        
-        [self.sendAllButton.leadingAnchor constraintEqualToAnchor:self.sendSelectedButton.trailingAnchor constant:10],
-        [self.sendAllButton.centerYAnchor constraintEqualToAnchor:self.sendSelectedButton.centerYAnchor]
-    ]];
-    
-    return view;
-}
-
-
-- (NSView *)setupResultsModelsView {
-    NSView *view = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 250, 800)];
-    
-    // Header
-    NSTextField *label = [NSTextField labelWithString:@"Models Results"];
-    label.translatesAutoresizingMaskIntoConstraints = NO;
-    label.font = [NSFont boldSystemFontOfSize:13];
-    [view addSubview:label];
-    
-    // Table view
-    self.resultsModelsTableView = [[NSTableView alloc] init];
-    self.resultsModelsTableView.delegate = self;
-    self.resultsModelsTableView.dataSource = self;
-    self.resultsModelsTableView.allowsMultipleSelection = NO;
-    self.resultsModelsTableView.usesAlternatingRowBackgroundColors = YES;
-    
-    // Columns
-    NSTableColumn *nameCol = [[NSTableColumn alloc] initWithIdentifier:@"model"];
-    nameCol.title = @"Model";
-    nameCol.width = 150;
-    [self.resultsModelsTableView addTableColumn:nameCol];
-    
-    NSTableColumn *countCol = [[NSTableColumn alloc] initWithIdentifier:@"count"];
-    countCol.title = @"Symbols";
-    countCol.width = 70;
-    [self.resultsModelsTableView addTableColumn:countCol];
-    
-    NSTableColumn *timeCol = [[NSTableColumn alloc] initWithIdentifier:@"time"];
-    timeCol.title = @"Time";
-    timeCol.width = 80;
-    [self.resultsModelsTableView addTableColumn:timeCol];
-    
-    self.resultsModelsScrollView = [[NSScrollView alloc] init];
-    self.resultsModelsScrollView.documentView = self.resultsModelsTableView;
-    self.resultsModelsScrollView.hasVerticalScroller = YES;
-    self.resultsModelsScrollView.translatesAutoresizingMaskIntoConstraints = NO;
-    [view addSubview:self.resultsModelsScrollView];
-    
-    // Layout
-    [NSLayoutConstraint activateConstraints:@[
-        [label.topAnchor constraintEqualToAnchor:view.topAnchor constant:5],
-        [label.leadingAnchor constraintEqualToAnchor:view.leadingAnchor constant:5],
-        
-        [self.resultsModelsScrollView.topAnchor constraintEqualToAnchor:label.bottomAnchor constant:5],
-        [self.resultsModelsScrollView.leadingAnchor constraintEqualToAnchor:view.leadingAnchor],
-        [self.resultsModelsScrollView.trailingAnchor constraintEqualToAnchor:view.trailingAnchor],
-        [self.resultsModelsScrollView.bottomAnchor constraintEqualToAnchor:view.bottomAnchor]
-    ]];
-    
-    return view;
-}
 
 
 - (void)setupSettingsTab {
@@ -1207,16 +1083,7 @@
         return self.selectedStep ? self.selectedStep.parameters.count : 0;
     }
     
-    // RESULTS MODELS TABLE
-    if (tableView == self.resultsModelsTableView) {
-        return self.executionResults.count;
-    }
-    
-    //  RESULTS SYMBOLS TABLE
-    if (tableView == self.resultsSymbolsTableView) {
-           return self.currentModelSymbols.count;
-       }
-    
+   
     // ARCHIVE SYMBOLS TABLE
        if (tableView == self.archiveSymbolsTableView) {
            if (self.selectedModelResult) {
@@ -1291,49 +1158,7 @@
         }
     }
     
-    // RESULTS MODELS TABLE
-    else if (tableView == self.resultsModelsTableView) {
-        NSArray *keys = [self.executionResults.allKeys sortedArrayUsingSelector:@selector(compare:)];
-        NSString *modelID = keys[row];
-        ModelResult *result = self.executionResults[modelID];
-        
-        if ([tableColumn.identifier isEqualToString:@"model"]) {
-            textField.stringValue = result.modelName;
-        } else if ([tableColumn.identifier isEqualToString:@"count"]) {
-            textField.stringValue = [NSString stringWithFormat:@"%lu", (unsigned long)result.screenedSymbols.count];
-            textField.alignment = NSTextAlignmentCenter;
-        } else if ([tableColumn.identifier isEqualToString:@"time"]) {
-            textField.stringValue = [NSString stringWithFormat:@"%.2fs", result.totalExecutionTime];
-            textField.alignment = NSTextAlignmentCenter;
-        }
-    }
     
-    // RESULTS SYMBOLS TABLE
-    else if (tableView == self.resultsSymbolsTableView) {
-            if (row < self.currentModelSymbols.count) {
-                ScreenedSymbol *screenedSymbol = self.currentModelSymbols[row];
-                
-                if ([tableColumn.identifier isEqualToString:@"select"]) {
-                    NSButton *checkbox = [[NSButton alloc] init];
-                    [checkbox setButtonType:NSButtonTypeSwitch];
-                    checkbox.title = @"";
-                    checkbox.tag = row;
-                    checkbox.target = self;
-                    checkbox.action = @selector(symbolCheckboxToggled:);
-                    checkbox.state = screenedSymbol.isSelected ?
-                        NSControlStateValueOn : NSControlStateValueOff;
-                    return checkbox;
-                    
-                } else if ([tableColumn.identifier isEqualToString:@"symbol"]) {
-                    NSTextField *textField = [[NSTextField alloc] init];
-                    textField.editable = NO;
-                    textField.bordered = NO;
-                    textField.backgroundColor = [NSColor clearColor];
-                    textField.stringValue = screenedSymbol.symbol;
-                    return textField;
-                }
-            }
-        }
     
     // ARCHIVE SYMBOLS TABLE
     else if (tableView == self.archiveSymbolsTableView) {
@@ -1396,12 +1221,12 @@
         } else if ([tableColumn.identifier isEqualToString:@"current_price"]) {
             if (symbol.metadata[@"currentPrice"]) {
                 textField.stringValue = [NSString stringWithFormat:@"%.2f",
-                    [symbol.metadata[@"currentPrice"] doubleValue]];
+                                         [symbol.metadata[@"currentPrice"] doubleValue]];
             } else {
                 textField.stringValue = @"--";
             }
             
-        } else if ([tableColumn.identifier isEqualToString:@"change_percent"]) {
+        } else if ([tableColumn.identifier isEqualToString:@"var_percent"]) {
             if (symbol.metadata[@"changePercent"]) {
                 double changePercent = [symbol.metadata[@"changePercent"] doubleValue];
                 textField.stringValue = [NSString stringWithFormat:@"%.2f%%", changePercent];
@@ -1532,8 +1357,13 @@
         self.selectedModelResult = nil;
         self.deleteArchiveButton.enabled = NO;
         self.exportArchiveButton.enabled = NO;
+        self.sendSelectedButton.enabled = NO;
+        self.sendAllButton.enabled = NO;
         self.archiveHeaderLabel.stringValue = @"Select a session or model";
         [self.archiveSymbolsTableView reloadData];
+        
+        self.statsAllLabel.stringValue = @"All: --";
+        self.statsSelectedLabel.stringValue = @"Selected: --";
         return;
     }
     
@@ -1546,41 +1376,45 @@
         
         self.deleteArchiveButton.enabled = YES;
         self.exportArchiveButton.enabled = YES;
+        self.sendSelectedButton.enabled = NO;  // Abilitato dopo aver selezionato simboli
+        self.generateReportButton.enabled = YES;     // ✅ NUOVO
+          self.compactReportButton.enabled = YES;      // ✅ NUOVO
+        self.sendAllButton.enabled = YES;
         
         self.archiveHeaderLabel.stringValue = [NSString stringWithFormat:
             @"Session: %@ (%ld symbols)",
             [self.selectedSession formattedExecutionDate],
             (long)self.selectedSession.totalSymbols];
         
-        // ✅ AGGIUNTA: Aggiorna i prezzi correnti per tutti i simboli della sessione
         [self updateCurrentPricesForSession:self.selectedSession];
     }
-    
     // MODEL SELECTED
     else if ([selectedItem isKindOfClass:[ModelResult class]]) {
         self.selectedModelResult = (ModelResult *)selectedItem;
         
-        // Trova la session parent
-        NSInteger parentRow = [outlineView parentForItem:selectedItem];
-        if (parentRow >= 0) {
-            self.selectedSession = [outlineView itemAtRow:parentRow];
+        id parentItem = [outlineView parentForItem:selectedItem];
+        if ([parentItem isKindOfClass:[ExecutionSession class]]) {
+            self.selectedSession = (ExecutionSession *)parentItem;
         }
         
         self.deleteArchiveButton.enabled = YES;
         self.exportArchiveButton.enabled = YES;
+        self.generateReportButton.enabled = YES;     // ✅ NUOVO
+           self.compactReportButton.enabled = YES;      // ✅ NUOVO
+        self.sendSelectedButton.enabled = NO;  // Abilitato dopo aver selezionato simboli
+        self.sendAllButton.enabled = YES;
         
         self.archiveHeaderLabel.stringValue = [NSString stringWithFormat:
             @"Model: %@ (%lu symbols)",
             self.selectedModelResult.modelName,
             (unsigned long)self.selectedModelResult.screenedSymbols.count];
         
-        // ✅ AGGIUNTA: Aggiorna i prezzi correnti solo per i simboli del modello selezionato
         [self updateCurrentPricesForModelResult:self.selectedModelResult];
     }
     
     [self.archiveSymbolsTableView reloadData];
+    [self updateArchiveStatistics];
 }
-
 
 - (void)updateCurrentPricesForSession:(ExecutionSession *)session {
     NSLog(@"💰 Updating current prices for session...");
@@ -1635,6 +1469,7 @@
             
             // Ricarica la tabella
             dispatch_async(dispatch_get_main_queue(), ^{
+                [self updateArchiveStatistics];
                 [self.archiveSymbolsTableView reloadData];
             });
             
@@ -1668,6 +1503,7 @@
             
             // Ricarica la tabella
             dispatch_async(dispatch_get_main_queue(), ^{
+                [self updateArchiveStatistics];
                 [self.archiveSymbolsTableView reloadData];
             });
         }
@@ -1713,135 +1549,75 @@
             [self.parametersTableView reloadData];
         }
     }
-    else if (tableView == self.resultsModelsTableView) {
-             NSInteger selectedRow = self.resultsModelsTableView.selectedRow;
-             
-             if (selectedRow >= 0) {
-                 NSArray *keys = [self.executionResults.allKeys sortedArrayUsingSelector:@selector(compare:)];
-                 NSString *modelID = keys[selectedRow];
-                 ModelResult *result = self.executionResults[modelID];
-                 
-                 self.selectedResultModelID = modelID;
-                 self.currentModelSymbols = result.screenedSymbols;
-                 
-                 // Update UI
-                 self.symbolsHeaderLabel.stringValue = [NSString stringWithFormat:@"Symbols from: %@ (%lu)",
-                                                        result.modelName,
-                                                        (unsigned long)result.screenedSymbols.count];
-
-              [self.resultsSymbolsTableView reloadData];
-              [self.resultsSymbolsTableView deselectAll:nil];
-              
-              // Enable "Send All" button
-              self.sendAllButton.enabled = (result.screenedSymbols.count > 0);
-              self.sendSelectedButton.enabled = NO;
-              
-          } else {
-              [self clearSymbolsSelection];
-          }
-      }
-      
-      // RESULTS SYMBOLS TABLE
-    else if (tableView == self.resultsSymbolsTableView) {
-           NSInteger selectedRow = self.resultsSymbolsTableView.selectedRow;
-           NSIndexSet *selectedRows = self.resultsSymbolsTableView.selectedRowIndexes;
-           
-           if (selectedRow >= 0 && selectedRow < self.currentModelSymbols.count) {
-               ScreenedSymbol *screenedSymbol = self.currentModelSymbols[selectedRow];
-                          NSString *symbol = screenedSymbol.symbol;
-               // ✅ INVIO IMMEDIATO ALLA CHAIN (usa simbolo pulito senza .us)
-               [self sendSymbolToChain:symbol];
-               
-               // Feedback
-               [self showChainFeedback:[NSString stringWithFormat:@"Sent %@ to chain", symbol]];
-               
-               NSLog(@"🔗 Sent symbol to chain: %@", symbol);
-           }
-          
-          // Update button state
-          self.sendSelectedButton.enabled = (selectedRows.count > 0);
-          
-          // Update button title with count
-          if (selectedRows.count > 0) {
-              self.sendSelectedButton.title = [NSString stringWithFormat:@"Send Selected to Chain (%lu)",
-                                               (unsigned long)selectedRows.count];
-          } else {
-              self.sendSelectedButton.title = @"Send Selected to Chain";
-          }
-      }
+    
+    // ✅ ARCHIVE SYMBOLS TABLE - MODIFICATO PER USARE CACHE
     else if (tableView == self.archiveSymbolsTableView) {
-            NSInteger selectedRow = self.archiveSymbolsTableView.selectedRow;
+        NSInteger selectedRow = self.archiveSymbolsTableView.selectedRow;
+        
+        if (selectedRow >= 0 && self.chainActive) {
+            ScreenedSymbol *symbol = nil;
             
-            if (selectedRow >= 0) {
-                ScreenedSymbol *symbol = nil;
-                
-                if (self.selectedModelResult) {
-                    // Simboli del modello selezionato
-                    if (selectedRow < self.selectedModelResult.screenedSymbols.count) {
-                        symbol = self.selectedModelResult.screenedSymbols[selectedRow];
-                    }
-                } else if (self.selectedSession) {
-                    // Simboli di tutti i modelli della sessione
-                    NSInteger currentIndex = 0;
-                    for (ModelResult *result in self.selectedSession.modelResults) {
-                        if (selectedRow < currentIndex + result.screenedSymbols.count) {
-                            symbol = result.screenedSymbols[selectedRow - currentIndex];
-                            break;
-                        }
-                        currentIndex += result.screenedSymbols.count;
-                    }
+            if (self.selectedModelResult) {
+                // Simboli del modello selezionato
+                if (selectedRow < self.selectedModelResult.screenedSymbols.count) {
+                    symbol = self.selectedModelResult.screenedSymbols[selectedRow];
                 }
-                
-                if (symbol) {
-                    // ✅ INVIO AUTOMATICO ALLA CHAIN
-                    [self sendSymbolToChain:symbol.symbol];
-                    [self showChainFeedback:[NSString stringWithFormat:@"Sent %@ to chain", symbol.symbol]];
-                    NSLog(@"🔗 Sent archive symbol to chain: %@", symbol.symbol);
+            } else if (self.selectedSession) {
+                // Simboli di tutti i modelli della sessione
+                NSInteger currentIndex = 0;
+                for (ModelResult *result in self.selectedSession.modelResults) {
+                    if (selectedRow < currentIndex + result.screenedSymbols.count) {
+                        symbol = result.screenedSymbols[selectedRow - currentIndex];
+                        break;
+                    }
+                    currentIndex += result.screenedSymbols.count;
                 }
             }
-        }
-}
-
-- (void)sendSelectedSymbolsToChain:(id)sender {
-    NSMutableArray<NSString *> *selectedSymbols = [NSMutableArray array];
-    
-    for (ScreenedSymbol *screenedSymbol in self.currentModelSymbols) {
-        if (screenedSymbol.isSelected) {
-            [selectedSymbols addObject:screenedSymbol.symbol];
+            
+            if (symbol) {
+                // ✅ INVIO CON DATI STORICI (usa cache se disponibile)
+                [self sendSingleSymbolWithData:symbol.symbol];
+                [self showChainFeedback:[NSString stringWithFormat:@"📊 Sent %@ with data", symbol.symbol]];
+                NSLog(@"🔗 Sent archive symbol WITH DATA to chain: %@", symbol.symbol);
+            }
         }
     }
-    
-    if (selectedSymbols.count == 0) return;
-    
-    [self sendSymbolsToChain:selectedSymbols];
-    
-    [self showChainFeedback:[NSString stringWithFormat:@"Sent %lu symbols to chain",
-                           (unsigned long)selectedSymbols.count]];
 }
-
-
-- (void)sendAllSymbolsToChain:(id)sender {
-    if (self.currentModelSymbols.count == 0) return;
+- (void)sendSelectedSymbols:(id)sender {
+    NSArray<ScreenedSymbol *> *selectedSymbols = [self getSelectedArchiveSymbols];
     
-    NSMutableArray<NSString *> *symbolStrings = [NSMutableArray array];
-    for (ScreenedSymbol *screenedSymbol in self.currentModelSymbols) {
-        [symbolStrings addObject:screenedSymbol.symbol];
+    if (selectedSymbols.count == 0) {
+        NSLog(@"⚠️ No symbols selected");
+        return;
     }
     
-   
-    [self sendSymbolsToChain:symbolStrings];
+    NSMutableArray<NSString *> *symbolNames = [NSMutableArray array];
+    for (ScreenedSymbol *symbol in selectedSymbols) {
+        [symbolNames addObject:symbol.symbol];
+    }
     
-    [self showChainFeedback:[NSString stringWithFormat:@"Sent all %lu symbols to chain",
-                           (unsigned long)symbolStrings.count]];
+    NSLog(@"📤 Sending %ld selected symbols with historical data...", (long)symbolNames.count);
+    [self loadHistoricalDataAndSendToChain:symbolNames];
 }
-- (void)clearSymbolsSelection {
-    self.selectedResultModelID = nil;
-    self.currentModelSymbols = nil;
-    self.symbolsHeaderLabel.stringValue = @"Select a model";
-    [self.resultsSymbolsTableView reloadData];
-    self.sendSelectedButton.enabled = NO;
-    self.sendAllButton.enabled = NO;
+
+- (void)sendAllSymbols:(id)sender {
+    NSArray<ScreenedSymbol *> *allSymbols = [self getAllArchiveSymbols];
+    
+    if (allSymbols.count == 0) {
+        NSLog(@"⚠️ No symbols available");
+        return;
+    }
+    
+    NSMutableArray<NSString *> *symbolNames = [NSMutableArray array];
+    for (ScreenedSymbol *symbol in allSymbols) {
+        [symbolNames addObject:symbol.symbol];
+    }
+    
+    NSLog(@"📤 Sending %ld symbols with historical data...", (long)symbolNames.count);
+    [self loadHistoricalDataAndSendToChain:symbolNames];
 }
+
+
 
 - (void)updateSymbolSelectionButtons {
     NSInteger selectedCount = 0;
@@ -1863,7 +1639,6 @@
     for (ScreenedSymbol *symbol in self.currentModelSymbols) {
         symbol.isSelected = selected;
     }
-    [self.resultsSymbolsTableView reloadData];
     [self updateSymbolSelectionButtons];
 }
 
@@ -2201,12 +1976,6 @@
     NSLog(@"TODO: Export results");
 }
 
-- (void)clearResults:(id)sender {
-    [self.executionResults removeAllObjects];
-    [self.resultsModelsTableView reloadData];
-    [self clearSymbolsSelection];
-    self.resultsStatusLabel.stringValue = @"No results";
-}
 
 
 #pragma mark - ScreenerBatchRunnerDelegate
@@ -2220,6 +1989,9 @@
 }
 
 - (void)batchRunner:(ScreenerBatchRunner *)runner didFinishLoadingData:(NSDictionary *)cache {
+    self.lastScreeningCache = cache;
+      self.lastScreeningDate = self.dataManager.targetDate;
+    
     self.resultsStatusLabel.stringValue = [NSString stringWithFormat:@"Data loaded: %lu symbols", (unsigned long)cache.count];
 }
 
@@ -2229,30 +2001,37 @@
 
 - (void)batchRunner:(ScreenerBatchRunner *)runner didFinishModel:(ModelResult *)result {
     self.executionResults[result.modelID] = result;
-    [self.resultsModelsTableView reloadData];
     self.resultsStatusLabel.stringValue = [NSString stringWithFormat:@"Completed: %@ (%lu symbols)",
                                             result.modelName,
                                             (unsigned long)result.screenedSymbols.count];
 
 }
 
-- (void)batchRunner:(ScreenerBatchRunner *)runner didFinishWithResults:(NSDictionary<NSString *,ModelResult *> *)results {
-    NSInteger totalSymbols = 0;
-     for (ModelResult *result in results.allValues) {
-         totalSymbols += result.screenedSymbols.count;
-     }
+- (void)batchRunner:(ScreenerBatchRunner *)runner
+  didFinishWithResults:(NSDictionary<NSString *, ModelResult *> *)results {
     
-    self.resultsStatusLabel.stringValue = [NSString stringWithFormat:@"Complete: %lu models, %ld symbols",
-                                           (unsigned long)results.count, (long)totalSymbols];
-    
-    [self.tabView selectTabViewItemAtIndex:1];
-    
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Execution Complete";
-    alert.informativeText = [NSString stringWithFormat:@"Executed %lu models.\nTotal symbols: %ld",
-                            (unsigned long)results.count, (long)totalSymbols];
-    [alert runModal];
-    [self saveCurrentResultsToArchive];  // ✅ Salva in archivio
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [self.progressIndicator stopAnimation:nil];
+        
+        self.executionResults = [results mutableCopy];
+        
+        NSLog(@"Batch execution complete: %lu models", (unsigned long)results.count);
+        
+        // Salva nell'archivio
+        [self saveCurrentResultsToArchive];
+        
+        // ✅ SWITCH AL TAB RESULTS (ex-Archive, ora è il secondo tab)
+        [self.tabView selectTabViewItemAtIndex:1];
+        
+        // ✅ SELEZIONA AUTOMATICAMENTE L'ULTIMA SESSIONE (la più recente)
+        if (self.archivedSessions.count > 0) {
+            [self.archiveOutlineView selectRowIndexes:[NSIndexSet indexSetWithIndex:0]
+                                  byExtendingSelection:NO];
+            
+            // Espandi automaticamente per mostrare i modelli
+            [self.archiveOutlineView expandItem:self.archivedSessions.firstObject];
+        }
+    });
 }
 
 - (void)batchRunner:(ScreenerBatchRunner *)runner didFailWithError:(NSError *)error {
@@ -2298,12 +2077,7 @@
         return selected[0];
     } else if (selected.count > 1) {
         return [NSString stringWithFormat:@"Selection (%lu)", (unsigned long)selected.count];
-    } else if (self.selectedResultModelID) {
-           ModelResult *result = self.executionResults[self.selectedResultModelID];
-           return [NSString stringWithFormat:@"%@ (%lu symbols)",
-                   result.modelName,
-                   (unsigned long)result.screenedSymbols.count];
-       }
+    }
     
     return @"Stooq Screener";
 }
@@ -2314,18 +2088,15 @@
 
 #pragma mark - Symbol Selection
 
-- (void)archiveSymbolCheckboxChanged:(NSButton *)checkbox {
-    NSInteger row = checkbox.tag;
+- (void)archiveSymbolCheckboxChanged:(NSButton *)sender {
+    NSInteger row = sender.tag;
     
     ScreenedSymbol *symbol = nil;
-    
     if (self.selectedModelResult) {
-        // Simboli del modello selezionato
         if (row < self.selectedModelResult.screenedSymbols.count) {
             symbol = self.selectedModelResult.screenedSymbols[row];
         }
     } else if (self.selectedSession) {
-        // Simboli di tutti i modelli della sessione
         NSInteger currentIndex = 0;
         for (ModelResult *result in self.selectedSession.modelResults) {
             if (row < currentIndex + result.screenedSymbols.count) {
@@ -2336,20 +2107,17 @@
         }
     }
     
-    if (!symbol) return;
-    
-    // Toggle selection
-    symbol.isSelected = (checkbox.state == NSControlStateValueOn);
-    
-    NSLog(@"📋 Archive symbol %@ %@",
-          symbol.isSelected ? @"✅ Selected" : @"❌ Deselected",
-          symbol.symbol);
-    
-    // ⚠️ NOTA: Se vuoi aggiornare i pulsanti di azione,
-    // implementa un metodo simile a updateSymbolSelectionButtons
-    // [self updateArchiveSymbolSelectionButtons];
+    if (symbol) {
+        symbol.isSelected = (sender.state == NSControlStateValueOn);
+        
+        // Aggiorna statistiche
+        [self updateArchiveStatistics];
+        
+        // ✅ NUOVO: Abilita/disabilita bottone Send Selected
+        NSArray<ScreenedSymbol *> *selected = [self getSelectedArchiveSymbols];
+        self.sendSelectedButton.enabled = (selected.count > 0);
+    }
 }
-
 - (void)symbolCheckboxToggled:(NSButton *)sender {
     NSInteger row = sender.tag;
     
@@ -2367,83 +2135,7 @@
     [self updateSymbolSelectionButtons];
 }
 
-- (void)generateReport:(id)sender {
-    // Conta quanti simboli sono selezionati in totale
-    NSInteger totalSelected = 0;
-    NSMutableDictionary<NSString *, NSMutableArray<ScreenedSymbol *> *> *selectedByModel =
-        [NSMutableDictionary dictionary];
-    
-    for (NSString *modelID in self.executionResults.allKeys) {
-        ModelResult *result = self.executionResults[modelID];
-        
-        NSMutableArray<ScreenedSymbol *> *selectedSymbols = [NSMutableArray array];
-        for (ScreenedSymbol *symbol in result.screenedSymbols) {
-            if (symbol.isSelected) {
-                [selectedSymbols addObject:symbol];
-                totalSelected++;
-            }
-        }
-        
-        if (selectedSymbols.count > 0) {
-            selectedByModel[modelID] = selectedSymbols;
-        }
-    }
-    
-    // Chiedi dove salvare il report
-    NSSavePanel *savePanel = [NSSavePanel savePanel];
-    savePanel.allowedFileTypes = @[@"txt"];
-    
-    NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
-    dateFormatter.dateFormat = @"yyyy-MM-dd_HHmm";
-    NSString *dateString = [dateFormatter stringFromDate:[NSDate date]];
-    
-    savePanel.nameFieldStringValue = [NSString stringWithFormat:@"Screener_Report_%@.txt", dateString];
-    
-    // ✅ NUOVO: Aggiungi accessory view con opzioni
-    NSView *accessoryView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 400, 80)];
-    
-    // Checkbox: Include all symbols
-    NSButton *includeAllCheckbox = [[NSButton alloc] initWithFrame:NSMakeRect(20, 50, 360, 25)];
-    [includeAllCheckbox setButtonType:NSButtonTypeSwitch];
-    includeAllCheckbox.title = @"Include all symbols (not just selected)";
-    includeAllCheckbox.state = NSControlStateValueOff;
-    includeAllCheckbox.tag = 100;
-    [accessoryView addSubview:includeAllCheckbox];
-    
-    // Checkbox: Include parameters
-    NSButton *includeParamsCheckbox = [[NSButton alloc] initWithFrame:NSMakeRect(20, 25, 360, 25)];
-    [includeParamsCheckbox setButtonType:NSButtonTypeSwitch];
-    includeParamsCheckbox.title = @"Include model parameters";
-    includeParamsCheckbox.state = NSControlStateValueOff;
-    includeParamsCheckbox.tag = 101;
-    [accessoryView addSubview:includeParamsCheckbox];
-    
-    // Info label
-    NSTextField *infoLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 0, 360, 20)];
-    infoLabel.stringValue = [NSString stringWithFormat:@"Currently selected: %ld symbols across %ld models",
-                            (long)totalSelected,
-                            (long)selectedByModel.count];
-    infoLabel.editable = NO;
-    infoLabel.bordered = NO;
-    infoLabel.backgroundColor = [NSColor clearColor];
-    infoLabel.textColor = [NSColor secondaryLabelColor];
-    infoLabel.font = [NSFont systemFontOfSize:11];
-    [accessoryView addSubview:infoLabel];
-    
-    savePanel.accessoryView = accessoryView;
-    
-    [savePanel beginWithCompletionHandler:^(NSModalResponse result) {
-        if (result == NSModalResponseOK) {
-            BOOL includeAll = (includeAllCheckbox.state == NSControlStateValueOn);
-            BOOL includeParams = (includeParamsCheckbox.state == NSControlStateValueOn);
-            
-            [self saveReportToURL:savePanel.URL
-                 withSelectedSymbols:selectedByModel
-                       includeAllSymbols:includeAll
-                      includeParameters:includeParams];
-        }
-    }];
-}
+
 
 
 - (void)saveReportToURL:(NSURL *)url
@@ -3241,60 +2933,38 @@
 }
 
 - (void)tableView:(NSTableView *)tableView sortDescriptorsDidChange:(NSArray<NSSortDescriptor *> *)oldDescriptors {
+    if (tableView != self.archiveSymbolsTableView) return;
     
-    // RESULTS SYMBOLS TABLE
-    if (tableView == self.resultsSymbolsTableView) {
-        if (!self.currentModelSymbols || self.currentModelSymbols.count == 0) return;
-        
-        // Ordina l'array usando i sort descriptors
-        self.currentModelSymbols = [self.currentModelSymbols sortedArrayUsingDescriptors:tableView.sortDescriptors];
-        
-        // Ricarica la tabella
-        [self.resultsSymbolsTableView reloadData];
-        
-        NSLog(@"📊 Symbols sorted: %@", tableView.sortDescriptors.firstObject);
+    NSArray<ScreenedSymbol *> *symbolsToSort;
+    
+    if (self.selectedModelResult) {
+        symbolsToSort = self.selectedModelResult.screenedSymbols;
+    } else if (self.selectedSession) {
+        NSMutableArray *allSymbols = [NSMutableArray array];
+        for (ModelResult *result in self.selectedSession.modelResults) {
+            [allSymbols addObjectsFromArray:result.screenedSymbols];
+        }
+        symbolsToSort = allSymbols;
+    } else {
+        return;
     }
+    
+    // Applica il sorting
+    NSArray<ScreenedSymbol *> *sortedSymbols = [symbolsToSort sortedArrayUsingDescriptors:tableView.sortDescriptors];
+    
+    // Aggiorna i dati
+    if (self.selectedModelResult) {
+        self.selectedModelResult.screenedSymbols = sortedSymbols;
+    }
+    // Se è una sessione, non possiamo modificare l'array originale facilmente,
+    // quindi ricarica semplicemente la tabella che userà i sort descriptors
+    
+    [self.archiveSymbolsTableView reloadData];
 }
 
 
 #pragma mark - Compact Report to Clipboard
     
-- (void)copyAllSymbols:(id)sender {
-    [self copyCompactReportToClipboardWithSelectedOnly:NO];
-}
-
-- (void)copySelectedSymbols:(id)sender {
-    [self copyCompactReportToClipboardWithSelectedOnly:YES];
-}
-    
-- (void)copyCompactReportToClipboardWithSelectedOnly:(BOOL)onlySelectedSymbols {
-    NSMutableString *reportString = [NSMutableString string];
-
-    // Itera tutti i modelli
-    for (NSString *modelID in self.executionResults) {
-        ModelResult *result = self.executionResults[modelID];
-        NSMutableArray<NSString *> *symbolsToInclude = [NSMutableArray array];
-
-        for (ScreenedSymbol *symbol in result.screenedSymbols) {
-            if (!onlySelectedSymbols || symbol.isSelected) {
-                [symbolsToInclude addObject:symbol.symbol];
-            }
-        }
-
-        // Salta se non ci sono simboli da includere
-        if (symbolsToInclude.count == 0) continue;
-
-        NSString *line = [NSString stringWithFormat:@"%@: %@\n", result.modelName, [symbolsToInclude componentsJoinedByString:@","]];
-        [reportString appendString:line];
-    }
-
-    // Copia negli appunti
-    NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
-    [pasteboard clearContents];
-    [pasteboard setString:reportString forType:NSPasteboardTypeString];
-
-    NSLog(@"📋 Compact report copied to clipboard (%@ symbols)", onlySelectedSymbols ? @"selected only" : @"all");
-}
 
 - (void)targetDateChanged:(NSDatePicker *)sender {
     NSLog(@"📅 Target date changed to: %@", sender.dateValue);
@@ -3320,7 +2990,258 @@
     }];
 }
 
+#pragma mark - Send to Chain with Historical Data
 
+
+
+- (void)loadHistoricalDataAndSendToChain:(NSArray<NSString *> *)symbols {
+    if (!self.dataManager) {
+        NSLog(@"❌ No data manager available");
+        
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"Cannot Load Data";
+        alert.informativeText = @"Data manager not initialized. Please check Settings tab.";
+        alert.alertStyle = NSAlertStyleWarning;
+        [alert runModal];
+        return;
+    }
+    
+    // ✅ USA LA DATA DELLA SESSION SELEZIONATA (quella usata per lo screening)
+    NSDate *targetDate = self.selectedSession.executionDate;
+    
+    if (!targetDate) {
+        // Fallback se non c'è session selezionata
+        targetDate = [self.dataManager expectedLastCloseDate];
+        NSLog(@"⚠️ No session selected, using expected last close date");
+    }
+    
+    // ✅ VERIFICA SE LA CACHE È VALIDA
+    BOOL cacheIsValid = NO;
+    
+    if (self.lastScreeningCache && self.lastScreeningDate) {
+        // Verifica se è la cache della session corrente O dello screening recente con stessa data
+        BOOL isCorrectSession = NO;
+        
+        if (self.selectedSession) {
+            // Stiamo lavorando su una session dall'archivio
+            isCorrectSession = (self.cachedSessionID != nil &&
+                               [self.cachedSessionID isEqualToString:self.selectedSession.sessionID]);
+        } else {
+            // Stiamo lavorando su screening appena fatto
+            isCorrectSession = (self.cachedSessionID == nil &&
+                               [self.lastScreeningDate isEqualToDate:targetDate]);
+        }
+        
+        if (isCorrectSession) {
+            // Verifica che la cache contenga i simboli richiesti
+            NSInteger foundCount = 0;
+            for (NSString *symbol in symbols) {
+                if (self.lastScreeningCache[symbol]) {
+                    foundCount++;
+                }
+            }
+            
+            if (foundCount == symbols.count) {
+                cacheIsValid = YES;
+                NSLog(@"✅ Cache HIT! Using cached data for %ld symbols", (long)symbols.count);
+            } else {
+                NSLog(@"⚠️ Cache PARTIAL: only %ld/%ld symbols available",
+                      (long)foundCount, (long)symbols.count);
+            }
+        } else {
+            if (self.selectedSession) {
+                NSLog(@"⚠️ Cache session mismatch: cached=%@ current=%@",
+                      self.cachedSessionID ?: @"(recent screening)",
+                      self.selectedSession.sessionID);
+            } else {
+                NSLog(@"⚠️ Cache date mismatch or session changed");
+            }
+        }
+    } else {
+        NSLog(@"⚠️ No cache available");
+    }
+    
+    // ✅ SE LA CACHE È VALIDA, USA QUELLA
+    if (cacheIsValid) {
+        NSLog(@"🚀 Using cached data - instant send!");
+        
+        // Filtra solo i simboli richiesti dalla cache
+        NSMutableDictionary *filteredCache = [NSMutableDictionary dictionary];
+        for (NSString *symbol in symbols) {
+            filteredCache[symbol] = self.lastScreeningCache[symbol];
+        }
+        
+        [self sendSymbolsWithDataToChain:symbols historicalData:filteredCache];
+        return;
+    }
+    
+    // ✅ NESSUNA CACHE VALIDA - RICARICA I DATI
+    NSLog(@"📊 No valid cache - reloading data from disk...");
+    
+    // Calcola minBars necessari
+    NSInteger minBars = 100;  // Default
+    
+    if (self.selectedModelResult) {
+        minBars = [self calculateMinBarsForModelResult:self.selectedModelResult];
+    } else if (self.selectedSession) {
+        minBars = [self calculateMinBarsForSession:self.selectedSession];
+    }
+    
+    // ✅ IMPOSTA LA TARGET DATE nel dataManager
+    self.dataManager.targetDate = targetDate;
+    
+    NSLog(@"📊 Loading %ld bars for %ld symbols from date: %@",
+          (long)minBars,
+          (long)symbols.count,
+          [NSDateFormatter localizedStringFromDate:targetDate
+                                         dateStyle:NSDateFormatterShortStyle
+                                         timeStyle:NSDateFormatterNoStyle]);
+    
+    // ✅ Ricarica i dati storici
+    [self.dataManager loadDataForSymbols:symbols
+                                 minBars:minBars
+                              completion:^(NSDictionary<NSString *, NSArray<HistoricalBarModel *> *> *cache, NSError *error) {
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (error || !cache || cache.count == 0) {
+                NSLog(@"❌ Failed to load historical data: %@", error ?: @"No data");
+                
+                NSAlert *alert = [[NSAlert alloc] init];
+                alert.messageText = @"Failed to Load Data";
+                alert.informativeText = error ? error.localizedDescription : @"No data available";
+                alert.alertStyle = NSAlertStyleCritical;
+                [alert runModal];
+                return;
+            }
+            
+            NSLog(@"✅ Loaded historical data for %lu symbols", (unsigned long)cache.count);
+            
+            // ✅✅✅ SALVA LA CACHE
+            if (self.selectedSession) {
+                // Merge con cache esistente se è la stessa session
+                if (self.lastScreeningCache &&
+                    self.cachedSessionID &&
+                    [self.cachedSessionID isEqualToString:self.selectedSession.sessionID]) {
+                    // Merge i nuovi dati
+                    NSMutableDictionary *mergedCache = [self.lastScreeningCache mutableCopy];
+                    [mergedCache addEntriesFromDictionary:cache];
+                    self.lastScreeningCache = [mergedCache copy];
+                    
+                    NSLog(@"💾 Merged cache for session %@ (now %lu symbols)",
+                          self.selectedSession.sessionID,
+                          (unsigned long)self.lastScreeningCache.count);
+                } else {
+                    // Nuova session - sostituisci la cache
+                    self.lastScreeningCache = cache;
+                    self.lastScreeningDate = targetDate;
+                    self.cachedSessionID = self.selectedSession.sessionID;
+                    
+                    NSLog(@"💾 Cached data for session %@ (%lu symbols)",
+                          self.selectedSession.sessionID,
+                          (unsigned long)cache.count);
+                }
+            } else {
+                // Screening recente - salva con cachedSessionID = nil
+                self.lastScreeningCache = cache;
+                self.lastScreeningDate = targetDate;
+                self.cachedSessionID = nil;  // ✅ nil = screening recente
+                
+                NSLog(@"💾 Cached screening data for date %@ (%lu symbols)",
+                      [NSDateFormatter localizedStringFromDate:targetDate
+                                                     dateStyle:NSDateFormatterShortStyle
+                                                     timeStyle:NSDateFormatterNoStyle],
+                      (unsigned long)cache.count);
+            }
+            
+            // ✅ INVIA tramite chain
+            [self sendSymbolsWithDataToChain:symbols historicalData:cache];
+        });
+    }];
+}
+
+#pragma mark - Send Single Symbol with Historical Data
+
+#pragma mark - Send Single Symbol with Historical Data
+
+- (void)sendSingleSymbolWithData:(NSString *)symbolString {
+    if (!symbolString || symbolString.length == 0) {
+        NSLog(@"⚠️ No symbol to send");
+        return;
+    }
+    
+    // ✅ Riutilizza il metodo esistente che gestisce già la cache!
+    [self loadHistoricalDataAndSendToChain:@[symbolString]];
+}
+- (void)sendSymbolsWithDataToChain:(NSArray<NSString *> *)symbols
+                    historicalData:(NSDictionary<NSString *, NSArray<HistoricalBarModel *> *> *)historicalData {
+    
+    if (!self.chainActive) {
+        NSLog(@"⚠️ Chain not active");
+        return;
+    }
+    
+    // ✅ INVIA OGNI SIMBOLO SEPARATAMENTE come fa ChartPatternLibrary
+    for (NSString *symbol in symbols) {
+        NSArray<HistoricalBarModel *> *bars = historicalData[symbol];
+        if (!bars || bars.count == 0) continue;
+        
+        // ✅ USA LA STESSA STRUTTURA DI ChartPatternLibraryWidget
+        // Crea un payload che simula un pattern con i dati screener
+        NSDictionary *screenerData = @{
+            @"symbol": symbol,
+            @"historicalBars": bars,  // ✅ Stessa chiave usata da SavedChartData
+            @"timeframe": @(1000),
+            @"source": @"StooqScreener",
+            @"patternType": @"Screener Result"  // Identificativo per debugging
+        };
+        
+        // ✅ INVIA con action personalizzata (non loadChartPattern)
+        [self sendChainAction:@"loadScreenerData" withData:screenerData];
+        
+        NSLog(@"🔗 Sent %@ with %lu bars to chain", symbol, (unsigned long)bars.count);
+    }
+    
+    // Feedback visivo
+    [self showChainFeedback:[NSString stringWithFormat:@"📊 Sent %ld symbols with data", (long)symbols.count]];
+}
+
+#pragma mark - Calculate MinBars
+
+- (NSInteger)calculateMinBarsForModelResult:(ModelResult *)modelResult {
+    NSInteger maxBars = 60;
+    
+    if (!modelResult.steps || modelResult.steps.count == 0) {
+        return maxBars;
+    }
+    
+    ScreenerRegistry *registry = [ScreenerRegistry sharedRegistry];
+    
+    for (ScreenerStep *step in modelResult.steps) {
+        BaseScreener *screener = [registry screenerWithID:step.screenerID];
+        if (screener) {
+            screener.parameters = step.parameters;
+            NSInteger required = screener.minBarsRequired;
+            if (required > maxBars) {
+                maxBars = required;
+            }
+        }
+    }
+    
+    return maxBars;
+}
+
+- (NSInteger)calculateMinBarsForSession:(ExecutionSession *)session {
+    NSInteger maxBars = 60;
+    
+    for (ModelResult *result in session.modelResults) {
+        NSInteger resultBars = [self calculateMinBarsForModelResult:result];
+        if (resultBars > maxBars) {
+            maxBars = resultBars;
+        }
+    }
+    
+    return maxBars;
+}
 
 /*
 #pragma mark - per cancellare archivio
@@ -3362,6 +3283,307 @@
     NSLog(@"✅ Archive cleanup complete - all data deleted");
 }
  */
+#pragma mark - calcolo stats archivio
+
+- (void)updateArchiveStatistics {
+    NSArray<ScreenedSymbol *> *allSymbols = [self getAllArchiveSymbols];
+    NSArray<ScreenedSymbol *> *selectedSymbols = [self getSelectedArchiveSymbols];
+    
+    // Calcola per TUTTI
+    NSString *allStats = [self calculateStatisticsForSymbols:allSymbols prefix:@"All"];
+    self.statsAllLabel.stringValue = allStats;
+    
+    // Calcola per SELECTED
+    NSString *selectedStats = [self calculateStatisticsForSymbols:selectedSymbols prefix:@"Selected"];
+    self.statsSelectedLabel.stringValue = selectedStats;
+}
+
+/// Ottiene TUTTI i simboli dal modello corrente (archiveSymbolsTableView)
+- (NSArray<ScreenedSymbol *> *)getAllArchiveSymbols {
+    if (self.selectedModelResult) {
+        // ✅ TUTTI i simboli del MODELLO selezionato
+        return self.selectedModelResult.screenedSymbols;
+    } else if (self.selectedSession) {
+        // ⚠️ Se è selezionata una SESSION intera, prendi da TUTTI i modelli
+        NSMutableArray<ScreenedSymbol *> *allSymbols = [NSMutableArray array];
+        for (ModelResult *result in self.selectedSession.modelResults) {
+            [allSymbols addObjectsFromArray:result.screenedSymbols];
+        }
+        return [allSymbols copy];
+    }
+    
+    return @[];
+}
+
+/// Ottiene i simboli SELEZIONATI dal modello corrente (archiveSymbolsTableView)
+- (NSArray<ScreenedSymbol *> *)getSelectedArchiveSymbols {
+    NSMutableArray<ScreenedSymbol *> *selected = [NSMutableArray array];
+    
+    if (self.selectedModelResult) {
+        // ✅ Simboli del MODELLO selezionato
+        for (ScreenedSymbol *symbol in self.selectedModelResult.screenedSymbols) {
+            if (symbol.isSelected) {
+                [selected addObject:symbol];
+            }
+        }
+    } else if (self.selectedSession) {
+        // ⚠️ Se è selezionata una SESSION intera, prendi da TUTTI i modelli
+        for (ModelResult *result in self.selectedSession.modelResults) {
+            for (ScreenedSymbol *symbol in result.screenedSymbols) {
+                if (symbol.isSelected) {
+                    [selected addObject:symbol];
+                }
+            }
+        }
+    }
+    
+    return [selected copy];
+}
+
+
+- (NSString *)calculateStatisticsForSymbols:(NSArray<ScreenedSymbol *> *)symbols prefix:(NSString *)prefix {
+    if (symbols.count == 0) {
+        return [NSString stringWithFormat:@"%@: --", prefix];
+    }
+    
+    // 1. Count
+    NSInteger count = symbols.count;
+    
+    // 2. Days count
+    NSInteger days = 0;
+    if (self.selectedSession || self.selectedModelResult) {
+        NSDate *targetDate = self.selectedSession ?
+            self.selectedSession.executionDate :
+            self.selectedModelResult.executionTime;
+        
+        NSDate *today = [NSDate date];
+        days = [[NSCalendar currentCalendar]
+            components:NSCalendarUnitDay
+            fromDate:targetDate
+            toDate:today
+            options:0].day;
+    }
+    
+    // 3. Win rate + Avg % per trade
+    NSInteger winners = 0;
+    NSInteger losers = 0;
+    double totalChange = 0.0;
+    NSInteger validCount = 0;
+    
+    for (ScreenedSymbol *symbol in symbols) {
+        NSNumber *changePercent = [symbol metadataValueForKey:@"changePercent"];
+        if (changePercent) {
+            double change = [changePercent doubleValue];
+            totalChange += change;
+            validCount++;
+            
+            if (change >= 0) winners++;
+            else losers++;
+        }
+    }
+    
+    double winRate = (winners + losers > 0) ?
+        (winners * 100.0) / (winners + losers) : 0.0;
+    
+    double avgPerTrade = validCount > 0 ? totalChange / validCount : 0.0;
+    
+    // 4. Avg % per day (semplice)
+    double avgPerDaySimple = (days > 0) ? avgPerTrade / days : 0.0;
+    
+    // 5. Avg % per day (composta)
+    double avgPerDayCompound = 0.0;
+    if (days > 0 && avgPerTrade != 0) {
+        avgPerDayCompound = (pow(1.0 + avgPerTrade/100.0, 1.0/days) - 1.0) * 100.0;
+    }
+    
+    // Formato output
+    return [NSString stringWithFormat:
+        @"%@: %ld symbols • %ld days • Win: %.1f%% • Avg/Trade: %+.2f%% • Avg/Day: %+.2f%% (simple) / %+.2f%% (compound)",
+        prefix, (long)count, (long)days, winRate, avgPerTrade, avgPerDaySimple, avgPerDayCompound];
+}
+
+
+- (void)updateArchivedSession:(id)sender {
+    if (self.executionResults.count == 0) {
+        NSLog(@"No results to update");
+        return;
+    }
+    
+    // Trova la sessione archiviata più recente (quella appena creata)
+    if (self.archivedSessions.count == 0) {
+        NSLog(@"No archived session found");
+        return;
+    }
+    
+    ExecutionSession *latestSession = self.archivedSessions.firstObject;  // Sono ordinate per data
+    
+    // Aggiorna le selezioni nella session
+    for (ModelResult *archivedResult in latestSession.modelResults) {
+        ModelResult *currentResult = self.executionResults[archivedResult.modelID];
+        if (currentResult) {
+            // Copia lo stato isSelected dai risultati correnti
+            for (NSInteger i = 0; i < archivedResult.screenedSymbols.count; i++) {
+                if (i < currentResult.screenedSymbols.count) {
+                    archivedResult.screenedSymbols[i].isSelected =
+                        currentResult.screenedSymbols[i].isSelected;
+                }
+            }
+        }
+    }
+    
+    // Salva su disco
+    NSString *archiveDir = [self archiveDirectory];
+    NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
+    dateFormatter.dateFormat = @"yyyy-MM-dd_HHmmss";
+    NSString *dateString = [dateFormatter stringFromDate:latestSession.executionDate];
+    
+    NSString *filename = [NSString stringWithFormat:@"session_%@_%@.json",
+                         dateString,
+                         [latestSession.sessionID substringToIndex:8]];
+    NSString *filepath = [archiveDir stringByAppendingPathComponent:filename];
+    
+    NSError *error;
+    if ([latestSession saveToFile:filepath error:&error]) {
+        NSLog(@"✅ Archive updated with current selections");
+    } else {
+        NSLog(@"❌ Failed to update archive: %@", error);
+    }
+}
+
+
+#pragma mark - archive report
+
+#pragma mark - Archive Report Actions
+
+- (void)generateArchiveReport:(id)sender {
+    // Verifica che ci sia una selezione
+    if (!self.selectedSession && !self.selectedModelResult) {
+        NSLog(@"⚠️ No session or model selected");
+        return;
+    }
+    
+    // Conta simboli selezionati
+    NSArray<ScreenedSymbol *> *selectedSymbols = [self getSelectedArchiveSymbols];
+    NSArray<ScreenedSymbol *> *allSymbols = [self getAllArchiveSymbols];
+    
+    // Setup save panel
+    NSSavePanel *savePanel = [NSSavePanel savePanel];
+    savePanel.allowedFileTypes = @[@"txt"];
+    
+    NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
+    dateFormatter.dateFormat = @"yyyy-MM-dd_HHmm";
+    NSString *dateString;
+    
+    if (self.selectedSession) {
+        dateString = [dateFormatter stringFromDate:self.selectedSession.executionDate];
+    } else {
+        dateString = [dateFormatter stringFromDate:[NSDate date]];
+    }
+    
+    NSString *defaultName = [NSString stringWithFormat:@"Archive_Report_%@.txt", dateString];
+    savePanel.nameFieldStringValue = defaultName;
+    
+    // Accessory view con opzioni
+    NSView *accessoryView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 400, 80)];
+    
+    NSButton *includeAllCheckbox = [[NSButton alloc] initWithFrame:NSMakeRect(20, 50, 360, 25)];
+    [includeAllCheckbox setButtonType:NSButtonTypeSwitch];
+    includeAllCheckbox.title = @"Include all symbols (not just selected)";
+    includeAllCheckbox.state = NSControlStateValueOff;
+    includeAllCheckbox.tag = 100;
+    [accessoryView addSubview:includeAllCheckbox];
+    
+    NSButton *includeParamsCheckbox = [[NSButton alloc] initWithFrame:NSMakeRect(20, 25, 360, 25)];
+    [includeParamsCheckbox setButtonType:NSButtonTypeSwitch];
+    includeParamsCheckbox.title = @"Include model parameters";
+    includeParamsCheckbox.state = NSControlStateValueOff;
+    includeParamsCheckbox.tag = 101;
+    [accessoryView addSubview:includeParamsCheckbox];
+    
+    NSTextField *infoLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 0, 360, 20)];
+    infoLabel.stringValue = [NSString stringWithFormat:@"Selected: %ld / %ld symbols",
+                            (long)selectedSymbols.count, (long)allSymbols.count];
+    infoLabel.editable = NO;
+    infoLabel.bordered = NO;
+    infoLabel.backgroundColor = [NSColor clearColor];
+    infoLabel.textColor = [NSColor secondaryLabelColor];
+    infoLabel.font = [NSFont systemFontOfSize:11];
+    [accessoryView addSubview:infoLabel];
+    
+    savePanel.accessoryView = accessoryView;
+    
+    [savePanel beginWithCompletionHandler:^(NSModalResponse result) {
+        if (result == NSModalResponseOK) {
+            BOOL includeAll = (includeAllCheckbox.state == NSControlStateValueOn);
+            BOOL includeParams = (includeParamsCheckbox.state == NSControlStateValueOn);
+            
+            // Usa i metodi di export esistenti
+            if (self.selectedModelResult) {
+                [self exportSingleModel:self.selectedModelResult
+                            fromSession:self.selectedSession
+                                  toURL:savePanel.URL];
+            } else if (self.selectedSession) {
+                [self exportSession:self.selectedSession toURL:savePanel.URL];
+            }
+        }
+    }];
+}
+
+- (void)copyArchiveAllSymbols:(id)sender {
+    [self copyArchiveCompactReportWithSelectedOnly:NO];
+}
+
+- (void)copyArchiveSelectedSymbols:(id)sender {
+    [self copyArchiveCompactReportWithSelectedOnly:YES];
+}
+
+- (void)copyArchiveCompactReportWithSelectedOnly:(BOOL)onlySelectedSymbols {
+    NSMutableString *reportString = [NSMutableString string];
+    
+    // Determina quali modelli processare
+    NSArray<ModelResult *> *modelsToProcess;
+    
+    if (self.selectedModelResult) {
+        // Solo il modello selezionato
+        modelsToProcess = @[self.selectedModelResult];
+    } else if (self.selectedSession) {
+        // Tutti i modelli della sessione
+        modelsToProcess = self.selectedSession.modelResults;
+    } else {
+        NSLog(@"⚠️ No selection for compact report");
+        return;
+    }
+    
+    // Per ogni modello
+    for (ModelResult *result in modelsToProcess) {
+        NSMutableArray<NSString *> *symbolsToInclude = [NSMutableArray array];
+        
+        for (ScreenedSymbol *symbol in result.screenedSymbols) {
+            if (!onlySelectedSymbols || symbol.isSelected) {
+                [symbolsToInclude addObject:symbol.symbol];
+            }
+        }
+        
+        if (symbolsToInclude.count == 0) continue;
+        
+        NSString *line = [NSString stringWithFormat:@"%@: %@\n",
+                         result.modelName,
+                         [symbolsToInclude componentsJoinedByString:@","]];
+        [reportString appendString:line];
+    }
+    
+    if (reportString.length == 0) {
+        NSLog(@"⚠️ No symbols to copy");
+        return;
+    }
+    
+    // Copia negli appunti
+    NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+    [pasteboard clearContents];
+    [pasteboard setString:reportString forType:NSPasteboardTypeString];
+    
+    NSLog(@"📋 Compact archive report copied (%@)", onlySelectedSymbols ? @"selected" : @"all");
+}
 
 
 @end

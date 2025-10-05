@@ -8,7 +8,6 @@
 
 #import <Cocoa/Cocoa.h>
 #import "commontypes.h"
-#import "TradingAppTypes.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -107,12 +106,6 @@ typedef NS_ENUM(NSInteger, SpotlightWidgetTarget) {
  */
 + (NSString *)displayNameForTargetType:(SpotlightCategoryType)target;
 
-/**
- * Convert SpotlightTargetType to PanelType
- * @param target Spotlight target type
- * @return Corresponding PanelType (or special handling for floating)
- */
-+ (PanelType)panelTypeForTarget:(SpotlightCategoryType)target;
 
 @end
 

@@ -50,8 +50,8 @@ extern NSString *const DataHubDataLoadedNotification;
 
 #pragma mark - Initialization
 
-- (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType {
-    self = [super initWithType:type panelType:panelType];
+- (instancetype)initWithType:(NSString *)type {
+    self = [super initWithType:type];
     if (self) {
         [self setupChartDefaults];
         [self registerForDataNotifications];
@@ -1465,12 +1465,70 @@ extern NSString *const DataHubDataLoadedNotification;
 - (void)handleChainAction:(NSString *)action withData:(id)data fromWidget:(BaseWidget *)sender {
     if ([action isEqualToString:@"loadChartPattern"]) {
         [self loadChartPatternFromChainData:data fromWidget:sender];
+    } else if ([action isEqualToString:@"loadScreenerData"]) {
+        // ✅ NUOVO: Gestisce dati screener con historicalBars già caricati
+        [self loadScreenerDataFromChainData:data fromWidget:sender];
     } else {
-        // ✅ IMPORTANTE: Chiama super per gestire altre azioni future
         [super handleChainAction:action withData:data fromWidget:sender];
     }
 }
 
+
+#pragma mark - Screener Data Loading (NUOVO)
+
+- (void)loadScreenerDataFromChainData:(NSDictionary *)data fromWidget:(BaseWidget *)sender {
+    // 1️⃣ VALIDAZIONE DATI
+    if (!data || ![data isKindOfClass:[NSDictionary class]]) {
+        NSLog(@"❌ ChartWidget: Invalid screener data received from %@", NSStringFromClass([sender class]));
+        return;
+    }
+    
+    NSString *symbol = data[@"symbol"];
+    NSArray<HistoricalBarModel *> *historicalBars = data[@"historicalBars"];
+    NSNumber *timeframeNum = data[@"timeframe"];
+    NSString *source = data[@"source"] ?: @"Unknown";
+    NSString *patternType = data[@"patternType"] ?: @"Screener";
+    
+    // Validazione campi essenziali
+    if (!symbol || !historicalBars || historicalBars.count == 0) {
+        NSLog(@"❌ ChartWidget: Missing essential screener data - symbol:%@ bars:%lu",
+              symbol, (unsigned long)historicalBars.count);
+        return;
+    }
+    
+    BarTimeframe timeframe = timeframeNum ? [timeframeNum integerValue] : BarTimeframeDaily;
+    
+    NSLog(@"📊 ChartWidget: Loading screener data for %@ (%lu bars) from %@",
+          symbol, (unsigned long)historicalBars.count, source);
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSLog(@"🔄 Screener: Loading with handler system");
+        
+        // ✅ USA GLI STESSI HANDLER DI loadChartPattern
+        
+        // 1️⃣ ENABLE STATIC MODE using handler
+        [self handleStaticModeToggle:YES];
+        
+        // 2️⃣ UPDATE SYMBOL AND TIMEFRAME using handlers
+        [self handleSymbolChange:symbol forceReload:NO];
+        [self handleTimeframeChange:timeframe];
+        
+        // 3️⃣ LOAD HISTORICAL DATA using common processing node
+        [self processNewHistoricalData:historicalBars
+                         invalidations:ChartInvalidationData | ChartInvalidationIndicators | ChartInvalidationViewport];
+        
+        // 4️⃣ NESSUN RANGE SPECIFICO - mostra tutti i dati
+        // (a differenza dei pattern, i dati screener non hanno date specifiche da mostrare)
+        
+        // 5️⃣ FEEDBACK TO USER
+        NSString *senderType = NSStringFromClass([sender class]);
+        NSString *feedbackMessage = [NSString stringWithFormat:@"📊 Loaded %@ from %@ (%lu bars)",
+                                    symbol, source, (unsigned long)historicalBars.count];
+        [self showChainFeedback:feedbackMessage];
+        
+        NSLog(@"✅ ChartWidget: Loaded screener data for %@ from %@", symbol, senderType);
+    });
+}
 
 - (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
     NSLog(@"🔗 Advanced: Received %lu symbols from chain", (unsigned long)symbols.count);

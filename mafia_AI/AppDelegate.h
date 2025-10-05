@@ -9,17 +9,31 @@
 @class ChartWidget;
 @class FloatingWidgetWindow;
 @class WidgetTypeManager;
-@class MainWindowController;  // ← AGGIUNGI QUESTA LINEA
+@class GridWindow;  // ✅ NUOVO
+
+
 
 @interface AppDelegate : NSObject <NSApplicationDelegate, NSWindowRestoration>
 
+
+
 // Outlet per la finestra principale
 @property (weak) IBOutlet NSWindow *window;
-@property (nonatomic, strong) MainWindowController *mainWindowController;
 
 // Floating Windows Management
 @property (nonatomic, strong) NSMutableArray<FloatingWidgetWindow *> *floatingWindows;
 @property (nonatomic, strong) WidgetTypeManager *widgetTypeManager;
+
+@property (nonatomic, strong) NSMutableArray<GridWindow *> *gridWindows;  // ✅ NUOVO
+#pragma mark - Grid Actions (NEW)
+
+- (IBAction)openGrid:(id)sender;  // ✅ NUOVO
+#pragma mark - Grid Window Management (NEW)
+
+- (GridWindow *)createGridWindowWithTemplate:(NSString *)templateType
+                                        name:(NSString *)name;  // ✅ NOVO
+- (void)registerGridWindow:(GridWindow *)window;  // ✅ NUOVO
+- (void)unregisterGridWindow:(GridWindow *)window;  // ✅ NUOVO
 
 #pragma mark - Universal Tools Menu Action
 
@@ -30,6 +44,7 @@
 
 - (IBAction)arrangeFloatingWindows:(id)sender;
 - (IBAction)closeAllFloatingWindows:(id)sender;
+- (IBAction)closeAllGrids:(id)sender;  // ✅ NUOVO
 
 #pragma mark - Floating Window Management
 

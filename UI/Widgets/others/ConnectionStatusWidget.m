@@ -17,8 +17,8 @@
 
 @implementation ConnectionStatusWidget
 
-- (instancetype)initWithType:(NSString *)type panelType:(PanelType)panelType {
-    self = [super initWithType:type panelType:panelType];
+- (instancetype)initWithType:(NSString *)type {
+    self = [super initWithType:type];
     if (self) {
         self.widgetType = @"Connection Status";
         self.dataManager = [DataManager sharedManager];

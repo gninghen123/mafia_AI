@@ -313,11 +313,6 @@ static const CGFloat kMargin = 10.0;
     [appDelegate openFloatingWidget:widgetType];
 }
 
-- (void)openWidgetInPanel:(NSString *)widgetType panelType:(PanelType)panelType {
-    // This would need integration with MainWindowController to open widgets in specific panels
-    // For now, fallback to floating window
-    [self openFloatingWidget:widgetType];
-}
 
 #pragma mark - Selection Management
 

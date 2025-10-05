@@ -1048,7 +1048,7 @@
     }
     
     // Create chart widget
-    ChartWidget *chartWidget = [[ChartWidget alloc] initWithType:@"Chart Widget" panelType:PanelTypeCenter];
+    ChartWidget *chartWidget = [[ChartWidget alloc] initWithType:@"Chart Widget"];
     if (!chartWidget) {
         NSLog(@"❌ Failed to create ChartWidget");
         return;

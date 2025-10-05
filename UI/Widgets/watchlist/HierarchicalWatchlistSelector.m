@@ -7,7 +7,6 @@
 
 #import "HierarchicalWatchlistSelector.h"
 #import "WatchlistProviderManager.h"
-#import "TradingAppTypes.h"
 #import "WatchlistProviders.h"  // ✅ FIX: Aggiunto import per MarketListProvider
 
 

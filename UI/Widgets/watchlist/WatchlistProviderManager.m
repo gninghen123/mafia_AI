@@ -539,10 +539,46 @@
 #pragma mark - Convenience Methods
 
 - (NSArray<id<WatchlistProvider>> *)createAllMarketListProviders {
-    // ✅ DEPRECATED: This method is no longer used for the hierarchical menu
-    // but kept for compatibility. Returns empty array.
-    NSLog(@"⚠️ createAllMarketListProviders called - returning empty array (hierarchical menu used instead)");
-    return @[];
+    // ✅ AGGIORNATO: Ora crea effettivamente i provider standard
+    return [self createStandardMarketListProviders];
+}
+
+- (NSArray<id<WatchlistProvider>> *)createStandardMarketListProviders {
+    NSLog(@"📊 Creating standard market list providers");
+    
+    NSMutableArray<id<WatchlistProvider>> *providers = [NSMutableArray array];
+    
+    // Top Gainers
+    [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopGainers
+                                                              timeframe:MarketTimeframeOneDay]];
+    [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopGainers
+                                                              timeframe:MarketTimeframeFiveDays]];
+    [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopGainers
+                                                              timeframe:MarketTimeframeOneMonth]];
+    
+    // Top Losers
+    [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopLosers
+                                                              timeframe:MarketTimeframeOneDay]];
+    [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopLosers
+                                                              timeframe:MarketTimeframeFiveDays]];
+    [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopLosers
+                                                              timeframe:MarketTimeframeOneMonth]];
+    
+    // Earnings
+    [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeEarnings
+                                                              timeframe:MarketTimeframeEarningsTodayBMO]];
+    [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeEarnings
+                                                              timeframe:MarketTimeframeEarningsTodayAMC]];
+    
+    // ETF e Industry (no timeframe)
+    [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeETF
+                                                              timeframe:MarketTimeframeNone]];
+    [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeIndustry
+                                                              timeframe:MarketTimeframeNone]];
+    
+    NSLog(@"✅ Created %lu market list providers", (unsigned long)providers.count);
+    
+    return [providers copy];
 }
 
 - (BOOL)isValidMarketTypeTimeframeCombination:(MarketListType)marketType timeframe:(MarketTimeframe)timeframe {

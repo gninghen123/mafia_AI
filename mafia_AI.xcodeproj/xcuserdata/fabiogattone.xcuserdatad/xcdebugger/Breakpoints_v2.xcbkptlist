@@ -197,22 +197,6 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "D19AAE17-DAF4-4F67-925A-719423920F8A"
-            shouldBeEnabled = "No"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "UI/Widgets/watchlist/WatchlistWidget.m"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1223"
-            endingLineNumber = "1223"
-            landmarkName = "-setupInitialProvider"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
             uuid = "B5B76148-3079-4B57-BFCE-1A60EBADB0FF"
             shouldBeEnabled = "No"
             ignoreCount = "0"
@@ -224,6 +208,52 @@
             endingLineNumber = "1249"
             landmarkName = "-outlineView:numberOfChildrenOfItem:"
             landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "B796D8FD-E9E6-44EE-934A-BB58A07E4208"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "UI/Widgets/watchlist/WatchlistWidget.m"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "1030"
+            endingLineNumber = "1030"
+            landmarkName = "-createWatchlistFromCurrentSelection"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "B796D8FD-E9E6-44EE-934A-BB58A07E4208 - cc86fa4b0fc811fa"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "-[WatchlistWidget createWatchlistFromCurrentSelection]"
+                  moduleName = "mafia_AI"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/fabiogattone/Documents/mafia_AI/UI/Widgets/watchlist/WatchlistWidget.m"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "1031"
+                  endingLineNumber = "1031">
+               </Location>
+               <Location
+                  uuid = "B796D8FD-E9E6-44EE-934A-BB58A07E4208 - bc104f9c2f5f13e8"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "__54-[WatchlistWidget createWatchlistFromCurrentSelection]_block_invoke"
+                  moduleName = "mafia_AI"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/fabiogattone/Documents/mafia_AI/UI/Widgets/watchlist/WatchlistWidget.m"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "1032"
+                  endingLineNumber = "1032">
+               </Location>
+            </Locations>
          </BreakpointContent>
       </BreakpointProxy>
    </Breakpoints>

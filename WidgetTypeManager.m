@@ -55,8 +55,8 @@
     // Define widget categories and types
     self.widgetCategories = @{
         @"Charts": @[
-            @"Chart Widget",
-            @"MultiChart Widget",
+            @"Chart",
+            @"MultiChart",
             @"Comparison Chart",
             @"Seasonal Chart",       // NUOVO: Aggiunto SeasonalChart
             @"Tick Chart"           // NEW: Added TickChart
@@ -96,7 +96,7 @@
             @"Storage Management",
             @"LegacyDataConverter",
             @"PineScript Editor",
-            @"IBKR Test Widget"  // NUOVO
+            @"IBKR Test"  // NUOVO
         ]
     };
     
@@ -106,19 +106,19 @@
     // FIX: Map specific widget types to their classes
     typeToClass[@"Watchlist"] = [WatchlistWidget class];
     typeToClass[@"Connection Status"] = [ConnectionStatusWidget class];
-    typeToClass[@"MultiChart Widget"] = [MultiChartWidget class];
+    typeToClass[@"MultiChart"] = [MultiChartWidget class];
     typeToClass[@"Connections"] = [ConnectionsWidget class];
     typeToClass[@"SymbolDatabase"] = [SymbolDatabaseWidget class];
     typeToClass[@"Alerts"] = [AlertWidget class];
     typeToClass[@"Seasonal Chart"] = [SeasonalChartWidget class];
     typeToClass[@"Tick Chart"] = [TickChartWidget class];
     typeToClass[@"API Playground"] = [APIPlaygroundWidget class];
-    typeToClass[@"Chart Widget"] = [ChartWidget class];
+    typeToClass[@"Chart"] = [ChartWidget class];
     typeToClass[@"Storage Management"] = [StorageManagementWidget class];
     typeToClass[@"LegacyDataConverter"] = [LegacyDataConverterWidget class];
     typeToClass[@"Pattern Chart Library"] = [ChartPatternLibraryWidget class];
     typeToClass[@"Portfolio"] = [PortfolioWidget class];
-    typeToClass[@"IBKR Test Widget"]= [IBKRTestWidget class];
+    typeToClass[@"IBKR Test"]= [IBKRTestWidget class];
     typeToClass[@"News"] = [NewsWidget class];
     typeToClass[@"Screener"] = [ScreenerWidget class];
     typeToClass[@"Stooq Screener"] = [StooqScreenerWidget class];
@@ -137,10 +137,10 @@
     
     // Map widget types to icons (using SF Symbols)
     self.widgetTypeToIcon = @{
-        @"Chart Widget": @"chart.xyaxis.line",
+        @"Chart": @"chart.xyaxis.line",
         @"Watchlist": @"list.bullet.rectangle",
         @"Seasonal Chart": @"chart.bar.xaxis",
-        @"MultiChart Widget": @"square.grid.3x3",
+        @"MultiChart": @"square.grid.3x3",
         @"Connections": @"link",
         @"Comparison Chart": @"chart.bar.fill",
         @"Tick Chart": @"list.bullet.rectangle",

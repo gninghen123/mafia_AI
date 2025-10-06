@@ -1,33 +1,35 @@
 //
-//  WatchlistWidget.m
+//  WatchlistWidget.m - REFACTORED
 //  TradingApp
 //
-//  NEW UNIFIED WIDGET: Complete replacement for old WatchlistWidget and GeneralMarketWidget
-//  UPDATED: Added search for watchlists and sorting for symbols
+//  PART 1: Initialization and UI Setup
 //
 
 #import "WatchlistWidget.h"
-#import "HierarchicalWatchlistSelector.h"
 #import "WatchlistProviderManager.h"
+#import "WatchlistProviders.h"
 #import "DataHub.h"
 #import "DataHub+MarketData.h"
 #import "DataHub+WatchlistProviders.h"
-#import "WatchlistProviders.h"
 #import "TagManager.h"
-#import "OtherDataSource.h"           // ✅ AGGIUNGERE QUESTO IMPORT
-#import "DownloadManager.h"            // ✅ AGGIUNGERE ANCHE QUESTO SE NON GIÀ PRESENTE
+#import "OtherDataSource.h"
+#import "DownloadManager.h"
 
-
-@interface WatchlistWidget () <HierarchicalWatchlistSelectorDelegate>
+@interface WatchlistWidget ()
 
 // Layout management
 @property (nonatomic, strong) NSArray<NSLayoutConstraint *> *currentConstraints;
+@property (nonatomic, strong) NSLayoutConstraint *scrollViewTopConstraint; // ← AGGIUNGI QUESTA
 
-// ✅ FIX 2: Resize throttling properties
+
+// Resize throttling
 @property (nonatomic, strong) NSTimer *resizeThrottleTimer;
 @property (nonatomic, assign) CGFloat pendingWidth;
 
+// Data refresh
 @property (nonatomic, assign) NSTimeInterval lastQuoteUpdate;
+
+
 
 @end
 
@@ -43,8 +45,7 @@
 }
 
 - (instancetype)initWithFrame:(NSRect)frameRect {
-    // BaseWidget doesn't support initWithFrame, use default init
-    if (self = [super initWithType:@"WatchlistWidget"]) {
+    if (self = [super initWithType:@"Watchlist"]) {
         [self commonInit];
     }
     return self;
@@ -57,114 +58,65 @@
     return self;
 }
 
-
-
 - (void)commonInit {
+    NSLog(@"🔧 WatchlistWidget: commonInit");
+    
     // Initialize provider system
     self.providerManager = [WatchlistProviderManager sharedManager];
     self.quotesCache = [NSMutableDictionary dictionary];
     self.symbols = @[];
     self.displaySymbols = @[];
-    self.visibleColumns = 1; // Default: symbol only
+    self.currentProviderLists = @[];
+    self.visibleColumns = 1;
     
-    // NEW: Initialize search and sorting
+    // Initialize navigation state
+    self.displayMode = WatchlistDisplayModeListSelection;
+    self.selectedProviderType = WatchlistProviderTypeManual;
+    self.selectedWatchlist = nil;
+    
+    // Initialize search
     self.searchText = @"";
     self.pendingWidth = 0;
+    
+    // Start tag manager background build
     [self startTagManagerBackgroundBuild];
-
 }
 
-// ✅ NUOVO METODO: Avvia il build del TagManager in background
 - (void)startTagManagerBackgroundBuild {
-    NSLog(@"🏷️ WatchlistWidget: Starting TagManager background build at widget initialization");
+    NSLog(@"🏷️ WatchlistWidget: Starting TagManager background build");
     
     TagManager *tagManager = [TagManager sharedManager];
-    
-    // Controlla lo stato attuale del TagManager
     if (tagManager.state == TagManagerStateEmpty) {
-        NSLog(@"🏷️ TagManager is empty - starting background build");
         [tagManager buildCacheInBackground];
-    } else if (tagManager.state == TagManagerStateReady) {
-        NSLog(@"🏷️ TagManager already ready - no build needed");
-    } else if (tagManager.state == TagManagerStateBuilding) {
-        NSLog(@"🏷️ TagManager already building - will wait for completion");
-    } else {
-        NSLog(@"🏷️ TagManager in error state - triggering rebuild");
-        [tagManager invalidateAndRebuild];
-    }
-    
-    // Ascolta per la notifica di completamento (utile per debug e eventual UI updates)
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                             selector:@selector(tagManagerBuildCompleted:)
-                                                 name:TagManagerDidFinishBuildingNotification
-                                               object:nil];
-}
-
-// ✅ NUOVO METODO: Gestisce il completamento del build del TagManager
-- (void)tagManagerBuildCompleted:(NSNotification *)notification {
-    BOOL success = [notification.userInfo[@"success"] boolValue];
-    
-    if (success) {
-        NSLog(@"✅ WatchlistWidget: TagManager build completed successfully");
         
-        // Opzionale: Aggiorna i provider se il selector è già configurato
-        // La prossima volta che l'utente apre "Tag Lists", i provider saranno già pronti
-    } else {
-        NSLog(@"❌ WatchlistWidget: TagManager build failed");
-    }
-    
-    // Rimuovi l'observer dopo il primo completamento
-    [[NSNotificationCenter defaultCenter] removeObserver:self
+        [[NSNotificationCenter defaultCenter] addObserver:self
+                                                 selector:@selector(tagManagerDidFinishBuilding:)
                                                      name:TagManagerDidFinishBuildingNotification
                                                    object:nil];
+    }
 }
 
-#pragma mark - BaseWidget Lifecycle
-
-- (void)setupContentView {
-    [super setupContentView];
-    [self setupProviderUI];
-    [self setupInitialProvider];
-    [self startDataRefreshTimer];
-    [self setupStandardContextMenu];
-}
-
-- (void)viewWillAppear {
-    [super viewWillAppear];
-    [self startDataRefreshTimer];
-}
-
-- (void)viewWillDisappear {
-    [super viewWillDisappear];
-    [self stopDataRefreshTimer];
-}
-
-#pragma mark - UI Setup
-
-- (void)setupProviderUI {
-    [self createToolbar];
-    [self createTableView];
-    [self setupConstraints];
-    [self configureTableColumns];
+- (void)tagManagerDidFinishBuilding:(NSNotification *)notification {
+    NSLog(@"🏷️ WatchlistWidget: TagManager finished building");
     
-    // Set initial width tracking
-    self.currentWidth = self.contentView.frame.size.width;
-    
-    [[NSNotificationCenter defaultCenter] addObserver:self
-                                              selector:@selector(viewDidResize:)
-                                                  name:NSViewFrameDidChangeNotification
-                                                object:self.contentView];
-    // Enable frame change notifications
-    self.contentView.postsBoundsChangedNotifications = YES;
-    self.contentView.postsFrameChangedNotifications = YES;
+    // Refresh tag providers if we're in tags mode
+    if (self.selectedProviderType == WatchlistProviderTypeTags) {
+        [self selectProviderType:WatchlistProviderTypeTags];
+    }
 }
+
+#pragma mark - BaseWidget Overrides
+
+
+
+#pragma mark - UI Creation
 
 - (void)createToolbar {
     self.toolbarView = [[NSView alloc] init];
     self.toolbarView.translatesAutoresizingMaskIntoConstraints = NO;
     [self.contentView addSubview:self.toolbarView];
     
-    // Search field
+    // ROW 1: Search field + Actions button
     self.searchField = [[NSTextField alloc] init];
     self.searchField.translatesAutoresizingMaskIntoConstraints = NO;
     self.searchField.placeholderString = @"Filter watchlists...";
@@ -174,20 +126,17 @@
     [self.searchField.cell setScrollable:YES];
     [self.toolbarView addSubview:self.searchField];
     
-    // Actions button
-    self.actionsButton = [NSButton buttonWithTitle:@"⚙️" target:self action:@selector(showActionsMenu:)];
+    self.actionsButton = [NSButton buttonWithTitle:@"⚙️"
+                                            target:self
+                                            action:@selector(showActionsMenu:)];
     self.actionsButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.actionsButton.bezelStyle = NSBezelStyleTexturedRounded;
     [self.toolbarView addSubview:self.actionsButton];
     
-    // Provider selector (Row 2)
-    self.providerSelector = [[HierarchicalWatchlistSelector alloc] init];
-    self.providerSelector.translatesAutoresizingMaskIntoConstraints = NO;
-    self.providerSelector.selectorDelegate = self;
-    [self.providerSelector configureWithProviderManager:self.providerManager];
-    [self.toolbarView addSubview:self.providerSelector];
+    // ROW 2: Segmented control for provider types
+    [self createProviderTypeSegmentedControl];
     
-    // Loading indicator (Row 2)
+    // Loading indicator (ROW 2, right side)
     self.loadingIndicator = [[NSProgressIndicator alloc] init];
     self.loadingIndicator.translatesAutoresizingMaskIntoConstraints = NO;
     self.loadingIndicator.style = NSProgressIndicatorStyleSpinning;
@@ -195,13 +144,50 @@
     [self.loadingIndicator setDisplayedWhenStopped:NO];
     [self.toolbarView addSubview:self.loadingIndicator];
     
-    // Status label (Row 2)
+    // Status label (ROW 2, far right)
     self.statusLabel = [NSTextField labelWithString:@"Ready"];
     self.statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.statusLabel.font = [NSFont systemFontOfSize:11];
     self.statusLabel.textColor = [NSColor secondaryLabelColor];
     [self.toolbarView addSubview:self.statusLabel];
 }
+
+- (void)createProviderTypeSegmentedControl {
+    // Create segmented control with 5 segments
+    self.providerTypeSegmented = [[NSSegmentedControl alloc] init];
+    self.providerTypeSegmented.translatesAutoresizingMaskIntoConstraints = NO;
+    self.providerTypeSegmented.segmentCount = 5;
+    self.providerTypeSegmented.trackingMode = NSSegmentSwitchTrackingSelectOne;
+    self.providerTypeSegmented.target = self;
+    self.providerTypeSegmented.action = @selector(providerTypeChanged:);
+    
+    // Configure segments with SF Symbols
+    [self.providerTypeSegmented setLabel:@"📝" forSegment:WatchlistProviderTypeManual];
+    [self.providerTypeSegmented setToolTip:@"Manual Watchlists" forSegment:WatchlistProviderTypeManual];
+    
+    [self.providerTypeSegmented setLabel:@"📊" forSegment:WatchlistProviderTypeMarket];
+    [self.providerTypeSegmented setToolTip:@"Market Lists" forSegment:WatchlistProviderTypeMarket];
+    
+    [self.providerTypeSegmented setLabel:@"🗂️" forSegment:WatchlistProviderTypeBaskets];
+    [self.providerTypeSegmented setToolTip:@"Baskets" forSegment:WatchlistProviderTypeBaskets];
+    
+    [self.providerTypeSegmented setLabel:@"🏷️" forSegment:WatchlistProviderTypeTags];
+    [self.providerTypeSegmented setToolTip:@"Tag Lists" forSegment:WatchlistProviderTypeTags];
+    
+    [self.providerTypeSegmented setLabel:@"📦" forSegment:WatchlistProviderTypeArchives];
+    [self.providerTypeSegmented setToolTip:@"Archives" forSegment:WatchlistProviderTypeArchives];
+    
+    // Set equal widths for all segments
+    for (NSInteger i = 0; i < 5; i++) {
+        [self.providerTypeSegmented setWidth:50 forSegment:i];
+    }
+    
+    // Select Manual by default
+    [self.providerTypeSegmented setSelectedSegment:WatchlistProviderTypeManual];
+    
+    [self.toolbarView addSubview:self.providerTypeSegmented];
+}
+
 
 
 - (void)createTableView {
@@ -219,78 +205,423 @@
     self.tableView.allowsMultipleSelection = YES;
     self.tableView.intercellSpacing = NSMakeSize(0, 1);
     self.tableView.rowHeight = 28;
-    self.tableView.headerView = [[NSTableHeaderView alloc] init];
+    //self.tableView.headerView = [[NSTableHeaderView alloc] init];
     self.tableView.gridStyleMask = NSTableViewSolidHorizontalGridLineMask;
     
-
-    
-    // ✅ NEW: Enable double-click
+    // Enable double-click
     self.tableView.target = self;
     self.tableView.doubleAction = @selector(tableViewDoubleClick:);
     
-    // Enable drag and drop for symbols
+    // Enable drag and drop
     [self.tableView registerForDraggedTypes:@[NSPasteboardTypeString]];
     
     self.scrollView.documentView = self.tableView;
 }
-
-- (void)tableViewDoubleClick:(id)sender {
-    NSInteger clickedRow = self.tableView.clickedRow;
-    [self tableView:self.tableView didDoubleClickRow:clickedRow];
-}
+#pragma mark - Layout Constraints
 
 - (void)setupConstraints {
+    // Store the scrollView top constraint
+    self.scrollViewTopConstraint = [self.scrollView.topAnchor constraintEqualToAnchor:self.toolbarView.bottomAnchor];
+    
     [NSLayoutConstraint activateConstraints:@[
-        // ===== TOOLBAR CONSTRAINTS =====
+        // ===== TOOLBAR (ora più alto per 3 righe) =====
         [self.toolbarView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor],
         [self.toolbarView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
         [self.toolbarView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
-        [self.toolbarView.heightAnchor constraintEqualToConstant:68], // ✅ Aumentata per due righe (era 44)
+        [self.toolbarView.heightAnchor constraintEqualToConstant:90], // ← ERA 68, ORA 90
         
-        // ===== ROW 1: Search Field + Actions Button =====
-        // Search field (sinistra, riga 1)
+        // ===== ROW 1: Search + Actions =====
         [self.searchField.topAnchor constraintEqualToAnchor:self.toolbarView.topAnchor constant:8],
         [self.searchField.leadingAnchor constraintEqualToAnchor:self.toolbarView.leadingAnchor constant:8],
         [self.searchField.heightAnchor constraintEqualToConstant:24],
         
-        // Actions button (destra, riga 1)
         [self.actionsButton.topAnchor constraintEqualToAnchor:self.toolbarView.topAnchor constant:8],
         [self.actionsButton.trailingAnchor constraintEqualToAnchor:self.toolbarView.trailingAnchor constant:-8],
         [self.actionsButton.widthAnchor constraintEqualToConstant:32],
         [self.actionsButton.heightAnchor constraintEqualToConstant:24],
         
-        // ✅ CRITICAL: Gap between search field and actions button
-        [self.actionsButton.leadingAnchor constraintGreaterThanOrEqualToAnchor:self.searchField.trailingAnchor constant:8],
+        [self.searchField.trailingAnchor constraintEqualToAnchor:self.actionsButton.leadingAnchor constant:-8],
         
-        // ===== ROW 2: Provider Selector + Loading + Status =====
-        // Provider selector (espandibile, riga 2)
-        [self.providerSelector.topAnchor constraintEqualToAnchor:self.searchField.bottomAnchor constant:8],
-        [self.providerSelector.leadingAnchor constraintEqualToAnchor:self.toolbarView.leadingAnchor constant:8],
-        [self.providerSelector.heightAnchor constraintEqualToConstant:24],
+        // ===== ROW 2: Segmented Control =====
+        [self.providerTypeSegmented.topAnchor constraintEqualToAnchor:self.searchField.bottomAnchor constant:8],
+        [self.providerTypeSegmented.leadingAnchor constraintEqualToAnchor:self.toolbarView.leadingAnchor constant:8],
+        [self.providerTypeSegmented.heightAnchor constraintEqualToConstant:24],
         
-        // Loading indicator (riga 2, dopo provider selector)
-        [self.loadingIndicator.centerYAnchor constraintEqualToAnchor:self.providerSelector.centerYAnchor],
-        [self.loadingIndicator.leadingAnchor constraintEqualToAnchor:self.providerSelector.trailingAnchor constant:8],
+        // ===== ROW 3: Loading + Status =====
+        [self.loadingIndicator.topAnchor constraintEqualToAnchor:self.providerTypeSegmented.bottomAnchor constant:8],
+        [self.loadingIndicator.leadingAnchor constraintEqualToAnchor:self.toolbarView.leadingAnchor constant:8],
         [self.loadingIndicator.widthAnchor constraintEqualToConstant:16],
         [self.loadingIndicator.heightAnchor constraintEqualToConstant:16],
         
-        // Status label (destra, riga 2)
-        [self.statusLabel.centerYAnchor constraintEqualToAnchor:self.providerSelector.centerYAnchor],
-        [self.statusLabel.trailingAnchor constraintEqualToAnchor:self.toolbarView.trailingAnchor constant:-8],
+        [self.statusLabel.centerYAnchor constraintEqualToAnchor:self.loadingIndicator.centerYAnchor],
+        [self.statusLabel.leadingAnchor constraintEqualToAnchor:self.loadingIndicator.trailingAnchor constant:8],
+        [self.statusLabel.trailingAnchor constraintLessThanOrEqualToAnchor:self.toolbarView.trailingAnchor constant:-8],
         [self.statusLabel.heightAnchor constraintEqualToConstant:16],
         
-        // ✅ CRITICAL: Provider selector width constraint - flexible but leaves space for loading/status
-        [self.providerSelector.trailingAnchor constraintLessThanOrEqualToAnchor:self.statusLabel.leadingAnchor constant:-60],
-        
-        // ===== SCROLL VIEW BELOW TOOLBAR =====
-        [self.scrollView.topAnchor constraintEqualToAnchor:self.toolbarView.bottomAnchor],
+        // ===== SCROLL VIEW =====
+        self.scrollViewTopConstraint,
         [self.scrollView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor],
         [self.scrollView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor],
         [self.scrollView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor]
     ]];
-    
-    NSLog(@"✅ WatchlistWidget: Setup constraints completed - toolbar with two rows");
 }
+#pragma mark - Provider Type Selection
+
+- (void)providerTypeChanged:(NSSegmentedControl *)sender {
+    NSInteger selectedIndex = sender.selectedSegment;
+    
+    NSLog(@"🔄 WatchlistWidget: Provider type changed to index: %ld", (long)selectedIndex);
+    
+    [self selectProviderType:(WatchlistProviderType)selectedIndex];
+}
+
+- (void)selectProviderType:(WatchlistProviderType)type {
+    NSLog(@"📋 WatchlistWidget: Selecting provider type: %ld", (long)type);
+    
+    self.selectedProviderType = type;
+    
+    NSString *categoryName = [self categoryNameForProviderType:type];
+    
+    // Special handling for Market Lists
+    if (type == WatchlistProviderTypeMarket) {
+        self.currentProviderLists = [self.providerManager createStandardMarketListProviders];
+    } else {
+        [self.providerManager ensureProvidersLoadedForCategory:categoryName];
+        self.currentProviderLists = [self.providerManager providersForCategory:categoryName];
+    }
+    
+    NSLog(@"   → Loaded %lu providers for category: %@",
+          (unsigned long)self.currentProviderLists.count, categoryName);
+    
+    // Reset navigation state
+    self.displayMode = WatchlistDisplayModeListSelection;
+    self.selectedWatchlist = nil;
+    self.currentProvider = nil;
+    
+    [self.tableView reloadData];
+    
+    // Clear search
+    self.searchField.stringValue = @"";
+    self.searchText = @"";
+}
+
+- (NSString *)categoryNameForProviderType:(WatchlistProviderType)type {
+    switch (type) {
+        case WatchlistProviderTypeManual:
+            return @"Manual Watchlists";
+        case WatchlistProviderTypeMarket:
+            return @"Market Lists";
+        case WatchlistProviderTypeBaskets:
+            return @"Baskets";
+        case WatchlistProviderTypeTags:
+            return @"Tag Lists";
+        case WatchlistProviderTypeArchives:
+            return @"Archives";
+        default:
+            return @"Manual Watchlists";
+    }
+}
+
+#pragma mark - Navigation Logic
+
+- (void)drillDownToWatchlistAtIndex:(NSInteger)index {
+    if (index < 0 || index >= self.currentProviderLists.count) {
+        NSLog(@"⚠️ WatchlistWidget: Invalid index for drill-down: %ld", (long)index);
+        return;
+    }
+    
+    id<WatchlistProvider> watchlist = self.currentProviderLists[index];
+    
+    NSLog(@"🔽 WatchlistWidget: Drilling down into watchlist: %@", watchlist.displayName);
+    
+    // Save selected watchlist
+    self.selectedWatchlist = watchlist;
+    
+    // Load symbols for this watchlist
+    [self selectProvider:watchlist];
+    
+    // Change to symbols mode
+    self.displayMode = WatchlistDisplayModeSymbols;
+    
+    // Show navigation header
+    NSUInteger symbolCount = watchlist.symbols.count;
+    // Reload table
+    [self.tableView reloadData];
+}
+
+- (void)navigateBackToListSelection {
+    NSLog(@"🔼 WatchlistWidget: Navigating back to list selection");
+    
+    // Stop data refresh for symbols
+    [self stopDataRefreshTimer];
+    
+    // Reset to list selection mode
+    self.displayMode = WatchlistDisplayModeListSelection;
+    self.selectedWatchlist = nil;
+    self.currentProvider = nil;
+    
+
+    // Reload table with watchlist list
+    [self.tableView reloadData];
+}
+
+#pragma mark - TableView Selection Handling
+
+- (void)tableViewSelectionDidChange:(NSNotification *)notification {
+    if (self.displayMode == WatchlistDisplayModeListSelection) {
+        // In list mode, selection is just visual - drill down happens on double-click
+        return;
+    } else {
+        // In symbols mode, handle symbol selection (existing logic)
+        [self handleSymbolSelection];
+    }
+}
+
+- (void)tableViewDoubleClick:(id)sender {
+    NSInteger clickedRow = self.tableView.clickedRow;
+    
+    if (clickedRow < 0) return;
+    
+    if (self.displayMode == WatchlistDisplayModeListSelection) {
+        // Double-click on watchlist → drill down
+        [self drillDownToWatchlistAtIndex:clickedRow];
+    } else {
+        // Double-click on symbol → open chart (existing behavior)
+        [self tableView:self.tableView didDoubleClickRow:clickedRow];
+    }
+}
+
+- (void)handleSymbolSelection {
+    // Existing symbol selection logic
+    NSInteger selectedRow = self.tableView.selectedRow;
+    if (selectedRow < 0 || selectedRow >= self.displaySymbols.count) return;
+    
+    NSString *symbol = self.displaySymbols[selectedRow];
+    NSLog(@"📌 WatchlistWidget: Symbol selected: %@", symbol);
+}
+
+#pragma mark - NSTableViewDataSource
+
+- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
+    if (self.displayMode == WatchlistDisplayModeListSelection) {
+        // Show watchlists
+        return self.currentProviderLists.count;
+    } else {
+        // Show symbols
+        return self.displaySymbols.count;
+    }
+}
+
+- (NSView *)tableView:(NSTableView *)tableView
+   viewForTableColumn:(NSTableColumn *)tableColumn
+                  row:(NSInteger)row {
+    
+    if (self.displayMode == WatchlistDisplayModeListSelection) {
+        return [self cellForWatchlistAtRow:row column:tableColumn];
+    } else {
+        return [self cellForSymbolAtRow:row column:tableColumn];
+    }
+}
+
+#pragma mark - Cell Creation - Watchlist Mode
+
+- (NSView *)cellForWatchlistAtRow:(NSInteger)row column:(NSTableColumn *)tableColumn {
+    if (row < 0 || row >= self.currentProviderLists.count) return nil;
+    
+    id<WatchlistProvider> provider = self.currentProviderLists[row];
+    
+    NSString *identifier = tableColumn.identifier;
+    
+    if ([identifier isEqualToString:@"symbol"]) {
+        // Main column: show "Name (count)"
+        NSTableCellView *cellView = [self.tableView makeViewWithIdentifier:@"WatchlistNameCell" owner:self];
+        
+        if (!cellView) {
+            cellView = [[NSTableCellView alloc] init];
+            cellView.identifier = @"WatchlistNameCell";
+            
+            NSTextField *textField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+            textField.bordered = NO;
+            textField.editable = NO;
+            textField.drawsBackground = NO;
+            textField.font = [NSFont systemFontOfSize:13];
+            textField.lineBreakMode = NSLineBreakByTruncatingTail;
+            textField.translatesAutoresizingMaskIntoConstraints = NO;
+            [cellView addSubview:textField];
+            cellView.textField = textField;
+            
+            [NSLayoutConstraint activateConstraints:@[
+                [textField.leadingAnchor constraintEqualToAnchor:cellView.leadingAnchor constant:8],
+                [textField.trailingAnchor constraintEqualToAnchor:cellView.trailingAnchor constant:-8],
+                [textField.centerYAnchor constraintEqualToAnchor:cellView.centerYAnchor]
+            ]];
+        }
+        
+        // Format: "Watchlist Name (15)"
+        NSString *displayText;
+        if (provider.showCount && provider.isLoaded) {
+            NSUInteger count = provider.symbols.count;
+            displayText = [NSString stringWithFormat:@"%@ (%lu)",
+                          provider.displayName, (unsigned long)count];
+        } else {
+            displayText = provider.displayName;
+        }
+        
+        cellView.textField.stringValue = displayText;
+        cellView.textField.textColor = [NSColor labelColor];
+        
+        return cellView;
+    }
+    
+    // Other columns empty in list mode
+    return [[NSTableCellView alloc] init];
+}
+
+#pragma mark - Cell Creation - Symbol Mode
+
+- (NSView *)cellForSymbolAtRow:(NSInteger)row column:(NSTableColumn *)tableColumn {
+    if (row < 0 || row >= self.displaySymbols.count) return nil;
+    
+    NSString *symbol = self.displaySymbols[row];
+    NSString *identifier = tableColumn.identifier;
+    
+    if ([identifier isEqualToString:@"symbol"]) {
+        return [self createSymbolCellForSymbol:symbol];
+    } else if ([identifier isEqualToString:@"change"]) {
+        return [self createChangeCellForSymbol:symbol];
+    } else if ([identifier isEqualToString:@"arrow"]) {
+        return [self createArrowCellForSymbol:symbol];
+    }
+    
+    return [[NSTableCellView alloc] init];
+}
+
+- (NSTableCellView *)createSymbolCellForSymbol:(NSString *)symbol {
+    NSTableCellView *cellView = [self.tableView makeViewWithIdentifier:@"SymbolCell" owner:self];
+    
+    if (!cellView) {
+        cellView = [[NSTableCellView alloc] init];
+        cellView.identifier = @"SymbolCell";
+        
+        NSTextField *textField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+        textField.bordered = NO;
+        textField.editable = NO;
+        textField.drawsBackground = NO;
+        textField.font = [NSFont systemFontOfSize:13 weight:NSFontWeightMedium];
+        textField.lineBreakMode = NSLineBreakByTruncatingTail;
+        textField.translatesAutoresizingMaskIntoConstraints = NO;
+        [cellView addSubview:textField];
+        cellView.textField = textField;
+        
+        [NSLayoutConstraint activateConstraints:@[
+            [textField.leadingAnchor constraintEqualToAnchor:cellView.leadingAnchor constant:8],
+            [textField.trailingAnchor constraintEqualToAnchor:cellView.trailingAnchor constant:-8],
+            [textField.centerYAnchor constraintEqualToAnchor:cellView.centerYAnchor]
+        ]];
+    }
+    
+    cellView.textField.stringValue = symbol;
+    cellView.textField.textColor = [NSColor labelColor];
+    
+    return cellView;
+}
+
+- (NSTableCellView *)createChangeCellForSymbol:(NSString *)symbol {
+    NSTableCellView *cellView = [self.tableView makeViewWithIdentifier:@"ChangeCell" owner:self];
+    
+    if (!cellView) {
+        cellView = [[NSTableCellView alloc] init];
+        cellView.identifier = @"ChangeCell";
+        
+        NSTextField *textField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+        textField.bordered = NO;
+        textField.editable = NO;
+        textField.drawsBackground = NO;
+        textField.font = [NSFont systemFontOfSize:12];
+        textField.alignment = NSTextAlignmentRight;
+        textField.lineBreakMode = NSLineBreakByTruncatingTail;
+        textField.translatesAutoresizingMaskIntoConstraints = NO;
+        [cellView addSubview:textField];
+        cellView.textField = textField;
+        
+        [NSLayoutConstraint activateConstraints:@[
+            [textField.leadingAnchor constraintEqualToAnchor:cellView.leadingAnchor constant:4],
+            [textField.trailingAnchor constraintEqualToAnchor:cellView.trailingAnchor constant:-4],
+            [textField.centerYAnchor constraintEqualToAnchor:cellView.centerYAnchor]
+        ]];
+    }
+    
+    // Get quote data
+    MarketQuoteModel *quote = self.quotesCache[symbol];
+    
+    if (quote && quote.changePercent.doubleValue != 0.0) {
+        double changePercent = quote.changePercent.doubleValue;
+        NSString *changeText = [NSString stringWithFormat:@"%+.2f%%", changePercent];
+        
+        cellView.textField.stringValue = changeText;
+        
+        if (changePercent > 0) {
+            cellView.textField.textColor = [NSColor systemGreenColor];
+        } else if (changePercent < 0) {
+            cellView.textField.textColor = [NSColor systemRedColor];
+        } else {
+            cellView.textField.textColor = [NSColor secondaryLabelColor];
+        }
+    } else {
+        cellView.textField.stringValue = @"--";
+        cellView.textField.textColor = [NSColor secondaryLabelColor];
+    }
+    
+    return cellView;
+}
+
+- (NSTableCellView *)createArrowCellForSymbol:(NSString *)symbol {
+    NSTableCellView *cellView = [self.tableView makeViewWithIdentifier:@"ArrowCell" owner:self];
+    
+    if (!cellView) {
+        cellView = [[NSTableCellView alloc] init];
+        cellView.identifier = @"ArrowCell";
+        
+        NSTextField *textField = [[NSTextField alloc] initWithFrame:NSZeroRect];
+        textField.bordered = NO;
+        textField.editable = NO;
+        textField.drawsBackground = NO;
+        textField.font = [NSFont systemFontOfSize:14];
+        textField.alignment = NSTextAlignmentCenter;
+        textField.translatesAutoresizingMaskIntoConstraints = NO;
+        [cellView addSubview:textField];
+        cellView.textField = textField;
+        
+        [NSLayoutConstraint activateConstraints:@[
+            [textField.leadingAnchor constraintEqualToAnchor:cellView.leadingAnchor],
+            [textField.trailingAnchor constraintEqualToAnchor:cellView.trailingAnchor],
+            [textField.centerYAnchor constraintEqualToAnchor:cellView.centerYAnchor]
+        ]];
+    }
+    
+    // Get quote data
+    MarketQuoteModel *quote = self.quotesCache[symbol];
+    
+    if (quote && quote.changePercent.doubleValue != 0.0) {
+        double changePercent = quote.changePercent.doubleValue;
+        
+        if (changePercent > 0) {
+            cellView.textField.stringValue = @"↑";
+            cellView.textField.textColor = [NSColor systemGreenColor];
+        } else if (changePercent < 0) {
+            cellView.textField.stringValue = @"↓";
+            cellView.textField.textColor = [NSColor systemRedColor];
+        } else {
+            cellView.textField.stringValue = @"";
+        }
+    } else {
+        cellView.textField.stringValue = @"";
+    }
+    
+    return cellView;
+}
+
+#pragma mark - Table Configuration
 
 - (void)configureTableColumns {
     // Remove all existing columns
@@ -306,12 +637,11 @@
 
 - (void)addSymbolColumn {
     NSTableColumn *symbolColumn = [[NSTableColumn alloc] initWithIdentifier:@"symbol"];
-    symbolColumn.title = @"Symbol";  // ← Titolo pulito, no "| Change%"
+    symbolColumn.title = @"Symbol";
     symbolColumn.width = 80;
     symbolColumn.minWidth = 60;
     symbolColumn.resizingMask = NSTableColumnUserResizingMask;
     
-    // ✅ AUTOMATIC: Sorting alfabetico per simboli
     NSSortDescriptor *sortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"self"
                                                                      ascending:YES];
     symbolColumn.sortDescriptorPrototype = sortDescriptor;
@@ -321,12 +651,11 @@
 
 - (void)addChangeColumn {
     NSTableColumn *changeColumn = [[NSTableColumn alloc] initWithIdentifier:@"change"];
-    changeColumn.title = @"Change%";  // ← Titolo dedicato
+    changeColumn.title = @"Change%";
     changeColumn.width = 60;
     changeColumn.minWidth = 50;
     changeColumn.resizingMask = NSTableColumnUserResizingMask;
     
-    // ✅ AUTOMATIC: Sorting per change% (inizia con valori più alti)
     NSSortDescriptor *sortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"changePercent"
                                                                       ascending:NO
                                                                        selector:@selector(compare:)];
@@ -337,156 +666,16 @@
 
 - (void)addArrowColumn {
     NSTableColumn *arrowColumn = [[NSTableColumn alloc] initWithIdentifier:@"arrow"];
-    arrowColumn.title = @"";  // No title
+    arrowColumn.title = @"";
     arrowColumn.width = 20;
     arrowColumn.minWidth = 20;
     arrowColumn.maxWidth = 20;
     arrowColumn.resizingMask = NSTableColumnNoResizing;
     
-    // ✅ NO SORTING: Non aggiungere sortDescriptorPrototype
-    
     [self.tableView addTableColumn:arrowColumn];
 }
 
-#pragma mark - NEW: Search Implementation (for Watchlists)
-
-- (void)searchTextChanged:(NSTextField *)sender {
-    self.searchText = sender.stringValue;
-    
-    NSLog(@"🔍 WatchlistWidget: Search text changed to: '%@'", self.searchText);
-    
-    // FIX #2 + FILTER: Implementazione temporanea del filtering
-    // Per ora, stampa solo log - il filtering completo richiede modifiche al HierarchicalWatchlistSelector
-    
-    if ([self.providerSelector respondsToSelector:@selector(setFilterText:)]) {
-        NSLog(@"🔍 WatchlistWidget: Passing filter text to selector");
-        [self.providerSelector performSelector:@selector(setFilterText:) withObject:self.searchText];
-    } else {
-        NSLog(@"⚠️ WatchlistWidget: HierarchicalWatchlistSelector doesn't support setFilterText: yet");
-        NSLog(@"   Current search: '%@' (filtering not implemented yet)", self.searchText);
-    }
-}
-
-- (void)clearSearch {
-    self.searchField.stringValue = @"";
-    self.searchText = @"";
-    [self searchTextChanged:self.searchField];
-}
-
-#pragma mark - Layout Management
-
-- (void)updateLayoutForWidth:(CGFloat)width {
-    self.currentWidth = width;
-    
-    NSInteger newVisibleColumns;
-    
-    // FIX #1: Breakpoint espansi per widget più larghi
-    if (width < 120) {
-        newVisibleColumns = 1; // Symbol only (molto stretto)
-    } else if (width < 160) {
-        newVisibleColumns = 2; // Symbol + Change% (stretto)
-    } else if (width < 200) {
-        newVisibleColumns = 3; // Symbol + Change% + Arrow (normale)
-    } else {
-        // FIX #1: Widget largo - aggiungi più colonne o espandi esistenti
-        newVisibleColumns = 3; // Per ora mantieni 3, ma espandi larghezza colonne
-    }
-    
-    if (newVisibleColumns != self.visibleColumns) {
-        self.visibleColumns = newVisibleColumns;
-        [self reconfigureColumnsForCurrentWidth];
-    }
-    
-    // FIX #1: Adatta larghezza colonne per widget espansi
-    [self adjustColumnWidthsForCurrentWidth:width];
-}
-
-// FIX #1: NUOVO METODO per adattare larghezza colonne
-- (void)adjustColumnWidthsForCurrentWidth:(CGFloat)width {
-    if (self.tableView.tableColumns.count == 0) return;
-    
-    // Distribuisci spazio disponibile tra le colonne esistenti
-    CGFloat availableWidth = width - 20; // Margini per scrollbar
-    
-    if (self.visibleColumns == 1) {
-        // Una colonna - usa tutto lo spazio
-        NSTableColumn *symbolColumn = self.tableView.tableColumns[0];
-        symbolColumn.width = availableWidth;
-        
-    } else if (self.visibleColumns == 2) {
-        // Due colonne - symbol più largo, change fisso
-        NSTableColumn *symbolColumn = self.tableView.tableColumns[0];
-        NSTableColumn *changeColumn = self.tableView.tableColumns[1];
-        
-        changeColumn.width = 60; // Fisso
-        symbolColumn.width = availableWidth - 60;
-        
-    } else if (self.visibleColumns == 3) {
-        // Tre colonne - distribuzione intelligente
-        NSTableColumn *symbolColumn = self.tableView.tableColumns[0];
-        NSTableColumn *changeColumn = self.tableView.tableColumns[1];
-        NSTableColumn *arrowColumn = self.tableView.tableColumns[2];
-        
-        arrowColumn.width = 25; // Fisso
-        changeColumn.width = 65; // Fisso
-        symbolColumn.width = availableWidth - 25 - 65; // Resto
-    }
-}
-
-
-- (void)reconfigureColumnsForCurrentWidth {
-    // Remove all columns
-    while (self.tableView.tableColumns.count > 0) {
-        [self.tableView removeTableColumn:self.tableView.tableColumns.firstObject];
-    }
-    
-    // Add columns based on current width
-    [self addSymbolColumn];
-    
-    if (self.visibleColumns >= 2) {
-        [self addChangeColumn];
-    }
-    
-    if (self.visibleColumns >= 3) {
-        [self addArrowColumn];
-    }
-    
-    
-    // Reload to update display
-    [self.tableView reloadData];
-}
-
-- (void)viewDidResize:(NSNotification *)notification {
-    CGFloat newWidth = self.contentView.frame.size.width;
-    
-    // Only process if width actually changed significantly
-    if (fabs(newWidth - self.currentWidth) < 5.0) {
-        return; // Skip minor width changes
-    }
-    
-    self.pendingWidth = newWidth;
-    
-    // Cancel previous timer
-    [self.resizeThrottleTimer invalidate];
-    
-    // Schedule delayed resize processing
-    self.resizeThrottleTimer = [NSTimer scheduledTimerWithTimeInterval:0.1 // 100ms delay
-                                                                target:self
-                                                              selector:@selector(processDelayedResize)
-                                                              userInfo:nil
-                                                               repeats:NO];
-}
-
-- (void)processDelayedResize {
-    NSLog(@"🔄 WatchlistWidget: Processing delayed resize: %.0f -> %.0f",
-          self.currentWidth, self.pendingWidth);
-    [self updateLayoutForWidth:self.pendingWidth];
-    self.resizeThrottleTimer = nil;
-}
-
-#pragma mark - Provider Management
-
-
+#pragma mark - Provider Selection (Existing Logic - Adapted)
 
 - (void)selectProvider:(id<WatchlistProvider>)provider {
     if (!provider) {
@@ -510,17 +699,11 @@
     NSLog(@"📋 WatchlistWidget: Selecting provider: %@ -> %@",
           self.currentProvider.displayName ?: @"none", provider.displayName);
     
-    // ✅ FIX 1: Stop previous subscription before changing provider
+    // Stop previous subscription before changing provider
     [self stopDataRefreshTimer];
     
     self.currentProvider = provider;
     self.lastSelectedProviderId = provider.providerId;
-    
-    if (!self.providerSelector.selectedProvider ||
-        ![self.providerSelector.selectedProvider.providerId isEqualToString:provider.providerId]) {
-        NSLog(@"🔄 WatchlistWidget: Updating selector display to: %@", provider.displayName);
-        [self.providerSelector selectProviderWithId:provider.providerId];
-    }
     
     [self refreshCurrentProvider];
 }
@@ -542,20 +725,21 @@
             
             if (error) {
                 NSLog(@"❌ Error loading provider symbols: %@", error.localizedDescription);
+                [strongSelf.statusLabel setStringValue:@"Error loading symbols"];
                 return;
             }
             
             strongSelf.symbols = symbols;
-            strongSelf.displaySymbols = [symbols copy];  // ← SEMPRE aggiorna
+            strongSelf.displaySymbols = [symbols copy];
+            
+            [strongSelf.statusLabel setStringValue:[NSString stringWithFormat:@"%lu symbols",
+                                                    (unsigned long)symbols.count]];
 
             [strongSelf refreshQuotesForDisplaySymbols];
-
             [strongSelf.tableView reloadData];
 
-            // ✅ FIX 1: Start subscription for new symbols
+            // Start subscription for new symbols
             [strongSelf startDataRefreshTimer];
-           
-
         });
     }];
 }
@@ -563,13 +747,11 @@
 - (void)refreshQuotesForDisplaySymbols {
     if (self.displaySymbols.count == 0) return;
     
-    [[DataHub shared] getQuotesForSymbols:self.displaySymbols completion:^(NSDictionary<NSString *,MarketQuoteModel *> * _Nonnull quotes, BOOL allLive) {
+    [[DataHub shared] getQuotesForSymbols:self.displaySymbols
+                               completion:^(NSDictionary<NSString *,MarketQuoteModel *> * _Nonnull quotes, BOOL allLive) {
         dispatch_async(dispatch_get_main_queue(), ^{
             [self.quotesCache addEntriesFromDictionary:quotes];
-            
-         
-                [self.tableView reloadData];
-            
+            [self.tableView reloadData];
             
             self.lastQuoteUpdate = [NSDate timeIntervalSinceReferenceDate];
             
@@ -579,11 +761,16 @@
     }];
 }
 
+#pragma mark - Data Refresh Timer
 
 - (void)startDataRefreshTimer {
     [self stopDataRefreshTimer];
     
-    // ✅ FIX: Use DataHub subscription instead of own timer
+    // Only subscribe if in symbols mode
+    if (self.displayMode != WatchlistDisplayModeSymbols) {
+        return;
+    }
+    
     if (self.currentProvider.isAutoUpdating && self.displaySymbols.count > 0) {
         [[DataHub shared] subscribeToQuoteUpdatesForSymbols:self.displaySymbols];
         NSLog(@"✅ WatchlistWidget: Subscribed to DataHub quotes for %lu symbols",
@@ -598,7 +785,6 @@
 }
 
 - (void)stopDataRefreshTimer {
-    // ✅ FIX: Unsubscribe from DataHub instead of stopping timer
     if (self.displaySymbols.count > 0) {
         for (NSString *symbol in self.displaySymbols) {
             [[DataHub shared] unsubscribeFromQuoteUpdatesForSymbol:symbol];
@@ -606,408 +792,259 @@
         NSLog(@"✅ WatchlistWidget: Unsubscribed from DataHub quotes");
     }
     
-    // Remove notification observer
     [[NSNotificationCenter defaultCenter] removeObserver:self
                                                      name:@"DataHubQuoteUpdated"
                                                    object:nil];
 }
 
 - (void)handleQuoteUpdate:(NSNotification *)notification {
-    // Handle quote updates from DataHub subscription
     NSString *symbol = notification.userInfo[@"symbol"];
     MarketQuoteModel *quote = notification.userInfo[@"quote"];
     
     if ([self.displaySymbols containsObject:symbol] && quote) {
-        // Update cache
         self.quotesCache[symbol] = quote;
         
-      
+        // Reload only visible rows for better performance
+        NSInteger row = [self.displaySymbols indexOfObject:symbol];
+        if (row != NSNotFound) {
+            [self.tableView reloadDataForRowIndexes:[NSIndexSet indexSetWithIndex:row]
+                                       columnIndexes:[NSIndexSet indexSetWithIndexesInRange:NSMakeRange(0, self.tableView.tableColumns.count)]];
+        }
         
         self.lastQuoteUpdate = [NSDate timeIntervalSinceReferenceDate];
     }
 }
 
-#pragma mark - NSTableViewDataSource
+#pragma mark - Search Functionality
 
-- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
-    return self.displaySymbols.count;
+- (void)searchTextChanged:(NSTextField *)sender {
+    self.searchText = sender.stringValue;
+    
+    NSLog(@"🔍 WatchlistWidget: Search text changed to: '%@'", self.searchText);
+    
+    // Search filters the watchlists in list mode
+    if (self.displayMode == WatchlistDisplayModeListSelection) {
+        [self filterWatchlistsWithSearchText:self.searchText];
+    }
+    // In symbols mode, search could filter symbols (optional future enhancement)
 }
 
-#pragma mark - NSTableViewDelegate
-
-- (NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(NSTableColumn *)tableColumn row:(NSInteger)row {
-    if (row >= self.displaySymbols.count) return nil;
-    
-    NSString *symbol = self.displaySymbols[row];
-    NSString *identifier = tableColumn.identifier;
-    MarketQuoteModel *quote = self.quotesCache[symbol];
-    
-    // Create or reuse cell view
-    NSTableCellView *cellView = [tableView makeViewWithIdentifier:identifier owner:self];
-    if (!cellView) {
-        cellView = [[NSTableCellView alloc] init];
-        cellView.identifier = identifier;
+- (void)filterWatchlistsWithSearchText:(NSString *)searchText {
+    if (!searchText || searchText.length == 0) {
+        // No filter - show all
+        NSString *categoryName = [self categoryNameForProviderType:self.selectedProviderType];
+        self.currentProviderLists = [self.providerManager providersForCategory:categoryName];
+    } else {
+        // Filter by name
+        NSString *categoryName = [self categoryNameForProviderType:self.selectedProviderType];
+        NSArray<id<WatchlistProvider>> *allProviders = [self.providerManager providersForCategory:categoryName];
         
-        NSTextField *textField = [NSTextField labelWithString:@""];
-        textField.translatesAutoresizingMaskIntoConstraints = NO;
-        [cellView addSubview:textField];
-        cellView.textField = textField;
+        NSPredicate *predicate = [NSPredicate predicateWithFormat:@"displayName CONTAINS[cd] %@", searchText];
+        self.currentProviderLists = [allProviders filteredArrayUsingPredicate:predicate];
         
-        [NSLayoutConstraint activateConstraints:@[
-            [textField.leadingAnchor constraintEqualToAnchor:cellView.leadingAnchor constant:4],
-            [textField.trailingAnchor constraintEqualToAnchor:cellView.trailingAnchor constant:-4],
-            [textField.centerYAnchor constraintEqualToAnchor:cellView.centerYAnchor]
-        ]];
+        NSLog(@"🔍 Filtered to %lu watchlists", (unsigned long)self.currentProviderLists.count);
     }
     
-    // Configure cell based on column
-    if ([identifier isEqualToString:@"symbol"]) {
-        cellView.textField.stringValue = symbol;
-        cellView.textField.font = [NSFont boldSystemFontOfSize:11];
-        cellView.textField.textColor = [NSColor labelColor];
-        
-    } else if ([identifier isEqualToString:@"change"]) {
-        if (quote && quote.changePercent) {
-            double changePercent = [quote.changePercent doubleValue];
-            NSString *changeString = [NSString stringWithFormat:@"%.2f%%", changePercent];
-            
-            cellView.textField.stringValue = changeString;
-            cellView.textField.font = [NSFont systemFontOfSize:10];
-            
-            if (changePercent > 0.05) {
-                cellView.textField.textColor = [NSColor systemGreenColor];
-            } else if (changePercent < -0.05) {
-                cellView.textField.textColor = [NSColor systemRedColor];
-            } else {
-                cellView.textField.textColor = [NSColor secondaryLabelColor];
-            }
-        } else {
-            cellView.textField.stringValue = @"--";
-            cellView.textField.textColor = [NSColor secondaryLabelColor];
-        }
-        
-    } else if ([identifier isEqualToString:@"arrow"]) {
-        if (quote && quote.changePercent) {
-            double changePercent = [quote.changePercent doubleValue];
-            NSString *arrow;
-            NSColor *color;
-            
-            if (changePercent > 0.05) {
-                arrow = @"▲";
-                color = [NSColor systemGreenColor];
-            } else if (changePercent < -0.05) {
-                arrow = @"▼";
-                color = [NSColor systemRedColor];
-            } else {
-                arrow = @"─";
-                color = [NSColor secondaryLabelColor];
-            }
-            
-            cellView.textField.stringValue = arrow;
-            cellView.textField.textColor = color;
-            cellView.textField.alignment = NSTextAlignmentCenter;
-        } else {
-            cellView.textField.stringValue = @"─";
-            cellView.textField.textColor = [NSColor secondaryLabelColor];
-            cellView.textField.alignment = NSTextAlignmentCenter;
-        }
+    [self.tableView reloadData];
+}
+
+- (void)clearSearch {
+    self.searchField.stringValue = @"";
+    self.searchText = @"";
+    [self filterWatchlistsWithSearchText:@""];
+}
+
+#pragma mark - Layout Management (Existing Logic)
+
+- (void)updateLayoutForWidth:(CGFloat)width {
+    self.currentWidth = width;
+    
+    NSInteger newVisibleColumns;
+    if (width < 150) {
+        newVisibleColumns = 1; // Symbol only
+    } else if (width < 220) {
+        newVisibleColumns = 2; // Symbol + Change%
+    } else {
+        newVisibleColumns = 3; // Symbol + Change% + Arrow
     }
     
-    return cellView;
+    if (newVisibleColumns != self.visibleColumns) {
+        self.visibleColumns = newVisibleColumns;
+        [self reconfigureColumnsForCurrentWidth];
+    } else {
+        [self adjustColumnWidthsForWidth:width];
+    }
 }
 
-- (void)tableView:(NSTableView *)tableView didClickTableColumn:(NSTableColumn *)tableColumn {
-    // NEW: Handle header clicks for sorti
+- (void)adjustColumnWidthsForWidth:(CGFloat)width {
+    if (self.tableView.tableColumns.count == 0) return;
+    
+    NSTableColumn *symbolColumn = [self.tableView tableColumnWithIdentifier:@"symbol"];
+    NSTableColumn *changeColumn = [self.tableView tableColumnWithIdentifier:@"change"];
+    NSTableColumn *arrowColumn = [self.tableView tableColumnWithIdentifier:@"arrow"];
+    
+    CGFloat availableWidth = width - 20;
+    
+    if (self.visibleColumns == 1) {
+        symbolColumn.width = availableWidth;
+    } else if (self.visibleColumns == 2) {
+        changeColumn.width = 65;
+        symbolColumn.width = availableWidth - 65;
+    } else {
+        arrowColumn.width = 25;
+        changeColumn.width = 65;
+        symbolColumn.width = availableWidth - 25 - 65;
+    }
+}
+
+- (void)reconfigureColumnsForCurrentWidth {
+    while (self.tableView.tableColumns.count > 0) {
+        [self.tableView removeTableColumn:self.tableView.tableColumns.firstObject];
+    }
+    
+    [self addSymbolColumn];
+    
+    if (self.visibleColumns >= 2) {
+        [self addChangeColumn];
+    }
+    
+    if (self.visibleColumns >= 3) {
+        [self addArrowColumn];
+    }
+    
+    [self.tableView reloadData];
+}
+
+- (void)viewDidResize:(NSNotification *)notification {
+    CGFloat newWidth = self.contentView.frame.size.width;
+    
+    if (fabs(newWidth - self.currentWidth) < 5.0) {
+        return;
+    }
+    
+    self.pendingWidth = newWidth;
+    [self.resizeThrottleTimer invalidate];
+    
+    self.resizeThrottleTimer = [NSTimer scheduledTimerWithTimeInterval:0.1
+                                                                target:self
+                                                              selector:@selector(processDelayedResize)
+                                                              userInfo:nil
+                                                               repeats:NO];
+}
+
+- (void)processDelayedResize {
+    NSLog(@"🔄 WatchlistWidget: Processing delayed resize: %.0f -> %.0f",
+          self.currentWidth, self.pendingWidth);
+    [self updateLayoutForWidth:self.pendingWidth];
+    self.resizeThrottleTimer = nil;
 }
 
 
-#pragma mark - Actions
+#pragma mark - Actions Menu
 
 - (void)showActionsMenu:(NSButton *)sender {
-    NSMenu *menu = [[NSMenu alloc] init];
+    NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Actions"];
     
-    // 🔧 SEZIONE 1: WATCHLIST MANAGEMENT (SEMPRE VISIBILI)
-    NSMenuItem *createWatchlistItem = [[NSMenuItem alloc] initWithTitle:@"📝 Create New Watchlist..."
-                                                                 action:@selector(showCreateWatchlistDialog:)
-                                                          keyEquivalent:@""];
-    createWatchlistItem.target = self;
-    [menu addItem:createWatchlistItem];
-    
-    NSMenuItem *importFinvizItem = [[NSMenuItem alloc] initWithTitle:@"🔍 Import from Finviz..."
-                                                                action:@selector(showFinvizImportDialog:)
-                                                         keyEquivalent:@""];
-      importFinvizItem.target = self;
-      [menu addItem:importFinvizItem];
-      
-      NSMenuItem *createFromFinvizItem = [[NSMenuItem alloc] initWithTitle:@"📈 Create List from Finviz..."
-                                                                    action:@selector(showFinvizCreateListDialog:)
+    // Only show symbol-related actions when in symbols mode with selections
+    if (self.displayMode == WatchlistDisplayModeSymbols && [self hasSelectedSymbols]) {
+        [menu addItemWithTitle:@"Create Watchlist from Selection"
+                        action:@selector(createWatchlistFromCurrentSelection)
+                 keyEquivalent:@""];
+        
+        // Add to manual watchlist submenu
+        NSMenuItem *addToWatchlistItem = [[NSMenuItem alloc] initWithTitle:@"Add to Watchlist"
+                                                                    action:nil
                                                              keyEquivalent:@""];
-      createFromFinvizItem.target = self;
-      [menu addItem:createFromFinvizItem];
-    
-    // Solo per watchlist manuali - mostra Remove option
-    BOOL isManualWatchlist = [self.currentProvider isKindOfClass:[ManualWatchlistProvider class]];
-    if (isManualWatchlist) {
-        NSMenuItem *removeWatchlistItem = [[NSMenuItem alloc] initWithTitle:@"🗑️ Remove Current Watchlist..."
-                                                                     action:@selector(showRemoveWatchlistDialog:)
-                                                              keyEquivalent:@""];
-        removeWatchlistItem.target = self;
-        [menu addItem:removeWatchlistItem];
+        NSMenu *watchlistSubmenu = [[NSMenu alloc] initWithTitle:@""];
+        
+        NSArray<id<WatchlistProvider>> *manualProviders = [self.providerManager providersForCategory:@"Manual Watchlists"];
+        for (id<WatchlistProvider> provider in manualProviders) {
+            NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:provider.displayName
+                                                          action:@selector(addSelectionToWatchlistMenuItem:)
+                                                   keyEquivalent:@""];
+            item.representedObject = provider;
+            item.target = self;
+            [watchlistSubmenu addItem:item];
+        }
+        
+        addToWatchlistItem.submenu = watchlistSubmenu;
+        [menu addItem:addToWatchlistItem];
+        
+        [menu addItem:[NSMenuItem separatorItem]];
     }
+    
+    // General actions
+    [menu addItemWithTitle:@"Refresh"
+                    action:@selector(refreshCurrentProvider)
+             keyEquivalent:@""];
     
     [menu addItem:[NSMenuItem separatorItem]];
     
-    // 🔧 SEZIONE 2: SYMBOL MANAGEMENT (SE PROVIDER SUPPORTA)
-    if (self.currentProvider) {
-        if (self.currentProvider.canAddSymbols) {
-            NSMenuItem *addSingleItem = [[NSMenuItem alloc] initWithTitle:@"➕ Add Single Symbol..."
-                                                                   action:@selector(showAddSingleSymbolDialog:)
-                                                            keyEquivalent:@""];
-            addSingleItem.target = self;
-            [menu addItem:addSingleItem];
-            
-            NSMenuItem *addBulkItem = [[NSMenuItem alloc] initWithTitle:@"📊 Add Multiple Symbols..."
-                                                                 action:@selector(showAddBulkSymbolsDialog:)
-                                                          keyEquivalent:@""];
-            addBulkItem.target = self;
-            [menu addItem:addBulkItem];
-        }
-        
-        if ([self hasSelectedSymbols]) {
-            if (self.currentProvider.canRemoveSymbols) {
-                NSMenuItem *removeItem = [[NSMenuItem alloc] initWithTitle:@"➖ Remove Selected Symbols"
-                                                                    action:@selector(removeSelectedSymbols:)
-                                                             keyEquivalent:@""];
-                removeItem.target = self;
-                [menu addItem:removeItem];
-            }
-            
-            [menu addItem:[NSMenuItem separatorItem]];
-            
-            NSMenuItem *createFromSelectionItem = [[NSMenuItem alloc] initWithTitle:@"📋 Create Watchlist from Selection"
-                                                                             action:@selector(createWatchlistFromCurrentSelection)
-                                                                      keyEquivalent:@""];
-            createFromSelectionItem.target = self;
-            [menu addItem:createFromSelectionItem];
-        }
-    }
+    [menu addItemWithTitle:@"Widget Settings"
+                    action:@selector(showWidgetSettings)
+             keyEquivalent:@""];
     
-    // 🔧 SEZIONE 3: SEARCH & UTILITIES
-    if (self.searchText.length > 0) {
-        [menu addItem:[NSMenuItem separatorItem]];
-        NSMenuItem *clearSearchItem = [[NSMenuItem alloc] initWithTitle:@"🔍 Clear Search Filter"
-                                                                 action:@selector(clearSearch)
-                                                          keyEquivalent:@""];
-        clearSearchItem.target = self;
-        [menu addItem:clearSearchItem];
-    }
-    
-    
-    // Empty menu fallback
-    if (menu.itemArray.count == 0) {
-        NSMenuItem *emptyItem = [[NSMenuItem alloc] initWithTitle:@"No actions available"
-                                                           action:nil
-                                                    keyEquivalent:@""];
-        emptyItem.enabled = NO;
-        [menu addItem:emptyItem];
-    }
-    
-    // Show menu below the button
-    NSRect buttonFrame = sender.frame;
-    NSPoint menuOrigin = NSMakePoint(NSMinX(buttonFrame), NSMinY(buttonFrame));
-    [menu popUpMenuPositioningItem:nil atLocation:menuOrigin inView:sender.superview];
+    [NSMenu popUpContextMenu:menu withEvent:NSApp.currentEvent forView:sender];
 }
 
-- (BOOL)hasSelectedSymbols {
-    return self.tableView.selectedRowIndexes.count > 0;
-}
-
-
-- (void)addSymbol:(NSString *)symbol toManualWatchlist:(NSString *)watchlistName {
-    if (!symbol || !watchlistName) return;
+- (void)addSelectionToWatchlistMenuItem:(NSMenuItem *)menuItem {
+    id<WatchlistProvider> provider = menuItem.representedObject;
     
-    // Find the target watchlist
-    NSArray<WatchlistModel *> *watchlists = [[DataHub shared] getAllWatchlistModels];
-    WatchlistModel *targetWatchlist = nil;
-    
-    for (WatchlistModel *wl in watchlists) {
-        if ([wl.name.lowercaseString isEqualToString:watchlistName]) {
-            targetWatchlist = wl;
-            break;
-        }
-    }
-    
-    if (targetWatchlist) {
-        [[DataHub shared] addSymbol:symbol toWatchlistModel:targetWatchlist];
-        
-        // Refresh current provider if it's the same watchlist
-        if ([self.currentProvider isKindOfClass:[ManualWatchlistProvider class]]) {
-            ManualWatchlistProvider *manualProvider = (ManualWatchlistProvider *)self.currentProvider;
-            if ([manualProvider.watchlistModel.name isEqualToString:watchlistName]) {
-                [self refreshCurrentProvider];
-            }
-        }
-    }
-}
-
-#pragma mark - ✅ NUOVI METODI FINVIZ
-
-- (void)showFinvizImportDialog:(id)sender {
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Import Symbols from Finviz";
-    alert.informativeText = @"Enter a keyword to search for related stocks:";
-    alert.alertStyle = NSAlertStyleInformational;
-    
-    // Input field per keyword
-    NSTextField *keywordInput = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 300, 24)];
-    keywordInput.placeholderString = @"e.g., lidar, ev, solar";
-    alert.accessoryView = keywordInput;
-    
-    [alert addButtonWithTitle:@"Search"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    NSModalResponse response = [alert runModal];
-    
-    if (response == NSAlertFirstButtonReturn) {
-        NSString *keyword = keywordInput.stringValue.lowercaseString;
-        if (keyword.length > 0) {
-            [self performFinvizSearch:keyword forAction:@"import"];
-        }
-    }
-}
-
-- (void)showFinvizCreateListDialog:(id)sender {
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Create Watchlist from Finviz";
-    alert.informativeText = @"Enter a keyword to create a new watchlist:";
-    alert.alertStyle = NSAlertStyleInformational;
-    
-    // Input field per keyword
-    NSTextField *keywordInput = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 300, 24)];
-    keywordInput.placeholderString = @"e.g., lidar, ev, solar";
-    alert.accessoryView = keywordInput;
-    
-    [alert addButtonWithTitle:@"Create"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    NSModalResponse response = [alert runModal];
-    
-    if (response == NSAlertFirstButtonReturn) {
-        NSString *keyword = keywordInput.stringValue.lowercaseString;
-        if (keyword.length > 0) {
-            [self performFinvizSearch:keyword forAction:@"create"];
-        }
-    }
-}
-
-- (void)performFinvizSearch:(NSString *)keyword forAction:(NSString *)action {
-    // Show loading indicator
-    [self showLoadingMessage:[NSString stringWithFormat:@"Searching Finviz for '%@'...", keyword]];
-    
-    // Get OtherDataSource instance
-    DownloadManager *downloadManager = [DownloadManager sharedManager];
-    OtherDataSource *otherDataSource = (OtherDataSource *)[downloadManager dataSourceForType:DataSourceTypeOther];
-    
-    if (!otherDataSource) {
-        [self hideLoadingMessage];
-        [self showErrorMessage:@"Finviz search not available"];
+    if (![provider isKindOfClass:[ManualWatchlistProvider class]]) {
+        NSLog(@"⚠️ Selected provider is not a manual watchlist");
         return;
     }
     
-    // Perform search
-    [otherDataSource fetchFinvizSearchResultsForKeyword:keyword
-                                             completion:^(NSArray<NSString *> *symbols, NSError *error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self hideLoadingMessage];
-            
-            if (error) {
-                [self showErrorMessage:error.localizedDescription];
-                return;
-            }
-            
-            if (symbols.count == 0) {
-                [self showErrorMessage:[NSString stringWithFormat:@"No symbols found for '%@'", keyword]];
-                return;
-            }
-            
-            // Show confirmation dialog
-            if ([action isEqualToString:@"import"]) {
-                [self showImportConfirmationForSymbols:symbols keyword:keyword];
-            } else if ([action isEqualToString:@"create"]) {
-                [self showCreateConfirmationForSymbols:symbols keyword:keyword];
-            }
-        });
-    }];
-}
-
-- (void)showImportConfirmationForSymbols:(NSArray<NSString *> *)symbols keyword:(NSString *)keyword {
-    NSString *symbolsList = [symbols componentsJoinedByString:@", "];
-    NSString *message = [NSString stringWithFormat:@"Add %lu symbols to current watchlist?", (unsigned long)symbols.count];
-    NSString *details = [NSString stringWithFormat:@"Symbols found for '%@':\n%@", keyword, symbolsList];
+    ManualWatchlistProvider *manualProvider = (ManualWatchlistProvider *)provider;
+    NSArray<NSString *> *selectedSymbols = [self selectedSymbols];
     
-    NSAlert *confirmAlert = [[NSAlert alloc] init];
-    confirmAlert.messageText = message;
-    confirmAlert.informativeText = details;
-    confirmAlert.alertStyle = NSAlertStyleInformational;
-    [confirmAlert addButtonWithTitle:@"Add Symbols"];
-    [confirmAlert addButtonWithTitle:@"Cancel"];
-    
-    NSModalResponse response = [confirmAlert runModal];
-    
-    if (response == NSAlertFirstButtonReturn) {
-        [self addSymbolsToCurrentWatchlist:symbols];
-    }
-}
-
-- (void)showCreateConfirmationForSymbols:(NSArray<NSString *> *)symbols keyword:(NSString *)keyword {
-    NSString *symbolsList = [symbols componentsJoinedByString:@", "];
-    NSString *watchlistName = keyword.uppercaseString;
-    NSString *message = [NSString stringWithFormat:@"Create watchlist '%@' with %lu symbols?", watchlistName, (unsigned long)symbols.count];
-    NSString *details = [NSString stringWithFormat:@"Symbols found:\n%@", symbolsList];
-    
-    NSAlert *confirmAlert = [[NSAlert alloc] init];
-    confirmAlert.messageText = message;
-    confirmAlert.informativeText = details;
-    confirmAlert.alertStyle = NSAlertStyleInformational;
-    [confirmAlert addButtonWithTitle:@"Create Watchlist"];
-    [confirmAlert addButtonWithTitle:@"Cancel"];
-    
-    NSModalResponse response = [confirmAlert runModal];
-    
-    if (response == NSAlertFirstButtonReturn) {
-        [self createNewWatchlistWithName:watchlistName symbols:symbols];
-    }
-}
-
-- (void)addSymbolsToCurrentWatchlist:(NSArray<NSString *> *)symbols {
-    if (![self.currentProvider isKindOfClass:[ManualWatchlistProvider class]]) {
-        [self showErrorMessage:@"Can only add symbols to manual watchlists"];
-        return;
-    }
-    
-    ManualWatchlistProvider *manualProvider = (ManualWatchlistProvider *)self.currentProvider;
     DataHub *dataHub = [DataHub shared];
-    
-    for (NSString *symbol in symbols) {
+    for (NSString *symbol in selectedSymbols) {
         [dataHub addSymbol:symbol toWatchlistModel:manualProvider.watchlistModel];
     }
     
-    // Refresh current view
-    [self refreshCurrentProvider];
+    NSLog(@"✅ Added %lu symbols to watchlist: %@",
+          (unsigned long)selectedSymbols.count, provider.displayName);
+}
+
+- (void)createWatchlistFromCurrentSelection {
+    NSArray<NSString *> *selectedSymbols = [self selectedSymbols];
     
-    // Show success message
-    [self showSuccessMessage:[NSString stringWithFormat:@"Added %lu symbols to watchlist", (unsigned long)symbols.count]];
+    if (selectedSymbols.count == 0) {
+        NSLog(@"⚠️ No symbols selected");
+        return;
+    }
+    
+    // Show input dialog for watchlist name
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Create Watchlist";
+    alert.informativeText = [NSString stringWithFormat:@"Create new watchlist with %lu selected symbols?",
+                            (unsigned long)selectedSymbols.count];
+    [alert addButtonWithTitle:@"Create"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.placeholderString = @"Watchlist name";
+    alert.accessoryView = input;
+    NSWindow *window = self.contentView.window;
+
+    [alert beginSheetModalForWindow:window completionHandler:^(NSModalResponse returnCode) {
+        if (returnCode == NSAlertFirstButtonReturn) {
+            NSString *watchlistName = input.stringValue;
+            if (watchlistName.length > 0) {
+                [self createNewWatchlistWithName:watchlistName symbols:selectedSymbols];
+            }
+        }
+    }];
 }
 
 - (void)createNewWatchlistWithName:(NSString *)name symbols:(NSArray<NSString *> *)symbols {
     DataHub *dataHub = [DataHub shared];
     
-    // ✅ FIX: Usa createWatchlistModelWithName invece di createWatchlistWithName
-    // Questo restituisce WatchlistModel (runtime), non Watchlist (CoreData)
     WatchlistModel *newWatchlist = [dataHub createWatchlistModelWithName:name];
     
     if (!newWatchlist) {
-        [self showErrorMessage:@"Failed to create watchlist"];
+        NSLog(@"❌ Failed to create watchlist");
         return;
     }
     
@@ -1016,142 +1053,169 @@
         [dataHub addSymbol:symbol toWatchlistModel:newWatchlist];
     }
     
-    // ✅ FIX: Usa selectProvider: invece di switchToProvider:
-    ManualWatchlistProvider *newProvider = [[ManualWatchlistProvider alloc] initWithWatchlistModel:newWatchlist];
-    [self selectProvider:newProvider];
+    NSLog(@"✅ Created watchlist '%@' with %lu symbols", name, (unsigned long)symbols.count);
     
-    // Show success message
-    [self showSuccessMessage:[NSString stringWithFormat:@"Created watchlist '%@' with %lu symbols", name, (unsigned long)symbols.count]];
+    // Refresh provider manager and switch to manual type
+    [self.providerManager refreshAllProviders];
+    [self selectProviderType:WatchlistProviderTypeManual];
 }
 
+- (void)showWidgetSettings {
+    // Placeholder for widget settings
+    NSLog(@"Widget settings not implemented yet");
+}
 
+#pragma mark - Utility Methods
 
-
-#pragma mark - ✅ UTILITY METHODS FOR MESSAGES
-
-- (void)showLoadingMessage:(NSString *)message {
-    // Use existing loading indicator or create temporary status
-    if (self.statusLabel) {
-        self.statusLabel.stringValue = message;
+- (BOOL)hasSelectedSymbols {
+    if (self.displayMode != WatchlistDisplayModeSymbols) {
+        return NO;
     }
-    [self.loadingIndicator startAnimation:nil];
+    return self.tableView.selectedRowIndexes.count > 0;
 }
 
-- (void)hideLoadingMessage {
-    [self.loadingIndicator stopAnimation:nil];
-    [self updateStatusDisplay]; // ✅ FIX: Usa metodo corretto invece di updateStatusLabel
-}
-
-- (void)showErrorMessage:(NSString *)message {
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Finviz Search Error";
-    alert.informativeText = message;
-    alert.alertStyle = NSAlertStyleWarning;
-    [alert addButtonWithTitle:@"OK"];
-    [alert runModal];
-}
-
-- (void)showSuccessMessage:(NSString *)message {
-    // Could use temporary status label or notification
-    if (self.statusLabel) {
-        self.statusLabel.stringValue = message;
+- (NSArray<NSString *> *)selectedSymbols {
+    if (self.displayMode != WatchlistDisplayModeSymbols) {
+        return @[];
     }
     
-    // Auto-clear after 3 seconds
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [self updateStatusDisplay]; // ✅ FIX: Usa metodo corretto invece di updateStatusLabel
-    });
-}
-
-// ✅ NUOVO: Implementa il metodo updateStatusDisplay se non esiste
-- (void)updateStatusDisplay {
-    if (!self.statusLabel) return;
-    
-    if (self.isLoadingProvider) {
-        self.statusLabel.stringValue = @"Loading...";
-    } else if (self.displaySymbols.count > 0) {
-        self.statusLabel.stringValue = [NSString stringWithFormat:@"%lu symbols", (unsigned long)self.displaySymbols.count];
-    } else {
-        self.statusLabel.stringValue = @"No symbols";
-    }
-}
-- (void)createWatchlistFromCurrentSelection {
-    NSArray<NSString *> *selectedSymbols = [self selectedSymbols];
-    if (selectedSymbols.count == 0) return;
-    
-    // Show name input dialog
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Create Watchlist";
-    alert.informativeText = [NSString stringWithFormat:@"Create watchlist with %lu symbols:", (unsigned long)selectedSymbols.count];
-    alert.alertStyle = NSAlertStyleInformational;
-    
-    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
-    input.placeholderString = @"My Watchlist";
-    alert.accessoryView = input;
-    
-    [alert addButtonWithTitle:@"Create"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    if ([alert runModal] == NSAlertFirstButtonReturn) {
-        NSString *watchlistName = input.stringValue;
-        if (watchlistName.length > 0) {
-            // Create new watchlist
-            WatchlistModel *newWatchlist = [[DataHub shared] createWatchlistModelWithName:watchlistName];
-            if (newWatchlist) {
-                // Add all selected symbols
-                [[DataHub shared] addSymbols:selectedSymbols toWatchlistModel:newWatchlist];
-                
-                // Refresh provider manager to include new watchlist
-                [self.providerManager refreshAllProviders];
-                [self.providerSelector rebuildMenuStructure];
-                
-                NSLog(@"✅ Created watchlist '%@' with %lu symbols", watchlistName, (unsigned long)selectedSymbols.count);
-            }
+    NSMutableArray<NSString *> *selected = [NSMutableArray array];
+    [self.tableView.selectedRowIndexes enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL * _Nonnull stop) {
+        if (idx < self.displaySymbols.count) {
+            [selected addObject:self.displaySymbols[idx]];
         }
+    }];
+    return [selected copy];
+}
+
+#pragma mark - Double Click Handling
+
+- (void)tableView:(NSTableView *)tableView didDoubleClickRow:(NSInteger)row {
+    if (self.displayMode != WatchlistDisplayModeSymbols) {
+        return; // Already handled in tableViewDoubleClick:
+    }
+    
+    if (row < 0 || row >= self.displaySymbols.count) return;
+    
+    NSString *symbol = self.displaySymbols[row];
+    
+    NSLog(@"📊 WatchlistWidget: Opening chart for symbol: %@", symbol);
+    
+    // Post notification to open chart widget
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"OpenChartForSymbol"
+                                                        object:nil
+                                                      userInfo:@{@"symbol": symbol}];
+}
+
+#pragma mark - Context Menu
+
+- (void)setupStandardContextMenu {
+    NSMenu *contextMenu = [[NSMenu alloc] initWithTitle:@""];
+    
+    NSMenuItem *openChartItem = [[NSMenuItem alloc] initWithTitle:@"Open Chart"
+                                                           action:@selector(contextMenuOpenChart:)
+                                                    keyEquivalent:@""];
+    openChartItem.target = self;
+    [contextMenu addItem:openChartItem];
+    
+    [contextMenu addItem:[NSMenuItem separatorItem]];
+    
+    NSMenuItem *copySymbolItem = [[NSMenuItem alloc] initWithTitle:@"Copy Symbol"
+                                                            action:@selector(contextMenuCopySymbol:)
+                                                     keyEquivalent:@""];
+    copySymbolItem.target = self;
+    [contextMenu addItem:copySymbolItem];
+    
+    self.tableView.menu = contextMenu;
+}
+
+- (void)contextMenuOpenChart:(NSMenuItem *)sender {
+    NSInteger clickedRow = self.tableView.clickedRow;
+    if (clickedRow >= 0) {
+        [self tableView:self.tableView didDoubleClickRow:clickedRow];
     }
 }
 
-#pragma mark - HierarchicalWatchlistSelectorDelegate
-
-- (void)hierarchicalSelector:(id)selector didSelectProvider:(id<WatchlistProvider>)provider {
-    NSLog(@"🎯 WatchlistWidget: Delegate called - hierarchicalSelector:didSelectProvider: %@", provider.displayName);
-    
-    // FIX #2: Verifica che sia realmente un cambio di provider
-    if (self.currentProvider && [self.currentProvider.providerId isEqualToString:provider.providerId]) {
-        NSLog(@"⚠️ WatchlistWidget: Same provider selected via delegate, ignoring to prevent loop");
-        return;
-    }
-    
-    // FIX #2: Chiama selectProvider ma previeni loop infiniti
-    [self selectProvider:provider];
-}
-
-- (void)hierarchicalSelector:(id)selector willShowMenuForCategory:(NSString *)categoryName {
-    // Lazy load providers for this category if needed
-    if ([categoryName isEqualToString:@"Tag Lists"]) {
-        [self.providerManager refreshTagListProviders];
-    } else if ([categoryName isEqualToString:@"Archives"]) {
-        [self.providerManager refreshArchiveProviders];
+- (void)contextMenuCopySymbol:(NSMenuItem *)sender {
+    NSInteger clickedRow = self.tableView.clickedRow;
+    if (clickedRow >= 0 && clickedRow < self.displaySymbols.count) {
+        NSString *symbol = self.displaySymbols[clickedRow];
+        NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+        [pasteboard clearContents];
+        [pasteboard setString:symbol forType:NSPasteboardTypeString];
+        
+        NSLog(@"📋 Copied symbol to clipboard: %@", symbol);
     }
 }
 
 #pragma mark - BaseWidget Overrides
 
 - (NSString *)widgetType {
-    return @"WatchlistWidget";
+    return @"Watchlist";
+}
+
+- (void)setupContentView {
+    [super setupContentView];
+    
+    NSLog(@"🎨 WatchlistWidget: setupContentView");
+    
+    // Remove BaseWidget's placeholder
+    for (NSView *subview in self.contentView.subviews) {
+        [subview removeFromSuperview];
+    }
+    
+    // Create UI components
+    [self createToolbar];
+    [self createTableView];
+    [self setupConstraints];
+    [self configureTableColumns];
+    
+    // Setup resize observation
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(viewDidResize:)
+                                                 name:NSViewFrameDidChangeNotification
+                                               object:self.contentView];
+    self.contentView.postsBoundsChangedNotifications = YES;
+    self.contentView.postsFrameChangedNotifications = YES;
+    
+    // Setup initial provider and start refresh
+    [self setupInitialProvider];
+    [self setupStandardContextMenu];
+}
+
+- (void)setupInitialProvider {
+    NSLog(@"🔧 WatchlistWidget: Setting up initial provider");
+    
+    // Start with Manual watchlists by default
+    [self selectProviderType:WatchlistProviderTypeManual];
+}
+
+- (void)viewWillAppear {
+    [super viewWillAppear];
+    [self startDataRefreshTimer];
+}
+
+- (void)viewWillDisappear {
+    [super viewWillDisappear];
+    [self stopDataRefreshTimer];
 }
 
 - (NSDictionary *)serializeState {
     NSMutableDictionary *state = [[super serializeState] mutableCopy] ?: [NSMutableDictionary dictionary];
     
+    // Save selected provider type
+    state[@"selectedProviderType"] = @(self.selectedProviderType);
+    
+    // Save last selected provider ID (if in symbols mode)
     if (self.lastSelectedProviderId) {
         state[@"lastSelectedProviderId"] = self.lastSelectedProviderId;
     }
     
-    state[@"visibleColumns"] = @(self.visibleColumns);
+    // Save display mode
+    state[@"displayMode"] = @(self.displayMode);
     
-   
-    // Note: Don't persist search text (session-only)
+    // Save visible columns
+    state[@"visibleColumns"] = @(self.visibleColumns);
     
     return [state copy];
 }
@@ -1159,646 +1223,134 @@
 - (void)restoreState:(NSDictionary *)state {
     [super restoreState:state];
     
-    NSString *providerId = state[@"lastSelectedProviderId"];
-    if (providerId) {
-        id<WatchlistProvider> provider = [self.providerManager providerWithId:providerId];
-        if (provider) {
-            [self selectProvider:provider];
-        }
+    NSLog(@"🔄 WatchlistWidget: Restoring state");
+    
+    // Restore provider type
+    NSNumber *providerType = state[@"selectedProviderType"];
+    if (providerType) {
+        [self selectProviderType:(WatchlistProviderType)[providerType integerValue]];
+        [self.providerTypeSegmented setSelectedSegment:[providerType integerValue]];
     }
     
+    // Restore visible columns
     NSNumber *visibleColumns = state[@"visibleColumns"];
     if (visibleColumns) {
         self.visibleColumns = [visibleColumns integerValue];
         [self reconfigureColumnsForCurrentWidth];
     }
     
-   
+    // Restore display mode and provider
+    NSNumber *displayMode = state[@"displayMode"];
+    NSString *providerId = state[@"lastSelectedProviderId"];
+    
+    if (displayMode && [displayMode integerValue] == WatchlistDisplayModeSymbols && providerId) {
+        // Try to restore the drill-down state
+        id<WatchlistProvider> provider = [self.providerManager providerWithId:providerId];
+        if (provider) {
+            // Find the provider in the current list
+            NSInteger index = [self.currentProviderLists indexOfObject:provider];
+            if (index != NSNotFound) {
+                [self drillDownToWatchlistAtIndex:index];
+            } else {
+                // Provider not in current list, just select it directly
+                [self selectProvider:provider];
+                self.displayMode = WatchlistDisplayModeSymbols;
+                ;
+            }
+        }
+    }
 }
-
 
 - (void)dealloc {
     [self stopDataRefreshTimer];
     [self.resizeThrottleTimer invalidate];
     [[NSNotificationCenter defaultCenter] removeObserver:self];
-    [[NSNotificationCenter defaultCenter] removeObserver:self
-                                                       name:TagManagerDidFinishBuildingNotification
-                                                     object:nil];
 }
 
-#pragma mark - setup inital provider
+#pragma mark - Error/Success Messages
 
-// ✅ SOSTITUZIONE SEMPLICE del metodo setupInitialProvider in WatchlistWidget.m
-
-- (void)setupInitialProvider {
-    // Determina quale Top Gainers caricare basandosi sull'orario di New York
-    NSDate *now = [NSDate date];
-    NSCalendar *calendar = [NSCalendar currentCalendar];
-    calendar.timeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
+- (void)showErrorMessage:(NSString *)message {
+    self.statusLabel.stringValue = message;
+    self.statusLabel.textColor = [NSColor systemRedColor];
     
-    NSDateComponents *components = [calendar components:(NSCalendarUnitHour | NSCalendarUnitMinute) fromDate:now];
-    NSInteger hour = components.hour;
-    NSInteger minute = components.minute;
-    NSInteger totalMinutes = hour * 60 + minute;
-    
-    MarketTimeframe timeframe;
-    NSString *sessionName;
-    
-    if (totalMinutes < 570) { // Prima delle 9:30
-        timeframe = MarketTimeframePreMarket;
-        sessionName = @"Pre-Market";
-    } else if (totalMinutes < 960) { // 9:30 - 16:00
-        timeframe = MarketTimeframeOneDay;
-        sessionName = @"Regular Hours";
-    } else { // Dopo le 16:00
-        timeframe = MarketTimeframeAfterHours;
-        sessionName = @"After Hours";
-    }
-    
-    NSLog(@"🕐 Current time: %02ld:%02ld ET - Loading Top Gainers %@", (long)hour, (long)minute, sessionName);
-    
-    // Crea il provider Top Gainers con il timeframe appropriato
-    id<WatchlistProvider> provider = [self.providerManager createMarketListProvider:MarketListTypeTopGainers
-                                                                          timeframe:timeframe];
-    
-    if (provider) {
-        [self selectProvider:provider];
-    } else {
-        // Fallback al provider di default normale
-        id<WatchlistProvider> defaultProvider = [self.providerManager defaultProvider];
-        if (defaultProvider) {
-            [self selectProvider:defaultProvider];
-        }
-    }
-}
-#pragma mark - Watchlist Management Actions
-
-- (void)showCreateWatchlistDialog:(id)sender {
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Create New Watchlist";
-    alert.informativeText = @"Enter name for the new watchlist:";
-    alert.alertStyle = NSAlertStyleInformational;
-    
-    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
-    input.placeholderString = @"My Watchlist";
-    alert.accessoryView = input;
-    
-    [alert addButtonWithTitle:@"Create"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    if ([alert runModal] == NSAlertFirstButtonReturn) {
-        NSString *watchlistName = input.stringValue;
-        if (watchlistName.length > 0) {
-            // Check if name already exists
-            NSArray<WatchlistModel *> *existingWatchlists = [[DataHub shared] getAllWatchlistModels];
-            for (WatchlistModel *existing in existingWatchlists) {
-                if ([existing.name.lowercaseString isEqualToString:watchlistName.lowercaseString]) {
-                    [self showErrorMessage:[NSString stringWithFormat:@"A watchlist named '%@' already exists.", watchlistName]];
-                    return;
-                }
-            }
-            
-            // ✅ FIX: Usa createWatchlistModelWithName (restituisce WatchlistModel)
-            WatchlistModel *newWatchlist = [[DataHub shared] createWatchlistModelWithName:watchlistName];
-            if (newWatchlist) {
-                // Refresh provider manager to include new watchlist
-                [self.providerManager refreshAllProviders];
-                [self.providerSelector rebuildMenuStructure];
-                
-                // Auto-select the new watchlist
-                NSString *providerId = [NSString stringWithFormat:@"manual:%@", watchlistName];
-                [self.providerSelector selectProviderWithId:providerId];
-                
-                NSLog(@"✅ Created new watchlist: %@", watchlistName);
-                [self showSuccessMessage:[NSString stringWithFormat:@"'%@' has been created successfully.", watchlistName]];
-            } else {
-                [self showErrorMessage:@"Failed to create watchlist. Please try again."];
-            }
-        }
-    }
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        self.statusLabel.stringValue = @"Ready";
+        self.statusLabel.textColor = [NSColor secondaryLabelColor];
+    });
 }
 
-- (void)showRemoveWatchlistDialog:(NSMenuItem *)sender {
-    if (![self.currentProvider isKindOfClass:[ManualWatchlistProvider class]]) {
-        [self showErrorAlert:@"Cannot Delete" message:@"Only custom watchlists can be deleted."];
+- (void)showSuccessMessage:(NSString *)message {
+    self.statusLabel.stringValue = message;
+    self.statusLabel.textColor = [NSColor systemGreenColor];
+    
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        self.statusLabel.stringValue = @"Ready";
+        self.statusLabel.textColor = [NSColor secondaryLabelColor];
+    });
+}
+
+
+#pragma mark - NSTableViewDelegate - Sorting
+
+- (void)tableView:(NSTableView *)tableView sortDescriptorsDidChange:(NSArray<NSSortDescriptor *> *)oldDescriptors {
+    if (self.displayMode == WatchlistDisplayModeListSelection) {
+         // Sort watchlists alfabeticamente
+         NSArray<NSSortDescriptor *> *newDescriptors = tableView.sortDescriptors;
+         if (newDescriptors.count > 0) {
+             self.currentProviderLists = [self.currentProviderLists sortedArrayUsingComparator:^NSComparisonResult(id<WatchlistProvider> obj1, id<WatchlistProvider> obj2) {
+                 return [obj1.displayName compare:obj2.displayName];
+             }];
+             [tableView reloadData];
+         }
+         return;
+     }
+    
+    if (self.displayMode != WatchlistDisplayModeSymbols) {
         return;
     }
     
-    ManualWatchlistProvider *manualProvider = (ManualWatchlistProvider *)self.currentProvider;
-    NSString *watchlistName = manualProvider.watchlistModel.name;
+    NSArray<NSSortDescriptor *> *newDescriptors = tableView.sortDescriptors;
     
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Delete Watchlist";
-    alert.informativeText = [NSString stringWithFormat:@"Are you sure you want to delete the watchlist '%@'?\n\nThis action cannot be undone.", watchlistName];
-    alert.alertStyle = NSAlertStyleWarning;
-    
-    [alert addButtonWithTitle:@"Delete"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    if ([alert runModal] == NSAlertFirstButtonReturn) {
-        // Delete the watchlist
-        [[DataHub shared] deleteWatchlistModel:manualProvider.watchlistModel];
-        
-        // Refresh provider manager and selector
-        [self.providerManager refreshAllProviders];
-        [self.providerSelector rebuildMenuStructure];
-        
-        // Select default provider
-        [self.providerSelector selectDefaultProvider];
-        
-        NSLog(@"✅ Deleted watchlist: %@", watchlistName);
-        
-        // Show success notification
-        [self showSuccessAlert:@"Watchlist Deleted"
-                       message:[NSString stringWithFormat:@"'%@' has been deleted.", watchlistName]];
-    }
-}
-
-#pragma mark - Symbol Management Actions
-
-- (void)showAddSingleSymbolDialog:(NSMenuItem *)sender {
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Add Symbol";
-    alert.informativeText = @"Enter the symbol you want to add:";
-    alert.alertStyle = NSAlertStyleInformational;
-    
-    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
-    input.placeholderString = @"e.g., AAPL, MSFT, GOOGL";
-    alert.accessoryView = input;
-    
-    [alert addButtonWithTitle:@"Add"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    if ([alert runModal] == NSAlertFirstButtonReturn) {
-        NSString *symbolInput = [input.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-        
-        if (symbolInput.length == 0) {
-            [self showErrorAlert:@"Invalid Input" message:@"Please enter a valid symbol."];
-            return;
-        }
-        
-        NSString *symbol = symbolInput.uppercaseString;
-        
-        // Add to current provider
-        [self addSymbolToCurrentProvider:symbol];
-    }
-}
-
-- (void)showAddBulkSymbolsDialog:(NSMenuItem *)sender {
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Add Multiple Symbols";
-    alert.informativeText = @"Enter symbols separated by commas, spaces, or new lines:";
-    alert.alertStyle = NSAlertStyleInformational;
-    
-    // ✅ FIX 1: Create text field instead of text view per evitare problemi UI
-        NSTextField *textField = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 400, 80)];
-        textField.placeholderString = @"Enter symbols: AAPL, MSFT, GOOGL or AAPL MSFT GOOGL";
-        textField.font = [NSFont systemFontOfSize:13];
-  
-    
-    // ✅ FIX 2: Configure per multi-line input
-       NSTextFieldCell *cell = (NSTextFieldCell *)textField.cell;
-       [cell setWraps:YES];
-       [cell setScrollable:YES];
-       textField.bordered = YES;
-       textField.bezeled = YES;
-       textField.editable = YES;
-       textField.selectable = YES;
-    // Add placeholder-like instruction
-    NSTextField *instructionLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 85, 400, 20)];
-      instructionLabel.stringValue = @"Examples: AAPL, MSFT, GOOGL  or  AAPL MSFT GOOGL";
-      instructionLabel.textColor = [NSColor secondaryLabelColor];
-      instructionLabel.font = [NSFont systemFontOfSize:11];
-      instructionLabel.bordered = NO;
-      instructionLabel.editable = NO;
-      instructionLabel.backgroundColor = [NSColor clearColor];
-      instructionLabel.alignment = NSTextAlignmentCenter;
-      
-      // ✅ FIX 5: Container view with proper layout
-      NSView *containerView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 400, 110)];
-      [containerView addSubview:textField];
-      [containerView addSubview:instructionLabel];
-      
-      alert.accessoryView = containerView;
-      
-      // ✅ FIX 6: Set initial first responder
-      [alert.window setInitialFirstResponder:textField];
-      
-      [alert addButtonWithTitle:@"Add All"];
-      [alert addButtonWithTitle:@"Cancel"];
-      
-      if ([alert runModal] == NSAlertFirstButtonReturn) {
-          // ✅ FIX 7: Get text from field, non da textView potenzialmente problematica
-          NSString *input = [textField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-          
-          if (input.length == 0) {
-              [self showErrorAlert:@"Invalid Input" message:@"Please enter at least one symbol."];
-              return;
-          }
-          
-          // Parse symbols intelligently
-          NSArray<NSString *> *symbols = [self parseSymbolsFromInput:input];
-          
-          if (symbols.count == 0) {
-              [self showErrorAlert:@"No Valid Symbols" message:@"No valid symbols found in the input."];
-              return;
-          }
-          
-          // Add all symbols to current provider
-          [self addSymbolsToCurrentProvider:symbols];
-      }
-  }
-
-#pragma mark - Smart Symbol Parsing
-
-- (NSArray<NSString *> *)parseSymbolsFromInput:(NSString *)input {
-    if (!input || input.length == 0) return @[];
-    
-    NSMutableSet<NSString *> *symbolSet = [NSMutableSet set];
-
-    // Pattern: separatori = virgola, spazio, tab, newline, punto e virgola
-    NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"[^,\\s;\\n\\r\\t]+" options:0 error:nil];
-    NSArray<NSTextCheckingResult *> *matches = [regex matchesInString:input options:0 range:NSMakeRange(0, input.length)];
-    
-    for (NSTextCheckingResult *match in matches) {
-        NSString *symbol = [[input substringWithRange:match.range] uppercaseString];
-        
-        // Validazione: 1-10 caratteri alfanumerici
-        if (symbol.length >= 1 && symbol.length <= 10) {
-            NSCharacterSet *validCharacters = [NSCharacterSet alphanumericCharacterSet];
-            if ([symbol rangeOfCharacterFromSet:[validCharacters invertedSet]].location == NSNotFound) {
-                [symbolSet addObject:symbol];
-            }
-        }
-    }
-    
-    NSArray<NSString *> *result = [[symbolSet allObjects] sortedArrayUsingSelector:@selector(compare:)];
-    NSLog(@"📊 Parsed %lu unique symbols from input: %@", (unsigned long)result.count, result);
-    
-    return result;
-}
-
-#pragma mark - Provider Symbol Management
-
-- (void)addSymbolsToCurrentProvider:(NSArray<NSString *> *)symbols {
-    if (!self.currentProvider || !self.currentProvider.canAddSymbols) {
-        [self showErrorAlert:@"Cannot Add Symbols" message:@"The current watchlist does not support adding symbols."];
+    if (newDescriptors.count == 0) {
+        // No sorting - restore original order
+        self.displaySymbols = [self.symbols copy];
+        [tableView reloadData];
         return;
     }
     
-    if (![self.currentProvider isKindOfClass:[ManualWatchlistProvider class]]) {
-        [self showErrorAlert:@"Bulk Add Not Supported" message:@"Bulk symbol adding is only supported for manual watchlists."];
-        return;
+    NSSortDescriptor *primaryDescriptor = newDescriptors.firstObject;
+    NSString *key = primaryDescriptor.key;
+    BOOL ascending = primaryDescriptor.ascending;
+    
+    NSLog(@"🔄 Sorting by: %@ (ascending: %@)", key, ascending ? @"YES" : @"NO");
+    
+    if ([key isEqualToString:@"self"]) {
+        // Sort alfabetico per simbolo
+        self.displaySymbols = [self.displaySymbols sortedArrayUsingDescriptors:newDescriptors];
+    } else if ([key isEqualToString:@"changePercent"]) {
+        // Sort per change%
+        [self sortSymbolsByChangePercent:ascending];
     }
     
-    ManualWatchlistProvider *manualProvider = (ManualWatchlistProvider *)self.currentProvider;
-    
-    // Use DataHub bulk add method
-    [[DataHub shared] addSymbols:symbols toWatchlistModel:manualProvider.watchlistModel];
-    
-    // Refresh the provider
-    [self refreshCurrentProvider];
-    
-    // Show success message
-    [self showSuccessAlert:@"Symbols Added"
-                   message:[NSString stringWithFormat:@"Successfully added %lu symbols to %@",
-                           (unsigned long)symbols.count, manualProvider.watchlistModel.name]];
-    
-    NSLog(@"✅ Added %lu symbols to watchlist: %@", (unsigned long)symbols.count, symbols);
+    [tableView reloadData];
 }
 
-#pragma mark - UI Helper Methods
-
-- (void)showErrorAlert:(NSString *)title message:(NSString *)message {
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = title;
-    alert.informativeText = message;
-    alert.alertStyle = NSAlertStyleWarning;
-    [alert addButtonWithTitle:@"OK"];
-    [alert runModal];
-}
-
-- (void)showSuccessAlert:(NSString *)title message:(NSString *)message {
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = title;
-    alert.informativeText = message;
-    alert.alertStyle = NSAlertStyleInformational;
-    [alert addButtonWithTitle:@"OK"];
-    [alert runModal];
-}
-
-#pragma mark - Updated Existing Methods
-
-
-
-- (void)removeSelectedSymbols:(NSMenuItem *)sender {
-    NSArray<NSString *> *selectedSymbols = [self selectedSymbols];
-    
-    if (selectedSymbols.count == 0) {
-        [self showErrorAlert:@"No Selection" message:@"Please select symbols to remove."];
-        return;
-    }
-    
-    if (!self.currentProvider.canRemoveSymbols) {
-        [self showErrorAlert:@"Cannot Remove" message:@"The current watchlist does not support removing symbols."];
-        return;
-    }
-    
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Remove Symbols";
-    alert.informativeText = [NSString stringWithFormat:@"Are you sure you want to remove %lu selected symbol(s)?", (unsigned long)selectedSymbols.count];
-    alert.alertStyle = NSAlertStyleWarning;
-    
-    [alert addButtonWithTitle:@"Remove"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    if ([alert runModal] == NSAlertFirstButtonReturn) {
-        // Remove each selected symbol
-        for (NSString *symbol in selectedSymbols) {
-            [self.currentProvider removeSymbol:symbol completion:^(BOOL success, NSError * _Nullable error) {
-                if (!success) {
-                    NSLog(@"❌ Failed to remove symbol %@: %@", symbol, error.localizedDescription);
-                }
-            }];
-        }
+- (void)sortSymbolsByChangePercent:(BOOL)ascending {
+    NSArray<NSString *> *sorted = [self.displaySymbols sortedArrayUsingComparator:^NSComparisonResult(NSString *symbol1, NSString *symbol2) {
+        MarketQuoteModel *quote1 = self.quotesCache[symbol1];
+        MarketQuoteModel *quote2 = self.quotesCache[symbol2];
         
-        // Refresh provider after all removals
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self refreshCurrentProvider];
-        });
+        double change1 = quote1 ? quote1.changePercent.doubleValue : 0.0;
+        double change2 = quote2 ? quote2.changePercent.doubleValue : 0.0;
         
-        NSLog(@"✅ Removed %lu symbols from watchlist", (unsigned long)selectedSymbols.count);
-    }
-}
-
-
-#pragma mark - NSTableViewDelegate Extensions (AGGIUNGI QUESTI METODI)
-
-- (void)tableViewSelectionDidChange:(NSNotification *)notification {
-    NSIndexSet *selection = self.tableView.selectedRowIndexes;
-        self.isPerformingMultiSelection = (selection.count > 1);
-        
-        // ✅ BROADCAST: Solo per selezione singola E chain attiva
-        if (self.chainActive && !self.isPerformingMultiSelection && selection.count == 1) {
-            NSArray<NSString *> *selectedSymbols = [self selectedSymbols];
-            if (selectedSymbols.count == 1) {
-                [self broadcastUpdate:@{
-                    @"action": @"setSymbols",
-                    @"symbols": selectedSymbols
-                }];
-                
-                NSLog(@"🔗 WatchlistWidget: Single selection broadcasted to chain: %@", selectedSymbols[0]);
-            }
-        }
-}
-
-// ✅ NEW: Double-click support per invio immediato alla chain
-- (void)tableView:(NSTableView *)tableView didDoubleClickRow:(NSInteger)row {
-    if (row >= 0 && row < self.displaySymbols.count) {
-        NSString *symbol = self.displaySymbols[row];
-        
-        // Invia alla chain anche se non è attiva (comportamento di default)
-        [self broadcastUpdate:@{
-            @"action": @"setSymbols",
-            @"symbols": @[symbol]
-        }];
-        
-        NSLog(@"🔗 WatchlistWidget: Double-clicked symbol '%@' sent to chain", symbol);
-        
-        // Feedback visivo opzionale
-        [self.statusLabel setStringValue:[NSString stringWithFormat:@"Sent %@ to chain", symbol]];
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self.statusLabel setStringValue:@"Ready"];
-        });
-    }
-}
-
-#pragma mark - BaseWidget Chain Integration Overrides (AGGIUNGI QUESTI METODI)
-
-// ✅ CRITICAL: Override selectedSymbols per BaseWidget context menu
-- (NSArray<NSString *> *)selectedSymbols {
-    NSMutableArray<NSString *> *selected = [NSMutableArray array];
-    
-    NSIndexSet *selectedRows = self.tableView.selectedRowIndexes;
-    [selectedRows enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL * _Nonnull stop) {
-        if (idx < self.displaySymbols.count) {
-            [selected addObject:self.displaySymbols[idx]];
+        if (ascending) {
+            return [@(change1) compare:@(change2)];
+        } else {
+            return [@(change2) compare:@(change1)];
         }
     }];
     
-    return [selected copy];
-}
-
-// ✅ CRITICAL: Override contextualSymbols per BaseWidget context menu
-- (NSArray<NSString *> *)contextualSymbols {
-    // Se non c'è selezione, usa tutti i simboli visibili
-    NSArray<NSString *> *selected = [self selectedSymbols];
-    return selected.count > 0 ? selected : self.displaySymbols;
-}
-
-// ✅ CRITICAL: Override contextMenuTitle per BaseWidget context menu
-- (NSString *)contextMenuTitle {
-    NSArray<NSString *> *selected = [self selectedSymbols];
-    
-    if (selected.count == 1) {
-        return selected[0];
-    } else if (selected.count > 1) {
-        return [NSString stringWithFormat:@"Selection (%lu)", (unsigned long)selected.count];
-    } else if (self.displaySymbols.count > 0) {
-        return [NSString stringWithFormat:@"All Symbols (%lu)", (unsigned long)self.displaySymbols.count];
-    }
-    
-    return @"Watchlist";
-}
-
-// ✅ NEW: Handle symbols received from chain
-- (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
-    NSLog(@"📥 WatchlistWidget: Received %lu symbols from chain: %@",
-          (unsigned long)symbols.count, symbols);
-    
-    // ✅ Se il provider corrente può aggiungere simboli, chiedi conferma
-    if (self.currentProvider && self.currentProvider.canAddSymbols) {
-        
-        // Quick add per singolo simbolo
-        if (symbols.count == 1) {
-            NSString *symbol = symbols[0];
-            
-            // Verifica se già presente
-            if ([self.displaySymbols containsObject:symbol]) {
-                NSLog(@"⚠️ Symbol %@ already in watchlist", symbol);
-                return;
-            }
-            
-            // Aggiungi direttamente
-            [self addSymbolToCurrentProvider:symbol];
-            
-        } else {
-            // Multi-symbol: chiedi conferma
-            [self promptToAddSymbolsFromChain:symbols fromWidget:sender];
-        }
-        
-    } else {
-        // Provider non supporta add - mostra solo feedback
-        NSString *message = [NSString stringWithFormat:@"Received %@ from %@",
-                           [symbols componentsJoinedByString:@", "],
-                           NSStringFromClass([sender class])];
-        [self.statusLabel setStringValue:message];
-        
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            [self.statusLabel setStringValue:@"Ready"];
-        });
-    }
-}
-
-// ✅ NEW: Prompt helper for chain symbols
-- (void)promptToAddSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Add Symbols from Chain";
-    alert.informativeText = [NSString stringWithFormat:@"Add %lu symbols from %@ to current watchlist?\n\n%@",
-                           (unsigned long)symbols.count,
-                           NSStringFromClass([sender class]),
-                           [symbols componentsJoinedByString:@", "]];
-    alert.alertStyle = NSAlertStyleInformational;
-    
-    [alert addButtonWithTitle:@"Add"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    if ([alert runModal] == NSAlertFirstButtonReturn) {
-        [self addSymbolsToCurrentProvider:symbols];
-        NSLog(@"✅ Added %lu symbols from chain to watchlist", (unsigned long)symbols.count);
-    }
-}
-
-#pragma mark - Enhanced Symbol Management (AGGIUNGI QUESTI METODI)
-
-// ✅ NEW: Single symbol add helper
-- (void)addSymbolToCurrentProvider:(NSString *)symbol {
-    if (!self.currentProvider || !self.currentProvider.canAddSymbols) return;
-    
-    if ([self.currentProvider isKindOfClass:[ManualWatchlistProvider class]]) {
-        ManualWatchlistProvider *manualProvider = (ManualWatchlistProvider *)self.currentProvider;
-        [[DataHub shared] addSymbol:symbol toWatchlistModel:manualProvider.watchlistModel];
-        
-        // Refresh immediately
-        [self refreshCurrentProvider];
-        
-        NSLog(@"✅ Added single symbol %@ to watchlist", symbol);
-    }
-}
-
-
-#pragma mark - Widget-Specific Context Menu Items (AGGIUNGI QUESTO METODO)
-
-// ✅ NEW: Override per aggiungere items specifici del watchlist al context menu
-- (void)appendWidgetSpecificItemsToMenu:(NSMenu *)menu {
-    [menu addItem:[NSMenuItem separatorItem]];
-    
-    // Add to different watchlist
-    NSMenuItem *addToWatchlistItem = [[NSMenuItem alloc] initWithTitle:@"📋 Add to Other Watchlist..."
-                                                               action:@selector(showAddToWatchlistDialog:)
-                                                        keyEquivalent:@""];
-    addToWatchlistItem.target = self;
-    addToWatchlistItem.representedObject = [self selectedSymbols];
-    addToWatchlistItem.enabled = ([self selectedSymbols].count > 0);
-    [menu addItem:addToWatchlistItem];
-    
-    // Remove from current watchlist (only for manual watchlists)
-    if (self.currentProvider.canRemoveSymbols && [self selectedSymbols].count > 0) {
-        NSMenuItem *removeItem = [[NSMenuItem alloc] initWithTitle:@"➖ Remove from Watchlist"
-                                                            action:@selector(removeSelectedSymbols:)
-                                                     keyEquivalent:@""];
-        removeItem.target = self;
-        [menu addItem:removeItem];
-    }
-}
-
-// ✅ NEW: Enhanced add to watchlist dialog
-- (void)showAddToWatchlistDialog:(NSMenuItem *)sender {
-    NSArray<NSString *> *symbols = sender.representedObject;
-    if (symbols.count == 0) return;
-    
-    // Get available watchlists
-    NSArray<WatchlistModel *> *watchlists = [[DataHub shared] getAllWatchlistModels];
-    NSMutableArray<NSString *> *watchlistNames = [NSMutableArray array];
-    
-    for (WatchlistModel *wl in watchlists) {
-        // Skip archive watchlists and current watchlist
-        if ([wl.name hasPrefix:@"Archive-"]) continue;
-        if (self.currentProvider && [self.currentProvider isKindOfClass:[ManualWatchlistProvider class]]) {
-            ManualWatchlistProvider *currentManual = (ManualWatchlistProvider *)self.currentProvider;
-            if ([wl.name isEqualToString:currentManual.watchlistModel.name]) continue;
-        }
-        [watchlistNames addObject:wl.name];
-    }
-    
-    if (watchlistNames.count == 0) {
-        [self showErrorAlert:@"No Available Watchlists"
-                     message:@"Create a new watchlist first or select a different current watchlist."];
-        return;
-    }
-    
-    // Show selection dialog
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Add to Watchlist";
-    alert.informativeText = [NSString stringWithFormat:@"Select watchlist for %lu symbols:", (unsigned long)symbols.count];
-    
-    NSPopUpButton *popup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
-    [popup addItemsWithTitles:watchlistNames];
-    alert.accessoryView = popup;
-    
-    [alert addButtonWithTitle:@"Add"];
-    [alert addButtonWithTitle:@"Cancel"];
-    
-    if ([alert runModal] == NSAlertFirstButtonReturn) {
-        NSString *selectedWatchlistName = popup.selectedItem.title;
-        
-        // Find and add to selected watchlist
-        for (WatchlistModel *wl in watchlists) {
-            if ([wl.name isEqualToString:selectedWatchlistName]) {
-                [[DataHub shared] addSymbols:symbols toWatchlistModel:wl];
-                NSLog(@"✅ Added %lu symbols to watchlist: %@", (unsigned long)symbols.count, selectedWatchlistName);
-                break;
-            }
-        }
-    }
-}
-#pragma mark - Native macOS Sorting Support
-
-- (void)tableView:(NSTableView *)tableView sortDescriptorsDidChange:(NSArray<NSSortDescriptor *> *)oldDescriptors {
-    NSLog(@"🔄 Sorting changed: %@", tableView.sortDescriptors);
-    
-    // Applica il sorting ai simboli usando i sort descriptors nativi
-    [self applySortDescriptors:tableView.sortDescriptors];
-}
-
-- (void)applySortDescriptors:(NSArray<NSSortDescriptor *> *)sortDescriptors {
-    if (sortDescriptors.count == 0) {
-        // No sorting - usa ordine originale
-        self.displaySymbols = [self.symbols copy];
-    } else {
-        // Crea array di "decorated objects" per il sorting
-        NSMutableArray *decoratedSymbols = [NSMutableArray array];
-        
-        for (NSString *symbol in self.symbols) {
-            MarketQuoteModel *quote = self.quotesCache[symbol];
-            
-            NSMutableDictionary *decorated = [NSMutableDictionary dictionary];
-            decorated[@"symbol"] = symbol;
-            decorated[@"self"] = symbol;  // Per sorting alfabetico
-            decorated[@"changePercent"] = quote.changePercent ?: @(0);  // Per sorting change%
-            
-            [decoratedSymbols addObject:decorated];
-        }
-        
-        // Applica sorting
-        NSArray *sortedDecorated = [decoratedSymbols sortedArrayUsingDescriptors:sortDescriptors];
-        
-        // Estrai solo i simboli
-        self.displaySymbols = [sortedDecorated valueForKey:@"symbol"];
-    }
-    
-    // Refresh table
-    [self.tableView reloadData];
+    self.displaySymbols = sorted;
 }
 
 @end

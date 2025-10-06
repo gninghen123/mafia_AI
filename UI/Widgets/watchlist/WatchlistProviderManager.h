@@ -73,6 +73,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 // Market list helpers
 - (NSArray<id<WatchlistProvider>> *)createAllMarketListProviders;
+- (NSArray<id<WatchlistProvider>> *)createStandardMarketListProviders; // ← NUOVO
 - (NSString *)displayNameForMarketType:(MarketListType)type timeframe:(MarketTimeframe)timeframe;
 - (NSString *)iconForMarketType:(MarketListType)type;
 

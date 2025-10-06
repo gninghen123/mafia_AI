@@ -2,14 +2,14 @@
 #import "DownloadManager.h"
 #import "SchwabDataSource.h"
 #import "WebullDataSource.h"
-#import "OtherDataSource.h"      // NUOVO: Import per OtherDataSource
+#import "OtherDataSource.h"
 #import "DataHub.h"
 #import "ClaudeDataSource.h"
 #import "FloatingWidgetWindow.h"
 #import "WidgetTypeManager.h"
 #import "BaseWidget.h"
 
-// Import specifici per ogni widget (solo quelli che esistono)
+// Import specifici per ogni widget
 #import "ChartWidget.h"
 #import "AlertWidget.h"
 #import "WatchlistWidget.h"
@@ -20,33 +20,28 @@
 #import "ibkrdatasource.h"
 #import "ibkrconfiguration.h"
 #import "yahooDataSource.h"
-#import "StorageSystemInitializer.h"  // ← AGGIUNGI QUESTA RIGA
+#import "StorageSystemInitializer.h"
 #import "storagemanager.h"
 
-#import "GridWindow.h"  // ✅ NUOVO
-#import "GridTemplate.h"  // ✅ NUOVO
+#import "GridWindow.h"
+#import "GridTemplate.h"
+#import "WorkspaceManager.h"
+#import "PreferencesWindowController.h"
 
-@interface AppDelegate ()
-@end
+
 
 @implementation AppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
-   // forza aggiornamento banca datio sotrage
-    //[[StorageManager sharedManager] forceConsistencyCheck];
-
-    
-    self.gridWindows = [NSMutableArray array];  // ✅ NUOVO
-
     NSLog(@"AppDelegate: applicationDidFinishLaunching called");
     
-    // ADD THESE LINES to fix window restoration crashes:
+    // Window restoration fixes
     [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"NSQuitAlwaysKeepsWindows"];
     [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"NSCloseAlwaysConfirmsChanges"];
     
     [DataHub shared];
     
-    // 🎯 FIX: Inizializza il sistema di storage automatico
+    // Initialize storage system
     [[StorageSystemInitializer sharedInitializer] initializeStorageSystemWithCompletion:^(BOOL success, NSError *error) {
         if (success) {
             NSLog(@"✅ Storage system initialized successfully at app startup");
@@ -54,61 +49,97 @@
             NSLog(@"❌ Failed to initialize storage system: %@", error.localizedDescription);
         }
     }];
+    
     [self registerDataSources];
+    
+    // Initialize window arrays
     self.floatingWindows = [[NSMutableArray alloc] init];
-    self.widgetTypeManager = [WidgetTypeManager sharedManager];
-   
+    self.gridWindows = [NSMutableArray array];
+    
+    // Setup WorkspaceManager
+    [WorkspaceManager sharedManager].appDelegate = self;
     
     [NSApp activateIgnoringOtherApps:YES];
     
+    // Auto-connect after delay
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [self autoConnectToSchwab];
         [self autoConnectToIBKRWithPreferences];
-
     });
-   // [self initializeSpotlightSearch];
-
+    
     [self setupClaudeDataSource];
+    
     if (self.window) {
         self.window.restorationClass = [self class];
         self.window.identifier = @"MainWindow";
-        
         NSLog(@"✅ AppDelegate: Main window configured with restoration ID");
     } else {
         NSLog(@"❌ AppDelegate: Main window outlet not connected!");
     }
-    [self setupGridMenus];
-
+    
+    // ✅ Setup all menus programmatically
+    [self setupAllMenus];
+    
+    // ✅ Restore last used workspace
+    [[WorkspaceManager sharedManager] restoreLastUsedWorkspace];
 }
 
-- (void)setupGridMenus {
+#pragma mark - Menu Setup
+
+- (void)setupAllMenus {
+    [self setupFileMenu];
+    [self setupWindowMenu];
+}
+
+- (void)setupFileMenu {
     NSMenu *mainMenu = [NSApp mainMenu];
-    
-    // Find File menu
     NSMenuItem *fileMenuItem = [mainMenu itemWithTitle:@"File"];
+    
     if (!fileMenuItem) {
-        NSLog(@"⚠️ File menu not found");
-        return;
+        NSLog(@"⚠️ File menu not found - creating one");
+        fileMenuItem = [[NSMenuItem alloc] initWithTitle:@"File" action:nil keyEquivalent:@""];
+        NSMenu *fileMenu = [[NSMenu alloc] initWithTitle:@"File"];
+        [fileMenuItem setSubmenu:fileMenu];
+        [mainMenu insertItem:fileMenuItem atIndex:0];
     }
     
     NSMenu *fileMenu = [fileMenuItem submenu];
+    NSInteger insertIndex = 0;
     
-    // Create "New Grid" submenu
+    // ✅ Save Workspace (Cmd+S might conflict, use Cmd+Shift+W)
+    NSMenuItem *saveWorkspace = [[NSMenuItem alloc] initWithTitle:@"Save Workspace"
+                                                           action:@selector(saveWorkspace:)
+                                                    keyEquivalent:@"W"];
+    saveWorkspace.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
+    saveWorkspace.target = self;
+    [fileMenu insertItem:saveWorkspace atIndex:insertIndex++];
+    
+    // ✅ Save Workspace As...
+    NSMenuItem *saveWorkspaceAs = [[NSMenuItem alloc] initWithTitle:@"Save Workspace As..."
+                                                             action:@selector(saveWorkspaceAs:)
+                                                      keyEquivalent:@""];
+    saveWorkspaceAs.target = self;
+    [fileMenu insertItem:saveWorkspaceAs atIndex:insertIndex++];
+    
+    // ✅ Load Workspace...
+    NSMenuItem *loadWorkspace = [[NSMenuItem alloc] initWithTitle:@"Load Workspace..."
+                                                           action:@selector(loadWorkspace:)
+                                                    keyEquivalent:@""];
+    loadWorkspace.target = self;
+    [fileMenu insertItem:loadWorkspace atIndex:insertIndex++];
+    
+    // ✅ Separator
+    [fileMenu insertItem:[NSMenuItem separatorItem] atIndex:insertIndex++];
+    
+    // ✅ New Grid submenu
     NSMenuItem *newGridItem = [[NSMenuItem alloc] initWithTitle:@"New Grid"
                                                          action:nil
                                                   keyEquivalent:@""];
-    
     NSMenu *gridSubmenu = [[NSMenu alloc] initWithTitle:@"New Grid"];
     
-    // Add template options
-    NSArray *templates = @[
-        @"List + Chart",
-        @"List + Dual Charts",
-        @"Triple Horizontal",
-        @"2x2 Grid"
-    ];
-    
-    for (NSString *template in templates) {
+    NSArray *gridTemplates = @[@"List + Chart", @"List + Dual Charts",
+                               @"Triple Horizontal", @"2x2 Grid"];
+    for (NSString *template in gridTemplates) {
         NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:template
                                                       action:@selector(openGrid:)
                                                keyEquivalent:@""];
@@ -117,228 +148,158 @@
     }
     
     [newGridItem setSubmenu:gridSubmenu];
+    [fileMenu insertItem:newGridItem atIndex:insertIndex++];
     
-    // Add to File menu (after "New Widget" if exists, or at index 1)
-    NSInteger insertIndex = 1; // After "New"
-    for (NSInteger i = 0; i < fileMenu.numberOfItems; i++) {
-        NSMenuItem *item = [fileMenu itemAtIndex:i];
-        if ([item.title isEqualToString:@"New Widget"]) {
-            insertIndex = i + 1;
-            break;
-        }
-    }
-    
-    [fileMenu insertItem:newGridItem atIndex:insertIndex];
-    
-    NSLog(@"✅ Grid menus setup complete");
-    
-    // Add Window menu items
-    [self setupWindowMenuItems];
+    NSLog(@"✅ File menu setup complete (workspace + grid items added)");
 }
 
-- (void)setupWindowMenuItems {
+#pragma mark - Preferences Actions
+
+#pragma mark - Preferences Actions
+
+- (IBAction)openPreferences:(id)sender {
+    NSLog(@"⚙️ AppDelegate: Opening preferences window");
+    
+    // ✅ USA SINGLETON (non creare nuova istanza)
+    PreferencesWindowController *prefs = [PreferencesWindowController sharedController];
+    
+    
+    
+    if (!prefs.window) {
+        NSLog(@"❌ ERROR: Window is nil!");
+        return;
+    }
+    
+    [prefs.window makeKeyAndOrderFront:self];
+    [NSApp activateIgnoringOtherApps:YES];
+    
+    NSLog(@"✅ AppDelegate: Preferences window opened");
+}
+
+- (void)setupWindowMenu {
     NSMenu *mainMenu = [NSApp mainMenu];
     NSMenuItem *windowMenuItem = [mainMenu itemWithTitle:@"Window"];
     
     if (!windowMenuItem) {
-        NSLog(@"⚠️ Window menu not found");
-        return;
+        NSLog(@"⚠️ Window menu not found - creating one");
+        windowMenuItem = [[NSMenuItem alloc] initWithTitle:@"Window" action:nil keyEquivalent:@""];
+        NSMenu *windowMenu = [[NSMenu alloc] initWithTitle:@"Window"];
+        [windowMenuItem setSubmenu:windowMenu];
+        [mainMenu addItem:windowMenuItem];
     }
     
     NSMenu *windowMenu = [windowMenuItem submenu];
     
-    // Add separator if not already there
+    // Add separator
     if (windowMenu.numberOfItems > 0) {
         [windowMenu addItem:[NSMenuItem separatorItem]];
     }
     
-    // Add "Close All Grids"
-    NSMenuItem *closeAllGridsItem = [[NSMenuItem alloc] initWithTitle:@"Close All Grids"
-                                                               action:@selector(closeAllGrids:)
-                                                        keyEquivalent:@""];
-    closeAllGridsItem.target = self;
-    [windowMenu addItem:closeAllGridsItem];
+    // ✅ Arrange Floating Windows (if not exists)
+    NSMenuItem *arrangeFloating = [[NSMenuItem alloc] initWithTitle:@"Arrange Floating Windows"
+                                                             action:@selector(arrangeFloatingWindows:)
+                                                      keyEquivalent:@""];
+    arrangeFloating.target = self;
+    [windowMenu addItem:arrangeFloating];
     
-    NSLog(@"✅ Window menu items setup complete");
+    // ✅ Close All Floating Windows
+    NSMenuItem *closeAllFloating = [[NSMenuItem alloc] initWithTitle:@"Close All Floating Windows"
+                                                              action:@selector(closeAllFloatingWindows:)
+                                                       keyEquivalent:@""];
+    closeAllFloating.target = self;
+    [windowMenu addItem:closeAllFloating];
+    
+    // ✅ Close All Grids
+    NSMenuItem *closeAllGrids = [[NSMenuItem alloc] initWithTitle:@"Close All Grids"
+                                                           action:@selector(closeAllGrids:)
+                                                    keyEquivalent:@""];
+    closeAllGrids.target = self;
+    [windowMenu addItem:closeAllGrids];
+    
+    NSLog(@"✅ Window menu setup complete");
 }
 
+#pragma mark - Data Sources
 
 - (void)registerDataSources {
     DownloadManager *downloadManager = [DownloadManager sharedManager];
        
-       NSLog(@"📡 AppDelegate: Registering data sources with updated priority order...");
-       
-       // 🥇 Priority 1 - PREMIUM TIER (Schwab)
-       SchwabDataSource *schwabSource = [[SchwabDataSource alloc] init];
-       [downloadManager registerDataSource:schwabSource
-                                   withType:DataSourceTypeSchwab
-                                   priority:1];
-       NSLog(@"📊 Registered Schwab - Priority 1 (Premium - Real-time data)");
-       
-       // 🥈 Priority 2 - PREMIUM TIER (IBKR)
-       IBKRConfiguration *ibkrConfig = [IBKRConfiguration sharedConfiguration];
-       IBKRDataSource *ibkrSource = [ibkrConfig createDataSource];
-       [downloadManager registerDataSource:ibkrSource
-                                   withType:DataSourceTypeIBKR
-                                   priority:2];
-       NSLog(@"📊 Registered IBKR - Priority 2 (Premium - Professional grade)");
-       
-       // 🥉 Priority 3 - FREE TIER HIGH QUALITY (Yahoo Finance) - NEW POSITION
-       YahooDataSource *yahooSource = [[YahooDataSource alloc] init];
-       [downloadManager registerDataSource:yahooSource
-                                   withType:DataSourceTypeYahoo
-                                   priority:3];
-       NSLog(@"📊 Registered Yahoo Finance - Priority 3 (Free - JSON API, good quality)");
-       
-       // 🏃 Priority 50 - FREE TIER (Webull)
-       WebullDataSource *webullSource = [[WebullDataSource alloc] init];
-       [downloadManager registerDataSource:webullSource
-                                   withType:DataSourceTypeWebull
-                                   priority:50];
-       NSLog(@"📊 Registered Webull - Priority 50 (Free - Delayed data)");
-       
-       // 📄 Priority 100 - FALLBACK (Other/CSV)
-       OtherDataSource *otherSource = [[OtherDataSource alloc] init];
-       [downloadManager registerDataSource:otherSource
-                                   withType:DataSourceTypeOther
-                                   priority:100];
-       NSLog(@"📊 Registered Other/CSV - Priority 100 (Fallback - Basic CSV data)");
-       
-       // 🤖 Priority 200 - AI ONLY (Claude)
-       ClaudeDataSource *claudeSource = [ClaudeDataSource sharedInstance];
-       [downloadManager registerDataSource:claudeSource
-                                   withType:DataSourceTypeClaude
-                                   priority:200];
+    NSLog(@"📡 AppDelegate: Registering data sources with updated priority order...");
     
-    NSLog(@"AppDelegate: Registered all data sources (Schwab, Webull, Other, Claude)");
+    // Priority 1 - Schwab
+    SchwabDataSource *schwabSource = [[SchwabDataSource alloc] init];
+    [downloadManager registerDataSource:schwabSource
+                                withType:DataSourceTypeSchwab
+                                priority:1];
+    NSLog(@"📊 Registered Schwab - Priority 1");
     
-    [downloadManager connectDataSource:DataSourceTypeYahoo completion:^(BOOL success, NSError *error) {
-           if (success) {
-               NSLog(@"✅ Yahoo Finance connected successfully");
-           } else {
-               NSLog(@"❌ Yahoo Finance connection failed: %@", error.localizedDescription);
-           }
-       }];
-       
-       // Connect Webull (no auth needed for market data)
-       [downloadManager connectDataSource:DataSourceTypeWebull completion:^(BOOL success, NSError *error) {
-           if (success) {
-               NSLog(@"✅ Webull connected successfully");
-           } else {
-               NSLog(@"❌ Webull connection failed: %@", error.localizedDescription);
-           }
-       }];
-       
-       // Connect Other/CSV (always available)
-       [downloadManager connectDataSource:DataSourceTypeOther completion:^(BOOL success, NSError *error) {
-           if (success) {
-               NSLog(@"✅ Other/CSV connected successfully");
-           } else {
-               NSLog(@"❌ Other/CSV connection failed: %@", error.localizedDescription);
-           }
-       }];
+    // Priority 2 - IBKR
+    IBKRConfiguration *ibkrConfig = [IBKRConfiguration sharedConfiguration];
+    IBKRDataSource *ibkrSource = [ibkrConfig createDataSource];
+    [downloadManager registerDataSource:ibkrSource
+                                withType:DataSourceTypeIBKR
+                                priority:2];
+    NSLog(@"📊 Registered IBKR - Priority 2");
+    
+    // Priority 3 - Yahoo
+    YahooDataSource *yahooSource = [[YahooDataSource alloc] init];
+    [downloadManager registerDataSource:yahooSource
+                                withType:DataSourceTypeYahoo
+                                priority:3];
+    NSLog(@"📊 Registered Yahoo Finance - Priority 3");
+    
+    // Priority 50 - Webull
+    WebullDataSource *webullSource = [[WebullDataSource alloc] init];
+    [downloadManager registerDataSource:webullSource
+                                withType:DataSourceTypeWebull
+                                priority:50];
+    NSLog(@"📊 Registered Webull - Priority 50");
+    
+    // Priority 100 - Other/CSV
+    OtherDataSource *otherSource = [[OtherDataSource alloc] init];
+    [downloadManager registerDataSource:otherSource
+                                withType:DataSourceTypeOther
+                                priority:100];
+    NSLog(@"📊 Registered Other/CSV - Priority 100");
+    
+    // Priority 200 - Claude
+    ClaudeDataSource *claudeSource = [ClaudeDataSource sharedInstance];
+    [downloadManager registerDataSource:claudeSource
+                                withType:DataSourceTypeClaude
+                                priority:200];
+    
+    NSLog(@"AppDelegate: Registered all data sources");
+    
+    // Connect free sources
+    [downloadManager connectDataSource:DataSourceTypeYahoo completion:nil];
+    [downloadManager connectDataSource:DataSourceTypeWebull completion:nil];
+    [downloadManager connectDataSource:DataSourceTypeOther completion:nil];
 }
 
-
-
-- (BOOL)applicationSupportsSecureRestorableState:(NSApplication *)app {
-    return NO;
-}
-
-- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
-    return YES;
-}
-- (BOOL)application:(NSApplication *)application willContinueUserActivityWithType:(NSString *)userActivityType {
-    return NO;
-}
-
-- (void)autoConnectToSchwabWithPreferences {
-    // Controlla se l'utente ha abilitato la connessione automatica
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    BOOL autoConnectEnabled = [defaults boolForKey:@"AutoConnectSchwab"];
-    
-    if (!autoConnectEnabled) {
-        NSLog(@"Auto-connect disabled by user");
-        return;
-    }
-    
-    [self autoConnectToSchwab];
-}
-
-- (void)autoConnectToSchwab {
-    NSLog(@"AppDelegate: Attempting auto-connection to Schwab...");
-    
-    DownloadManager *downloadManager = [DownloadManager sharedManager];
-    
-    // Controlla se Schwab è già connesso
-    if ([downloadManager isDataSourceConnected:DataSourceTypeSchwab]) {
-        NSLog(@"AppDelegate: Schwab already connected");
-        return;
-    }
-    
-    // Prova a connettersi automaticamente
-    [downloadManager connectDataSource:DataSourceTypeSchwab
-                            completion:^(BOOL success, NSError *error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (success) {
-                NSLog(@"AppDelegate: Schwab auto-connection successful");
-                
-                // Opzionale: Mostra una notifica di successo
-                //todo inserire preferenza per non mosrtare piu
-               // [self showConnectionNotification:@"Connected to Schwab" success:YES];
-            } else {
-                NSLog(@"AppDelegate: Schwab auto-connection failed: %@", error.localizedDescription);
-                
-                // Opzionale: Mostra notifica di errore (solo per errori non di autenticazione)
-                if (error.code != 401) { // Non mostrare errori di autenticazione
-                    [self showConnectionNotification:@"Schwab connection failed" success:NO];
-                }
-            }
-        });
-    }];
-}
-
-// NUOVO METODO: Mostra notifiche di connessione (opzionale)
-- (void)showConnectionNotification:(NSString *)message success:(BOOL)success {
-    // Crea una notifica discreta nell'app
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = success ? @"Connection Successful" : @"Connection Failed";
-    alert.informativeText = message;
-    alert.alertStyle = success ? NSAlertStyleInformational : NSAlertStyleWarning;
-    
-   
-}
-
-#pragma mark - cluade api
+#pragma mark - Claude Setup
 
 - (void)setupClaudeDataSource {
     NSLog(@"AppDelegate: Setting up Claude AI Data Source");
     
-    // Load API key from secure storage or settings
     NSString *claudeApiKey = [self loadClaudeAPIKey];
     
     if (!claudeApiKey || claudeApiKey.length == 0) {
-        NSLog(@"AppDelegate: Claude API key not found - AI features will be disabled");
-        NSLog(@"AppDelegate: Please configure Claude API key in app settings");
+        NSLog(@"AppDelegate: Claude API key not found - AI features disabled");
         return;
     }
     
-    // Create and configure Claude data source
     ClaudeDataSource *claudeSource = [[ClaudeDataSource alloc] initWithAPIKey:claudeApiKey];
     
-    // Optional: Update configuration from app settings
     NSDictionary *claudeConfig = [self loadClaudeConfiguration];
     if (claudeConfig) {
         [claudeSource updateConfiguration:claudeConfig];
     }
     
-    // Register with DownloadManager
     DownloadManager *downloadManager = [DownloadManager sharedManager];
     [downloadManager registerDataSource:claudeSource
                                 withType:DataSourceTypeClaude
-                                priority:1]; // High priority for AI requests
+                                priority:1];
     
-    // Test connection
     [claudeSource connectWithCompletion:^(BOOL success, NSError *error) {
         if (success) {
             NSLog(@"AppDelegate: Claude AI connected successfully");
@@ -348,45 +309,26 @@
     }];
 }
 
-// NUOVO: Load API key from secure storage
 - (NSString *)loadClaudeAPIKey {
-    // In production, questo dovrebbe essere caricato dal Keychain o da un file di configurazione sicuro
-    // Per ora, supportiamo alcune opzioni:
-    
-    // 1. Check environment variable (for development)
     NSString *envKey = [[[NSProcessInfo processInfo] environment] objectForKey:@"CLAUDE_API_KEY"];
-    if (envKey && envKey.length > 0) {
-        return envKey;
-    }
+    if (envKey && envKey.length > 0) return envKey;
     
-    // 2. Check app settings/preferences
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     NSString *settingsKey = [defaults stringForKey:@"ClaudeAPIKey"];
-    if (settingsKey && settingsKey.length > 0) {
-        return settingsKey;
-    }
+    if (settingsKey && settingsKey.length > 0) return settingsKey;
     
-    // 3. Check configuration file (claude_config.plist in app bundle)
     NSString *configPath = [[NSBundle mainBundle] pathForResource:@"claude_config" ofType:@"plist"];
     if (configPath) {
         NSDictionary *config = [NSDictionary dictionaryWithContentsOfFile:configPath];
         NSString *configKey = config[@"apiKey"];
-        if (configKey && configKey.length > 0) {
-            return configKey;
-        }
+        if (configKey && configKey.length > 0) return configKey;
     }
-    
-    // 4. TODO: Load from macOS Keychain (most secure option)
-    // NSString *keychainKey = [self loadFromKeychain:@"ClaudeAPIKey"];
     
     return nil;
 }
 
-// NUOVO: Load Claude configuration
 - (NSDictionary *)loadClaudeConfiguration {
     NSMutableDictionary *config = [NSMutableDictionary dictionary];
-    
-    // Load from app settings
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     
     NSString *baseURL = [defaults stringForKey:@"ClaudeBaseURL"];
@@ -398,7 +340,6 @@
     NSNumber *timeout = [defaults objectForKey:@"ClaudeTimeout"];
     if (timeout) config[@"timeout"] = timeout;
     
-    // Load from config file if exists
     NSString *configPath = [[NSBundle mainBundle] pathForResource:@"claude_config" ofType:@"plist"];
     if (configPath) {
         NSDictionary *fileConfig = [NSDictionary dictionaryWithContentsOfFile:configPath];
@@ -408,7 +349,6 @@
     return config.count > 0 ? [config copy] : nil;
 }
 
-// NUOVO: Utility method to save API key (for preferences window)
 - (void)saveClaudeAPIKey:(NSString *)apiKey {
     if (!apiKey) return;
     
@@ -416,86 +356,126 @@
     [defaults setObject:apiKey forKey:@"ClaudeAPIKey"];
     [defaults synchronize];
     
-    NSLog(@"AppDelegate: Claude API key saved to preferences");
-    
-    // Restart Claude data source with new key
+    NSLog(@"AppDelegate: Claude API key saved");
     [self setupClaudeDataSource];
 }
 
+#pragma mark - Auto-Connect
 
-
-
-#pragma mark - Window Restoration
-
-+ (void)restoreWindowWithIdentifier:(NSString *)identifier
-                              state:(NSCoder *)state
-                  completionHandler:(void (^)(NSWindow *, NSError *))completionHandler {
+- (void)autoConnectToSchwabWithPreferences {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL autoConnectEnabled = [defaults boolForKey:@"AutoConnectSchwab"];
     
-    NSLog(@"🔄 AppDelegate: Restoring window with identifier: %@", identifier);
-    
-    if ([identifier isEqualToString:@"MainWindow"]) {
-        // Ripristina la finestra principale
-        AppDelegate *appDelegate = (AppDelegate *)[NSApp delegate];
-        if (appDelegate.window) {
-            completionHandler(appDelegate.window, nil);
-        } else {
-            NSError *error = [NSError errorWithDomain:@"WindowRestoration"
-                                                 code:404
-                                             userInfo:@{NSLocalizedDescriptionKey: @"Main window not found"}];
-            completionHandler(nil, error);
-        }
-    } else {
-        // Identificatore sconosciuto
-        NSError *error = [NSError errorWithDomain:@"WindowRestoration"
-                                             code:404
-                                         userInfo:@{NSLocalizedDescriptionKey: @"Unknown window identifier"}];
-        completionHandler(nil, error);
+    if (!autoConnectEnabled) {
+        NSLog(@"Auto-connect Schwab disabled by user");
+        return;
     }
+    
+    [self autoConnectToSchwab];
 }
+
+- (void)autoConnectToSchwab {
+    NSLog(@"AppDelegate: Attempting auto-connection to Schwab...");
+    
+    DownloadManager *downloadManager = [DownloadManager sharedManager];
+    
+    if ([downloadManager isDataSourceConnected:DataSourceTypeSchwab]) {
+        NSLog(@"AppDelegate: Schwab already connected");
+        return;
+    }
+    
+    [downloadManager connectDataSource:DataSourceTypeSchwab
+                            completion:^(BOOL success, NSError *error) {
+        if (success) {
+            NSLog(@"AppDelegate: Schwab auto-connection successful");
+        } else {
+            NSLog(@"AppDelegate: Schwab auto-connection failed: %@", error.localizedDescription);
+        }
+    }];
+}
+
+- (void)autoConnectToIBKRWithPreferences {
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    BOOL autoConnectEnabled = [defaults boolForKey:@"AutoConnectIBKR"];
+    
+    if (!autoConnectEnabled) {
+        NSLog(@"IBKR Auto-connect disabled by user");
+        return;
+    }
+    
+    [self autoConnectToIBKR];
+}
+
+- (void)autoConnectToIBKR {
+    NSLog(@"AppDelegate: Attempting auto-connection to IBKR...");
+    
+    DownloadManager *downloadManager = [DownloadManager sharedManager];
+    
+    if ([downloadManager isDataSourceConnected:DataSourceTypeIBKR]) {
+        NSLog(@"AppDelegate: IBKR already connected");
+        return;
+    }
+    
+    [downloadManager connectDataSource:DataSourceTypeIBKR completion:^(BOOL success, NSError *error) {
+        if (success) {
+            NSLog(@"AppDelegate: IBKR auto-connection successful");
+        } else {
+            NSLog(@"AppDelegate: IBKR auto-connection failed: %@", error.localizedDescription);
+            [self scheduleIBKRRetry];
+        }
+    }];
+}
+
+- (void)scheduleIBKRRetry {
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(30.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+        BOOL autoRetryEnabled = [defaults boolForKey:@"AutoRetryIBKR"];
+        
+        if (autoRetryEnabled) {
+            NSLog(@"AppDelegate: Retrying IBKR connection...");
+            [self autoConnectToIBKR];
+        }
+    });
+}
+
+#pragma mark - Floating Widget Actions
+
 - (IBAction)openFloatingWidget:(id)sender {
-   // 🎯 UNICA FUNZIONE che gestisce TUTTI i widget
-   
-   NSMenuItem *menuItem = (NSMenuItem *)sender;
-   NSString *widgetTitle = menuItem.title;
-   
-   NSLog(@"🚀 AppDelegate: Opening floating widget: %@", widgetTitle);
-   
-   // Create widget using CORRECTED method
-   BaseWidget *widget = [self createWidgetOfType:widgetTitle];
-   if (!widget) {
-       NSLog(@"❌ AppDelegate: Failed to create widget of type: %@", widgetTitle);
-       return;
-   }
-   
-   // ✅ CORRETTO: Usa loadView invece di setupWidget (che non esiste)
-   [widget loadView];
-   
-   // ✅ CORRETTO: Configura il widget dopo loadView
-   if (widget.titleComboBox) {
-       widget.titleComboBox.stringValue = widgetTitle;
-   }
-   
-   // Get default size for this widget type
-   NSSize windowSize = [self defaultSizeForWidgetType:widgetTitle];
-   
-   // Create and show floating window
-   FloatingWidgetWindow *window = [self createFloatingWindowWithWidget:widget
-                                                                  title:widgetTitle
-                                                                   size:windowSize];
-   [window makeKeyAndOrderFront:self];
-   
-   NSLog(@"✅ AppDelegate: Successfully opened floating %@ widget", widgetTitle);
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    NSString *widgetTitle = menuItem.title;
+    
+    NSLog(@"🚀 AppDelegate: Opening floating widget: %@", widgetTitle);
+    
+    BaseWidget *widget = [self createWidgetOfType:widgetTitle];
+    if (!widget) {
+        NSLog(@"❌ AppDelegate: Failed to create widget of type: %@", widgetTitle);
+        return;
+    }
+    
+    [widget loadView];
+    
+    if (widget.titleComboBox) {
+        widget.titleComboBox.stringValue = widgetTitle;
+    }
+    
+    NSSize windowSize = [self defaultSizeForWidgetType:widgetTitle];
+    
+    FloatingWidgetWindow *window = [self createFloatingWindowWithWidget:widget
+                                                                   title:widgetTitle
+                                                                    size:windowSize];
+    [window makeKeyAndOrderFront:self];
+    
+    NSLog(@"✅ AppDelegate: Successfully opened floating %@ widget", widgetTitle);
 }
+
 #pragma mark - Grid Actions
 
 - (IBAction)openGrid:(id)sender {
     NSString *templateName = [sender title];
     NSLog(@"🏗️ AppDelegate: Opening grid with template: %@", templateName);
     
-    // Map menu title to template type
     GridTemplateType templateType = [self templateTypeFromMenuTitle:templateName];
     
-    // Create grid window
     GridWindow *gridWindow = [self createGridWindowWithTemplate:templateType
                                                            name:templateName];
     
@@ -515,10 +495,152 @@
         return GridTemplateTypeQuad;
     }
     
-    return GridTemplateTypeListChart; // Default
+    return GridTemplateTypeListChart;
 }
 
-#pragma mark - Grid Window Management
+#pragma mark - Workspace Actions
+
+- (IBAction)saveWorkspace:(id)sender {
+    [[WorkspaceManager sharedManager] saveCurrentWorkspaceWithName:@"Default"];
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Workspace Saved";
+    alert.informativeText = @"Current workspace saved as 'Default'";
+    [alert addButtonWithTitle:@"OK"];
+    [alert runModal];
+}
+
+- (IBAction)saveWorkspaceAs:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Save Workspace As";
+    alert.informativeText = @"Enter a name for this workspace:";
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.placeholderString = @"My Workspace";
+    alert.accessoryView = input;
+    
+    [alert addButtonWithTitle:@"Save"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        NSString *name = input.stringValue;
+        
+        if (name.length > 0) {
+            BOOL success = [[WorkspaceManager sharedManager] saveCurrentWorkspaceWithName:name];
+            
+            if (success) {
+                NSAlert *successAlert = [[NSAlert alloc] init];
+                successAlert.messageText = @"Workspace Saved";
+                successAlert.informativeText = [NSString stringWithFormat:@"Workspace '%@' saved successfully", name];
+                [successAlert addButtonWithTitle:@"OK"];
+                [successAlert runModal];
+            }
+        }
+    }
+}
+
+- (IBAction)loadWorkspace:(id)sender {
+    NSArray *workspaces = [[WorkspaceManager sharedManager] availableWorkspaces];
+    
+    if (workspaces.count == 0) {
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"No Workspaces";
+        alert.informativeText = @"No saved workspaces found. Save a workspace first.";
+        [alert addButtonWithTitle:@"OK"];
+        [alert runModal];
+        return;
+    }
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Load Workspace";
+    alert.informativeText = @"Select a workspace to load:";
+    
+    NSPopUpButton *popup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    [popup addItemsWithTitles:workspaces];
+    alert.accessoryView = popup;
+    
+    [alert addButtonWithTitle:@"Load"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        NSString *selectedWorkspace = [popup titleOfSelectedItem];
+        [[WorkspaceManager sharedManager] loadWorkspaceWithName:selectedWorkspace];
+    }
+}
+
+#pragma mark - Widget Creation
+
+- (BaseWidget *)createWidgetOfType:(NSString *)widgetType {
+    Class widgetClass = [self.widgetTypeManager classForWidgetType:widgetType];
+    
+    if (!widgetClass) {
+        NSLog(@"⚠️ AppDelegate: No class found for widget type: %@", widgetType);
+        widgetClass = [BaseWidget class];
+    }
+    
+    BaseWidget *widget = [[widgetClass alloc] initWithType:widgetType];
+    
+    NSLog(@"🔧 AppDelegate: Created widget: %@ -> %@", widgetType, NSStringFromClass(widgetClass));
+    
+    return widget;
+}
+
+- (NSSize)defaultSizeForWidgetType:(NSString *)widgetType {
+    NSDictionary *widgetSizes = @{
+        @"Chart Widget": [NSValue valueWithSize:NSMakeSize(800, 600)],
+        @"MultiChart Widget": [NSValue valueWithSize:NSMakeSize(1000, 700)],
+        @"Seasonal Chart": [NSValue valueWithSize:NSMakeSize(800, 500)],
+        @"Tick Chart": [NSValue valueWithSize:NSMakeSize(700, 500)],
+        @"Microscope Chart": [NSValue valueWithSize:NSMakeSize(800, 600)],
+        @"Watchlist": [NSValue valueWithSize:NSMakeSize(400, 600)],
+        @"Alerts": [NSValue valueWithSize:NSMakeSize(450, 500)],
+        @"SymbolDatabase": [NSValue valueWithSize:NSMakeSize(500, 650)],
+        @"Quote": [NSValue valueWithSize:NSMakeSize(350, 400)],
+        @"Connection Status": [NSValue valueWithSize:NSMakeSize(300, 250)],
+        @"Connections": [NSValue valueWithSize:NSMakeSize(600, 450)],
+        @"API Playground": [NSValue valueWithSize:NSMakeSize(700, 500)]
+    };
+    
+    NSValue *sizeValue = widgetSizes[widgetType];
+    return sizeValue ? [sizeValue sizeValue] : NSMakeSize(500, 400);
+}
+
+#pragma mark - Window Management
+
+- (FloatingWidgetWindow *)createFloatingWindowWithWidget:(BaseWidget *)widget
+                                                   title:(NSString *)title
+                                                    size:(NSSize)size {
+    
+    FloatingWidgetWindow *window = [[FloatingWidgetWindow alloc] initWithWidget:widget
+                                                                           title:title
+                                                                            size:size
+                                                                     appDelegate:self];
+    
+    [self registerFloatingWindow:window];
+    
+    NSLog(@"🪟 AppDelegate: Created floating window: %@", title);
+    return window;
+}
+
+- (void)registerFloatingWindow:(FloatingWidgetWindow *)window {
+    if (window && ![self.floatingWindows containsObject:window]) {
+        [self.floatingWindows addObject:window];
+        [[WorkspaceManager sharedManager] autoSaveLastUsedWorkspace];
+
+        NSLog(@"📝 AppDelegate: Registered floating window (total: %ld)",
+              (long)self.floatingWindows.count);
+    }
+}
+
+- (void)unregisterFloatingWindow:(FloatingWidgetWindow *)window {
+    if (window && [self.floatingWindows containsObject:window]) {
+        [self.floatingWindows removeObject:window];
+        [[WorkspaceManager sharedManager] autoSaveLastUsedWorkspace];
+
+        NSLog(@"🗑️ AppDelegate: Unregistered floating window (remaining: %ld)",
+              (long)self.floatingWindows.count);
+    }
+}
 
 - (GridWindow *)createGridWindowWithTemplate:(NSString *)templateType
                                         name:(NSString *)name {
@@ -528,6 +650,8 @@
                                                   appDelegate:self];
     
     [self registerGridWindow:window];
+    [[WorkspaceManager sharedManager] autoSaveLastUsedWorkspace];
+
     
     NSLog(@"🏗️ AppDelegate: Created grid window: %@", name);
     return window;
@@ -536,6 +660,8 @@
 - (void)registerGridWindow:(GridWindow *)window {
     if (window && ![self.gridWindows containsObject:window]) {
         [self.gridWindows addObject:window];
+        [[WorkspaceManager sharedManager] autoSaveLastUsedWorkspace];
+
         NSLog(@"📝 AppDelegate: Registered grid window (total: %ld)",
               (long)self.gridWindows.count);
     }
@@ -544,207 +670,58 @@
 - (void)unregisterGridWindow:(GridWindow *)window {
     if (window && [self.gridWindows containsObject:window]) {
         [self.gridWindows removeObject:window];
+        [[WorkspaceManager sharedManager] autoSaveLastUsedWorkspace];
+
         NSLog(@"🗑️ AppDelegate: Unregistered grid window (remaining: %ld)",
               (long)self.gridWindows.count);
     }
 }
 
-- (IBAction)closeAllGrids:(id)sender {
-    NSLog(@"🗑️ AppDelegate: Closing all grid windows");
-    
-    NSArray *windowsCopy = [self.gridWindows copy];
-    
-    for (GridWindow *window in windowsCopy) {
-        [window close];
-    }
-    
-    NSLog(@"✅ AppDelegate: Closed %ld grid windows", (long)windowsCopy.count);
-}
-
-#pragma mark - Widget Creation Helper
-
-- (BaseWidget *)createWidgetOfType:(NSString *)widgetType {
-   // Use WidgetTypeManager to get the correct class
-   Class widgetClass = [self.widgetTypeManager classForWidgetType:widgetType];
-   
-   if (!widgetClass) {
-       NSLog(@"⚠️ AppDelegate: No class found for widget type: %@, using BaseWidget", widgetType);
-       widgetClass = [BaseWidget class];
-   }
-   
-   // ✅ CORRETTO: Usa il metodo di inizializzazione corretto di BaseWidget
-   BaseWidget *widget = [[widgetClass alloc] initWithType:widgetType];
-   
-   NSLog(@"🔧 AppDelegate: Created widget: %@ -> %@", widgetType, NSStringFromClass(widgetClass));
-   
-   return widget;
-}
-
-- (NSSize)defaultSizeForWidgetType:(NSString *)widgetType {
-   // Define default sizes for different widget types
-   NSDictionary *widgetSizes = @{
-       // Chart widgets - need more space
-       @"Chart Widget": [NSValue valueWithSize:NSMakeSize(800, 600)],
-       @"MultiChart Widget": [NSValue valueWithSize:NSMakeSize(1000, 700)],
-       @"Seasonal Chart": [NSValue valueWithSize:NSMakeSize(800, 500)],
-       @"Tick Chart": [NSValue valueWithSize:NSMakeSize(700, 500)],
-       
-       // NUOVO: Dimensioni specifiche per finestre microscopio
-       @"Microscope Chart": [NSValue valueWithSize:NSMakeSize(800, 600)],
-       
-       // List-based widgets - vertical orientation
-       @"Watchlist": [NSValue valueWithSize:NSMakeSize(400, 600)],
-       @"Alerts": [NSValue valueWithSize:NSMakeSize(450, 500)],
-       @"SymbolDatabase": [NSValue valueWithSize:NSMakeSize(500, 650)],
-       
-       // Information widgets - compact
-       @"Quote": [NSValue valueWithSize:NSMakeSize(350, 400)],
-       @"Connection Status": [NSValue valueWithSize:NSMakeSize(300, 250)],
-       @"Connections": [NSValue valueWithSize:NSMakeSize(600, 450)],
-       
-       // Utility widgets
-       @"API Playground": [NSValue valueWithSize:NSMakeSize(700, 500)]
-   };
-   
-   NSValue *sizeValue = widgetSizes[widgetType];
-   if (sizeValue) {
-       return [sizeValue sizeValue];
-   }
-   
-   // Default size for unknown widget types
-   return NSMakeSize(500, 400);
-}
-
-#pragma mark - Window Management Actions
-
 - (IBAction)arrangeFloatingWindows:(id)sender {
-   NSLog(@"🎯 AppDelegate: Arranging floating windows");
-   
-   if (self.floatingWindows.count == 0) {
-       NSLog(@"ℹ️ AppDelegate: No floating windows to arrange");
-       return;
-   }
-   
-   // Get screen bounds
-   NSScreen *mainScreen = [NSScreen mainScreen];
-   NSRect screenFrame = mainScreen.visibleFrame;
-   
-   // Calculate grid arrangement
-   NSInteger windowCount = self.floatingWindows.count;
-   NSInteger columns = (NSInteger)ceil(sqrt(windowCount));
-   NSInteger rows = (NSInteger)ceil((double)windowCount / columns);
-   
-   CGFloat windowWidth = screenFrame.size.width / columns;
-   CGFloat windowHeight = screenFrame.size.height / rows;
-   
-   // Arrange windows in grid
-   for (NSInteger i = 0; i < windowCount; i++) {
-       FloatingWidgetWindow *window = self.floatingWindows[i];
-       
-       NSInteger row = i / columns;
-       NSInteger col = i % columns;
-       
-       NSRect newFrame = NSMakeRect(
-           screenFrame.origin.x + (col * windowWidth),
-           screenFrame.origin.y + screenFrame.size.height - ((row + 1) * windowHeight),
-           windowWidth - 10, // Small margin
-           windowHeight - 10
-       );
-       
-       [window setFrame:newFrame display:YES animate:YES];
-   }
-   
-   NSLog(@"✅ AppDelegate: Arranged %ld windows in %ldx%ld grid",
-         (long)windowCount, (long)columns, (long)rows);
+    if (self.floatingWindows.count == 0) return;
+    
+    NSScreen *mainScreen = [NSScreen mainScreen];
+    NSRect screenFrame = mainScreen.visibleFrame;
+    
+    NSInteger windowCount = self.floatingWindows.count;
+    NSInteger columns = (NSInteger)ceil(sqrt(windowCount));
+    NSInteger rows = (NSInteger)ceil((double)windowCount / columns);
+    
+    CGFloat windowWidth = screenFrame.size.width / columns;
+    CGFloat windowHeight = screenFrame.size.height / rows;
+    
+    for (NSInteger i = 0; i < windowCount; i++) {
+        FloatingWidgetWindow *window = self.floatingWindows[i];
+        
+        NSInteger row = i / columns;
+        NSInteger col = i % columns;
+        
+        NSRect newFrame = NSMakeRect(
+            screenFrame.origin.x + (col * windowWidth),
+            screenFrame.origin.y + screenFrame.size.height - ((row + 1) * windowHeight),
+            windowWidth - 10,
+            windowHeight - 10
+        );
+        
+        [window setFrame:newFrame display:YES animate:YES];
+    }
 }
 
 - (IBAction)closeAllFloatingWindows:(id)sender {
-   NSLog(@"🗑️ AppDelegate: Closing all floating windows");
-   
-   // Create copy to avoid mutation during enumeration
-   NSArray *windowsCopy = [self.floatingWindows copy];
-   
-   for (FloatingWidgetWindow *window in windowsCopy) {
-       [window close];
-   }
-   
-   NSLog(@"✅ AppDelegate: Closed %ld floating windows", (long)windowsCopy.count);
-}
-
-#pragma mark - Floating Window Management
-
-- (FloatingWidgetWindow *)createFloatingWindowWithWidget:(BaseWidget *)widget
-                                                  title:(NSString *)title
-                                                   size:(NSSize)size {
-   
-   FloatingWidgetWindow *window = [[FloatingWidgetWindow alloc] initWithWidget:widget
-                                                                         title:title
-                                                                          size:size
-                                                                   appDelegate:self];
-   
-   [self registerFloatingWindow:window];
-   
-   NSLog(@"🪟 AppDelegate: Created floating window: %@", title);
-   return window;
-}
-
-- (void)registerFloatingWindow:(FloatingWidgetWindow *)window {
-   if (window && ![self.floatingWindows containsObject:window]) {
-       [self.floatingWindows addObject:window];
-       NSLog(@"📝 AppDelegate: Registered floating window (total: %ld)",
-             (long)self.floatingWindows.count);
-   }
-}
-
-- (void)unregisterFloatingWindow:(FloatingWidgetWindow *)window {
-   if (window && [self.floatingWindows containsObject:window]) {
-       [self.floatingWindows removeObject:window];
-       NSLog(@"🗑️ AppDelegate: Unregistered floating window (remaining: %ld)",
-             (long)self.floatingWindows.count);
-   }
-}
-#pragma mark - Application Delegate Extensions
-
-- (void)applicationWillTerminate:(NSNotification *)aNotification {
-    [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"NSQuitAlwaysKeepsWindows"];
-    [[NSUserDefaults standardUserDefaults] synchronize];
-    
-    // Save all floating window states before terminating
-    for (FloatingWidgetWindow *window in self.floatingWindows) {
-        [window saveWindowState];
+    NSArray *windowsCopy = [self.floatingWindows copy];
+    for (FloatingWidgetWindow *window in windowsCopy) {
+        [window close];
     }
-    for (GridWindow *window in self.gridWindows) {
-            NSDictionary *state = [window serializeState];
-            NSString *key = [NSString stringWithFormat:@"GridWindow_%@", window.gridName];
-            [[NSUserDefaults standardUserDefaults] setObject:state forKey:key];
-        }    NSLog(@"💾 AppDelegate: Saved state for %ld floating windows",
-          (long)self.floatingWindows.count);
 }
 
-#pragma mark - Menu Validation
-
-- (BOOL)validateMenuItem:(NSMenuItem *)menuItem {
-    if (menuItem.action == @selector(arrangeFloatingWindows:) ||
-        menuItem.action == @selector(closeAllFloatingWindows:)) {
-        return self.floatingWindows.count > 0;
+- (IBAction)closeAllGrids:(id)sender {
+    NSArray *windowsCopy = [self.gridWindows copy];
+    for (GridWindow *window in windowsCopy) {
+        [window close];
     }
-    for (GridWindow *window in self.gridWindows) {
-            NSDictionary *state = [window serializeState];
-            NSString *key = [NSString stringWithFormat:@"GridWindow_%@", window.gridName];
-            [[NSUserDefaults standardUserDefaults] setObject:state forKey:key];
-        }
-    
-    if (menuItem.action == @selector(openFloatingWidget:) ||
-            menuItem.action == @selector(openGrid:)) {
-            return YES;
-        }
-        
-    
-    return YES;
 }
 
-
-#pragma mark - Microscope Window Management
+#pragma mark - Microscope Window
 
 - (FloatingWidgetWindow *)createMicroscopeWindowWithChartWidget:(ChartWidget *)chartWidget
                                                           title:(NSString *)title
@@ -755,115 +732,102 @@
         return nil;
     }
     
-    NSLog(@"🔬 AppDelegate: Creating microscope window: %@", title);
-    
-    // Crea la floating window utilizzando l'infrastruttura esistente
     FloatingWidgetWindow *window = [[FloatingWidgetWindow alloc] initWithWidget:chartWidget
                                                                            title:title
                                                                             size:size
                                                                      appDelegate:self];
     
-    // Registra la finestra nell'array delle floating windows
     [self registerFloatingWindow:window];
     
-    NSLog(@"✅ AppDelegate: Created microscope window: %@ (total floating windows: %ld)",
-          title, (long)self.floatingWindows.count);
-    
+    NSLog(@"🔬 AppDelegate: Created microscope window: %@", title);
     return window;
 }
 
-#pragma mark - ibkr
+#pragma mark - Application Lifecycle
 
-- (void)autoConnectToIBKRWithPreferences {
-    // Controlla se l'utente ha abilitato la connessione automatica a IBKR
-    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-    BOOL autoConnectEnabled = [defaults boolForKey:@"AutoConnectIBKR"];
-    
-    if (!autoConnectEnabled) {
-        NSLog(@"IBKR Auto-connect disabled by user");
-        return;
-    }
-    
-    [self autoConnectToIBKR];
+- (BOOL)applicationSupportsSecureRestorableState:(NSApplication *)app {
+    return NO;
 }
 
-- (void)autoConnectToIBKR {
-    NSLog(@"AppDelegate: Attempting auto-connection to IBKR...");
-    
-    DownloadManager *downloadManager = [DownloadManager sharedManager];
-    
-    // Controlla se IBKR è già connesso
-    if ([downloadManager isDataSourceConnected:DataSourceTypeIBKR]) {
-        NSLog(@"AppDelegate: IBKR already connected");
-        return;
-    }
-    
-    // Tenta connessione automatica
-    [downloadManager connectDataSource:DataSourceTypeIBKR completion:^(BOOL success, NSError *error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (success) {
-                NSLog(@"AppDelegate: IBKR auto-connection successful");
-                [self showIBKRConnectionAlert:YES message:@"Successfully connected to Interactive Brokers TWS/Gateway"];
-            } else {
-                NSLog(@"AppDelegate: IBKR auto-connection failed: %@", error.localizedDescription);
-                
-                // Non mostrare errore per connessioni automatiche fallite
-                // L'utente può comunque connettersi manualmente se necessario
-                
-                // Optional: Schedule retry after a delay
-                [self scheduleIBKRRetry];
-            }
-        });
-    }];
+- (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
+    return YES;
 }
 
-- (void)scheduleIBKRRetry {
-    // Retry connection after 30 seconds if TWS/Gateway might be starting up
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(30.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-        BOOL autoRetryEnabled = [defaults boolForKey:@"AutoRetryIBKR"];
-        
-        if (autoRetryEnabled) {
-            NSLog(@"AppDelegate: Retrying IBKR connection...");
-            [self autoConnectToIBKR];
+- (void)applicationWillTerminate:(NSNotification *)aNotification {
+    [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"NSQuitAlwaysKeepsWindows"];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    
+    // Save floating window states
+    for (FloatingWidgetWindow *window in self.floatingWindows) {
+        [window saveWindowState];
+    }
+    
+    // Save grid window states
+    for (GridWindow *window in self.gridWindows) {
+        NSDictionary *state = [window serializeState];
+        NSString *key = [NSString stringWithFormat:@"GridWindow_%@", window.gridName];
+        [[NSUserDefaults standardUserDefaults] setObject:state forKey:key];
+    }
+    
+    // Auto-save last used workspace
+    [[WorkspaceManager sharedManager] saveLastUsedWorkspace];
+    
+    NSLog(@"💾AppDelegate: Saved state for %ld floating + %ld grid windows",
+          (long)self.floatingWindows.count,
+          (long)self.gridWindows.count);
+}
+
+#pragma mark - Menu Validation
+
+- (BOOL)validateMenuItem:(NSMenuItem *)menuItem {
+    if (menuItem.action == @selector(arrangeFloatingWindows:) ||
+        menuItem.action == @selector(closeAllFloatingWindows:)) {
+        return self.floatingWindows.count > 0;
+    }
+    
+    if (menuItem.action == @selector(closeAllGrids:)) {
+        return self.gridWindows.count > 0;
+    }
+    
+    if (menuItem.action == @selector(openFloatingWidget:) ||
+        menuItem.action == @selector(openGrid:) ||
+        menuItem.action == @selector(saveWorkspace:) ||
+        menuItem.action == @selector(saveWorkspaceAs:) ||
+        menuItem.action == @selector(loadWorkspace:)) {
+        return YES;
+    }
+    
+    return YES;
+}
+
+#pragma mark - Window Restoration
+
++ (void)restoreWindowWithIdentifier:(NSString *)identifier
+                              state:(NSCoder *)state
+                  completionHandler:(void (^)(NSWindow *, NSError *))completionHandler {
+    
+    NSLog(@"🔄 AppDelegate: Restoring window with identifier: %@", identifier);
+    
+    if ([identifier isEqualToString:@"MainWindow"]) {
+        AppDelegate *appDelegate = (AppDelegate *)[NSApp delegate];
+        if (appDelegate.window) {
+            completionHandler(appDelegate.window, nil);
+        } else {
+            NSError *error = [NSError errorWithDomain:@"WindowRestoration"
+                                                 code:404
+                                             userInfo:@{NSLocalizedDescriptionKey: @"Main window not found"}];
+            completionHandler(nil, error);
         }
-    });
-}
-
-- (void)showIBKRConnectionAlert:(BOOL)success message:(NSString *)message {
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = success ? @"IBKR Connection Successful" : @"IBKR Connection Failed";
-    alert.informativeText = message;
-    alert.alertStyle = success ? NSAlertStyleInformational : NSAlertStyleWarning;
-    
-    // Add action button for failed connections
-    if (!success) {
-        [alert addButtonWithTitle:@"Retry"];
-        [alert addButtonWithTitle:@"Cancel"];
     } else {
-        [alert addButtonWithTitle:@"OK"];
+        NSError *error = [NSError errorWithDomain:@"WindowRestoration"
+                                             code:404
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Unknown window identifier"}];
+        completionHandler(nil, error);
     }
-    
-  
-        // Fallback to modal if no main window
-        [alert runModal];
 }
 
-// Optional: Method to test IBKR connection manually
-- (void)testIBKRConnection {
-    DownloadManager *downloadManager = [DownloadManager sharedManager];
-    
-    [downloadManager connectDataSource:DataSourceTypeIBKR completion:^(BOOL success, NSError *error) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            NSString *message;
-            if (success) {
-                message = @"Interactive Brokers connection test successful.\nTWS/Gateway is running and accessible.";
-            } else {
-                message = [NSString stringWithFormat:@"Interactive Brokers connection test failed.\n\nError: %@\n\nPlease ensure:\n• TWS or IB Gateway is running\n• API connections are enabled\n• Correct host/port configuration", error.localizedDescription];
-            }
-            
-            [self showIBKRConnectionAlert:success message:message];
-        });
-    }];
+- (BOOL)application:(NSApplication *)application willContinueUserActivityWithType:(NSString *)userActivityType {
+    return NO;
 }
+
 @end

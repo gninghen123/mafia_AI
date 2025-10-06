@@ -9,6 +9,7 @@
 #import "BaseWidget.h"
 #import "AppDelegate.h"
 #import "WidgetTypeManager.h"
+#import "workspacemanager.h"
 
 @interface GridWindow ()
 @property (nonatomic, strong) NSView *containerView;
@@ -523,7 +524,9 @@
     
     // Add new widget
     [self addWidget:newWidget atPosition:position];
-    
+    if (self.appDelegate) {
+          [[WorkspaceManager sharedManager] autoSaveLastUsedWorkspace];
+      }
     NSLog(@"✅ GridWindow: Widget transformed successfully");
 }
 

@@ -67,4 +67,9 @@
 - (BaseWidget *)createWidgetOfType:(NSString *)widgetType;
 - (NSSize)defaultSizeForWidgetType:(NSString *)widgetType;
 
+
+
+- (IBAction)openPreferences:(id)sender;
+
+
 @end

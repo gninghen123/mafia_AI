@@ -16,6 +16,8 @@
 #import "APTRScreener.h"      // ✅ NEW
 #import "AlignedSMAScreener.h"
 #import "MovingAverageTrendScreener.h"
+#import "BollingerBreakoutScreener.h"
+
 
 @interface ScreenerRegistry ()
 @property (nonatomic, strong) NSMutableDictionary<NSString *, BaseScreener *> *screeners;
@@ -58,6 +60,7 @@
     [self registerScreenerClass:[APTRScreener class]];  // ✅ NEW
     [self registerScreenerClass:[AlignedSMAScreener class]];  // ✅ NEW
     [self registerScreenerClass:[MovingAverageTrendScreener class]];  // ✅ NEW
+    [self registerScreenerClass:[BollingerBreakoutScreener class]];  // ✅ NEW
 
     NSLog(@"✅ Registered %lu default screeners", (unsigned long)self.screeners.count);
 }

@@ -57,15 +57,26 @@
         @"Charts": @[
             @"Chart Widget",
             @"MultiChart Widget",
-            @"Candlestick Chart",
-            @"Line Chart",
-            @"Bar Chart",
-            @"Market Depth",
-            @"Volume Profile",
-            @"Heatmap",
-            @"comparison Chart",
+            @"Comparison Chart",
             @"Seasonal Chart",       // NUOVO: Aggiunto SeasonalChart
             @"Tick Chart"           // NEW: Added TickChart
+        ],
+        @"Information": @[
+            @"Watchlist",
+            @"Quote",
+            @"News",
+            @"Symbol Info",
+            @"Time & Sales",
+            @"Connections",
+            @"SymbolDatabase"
+        ],
+        @"Analysis": @[
+            @"Technical Indicators",
+            @"Screener",
+            @"Stooq Screener",
+            @"Alerts",
+            @"Strategy Tester",
+            @"Pattern Chart Library"  // ✅ AGGIUNTO: ChartPatternLibrary nella categoria Analysis
         ],
         @"Trading": @[
             @"Order Entry",
@@ -77,44 +88,15 @@
             @"Portfolio"     // ✅ NUOVO: Aggiunto nella categoria Trading
 
         ],
-        @"Analysis": @[
-            @"Technical Indicators",
-            @"Screener",
-            @"Stooq Screener",
-            @"Alerts",
-            @"Alerts",
-            @"Strategy Tester",
-            @"Correlation Matrix",
-            @"Options Chain",
-            @"Pattern Chart Library"  // ✅ AGGIUNTO: ChartPatternLibrary nella categoria Analysis
-        ],
-        @"Information": @[
-            @"Quote",
-            @"Watchlist",
-            @"General Market",
-            @"News",
-            @"Economic Calendar",
-            @"Market Overview",
-            @"Symbol Info",
-            @"Time & Sales",
-            @"Connections",
-            @"SymbolDatabase"
-        ],
-        @"Tools": @[
+       @"Tools": @[
             @"Connection Status",
-            @"Calculator",
             @"Notes",
             @"Risk Manager",
-            @"Position Sizer",
-            @"Market Clock",
-            @"Performance Analytics",
             @"API Playground",
             @"Storage Management",
             @"LegacyDataConverter",
             @"PineScript Editor",
             @"IBKR Test Widget"  // NUOVO
-
-
         ]
     };
     
@@ -128,17 +110,10 @@
     typeToClass[@"Connections"] = [ConnectionsWidget class];
     typeToClass[@"SymbolDatabase"] = [SymbolDatabaseWidget class];
     typeToClass[@"Alerts"] = [AlertWidget class];
-    typeToClass[@"Alert"] = [AlertWidget class];
     typeToClass[@"Seasonal Chart"] = [SeasonalChartWidget class];
     typeToClass[@"Tick Chart"] = [TickChartWidget class];
     typeToClass[@"API Playground"] = [APIPlaygroundWidget class];
     typeToClass[@"Chart Widget"] = [ChartWidget class];
-    typeToClass[@"Candlestick Chart"] = [ChartWidget class];
-    typeToClass[@"Line Chart"] = [ChartWidget class];
-    typeToClass[@"Bar Chart"] = [ChartWidget class];
-    typeToClass[@"Market Depth"] = [ChartWidget class];
-    typeToClass[@"Volume Profile"] = [ChartWidget class];
-    typeToClass[@"Heatmap"] = [ChartWidget class];
     typeToClass[@"Storage Management"] = [StorageManagementWidget class];
     typeToClass[@"LegacyDataConverter"] = [LegacyDataConverterWidget class];
     typeToClass[@"Pattern Chart Library"] = [ChartPatternLibraryWidget class];
@@ -148,7 +123,7 @@
     typeToClass[@"Screener"] = [ScreenerWidget class];
     typeToClass[@"Stooq Screener"] = [StooqScreenerWidget class];
     typeToClass[@"PineScript Editor"] = [PineScriptEditorWidget class];
-    typeToClass[@"comparison Chart"] = [ComparisonChartWidget class];
+    typeToClass[@"Comparison Chart"] = [ComparisonChartWidget class];
 
     // Map all other types to BaseWidget for now
     for (NSArray *types in self.widgetCategories.allValues) {
@@ -163,57 +138,35 @@
     // Map widget types to icons (using SF Symbols)
     self.widgetTypeToIcon = @{
         @"Chart Widget": @"chart.xyaxis.line",
+        @"Watchlist": @"list.bullet.rectangle",
         @"Seasonal Chart": @"chart.bar.xaxis",
-        @"Candlestick Chart": @"chart.bar",
-        @"Line Chart": @"chart.line.uptrend.xyaxis",
-        @"Bar Chart": @"chart.bar.xaxis",
-        @"Market Depth": @"chart.bar.doc.horizontal",
-        @"Volume Profile": @"chart.bar.fill",
-        @"Heatmap": @"square.grid.3x3.fill.square",
         @"MultiChart Widget": @"square.grid.3x3",
         @"Connections": @"link",
-        @"comparison Chart": @"chart.bar.fill",
-        @"SymbolDatabase":@"tray.2",
+        @"Comparison Chart": @"chart.bar.fill",
         @"Tick Chart": @"list.bullet.rectangle",
-        @"Order Entry": @"plus.square",
-        @"Order Book": @"book",
-        @"Positions": @"briefcase",
-        @"Open Orders": @"doc.text",
-        @"Trade History": @"clock",
-        @"P&L Summary": @"dollarsign.circle",
-        @"API Playground": @"briefcase",
-        @"Storage Management": @"externaldrive.fill",
-        @"Pattern Chart Library": @"square.grid.3x3.bottomleft.fill",  // ✅ AGGIUNTO: Icona per ChartPatternLibrary
-        @"Portfolio": @"briefcase.fill",  // ✅ NUOVO: Icona per Portfolio Widget
-        @"IBKR Test Widget": @"testtube.2",
+        @"Pattern Chart Library": @"square.grid.3x3.bottomleft.fill",
         @"News": @"newspaper",
-        @"PineScript Editor":@"pine",
 
-        @"Technical Indicators": @"waveform.path.ecg",
         @"Screener": @"magnifyingglass",
         @"Stooq Screener": @"magnifyingglass",
         @"Alerts": @"bell",
         @"Strategy Tester": @"play.rectangle",
         @"Correlation Matrix": @"square.grid.3x3",
-        @"Options Chain": @"list.bullet.indent",
         
-        @"General Market": @"list.bullet.rectangle",
-        @"Quote": @"textformat.123",
-        @"Watchlist": @"list.bullet.rectangle",
-        @"News Feed": @"newspaper",
         @"Economic Calendar": @"calendar",
-        @"Market Overview": @"chart.line.uptrend.xyaxis",
         @"Symbol Info": @"info.circle",
-        @"Time & Sales": @"clock",
+        @"Technical Indicators": @"waveform.path.ecg",
+        @"SymbolDatabase":@"tray.2",
+        @"Storage Management": @"externaldrive.fill",
+        @"Portfolio": @"briefcase.fill",
+
         
         @"Connection Status": @"wifi",
-        @"Calculator": @"plusminus",
-        @"Notes": @"note.text",
-        @"Risk Manager": @"shield",
-        @"Position Sizer": @"ruler",
-        @"Market Clock": @"clock",
-        @"Performance Analytics": @"chart.bar.xaxis",
+        @"API Playground": @"briefcase",
+        @"IBKR Test Widget": @"testtube.2",
+        @"PineScript Editor":@"pine",
         @"LegacyDataConverter": @"arrow.up.arrow.down.circle"
+        
     };
 }
 

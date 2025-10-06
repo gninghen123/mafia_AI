@@ -10,6 +10,7 @@
 #import "AppDelegate.h"
 #import "ChartWidget.h"
 #import "WidgetTypeManager.h"
+#import "WorkspaceManager.h"
 
 @interface FloatingWidgetWindow ()
 @property (nonatomic, strong) NSView *containerView;
@@ -115,7 +116,9 @@
     
     // 8. Aggiorna titolo finestra
     self.title = newType;
-    
+    if (self.appDelegate) {
+           [[WorkspaceManager sharedManager] autoSaveLastUsedWorkspace];
+       }
     NSLog(@"✅ FloatingWindow: Widget transformed successfully to %@", newType);
 }
 

@@ -25,18 +25,16 @@
 }
 
 - (NSString *)descriptionText {
-    return @"Finds stocks in uptrend (SMA10>SMA20) that pulled back to SMA9 in last 3 bars, with compressing range and rising lows";
+    return @"Finds stocks that pulled back to SMA 9 in last 3 bars, with compressing range and rising lows";
 }
 
 - (NSInteger)minBarsRequired {
     // Serve SMA(20) + 3 barre lookback = 23 barre minimo
-    return 25;
+    return [self parameterIntegerForKey:@"pullbackSMA" defaultValue:9]+[self parameterIntegerForKey:@"lookbackBars" defaultValue:3];
 }
 
 - (NSDictionary *)defaultParameters {
     return @{
-        @"shortSMA": @10,
-        @"longSMA": @20,
         @"pullbackSMA": @9,
         @"lookbackBars": @3
     };
@@ -47,8 +45,6 @@
 - (NSArray<NSString *> *)executeOnSymbols:(NSArray<NSString *> *)inputSymbols
                                cachedData:(NSDictionary<NSString *, NSArray<HistoricalBarModel *> *> *)cache {
     
-    NSInteger shortSMA = [self parameterIntegerForKey:@"shortSMA" defaultValue:10];
-    NSInteger longSMA = [self parameterIntegerForKey:@"longSMA" defaultValue:20];
     NSInteger pullbackSMA = [self parameterIntegerForKey:@"pullbackSMA" defaultValue:9];
     NSInteger lookbackBars = [self parameterIntegerForKey:@"lookbackBars" defaultValue:3];
     
@@ -61,23 +57,7 @@
         
         NSInteger lastIdx = bars.count - 1;
         
-        // ✅ Calcola le SMA usando il metodo corretto
-        double currentSMA10 = [TechnicalIndicatorHelper sma:bars
-                                                       index:lastIdx
-                                                      period:shortSMA
-                                                    valueKey:@"close"];
-        
-        double currentSMA20 = [TechnicalIndicatorHelper sma:bars
-                                                       index:lastIdx
-                                                      period:longSMA
-                                                    valueKey:@"close"];
-        
-        if (currentSMA10 == 0.0 || currentSMA20 == 0.0) continue;
-        
-        // ✅ FILTRO 1: SMA(10) > SMA(20) - trend rialzista
-        if (currentSMA10 <= currentSMA20) {
-            continue;
-        }
+  
         
         // ✅ FILTRO 2: Nelle ultime N barre, almeno una ha toccato sotto SMA(9)
         BOOL foundPullback = NO;
@@ -123,8 +103,6 @@
         
         // ✅ Tutti i filtri passati
         NSString *condition = conditionToday ? @"TODAY" : @"YESTERDAY";
-        NSLog(@"📈 Pullback to SMA found for %@: SMA10=%.2f > SMA20=%.2f, pullback found, compression+rising low on %@",
-              symbol, currentSMA10, currentSMA20, condition);
         
         [results addObject:symbol];
     }

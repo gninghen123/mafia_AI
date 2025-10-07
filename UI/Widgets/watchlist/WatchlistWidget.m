@@ -161,21 +161,25 @@
     self.providerTypeSegmented.target = self;
     self.providerTypeSegmented.action = @selector(providerTypeChanged:);
     
-    // Configure segments with SF Symbols
-    [self.providerTypeSegmented setLabel:@"📝" forSegment:WatchlistProviderTypeManual];
-    [self.providerTypeSegmented setToolTip:@"Manual Watchlists" forSegment:WatchlistProviderTypeManual];
-    
-    [self.providerTypeSegmented setLabel:@"📊" forSegment:WatchlistProviderTypeMarket];
-    [self.providerTypeSegmented setToolTip:@"Market Lists" forSegment:WatchlistProviderTypeMarket];
-    
-    [self.providerTypeSegmented setLabel:@"🗂️" forSegment:WatchlistProviderTypeBaskets];
-    [self.providerTypeSegmented setToolTip:@"Baskets" forSegment:WatchlistProviderTypeBaskets];
-    
-    [self.providerTypeSegmented setLabel:@"🏷️" forSegment:WatchlistProviderTypeTags];
-    [self.providerTypeSegmented setToolTip:@"Tag Lists" forSegment:WatchlistProviderTypeTags];
-    
-    [self.providerTypeSegmented setLabel:@"📦" forSegment:WatchlistProviderTypeArchives];
-    [self.providerTypeSegmented setToolTip:@"Archives" forSegment:WatchlistProviderTypeArchives];
+    [self.providerTypeSegmented setImage:[NSImage imageWithSystemSymbolName:@"list.bullet"
+                                                 accessibilityDescription:nil]
+                               forSegment:0];
+
+    [self.providerTypeSegmented setImage:[NSImage imageWithSystemSymbolName:@"globe.americas.fill"
+                                                 accessibilityDescription:nil]
+                               forSegment:1];
+
+    [self.providerTypeSegmented setImage:[NSImage imageWithSystemSymbolName:@"basket"
+                                                 accessibilityDescription:nil]
+                               forSegment:2];
+
+    [self.providerTypeSegmented setImage:[NSImage imageWithSystemSymbolName:@"tag"
+                                                 accessibilityDescription:nil]
+                               forSegment:3];
+
+    [self.providerTypeSegmented setImage:[NSImage imageWithSystemSymbolName:@"archivebox"
+                                                 accessibilityDescription:nil]
+                               forSegment:4];
     
     // Set equal widths for all segments
     for (NSInteger i = 0; i < 5; i++) {
@@ -244,7 +248,9 @@
         
         // ===== ROW 2: Segmented Control =====
         [self.providerTypeSegmented.topAnchor constraintEqualToAnchor:self.searchField.bottomAnchor constant:8],
-        [self.providerTypeSegmented.leadingAnchor constraintEqualToAnchor:self.toolbarView.leadingAnchor constant:8],
+        [self.providerTypeSegmented.centerXAnchor constraintEqualToAnchor:self.toolbarView.centerXAnchor],
+        [self.providerTypeSegmented.leadingAnchor constraintGreaterThanOrEqualToAnchor:self.toolbarView.leadingAnchor constant:8],
+        [self.providerTypeSegmented.trailingAnchor constraintLessThanOrEqualToAnchor:self.toolbarView.trailingAnchor constant:-8],
         [self.providerTypeSegmented.heightAnchor constraintEqualToConstant:24],
         
         // ===== ROW 3: Loading + Status =====

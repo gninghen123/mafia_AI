@@ -220,13 +220,13 @@
             filePath = "UI/Widgets/watchlist/WatchlistWidget.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1030"
-            endingLineNumber = "1030"
+            startingLineNumber = "1036"
+            endingLineNumber = "1036"
             landmarkName = "-createWatchlistFromCurrentSelection"
             landmarkType = "7">
             <Locations>
                <Location
-                  uuid = "B796D8FD-E9E6-44EE-934A-BB58A07E4208 - cc86fa4b0fc811fa"
+                  uuid = "B796D8FD-E9E6-44EE-934A-BB58A07E4208 - cc86fa4b0fc81030"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
@@ -236,11 +236,11 @@
                   urlString = "file:///Users/fabiogattone/Documents/mafia_AI/UI/Widgets/watchlist/WatchlistWidget.m"
                   startingColumnNumber = "9223372036854775807"
                   endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "1031"
-                  endingLineNumber = "1031">
+                  startingLineNumber = "1037"
+                  endingLineNumber = "1037">
                </Location>
                <Location
-                  uuid = "B796D8FD-E9E6-44EE-934A-BB58A07E4208 - bc104f9c2f5f13e8"
+                  uuid = "B796D8FD-E9E6-44EE-934A-BB58A07E4208 - bc104f9c2f5f1226"
                   shouldBeEnabled = "Yes"
                   ignoreCount = "0"
                   continueAfterRunningActions = "No"
@@ -250,8 +250,8 @@
                   urlString = "file:///Users/fabiogattone/Documents/mafia_AI/UI/Widgets/watchlist/WatchlistWidget.m"
                   startingColumnNumber = "9223372036854775807"
                   endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "1032"
-                  endingLineNumber = "1032">
+                  startingLineNumber = "1038"
+                  endingLineNumber = "1038">
                </Location>
             </Locations>
          </BreakpointContent>

@@ -2398,7 +2398,7 @@
     NSLog(@"📦 Saving execution session to archive...");
     
     // ✅ FIX: Usa la targetDate dal dataManager (fonte di verità)
-    NSDate *targetDate = self.dataManager.targetDate ?: [NSDate date];
+    NSDate *targetDate = self.dataManager.targetDate ?: [self.targetDatePicker dateValue];
     
     // Crea ExecutionSession CON LA DATA TARGET
     NSArray<ModelResult *> *results = [self.executionResults.allValues copy];

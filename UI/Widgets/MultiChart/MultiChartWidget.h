@@ -21,7 +21,6 @@
 @property (nonatomic, assign) MiniBarTimeframe timeframe;
 @property (nonatomic, assign) MiniChartScaleType scaleType;
 @property (nonatomic, assign) BOOL showVolume;
-@property (nonatomic, assign) NSInteger columnsCount;  // Numero di colonne nella griglia
 
 
 // Auto-refresh control

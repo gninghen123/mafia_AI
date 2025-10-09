@@ -101,8 +101,7 @@
             continue;
         }
         
-        // ✅ Tutti i filtri passati
-        NSString *condition = conditionToday ? @"TODAY" : @"YESTERDAY";
+       
         
         [results addObject:symbol];
     }

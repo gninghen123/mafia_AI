@@ -304,19 +304,6 @@
     result.modelName = dict[@"model_name"];
     result.modelDescription = dict[@"model_description"];
     
-    // Parse execution_time (supporta sia stringa ISO che numero timestamp)
-    id executionTimeValue = dict[@"execution_time"];
-    if ([executionTimeValue isKindOfClass:[NSString class]]) {
-        result.executionTime = [dateFormatter dateFromString:executionTimeValue];
-    } else if ([executionTimeValue isKindOfClass:[NSNumber class]]) {
-        result.executionTime = [NSDate dateWithTimeIntervalSince1970:[executionTimeValue doubleValue]];
-    }
-    
-    if (!result.executionTime) {
-        result.executionTime = [NSDate date]; // Fallback
-    }
-    
-    result.totalExecutionTime = [dict[@"total_execution_time"] doubleValue];
     result.initialUniverseSize = [dict[@"initial_universe_size"] integerValue];
     
     // Deserialize steps
@@ -342,7 +329,6 @@
             sr.screenerName = srDict[@"screener_name"];
             sr.symbols = srDict[@"symbols"];
             sr.inputCount = [srDict[@"input_count"] integerValue];
-            sr.executionTime = [srDict[@"execution_time"] doubleValue];
             [stepResults addObject:sr];
         }
         result.stepResults = [stepResults copy];

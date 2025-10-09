@@ -219,7 +219,6 @@
     ModelResult *result = [[ModelResult alloc] init];
     result.modelID = model.modelID;
     result.modelName = model.displayName;
-    result.executionTime = [NSDate date];
     result.initialUniverseSize = universe.count;
     
     NSMutableArray<StepResult *> *stepResults = [NSMutableArray array];
@@ -294,7 +293,6 @@
         ScreenedSymbol *symbol = [ScreenedSymbol symbolWithName:symbolString
                                                    addedAtStep:lastStepIndex];
         
-        // ✅ AGGIUNTA: Recupera il prezzo di segnalazione dai dati storici
         // ✅ AGGIUNTA: Recupera il prezzo di segnalazione dai dati storici
         NSArray<HistoricalBarModel *> *bars = cachedData[symbolString];
         if (bars && bars.count > 0) {

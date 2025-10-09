@@ -36,7 +36,7 @@
     return @{
         @"lookbackPeriod": @5,           // Period for high/low calculation
         @"highLowRatio": @2.0,           // highest > lowest * 2
-        @"fibLevel": @0.348,             // Fibonacci retracement level
+        @"fibLevel": @0.328,             // Fibonacci retracement level
         @"minAvgDollarVolume": @2.5,// Min average dollar volume
         @"smaPeriod": @20                // SMA period for trend filter
     };
@@ -57,42 +57,35 @@
 
     for (NSString *symbol in inputSymbols) {
         NSArray<HistoricalBarModel *> *bars = [self barsForSymbol:symbol inCache:cache];
-
         if (!bars || bars.count < self.minBarsRequired) continue;
-
-        // L’ultima barra è la più recente
-        HistoricalBarModel *current = bars.lastObject;
-        HistoricalBarModel *prev = bars[bars.count - 2];
 
         // Highest/lowest per barra corrente (ultime 'lookback' barre)
         double highestHigh = [TechnicalIndicatorHelper highest:bars
-                                                         index:bars.count - 1
+                                                         index:0
                                                         period:lookback
                                                       valueKey:@"high"];
         double lowestLow = [TechnicalIndicatorHelper lowest:bars
-                                                       index:bars.count - 1
+                                                       index:0
                                                       period:lookback
                                                     valueKey:@"low"];
 
-        // Highest/lowest per barra precedente (penultima)
-        double highestHigh1 = [TechnicalIndicatorHelper highest:bars
-                                                          index:bars.count - 2
-                                                         period:lookback
-                                                       valueKey:@"high"];
-        double lowestLow1 = [TechnicalIndicatorHelper lowest:bars
-                                                        index:bars.count - 2
-                                                       period:lookback
-                                                     valueKey:@"low"];
+        // Condizione 1: filtro preliminare (skip diretto se non passa)
+        if (!(highestHigh > (lowestLow * highLowRatio))) {
+            continue;
+        }
 
-        // Condizione 1: highest(high,5) > lowest(low,5) * highLowRatio
-        BOOL highLowCondition = highestHigh > (lowestLow * highLowRatio);
+        // L’ultima barra e la penultima
+        HistoricalBarModel *current = bars.lastObject;
+        HistoricalBarModel *prev = bars[bars.count - 2];
+
+       
 
         // Condizione 2: high < close[1]
         BOOL belowPrevClose = current.high < prev.close;
 
         // Condizione 3: close > fib retracement (barra precedente)
-        double range = highestHigh1 - lowestLow1;
-        double fibLevelPrice = lowestLow1 + (range * fibLevel);
+        double range = highestHigh - lowestLow;
+        double fibLevelPrice = lowestLow + (range * fibLevel);
         BOOL aboveFibLevel = current.close > fibLevelPrice;
 
         // Condizione 4: avg dollar volume > min
@@ -100,21 +93,21 @@
         if (bars.count >= lookback) {
             double sum = 0.0;
             for (NSInteger i = 0; i < lookback; i++) {
-                HistoricalBarModel *bar = bars[bars.count - 1 - i]; // partendo dall’ultima
+                HistoricalBarModel *bar = bars[bars.count - 1 - i];
                 sum += (bar.volume * bar.close);
             }
-            avgDollarVolume = sum / (double)lookback;
+            avgDollarVolume = sum / lookback;
         }
         BOOL volumeCondition = avgDollarVolume > minAvgDollarVolume;
 
         // Condizione 5: close >= SMA20
         double sma20 = [TechnicalIndicatorHelper sma:bars
-                                                index:bars.count - 1
+                                                index:0
                                                period:smaPeriod
                                              valueKey:@"close"];
         BOOL aboveSMA = current.close >= sma20;
 
-        if (highLowCondition && belowPrevClose && aboveFibLevel && volumeCondition && aboveSMA) {
+        if (belowPrevClose && aboveFibLevel && volumeCondition && aboveSMA) {
             [results addObject:symbol];
         }
     }

@@ -52,17 +52,19 @@
         
         if (!bars || bars.count < self.minBarsRequired) continue;
         
-        HistoricalBarModel *current = bars[bars.count-1];  
+        HistoricalBarModel *current = bars.lastObject;
+        HistoricalBarModel *previous = bars[bars.count-2];
+
         
         // Calculate highest(close[1], lookbackPeriod)
         // Index 1 = previous bar, then look back 'lookbackPeriod' bars from there
         double highestPreviousClose = [TechnicalIndicatorHelper highest:bars
-                                                                   index:1
+                                                                   index:2
                                                                   period:lookbackPeriod
                                                                 valueKey:@"close"];
         
         // Condition: close > highest(close[1], lookbackPeriod)
-        if (current.close > highestPreviousClose) {
+        if (current.close > highestPreviousClose && previous.close <= highestPreviousClose && current.volume > previous.volume) {
             [results addObject:symbol];
             
             NSLog(@"✅ Breakout: %@ - Close: %.2f > Highest[1,%ld]: %.2f",

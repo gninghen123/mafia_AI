@@ -403,7 +403,15 @@
     if (selectedRow < 0 || selectedRow >= self.displaySymbols.count) return;
     
     NSString *symbol = self.displaySymbols[selectedRow];
-    NSLog(@"📌 WatchlistWidget: Symbol selected: %@", symbol);
+    if (self.chainActive && !self.isPerformingMultiSelection) {
+        NSArray<NSString *> *selectedSymbols = [self selectedSymbols];
+        if (selectedSymbols.count == 1) {
+            [super broadcastUpdate:@{
+                @"action": @"setSymbols",
+                @"symbols": selectedSymbols
+            }];
+        }
+    }NSLog(@"📌 WatchlistWidget: Symbol selected: %@", symbol);
 }
 
 #pragma mark - NSTableViewDataSource

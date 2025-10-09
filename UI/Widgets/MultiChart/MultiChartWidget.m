@@ -1152,7 +1152,7 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
     MiniChart *miniChart = [[MiniChart alloc] initWithFrame:CGRectMake(0, 0, self.itemWidth, self.itemHeight)];
     
     // ✅ DENOMINAZIONE: "PatternType Symbol" per chiarezza
-    NSString *displayName = [NSString stringWithFormat:@"%@ %@", patternType, symbol];
+    NSString *displayName = [NSString stringWithFormat:@"%@ %@", symbol, patternType];
     
     // Configura il MiniChart
     miniChart.symbol = displayName;  // ✅ Usa display name per identificazione
@@ -1361,7 +1361,6 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
     state[@"timeframe"] = @(self.timeframe);
     state[@"scaleType"] = @(self.scaleType);
     state[@"showVolume"] = @(self.showVolume);
-    state[@"columnsCount"] = @(self.columnsCount);
     
     return state;
 }
@@ -1389,9 +1388,7 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
         self.showVolume = [state[@"showVolume"] boolValue];
     }
     
-    if (state[@"columnsCount"]) {
-        self.columnsCount = [state[@"columnsCount"] integerValue];
-    }
+    
     
   
     
@@ -1429,9 +1426,7 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     NSInteger savedChartType = [defaults integerForKey:kMultiChartChartTypeKey];
     NSInteger savedTimeframe = [defaults integerForKey:kMultiBarTimeframeKey];
     NSInteger savedScaleType = [defaults integerForKey:kMultiChartScaleTypeKey];
-    NSInteger savedMaxBars = [defaults integerForKey:kMultiChartMaxBarsKey];
     BOOL savedShowVolume = [defaults boolForKey:kMultiChartShowVolumeKey];
-    NSInteger savedColumnsCount = [defaults integerForKey:kMultiChartColumnsCountKey];
 
     NSInteger savedItemWidth = [defaults integerForKey:kMultiChartItemWidthKey];
      NSInteger savedItemHeight = [defaults integerForKey:kMultiChartItemHeightKey];
@@ -1476,13 +1471,13 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     }
     
     // Applica con validazione
-      if (savedItemWidth >= 100 && savedItemWidth <= 500) {
+      if (savedItemWidth >= 100 ) {
           self.itemWidth = savedItemWidth;
       } else {
           self.itemWidth = 200; // Default
       }
       
-      if (savedItemHeight >= 80 && savedItemHeight <= 400) {
+      if (savedItemHeight >= 80 ) {
           self.itemHeight = savedItemHeight;
       } else {
           self.itemHeight = 150; // Default
@@ -1503,7 +1498,6 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     [defaults setInteger:self.timeframe forKey:kMultiBarTimeframeKey];
     [defaults setInteger:self.scaleType forKey:kMultiChartScaleTypeKey];
     [defaults setBool:self.showVolume forKey:kMultiChartShowVolumeKey];
-    [defaults setInteger:self.columnsCount forKey:kMultiChartColumnsCountKey];
     [defaults setInteger:self.itemWidth forKey:kMultiChartItemWidthKey];
        [defaults setInteger:self.itemHeight forKey:kMultiChartItemHeightKey];
     [defaults setBool:self.autoRefreshEnabled forKey:kMultiChartAutoRefreshEnabledKey];
@@ -1666,9 +1660,9 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
 
 // ✅ NUOVO: Reset simboli (pulisce solo textfield)
 - (void)resetSymbolsClicked:(id)sender {
+    [self.miniCharts removeAllObjects];
     self.symbolsTextField.stringValue = @"";
-    // Non tocca i simboli esistenti nei miniChart
-    NSLog(@"MultiChartWidget: Symbols field reset");
+    [self.collectionView reloadData];
 }
 
 - (void)resetSymbolsField {

@@ -66,6 +66,7 @@ typedef NS_ENUM(NSInteger, MiniChartScaleType) {
 
 // UI Components (read-only access)
 @property (nonatomic, strong, readonly) NSTextField *symbolLabel;
+@property (nonatomic, strong, readonly) NSTextField *descriptionLabel;
 @property (nonatomic, strong, readonly) NSTextField *priceLabel;
 @property (nonatomic, strong, readonly) NSTextField *changeLabel;
 @property (nonatomic, strong, readonly) NSTextField *aptrLabel;        // NUOVO: Label per APTR

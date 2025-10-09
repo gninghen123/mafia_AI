@@ -411,24 +411,25 @@
         self.volumePath = nil;
         return;
     }
-    
+
     NSBezierPath *path = [NSBezierPath bezierPath];
+    CGRect chartRect = [self chartRect];   // <-- usa la stessa larghezza delle candele
     CGRect rect = [self volumeRect];
     if (CGRectIsEmpty(rect)) return;
-    
-    CGFloat xStep = rect.size.width / (CGFloat)self.priceData.count;
-    CGFloat barWidth = xStep * 0.8;
-    
+
+    CGFloat xStep = chartRect.size.width / (CGFloat)self.priceData.count;
+    CGFloat barWidth = xStep * 0.6; // come le candele
+
     for (NSInteger i = 0; i < self.priceData.count; i++) {
         HistoricalBarModel *bar = self.priceData[i];
-        
-        CGFloat x = rect.origin.x + i * xStep + xStep * 0.5;
+
+        CGFloat x = chartRect.origin.x + i * xStep + xStep * 0.5;
         CGFloat height = (bar.volume / self.maxVolume) * rect.size.height;
-        
+
         NSRect volumeRect = NSMakeRect(x - barWidth * 0.5, rect.origin.y, barWidth, height);
         [path appendBezierPathWithRect:volumeRect];
     }
-    
+
     self.volumePath = path;
 }
 
@@ -717,6 +718,7 @@
     
     // Update label colors
     self.symbolLabel.textColor = self.textColor;
+    self.descriptionLabel.textColor = self.textColor;
     self.priceLabel.textColor = self.textColor;
     
     [self setNeedsDisplay:YES];

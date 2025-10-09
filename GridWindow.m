@@ -13,6 +13,8 @@
 
 @interface GridWindow ()
 @property (nonatomic, strong) NSView *containerView;
+@property (nonatomic, assign) NSInteger rows;
+@property (nonatomic, assign) NSInteger cols;
 @property (nonatomic, strong) NSMutableDictionary<NSString *, NSLayoutConstraint *> *splitConstraints;
 @end
 
@@ -23,9 +25,7 @@
 - (instancetype)initWithTemplate:(GridTemplateType)templateType
                             name:(nullable NSString *)name
                      appDelegate:(AppDelegate *)appDelegate {
-    
     NSRect contentRect = NSMakeRect(100, 100, 1200, 800);
-    
     self = [super initWithContentRect:contentRect
                             styleMask:NSWindowStyleMaskTitled |
                                      NSWindowStyleMaskClosable |
@@ -33,7 +33,6 @@
                                      NSWindowStyleMaskResizable
                               backing:NSBackingStoreBuffered
                                 defer:NO];
-    
     if (self) {
         _widgets = [NSMutableArray array];
         _widgetPositions = [NSMutableDictionary dictionary];
@@ -41,24 +40,55 @@
         _currentTemplate = [GridTemplate templateWithType:templateType];
         _gridName = name ?: _currentTemplate.displayName;
         _appDelegate = appDelegate;
-        
+
+        // Set default grid size for template
+        [self configureGridForTemplate:_currentTemplate];
+
         // Window setup
         self.title = [NSString stringWithFormat:@"Grid: %@", _gridName];
         self.delegate = self;
         self.releasedWhenClosed = NO;
-        
+
         // Configure window behavior
         [self configureWindowBehavior];
-        
+
         // Setup UI
         [self setupContainerView];
         [self setupAccessoryView];
         [self setupLayout];
-        
+
+        // Populate initial empty positions with placeholder BaseWidget
+        for (NSInteger r = 1; r <= self.rows; r++) {
+            for (NSInteger c = 1; c <= self.cols; c++) {
+                NSString *matrixCode = [NSString stringWithFormat:@"%ld%ld", (long)r, (long)c];
+                if (!self.widgetPositions[matrixCode]) {
+                    BaseWidget *placeholder = [[BaseWidget alloc] initWithType:@"BaseWidget"];
+                    [placeholder loadView];
+                    [self addWidget:placeholder atMatrixCode:matrixCode];
+                }
+            }
+        }
+
         NSLog(@"🏗️ GridWindow: Created with template: %@", _currentTemplate.displayName);
     }
-    
     return self;
+}
+
+#pragma mark - Matrix Grid Configuration
+
+- (void)configureGridForTemplate:(GridTemplate *)template {
+    // Example: Map template to rows/cols (you can adjust per your template types)
+    if ([template.templateType isEqualToString:@"quad"]) {
+        self.rows = 2; self.cols = 2;
+    } else if ([template.templateType isEqualToString:@"triple_horizontal"]) {
+        self.rows = 1; self.cols = 3;
+    } else if ([template.templateType isEqualToString:@"list_chart"]) {
+        self.rows = 1; self.cols = 2;
+    } else if ([template.templateType isEqualToString:@"list_dual_chart"]) {
+        self.rows = 2; self.cols = 2;
+    } else {
+        self.rows = 1; self.cols = 1;
+    }
 }
 
 #pragma mark - Window Configuration
@@ -178,297 +208,147 @@
 }
 
 #pragma mark - Widget Management
+- (void)setupCallbacksForWidget:(BaseWidget *)widget {
+    __weak typeof(self) weakSelf = self;
 
-- (void)addWidget:(BaseWidget *)widget atPosition:(GridPosition)position {
+    widget.onTypeChange = ^(BaseWidget *sourceWidget, NSString *newType) {
+        [weakSelf transformWidget:sourceWidget toType:newType];
+    };
+
+    widget.onRemoveRequest = ^(BaseWidget *widgetToRemove) {
+        [weakSelf removeWidget:widgetToRemove];
+    };
+}
+- (void)addWidget:(BaseWidget *)widget atMatrixCode:(NSString *)matrixCode {
     if (!widget) {
         NSLog(@"⚠️ GridWindow: Cannot add nil widget");
         return;
     }
-    
-    // Check if position is valid for current template
-    if (![self.currentTemplate.availablePositions containsObject:position]) {
-        NSLog(@"⚠️ GridWindow: Position %@ not available in template %@", position, self.currentTemplate.displayName);
+    // Validate matrix code
+    NSInteger row = [[matrixCode substringToIndex:1] integerValue];
+    NSInteger col = [[matrixCode substringFromIndex:1] integerValue];
+    if (row < 1 || row > self.rows || col < 1 || col > self.cols) {
+        NSLog(@"⚠️ GridWindow: Invalid matrix code %@", matrixCode);
         return;
     }
-    
-    // Check if position already occupied
-    if (self.widgetPositions[position]) {
-        NSLog(@"⚠️ GridWindow: Position %@ already occupied", position);
+    if (self.widgetPositions[matrixCode]) {
+        NSLog(@"⚠️ GridWindow: Matrix code %@ already occupied", matrixCode);
         return;
     }
-    
-    NSLog(@"➕ GridWindow: Adding widget %@ at position %@", widget.widgetType, position);
-    
-    // Add widget to tracking
+    NSLog(@"➕ GridWindow: Adding widget %@ at matrix %@", widget.widgetType, matrixCode);
     [self.widgets addObject:widget];
-    self.widgetPositions[position] = widget;
-    
-    // Setup widget callbacks
+    self.widgetPositions[matrixCode] = widget;
     [self setupCallbacksForWidget:widget];
-    
-    // Add widget view to layout
-    [self insertWidgetIntoLayout:widget atPosition:position];
-    
+    [self insertWidgetIntoMatrixLayout:widget atMatrixCode:matrixCode];
     NSLog(@"✅ GridWindow: Widget added successfully. Total widgets: %ld", (long)self.widgets.count);
 }
 
-- (void)setupCallbacksForWidget:(BaseWidget *)widget {
-    __weak typeof(self) weakSelf = self;
-    
-    widget.onTypeChange = ^(BaseWidget *sourceWidget, NSString *newType) {
-        [weakSelf transformWidget:sourceWidget toType:newType];
-    };
-    
-    widget.onRemoveRequest = ^(BaseWidget *widgetToRemove) {
-        [weakSelf removeWidget:widgetToRemove];
-    };
-    
-    // onAddRequest rimosso - non serve nel grid
-}
+// Widget callback setup unchanged
 
-- (void)insertWidgetIntoLayout:(BaseWidget *)widget atPosition:(GridPosition)position {
+// Insert widget into matrix-based grid layout
+- (void)insertWidgetIntoMatrixLayout:(BaseWidget *)widget atMatrixCode:(NSString *)matrixCode {
+    // Remove any existing view at this position
     NSView *widgetView = widget.view;
-    
-    if ([self.currentTemplate.templateType isEqualToString:GridTemplateTypeListChart]) {
-        [self insertWidgetForListChart:widgetView atPosition:position];
-        
-    } else if ([self.currentTemplate.templateType isEqualToString:GridTemplateTypeListDualChart]) {
-        [self insertWidgetForListDualChart:widgetView atPosition:position];
-        
-    } else if ([self.currentTemplate.templateType isEqualToString:GridTemplateTypeTripleHorizontal]) {
-        [self insertWidgetForTripleHorizontal:widgetView atPosition:position];
-        
-    } else if ([self.currentTemplate.templateType isEqualToString:GridTemplateTypeQuad]) {
-        [self insertWidgetForQuad:widgetView atPosition:position];
-    }
+    // Tag the view for easy lookup (optional)
+    widgetView.identifier = matrixCode;    // Compute frame for matrix cell
+    CGFloat w = self.containerView.bounds.size.width / self.cols;
+    CGFloat h = self.containerView.bounds.size.height / self.rows;
+    NSInteger row = [[matrixCode substringToIndex:1] integerValue];
+    NSInteger col = [[matrixCode substringFromIndex:1] integerValue];
+    CGFloat x = (col - 1) * w;
+    CGFloat y = self.containerView.bounds.size.height - (row * h);
+    widgetView.frame = NSMakeRect(x, y, w, h);
+    widgetView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [self.containerView addSubview:widgetView];
 }
 
-#pragma mark - Layout Insertion Methods
+// --- Removed template-specific layout insertion methods ---
 
-- (void)insertWidgetForListChart:(NSView *)widgetView atPosition:(GridPosition)position {
-    // Simple 2-panel: left (30%) | right (70%)
-    [self.mainSplitView addArrangedSubview:widgetView];
-    
-    // Set split position after layout
-    if (self.mainSplitView.subviews.count == 2) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            CGFloat position = self.mainSplitView.bounds.size.width * 0.30;
-            [self.mainSplitView setPosition:position ofDividerAtIndex:0];
-        });
-    }
-}
-
-- (void)insertWidgetForListDualChart:(NSView *)widgetView atPosition:(GridPosition)position {
-    // Left (25%) | Right split (top 50% | bottom 50%)
-    
-    if ([position isEqualToString:GridPositionLeft]) {
-        // Add to main split left
-        [self.mainSplitView addArrangedSubview:widgetView];
-        
-    } else {
-        // Need right split view
-        NSSplitView *rightSplit = nil;
-        for (NSView *subview in self.mainSplitView.arrangedSubviews) {
-            if ([subview isKindOfClass:[NSSplitView class]]) {
-                rightSplit = (NSSplitView *)subview;
-                break;
-            }
-        }
-        
-        if (!rightSplit) {
-            // Create right split if doesn't exist
-            rightSplit = [[NSSplitView alloc] init];
-            rightSplit.vertical = NO;
-            rightSplit.dividerStyle = NSSplitViewDividerStyleThin;
-            rightSplit.delegate = self;
-            [self.mainSplitView addArrangedSubview:rightSplit];
-        }
-        
-        [rightSplit addArrangedSubview:widgetView];
-        
-        // Set positions after layout
-        if (self.mainSplitView.arrangedSubviews.count == 2 && rightSplit.arrangedSubviews.count == 2) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                [self.mainSplitView setPosition:self.mainSplitView.bounds.size.width * 0.25 ofDividerAtIndex:0];
-                [rightSplit setPosition:rightSplit.bounds.size.height * 0.50 ofDividerAtIndex:0];
-            });
-        }
-    }
-}
-
-- (void)insertWidgetForTripleHorizontal:(NSView *)widgetView atPosition:(GridPosition)position {
-    // Three equal horizontal sections
-    [self.mainSplitView addArrangedSubview:widgetView];
-    
-    // Set equal positions after all added
-    if (self.mainSplitView.arrangedSubviews.count == 3) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            CGFloat width = self.mainSplitView.bounds.size.width;
-            [self.mainSplitView setPosition:width * 0.33 ofDividerAtIndex:0];
-            [self.mainSplitView setPosition:width * 0.67 ofDividerAtIndex:1];
-        });
-    }
-}
-
-- (void)insertWidgetForQuad:(NSView *)widgetView atPosition:(GridPosition)position {
-    // 2x2 grid: top split (left|right) / bottom split (left|right)
-    
-    NSSplitView *topSplit = nil;
-    NSSplitView *bottomSplit = nil;
-    
-    // Find or create splits
-    for (NSView *subview in self.mainSplitView.arrangedSubviews) {
-        if ([subview isKindOfClass:[NSSplitView class]]) {
-            if (!topSplit) {
-                topSplit = (NSSplitView *)subview;
-            } else {
-                bottomSplit = (NSSplitView *)subview;
-            }
-        }
-    }
-    
-    if (!topSplit) {
-        topSplit = [[NSSplitView alloc] init];
-        topSplit.vertical = YES;
-        topSplit.dividerStyle = NSSplitViewDividerStyleThin;
-        topSplit.delegate = self;
-        [self.mainSplitView addArrangedSubview:topSplit];
-    }
-    
-    if (!bottomSplit) {
-        bottomSplit = [[NSSplitView alloc] init];
-        bottomSplit.vertical = YES;
-        bottomSplit.dividerStyle = NSSplitViewDividerStyleThin;
-        bottomSplit.delegate = self;
-        [self.mainSplitView addArrangedSubview:bottomSplit];
-    }
-    
-    // Add to appropriate split
-    if ([position isEqualToString:GridPositionTopLeft] || [position isEqualToString:GridPositionTopRight]) {
-        [topSplit addArrangedSubview:widgetView];
-    } else {
-        [bottomSplit addArrangedSubview:widgetView];
-    }
-    
-    // Set positions after all added
-    if (topSplit.arrangedSubviews.count == 2 && bottomSplit.arrangedSubviews.count == 2) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            [self.mainSplitView setPosition:self.mainSplitView.bounds.size.height * 0.50 ofDividerAtIndex:0];
-            [topSplit setPosition:topSplit.bounds.size.width * 0.50 ofDividerAtIndex:0];
-            [bottomSplit setPosition:bottomSplit.bounds.size.width * 0.50 ofDividerAtIndex:0];
-        });
-    }
-}
-
-#pragma mark - Widget Removal
-
+// Widget removal for matrix-based system
 - (void)removeWidget:(BaseWidget *)widget {
     if (![self.widgets containsObject:widget]) {
         NSLog(@"⚠️ GridWindow: Widget not found in grid");
         return;
     }
-    
     NSLog(@"🗑️ GridWindow: Removing widget %@", widget.widgetType);
-    
-    // Find and remove from position tracking
-    GridPosition positionToRemove = nil;
-    for (GridPosition position in self.widgetPositions) {
-        if (self.widgetPositions[position] == widget) {
-            positionToRemove = position;
+    NSString *matrixCodeToRemove = nil;
+    for (NSString *matrixCode in self.widgetPositions) {
+        if (self.widgetPositions[matrixCode] == widget) {
+            matrixCodeToRemove = matrixCode;
             break;
         }
     }
-    
-    if (positionToRemove) {
-        [self.widgetPositions removeObjectForKey:positionToRemove];
+    if (matrixCodeToRemove) {
+        [self.widgetPositions removeObjectForKey:matrixCodeToRemove];
     }
-    
-    // Remove from widgets array
     [self.widgets removeObject:widget];
-    
-    // Remove view from hierarchy
     [widget.view removeFromSuperview];
-    
     NSLog(@"✅ GridWindow: Widget removed. Remaining widgets: %ld", (long)self.widgets.count);
-    
-    // Close window if no widgets left
+    // Optionally: add a placeholder BaseWidget here if desired
     if (self.widgets.count == 0) {
         NSLog(@"🪟 GridWindow: No widgets remaining, closing window");
         [self close];
     }
 }
 
+// Detach widget for matrix-based system
 - (BaseWidget *)detachWidget:(BaseWidget *)widget {
     if (![self.widgets containsObject:widget]) {
         return nil;
     }
-    
     NSLog(@"📤 GridWindow: Detaching widget %@", widget.widgetType);
-    
-    // Remove from grid (but don't deallocate)
-    GridPosition positionToRemove = nil;
-    for (GridPosition position in self.widgetPositions) {
-        if (self.widgetPositions[position] == widget) {
-            positionToRemove = position;
+    NSString *matrixCodeToRemove = nil;
+    for (NSString *matrixCode in self.widgetPositions) {
+        if (self.widgetPositions[matrixCode] == widget) {
+            matrixCodeToRemove = matrixCode;
             break;
         }
     }
-    
-    if (positionToRemove) {
-        [self.widgetPositions removeObjectForKey:positionToRemove];
+    if (matrixCodeToRemove) {
+        [self.widgetPositions removeObjectForKey:matrixCodeToRemove];
     }
-    
     [self.widgets removeObject:widget];
     [widget.view removeFromSuperview];
-    
-    // Clear callbacks (will be reassigned by new FloatingWindow)
     widget.onTypeChange = nil;
     widget.onRemoveRequest = nil;
-    // onAddRequest rimosso
-    
-    NSLog(@"✅ GridWindow: Widget detached successfully");
-    
-    // Close if empty
     if (self.widgets.count == 0) {
         [self close];
     }
-    
     return widget;
 }
 
 #pragma mark - Template Management
 
 - (void)changeTemplate:(GridTemplateType)newTemplateType {
-    NSLog(@"🔄 GridWindow: Changing template from %@ to %@",
-          self.currentTemplate.displayName, newTemplateType);
-    
-    // Save current widgets
+    NSLog(@"🔄 GridWindow: Changing template from %@ to %@", self.currentTemplate.displayName, newTemplateType);
     NSArray *currentWidgets = [self.widgets copy];
-    
-    // Clear current layout
     for (BaseWidget *widget in currentWidgets) {
         [widget.view removeFromSuperview];
     }
     [self.widgets removeAllObjects];
     [self.widgetPositions removeAllObjects];
-    
-    // Set new template
+
     self.currentTemplate = [GridTemplate templateWithType:newTemplateType];
-    
-    // Rebuild layout
+    [self configureGridForTemplate:self.currentTemplate];
     [self setupLayout];
-    
-    // Re-add widgets if they fit
-    NSInteger maxWidgetsForNewTemplate = self.currentTemplate.maxWidgets;
+
+    NSInteger maxWidgetsForNewTemplate = self.rows * self.cols;
     NSInteger widgetsToAdd = MIN(currentWidgets.count, maxWidgetsForNewTemplate);
-    
-    for (NSInteger i = 0; i < widgetsToAdd; i++) {
-        BaseWidget *widget = currentWidgets[i];
-        GridPosition position = [self.currentTemplate positionForWidgetAtIndex:i];
-        [self addWidget:widget atPosition:position];
+    NSInteger widgetIndex = 0;
+    for (NSInteger r = 1; r <= self.rows; r++) {
+        for (NSInteger c = 1; c <= self.cols; c++) {
+            NSString *matrixCode = [NSString stringWithFormat:@"%ld%ld", (long)r, (long)c];
+            if (widgetIndex < widgetsToAdd) {
+                BaseWidget *widget = currentWidgets[widgetIndex++];
+                [self addWidget:widget atMatrixCode:matrixCode];
+            } else {
+                // Placeholders for empty
+                BaseWidget *placeholder = [[BaseWidget alloc] initWithType:@"BaseWidget"];
+                [placeholder loadView];
+                [self addWidget:placeholder atMatrixCode:matrixCode];
+            }
+        }
     }
-    
-    // Alert if widgets were lost
     if (currentWidgets.count > maxWidgetsForNewTemplate) {
         NSAlert *alert = [[NSAlert alloc] init];
         alert.messageText = @"Template Change";
@@ -479,7 +359,6 @@
         [alert addButtonWithTitle:@"OK"];
         [alert runModal];
     }
-    
     NSLog(@"✅ GridWindow: Template changed successfully");
 }
 
@@ -487,46 +366,34 @@
 
 - (void)transformWidget:(BaseWidget *)oldWidget toType:(NSString *)newType {
     NSLog(@"🔄 GridWindow: Transforming widget to type: %@", newType);
-    
-    // Find widget position
-    GridPosition position = nil;
-    for (GridPosition pos in self.widgetPositions) {
-        if (self.widgetPositions[pos] == oldWidget) {
-            position = pos;
+    NSString *matrixCode = nil;
+    for (NSString *code in self.widgetPositions) {
+        if (self.widgetPositions[code] == oldWidget) {
+            matrixCode = code;
             break;
         }
     }
-    
-    if (!position) {
-        NSLog(@"❌ GridWindow: Could not find position for widget");
+    if (!matrixCode) {
+        NSLog(@"❌ GridWindow: Could not find matrix code for widget");
         return;
     }
-    
-    // Create new widget
     Class widgetClass = [[WidgetTypeManager sharedManager] classForWidgetType:newType];
     if (!widgetClass) {
         NSLog(@"❌ GridWindow: No class found for type: %@", newType);
         return;
     }
-    
     BaseWidget *newWidget = [[widgetClass alloc] initWithType:newType];
     [newWidget loadView];
-    
-    // Copy state
     newWidget.widgetID = oldWidget.widgetID;
     newWidget.chainActive = oldWidget.chainActive;
     newWidget.chainColor = oldWidget.chainColor;
-    
-    // Remove old widget
     [oldWidget.view removeFromSuperview];
     [self.widgets removeObject:oldWidget];
-    [self.widgetPositions removeObjectForKey:position];
-    
-    // Add new widget
-    [self addWidget:newWidget atPosition:position];
+    [self.widgetPositions removeObjectForKey:matrixCode];
+    [self addWidget:newWidget atMatrixCode:matrixCode];
     if (self.appDelegate) {
-          [[WorkspaceManager sharedManager] autoSaveLastUsedWorkspace];
-      }
+        [[WorkspaceManager sharedManager] autoSaveLastUsedWorkspace];
+    }
     NSLog(@"✅ GridWindow: Widget transformed successfully");
 }
 
@@ -580,30 +447,33 @@
 
 - (void)addWidgetOfType:(NSMenuItem *)sender {
     NSString *widgetType = [sender representedObject];
-    
     NSLog(@"➕ GridWindow: Adding widget of type: %@", widgetType);
-    
-    // Find next available position
-    GridPosition nextPosition = nil;
-    for (GridPosition position in self.currentTemplate.availablePositions) {
-        if (!self.widgetPositions[position]) {
-            nextPosition = position;
-            break;
+    // Find next available matrix position
+    NSString *nextMatrix = nil;
+    for (NSInteger r = 1; r <= self.rows; r++) {
+        for (NSInteger c = 1; c <= self.cols; c++) {
+            NSString *code = [NSString stringWithFormat:@"%ld%ld", (long)r, (long)c];
+            BaseWidget *existing = self.widgetPositions[code];
+            if (!existing || [existing.widgetType isEqualToString:@"BaseWidget"]) {
+                nextMatrix = code;
+                goto found;
+            }
         }
     }
-    
-    if (!nextPosition) {
-        NSLog(@"⚠️ GridWindow: No available position");
+found:
+    if (!nextMatrix) {
+        NSLog(@"⚠️ GridWindow: No available matrix cell");
         return;
     }
-    
-    // Create widget
+    // Remove placeholder if present
+    BaseWidget *existing = self.widgetPositions[nextMatrix];
+    if (existing && [existing.widgetType isEqualToString:@"BaseWidget"]) {
+        [self removeWidget:existing];
+    }
     Class widgetClass = [[WidgetTypeManager sharedManager] classForWidgetType:widgetType];
     BaseWidget *widget = [[widgetClass alloc] initWithType:widgetType];
     [widget loadView];
-    
-    // Add to grid
-    [self addWidget:widget atPosition:nextPosition];
+    [self addWidget:widget atMatrixCode:nextMatrix];
 }
 
 - (void)settingsButtonClicked:(NSButton *)sender {
@@ -660,30 +530,30 @@
 
 - (NSDictionary *)serializeState {
     NSMutableArray *widgetStates = [NSMutableArray array];
-    
-    for (GridPosition position in self.widgetPositions) {
-        BaseWidget *widget = self.widgetPositions[position];
+    for (NSString *matrixCode in self.widgetPositions) {
+        BaseWidget *widget = self.widgetPositions[matrixCode];
         NSDictionary *widgetState = [widget serializeState];
-        
         NSMutableDictionary *positionedState = [widgetState mutableCopy];
-        positionedState[@"gridPosition"] = position;
+        positionedState[@"matrixCode"] = matrixCode;
         positionedState[@"widgetClass"] = NSStringFromClass([widget class]);
-        
+        // Save frame for proportional resizing
+        if (widget.view) {
+            positionedState[@"widgetFrame"] = NSStringFromRect(widget.view.frame);
+        }
         [widgetStates addObject:positionedState];
     }
-    
     return @{
         @"gridName": self.gridName,
         @"templateType": self.currentTemplate.templateType,
         @"frame": NSStringFromRect(self.frame),
+        @"rows": @(self.rows),
+        @"cols": @(self.cols),
         @"widgets": widgetStates
     };
 }
 
 - (void)restoreState:(NSDictionary *)state {
     NSLog(@"🔄 GridWindow: Restoring state...");
-    
-    // Restore frame
     NSString *frameString = state[@"frame"];
     if (frameString) {
         NSRect frame = NSRectFromString(frameString);
@@ -691,39 +561,56 @@
             [self setFrame:frame display:NO];
         }
     }
-    
-    // Restore grid name
     self.gridName = state[@"gridName"] ?: @"Untitled Grid";
     self.title = [NSString stringWithFormat:@"Grid: %@", self.gridName];
-    
-    // Restore template
     GridTemplateType templateType = state[@"templateType"];
     if (templateType) {
         self.currentTemplate = [GridTemplate templateWithType:templateType];
+        [self configureGridForTemplate:self.currentTemplate];
         [self setupLayout];
     }
-    
-    // Restore widgets
+    if (state[@"rows"]) self.rows = [state[@"rows"] integerValue];
+    if (state[@"cols"]) self.cols = [state[@"cols"] integerValue];
     NSArray *widgetStates = state[@"widgets"];
     for (NSDictionary *widgetState in widgetStates) {
         NSString *widgetClassName = widgetState[@"widgetClass"];
-        GridPosition position = widgetState[@"gridPosition"];
-        
+        NSString *matrixCode = widgetState[@"matrixCode"];
         Class widgetClass = NSClassFromString(widgetClassName);
         if (!widgetClass) {
             NSLog(@"⚠️ GridWindow: Unknown widget class: %@", widgetClassName);
             continue;
         }
-        
         NSString *widgetType = widgetState[@"widgetType"];
         BaseWidget *widget = [[widgetClass alloc] initWithType:widgetType];
         [widget loadView];
         [widget restoreState:widgetState];
-        
-        [self addWidget:widget atPosition:position];
+        [self addWidget:widget atMatrixCode:matrixCode];
+        // Restore frame if present (proportional resizing will adjust on window resize)
+        if (widgetState[@"widgetFrame"]) {
+            NSRect wframe = NSRectFromString(widgetState[@"widgetFrame"]);
+            widget.view.frame = wframe;
+        }
     }
-    
     NSLog(@"✅ GridWindow: State restored with %ld widgets", (long)self.widgets.count);
+}
+
+#pragma mark - Proportional Resize
+
+- (void)resizeAllWidgetsProportionally {
+    CGFloat w = self.containerView.bounds.size.width / self.cols;
+    CGFloat h = self.containerView.bounds.size.height / self.rows;
+    for (NSString *matrixCode in self.widgetPositions) {
+        BaseWidget *widget = self.widgetPositions[matrixCode];
+        NSInteger row = [[matrixCode substringToIndex:1] integerValue];
+        NSInteger col = [[matrixCode substringFromIndex:1] integerValue];
+        CGFloat x = (col - 1) * w;
+        CGFloat y = self.containerView.bounds.size.height - (row * h);
+        widget.view.frame = NSMakeRect(x, y, w, h);
+    }
+}
+
+- (void)windowDidResize:(NSNotification *)notification {
+    [self resizeAllWidgetsProportionally];
 }
 
 #pragma mark - NSSplitViewDelegate
@@ -747,21 +634,16 @@ constrainMaxCoordinate:(CGFloat)proposedMaximumPosition
 
 - (void)windowWillClose:(NSNotification *)notification {
     NSLog(@"🪟 GridWindow: Window closing");
-    
-    // Cleanup widgets
     for (BaseWidget *widget in self.widgets) {
         widget.onTypeChange = nil;
         widget.onRemoveRequest = nil;
     }
-    
-    // Notify AppDelegate to unregister
     if (self.appDelegate) {
         [self.appDelegate unregisterGridWindow:self];
     }
 }
 
 - (BOOL)windowShouldClose:(NSWindow *)sender {
-    // Confirm if widgets have unsaved state
     if (self.widgets.count > 0) {
         NSAlert *alert = [[NSAlert alloc] init];
         alert.messageText = @"Close Grid?";
@@ -770,10 +652,8 @@ constrainMaxCoordinate:(CGFloat)proposedMaximumPosition
             (long)self.widgets.count];
         [alert addButtonWithTitle:@"Close"];
         [alert addButtonWithTitle:@"Cancel"];
-        
         return [alert runModal] == NSAlertFirstButtonReturn;
     }
-    
     return YES;
 }
 

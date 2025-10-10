@@ -184,7 +184,7 @@
     ]];
     
     [self setupModelsTab];
-    [self setupArchiveTab];  // ✅ NUOVO TAB
+    [self setupArchiveTab];
     [self setupBacktestTab];
     [self setupSettingsTab];
 }

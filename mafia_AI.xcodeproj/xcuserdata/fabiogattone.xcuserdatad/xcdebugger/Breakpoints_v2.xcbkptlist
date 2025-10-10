@@ -188,8 +188,8 @@
             filePath = "UI/Widgets/StooqScreener/StooqScreenerWidget.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1249"
-            endingLineNumber = "1249"
+            startingLineNumber = "1251"
+            endingLineNumber = "1251"
             landmarkName = "-outlineView:numberOfChildrenOfItem:"
             landmarkType = "7">
          </BreakpointContent>

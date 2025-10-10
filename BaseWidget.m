@@ -653,33 +653,206 @@ static NSString *const kChainSenderKey = @"sender";
 }
 
 - (void)showAddMenu:(id)sender {
-    NSViewController *menuController = [[NSViewController alloc] init];
-    NSView *menuView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 150, 100)];
+    // Verifica tipo di finestra
+    BOOL isInGrid = [self.contentView.window isKindOfClass:NSClassFromString(@"GridWindow")];
     
-    NSStackView *stack = [[NSStackView alloc] init];
-    stack.orientation = NSUserInterfaceLayoutOrientationVertical;
-    stack.spacing = 8;
-    stack.edgeInsets = NSEdgeInsetsMake(8, 8, 8, 8);
+    if (isInGrid) {
+        // In GridWindow: disabilita il menu
+        NSLog(@"ℹ️ BaseWidget: Add widget not available in GridWindow. Use Grid's + button.");
+        
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"Add Widget";
+        alert.informativeText = @"To add widgets in a Grid, use the '+' button in the Grid's title bar.";
+        [alert addButtonWithTitle:@"OK"];
+        [alert runModal];
+        return;
+    }
     
+    // In FloatingWindow: mostra menu direzioni
+    NSMenu *menu = [[NSMenu alloc] init];
+    menu.autoenablesItems = NO;
     
-    [menuView addSubview:stack];
-    stack.translatesAutoresizingMaskIntoConstraints = NO;
-    [NSLayoutConstraint activateConstraints:@[
-        [stack.topAnchor constraintEqualToAnchor:menuView.topAnchor],
-        [stack.leadingAnchor constraintEqualToAnchor:menuView.leadingAnchor],
-        [stack.trailingAnchor constraintEqualToAnchor:menuView.trailingAnchor],
-        [stack.bottomAnchor constraintEqualToAnchor:menuView.bottomAnchor]
-    ]];
+    NSMenuItem *titleItem = [[NSMenuItem alloc] initWithTitle:@"Add Widget..."
+                                                       action:nil
+                                                keyEquivalent:@""];
+    titleItem.enabled = NO;
+    [menu addItem:titleItem];
+    [menu addItem:[NSMenuItem separatorItem]];
     
-    menuController.view = menuView;
+    // ↑ Sopra
+    NSMenuItem *upItem = [[NSMenuItem alloc] initWithTitle:@"↑ Add Above"
+                                                    action:@selector(addWidgetUp:)
+                                             keyEquivalent:@""];
+    upItem.target = self;
+    [menu addItem:upItem];
     
-    self.addPopover = [[NSPopover alloc] init];
-    self.addPopover.contentViewController = menuController;
-    self.addPopover.behavior = NSPopoverBehaviorTransient;
+    // ↓ Sotto
+    NSMenuItem *downItem = [[NSMenuItem alloc] initWithTitle:@"↓ Add Below"
+                                                      action:@selector(addWidgetDown:)
+                                               keyEquivalent:@""];
+    downItem.target = self;
+    [menu addItem:downItem];
     
-    [self.addPopover showRelativeToRect:self.addButton.bounds
-                                 ofView:self.addButton
-                          preferredEdge:NSRectEdgeMaxY];
+    // ← Sinistra
+    NSMenuItem *leftItem = [[NSMenuItem alloc] initWithTitle:@"← Add to Left"
+                                                      action:@selector(addWidgetLeft:)
+                                               keyEquivalent:@""];
+    leftItem.target = self;
+    [menu addItem:leftItem];
+    
+    // → Destra
+    NSMenuItem *rightItem = [[NSMenuItem alloc] initWithTitle:@"→ Add to Right"
+                                                       action:@selector(addWidgetRight:)
+                                                keyEquivalent:@""];
+    rightItem.target = self;
+    [menu addItem:rightItem];
+    
+    // Mostra menu sotto il bottone
+    NSPoint location = NSMakePoint(0, NSHeight(self.addButton.bounds));
+    [menu popUpMenuPositioningItem:nil atLocation:location inView:self.addButton];
+}
+
+#pragma mark - Direction Actions
+
+- (void)addWidgetUp:(id)sender {
+    [self splitFloatingWindowInDirection:@"up"];
+}
+
+- (void)addWidgetDown:(id)sender {
+    [self splitFloatingWindowInDirection:@"down"];
+}
+
+- (void)addWidgetLeft:(id)sender {
+    [self splitFloatingWindowInDirection:@"left"];
+}
+
+- (void)addWidgetRight:(id)sender {
+    [self splitFloatingWindowInDirection:@"right"];
+}
+
+- (void)splitFloatingWindowInDirection:(NSString *)direction {
+    // Verifica che sia in FloatingWindow
+    if (![self.contentView.window isKindOfClass:NSClassFromString(@"FloatingWidgetWindow")]) {
+        NSLog(@"⚠️ BaseWidget: Split only works in FloatingWindow");
+        return;
+    }
+    
+    id floatingWindow = self.contentView.window;
+    id appDelegate = [floatingWindow valueForKey:@"appDelegate"];
+    
+    if (!appDelegate) {
+        NSLog(@"❌ BaseWidget: AppDelegate not found");
+        return;
+    }
+    
+    // Determina dimensioni grid
+    NSInteger rows = ([direction isEqualToString:@"up"] || [direction isEqualToString:@"down"]) ? 2 : 1;
+    NSInteger cols = ([direction isEqualToString:@"left"] || [direction isEqualToString:@"right"]) ? 2 : 1;
+    
+    NSLog(@"🔄 BaseWidget: Splitting FloatingWindow → Grid %ldx%ld (%@)",
+          (long)rows, (long)cols, direction);
+    
+    // Crea template
+    Class templateClass = NSClassFromString(@"GridTemplate");
+    SEL templateSelector = NSSelectorFromString(@"templateWithRows:cols:displayName:");
+    
+    NSMethodSignature *signature = [templateClass methodSignatureForSelector:templateSelector];
+    NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
+    [invocation setSelector:templateSelector];
+    [invocation setTarget:templateClass];
+    [invocation setArgument:&rows atIndex:2];
+    [invocation setArgument:&cols atIndex:3];
+    NSString *displayName = [NSString stringWithFormat:@"%ldx%ld Split", (long)rows, (long)cols];
+    [invocation setArgument:&displayName atIndex:4];
+    [invocation invoke];
+    
+    id template;
+    [invocation getReturnValue:&template];
+    
+    // Crea GridWindow
+    Class gridWindowClass = NSClassFromString(@"GridWindow");
+    SEL initSelector = NSSelectorFromString(@"initWithTemplate:name:appDelegate:");
+    
+    signature = [gridWindowClass instanceMethodSignatureForSelector:initSelector];
+    invocation = [NSInvocation invocationWithMethodSignature:signature];
+    
+    id gridWindow = [[gridWindowClass alloc] init];
+    [invocation setSelector:initSelector];
+    [invocation setTarget:gridWindow];
+    [invocation setArgument:&template atIndex:2];
+    [invocation setArgument:&displayName atIndex:3];
+    [invocation setArgument:&appDelegate atIndex:4];
+    [invocation invoke];
+    [invocation getReturnValue:&gridWindow];
+    
+    // Determina posizioni matrixCode
+    NSString *currentPos = [self matrixCodeForDirection:direction isOriginal:YES];
+    NSString *newPos = [self matrixCodeForDirection:direction isOriginal:NO];
+    
+    NSLog(@"📍 BaseWidget: Current widget → %@, New placeholder → %@", currentPos, newPos);
+    
+    // Rimuovi widget da floating window
+    [self.view removeFromSuperview];
+    
+    // Trova e rimuovi placeholder esistente alla posizione corrente
+    SEL getPositionsSelector = NSSelectorFromString(@"widgetPositions");
+    NSMutableDictionary *positions = [gridWindow valueForKey:@"widgetPositions"];
+    BaseWidget *existingWidget = positions[currentPos];
+    if (existingWidget) {
+        NSMutableArray *widgets = [gridWindow valueForKey:@"widgets"];
+        [widgets removeObject:existingWidget];
+        [existingWidget.view removeFromSuperview];
+        [positions removeObjectForKey:currentPos];
+    }
+    
+    // Aggiungi widget corrente a grid
+    SEL addSelector = NSSelectorFromString(@"addWidget:atMatrixCode:");
+    signature = [gridWindow methodSignatureForSelector:addSelector];
+    invocation = [NSInvocation invocationWithMethodSignature:signature];
+    [invocation setSelector:addSelector];
+    [invocation setTarget:gridWindow];
+    [invocation setArgument:&self atIndex:2];
+    [invocation setArgument:&currentPos atIndex:3];
+    [invocation invoke];
+    
+    // Il placeholder nella nuova posizione è già stato creato da initWithTemplate
+    
+    // Aggiungi a gridWindows array
+    NSMutableArray *gridWindows = [appDelegate valueForKey:@"gridWindows"];
+    [gridWindows addObject:gridWindow];
+    
+    // Posiziona GridWindow nella stessa posizione del FloatingWindow
+    NSRect floatingFrame = [floatingWindow frame];
+    
+    // Aumenta dimensione finestra per la griglia
+    NSRect gridFrame = floatingFrame;
+    if (rows == 2) {
+        gridFrame.size.height = MAX(floatingFrame.size.height * 1.5, 600);
+    }
+    if (cols == 2) {
+        gridFrame.size.width = MAX(floatingFrame.size.width * 1.5, 900);
+    }
+    
+    [gridWindow setFrame:gridFrame display:NO];
+    
+    // Chiudi floating, mostra grid
+    [floatingWindow performSelector:@selector(close)];
+    [gridWindow performSelector:@selector(makeKeyAndOrderFront:) withObject:nil];
+    
+    NSLog(@"✅ BaseWidget: Split complete - GridWindow created");
+}
+
+- (NSString *)matrixCodeForDirection:(NSString *)direction isOriginal:(BOOL)isOriginal {
+    if ([direction isEqualToString:@"right"]) {
+        return isOriginal ? @"11" : @"12";  // Original a sinistra, nuovo a destra
+    } else if ([direction isEqualToString:@"left"]) {
+        return isOriginal ? @"12" : @"11";  // Original a destra, nuovo a sinistra
+    } else if ([direction isEqualToString:@"up"]) {
+        return isOriginal ? @"21" : @"11";  // Original sotto, nuovo sopra
+    } else if ([direction isEqualToString:@"down"]) {
+        return isOriginal ? @"11" : @"21";  // Original sopra, nuovo sotto
+    }
+    return @"11";
 }
 
 

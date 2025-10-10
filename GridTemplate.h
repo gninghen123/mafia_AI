@@ -2,48 +2,81 @@
 //  GridTemplate.h
 //  TradingApp
 //
-//  Template definitions for grid layouts
+//  Simplified grid template with dynamic rows/cols and proportions
 //
 
 #import <Foundation/Foundation.h>
-#import <Cocoa/Cocoa.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
-// Template identifiers
-typedef NSString * GridTemplateType NS_TYPED_ENUM;
-
-extern GridTemplateType const GridTemplateTypeListChart;      // 30% list + 70% chart
-extern GridTemplateType const GridTemplateTypeListDualChart;  // 25% list + 75% split(chart+chart)
-extern GridTemplateType const GridTemplateTypeTripleHorizontal; // 3 charts horizontal
-extern GridTemplateType const GridTemplateTypeQuad;           // 2x2 grid
-extern GridTemplateType const GridTemplateTypeCustom;         // User-defined
-
-// Widget position identifiers
-typedef NSString * GridPosition NS_TYPED_ENUM;
-
-extern GridPosition const GridPositionLeft;
-extern GridPosition const GridPositionRight;
-extern GridPosition const GridPositionTop;
-extern GridPosition const GridPositionBottom;
-extern GridPosition const GridPositionTopLeft;
-extern GridPosition const GridPositionTopRight;
-extern GridPosition const GridPositionBottomLeft;
-extern GridPosition const GridPositionBottomRight;
-
 @interface GridTemplate : NSObject
 
-@property (nonatomic, strong, readonly) GridTemplateType templateType;
-@property (nonatomic, strong, readonly) NSString *displayName;
-@property (nonatomic, assign, readonly) NSInteger maxWidgets;
-@property (nonatomic, strong, readonly) NSArray<GridPosition> *availablePositions;
+// Grid dimensions
+@property (nonatomic, assign) NSInteger rows;          // Number of rows (1-3)
+@property (nonatomic, assign) NSInteger cols;          // Number of columns (1-3)
+@property (nonatomic, strong) NSString *displayName;   // User-friendly name (e.g., "2×3 Grid")
 
-+ (instancetype)templateWithType:(GridTemplateType)type;
-+ (NSArray<GridTemplate *> *)allTemplates;
+// 🆕 Custom proportions for resizable splits
+@property (nonatomic, strong, nullable) NSArray<NSNumber *> *rowHeights;    // Proportions [0.0-1.0], sum = 1.0
+@property (nonatomic, strong, nullable) NSArray<NSNumber *> *columnWidths;  // Proportions [0.0-1.0], sum = 1.0
 
-// Layout configuration
-- (NSSplitView *)createLayoutView;
-- (GridPosition)positionForWidgetAtIndex:(NSInteger)index;
+#pragma mark - Initialization
+
+/**
+ * Creates a new grid template with specified dimensions
+ * @param rows Number of rows (1-3)
+ * @param cols Number of columns (1-3)
+ * @param name Display name for the template
+ * @return New GridTemplate instance with uniform proportions
+ */
++ (instancetype)templateWithRows:(NSInteger)rows
+                            cols:(NSInteger)cols
+                     displayName:(NSString *)name;
+
+/**
+ * Creates a template with custom proportions
+ * @param rows Number of rows
+ * @param cols Number of columns
+ * @param name Display name
+ * @param rowHeights Array of NSNumber with row proportions (must sum to 1.0)
+ * @param columnWidths Array of NSNumber with column proportions (must sum to 1.0)
+ */
++ (instancetype)templateWithRows:(NSInteger)rows
+                            cols:(NSInteger)cols
+                     displayName:(NSString *)name
+                      rowHeights:(nullable NSArray<NSNumber *> *)rowHeights
+                    columnWidths:(nullable NSArray<NSNumber *> *)columnWidths;
+
+#pragma mark - Proportions Management
+
+/**
+ * Resets proportions to uniform distribution
+ * Example: 3 rows → [0.333, 0.333, 0.334]
+ */
+- (void)resetToUniformProportions;
+
+/**
+ * Validates that proportions arrays are valid
+ * @return YES if proportions are valid (correct count, sum to ~1.0)
+ */
+- (BOOL)validateProportions;
+
+/**
+ * Total number of cells in the grid
+ */
+- (NSInteger)totalCells;
+
+#pragma mark - Serialization
+
+/**
+ * Serializes the template to a dictionary for saving
+ */
+- (NSDictionary *)serialize;
+
+/**
+ * Restores a template from a serialized dictionary
+ */
++ (instancetype)deserialize:(NSDictionary *)dict;
 
 @end
 

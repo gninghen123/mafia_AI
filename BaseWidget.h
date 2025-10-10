@@ -33,9 +33,6 @@
 @property (nonatomic, assign) BOOL isReceivingChainUpdate;
 
 
-
-
-
 - (instancetype)initWithType:(NSString *)type;  // ✅ SEMPLIFICATO (no panelType)
 
 

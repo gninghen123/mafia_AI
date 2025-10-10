@@ -106,7 +106,7 @@
     NSMenu *fileMenu = [fileMenuItem submenu];
     NSInteger insertIndex = 0;
     
-    // ✅ Save Workspace (Cmd+S might conflict, use Cmd+Shift+W)
+    // ✅ Save Workspace (Cmd+Shift+W)
     NSMenuItem *saveWorkspace = [[NSMenuItem alloc] initWithTitle:@"Save Workspace"
                                                            action:@selector(saveWorkspace:)
                                                     keyEquivalent:@"W"];
@@ -131,19 +131,28 @@
     // ✅ Separator
     [fileMenu insertItem:[NSMenuItem separatorItem] atIndex:insertIndex++];
     
-    // ✅ New Grid submenu
+    // ✅ New Grid submenu - AGGIORNATO
     NSMenuItem *newGridItem = [[NSMenuItem alloc] initWithTitle:@"New Grid"
                                                          action:nil
                                                   keyEquivalent:@""];
     NSMenu *gridSubmenu = [[NSMenu alloc] initWithTitle:@"New Grid"];
     
-    NSArray *gridTemplates = @[@"List + Chart", @"List + Dual Charts",
-                               @"Triple Horizontal", @"2x2 Grid"];
-    for (NSString *template in gridTemplates) {
-        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:template
-                                                      action:@selector(openGrid:)
+    // ✅ PRESET GRIDS - questi creano grids con dimensioni predefinite
+    NSArray *gridPresets = @[
+        @{@"name": @"Single (1×1)", @"rows": @1, @"cols": @1},
+        @{@"name": @"List + Chart (1×2)", @"rows": @1, @"cols": @2},
+        @{@"name": @"Triple Horizontal (1×3)", @"rows": @1, @"cols": @3},
+        @{@"name": @"2×2 Grid", @"rows": @2, @"cols": @2},
+        @{@"name": @"2×3 Grid", @"rows": @2, @"cols": @3},
+        @{@"name": @"3×3 Grid", @"rows": @3, @"cols": @3}
+    ];
+    
+    for (NSDictionary *preset in gridPresets) {
+        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:preset[@"name"]
+                                                      action:@selector(openGridPreset:)
                                                keyEquivalent:@""];
         item.target = self;
+        item.representedObject = preset; // Passa rows/cols come dict
         [gridSubmenu addItem:item];
     }
     
@@ -470,33 +479,32 @@
 
 #pragma mark - Grid Actions
 
-- (IBAction)openGrid:(id)sender {
-    NSString *templateName = [sender title];
-    NSLog(@"🏗️ AppDelegate: Opening grid with template: %@", templateName);
+#pragma mark - Grid Actions
+
+- (IBAction)openGridPreset:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    NSDictionary *preset = menuItem.representedObject;
     
-    GridTemplateType templateType = [self templateTypeFromMenuTitle:templateName];
+    NSInteger rows = [preset[@"rows"] integerValue];
+    NSInteger cols = [preset[@"cols"] integerValue];
+    NSString *name = preset[@"name"];
     
-    GridWindow *gridWindow = [self createGridWindowWithTemplate:templateType
-                                                           name:templateName];
+    NSLog(@"🏗️ AppDelegate: Opening grid preset: %@ (%ldx%ld)", name, (long)rows, (long)cols);
     
+    GridTemplate *template = [GridTemplate templateWithRows:rows
+                                                       cols:cols
+                                                displayName:name];
+    
+    GridWindow *gridWindow = [[GridWindow alloc] initWithTemplate:template
+                                                             name:name
+                                                      appDelegate:self];
+    
+    [self.gridWindows addObject:gridWindow];
     [gridWindow makeKeyAndOrderFront:self];
     
-    NSLog(@"✅ AppDelegate: Grid window opened");
+    NSLog(@"✅ AppDelegate: Grid window opened (%ldx%ld)", (long)rows, (long)cols);
 }
 
-- (GridTemplateType)templateTypeFromMenuTitle:(NSString *)menuTitle {
-    if ([menuTitle isEqualToString:@"List + Chart"]) {
-        return GridTemplateTypeListChart;
-    } else if ([menuTitle isEqualToString:@"List + Dual Charts"]) {
-        return GridTemplateTypeListDualChart;
-    } else if ([menuTitle isEqualToString:@"Triple Horizontal"]) {
-        return GridTemplateTypeTripleHorizontal;
-    } else if ([menuTitle isEqualToString:@"2x2 Grid"]) {
-        return GridTemplateTypeQuad;
-    }
-    
-    return GridTemplateTypeListChart;
-}
 
 #pragma mark - Workspace Actions
 
@@ -642,18 +650,12 @@
     }
 }
 
-- (GridWindow *)createGridWindowWithTemplate:(NSString *)templateType
-                                        name:(NSString *)name {
-    
-    GridWindow *window = [[GridWindow alloc] initWithTemplate:templateType
-                                                         name:name
-                                                  appDelegate:self];
-    
-    [self registerGridWindow:window];
-    [[WorkspaceManager sharedManager] autoSaveLastUsedWorkspace];
-
-    
-    NSLog(@"🏗️ AppDelegate: Created grid window: %@", name);
+- (GridWindow *)createGridWindowWithTemplate:(GridTemplate *)template
+                                         name:(NSString *)name {
+    GridWindow *window = [[GridWindow alloc] initWithTemplate:template
+                                                          name:name
+                                                   appDelegate:self];
+    [self.gridWindows addObject:window];
     return window;
 }
 

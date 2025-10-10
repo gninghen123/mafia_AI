@@ -1,0 +1,978 @@
+//
+//  StooqScreenerWidget+BacktestTab.m
+//  TradingApp
+//
+
+#import "StooqScreenerWidget+BacktestTab.h"
+#import "StooqDataManager+Backtest.h"
+#import <objc/runtime.h>
+#import "StooqScreenerWidget+Private.h"  // ← Access to main widget properties
+
+
+@implementation StooqScreenerWidget (BacktestTab)
+
+#pragma mark - Associated Objects (for category properties)
+
+// Note: These are getter/setter implementations for category properties
+// In production, consider moving these to main @interface or using a dedicated container object
+
+static char backtestRunnerKey;
+static char currentBacktestSessionKey;
+static char backtestMasterCacheKey;
+static char availableStatisticsMetricsKey;
+static char selectedStatisticMetricKey;
+
+- (BacktestRunner *)backtestRunner {
+    return objc_getAssociatedObject(self, &backtestRunnerKey);
+}
+
+- (void)setBacktestRunner:(BacktestRunner *)backtestRunner {
+    objc_setAssociatedObject(self, &backtestRunnerKey, backtestRunner, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+- (BacktestSession *)currentBacktestSession {
+    return objc_getAssociatedObject(self, &currentBacktestSessionKey);
+}
+
+- (void)setCurrentBacktestSession:(BacktestSession *)session {
+    objc_setAssociatedObject(self, &currentBacktestSessionKey, session, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+- (NSDictionary *)backtestMasterCache {
+    return objc_getAssociatedObject(self, &backtestMasterCacheKey);
+}
+
+- (void)setBacktestMasterCache:(NSDictionary *)cache {
+    objc_setAssociatedObject(self, &backtestMasterCacheKey, cache, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+- (NSArray<NSString *> *)availableStatisticsMetrics {
+    NSArray *metrics = objc_getAssociatedObject(self, &availableStatisticsMetricsKey);
+    if (!metrics) {
+        // Default metrics
+        metrics = @[
+            @"# Symbols",
+            @"Win Rate %",
+            @"Avg Gain %",
+            @"Avg Loss %",
+            @"# Trades",
+            @"Win/Loss Ratio"
+        ];
+        [self setAvailableStatisticsMetrics:metrics];
+    }
+    return metrics;
+}
+
+- (void)setAvailableStatisticsMetrics:(NSArray<NSString *> *)metrics {
+    objc_setAssociatedObject(self, &availableStatisticsMetricsKey, metrics, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+- (NSString *)selectedStatisticMetric {
+    return objc_getAssociatedObject(self, &selectedStatisticMetricKey);
+}
+
+- (void)setSelectedStatisticMetric:(NSString *)metric {
+    objc_setAssociatedObject(self, &selectedStatisticMetricKey, metric, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+#pragma mark - Tab Setup
+
+- (void)setupBacktestTab {
+    
+    NSView *backtestView = [[NSView alloc] init];
+    
+    // ========================================
+    // TOP BAR: Benchmark Symbol Input
+    // ========================================
+    
+    NSView *topBar = [[NSView alloc] init];
+    topBar.translatesAutoresizingMaskIntoConstraints = NO;
+    [backtestView addSubview:topBar];
+    
+    NSTextField *symbolLabel = [[NSTextField alloc] init];
+    symbolLabel.stringValue = @"Benchmark Symbol:";
+    symbolLabel.editable = NO;
+    symbolLabel.bordered = NO;
+    symbolLabel.backgroundColor = [NSColor clearColor];
+    symbolLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [topBar addSubview:symbolLabel];
+    
+    self.benchmarkSymbolField = [[NSTextField alloc] init];
+    self.benchmarkSymbolField.stringValue = @"SPY";
+    self.benchmarkSymbolField.placeholderString = @"Enter symbol (e.g., SPY)";
+    self.benchmarkSymbolField.translatesAutoresizingMaskIntoConstraints = NO;
+    [topBar addSubview:self.benchmarkSymbolField];
+    
+    self.validateSymbolButton = [NSButton buttonWithTitle:@"✓ Validate"
+                                                    target:self
+                                                    action:@selector(validateBenchmarkSymbol:)];
+    self.validateSymbolButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [topBar addSubview:self.validateSymbolButton];
+    
+    self.symbolValidationLabel = [[NSTextField alloc] init];
+    self.symbolValidationLabel.stringValue = @"";
+    self.symbolValidationLabel.editable = NO;
+    self.symbolValidationLabel.bordered = NO;
+    self.symbolValidationLabel.backgroundColor = [NSColor clearColor];
+    self.symbolValidationLabel.textColor = [NSColor secondaryLabelColor];
+    self.symbolValidationLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [topBar addSubview:self.symbolValidationLabel];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [topBar.heightAnchor constraintEqualToConstant:40],
+        
+        [symbolLabel.leadingAnchor constraintEqualToAnchor:topBar.leadingAnchor constant:10],
+        [symbolLabel.centerYAnchor constraintEqualToAnchor:topBar.centerYAnchor],
+        
+        [self.benchmarkSymbolField.leadingAnchor constraintEqualToAnchor:symbolLabel.trailingAnchor constant:10],
+        [self.benchmarkSymbolField.centerYAnchor constraintEqualToAnchor:topBar.centerYAnchor],
+        [self.benchmarkSymbolField.widthAnchor constraintEqualToConstant:100],
+        
+        [self.validateSymbolButton.leadingAnchor constraintEqualToAnchor:self.benchmarkSymbolField.trailingAnchor constant:10],
+        [self.validateSymbolButton.centerYAnchor constraintEqualToAnchor:topBar.centerYAnchor],
+        
+        [self.symbolValidationLabel.leadingAnchor constraintEqualToAnchor:self.validateSymbolButton.trailingAnchor constant:10],
+        [self.symbolValidationLabel.centerYAnchor constraintEqualToAnchor:topBar.centerYAnchor],
+        [self.symbolValidationLabel.trailingAnchor constraintLessThanOrEqualToAnchor:topBar.trailingAnchor constant:-10]
+    ]];
+    
+    // ========================================
+    // MAIN SPLIT VIEW: Left | Right
+    // ========================================
+    
+    self.backtestMainSplitView = [[NSSplitView alloc] init];
+    self.backtestMainSplitView.vertical = YES;
+    self.backtestMainSplitView.dividerStyle = NSSplitViewDividerStyleThin;
+    self.backtestMainSplitView.translatesAutoresizingMaskIntoConstraints = NO;
+    [backtestView addSubview:self.backtestMainSplitView];
+    
+    // ========================================
+    // LEFT SIDE: Models (top) | Statistics (bottom)
+    // ========================================
+    
+    self.backtestLeftSplitView = [[NSSplitView alloc] init];
+    self.backtestLeftSplitView.vertical = NO;
+    self.backtestLeftSplitView.dividerStyle = NSSplitViewDividerStyleThin;
+    [self.backtestMainSplitView addArrangedSubview:self.backtestLeftSplitView];
+    
+    // Left-Top: Models List
+    NSView *modelsPanel = [self createBacktestModelsPanel];
+    [self.backtestLeftSplitView addArrangedSubview:modelsPanel];
+    
+    // Left-Bottom: Statistics Metrics
+    NSView *statsPanel = [self createStatisticsMetricsPanel];
+    [self.backtestLeftSplitView addArrangedSubview:statsPanel];
+    
+    // ========================================
+    // RIGHT SIDE: Candlestick (top) | Comparison (bottom)
+    // ========================================
+    
+    self.backtestRightSplitView = [[NSSplitView alloc] init];
+    self.backtestRightSplitView.vertical = NO;
+    self.backtestRightSplitView.dividerStyle = NSSplitViewDividerStyleThin;
+    [self.backtestMainSplitView addArrangedSubview:self.backtestRightSplitView];
+    
+    // Right-Top: Candlestick Chart
+    NSView *candlestickPanel = [self createCandlestickChartPanel];
+    [self.backtestRightSplitView addArrangedSubview:candlestickPanel];
+    
+    // Right-Bottom: Comparison Chart
+    NSView *comparisonPanel = [self createComparisonChartPanel];
+    [self.backtestRightSplitView addArrangedSubview:comparisonPanel];
+    
+    // ========================================
+    // BOTTOM BAR: Controls & Progress
+    // ========================================
+    
+    NSView *bottomBar = [self createBacktestControlBar];
+    bottomBar.translatesAutoresizingMaskIntoConstraints = NO;
+    [backtestView addSubview:bottomBar];
+    
+    // ========================================
+    // Layout Constraints
+    // ========================================
+    
+    [NSLayoutConstraint activateConstraints:@[
+        // Top bar
+        [topBar.topAnchor constraintEqualToAnchor:backtestView.topAnchor],
+        [topBar.leadingAnchor constraintEqualToAnchor:backtestView.leadingAnchor],
+        [topBar.trailingAnchor constraintEqualToAnchor:backtestView.trailingAnchor],
+        
+        // Main split view
+        [self.backtestMainSplitView.topAnchor constraintEqualToAnchor:topBar.bottomAnchor constant:10],
+        [self.backtestMainSplitView.leadingAnchor constraintEqualToAnchor:backtestView.leadingAnchor constant:10],
+        [self.backtestMainSplitView.trailingAnchor constraintEqualToAnchor:backtestView.trailingAnchor constant:-10],
+        [self.backtestMainSplitView.bottomAnchor constraintEqualToAnchor:bottomBar.topAnchor constant:-10],
+        
+        // Bottom bar
+        [bottomBar.leadingAnchor constraintEqualToAnchor:backtestView.leadingAnchor],
+        [bottomBar.trailingAnchor constraintEqualToAnchor:backtestView.trailingAnchor],
+        [bottomBar.bottomAnchor constraintEqualToAnchor:backtestView.bottomAnchor],
+        [bottomBar.heightAnchor constraintEqualToConstant:80]
+    ]];
+    
+    // Set split positions after a delay (when view has size)
+    dispatch_async(dispatch_get_main_queue(), ^{
+        CGFloat mainWidth = self.backtestMainSplitView.frame.size.width;
+        if (mainWidth > 0) {
+            [self.backtestMainSplitView setPosition:mainWidth * 0.25 ofDividerAtIndex:0];
+        }
+        
+        CGFloat leftHeight = self.backtestLeftSplitView.frame.size.height;
+        if (leftHeight > 0) {
+            [self.backtestLeftSplitView setPosition:leftHeight * 0.5 ofDividerAtIndex:0];
+        }
+        
+        CGFloat rightHeight = self.backtestRightSplitView.frame.size.height;
+        if (rightHeight > 0) {
+            [self.backtestRightSplitView setPosition:rightHeight * 0.6 ofDividerAtIndex:0];
+        }
+    });
+    
+    // ========================================
+    // Add Tab to TabView
+    // ========================================
+    
+    NSTabViewItem *backtestTab = [[NSTabViewItem alloc] initWithIdentifier:@"backtest"];
+    backtestTab.label = @"Backtest";
+    backtestTab.view = backtestView;
+    [self.tabView addTabViewItem:backtestTab];
+    
+    // Initialize backtest runner
+    self.backtestRunner = [[BacktestRunner alloc] init];
+    self.backtestRunner.delegate = self;
+    
+    NSLog(@"✅ Backtest tab created successfully");
+}
+
+#pragma mark - Panel Creation Methods
+
+- (NSView *)createBacktestModelsPanel {
+    NSView *panel = [[NSView alloc] init];
+    
+    // Header
+    self.backtestModelsHeaderLabel = [[NSTextField alloc] init];
+    self.backtestModelsHeaderLabel.stringValue = @"Models to Test";
+    self.backtestModelsHeaderLabel.editable = NO;
+    self.backtestModelsHeaderLabel.bordered = NO;
+    self.backtestModelsHeaderLabel.backgroundColor = [NSColor clearColor];
+    self.backtestModelsHeaderLabel.font = [NSFont boldSystemFontOfSize:13];
+    self.backtestModelsHeaderLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [panel addSubview:self.backtestModelsHeaderLabel];
+    
+    // Table view
+    self.backtestModelsTableView = [[NSTableView alloc] init];
+    self.backtestModelsTableView.headerView = nil;
+    self.backtestModelsTableView.rowHeight = 24;
+    
+    // Checkbox column
+    NSTableColumn *checkboxCol = [[NSTableColumn alloc] initWithIdentifier:@"checkbox"];
+    checkboxCol.width = 30;
+    [self.backtestModelsTableView addTableColumn:checkboxCol];
+    
+    // Name column
+    NSTableColumn *nameCol = [[NSTableColumn alloc] initWithIdentifier:@"name"];
+    nameCol.title = @"Model Name";
+    [self.backtestModelsTableView addTableColumn:nameCol];
+    
+    self.backtestModelsTableView.dataSource = self;
+    self.backtestModelsTableView.delegate = self;
+    
+    self.backtestModelsScrollView = [[NSScrollView alloc] init];
+    self.backtestModelsScrollView.documentView = self.backtestModelsTableView;
+    self.backtestModelsScrollView.hasVerticalScroller = YES;
+    self.backtestModelsScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    [panel addSubview:self.backtestModelsScrollView];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [self.backtestModelsHeaderLabel.topAnchor constraintEqualToAnchor:panel.topAnchor constant:10],
+        [self.backtestModelsHeaderLabel.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:10],
+        [self.backtestModelsHeaderLabel.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-10],
+        
+        [self.backtestModelsScrollView.topAnchor constraintEqualToAnchor:self.backtestModelsHeaderLabel.bottomAnchor constant:5],
+        [self.backtestModelsScrollView.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:10],
+        [self.backtestModelsScrollView.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-10],
+        [self.backtestModelsScrollView.bottomAnchor constraintEqualToAnchor:panel.bottomAnchor constant:-10]
+    ]];
+    
+    return panel;
+}
+
+- (NSView *)createStatisticsMetricsPanel {
+    NSView *panel = [[NSView alloc] init];
+    
+    // Header
+    self.statisticsHeaderLabel = [[NSTextField alloc] init];
+    self.statisticsHeaderLabel.stringValue = @"Statistics Metrics";
+    self.statisticsHeaderLabel.editable = NO;
+    self.statisticsHeaderLabel.bordered = NO;
+    self.statisticsHeaderLabel.backgroundColor = [NSColor clearColor];
+    self.statisticsHeaderLabel.font = [NSFont boldSystemFontOfSize:13];
+    self.statisticsHeaderLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [panel addSubview:self.statisticsHeaderLabel];
+    
+    // Table view
+    self.statisticsMetricsTableView = [[NSTableView alloc] init];
+    self.statisticsMetricsTableView.headerView = nil;
+    self.statisticsMetricsTableView.rowHeight = 24;
+    
+    NSTableColumn *metricCol = [[NSTableColumn alloc] initWithIdentifier:@"metric"];
+    metricCol.title = @"Metric";
+    [self.statisticsMetricsTableView addTableColumn:metricCol];
+    
+    self.statisticsMetricsTableView.dataSource = self;
+    self.statisticsMetricsTableView.delegate = self;
+    
+    self.statisticsMetricsScrollView = [[NSScrollView alloc] init];
+    self.statisticsMetricsScrollView.documentView = self.statisticsMetricsTableView;
+    self.statisticsMetricsScrollView.hasVerticalScroller = YES;
+    self.statisticsMetricsScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    [panel addSubview:self.statisticsMetricsScrollView];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [self.statisticsHeaderLabel.topAnchor constraintEqualToAnchor:panel.topAnchor constant:10],
+        [self.statisticsHeaderLabel.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:10],
+        [self.statisticsHeaderLabel.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-10],
+        
+        [self.statisticsMetricsScrollView.topAnchor constraintEqualToAnchor:self.statisticsHeaderLabel.bottomAnchor constant:5],
+        [self.statisticsMetricsScrollView.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:10],
+        [self.statisticsMetricsScrollView.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-10],
+        [self.statisticsMetricsScrollView.bottomAnchor constraintEqualToAnchor:panel.bottomAnchor constant:-10]
+    ]];
+    
+    return panel;
+}
+
+- (NSView *)createCandlestickChartPanel {
+    NSView *panel = [[NSView alloc] init];
+    
+    // Header with zoom controls
+    NSView *headerView = [[NSView alloc] init];
+    headerView.translatesAutoresizingMaskIntoConstraints = NO;
+    [panel addSubview:headerView];
+    
+    self.dateRangeLabel = [[NSTextField alloc] init];
+    self.dateRangeLabel.stringValue = @"Select date range below";
+    self.dateRangeLabel.editable = NO;
+    self.dateRangeLabel.bordered = NO;
+    self.dateRangeLabel.backgroundColor = [NSColor clearColor];
+    self.dateRangeLabel.font = [NSFont boldSystemFontOfSize:13];
+    self.dateRangeLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [headerView addSubview:self.dateRangeLabel];
+    
+    self.zoomOutButton = [NSButton buttonWithTitle:@"➖" target:self action:@selector(zoomOutChart:)];
+    self.zoomOutButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [headerView addSubview:self.zoomOutButton];
+    
+    self.zoomInButton = [NSButton buttonWithTitle:@"➕" target:self action:@selector(zoomInChart:)];
+    self.zoomInButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [headerView addSubview:self.zoomInButton];
+    
+    self.zoomAllButton = [NSButton buttonWithTitle:@"ALL" target:self action:@selector(zoomAllChart:)];
+    self.zoomAllButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [headerView addSubview:self.zoomAllButton];
+    
+    // Chart container (placeholder for now - will add custom view in Step 6)
+    self.candlestickChartContainer = [[NSView alloc] init];
+    self.candlestickChartContainer.wantsLayer = YES;
+    self.candlestickChartContainer.layer.backgroundColor = [[NSColor windowBackgroundColor] CGColor];
+    self.candlestickChartContainer.layer.borderColor = [[NSColor separatorColor] CGColor];
+    self.candlestickChartContainer.layer.borderWidth = 1.0;
+    self.candlestickChartContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    [panel addSubview:self.candlestickChartContainer];
+    
+    // Placeholder label
+    NSTextField *placeholderLabel = [[NSTextField alloc] init];
+    placeholderLabel.stringValue = @"📊 Candlestick Chart\n(Custom view will be added in Step 6)";
+    placeholderLabel.alignment = NSTextAlignmentCenter;
+    placeholderLabel.editable = NO;
+    placeholderLabel.bordered = NO;
+    placeholderLabel.backgroundColor = [NSColor clearColor];
+    placeholderLabel.textColor = [NSColor tertiaryLabelColor];
+    placeholderLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.candlestickChartContainer addSubview:placeholderLabel];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [headerView.topAnchor constraintEqualToAnchor:panel.topAnchor constant:10],
+        [headerView.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:10],
+        [headerView.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-10],
+        [headerView.heightAnchor constraintEqualToConstant:30],
+        
+        [self.dateRangeLabel.leadingAnchor constraintEqualToAnchor:headerView.leadingAnchor],
+        [self.dateRangeLabel.centerYAnchor constraintEqualToAnchor:headerView.centerYAnchor],
+        
+        [self.zoomAllButton.trailingAnchor constraintEqualToAnchor:headerView.trailingAnchor],
+        [self.zoomAllButton.centerYAnchor constraintEqualToAnchor:headerView.centerYAnchor],
+        
+        [self.zoomInButton.trailingAnchor constraintEqualToAnchor:self.zoomAllButton.leadingAnchor constant:-5],
+        [self.zoomInButton.centerYAnchor constraintEqualToAnchor:headerView.centerYAnchor],
+        
+        [self.zoomOutButton.trailingAnchor constraintEqualToAnchor:self.zoomInButton.leadingAnchor constant:-5],
+        [self.zoomOutButton.centerYAnchor constraintEqualToAnchor:headerView.centerYAnchor],
+        
+        [self.candlestickChartContainer.topAnchor constraintEqualToAnchor:headerView.bottomAnchor constant:5],
+        [self.candlestickChartContainer.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:10],
+        [self.candlestickChartContainer.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-10],
+        [self.candlestickChartContainer.bottomAnchor constraintEqualToAnchor:panel.bottomAnchor constant:-10],
+        
+        [placeholderLabel.centerXAnchor constraintEqualToAnchor:self.candlestickChartContainer.centerXAnchor],
+        [placeholderLabel.centerYAnchor constraintEqualToAnchor:self.candlestickChartContainer.centerYAnchor]
+    ]];
+    
+    return panel;
+}
+
+- (NSView *)createComparisonChartPanel {
+    NSView *panel = [[NSView alloc] init];
+    
+    // Header
+    self.comparisonChartTitleLabel = [[NSTextField alloc] init];
+    self.comparisonChartTitleLabel.stringValue = @"Metric Comparison (Select metric on left)";
+    self.comparisonChartTitleLabel.editable = NO;
+    self.comparisonChartTitleLabel.bordered = NO;
+    self.comparisonChartTitleLabel.backgroundColor = [NSColor clearColor];
+    self.comparisonChartTitleLabel.font = [NSFont boldSystemFontOfSize:13];
+    self.comparisonChartTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [panel addSubview:self.comparisonChartTitleLabel];
+    
+    // Chart container (placeholder for now - will add custom view in Step 6)
+    self.comparisonChartContainer = [[NSView alloc] init];
+    self.comparisonChartContainer.wantsLayer = YES;
+    self.comparisonChartContainer.layer.backgroundColor = [[NSColor windowBackgroundColor] CGColor];
+    self.comparisonChartContainer.layer.borderColor = [[NSColor separatorColor] CGColor];
+    self.comparisonChartContainer.layer.borderWidth = 1.0;
+    self.comparisonChartContainer.translatesAutoresizingMaskIntoConstraints = NO;
+    [panel addSubview:self.comparisonChartContainer];
+    
+    // Placeholder label
+    NSTextField *placeholderLabel = [[NSTextField alloc] init];
+    placeholderLabel.stringValue = @"📈 Comparison Chart\n(Custom view will be added in Step 6)";
+    placeholderLabel.alignment = NSTextAlignmentCenter;
+    placeholderLabel.editable = NO;
+    placeholderLabel.bordered = NO;
+    placeholderLabel.backgroundColor = [NSColor clearColor];
+    placeholderLabel.textColor = [NSColor tertiaryLabelColor];
+    placeholderLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.comparisonChartContainer addSubview:placeholderLabel];
+    
+    [NSLayoutConstraint activateConstraints:@[
+        [self.comparisonChartTitleLabel.topAnchor constraintEqualToAnchor:panel.topAnchor constant:10],
+        [self.comparisonChartTitleLabel.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:10],
+        [self.comparisonChartTitleLabel.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-10],
+        
+        [self.comparisonChartContainer.topAnchor constraintEqualToAnchor:self.comparisonChartTitleLabel.bottomAnchor constant:5],
+        [self.comparisonChartContainer.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:10],
+        [self.comparisonChartContainer.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-10],
+        [self.comparisonChartContainer.bottomAnchor constraintEqualToAnchor:panel.bottomAnchor constant:-10],
+        
+        [placeholderLabel.centerXAnchor constraintEqualToAnchor:self.comparisonChartContainer.centerXAnchor],
+        [placeholderLabel.centerYAnchor constraintEqualToAnchor:self.comparisonChartContainer.centerYAnchor]
+    ]];
+    
+    return panel;
+}
+
+- (NSView *)createBacktestControlBar {
+    NSView *controlBar = [[NSView alloc] init];
+    
+    // Date range pickers
+    NSTextField *startLabel = [[NSTextField alloc] init];
+    startLabel.stringValue = @"Start Date:";
+    startLabel.editable = NO;
+    startLabel.bordered = NO;
+    startLabel.backgroundColor = [NSColor clearColor];
+    startLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [controlBar addSubview:startLabel];
+    
+    self.backtestStartDatePicker = [[NSDatePicker alloc] init];
+    self.backtestStartDatePicker.datePickerStyle = NSDatePickerStyleTextField;
+    self.backtestStartDatePicker.datePickerElements = NSDatePickerElementFlagYearMonthDay;
+    self.backtestStartDatePicker.translatesAutoresizingMaskIntoConstraints = NO;
+    
+    // Set default to 6 months ago
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDate *sixMonthsAgo = [calendar dateByAddingUnit:NSCalendarUnitMonth
+                                                 value:-6
+                                                toDate:[NSDate date]
+                                               options:0];
+    self.backtestStartDatePicker.dateValue = sixMonthsAgo;
+    [controlBar addSubview:self.backtestStartDatePicker];
+    
+    NSTextField *endLabel = [[NSTextField alloc] init];
+    endLabel.stringValue = @"End Date:";
+    endLabel.editable = NO;
+    endLabel.bordered = NO;
+    endLabel.backgroundColor = [NSColor clearColor];
+    endLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [controlBar addSubview:endLabel];
+    
+    self.backtestEndDatePicker = [[NSDatePicker alloc] init];
+    self.backtestEndDatePicker.datePickerStyle = NSDatePickerStyleTextField;
+    self.backtestEndDatePicker.datePickerElements = NSDatePickerElementFlagYearMonthDay;
+    self.backtestEndDatePicker.dateValue = [NSDate date];
+    self.backtestEndDatePicker.translatesAutoresizingMaskIntoConstraints = NO;
+    [controlBar addSubview:self.backtestEndDatePicker];
+    
+    // Run/Cancel buttons
+    self.runBacktestButton = [NSButton buttonWithTitle:@"🚀 RUN BACKTEST"
+                                                 target:self
+                                                 action:@selector(runBacktest:)];
+    self.runBacktestButton.bezelStyle = NSBezelStyleRounded;
+    self.runBacktestButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [controlBar addSubview:self.runBacktestButton];
+    
+    self.cancelBacktestButton = [NSButton buttonWithTitle:@"❌ Cancel"
+                                                    target:self
+                                                    action:@selector(cancelBacktest:)];
+    self.cancelBacktestButton.bezelStyle = NSBezelStyleRounded;
+    self.cancelBacktestButton.translatesAutoresizingMaskIntoConstraints = NO;
+    self.cancelBacktestButton.hidden = YES;
+    [controlBar addSubview:self.cancelBacktestButton];
+    
+    // Progress indicator
+    self.backtestProgressIndicator = [[NSProgressIndicator alloc] init];
+    self.backtestProgressIndicator.style = NSProgressIndicatorStyleBar;
+    self.backtestProgressIndicator.indeterminate = NO;
+    self.backtestProgressIndicator.minValue = 0.0;
+    self.backtestProgressIndicator.maxValue = 1.0;
+    self.backtestProgressIndicator.doubleValue = 0.0;
+    self.backtestProgressIndicator.hidden = YES;
+    self.backtestProgressIndicator.translatesAutoresizingMaskIntoConstraints = NO;
+    [controlBar addSubview:self.backtestProgressIndicator];
+    
+    // Status label
+    self.backtestStatusLabel = [[NSTextField alloc] init];
+    self.backtestStatusLabel.stringValue = @"";
+    self.backtestStatusLabel.editable = NO;
+    self.backtestStatusLabel.bordered = NO;
+    self.backtestStatusLabel.backgroundColor = [NSColor clearColor];
+    self.backtestStatusLabel.textColor = [NSColor secondaryLabelColor];
+    self.backtestStatusLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [controlBar addSubview:self.backtestStatusLabel];
+    
+    // Layout
+    [NSLayoutConstraint activateConstraints:@[
+        // First row: Date pickers and buttons
+        [startLabel.leadingAnchor constraintEqualToAnchor:controlBar.leadingAnchor constant:10],
+        [startLabel.topAnchor constraintEqualToAnchor:controlBar.topAnchor constant:10],
+        
+        [self.backtestStartDatePicker.leadingAnchor constraintEqualToAnchor:startLabel.trailingAnchor constant:5],
+        [self.backtestStartDatePicker.centerYAnchor constraintEqualToAnchor:startLabel.centerYAnchor],
+        [self.backtestStartDatePicker.widthAnchor constraintEqualToConstant:120],
+        
+        [endLabel.leadingAnchor constraintEqualToAnchor:self.backtestStartDatePicker.trailingAnchor constant:20],
+        [endLabel.centerYAnchor constraintEqualToAnchor:startLabel.centerYAnchor],
+        
+        [self.backtestEndDatePicker.leadingAnchor constraintEqualToAnchor:endLabel.trailingAnchor constant:5],
+        [self.backtestEndDatePicker.centerYAnchor constraintEqualToAnchor:startLabel.centerYAnchor],
+        [self.backtestEndDatePicker.widthAnchor constraintEqualToConstant:120],
+        
+        [self.runBacktestButton.leadingAnchor constraintEqualToAnchor:self.backtestEndDatePicker.trailingAnchor constant:20],
+        [self.runBacktestButton.centerYAnchor constraintEqualToAnchor:startLabel.centerYAnchor],
+        [self.runBacktestButton.widthAnchor constraintEqualToConstant:150],
+        
+        [self.cancelBacktestButton.leadingAnchor constraintEqualToAnchor:self.runBacktestButton.trailingAnchor constant:10],
+        [self.cancelBacktestButton.centerYAnchor constraintEqualToAnchor:startLabel.centerYAnchor],
+        
+        // Second row: Progress bar and status
+        [self.backtestProgressIndicator.topAnchor constraintEqualToAnchor:self.runBacktestButton.bottomAnchor constant:10],
+        [self.backtestProgressIndicator.leadingAnchor constraintEqualToAnchor:controlBar.leadingAnchor constant:10],
+        [self.backtestProgressIndicator.trailingAnchor constraintEqualToAnchor:controlBar.trailingAnchor constant:-10],
+        [self.backtestProgressIndicator.heightAnchor constraintEqualToConstant:20],
+        
+        [self.backtestStatusLabel.topAnchor constraintEqualToAnchor:self.backtestProgressIndicator.bottomAnchor constant:5],
+        [self.backtestStatusLabel.leadingAnchor constraintEqualToAnchor:controlBar.leadingAnchor constant:10],
+        [self.backtestStatusLabel.trailingAnchor constraintEqualToAnchor:controlBar.trailingAnchor constant:-10]
+    ]];
+    
+    return controlBar;
+}
+
+#pragma mark - Actions
+
+- (IBAction)validateBenchmarkSymbol:(id)sender {
+    NSString *symbol = [self.benchmarkSymbolField.stringValue uppercaseString];
+    
+    if (symbol.length == 0) {
+        self.symbolValidationLabel.stringValue = @"❌ Please enter a symbol";
+        self.symbolValidationLabel.textColor = [NSColor systemRedColor];
+        return;
+    }
+    
+    self.symbolValidationLabel.stringValue = @"⏳ Validating...";
+    self.symbolValidationLabel.textColor = [NSColor systemOrangeColor];
+    
+    // Load symbol data to validate
+    [self loadBenchmarkSymbolData:symbol];
+}
+
+- (IBAction)backtestModelCheckboxChanged:(id)sender {
+    // Model checkbox changed - just reload table
+    [self.backtestModelsTableView reloadData];
+}
+
+- (IBAction)statisticsMetricSelected:(id)sender {
+    NSInteger selectedRow = self.statisticsMetricsTableView.selectedRow;
+    
+    if (selectedRow >= 0 && selectedRow < self.availableStatisticsMetrics.count) {
+        self.selectedStatisticMetric = self.availableStatisticsMetrics[selectedRow];
+        
+        // Update comparison chart title
+        self.comparisonChartTitleLabel.stringValue = [NSString stringWithFormat:@"Metric Comparison: %@",
+                                                      self.selectedStatisticMetric];
+        
+        // TODO: Update comparison chart with selected metric
+        NSLog(@"📊 Selected metric: %@", self.selectedStatisticMetric);
+    }
+}
+
+- (IBAction)runBacktest:(id)sender {
+    NSLog(@"🚀 Run Backtest button pressed");
+    
+    // Validation
+    NSArray<ScreenerModel *> *selectedModels = [self getSelectedBacktestModels];
+    
+    if (selectedModels.count == 0) {
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"No Models Selected";
+        alert.informativeText = @"Please select at least one model to test.";
+        alert.alertStyle = NSAlertStyleWarning;
+        [alert runModal];
+        return;
+    }
+    
+    NSDate *startDate = self.backtestStartDatePicker.dateValue;
+    NSDate *endDate = self.backtestEndDatePicker.dateValue;
+    
+    if ([startDate compare:endDate] == NSOrderedDescending) {
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"Invalid Date Range";
+        alert.informativeText = @"Start date must be before end date.";
+        alert.alertStyle = NSAlertStyleWarning;
+        [alert runModal];
+        return;
+    }
+    
+    NSString *benchmarkSymbol = [self.benchmarkSymbolField.stringValue uppercaseString];
+    if (benchmarkSymbol.length == 0) {
+        benchmarkSymbol = @"SPY";
+        self.benchmarkSymbolField.stringValue = benchmarkSymbol;
+    }
+    
+    // Calculate maxBars needed
+    NSInteger maxBars = [BacktestRunner calculateMaxBarsForModels:selectedModels];
+    
+    NSLog(@"📊 Starting backtest with:");
+    NSLog(@"   Models: %lu", (unsigned long)selectedModels.count);
+    NSLog(@"   Date range: %@ to %@", startDate, endDate);
+    NSLog(@"   Benchmark: %@", benchmarkSymbol);
+    NSLog(@"   Max bars needed: %ld", (long)maxBars);
+    
+    // Update UI
+    [self updateBacktestUIState:YES];
+    
+    // Load extended data
+    self.backtestStatusLabel.stringValue = @"Loading historical data...";
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        
+        // Get all symbols from database
+        NSArray<NSString *> *allSymbols = self.dataManager.availableSymbols;
+        
+        if (!allSymbols || allSymbols.count == 0) {
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [self updateBacktestUIState:NO];
+                self.backtestStatusLabel.stringValue = @"❌ No symbols available in database";
+                
+                NSAlert *alert = [[NSAlert alloc] init];
+                alert.messageText = @"No Data Available";
+                alert.informativeText = @"Please scan the database in Settings tab first.";
+                alert.alertStyle = NSAlertStyleCritical;
+                [alert runModal];
+            });
+            return;
+        }
+        
+        // Load extended data range
+        [self.dataManager loadExtendedDataForSymbols:allSymbols
+                                           startDate:startDate
+                                             endDate:endDate
+                                             maxBars:maxBars
+                                          completion:^(NSDictionary<NSString *,NSArray<HistoricalBarModel *> *> *cache, NSError *error) {
+            
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (error || !cache || cache.count == 0) {
+                    [self updateBacktestUIState:NO];
+                    self.backtestStatusLabel.stringValue = @"❌ Failed to load data";
+                    
+                    NSAlert *alert = [[NSAlert alloc] init];
+                    alert.messageText = @"Data Loading Failed";
+                    alert.informativeText = error ? error.localizedDescription : @"No data available";
+                    alert.alertStyle = NSAlertStyleCritical;
+                    [alert runModal];
+                    return;
+                }
+                
+                NSLog(@"✅ Loaded extended data: %lu symbols", (unsigned long)cache.count);
+                
+                // Store cache
+                self.backtestMasterCache = cache;
+                
+                // Run backtest
+                self.backtestStatusLabel.stringValue = @"Running backtest...";
+                
+                [self.backtestRunner runBacktestForModels:selectedModels
+                                                startDate:startDate
+                                                  endDate:endDate
+                                              masterCache:cache
+                                           benchmarkSymbol:benchmarkSymbol];
+            });
+        }];
+    });
+}
+
+- (IBAction)cancelBacktest:(id)sender {
+    NSLog(@"🛑 Cancel Backtest button pressed");
+    [self.backtestRunner cancel];
+}
+
+- (IBAction)zoomInChart:(id)sender {
+    NSLog(@"🔍 Zoom In");
+    // TODO: Implement in Step 6
+}
+
+- (IBAction)zoomOutChart:(id)sender {
+    NSLog(@"🔍 Zoom Out");
+    // TODO: Implement in Step 6
+}
+
+- (IBAction)zoomAllChart:(id)sender {
+    NSLog(@"🔍 Zoom All");
+    // TODO: Implement in Step 6
+}
+
+#pragma mark - Helper Methods
+
+- (void)reloadBacktestModelsTable {
+    [self.backtestModelsTableView reloadData];
+}
+
+- (void)loadBenchmarkSymbolData:(NSString *)symbol {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        
+        NSArray<HistoricalBarModel *> *bars = [self.dataManager loadBarsForSymbol:symbol minBars:100];
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (bars && bars.count > 0) {
+                self.symbolValidationLabel.stringValue = [NSString stringWithFormat:@"✅ Valid (%lu bars)",
+                                                          (unsigned long)bars.count];
+                self.symbolValidationLabel.textColor = [NSColor systemGreenColor];
+                
+                // TODO: Load into candlestick chart
+                NSLog(@"✅ Benchmark symbol '%@' validated: %lu bars", symbol, (unsigned long)bars.count);
+            } else {
+                self.symbolValidationLabel.stringValue = @"❌ Symbol not found in database";
+                self.symbolValidationLabel.textColor = [NSColor systemRedColor];
+            }
+        });
+    });
+}
+
+- (void)updateBacktestUIState:(BOOL)isRunning {
+    self.runBacktestButton.enabled = !isRunning;
+    self.cancelBacktestButton.hidden = !isRunning;
+    self.backtestProgressIndicator.hidden = !isRunning;
+    
+    if (isRunning) {
+        self.backtestProgressIndicator.doubleValue = 0.0;
+        [self.backtestProgressIndicator startAnimation:nil];
+    } else {
+        [self.backtestProgressIndicator stopAnimation:nil];
+    }
+    
+    // Disable controls during backtest
+    self.benchmarkSymbolField.enabled = !isRunning;
+    self.validateSymbolButton.enabled = !isRunning;
+    self.backtestStartDatePicker.enabled = !isRunning;
+    self.backtestEndDatePicker.enabled = !isRunning;
+    self.backtestModelsTableView.enabled = !isRunning;
+}
+
+- (NSArray<ScreenerModel *> *)getSelectedBacktestModels {
+    NSMutableArray *selected = [NSMutableArray array];
+    
+    for (ScreenerModel *model in self.models) {
+        if (model.isEnabled) {
+            [selected addObject:model];
+        }
+    }
+    
+    return [selected copy];
+}
+
+#pragma mark - BacktestRunnerDelegate
+
+- (void)backtestRunnerDidStart:(BacktestRunner *)runner {
+    NSLog(@"🚀 Backtest started");
+    self.backtestStatusLabel.stringValue = @"Preparing backtest...";
+}
+
+- (void)backtestRunner:(BacktestRunner *)runner
+    didStartPreparationWithMessage:(NSString *)message {
+    self.backtestStatusLabel.stringValue = message;
+}
+
+- (void)backtestRunner:(BacktestRunner *)runner
+    didStartExecutionForDays:(NSInteger)dayCount
+                      models:(NSInteger)modelCount {
+    
+    self.backtestStatusLabel.stringValue = [NSString stringWithFormat:@"Executing: %ld days × %ld models = %ld iterations",
+                                            (long)dayCount, (long)modelCount, (long)(dayCount * modelCount)];
+}
+
+- (void)backtestRunner:(BacktestRunner *)runner
+       didStartDate:(NSDate *)date
+          dayNumber:(NSInteger)dayNumber
+          totalDays:(NSInteger)totalDays {
+    
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    formatter.dateStyle = NSDateFormatterShortStyle;
+    
+    self.backtestStatusLabel.stringValue = [NSString stringWithFormat:@"Processing day %ld/%ld: %@",
+                                            (long)dayNumber, (long)totalDays,
+                                            [formatter stringFromDate:date]];
+}
+
+- (void)backtestRunner:(BacktestRunner *)runner
+      didUpdateProgress:(double)progress {
+    
+    self.backtestProgressIndicator.doubleValue = progress;
+}
+
+- (void)backtestRunner:(BacktestRunner *)runner
+    didFinishWithSession:(BacktestSession *)session {
+    
+    NSLog(@"✅ Backtest completed successfully");
+    
+    [self updateBacktestUIState:NO];
+    
+    self.currentBacktestSession = session;
+    self.backtestStatusLabel.stringValue = [NSString stringWithFormat:@"✅ Completed: %ld results in %.2fs",
+                                            (long)session.dailyResults.count,
+                                            session.totalExecutionTime];
+    
+    // TODO: Update charts with results
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Backtest Complete";
+    alert.informativeText = [NSString stringWithFormat:@"Generated %ld daily results for %ld models.\n\nExecution time: %.2fs",
+                            (long)session.dailyResults.count,
+                            (long)session.models.count,
+                            session.totalExecutionTime];
+    alert.alertStyle = NSAlertStyleInformational;
+    [alert runModal];
+}
+
+- (void)backtestRunner:(BacktestRunner *)runner
+        didFailWithError:(NSError *)error {
+    
+    NSLog(@"❌ Backtest failed: %@", error.localizedDescription);
+    
+    [self updateBacktestUIState:NO];
+    
+    self.backtestStatusLabel.stringValue = @"❌ Backtest failed";
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Backtest Failed";
+    alert.informativeText = error.localizedDescription;
+    alert.alertStyle = NSAlertStyleCritical;
+    [alert runModal];
+}
+
+- (void)backtestRunnerDidCancel:(BacktestRunner *)runner {
+    NSLog(@"🛑 Backtest cancelled");
+    
+    [self updateBacktestUIState:NO];
+    
+    self.backtestStatusLabel.stringValue = @"🛑 Backtest cancelled";
+}
+
+#pragma mark - NSTableViewDataSource & Delegate
+
+// Note: These methods extend the existing table view data source
+// They handle the NEW tables in the backtest tab
+
+- (NSInteger)numberOfRowsInTableView:(NSTableView *)tableView {
+    
+    // Check which table view is asking
+    if (tableView == self.backtestModelsTableView) {
+        return self.models.count;
+    }
+    
+    if (tableView == self.statisticsMetricsTableView) {
+        return self.availableStatisticsMetrics.count;
+    }
+    
+    // Fall back to existing implementation for other tables
+    // (This assumes the main StooqScreenerWidget implementation handles other tables)
+    return 0;
+}
+
+- (nullable NSView *)tableView:(NSTableView *)tableView
+            viewForTableColumn:(nullable NSTableColumn *)tableColumn
+                           row:(NSInteger)row {
+    
+    // Backtest Models Table
+    if (tableView == self.backtestModelsTableView) {
+        
+        if (row >= self.models.count) return nil;
+        
+        ScreenerModel *model = self.models[row];
+        
+        if ([tableColumn.identifier isEqualToString:@"checkbox"]) {
+            NSButton *checkbox = [[NSButton alloc] init];
+            checkbox.buttonType = NSButtonTypeSwitch;
+            checkbox.title = @"";
+            checkbox.state = model.isEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+            checkbox.target = self;
+            checkbox.action = @selector(backtestModelCheckboxChanged:);
+            checkbox.tag = row;
+            return checkbox;
+        }
+        
+        if ([tableColumn.identifier isEqualToString:@"name"]) {
+            NSTextField *textField = [[NSTextField alloc] init];
+            textField.editable = NO;
+            textField.bordered = NO;
+            textField.backgroundColor = [NSColor clearColor];
+            textField.stringValue = model.displayName ?: @"Unnamed Model";
+            return textField;
+        }
+    }
+    
+    // Statistics Metrics Table
+    if (tableView == self.statisticsMetricsTableView) {
+        
+        if (row >= self.availableStatisticsMetrics.count) return nil;
+        
+        NSTextField *textField = [[NSTextField alloc] init];
+        textField.editable = NO;
+        textField.bordered = NO;
+        textField.backgroundColor = [NSColor clearColor];
+        textField.stringValue = self.availableStatisticsMetrics[row];
+        
+        return textField;
+    }
+    
+    return nil;
+}
+
+- (void)tableViewSelectionDidChange:(NSNotification *)notification {
+    NSTableView *tableView = notification.object;
+    
+    if (tableView == self.statisticsMetricsTableView) {
+        [self statisticsMetricSelected:tableView];
+    }
+}
+
+@end

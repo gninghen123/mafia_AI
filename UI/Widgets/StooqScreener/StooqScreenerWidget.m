@@ -13,6 +13,8 @@
 #import "datahub+marketdata.h"
 #import "ScreenedSymbol.h"
 #import "ExecutionSession.h"
+#import "StooqScreenerWidget+BacktestTab.h"  // ← ADD THIS
+
 
 @interface StooqScreenerWidget () <NSTableViewDelegate, NSTableViewDataSource,
                                     NSOutlineViewDelegate, NSOutlineViewDataSource,  // ← AGGIUNGI
@@ -183,7 +185,7 @@
     
     [self setupModelsTab];
     [self setupArchiveTab];  // ✅ NUOVO TAB
-
+    [self setupBacktestTab];
     [self setupSettingsTab];
 }
 

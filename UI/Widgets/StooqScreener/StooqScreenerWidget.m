@@ -1102,7 +1102,14 @@
            return 0;
        }
             
-          
+    if (tableView == self.backtestModelsTableView) {
+            return self.models ? self.models.count : 0;
+        }
+        
+        if (tableView == self.statisticsMetricsTableView) {
+            NSArray *metrics = self.availableStatisticsMetrics;
+            return metrics ? metrics.count : 0;
+        }
     return 0;
 }
 - (nullable NSView *)tableView:(NSTableView *)tableView viewForTableColumn:(nullable NSTableColumn *)tableColumn row:(NSInteger)row {
@@ -1242,6 +1249,49 @@
         
         return textField;
     }
+    if (tableView == self.backtestModelsTableView) {
+           if (!self.models || row >= self.models.count) {
+               return [[NSTextField alloc] init];
+           }
+           
+           ScreenerModel *model = self.models[row];
+           
+           if ([tableColumn.identifier isEqualToString:@"checkbox"]) {
+               NSButton *checkbox = [[NSButton alloc] init];
+               checkbox.buttonType = NSButtonTypeSwitch;
+               checkbox.title = @"";
+               checkbox.state = model.isEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+               checkbox.target = self;
+               checkbox.action = @selector(backtestModelCheckboxChanged:);
+               checkbox.tag = row;
+               return checkbox;
+           }
+           
+           if ([tableColumn.identifier isEqualToString:@"name"]) {
+               NSTextField *textField = [[NSTextField alloc] init];
+               textField.editable = NO;
+               textField.bordered = NO;
+               textField.backgroundColor = [NSColor clearColor];
+               textField.stringValue = model.displayName ?: @"Unnamed Model";
+               return textField;
+           }
+       }
+       
+       // STATISTICS METRICS TABLE
+       if (tableView == self.statisticsMetricsTableView) {
+           NSArray *metrics = self.availableStatisticsMetrics;
+           if (!metrics || row >= metrics.count) {
+               return [[NSTextField alloc] init];
+           }
+           
+           NSTextField *textField = [[NSTextField alloc] init];
+           textField.editable = NO;
+           textField.bordered = NO;
+           textField.backgroundColor = [NSColor clearColor];
+           textField.stringValue = metrics[row];
+           return textField;
+       }
+       
     return textField;
 }
 
@@ -1584,6 +1634,9 @@
             }
         }
     }
+    if (tableView == self.statisticsMetricsTableView) {
+           [self statisticsMetricSelected:tableView];
+       }
 }
 - (void)sendSelectedSymbols:(id)sender {
     NSArray<ScreenedSymbol *> *selectedSymbols = [self getSelectedArchiveSymbols];

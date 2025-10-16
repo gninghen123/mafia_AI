@@ -32,20 +32,31 @@ static const void *kCurrentSearchResultsKey = &kCurrentSearchResultsKey;
 
 #pragma mark - Search Field Management
 
-- (void)setupUnifiedSearchField {
+// (void)setupUnifiedSearchField - Metodo corretto
+
+-(void)setupUnifiedSearchField {
     if (!self.symbolTextField) {
         NSLog(@"⚠️ symbolTextField is nil - check IBOutlet connection");
         return;
     }
     
-    // Setup delegates for search functionality
+    // 1. Assegna il Delegate Generale per tutte le funzionalità di editing/controllo.
+    // Questo gestisce sia NSTextField che l'NSComboBox sottostante.
     self.symbolTextField.delegate = self;
     
-    // If it's a combobox (has dropdown), setup data source
+    // 2. Se è un ComboBox, configura i delegate e data source specifici.
     if ([self.symbolTextField isKindOfClass:[NSComboBox class]]) {
         NSComboBox *comboBox = (NSComboBox *)self.symbolTextField;
+        
+        // Assegna la sorgente dati per popolare l'elenco a discesa.
         comboBox.dataSource = self;
-        comboBox.delegate = self;
+        
+        // NB: La riga 'comboBox.delegate = self;' è ridondante qui.
+        // L'oggetto NSComboBox usa già il delegate assegnato a self.symbolTextField
+        // per le funzionalità sia di NSTextFieldDelegate che di NSComboBoxDelegate.
+        // Tuttavia, AppKit la gestisce correttamente anche se ripetuta.
+        // Per massima chiarezza e per evitare ridondanza, la si può omettere.
+        
         comboBox.usesDataSource = YES;
         comboBox.completes = YES;
         comboBox.numberOfVisibleItems = 8;
@@ -66,16 +77,17 @@ static const void *kCurrentSearchResultsKey = &kCurrentSearchResultsKey;
         
         // Blue styling for static mode
         self.symbolTextField.wantsLayer = YES;
-        self.symbolTextField.layer.cornerRadius = 12.0;
+        self.symbolTextField.layer.cornerRadius = 6.0;
         self.symbolTextField.layer.borderColor = [NSColor systemBlueColor].CGColor;
-        self.symbolTextField.layer.borderWidth = 1.5;
+        self.symbolTextField.layer.borderWidth = 2.0;
         
         NSLog(@"🔍 Search field configured for static mode (saved data)");
         
     } else {
         // 🔴 NORMAL MODE: Live symbol search + smart entry
         self.symbolTextField.placeholderString = @"Symbol or search...";
-        
+        self.symbolTextField.wantsLayer = YES;
+
         // Accent color styling for normal mode
         self.symbolTextField.layer.cornerRadius = 6.0;
         self.symbolTextField.layer.borderColor = [NSColor controlAccentColor].CGColor;
@@ -316,10 +328,11 @@ static const void *kCurrentSearchResultsKey = &kCurrentSearchResultsKey;
         
         if (self.isStaticMode) {
             // Rich display for saved data
-            NSString *typeStr = item.isContinuous ? @"CONT" : @"SNAP";
-            return [NSString stringWithFormat:@"%@ %@ [%@] %ld bars - %@",
-                   item.symbol, item.timeframe, typeStr,
-                   (long)item.barCount, item.dateRangeString ?: @""];
+            NSString *typeStr = [NSString stringWithFormat:@"%@ %@ [%@] %ld bars - %@",
+                                 item.symbol, item.timeframe, item.isContinuous ? @"CONT" : @"SNAP",
+                                 (long)item.barCount, item.dateRangeString ?: @""];
+            
+            return typeStr;
         } else {
             // Display for live symbol search results
             if (item.barCount == 0 && [item.timeframe isEqualToString:@"Live"]) {

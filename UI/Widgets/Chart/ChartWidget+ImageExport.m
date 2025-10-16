@@ -38,7 +38,7 @@
                 [successAlert runModal];
                 
                 // Open Finder with the chartImages directory
-                NSString *imagesDirectory = [ChartWidget chartImagesDirectory];
+                NSString *imagesDirectory = ChartImagesDirectory();
                 [[NSWorkspace sharedWorkspace] openFile:imagesDirectory];
                 
                 NSLog(@"✅ Chart image created and Finder opened: %@", filePath);
@@ -66,9 +66,9 @@
     }
     
     // Ensure directory exists
-    NSError *error;
-    if (![ChartWidget ensureChartImagesDirectoryExists:&error]) {
-        if (completion) completion(NO, nil, error);
+    NSError *dirError;
+    if (!EnsureChartImagesDirectoryExists(&dirError)) {
+        if (completion) completion(NO, nil, dirError);
         return;
     }
     
@@ -139,7 +139,7 @@
         
         // Generate filename
         NSString *filename = [self generateImageFilename];
-        NSString *imagesDirectory = [ChartWidget chartImagesDirectory];
+        NSString *imagesDirectory = ChartImagesDirectory();
         NSString *filePath = [imagesDirectory stringByAppendingPathComponent:filename];
         
         // Convert to PNG and save
@@ -335,27 +335,6 @@
     return [bitmapRep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
 }
 
-#pragma mark - Directory Management
-
-+ (NSString *)chartImagesDirectory {
-    NSArray *paths = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES);
-    NSString *appSupportDir = paths.firstObject;
-    NSString *appName = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleName"];
-    return [[appSupportDir stringByAppendingPathComponent:appName] stringByAppendingPathComponent:@"chartImages"];
-}
-
-+ (BOOL)ensureChartImagesDirectoryExists:(NSError **)error {
-    NSString *directory = [self chartImagesDirectory];
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    
-    if (![fileManager fileExistsAtPath:directory]) {
-        return [fileManager createDirectoryAtPath:directory
-                      withIntermediateDirectories:YES
-                                       attributes:nil
-                                            error:error];
-    }
-    return YES;
-}
 
 #pragma mark - Context Menu Integration
 

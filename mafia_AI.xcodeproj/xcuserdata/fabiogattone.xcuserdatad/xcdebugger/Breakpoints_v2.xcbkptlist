@@ -124,8 +124,8 @@
             filePath = "UI/Widgets/MultiChart/MultiChartWidget.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "658"
-            endingLineNumber = "658"
+            startingLineNumber = "659"
+            endingLineNumber = "659"
             landmarkName = "-collectionView:numberOfItemsInSection:"
             landmarkType = "7">
          </BreakpointContent>
@@ -140,8 +140,8 @@
             filePath = "UI/Widgets/MultiChart/MultiChartWidget.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "665"
-            endingLineNumber = "665"
+            startingLineNumber = "666"
+            endingLineNumber = "666"
             landmarkName = "-collectionView:itemForRepresentedObjectAtIndexPath:"
             landmarkType = "7">
          </BreakpointContent>
@@ -181,22 +181,6 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "B5B76148-3079-4B57-BFCE-1A60EBADB0FF"
-            shouldBeEnabled = "No"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "UI/Widgets/StooqScreener/StooqScreenerWidget.m"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1301"
-            endingLineNumber = "1301"
-            landmarkName = "-outlineView:numberOfChildrenOfItem:"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
             uuid = "B796D8FD-E9E6-44EE-934A-BB58A07E4208"
             shouldBeEnabled = "Yes"
             ignoreCount = "0"
@@ -204,40 +188,10 @@
             filePath = "UI/Widgets/watchlist/WatchlistWidget.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1044"
-            endingLineNumber = "1044"
-            landmarkName = "-createWatchlistFromCurrentSelection"
-            landmarkType = "7">
-            <Locations>
-               <Location
-                  uuid = "B796D8FD-E9E6-44EE-934A-BB58A07E4208 - cc86fa4b0fc81728"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "-[WatchlistWidget createWatchlistFromCurrentSelection]"
-                  moduleName = "mafia_AI"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/fabiogattone/Documents/mafia_AI/UI/Widgets/watchlist/WatchlistWidget.m"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "1045"
-                  endingLineNumber = "1045">
-               </Location>
-               <Location
-                  uuid = "B796D8FD-E9E6-44EE-934A-BB58A07E4208 - bc104f9c2f5f153e"
-                  shouldBeEnabled = "Yes"
-                  ignoreCount = "0"
-                  continueAfterRunningActions = "No"
-                  symbolName = "__54-[WatchlistWidget createWatchlistFromCurrentSelection]_block_invoke"
-                  moduleName = "mafia_AI"
-                  usesParentBreakpointCondition = "Yes"
-                  urlString = "file:///Users/fabiogattone/Documents/mafia_AI/UI/Widgets/watchlist/WatchlistWidget.m"
-                  startingColumnNumber = "9223372036854775807"
-                  endingColumnNumber = "9223372036854775807"
-                  startingLineNumber = "1046"
-                  endingLineNumber = "1046">
-               </Location>
-            </Locations>
+            startingLineNumber = "1114"
+            endingLineNumber = "1114"
+            landmarkName = "WatchlistWidget"
+            landmarkType = "3">
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
@@ -259,22 +213,6 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "2E5C2012-4DC5-4A6B-9A33-6DD1D77EF99F"
-            shouldBeEnabled = "Yes"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "UI/Widgets/MultiChart/MultiChartWidget.m"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1868"
-            endingLineNumber = "1868"
-            landmarkName = "-broadcastSymbolToChain:"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
             uuid = "3F524C79-A966-49C1-B40F-BA28D17B8B5A"
             shouldBeEnabled = "Yes"
             ignoreCount = "0"
@@ -282,8 +220,8 @@
             filePath = "UI/Widgets/MultiChart/MultiChartWidget.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "716"
-            endingLineNumber = "716"
+            startingLineNumber = "717"
+            endingLineNumber = "717"
             landmarkName = "-handleChartSelection:"
             landmarkType = "7">
          </BreakpointContent>
@@ -291,32 +229,80 @@
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "1F5C4075-CF3D-4968-8CFF-2244248DBB10"
+            uuid = "9A21962E-C1CE-4D52-9D6F-9834197D7AB8"
             shouldBeEnabled = "Yes"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
-            filePath = "UI/Widgets/MultiChart/MultiChartWidget.m"
+            filePath = "technical indicators/hardcoded indicators/SMAIndicator.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "743"
-            endingLineNumber = "743"
-            landmarkName = "-collectionView:didSelectItemsAtIndexPaths:"
+            startingLineNumber = "157"
+            endingLineNumber = "157"
+            landmarkName = "-smaColor"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>
       <BreakpointProxy
          BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
          <BreakpointContent
-            uuid = "B0ECE44D-1D71-452C-A861-C55030A6A1D3"
+            uuid = "5DD62888-CFC0-43CD-B7FD-B7D1A005C62F"
             shouldBeEnabled = "Yes"
             ignoreCount = "0"
             continueAfterRunningActions = "No"
-            filePath = "UI/Widgets/MultiChart/MultiChartWidget.m"
+            filePath = "UI/Widgets/StooqScreener/StooqScreenerWidget+BacktestTab.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "1690"
-            endingLineNumber = "1690"
-            landmarkName = "-updateChartSelection:"
+            startingLineNumber = "144"
+            endingLineNumber = "144"
+            landmarkName = "-setupBacktestTab"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "384C634A-726C-4D1A-B8FE-9BAABC90D477"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "UI/Widgets/StooqScreener/StooqScreenerWidget.m"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "189"
+            endingLineNumber = "189"
+            landmarkName = "-setupUI"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "692557C3-6E2C-4287-87B1-B18D17882D64"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "UI/Widgets/StooqScreener/StooqScreenerWidget+BacktestTab.m"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "116"
+            endingLineNumber = "116"
+            landmarkName = "-setupBacktestTab"
+            landmarkType = "7">
+         </BreakpointContent>
+      </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "DC417107-C2FD-4C2A-96C7-8389BCB5CD3F"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "UI/Widgets/StooqScreener/StooqScreenerWidget+BacktestTab.m"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "101"
+            endingLineNumber = "101"
+            landmarkName = "-setupBacktestTab"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

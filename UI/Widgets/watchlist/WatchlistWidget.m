@@ -14,6 +14,7 @@
 #import "TagManager.h"
 #import "OtherDataSource.h"
 #import "DownloadManager.h"
+#import "TagManagementWindowController.h"
 
 @interface WatchlistWidget ()
 
@@ -375,12 +376,40 @@
 
 - (void)tableViewSelectionDidChange:(NSNotification *)notification {
     if (self.displayMode == WatchlistDisplayModeListSelection) {
-        // In list mode, selection is just visual - drill down happens on double-click
-        return;
+        [self sendSymbolsOfTheListToChain];
     } else {
         // In symbols mode, handle symbol selection (existing logic)
         [self handleSymbolSelection];
     }
+}
+
+- (void)sendSymbolsOfTheListToChain{
+    NSInteger row = self.tableView.selectedRow;
+     
+     if (row < 0 || row >= self.currentProviderLists.count) return;
+     
+     id<WatchlistProvider> provider = self.currentProviderLists[row];
+     
+     // Se la chain è attiva, invia simboli
+     if (self.chainActive && provider.symbols.count > 0) {
+         [self broadcastUpdate:@{
+             @"action": @"setSymbols",
+             @"symbols": provider.symbols
+         }];
+         
+         NSLog(@"🔗 Sent %lu symbols from '%@' to chain",
+               (unsigned long)provider.symbols.count, provider.displayName);
+         
+         // Feedback visivo
+         self.statusLabel.stringValue = [NSString stringWithFormat:@"Sent %lu symbols to chain",
+                                         (unsigned long)provider.symbols.count];
+         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+             self.statusLabel.stringValue = @"Ready";
+         });
+     } else {
+         // Se chain non attiva, drill down normale
+         [self drillDownToWatchlistAtIndex:row];
+     }
 }
 
 - (void)tableViewDoubleClick:(id)sender {
@@ -957,49 +986,90 @@
 #pragma mark - Actions Menu
 
 - (void)showActionsMenu:(NSButton *)sender {
-    NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Actions"];
+    NSMenu *menu = [[NSMenu alloc] init];
     
-    // Only show symbol-related actions when in symbols mode with selections
-    if (self.displayMode == WatchlistDisplayModeSymbols && [self hasSelectedSymbols]) {
-        [menu addItemWithTitle:@"Create Watchlist from Selection"
-                        action:@selector(createWatchlistFromCurrentSelection)
-                 keyEquivalent:@""];
-        
-        // Add to manual watchlist submenu
-        NSMenuItem *addToWatchlistItem = [[NSMenuItem alloc] initWithTitle:@"Add to Watchlist"
-                                                                    action:nil
-                                                             keyEquivalent:@""];
-        NSMenu *watchlistSubmenu = [[NSMenu alloc] initWithTitle:@""];
-        
-        NSArray<id<WatchlistProvider>> *manualProviders = [self.providerManager providersForCategory:@"Manual Watchlists"];
-        for (id<WatchlistProvider> provider in manualProviders) {
-            NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:provider.displayName
-                                                          action:@selector(addSelectionToWatchlistMenuItem:)
-                                                   keyEquivalent:@""];
-            item.representedObject = provider;
-            item.target = self;
-            [watchlistSubmenu addItem:item];
-        }
-        
-        addToWatchlistItem.submenu = watchlistSubmenu;
-        [menu addItem:addToWatchlistItem];
-        
-        [menu addItem:[NSMenuItem separatorItem]];
+    // 🔧 SEZIONE 1: WATCHLIST MANAGEMENT (SEMPRE VISIBILI)
+    NSMenuItem *createWatchlistItem = [[NSMenuItem alloc] initWithTitle:@"📝 Create New Watchlist..."
+                                                                 action:@selector(showCreateWatchlistDialog:)
+                                                          keyEquivalent:@""];
+    createWatchlistItem.target = self;
+    [menu addItem:createWatchlistItem];
+    
+    NSMenuItem *importFinvizItem = [[NSMenuItem alloc] initWithTitle:@"🔍 Import from Finviz..."
+                                                              action:@selector(showFinvizImportDialog:)
+                                                       keyEquivalent:@""];
+    importFinvizItem.target = self;
+    [menu addItem:importFinvizItem];
+    
+    NSMenuItem *createFromFinvizItem = [[NSMenuItem alloc] initWithTitle:@"📈 Create List from Finviz..."
+                                                                  action:@selector(showFinvizCreateListDialog:)
+                                                           keyEquivalent:@""];
+    createFromFinvizItem.target = self;
+    [menu addItem:createFromFinvizItem];
+    
+    // Solo per watchlist manuali - mostra Remove option
+    BOOL isManualWatchlist = [self.currentProvider isKindOfClass:[ManualWatchlistProvider class]];
+    if (isManualWatchlist) {
+        NSMenuItem *removeWatchlistItem = [[NSMenuItem alloc] initWithTitle:@"🗑️ Remove Current Watchlist..."
+                                                                     action:@selector(showRemoveWatchlistDialog:)
+                                                              keyEquivalent:@""];
+        removeWatchlistItem.target = self;
+        [menu addItem:removeWatchlistItem];
     }
-    
-    // General actions
-    [menu addItemWithTitle:@"Refresh"
-                    action:@selector(refreshCurrentProvider)
-             keyEquivalent:@""];
     
     [menu addItem:[NSMenuItem separatorItem]];
     
-    [menu addItemWithTitle:@"Widget Settings"
-                    action:@selector(showWidgetSettings)
-             keyEquivalent:@""];
+    // 🔧 SEZIONE 2: SYMBOL MANAGEMENT (SE PROVIDER SUPPORTA)
+    if (self.displayMode == WatchlistDisplayModeSymbols && self.currentProvider) {
+        if (self.currentProvider.canAddSymbols) {
+            NSMenuItem *addSingleItem = [[NSMenuItem alloc] initWithTitle:@"➕ Add Single Symbol..."
+                                                                   action:@selector(showAddSingleSymbolDialog:)
+                                                            keyEquivalent:@""];
+            addSingleItem.target = self;
+            [menu addItem:addSingleItem];
+            
+            NSMenuItem *addBulkItem = [[NSMenuItem alloc] initWithTitle:@"📊 Add Multiple Symbols..."
+                                                                 action:@selector(showAddBulkSymbolsDialog:)
+                                                          keyEquivalent:@""];
+            addBulkItem.target = self;
+            [menu addItem:addBulkItem];
+        }
+        
+        if ([self hasSelectedSymbols]) {
+            if (self.currentProvider.canRemoveSymbols) {
+                NSMenuItem *removeItem = [[NSMenuItem alloc] initWithTitle:@"➖ Remove Selected Symbols"
+                                                                    action:@selector(removeSelectedSymbols:)
+                                                             keyEquivalent:@""];
+                removeItem.target = self;
+                [menu addItem:removeItem];
+            }
+            
+            [menu addItem:[NSMenuItem separatorItem]];
+            
+            NSMenuItem *createFromSelectionItem = [[NSMenuItem alloc] initWithTitle:@"📋 Create Watchlist from Selection"
+                                                                             action:@selector(createWatchlistFromCurrentSelection)
+                                                                      keyEquivalent:@""];
+            createFromSelectionItem.target = self;
+            [menu addItem:createFromSelectionItem];
+        }
+    }
     
-    [NSMenu popUpContextMenu:menu withEvent:NSApp.currentEvent forView:sender];
+    // 🔧 SEZIONE 3: SEARCH & UTILITIES
+    if (self.searchText.length > 0) {
+        [menu addItem:[NSMenuItem separatorItem]];
+        NSMenuItem *clearSearchItem = [[NSMenuItem alloc] initWithTitle:@"🔍 Clear Search Filter"
+                                                                 action:@selector(clearSearch)
+                                                          keyEquivalent:@""];
+        clearSearchItem.target = self;
+        [menu addItem:clearSearchItem];
+    }
+    
+    // Show menu below the button
+    NSRect buttonFrame = sender.frame;
+    NSPoint menuOrigin = NSMakePoint(NSMinX(buttonFrame), NSMinY(buttonFrame));
+    [menu popUpMenuPositioningItem:nil atLocation:menuOrigin inView:sender.superview];
 }
+
 
 - (void)addSelectionToWatchlistMenuItem:(NSMenuItem *)menuItem {
     id<WatchlistProvider> provider = menuItem.representedObject;
@@ -1020,7 +1090,7 @@
     NSLog(@"✅ Added %lu symbols to watchlist: %@",
           (unsigned long)selectedSymbols.count, provider.displayName);
 }
-
+/*
 - (void)createWatchlistFromCurrentSelection {
     NSArray<NSString *> *selectedSymbols = [self selectedSymbols];
     
@@ -1052,6 +1122,7 @@
     }];
 }
 
+
 - (void)createNewWatchlistWithName:(NSString *)name symbols:(NSArray<NSString *> *)symbols {
     DataHub *dataHub = [DataHub shared];
     
@@ -1072,7 +1143,7 @@
     // Refresh provider manager and switch to manual type
     [self.providerManager refreshAllProviders];
     [self selectProviderType:WatchlistProviderTypeManual];
-}
+}*/
 
 - (void)showWidgetSettings {
     // Placeholder for widget settings
@@ -1088,6 +1159,7 @@
     return self.tableView.selectedRowIndexes.count > 0;
 }
 
+/*
 - (NSArray<NSString *> *)selectedSymbols {
     if (self.displayMode != WatchlistDisplayModeSymbols) {
         return @[];
@@ -1101,6 +1173,7 @@
     }];
     return [selected copy];
 }
+*/
 
 #pragma mark - Double Click Handling
 
@@ -1122,7 +1195,7 @@
 }
 
 #pragma mark - Context Menu
-
+/*
 - (void)setupStandardContextMenu {
     NSMenu *contextMenu = [[NSMenu alloc] initWithTitle:@""];
     
@@ -1160,7 +1233,7 @@
         
         NSLog(@"📋 Copied symbol to clipboard: %@", symbol);
     }
-}
+}*/
 
 #pragma mark - BaseWidget Overrides
 
@@ -1365,6 +1438,799 @@
     }];
     
     self.displaySymbols = sorted;
+}
+#pragma mark - Watchlist Management Actions (AGGIUNGI)
+
+- (void)showCreateWatchlistDialog:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Create New Watchlist";
+    alert.informativeText = @"Enter name for the new watchlist:";
+    alert.alertStyle = NSAlertStyleInformational;
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.placeholderString = @"My Watchlist";
+    alert.accessoryView = input;
+    
+    [alert addButtonWithTitle:@"Create"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        NSString *watchlistName = input.stringValue;
+        if (watchlistName.length > 0) {
+            WatchlistModel *newWatchlist = [[DataHub shared] createWatchlistModelWithName:watchlistName];
+            if (newWatchlist) {
+                [self.providerManager refreshAllProviders];
+                
+                // Switch to manual type and refresh
+                [self selectProviderType:WatchlistProviderTypeManual];
+                
+                NSLog(@"✅ Created new watchlist: %@", watchlistName);
+            }
+        }
+    }
+}
+
+- (void)showRemoveWatchlistDialog:(id)sender {
+    if (![self.currentProvider isKindOfClass:[ManualWatchlistProvider class]]) {
+        return;
+    }
+    
+    ManualWatchlistProvider *manualProvider = (ManualWatchlistProvider *)self.currentProvider;
+    NSString *watchlistName = manualProvider.watchlistModel.name;
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Delete Watchlist";
+    alert.informativeText = [NSString stringWithFormat:@"Are you sure you want to delete '%@'?", watchlistName];
+    alert.alertStyle = NSAlertStyleWarning;
+    
+    [alert addButtonWithTitle:@"Delete"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        [[DataHub shared] deleteWatchlistModel:manualProvider.watchlistModel];
+        [self.providerManager refreshAllProviders];
+        [self selectProviderType:WatchlistProviderTypeManual];
+        
+        NSLog(@"✅ Deleted watchlist: %@", watchlistName);
+    }
+}
+
+#pragma mark - Finviz Integration (AGGIUNGI)
+
+- (void)showFinvizImportDialog:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Import Symbols from Finviz";
+    alert.informativeText = @"Enter a keyword to search for related stocks:";
+    alert.alertStyle = NSAlertStyleInformational;
+    
+    NSTextField *keywordInput = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 300, 24)];
+    keywordInput.placeholderString = @"e.g., lidar, ev, solar";
+    alert.accessoryView = keywordInput;
+    
+    [alert addButtonWithTitle:@"Search"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSModalResponse response = [alert runModal];
+    
+    if (response == NSAlertFirstButtonReturn) {
+        NSString *keyword = keywordInput.stringValue.lowercaseString;
+        if (keyword.length > 0) {
+            [self performFinvizSearch:keyword forAction:@"import"];
+        }
+    }
+}
+
+- (void)showFinvizCreateListDialog:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Create Watchlist from Finviz";
+    alert.informativeText = @"Enter a keyword to create a new watchlist:";
+    alert.alertStyle = NSAlertStyleInformational;
+    
+    NSTextField *keywordInput = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 300, 24)];
+    keywordInput.placeholderString = @"e.g., lidar, ev, solar";
+    alert.accessoryView = keywordInput;
+    
+    [alert addButtonWithTitle:@"Create"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    NSModalResponse response = [alert runModal];
+    
+    if (response == NSAlertFirstButtonReturn) {
+        NSString *keyword = keywordInput.stringValue.lowercaseString;
+        if (keyword.length > 0) {
+            [self performFinvizSearch:keyword forAction:@"create"];
+        }
+    }
+}
+
+- (void)performFinvizSearch:(NSString *)keyword forAction:(NSString *)action {
+    [self.loadingIndicator startAnimation:nil];
+    self.statusLabel.stringValue = [NSString stringWithFormat:@"Searching Finviz for '%@'...", keyword];
+    
+    DownloadManager *downloadManager = [DownloadManager sharedManager];
+    OtherDataSource *otherDataSource = (OtherDataSource *)[downloadManager dataSourceForType:DataSourceTypeOther];
+    
+    if (!otherDataSource) {
+        [self.loadingIndicator stopAnimation:nil];
+        self.statusLabel.stringValue = @"Finviz search not available";
+        return;
+    }
+    
+    [otherDataSource fetchFinvizSearchResultsForKeyword:keyword
+                                             completion:^(NSArray<NSString *> *symbols, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            [self.loadingIndicator stopAnimation:nil];
+            self.statusLabel.stringValue = @"Ready";
+            
+            if (error) {
+                NSLog(@"❌ Finviz search error: %@", error.localizedDescription);
+                return;
+            }
+            
+            if (symbols.count == 0) {
+                self.statusLabel.stringValue = [NSString stringWithFormat:@"No symbols found for '%@'", keyword];
+                return;
+            }
+            
+            if ([action isEqualToString:@"import"]) {
+                [self showImportConfirmationForSymbols:symbols keyword:keyword];
+            } else if ([action isEqualToString:@"create"]) {
+                [self showCreateConfirmationForSymbols:symbols keyword:keyword];
+            }
+        });
+    }];
+}
+
+- (void)showImportConfirmationForSymbols:(NSArray<NSString *> *)symbols keyword:(NSString *)keyword {
+    NSString *symbolsList = [symbols componentsJoinedByString:@", "];
+    NSString *message = [NSString stringWithFormat:@"Add %lu symbols to current watchlist?", (unsigned long)symbols.count];
+    NSString *details = [NSString stringWithFormat:@"Symbols found for '%@':\n%@", keyword, symbolsList];
+    
+    NSAlert *confirmAlert = [[NSAlert alloc] init];
+    confirmAlert.messageText = message;
+    confirmAlert.informativeText = details;
+    confirmAlert.alertStyle = NSAlertStyleInformational;
+    [confirmAlert addButtonWithTitle:@"Add Symbols"];
+    [confirmAlert addButtonWithTitle:@"Cancel"];
+    
+    NSModalResponse response = [confirmAlert runModal];
+    
+    if (response == NSAlertFirstButtonReturn) {
+        [self addSymbolsToCurrentWatchlist:symbols];
+    }
+}
+
+- (void)showCreateConfirmationForSymbols:(NSArray<NSString *> *)symbols keyword:(NSString *)keyword {
+    NSString *symbolsList = [symbols componentsJoinedByString:@", "];
+    NSString *watchlistName = keyword.uppercaseString;
+    NSString *message = [NSString stringWithFormat:@"Create watchlist '%@' with %lu symbols?", watchlistName, (unsigned long)symbols.count];
+    NSString *details = [NSString stringWithFormat:@"Symbols found:\n%@", symbolsList];
+    
+    NSAlert *confirmAlert = [[NSAlert alloc] init];
+    confirmAlert.messageText = message;
+    confirmAlert.informativeText = details;
+    confirmAlert.alertStyle = NSAlertStyleInformational;
+    [confirmAlert addButtonWithTitle:@"Create Watchlist"];
+    [confirmAlert addButtonWithTitle:@"Cancel"];
+    
+    NSModalResponse response = [confirmAlert runModal];
+    
+    if (response == NSAlertFirstButtonReturn) {
+        [self createNewWatchlistWithName:watchlistName symbols:symbols];
+    }
+}
+
+- (void)addSymbolsToCurrentWatchlist:(NSArray<NSString *> *)symbols {
+    if (![self.currentProvider isKindOfClass:[ManualWatchlistProvider class]]) {
+        self.statusLabel.stringValue = @"Can only add symbols to manual watchlists";
+        return;
+    }
+    
+    ManualWatchlistProvider *manualProvider = (ManualWatchlistProvider *)self.currentProvider;
+    DataHub *dataHub = [DataHub shared];
+    
+    for (NSString *symbol in symbols) {
+        [dataHub addSymbol:symbol toWatchlistModel:manualProvider.watchlistModel];
+    }
+    
+    [self refreshCurrentProvider];
+    
+    self.statusLabel.stringValue = [NSString stringWithFormat:@"Added %lu symbols", (unsigned long)symbols.count];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        self.statusLabel.stringValue = @"Ready";
+    });
+}
+
+- (void)createNewWatchlistWithName:(NSString *)name symbols:(NSArray<NSString *> *)symbols {
+    DataHub *dataHub = [DataHub shared];
+    WatchlistModel *newWatchlist = [dataHub createWatchlistModelWithName:name];
+    
+    if (!newWatchlist) {
+        self.statusLabel.stringValue = @"Failed to create watchlist";
+        return;
+    }
+    
+    for (NSString *symbol in symbols) {
+        [dataHub addSymbol:symbol toWatchlistModel:newWatchlist];
+    }
+    
+    [self.providerManager refreshAllProviders];
+    [self selectProviderType:WatchlistProviderTypeManual];
+    
+    // Find and drill down into the new watchlist
+    for (id<WatchlistProvider> provider in self.currentProviderLists) {
+        if ([provider.displayName isEqualToString:name]) {
+            NSInteger index = [self.currentProviderLists indexOfObject:provider];
+            [self drillDownToWatchlistAtIndex:index];
+            break;
+        }
+    }
+    
+    NSLog(@"✅ Created watchlist '%@' with %lu symbols", name, (unsigned long)symbols.count);
+}
+
+#pragma mark - Symbol Management (AGGIUNGI)
+
+- (void)showAddSingleSymbolDialog:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Add Symbol";
+    alert.informativeText = @"Enter the symbol you want to add:";
+    alert.alertStyle = NSAlertStyleInformational;
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.placeholderString = @"e.g., AAPL, MSFT, GOOGL";
+    alert.accessoryView = input;
+    
+    [alert addButtonWithTitle:@"Add"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        NSString *symbol = [input.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]].uppercaseString;
+        
+        if (symbol.length > 0) {
+            [self addSymbolsToCurrentWatchlist:@[symbol]];
+        }
+    }
+}
+
+- (void)showAddBulkSymbolsDialog:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Add Multiple Symbols";
+    alert.informativeText = @"Enter symbols separated by commas, spaces, or new lines:";
+    alert.alertStyle = NSAlertStyleInformational;
+    
+    NSTextField *textField = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 400, 80)];
+    textField.placeholderString = @"AAPL, MSFT, GOOGL";
+    
+    NSTextFieldCell *cell = (NSTextFieldCell *)textField.cell;
+    [cell setWraps:YES];
+    [cell setScrollable:YES];
+    textField.bordered = YES;
+    textField.bezeled = YES;
+    
+    alert.accessoryView = textField;
+    
+    [alert addButtonWithTitle:@"Add All"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        NSString *input = [textField.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        
+        if (input.length > 0) {
+            NSArray<NSString *> *symbols = [self parseSymbolsFromInput:input];
+            if (symbols.count > 0) {
+                [self addSymbolsToCurrentWatchlist:symbols];
+            }
+        }
+    }
+}
+
+- (NSArray<NSString *> *)parseSymbolsFromInput:(NSString *)input {
+    if (!input || input.length == 0) return @[];
+    
+    NSMutableSet<NSString *> *symbolSet = [NSMutableSet set];
+    NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:@"[^,\\s;\\n\\r\\t]+" options:0 error:nil];
+    NSArray<NSTextCheckingResult *> *matches = [regex matchesInString:input options:0 range:NSMakeRange(0, input.length)];
+    
+    for (NSTextCheckingResult *match in matches) {
+        NSString *symbol = [[input substringWithRange:match.range] uppercaseString];
+        
+        if (symbol.length >= 1 && symbol.length <= 10) {
+            NSCharacterSet *validCharacters = [NSCharacterSet alphanumericCharacterSet];
+            if ([symbol rangeOfCharacterFromSet:[validCharacters invertedSet]].location == NSNotFound) {
+                [symbolSet addObject:symbol];
+            }
+        }
+    }
+    
+    return [[symbolSet allObjects] sortedArrayUsingSelector:@selector(compare:)];
+}
+
+- (void)removeSelectedSymbols:(id)sender {
+    NSArray<NSString *> *selectedSymbols = [self selectedSymbols];
+    
+    if (selectedSymbols.count == 0) return;
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Remove Symbols";
+    alert.informativeText = [NSString stringWithFormat:@"Remove %lu selected symbol(s)?", (unsigned long)selectedSymbols.count];
+    alert.alertStyle = NSAlertStyleWarning;
+    
+    [alert addButtonWithTitle:@"Remove"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        for (NSString *symbol in selectedSymbols) {
+            [self.currentProvider removeSymbol:symbol completion:nil];
+        }
+        
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self refreshCurrentProvider];
+        });
+    }
+}
+
+- (void)createWatchlistFromCurrentSelection {
+    NSArray<NSString *> *selectedSymbols = [self selectedSymbols];
+    if (selectedSymbols.count == 0) return;
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Create Watchlist";
+    alert.informativeText = [NSString stringWithFormat:@"Create watchlist with %lu symbols:", (unsigned long)selectedSymbols.count];
+    alert.alertStyle = NSAlertStyleInformational;
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.placeholderString = @"My Watchlist";
+    alert.accessoryView = input;
+    
+    [alert addButtonWithTitle:@"Create"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        NSString *watchlistName = input.stringValue;
+        if (watchlistName.length > 0) {
+            [self createNewWatchlistWithName:watchlistName symbols:selectedSymbols];
+        }
+    }
+}
+
+- (NSArray<NSString *> *)selectedSymbols {
+    if (self.displayMode != WatchlistDisplayModeSymbols) {
+        return @[];
+    }
+    
+    NSMutableArray<NSString *> *selected = [NSMutableArray array];
+    [self.tableView.selectedRowIndexes enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL * _Nonnull stop) {
+        if (idx < self.displaySymbols.count) {
+            [selected addObject:self.displaySymbols[idx]];
+        }
+    }];
+    return [selected copy];
+}
+
+#pragma mark - Context Menu (AGGIUNGI al metodo setupStandardContextMenu esistente o crea nuovo)
+
+- (void)setupStandardContextMenu {
+    // Il menu viene creato dinamicamente in menuNeedsUpdate:
+    NSMenu *contextMenu = [[NSMenu alloc] initWithTitle:@""];
+    contextMenu.delegate = self;
+    self.tableView.menu = contextMenu;
+}
+
+#pragma mark - NSMenuDelegate (AGGIUNGI)
+
+- (void)menuNeedsUpdate:(NSMenu *)menu {
+    [menu removeAllItems];
+    
+    // Only show context menu in symbols mode
+    if (self.displayMode != WatchlistDisplayModeSymbols) {
+        return;
+    }
+    
+    NSInteger clickedRow = self.tableView.clickedRow;
+    if (clickedRow < 0 || clickedRow >= self.displaySymbols.count) {
+        return;
+    }
+    
+    NSString *clickedSymbol = self.displaySymbols[clickedRow];
+    NSArray<NSString *> *selectedSymbols = [self selectedSymbols];
+    
+    // Use selected symbols if clicked row is in selection, otherwise just clicked symbol
+    NSArray<NSString *> *targetSymbols;
+    if ([selectedSymbols containsObject:clickedSymbol]) {
+        targetSymbols = selectedSymbols;
+    } else {
+        targetSymbols = @[clickedSymbol];
+    }
+    
+    // Build context menu
+    [self buildContextMenuForSymbols:targetSymbols inMenu:menu];
+}
+
+- (void)buildContextMenuForSymbols:(NSArray<NSString *> *)symbols inMenu:(NSMenu *)menu {
+    // Header
+    NSString *headerTitle = symbols.count == 1 ? symbols[0] : [NSString stringWithFormat:@"%lu Symbols", (unsigned long)symbols.count];
+    NSMenuItem *headerItem = [[NSMenuItem alloc] initWithTitle:headerTitle action:nil keyEquivalent:@""];
+    headerItem.enabled = NO;
+    [menu addItem:headerItem];
+    
+    [menu addItem:[NSMenuItem separatorItem]];
+    
+    // Open Chart
+    NSMenuItem *openChartItem = [[NSMenuItem alloc] initWithTitle:@"📊 Open Chart"
+                                                           action:@selector(contextMenuOpenChart:)
+                                                    keyEquivalent:@""];
+    openChartItem.target = self;
+    openChartItem.representedObject = symbols;
+    [menu addItem:openChartItem];
+    
+    [menu addItem:[NSMenuItem separatorItem]];
+    
+    // Copy Symbol(s)
+    NSString *copyTitle = symbols.count == 1 ? @"📋 Copy Symbol" : @"📋 Copy Symbols";
+    NSMenuItem *copyItem = [[NSMenuItem alloc] initWithTitle:copyTitle
+                                                      action:@selector(contextMenuCopySymbols:)
+                                               keyEquivalent:@""];
+    copyItem.target = self;
+    copyItem.representedObject = symbols;
+    [menu addItem:copyItem];
+    
+    [menu addItem:[NSMenuItem separatorItem]];
+    
+    // Tag Management Submenu
+    NSMenuItem *tagItem = [[NSMenuItem alloc] initWithTitle:@"🏷️ Tags"
+                                                     action:nil
+                                              keyEquivalent:@""];
+    NSMenu *tagSubmenu = [[NSMenu alloc] initWithTitle:@"Tags"];
+    [self buildTagSubmenuForSymbols:symbols inMenu:tagSubmenu];
+    tagItem.submenu = tagSubmenu;
+    [menu addItem:tagItem];
+    
+    // Add to Watchlist Submenu
+    NSMenuItem *addToWatchlistItem = [[NSMenuItem alloc] initWithTitle:@"📁 Add to Watchlist"
+                                                                action:nil
+                                                         keyEquivalent:@""];
+    NSMenu *watchlistSubmenu = [[NSMenu alloc] initWithTitle:@"Watchlist"];
+    [self buildWatchlistSubmenuForSymbols:symbols inMenu:watchlistSubmenu];
+    addToWatchlistItem.submenu = watchlistSubmenu;
+    [menu addItem:addToWatchlistItem];
+    
+    [menu addItem:[NSMenuItem separatorItem]];
+       
+       // ✅ NUOVO: Chain Integration
+       NSMenuItem *sendToChainItem = [[NSMenuItem alloc] initWithTitle:@"🔗 Send Selected to Chain"
+                                                                action:@selector(contextMenuSendToChain:)
+                                                         keyEquivalent:@""];
+       sendToChainItem.target = self;
+       sendToChainItem.representedObject = symbols;
+       [menu addItem:sendToChainItem];
+       
+       // ✅ NUOVO: Send all symbols of current list to chain
+       if (self.currentProvider && self.currentProvider.symbols.count > 0) {
+           NSString *sendAllTitle = [NSString stringWithFormat:@"🔗 Send All Symbols (%lu) to Chain",
+                                    (unsigned long)self.currentProvider.symbols.count];
+           NSMenuItem *sendAllItem = [[NSMenuItem alloc] initWithTitle:sendAllTitle
+                                                                 action:@selector(contextMenuSendAllToChain:)
+                                                          keyEquivalent:@""];
+           sendAllItem.target = self;
+           [menu addItem:sendAllItem];
+       }
+       
+       [menu addItem:[NSMenuItem separatorItem]];
+    // Remove from Current Watchlist (only if supported)
+    if (self.currentProvider.canRemoveSymbols) {
+        NSString *removeTitle = symbols.count == 1 ? @"➖ Remove from Watchlist" : [NSString stringWithFormat:@"➖ Remove %lu Symbols", (unsigned long)symbols.count];
+        NSMenuItem *removeItem = [[NSMenuItem alloc] initWithTitle:removeTitle
+                                                            action:@selector(contextMenuRemoveSymbols:)
+                                                     keyEquivalent:@""];
+        removeItem.target = self;
+        removeItem.representedObject = symbols;
+        [menu addItem:removeItem];
+    }
+}
+
+#pragma mark - Context Menu Chain Actions (AGGIUNGI)
+
+- (void)contextMenuSendToChain:(NSMenuItem *)sender {
+    NSArray<NSString *> *symbols = sender.representedObject;
+    
+    if (symbols.count > 0) {
+        [self broadcastUpdate:@{
+            @"action": @"setSymbols",
+            @"symbols": symbols
+        }];
+        
+        NSLog(@"🔗 Sent %lu selected symbols to chain", (unsigned long)symbols.count);
+        
+        self.statusLabel.stringValue = [NSString stringWithFormat:@"Sent %lu symbols to chain",
+                                        (unsigned long)symbols.count];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            self.statusLabel.stringValue = @"Ready";
+        });
+    }
+}
+
+- (void)contextMenuSendAllToChain:(NSMenuItem *)sender {
+    if (!self.currentProvider) return;
+    
+    NSArray<NSString *> *allSymbols = self.currentProvider.symbols;
+    
+    if (allSymbols.count > 0) {
+        [self broadcastUpdate:@{
+            @"action": @"setSymbols",
+            @"symbols": allSymbols
+        }];
+        
+        NSLog(@"🔗 Sent all %lu symbols from '%@' to chain",
+              (unsigned long)allSymbols.count, self.currentProvider.displayName);
+        
+        self.statusLabel.stringValue = [NSString stringWithFormat:@"Sent all %lu symbols to chain",
+                                        (unsigned long)allSymbols.count];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            self.statusLabel.stringValue = @"Ready";
+        });
+    }
+}
+#pragma mark - Tag Submenu Builder (AGGIUNGI)
+
+- (void)buildTagSubmenuForSymbols:(NSArray<NSString *> *)symbols inMenu:(NSMenu *)menu {
+    TagManager *tagManager = [TagManager sharedManager];
+    
+    // Add New Tag
+    NSMenuItem *addTagItem = [[NSMenuItem alloc] initWithTitle:@"➕ Add New Tag..."
+                                                        action:@selector(contextMenuAddNewTag:)
+                                                 keyEquivalent:@""];
+    addTagItem.target = self;
+    addTagItem.representedObject = symbols;
+    [menu addItem:addTagItem];
+    
+    [menu addItem:[NSMenuItem separatorItem]];
+    
+    // Get existing tags for symbols
+    NSMutableSet<NSString *> *allTags = [NSMutableSet set];
+    NSMutableSet<NSString *> *commonTags = nil;
+    
+    for (NSString *symbol in symbols) {
+        NSArray<NSString *> *symbolTags = [tagManager tagsForSymbol:symbol]; // ← CORRETTO
+        [allTags addObjectsFromArray:symbolTags];
+        
+        if (commonTags == nil) {
+            commonTags = [NSMutableSet setWithArray:symbolTags];
+        } else {
+            [commonTags intersectSet:[NSSet setWithArray:symbolTags]];
+        }
+    }
+    
+    // Show all available tags
+    NSArray<NSString *> *allAvailableTags = [[tagManager allActiveTags] sortedArrayUsingSelector:@selector(compare:)];
+    
+    if (allAvailableTags.count == 0) {
+        NSMenuItem *noTagsItem = [[NSMenuItem alloc] initWithTitle:@"No tags available"
+                                                            action:nil
+                                                     keyEquivalent:@""];
+        noTagsItem.enabled = NO;
+        [menu addItem:noTagsItem];
+        return;
+    }
+    
+    for (NSString *tag in allAvailableTags) {
+        NSMenuItem *tagItem = [[NSMenuItem alloc] initWithTitle:tag
+                                                         action:@selector(contextMenuToggleTag:)
+                                                  keyEquivalent:@""];
+        tagItem.target = self;
+        tagItem.representedObject = @{@"symbols": symbols, @"tag": tag};
+        
+        // Check state:
+        // - All symbols have tag: ON (checkmark)
+        // - Some symbols have tag: MIXED (dash)
+        // - No symbols have tag: OFF (no mark)
+        if ([commonTags containsObject:tag]) {
+            tagItem.state = NSControlStateValueOn;
+        } else if ([allTags containsObject:tag]) {
+            tagItem.state = NSControlStateValueMixed;
+        }
+        
+        [menu addItem:tagItem];
+    }
+    
+    [menu addItem:[NSMenuItem separatorItem]];
+    
+    // Manage Tags
+    NSMenuItem *manageItem = [[NSMenuItem alloc] initWithTitle:@"⚙️ Manage Tags..."
+                                                        action:@selector(contextMenuManageTags:)
+                                                 keyEquivalent:@""];
+    manageItem.target = self;
+    [menu addItem:manageItem];
+}
+
+#pragma mark - Watchlist Submenu Builder (AGGIUNGI)
+
+- (void)buildWatchlistSubmenuForSymbols:(NSArray<NSString *> *)symbols inMenu:(NSMenu *)menu {
+    NSArray<WatchlistModel *> *watchlists = [[DataHub shared] getAllWatchlistModels];
+    NSMutableArray<WatchlistModel *> *availableWatchlists = [NSMutableArray array];
+    
+    // Filter out archives and current watchlist
+    for (WatchlistModel *wl in watchlists) {
+        if ([wl.name hasPrefix:@"Archive-"]) continue;
+        
+        if (self.currentProvider && [self.currentProvider isKindOfClass:[ManualWatchlistProvider class]]) {
+            ManualWatchlistProvider *currentManual = (ManualWatchlistProvider *)self.currentProvider;
+            if ([wl.name isEqualToString:currentManual.watchlistModel.name]) continue;
+        }
+        
+        [availableWatchlists addObject:wl];
+    }
+    
+    if (availableWatchlists.count == 0) {
+        NSMenuItem *noWatchlistsItem = [[NSMenuItem alloc] initWithTitle:@"No other watchlists"
+                                                                  action:nil
+                                                           keyEquivalent:@""];
+        noWatchlistsItem.enabled = NO;
+        [menu addItem:noWatchlistsItem];
+        return;
+    }
+    
+    // Sort alphabetically
+    [availableWatchlists sortUsingComparator:^NSComparisonResult(WatchlistModel *obj1, WatchlistModel *obj2) {
+        return [obj1.name compare:obj2.name];
+    }];
+    
+    for (WatchlistModel *watchlist in availableWatchlists) {
+        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:watchlist.name
+                                                      action:@selector(contextMenuAddToWatchlist:)
+                                               keyEquivalent:@""];
+        item.target = self;
+        item.representedObject = @{@"symbols": symbols, @"watchlist": watchlist};
+        [menu addItem:item];
+    }
+}
+
+#pragma mark - Context Menu Actions (AGGIUNGI)
+
+- (void)contextMenuOpenChart:(NSMenuItem *)sender {
+    NSArray<NSString *> *symbols = sender.representedObject;
+    if (symbols.count > 0) {
+        NSString *symbol = symbols[0];
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"OpenChartForSymbol"
+                                                            object:nil
+                                                          userInfo:@{@"symbol": symbol}];
+    }
+}
+
+- (void)contextMenuCopySymbols:(NSMenuItem *)sender {
+    NSArray<NSString *> *symbols = sender.representedObject;
+    if (symbols.count > 0) {
+        NSString *symbolsText = [symbols componentsJoinedByString:@" "];
+        NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+        [pasteboard clearContents];
+        [pasteboard setString:symbolsText forType:NSPasteboardTypeString];
+        
+        NSLog(@"📋 Copied %lu symbols to clipboard", (unsigned long)symbols.count);
+    }
+}
+
+- (void)contextMenuRemoveSymbols:(NSMenuItem *)sender {
+    NSArray<NSString *> *symbols = sender.representedObject;
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Remove Symbols";
+    alert.informativeText = [NSString stringWithFormat:@"Remove %lu symbol(s) from watchlist?", (unsigned long)symbols.count];
+    alert.alertStyle = NSAlertStyleWarning;
+    
+    [alert addButtonWithTitle:@"Remove"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        for (NSString *symbol in symbols) {
+            [self.currentProvider removeSymbol:symbol completion:nil];
+        }
+        
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self refreshCurrentProvider];
+        });
+    }
+}
+
+#pragma mark - Tag Management Actions (AGGIUNGI)
+
+- (void)contextMenuAddNewTag:(NSMenuItem *)sender {
+    NSArray<NSString *> *symbols = sender.representedObject;
+    
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Add New Tag";
+    alert.informativeText = [NSString stringWithFormat:@"Create a new tag for %lu symbol(s):", (unsigned long)symbols.count];
+    alert.alertStyle = NSAlertStyleInformational;
+    
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+    input.placeholderString = @"Tag name";
+    alert.accessoryView = input;
+    
+    [alert addButtonWithTitle:@"Add"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        NSString *tagName = [input.stringValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+        
+        if (tagName.length > 0) {
+            DataHub *dataHub = [DataHub shared];
+            for (NSString *symbolName in symbols) {
+                Symbol *symbol = [dataHub getSymbolWithName:symbolName];
+                if (!symbol) {
+                    symbol = [dataHub createSymbolWithName:symbolName];
+                }
+                [dataHub addTag:tagName toSymbol:symbol]; // ← CORRETTO: usa DataHub, non TagManager
+            }
+            
+            NSLog(@"✅ Added tag '%@' to %lu symbols", tagName, (unsigned long)symbols.count);
+        }
+    }
+}
+
+- (void)contextMenuToggleTag:(NSMenuItem *)sender {
+    NSDictionary *info = sender.representedObject;
+    NSArray<NSString *> *symbols = info[@"symbols"];
+    NSString *tag = info[@"tag"];
+    
+    DataHub *dataHub = [DataHub shared];
+    
+    // Determine action based on current state
+    if (sender.state == NSControlStateValueOn) {
+        // All have it - remove from all
+        for (NSString *symbolName in symbols) {
+            Symbol *symbol = [dataHub getSymbolWithName:symbolName];
+            if (symbol) {
+                [dataHub removeTag:tag fromSymbol:symbol]; // ← CORRETTO: usa DataHub
+            }
+        }
+        NSLog(@"✅ Removed tag '%@' from %lu symbols", tag, (unsigned long)symbols.count);
+    } else {
+        // Not all have it - add to all
+        for (NSString *symbolName in symbols) {
+            Symbol *symbol = [dataHub getSymbolWithName:symbolName];
+            if (!symbol) {
+                symbol = [dataHub createSymbolWithName:symbolName];
+            }
+            [dataHub addTag:tag toSymbol:symbol]; // ← CORRETTO: usa DataHub
+        }
+        NSLog(@"✅ Added tag '%@' to %lu symbols", tag, (unsigned long)symbols.count);
+    }
+}
+
+- (void)contextMenuManageTags:(NSMenuItem *)sender {
+    NSArray<NSString *> *symbols = [self selectedSymbols];
+    if (symbols.count == 0) return;
+    
+    // Salva in property per evitare dealloc
+    self.tagManagementController = [TagManagementWindowController windowControllerForSymbols:symbols];
+    self.tagManagementController.delegate = self;
+    
+    NSWindow *parentWindow = self.contentView.window;
+    if (parentWindow) {
+        [self.tagManagementController showModalForWindow:parentWindow];
+    }
+}
+
+- (void)contextMenuAddToWatchlist:(NSMenuItem *)sender {
+    NSDictionary *info = sender.representedObject;
+    NSArray<NSString *> *symbols = info[@"symbols"];
+    WatchlistModel *watchlist = info[@"watchlist"];
+    
+    [[DataHub shared] addSymbols:symbols toWatchlistModel:watchlist];
+    
+    NSLog(@"✅ Added %lu symbols to watchlist: %@", (unsigned long)symbols.count, watchlist.name);
+    
+    // Show brief feedback
+    self.statusLabel.stringValue = [NSString stringWithFormat:@"Added to '%@'", watchlist.name];
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+        self.statusLabel.stringValue = @"Ready";
+    });
+}
+#pragma mark - TagManagementDelegate
+
+- (void)tagManagement:(TagManagementWindowController *)controller
+       didSelectTags:(NSArray<NSString *> *)tags
+          forSymbols:(NSArray<NSString *> *)symbols {
+    // Callback dopo modifica tag
 }
 
 @end

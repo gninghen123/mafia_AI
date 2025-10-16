@@ -157,6 +157,7 @@ extern NSString *const DataHubDataLoadedNotification;
     NSLog(@"✅ ChartWidget setup completed");
 }
 
+/*
 - (void)setupUnifiedSearchField {
     if (!self.symbolTextField) {
         NSLog(@"⚠️ symbolTextField is nil - check IBOutlet connection");
@@ -196,7 +197,7 @@ extern NSString *const DataHubDataLoadedNotification;
         NSLog(@"📈 Search field configured for normal mode (live symbols + smart entry)");
     }
 }
-
+*/
 /**
  * Loads initial preferences from UserDefaults.
  * Idempotent - safe to call multiple times.
@@ -913,7 +914,7 @@ extern NSString *const DataHubDataLoadedNotification;
         case 1: return BarTimeframe5Min;      // Segment 1 → 5 min
         case 2: return BarTimeframe30Min;
         case 3: return BarTimeframe1Hour;
-        case 4: return BarTimeframe4Hour;
+        case 4: return BarTimeframe12Hour;
         case 5: return BarTimeframeDaily;
         case 6: return BarTimeframeWeekly;
         case 7: return BarTimeframeMonthly;
@@ -929,7 +930,7 @@ extern NSString *const DataHubDataLoadedNotification;
         case BarTimeframe5Min: return 1;      // 5 min → Segment 1
         case BarTimeframe30Min: return 2;     // 30 min → Segment 3
         case BarTimeframe1Hour: return 3;     // 1 hour → Segment 4
-        case BarTimeframe4Hour: return 4;     // 4 hour → Segment 5
+        case BarTimeframe12Hour: return 4;     // 4 hour → Segment 5
         case BarTimeframeDaily: return 5;     // Daily → Segment 6
         case BarTimeframeWeekly: return 6;    // Weekly → Segment 7
         case BarTimeframeMonthly: return 7;   // Monthly → Segment 8
@@ -1002,7 +1003,7 @@ extern NSString *const DataHubDataLoadedNotification;
         case BarTimeframe1Hour:
         case BarTimeframe90Min:
         case BarTimeframe2Hour:
-        case BarTimeframe4Hour: {
+        case BarTimeframe12Hour: {
             // Base: trading hours regolari (9:30 - 16:00 → 6.5h = 390 minuti)
             NSInteger minutesPerDay = 390;
             
@@ -1244,7 +1245,7 @@ extern NSString *const DataHubDataLoadedNotification;
         case BarTimeframe15Min: return @"15m";
         case BarTimeframe30Min: return @"30m";
         case BarTimeframe1Hour: return @"1h";
-        case BarTimeframe4Hour: return @"4h";
+        case BarTimeframe12Hour: return @"12h";
         case BarTimeframeDaily: return @"1d";
         case BarTimeframeWeekly: return @"1w";
         case BarTimeframeMonthly: return @"1M";
@@ -1738,7 +1739,7 @@ extern NSString *const DataHubDataLoadedNotification;
         case BarTimeframe15Min: return 15;
         case BarTimeframe30Min: return 30;
         case BarTimeframe1Hour: return 60;
-        case BarTimeframe4Hour: return 240;
+        case BarTimeframe12Hour: return 720;
         
         // ✅ FIX: Per Daily+ restituisci valori che hanno senso per i calcoli
         case BarTimeframeDaily: return 390;    // Trading minutes in a day
@@ -2411,7 +2412,7 @@ extern NSString *const DataHubDataLoadedNotification;
         case BarTimeframe15Min:
         case BarTimeframe30Min:
         case BarTimeframe1Hour:
-        case BarTimeframe4Hour:
+        case BarTimeframe12Hour:
             return 1; // Minimum 1 day for intraday
             
         case BarTimeframeDaily:
@@ -2431,7 +2432,7 @@ extern NSString *const DataHubDataLoadedNotification;
         case BarTimeframe15Min:
         case BarTimeframe30Min:
         case BarTimeframe1Hour:
-        case BarTimeframe4Hour:
+        case BarTimeframe12Hour:
             return 370;
             
         case BarTimeframeDaily:
@@ -2453,7 +2454,7 @@ extern NSString *const DataHubDataLoadedNotification;
             return self.defaultDaysFor5Min;
             
         case BarTimeframe1Hour:
-        case BarTimeframe4Hour:
+        case BarTimeframe12Hour:
             return self.defaultDaysForHourly;
             
         case BarTimeframeDaily:
@@ -2479,7 +2480,7 @@ extern NSString *const DataHubDataLoadedNotification;
             return self.defaultVisibleFor5Min;
             
         case BarTimeframe1Hour:
-        case BarTimeframe4Hour:
+        case BarTimeframe12Hour:
             return self.defaultVisibleForHourly;
             
         case BarTimeframeDaily:

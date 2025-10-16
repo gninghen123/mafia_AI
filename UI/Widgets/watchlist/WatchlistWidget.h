@@ -38,6 +38,8 @@ typedef NS_ENUM(NSInteger, WatchlistDisplayMode) {
 
 #pragma mark - UI Components
 
+@property (nonatomic, strong) TagManagementWindowController *tagManagementController; // ← AGGIUNGI
+
 // State flags
 @property (nonatomic, assign) BOOL isApplyingSorting;
 @property (nonatomic, assign) BOOL isPerformingMultiSelection;

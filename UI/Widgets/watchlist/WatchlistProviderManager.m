@@ -555,6 +555,10 @@
                                                               timeframe:MarketTimeframeFiveDays]];
     [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopGainers
                                                               timeframe:MarketTimeframeOneMonth]];
+    [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopGainers
+                                                              timeframe:MarketTimeframeThreeMonths]];  // ← AGGIUNGI
+    [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopGainers
+                                                              timeframe:MarketTimeframeFiftyTwoWeeks]]; // ← AGGIUNGI
     
     // Top Losers
     [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopLosers
@@ -563,14 +567,18 @@
                                                               timeframe:MarketTimeframeFiveDays]];
     [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopLosers
                                                               timeframe:MarketTimeframeOneMonth]];
+    [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopLosers
+                                                              timeframe:MarketTimeframeThreeMonths]];  // ← AGGIUNGI
+    [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopLosers
+                                                              timeframe:MarketTimeframeFiftyTwoWeeks]]; // ← AGGIUNGI
     
-    // Earnings
+    // Earnings (già presenti)
     [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeEarnings
                                                               timeframe:MarketTimeframeEarningsTodayBMO]];
     [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeEarnings
                                                               timeframe:MarketTimeframeEarningsTodayAMC]];
     
-    // ETF e Industry (no timeframe)
+    // ETF e Industry (già presenti)
     [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeETF
                                                               timeframe:MarketTimeframeNone]];
     [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeIndustry

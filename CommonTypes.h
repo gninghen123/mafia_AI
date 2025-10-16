@@ -67,6 +67,7 @@ typedef NS_ENUM(NSInteger, BarTimeframe) {
     BarTimeframe90Min = 90,      // 90 minute bars (Yahoo)
     BarTimeframe2Hour = 120,     // 2 hour bars (IBKR)
     BarTimeframe4Hour = 240,     // 4 hour bars (Webull, IBKR)
+    BarTimeframe12Hour = 720,
     
     // Daily and higher timeframes
     BarTimeframeDaily = 1000,    // Daily bars
@@ -395,6 +396,9 @@ static inline NSString* DataSourceTypeToString(DataSourceType sourceType) {
 
 /// Ensure the saved chart data directory exists
 + (BOOL)ensureSavedChartDataDirectoryExists:(NSError **)error;
+
+NSString *ChartImagesDirectory(void);
+BOOL EnsureChartImagesDirectoryExists(NSError **error);
 
 @end
 

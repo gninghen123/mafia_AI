@@ -24,4 +24,22 @@
     return YES;
 }
 
+NSString *ChartImagesDirectory(void) {
+    NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
+    return [documentsPath stringByAppendingPathComponent:@"TradingApp/chartImages"];
+}
+
+BOOL EnsureChartImagesDirectoryExists(NSError **error) {
+    NSString *directory = ChartImagesDirectory();
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    
+    if (![fileManager fileExistsAtPath:directory]) {
+        return [fileManager createDirectoryAtPath:directory
+                      withIntermediateDirectories:YES
+                                       attributes:nil
+                                            error:error];
+    }
+    return YES;
+}
+
 @end

@@ -616,14 +616,14 @@
                     <modifierMask key="keyEquivalentModifierMask"/>
                     <menu key="submenu" title="Tools" id="Tools-Submenu">
                         <items>
-                            <menuItem title="Chart Widget" keyEquivalent="1" id="Open-Chart-Widget">
-                                <modifierMask key="keyEquivalentModifierMask" control="YES" command="YES"/>
+                            <menuItem title="Chart" keyEquivalent="" id="Open-Chart-Widget">
+                                <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
                                     <action selector="openFloatingWidget:" target="Voe-Tx-rLC" id="Chart-Widget-Action"/>
                                 </connections>
                             </menuItem>
-                            <menuItem title="MultiChart Widget" keyEquivalent="2" id="Open-MultiChart-Widget">
-                                <modifierMask key="keyEquivalentModifierMask" control="YES" command="YES"/>
+                            <menuItem title="MultiChart" keyEquivalent="" id="Open-MultiChart-Widget">
+                                <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
                                     <action selector="openFloatingWidget:" target="Voe-Tx-rLC" id="MultiChart-Widget-Action"/>
                                 </connections>
@@ -634,8 +634,8 @@
                                     <action selector="openFloatingWidget:" target="Voe-Tx-rLC" id="Alert-Widget-Action"/>
                                 </connections>
                             </menuItem>
-                            <menuItem title="Watchlist" keyEquivalent="4" id="Open-Watchlist-Widget">
-                                <modifierMask key="keyEquivalentModifierMask" control="YES" command="YES"/>
+                            <menuItem title="Watchlist" keyEquivalent="" id="Open-Watchlist-Widget">
+                                <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
                                     <action selector="openFloatingWidget:" target="Voe-Tx-rLC" id="Watchlist-Widget-Action"/>
                                 </connections>

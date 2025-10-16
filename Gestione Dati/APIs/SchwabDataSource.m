@@ -681,6 +681,7 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
         case BarTimeframe30Min: return @"30";
         case BarTimeframe1Hour: return @"60";
         case BarTimeframe4Hour: return @"240";
+        case BarTimeframe12Hour: return @"720";
         case BarTimeframeDaily: return @"1";
         case BarTimeframeWeekly: return @"1";
         case BarTimeframeMonthly: return @"1";
@@ -925,6 +926,14 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
             // Allinea a intervalli di 4 ore: 00:00, 04:00, 08:00, 12:00, 16:00, 20:00
             NSInteger hour = components.hour;
             NSInteger alignedHour = (hour / 4) * 4;
+            components.hour = alignedHour;
+            components.minute = 0;
+            components.second = 0;
+            break;
+        }
+        case BarTimeframe12Hour: {
+            NSInteger hour = components.hour;
+            NSInteger alignedHour = (hour / 12) * 12;
             components.hour = alignedHour;
             components.minute = 0;
             components.second = 0;

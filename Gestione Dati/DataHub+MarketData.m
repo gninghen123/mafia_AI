@@ -519,6 +519,7 @@
         case BarTimeframe30Min:
         case BarTimeframe1Hour:
         case BarTimeframe4Hour:
+        case BarTimeframe12Hour:
             return 2; // 2 barre indietro per altri intraday
             
         case BarTimeframeDaily:
@@ -540,6 +541,7 @@
         case BarTimeframe30Min:  return 1800;      // 30 minuti
         case BarTimeframe1Hour:  return 3600;      // 1 ora
         case BarTimeframe4Hour:  return 14400;     // 4 ore
+        case BarTimeframe12Hour:  return 54600;     // 4 ore
         case BarTimeframeDaily:   return 86400;     // 1 giorno
         case BarTimeframeWeekly:  return 604800;    // 1 settimana
         case BarTimeframeMonthly: return 2592000;   // ~30 giorni
@@ -1688,6 +1690,8 @@
             return (NSInteger)(interval / 3600);
         case BarTimeframe4Hour:
             return (NSInteger)(interval / 14400);
+        case BarTimeframe12Hour:
+            return (NSInteger)(interval / 57600);
         case BarTimeframeDaily:
             return (NSInteger)(interval / 86400);
         case BarTimeframeWeekly:

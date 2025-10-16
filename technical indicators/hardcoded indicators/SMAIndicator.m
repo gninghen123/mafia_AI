@@ -152,9 +152,27 @@
 
 #pragma mark - Display Properties
 
+// Restituisce un colore in base al valore di 'period'
 - (NSColor *)smaColor {
-    // Standard SMA color - blue for simple moving average
-    return [NSColor colorWithRed:0.0 green:0.5 blue:1.0 alpha:1.0]; // Light blue
+    NSInteger period = [self.parameters[@"period"] integerValue];
+    switch (period) {
+        case 5:
+            return [NSColor grayColor];
+        case 10:
+            return [NSColor blueColor];
+        case 20:
+            return [NSColor yellowColor];
+        case 50:
+            return [NSColor redColor];
+        case 100:
+            return [NSColor greenColor];
+        case 200:
+            return [NSColor grayColor];
+        case 500:
+            return [NSColor orangeColor];
+        default:
+            return [NSColor lightGrayColor];
+    }
 }
 
 - (NSString *)displayDescription {

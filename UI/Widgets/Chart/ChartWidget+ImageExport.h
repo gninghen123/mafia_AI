@@ -20,13 +20,6 @@ NS_ASSUME_NONNULL_BEGIN
 /// @param completion Completion block with success status and file path
 - (void)createChartImage:(void(^)(BOOL success, NSString * _Nullable filePath, NSError * _Nullable error))completion;
 
-#pragma mark - Directory Management
-
-/// Get the default directory for chart images
-+ (NSString *)chartImagesDirectory;
-
-/// Ensure the chart images directory exists
-+ (BOOL)ensureChartImagesDirectoryExists:(NSError **)error;
 
 #pragma mark - Context Menu Integration
 

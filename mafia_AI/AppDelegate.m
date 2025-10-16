@@ -40,7 +40,7 @@
     [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"NSCloseAlwaysConfirmsChanges"];
     
     [DataHub shared];
-    
+    self.widgetTypeManager = [WidgetTypeManager sharedManager];
     // Initialize storage system
     [[StorageSystemInitializer sharedInitializer] initializeStorageSystemWithCompletion:^(BOOL success, NSError *error) {
         if (success) {
@@ -595,8 +595,8 @@
 
 - (NSSize)defaultSizeForWidgetType:(NSString *)widgetType {
     NSDictionary *widgetSizes = @{
-        @"Chart Widget": [NSValue valueWithSize:NSMakeSize(800, 600)],
-        @"MultiChart Widget": [NSValue valueWithSize:NSMakeSize(1000, 700)],
+        @"Chart": [NSValue valueWithSize:NSMakeSize(800, 600)],
+        @"MultiChart": [NSValue valueWithSize:NSMakeSize(1000, 700)],
         @"Seasonal Chart": [NSValue valueWithSize:NSMakeSize(800, 500)],
         @"Tick Chart": [NSValue valueWithSize:NSMakeSize(700, 500)],
         @"Microscope Chart": [NSValue valueWithSize:NSMakeSize(800, 600)],

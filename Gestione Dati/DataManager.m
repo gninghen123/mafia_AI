@@ -739,6 +739,9 @@
         case BarTimeframe4Hour:
             components.hour = -count * 4;
             break;
+        case BarTimeframe12Hour:
+            components.hour = -count * 12;
+            break;
         case BarTimeframeDaily:
             components.day = -count;
             break;

@@ -81,7 +81,8 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
      [self setupControlsView];
      [self setupScrollView];
     [self initializeSettingsSystem];
-    
+    [self setupImageExportContextMenu];
+
     //intercetta notifiche di frame per il resize delle minichart
     self.contentView.postsFrameChangedNotifications = YES;
 
@@ -1316,23 +1317,16 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
     NSLog(@"MultiChartWidget: Received %lu symbols from chain", (unsigned long)symbols.count);
     
     
-    // Combina i simboli ricevuti con quelli esistenti
-    NSMutableSet *combinedSymbols = [NSMutableSet setWithArray:self.symbols];
-    [combinedSymbols addObjectsFromArray:symbols];
-    
-    // Aggiorna la lista simboli
-    NSArray *newSymbolsArray = [combinedSymbols.allObjects sortedArrayUsingSelector:@selector(compare:)];
-    
     // ✅ ENHANCED: Check for actual changes
-    if ([newSymbolsArray isEqualToArray:self.symbols]) {
+    if ([symbols isEqualToArray:self.symbols]) {
         NSLog(@"MultiChartWidget: No new symbols to add, current list unchanged");
         return;
     }
     
-    self.symbols = newSymbolsArray;
+    self.symbols = symbols;
     
     // Aggiorna il campo di testo
-    self.symbolsString = [newSymbolsArray componentsJoinedByString:@", "];
+    self.symbolsString = [symbols componentsJoinedByString:@", "];
     if (self.symbolsTextField) {
         self.symbolsTextField.stringValue = self.symbolsString;
     }
@@ -1873,5 +1867,353 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     
     NSLog(@"🔗 MultiChartWidget: Finviz results sent to chain: %@", [symbols componentsJoinedByString:@", "]);
 }
+
+#pragma mark - Image Export
+
+- (void)createMultiChartImageInteractive {
+    // Check if there are charts to export
+    if (self.miniCharts.count == 0) {
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"No Charts to Export";
+        alert.informativeText = @"Add symbols to the multi-chart before exporting.";
+        [alert addButtonWithTitle:@"OK"];
+        [alert runModal];
+        return;
+    }
+    
+    // Create image with completion
+    [self createMultiChartImage:^(BOOL success, NSString *filePath, NSError *error) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (success && filePath) {
+                // Show success alert
+                NSAlert *alert = [[NSAlert alloc] init];
+                alert.messageText = @"Multi-Chart Image Saved";
+                alert.informativeText = [NSString stringWithFormat:@"Image saved to:\n%@", filePath.lastPathComponent];
+                [alert addButtonWithTitle:@"Show in Finder"];
+                [alert addButtonWithTitle:@"OK"];
+                
+                NSModalResponse response = [alert runModal];
+                if (response == NSAlertFirstButtonReturn) {
+                    // Open Finder and select the file
+                    [[NSWorkspace sharedWorkspace] selectFile:filePath
+                                     inFileViewerRootedAtPath:filePath.stringByDeletingLastPathComponent];
+                }
+            } else {
+                // Show error alert
+                NSAlert *alert = [[NSAlert alloc] init];
+                alert.messageText = @"Export Failed";
+                alert.informativeText = error.localizedDescription ?: @"Failed to create multi-chart image";
+                [alert addButtonWithTitle:@"OK"];
+                [alert runModal];
+            }
+        });
+    }];
+}
+
+- (void)createMultiChartImage:(void(^)(BOOL success, NSString * _Nullable filePath, NSError * _Nullable error))completion {
+    @try {
+        // Calculate grid layout
+        NSInteger chartsCount = self.miniCharts.count;
+        if (chartsCount == 0) {
+            NSError *error = [NSError errorWithDomain:@"MultiChartImageExport" code:1001
+                                             userInfo:@{NSLocalizedDescriptionKey: @"No charts to export"}];
+            if (completion) completion(NO, nil, error);
+            return;
+        }
+        
+        // Get item size from actual mini charts or widget properties
+        CGSize itemSize;
+        if (self.miniCharts.count > 0 && self.miniCharts.firstObject.bounds.size.width > 0) {
+            // Use actual size from first chart
+            itemSize = self.miniCharts.firstObject.bounds.size;
+        } else {
+            // Fallback to configured size
+            itemSize = CGSizeMake(self.itemWidth, self.itemHeight);
+        }
+
+        // Calculate columns based on collection view width
+        CGFloat collectionWidth = self.collectionView.bounds.size.width;
+        NSInteger columns = MAX(1, (NSInteger)(collectionWidth / itemSize.width));
+        NSInteger rows = (chartsCount + columns - 1) / columns;
+        
+        // Add padding between charts
+        CGFloat padding = 10;
+        CGFloat totalWidth = (itemSize.width * columns) + (padding * (columns - 1));
+        CGFloat totalHeight = (itemSize.height * rows) + (padding * (rows - 1));
+        
+        // Create combined image
+        NSSize imageSize = NSMakeSize(totalWidth, totalHeight);
+        NSImage *combinedImage = [[NSImage alloc] initWithSize:imageSize];
+        
+        [combinedImage lockFocus];
+        
+        // Fill background
+        [[NSColor controlBackgroundColor] setFill];
+        [[NSBezierPath bezierPathWithRect:NSMakeRect(0, 0, imageSize.width, imageSize.height)] fill];
+        
+        // Draw each mini chart
+        for (NSInteger i = 0; i < chartsCount; i++) {
+            MiniChart *miniChart = self.miniCharts[i];
+            
+            // Calculate position in grid
+            NSInteger row = i / columns;
+            NSInteger col = i % columns;
+            
+            CGFloat x = col * (itemSize.width + padding);
+            CGFloat y = imageSize.height - ((row + 1) * itemSize.height) - (row * padding);
+            
+            // Create chart image
+            NSImage *chartImage = [self renderMiniChartToImage:miniChart withSize:itemSize];
+            if (chartImage) {
+                // Draw chart image at position
+                [chartImage drawInRect:NSMakeRect(x, y, itemSize.width, itemSize.height)
+                              fromRect:NSZeroRect
+                             operation:NSCompositingOperationSourceOver
+                              fraction:1.0];
+                
+                // Add symbol label at top
+                [self drawSymbolLabel:miniChart.symbol
+                              inRect:NSMakeRect(x, y + itemSize.height - 25, itemSize.width, 25)];
+            }
+        }
+        
+        // Add timestamp and title at bottom
+        [self drawFooterInRect:NSMakeRect(0, 0, imageSize.width, 30) chartsCount:chartsCount];
+        
+        [combinedImage unlockFocus];
+        
+        // Ensure directory exists
+        NSError *dirError = nil;
+        if (!EnsureChartImagesDirectoryExists(&dirError)) {
+            if (completion) completion(NO, nil, dirError);
+            return;
+        }
+        
+        // Generate filename with timestamp
+        NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+        formatter.dateFormat = @"yyyyMMdd_HHmmss";
+        NSString *timestamp = [formatter stringFromDate:[NSDate date]];
+        NSString *filename = [NSString stringWithFormat:@"MultiChart_%@_%ld_symbols.png",
+                              timestamp, (long)chartsCount];
+        
+        // Save image
+        NSString *imagesDirectory = ChartImagesDirectory();
+        NSString *filePath = [imagesDirectory stringByAppendingPathComponent:filename];
+        
+        NSData *imageData = [self convertImageToPNG:combinedImage];
+        BOOL saveSuccess = [imageData writeToFile:filePath atomically:YES];
+        
+        if (saveSuccess) {
+            NSLog(@"✅ Multi-chart image saved: %@", filePath);
+            if (completion) completion(YES, filePath, nil);
+        } else {
+            NSError *saveError = [NSError errorWithDomain:@"MultiChartImageExport" code:1003
+                                                 userInfo:@{NSLocalizedDescriptionKey: @"Failed to save image file"}];
+            if (completion) completion(NO, nil, saveError);
+        }
+        
+    } @catch (NSException *exception) {
+        NSError *error = [NSError errorWithDomain:@"MultiChartImageExport" code:1004
+                                         userInfo:@{NSLocalizedDescriptionKey: exception.reason}];
+        if (completion) completion(NO, nil, error);
+    }
+}
+
+#pragma mark - Rendering Helpers
+
+- (NSImage *)renderMiniChartToImage:(MiniChart *)miniChart withSize:(NSSize)size {
+    if (!miniChart || size.width == 0 || size.height == 0) {
+        return nil;
+    }
+    
+    NSImage *image = [[NSImage alloc] initWithSize:size];
+    [image lockFocus];
+    
+    // Fill chart background
+    [[NSColor windowBackgroundColor] setFill];
+    [[NSBezierPath bezierPathWithRect:NSMakeRect(0, 0, size.width, size.height)] fill];
+    
+    // Force the mini chart to draw its content
+    if (miniChart.priceData && miniChart.priceData.count > 0) {
+        // Trigger a redraw to the current graphics context
+        [miniChart setNeedsDisplay:YES];
+        [miniChart displayIfNeeded];
+        
+        // Draw the mini chart's view hierarchy
+        NSBitmapImageRep *bitmapRep = [miniChart bitmapImageRepForCachingDisplayInRect:miniChart.bounds];
+        [miniChart cacheDisplayInRect:miniChart.bounds toBitmapImageRep:bitmapRep];
+        
+        // Draw the cached bitmap
+        [bitmapRep drawInRect:NSMakeRect(0, 0, size.width, size.height)
+                     fromRect:NSZeroRect
+                    operation:NSCompositingOperationSourceOver
+                     fraction:1.0
+               respectFlipped:YES
+                        hints:nil];
+    }
+    
+    [image unlockFocus];
+    
+    return image;
+}
+
+- (void)renderLayer:(CALayer *)layer inContext:(NSGraphicsContext *)context {
+    if (!layer || layer.hidden) return;
+    
+    CGContextRef ctx = context.CGContext;
+    CGContextSaveGState(ctx);
+    
+    // Apply layer transform and position
+    CGContextTranslateCTM(ctx, layer.position.x - layer.bounds.size.width * layer.anchorPoint.x,
+                          layer.position.y - layer.bounds.size.height * layer.anchorPoint.y);
+    
+    // Draw layer contents
+    if (layer.delegate && [layer.delegate respondsToSelector:@selector(drawLayer:inContext:)]) {
+        [layer.delegate drawLayer:layer inContext:ctx];
+    } else if (layer.backgroundColor) {
+        CGContextSetFillColorWithColor(ctx, layer.backgroundColor);
+        CGContextFillRect(ctx, layer.bounds);
+    }
+    
+    // Render sublayers
+    for (CALayer *sublayer in layer.sublayers) {
+        [self renderLayer:sublayer inContext:context];
+    }
+    
+    CGContextRestoreGState(ctx);
+}
+
+- (void)drawSymbolLabel:(NSString *)symbol inRect:(NSRect)rect {
+    if (!symbol) return;
+    
+    NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
+    style.alignment = NSTextAlignmentCenter;
+    
+    NSDictionary *attributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:11 weight:NSFontWeightMedium],
+        NSForegroundColorAttributeName: [NSColor labelColor],
+        NSParagraphStyleAttributeName: style
+    };
+    
+    // Draw background
+    [[NSColor colorWithWhite:0.9 alpha:0.8] setFill];
+    [[NSBezierPath bezierPathWithRect:rect] fill];
+    
+    // Draw text
+    NSRect textRect = NSInsetRect(rect, 5, 2);
+    [symbol drawInRect:textRect withAttributes:attributes];
+}
+
+- (void)drawFooterInRect:(NSRect)rect chartsCount:(NSInteger)count {
+    NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
+    style.alignment = NSTextAlignmentCenter;
+    
+    // Create timestamp
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    formatter.dateFormat = @"yyyy-MM-dd HH:mm:ss";
+    NSString *timestamp = [formatter stringFromDate:[NSDate date]];
+    
+    // Create footer text
+    NSString *footerText = [NSString stringWithFormat:@"Multi-Chart Export • %ld Symbols • %@ • %@",
+                            (long)count, timestamp, self.timeframeString];
+    
+    NSDictionary *attributes = @{
+        NSFontAttributeName: [NSFont systemFontOfSize:10],
+        NSForegroundColorAttributeName: [NSColor secondaryLabelColor],
+        NSParagraphStyleAttributeName: style
+    };
+    
+    // Draw footer
+    NSRect textRect = NSInsetRect(rect, 10, 5);
+    [footerText drawInRect:textRect withAttributes:attributes];
+}
+
+- (NSString *)timeframeString {
+    switch (self.timeframe) {
+        case MiniBarTimeframe1Min: return @"1 Min";
+        case MiniBarTimeframe5Min: return @"5 Min";
+        case MiniBarTimeframe15Min: return @"15 Min";
+        case MiniBarTimeframe30Min: return @"30 Min";
+        case MiniBarTimeframe1Hour: return @"1 Hour";
+        case MiniBarTimeframeDaily: return @"Daily";
+        case MiniBarTimeframeWeekly: return @"Weekly";
+        case MiniBarTimeframeMonthly: return @"Monthly";
+        default: return @"Unknown";
+    }
+}
+
+- (NSData *)convertImageToPNG:(NSImage *)image {
+    NSBitmapImageRep *imageRep = [NSBitmapImageRep imageRepWithData:[image TIFFRepresentation]];
+    return [imageRep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+}
+
+#pragma mark - Context Menu Setup
+
+- (void)setupImageExportContextMenu {
+    // Add right-click gesture recognizer to collection view
+    NSClickGestureRecognizer *rightClickGesture = [[NSClickGestureRecognizer alloc]
+                                                  initWithTarget:self
+                                                  action:@selector(handleRightClick:)];
+    rightClickGesture.buttonMask = 0x2; // Right mouse button
+    [self.collectionView addGestureRecognizer:rightClickGesture];
+    
+    NSLog(@"📸 MultiChartWidget: Image export context menu setup completed");
+}
+
+- (void)handleRightClick:(NSClickGestureRecognizer *)gesture {
+    if (gesture.state == NSGestureRecognizerStateEnded) {
+        NSPoint clickPoint = [gesture locationInView:self.collectionView];
+        
+        // Check if click is on a specific chart or empty area
+        NSIndexPath *indexPath = [self.collectionView indexPathForItemAtPoint:clickPoint];
+        
+       
+            [self showGeneralContextMenuAtPoint:clickPoint];
+      
+    }
+}
+
+- (void)showGeneralContextMenuAtPoint:(NSPoint)point {
+    NSMenu *contextMenu = [[NSMenu alloc] initWithTitle:@"Multi-Chart Actions"];
+    
+    // Create Image menu item
+    NSMenuItem *createImageItem = [[NSMenuItem alloc] initWithTitle:@"📸 Create Multi-Chart Image"
+                                                             action:@selector(contextMenuCreateImage:)
+                                                      keyEquivalent:@""];
+    createImageItem.target = self;
+    createImageItem.enabled = (self.miniCharts.count > 0);
+    [contextMenu addItem:createImageItem];
+    
+    [contextMenu addItem:[NSMenuItem separatorItem]];
+    
+    // Refresh All
+    NSMenuItem *refreshItem = [[NSMenuItem alloc] initWithTitle:@"🔄 Refresh All Charts"
+                                                         action:@selector(refreshAllCharts)
+                                                  keyEquivalent:@""];
+    refreshItem.target = self;
+    refreshItem.enabled = (self.miniCharts.count > 0);
+    [contextMenu addItem:refreshItem];
+    
+    // Clear All
+    NSMenuItem *clearItem = [[NSMenuItem alloc] initWithTitle:@"🗑 Clear All Charts"
+                                                       action:@selector(removeAllSymbols)
+                                                keyEquivalent:@""];
+    clearItem.target = self;
+    clearItem.enabled = (self.miniCharts.count > 0);
+    [contextMenu addItem:clearItem];
+    
+    // Show menu
+    [contextMenu popUpMenuPositioningItem:nil
+                               atLocation:point
+                                   inView:self.collectionView];
+}
+
+#pragma mark - Context Menu Actions
+
+- (IBAction)contextMenuCreateImage:(id)sender {
+    [self createMultiChartImageInteractive];
+}
+
+
 
 @end

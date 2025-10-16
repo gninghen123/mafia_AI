@@ -118,7 +118,7 @@
                     </connections>
                 </button>
                 <button verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="6xA-al-JW4">
-                    <rect key="frame" x="329" y="701" width="22" height="24"/>
+                    <rect key="frame" x="323" y="701" width="22" height="24"/>
                     <buttonCell key="cell" type="push" bezelStyle="rounded" image="NSLockLockedTemplate" imagePosition="only" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="evY-sr-y79">
                         <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES" changeBackground="YES" changeGray="YES"/>
                         <font key="font" metaFont="system"/>
@@ -132,7 +132,7 @@
                     </connections>
                 </button>
                 <segmentedControl verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="AbQ-SP-niQ">
-                    <rect key="frame" x="359" y="702" width="298" height="24"/>
+                    <rect key="frame" x="353" y="702" width="304" height="24"/>
                     <segmentedCell key="cell" borderStyle="border" alignment="left" style="rounded" trackingMode="selectOne" id="IP0-Bf-hdV">
                         <font key="font" metaFont="system"/>
                         <segments>
@@ -140,7 +140,7 @@
                             <segment label="5m" tag="1"/>
                             <segment label="30m"/>
                             <segment label="1h"/>
-                            <segment label="4h"/>
+                            <segment label="12h"/>
                             <segment label="D" selected="YES"/>
                             <segment label="W"/>
                             <segment label="M"/>
@@ -172,9 +172,9 @@
                 <switch horizontalHuggingPriority="750" verticalHuggingPriority="750" baseWritingDirection="leftToRight" alignment="left" state="on" translatesAutoresizingMaskIntoConstraints="NO" id="Cn0-1E-CYv">
                     <rect key="frame" x="1084" y="703" width="54" height="24"/>
                 </switch>
-                <comboBox focusRingType="none" verticalHuggingPriority="750" allowsExpansionToolTips="YES" textCompletion="NO" translatesAutoresizingMaskIntoConstraints="NO" id="jQc-bl-0kG">
-                    <rect key="frame" x="138" y="703" width="186" height="23"/>
-                    <comboBoxCell key="cell" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" sendsActionOnEndEditing="YES" borderStyle="bezel" drawsBackground="YES" buttonBordered="NO" usesDataSource="YES" numberOfVisibleItems="5" id="OOj-wP-LQx">
+                <comboBox focusRingType="none" verticalHuggingPriority="750" allowsExpansionToolTips="YES" allowsCharacterPickerTouchBarItem="YES" translatesAutoresizingMaskIntoConstraints="NO" id="jQc-bl-0kG">
+                    <rect key="frame" x="138" y="703" width="180" height="23"/>
+                    <comboBoxCell key="cell" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" sendsActionOnEndEditing="YES" borderStyle="bezel" alignment="left" usesSingleLineMode="YES" bezelStyle="round" buttonBordered="NO" usesDataSource="YES" numberOfVisibleItems="5" id="OOj-wP-LQx">
                         <font key="font" metaFont="system"/>
                         <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog"/>
                         <color key="backgroundColor" name="textBackgroundColor" catalog="System" colorSpace="catalog"/>

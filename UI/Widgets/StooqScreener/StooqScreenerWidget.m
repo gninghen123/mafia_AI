@@ -172,7 +172,7 @@
 #pragma mark - UI Setup
 
 - (void)setupUI {
-    self.tabView = [[NSTabView alloc] initWithFrame:NSZeroRect];
+    self.tabView = [[NSTabView alloc] initWithFrame:NSMakeRect(0, 0, 900, 900)];
     self.tabView.translatesAutoresizingMaskIntoConstraints = NO;
     [self.contentView addSubview:self.tabView];
     

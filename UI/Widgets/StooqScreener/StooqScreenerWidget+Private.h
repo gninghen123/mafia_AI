@@ -22,9 +22,7 @@ NS_ASSUME_NONNULL_BEGIN
  */
 @interface StooqScreenerWidget ()
 
-@property (nonatomic, strong) NSTableView *backtestModelsTableView;
-@property (nonatomic, strong) NSTableView *statisticsMetricsTableView;
-@property (nonatomic, strong) NSArray<NSString *> *availableStatisticsMetrics;
+
 
 
 #pragma mark - UI Components (from main implementation)

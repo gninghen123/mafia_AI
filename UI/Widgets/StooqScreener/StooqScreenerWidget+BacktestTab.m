@@ -79,15 +79,14 @@ static char selectedStatisticMetricKey;
 
 - (void)setupBacktestTab {
     
-    NSView *backtestView = [[NSView alloc] init];
-    
+    self.backtestView = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 900, 900)];
     // ========================================
     // TOP BAR: Benchmark Symbol Input
     // ========================================
     
     NSView *topBar = [[NSView alloc] init];
     topBar.translatesAutoresizingMaskIntoConstraints = NO;
-    [backtestView addSubview:topBar];
+    [self.backtestView addSubview:topBar];
     
     NSTextField *symbolLabel = [[NSTextField alloc] init];
     symbolLabel.stringValue = @"Benchmark Symbol:";
@@ -144,7 +143,10 @@ static char selectedStatisticMetricKey;
     self.backtestMainSplitView.vertical = YES;
     self.backtestMainSplitView.dividerStyle = NSSplitViewDividerStyleThin;
     self.backtestMainSplitView.translatesAutoresizingMaskIntoConstraints = NO;
-    [backtestView addSubview:self.backtestMainSplitView];
+    // Set initial frame (will be resized by constraints anyway, but avoids zero size)
+    self.backtestMainSplitView.frame = NSMakeRect(0, 0, 800, 600);
+    [self.backtestView addSubview:self.backtestMainSplitView];
+    self.backtestMainSplitView.autosaveName = @"BacktestMainSplit";
     
     // ========================================
     // LEFT SIDE: Models (top) | Statistics (bottom)
@@ -153,14 +155,17 @@ static char selectedStatisticMetricKey;
     self.backtestLeftSplitView = [[NSSplitView alloc] init];
     self.backtestLeftSplitView.vertical = NO;
     self.backtestLeftSplitView.dividerStyle = NSSplitViewDividerStyleThin;
+    self.backtestLeftSplitView.frame = NSMakeRect(0, 0, 400 , 200);
     [self.backtestMainSplitView addArrangedSubview:self.backtestLeftSplitView];
     
     // Left-Top: Models List
     NSView *modelsPanel = [self createBacktestModelsPanel];
+    modelsPanel.frame = NSMakeRect(0, 0, 200, 600);
     [self.backtestLeftSplitView addArrangedSubview:modelsPanel];
     
     // Left-Bottom: Statistics Metrics
     NSView *statsPanel = [self createStatisticsMetricsPanel];
+    statsPanel.frame = NSMakeRect(0, 0, 200, 600);
     [self.backtestLeftSplitView addArrangedSubview:statsPanel];
     
     // ========================================
@@ -170,14 +175,17 @@ static char selectedStatisticMetricKey;
     self.backtestRightSplitView = [[NSSplitView alloc] init];
     self.backtestRightSplitView.vertical = NO;
     self.backtestRightSplitView.dividerStyle = NSSplitViewDividerStyleThin;
+    self.backtestRightSplitView.frame = NSMakeRect(0, 0, 400, 600);
     [self.backtestMainSplitView addArrangedSubview:self.backtestRightSplitView];
     
     // Right-Top: Candlestick Chart
     NSView *candlestickPanel = [self createCandlestickChartPanel];
+    candlestickPanel.frame = NSMakeRect(0, 0, 600, 600);
     [self.backtestRightSplitView addArrangedSubview:candlestickPanel];
     
     // Right-Bottom: Comparison Chart
     NSView *comparisonPanel = [self createComparisonChartPanel];
+    comparisonPanel.frame = NSMakeRect(0, 0, 600, 600);
     [self.backtestRightSplitView addArrangedSubview:comparisonPanel];
     
     // ========================================
@@ -186,7 +194,7 @@ static char selectedStatisticMetricKey;
     
     NSView *bottomBar = [self createBacktestControlBar];
     bottomBar.translatesAutoresizingMaskIntoConstraints = NO;
-    [backtestView addSubview:bottomBar];
+    [self.backtestView addSubview:bottomBar];
     
     // ========================================
     // Layout Constraints
@@ -194,23 +202,32 @@ static char selectedStatisticMetricKey;
     
     [NSLayoutConstraint activateConstraints:@[
         // Top bar
-        [topBar.topAnchor constraintEqualToAnchor:backtestView.topAnchor],
-        [topBar.leadingAnchor constraintEqualToAnchor:backtestView.leadingAnchor],
-        [topBar.trailingAnchor constraintEqualToAnchor:backtestView.trailingAnchor],
+        [topBar.topAnchor constraintEqualToAnchor:self.backtestView.topAnchor],
+        [topBar.leadingAnchor constraintEqualToAnchor:self.backtestView.leadingAnchor],
+        [topBar.trailingAnchor constraintEqualToAnchor:self.backtestView.trailingAnchor],
         
         // Main split view
         [self.backtestMainSplitView.topAnchor constraintEqualToAnchor:topBar.bottomAnchor constant:10],
-        [self.backtestMainSplitView.leadingAnchor constraintEqualToAnchor:backtestView.leadingAnchor constant:10],
-        [self.backtestMainSplitView.trailingAnchor constraintEqualToAnchor:backtestView.trailingAnchor constant:-10],
+        [self.backtestMainSplitView.leadingAnchor constraintEqualToAnchor:self.backtestView.leadingAnchor constant:10],
+        [self.backtestMainSplitView.trailingAnchor constraintEqualToAnchor:self.backtestView.trailingAnchor constant:-10],
         [self.backtestMainSplitView.bottomAnchor constraintEqualToAnchor:bottomBar.topAnchor constant:-10],
         
         // Bottom bar
-        [bottomBar.leadingAnchor constraintEqualToAnchor:backtestView.leadingAnchor],
-        [bottomBar.trailingAnchor constraintEqualToAnchor:backtestView.trailingAnchor],
-        [bottomBar.bottomAnchor constraintEqualToAnchor:backtestView.bottomAnchor],
+        [bottomBar.leadingAnchor constraintEqualToAnchor:self.backtestView.leadingAnchor],
+        [bottomBar.trailingAnchor constraintEqualToAnchor:self.backtestView.trailingAnchor],
+        [bottomBar.bottomAnchor constraintEqualToAnchor:self.backtestView.bottomAnchor],
         [bottomBar.heightAnchor constraintEqualToConstant:80]
     ]];
-    
+
+    // Relax split view horizontal constraints to prevent "spring back" effect
+    for (NSLayoutConstraint *constraint in self.backtestView.constraints) {
+        if (constraint.firstItem == self.backtestMainSplitView &&
+            (constraint.firstAttribute == NSLayoutAttributeLeading || constraint.firstAttribute == NSLayoutAttributeTrailing)) {
+            constraint.priority = NSLayoutPriorityDefaultLow;
+        }
+    }
+    // No explicit contentHuggingPriority or compressionResistancePriority for split views or panels
+/*
     // Set split positions after a delay (when view has size)
     dispatch_async(dispatch_get_main_queue(), ^{
         CGFloat mainWidth = self.backtestMainSplitView.frame.size.width;
@@ -228,6 +245,7 @@ static char selectedStatisticMetricKey;
             [self.backtestRightSplitView setPosition:rightHeight * 0.6 ofDividerAtIndex:0];
         }
     });
+ */
     
     // ========================================
     // Add Tab to TabView
@@ -235,7 +253,7 @@ static char selectedStatisticMetricKey;
     
     NSTabViewItem *backtestTab = [[NSTabViewItem alloc] initWithIdentifier:@"backtest"];
     backtestTab.label = @"Backtest";
-    backtestTab.view = backtestView;
+    backtestTab.view = self.backtestView;
     [self.tabView addTabViewItem:backtestTab];
     
     // Initialize backtest runner

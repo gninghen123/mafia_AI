@@ -7,10 +7,101 @@
 #import "StooqDataManager+Backtest.h"
 #import <objc/runtime.h>
 #import "StooqScreenerWidget+Private.h"  // ← Access to main widget properties
+#import "CandlestickChartView.h"
+#import "ComparisonChartView.h"
 
+@interface BacktestChartsContainer : NSObject
+@property (nonatomic, strong) CandlestickChartView *candlestickChartView;
+@property (nonatomic, strong) ComparisonChartView *comparisonChartView;
+@end
+
+@implementation BacktestChartsContainer
+@end
 
 @implementation StooqScreenerWidget (BacktestTab)
+- (IBAction)zoomInChart:(id)sender {
+    if (self.candlestickChartView) {
+        [self.candlestickChartView zoomIn];
+        NSLog(@"🔍 Zoom In");
+    }
+}
 
+- (IBAction)zoomOutChart:(id)sender {
+    if (self.candlestickChartView) {
+        [self.candlestickChartView zoomOut];
+        NSLog(@"🔍 Zoom Out");
+    }
+}
+
+- (IBAction)zoomAllChart:(id)sender {
+    if (self.candlestickChartView) {
+        [self.candlestickChartView zoomAll];
+        NSLog(@"🔍 Zoom All");
+    }
+}
+#pragma mark - CandlestickChartViewDelegate
+
+- (void)candlestickChartView:(CandlestickChartView *)chartView
+         didSelectDateRange:(NSDate *)startDate
+                    endDate:(NSDate *)endDate {
+    
+    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+    formatter.dateStyle = NSDateFormatterShortStyle;
+    
+    NSLog(@"📅 User selected date range: %@ → %@",
+          [formatter stringFromDate:startDate],
+          [formatter stringFromDate:endDate]);
+    
+    // Update date pickers
+    self.backtestStartDatePicker.dateValue = startDate;
+    self.backtestEndDatePicker.dateValue = endDate;
+    
+    // Update label
+    self.dateRangeLabel.stringValue = [NSString stringWithFormat:@"%@ → %@",
+                                       [formatter stringFromDate:startDate],
+                                       [formatter stringFromDate:endDate]];
+}
+
+- (void)candlestickChartView:(CandlestickChartView *)chartView
+       didMoveCrosshairToDate:(NSDate *)date
+                          bar:(HistoricalBarModel *)bar {
+    // Crosshair coordination (optional for now)
+}
+
+#pragma mark - ComparisonChartViewDelegate
+
+- (void)comparisonChartView:(ComparisonChartView *)chartView
+     didMoveCrosshairToDate:(NSDate *)date {
+    // Crosshair coordination (optional for now)
+}
+#pragma mark - Chart Views Container
+
+static char backtestChartsContainerKey;
+
+- (BacktestChartsContainer *)chartsContainer {
+    BacktestChartsContainer *container = objc_getAssociatedObject(self, &backtestChartsContainerKey);
+    if (!container) {
+        container = [[BacktestChartsContainer alloc] init];
+        objc_setAssociatedObject(self, &backtestChartsContainerKey, container, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    return container;
+}
+
+- (CandlestickChartView *)candlestickChartView {
+    return self.chartsContainer.candlestickChartView;
+}
+
+- (void)setCandlestickChartView:(CandlestickChartView *)view {
+    self.chartsContainer.candlestickChartView = view;
+}
+
+- (ComparisonChartView *)comparisonChartView {
+    return self.chartsContainer.comparisonChartView;
+}
+
+- (void)setComparisonChartView:(ComparisonChartView *)view {
+    self.chartsContainer.comparisonChartView = view;
+}
 #pragma mark - Associated Objects (for category properties)
 
 // Note: These are getter/setter implementations for category properties
@@ -390,26 +481,16 @@ static char selectedStatisticMetricKey;
     self.zoomAllButton.translatesAutoresizingMaskIntoConstraints = NO;
     [headerView addSubview:self.zoomAllButton];
     
-    // Chart container (placeholder for now - will add custom view in Step 6)
-    self.candlestickChartContainer = [[NSView alloc] init];
-    self.candlestickChartContainer.wantsLayer = YES;
-    self.candlestickChartContainer.layer.backgroundColor = [[NSColor windowBackgroundColor] CGColor];
-    self.candlestickChartContainer.layer.borderColor = [[NSColor separatorColor] CGColor];
-    self.candlestickChartContainer.layer.borderWidth = 1.0;
-    self.candlestickChartContainer.translatesAutoresizingMaskIntoConstraints = NO;
-    [panel addSubview:self.candlestickChartContainer];
+    // ✅ CREATE ACTUAL CANDLESTICK CHART VIEW
+    CandlestickChartView *chartView = [[CandlestickChartView alloc] initWithFrame:NSZeroRect];
+    chartView.delegate = self;
+    chartView.translatesAutoresizingMaskIntoConstraints = NO;
+    [panel addSubview:chartView];
     
-    // Placeholder label
-    NSTextField *placeholderLabel = [[NSTextField alloc] init];
-    placeholderLabel.stringValue = @"📊 Candlestick Chart\n(Custom view will be added in Step 6)";
-    placeholderLabel.alignment = NSTextAlignmentCenter;
-    placeholderLabel.editable = NO;
-    placeholderLabel.bordered = NO;
-    placeholderLabel.backgroundColor = [NSColor clearColor];
-    placeholderLabel.textColor = [NSColor tertiaryLabelColor];
-    placeholderLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.candlestickChartContainer addSubview:placeholderLabel];
+    // Store reference using container
+    [self setCandlestickChartView:chartView];
     
+    // Layout constraints
     [NSLayoutConstraint activateConstraints:@[
         [headerView.topAnchor constraintEqualToAnchor:panel.topAnchor constant:10],
         [headerView.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:10],
@@ -428,13 +509,10 @@ static char selectedStatisticMetricKey;
         [self.zoomOutButton.trailingAnchor constraintEqualToAnchor:self.zoomInButton.leadingAnchor constant:-5],
         [self.zoomOutButton.centerYAnchor constraintEqualToAnchor:headerView.centerYAnchor],
         
-        [self.candlestickChartContainer.topAnchor constraintEqualToAnchor:headerView.bottomAnchor constant:5],
-        [self.candlestickChartContainer.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:10],
-        [self.candlestickChartContainer.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-10],
-        [self.candlestickChartContainer.bottomAnchor constraintEqualToAnchor:panel.bottomAnchor constant:-10],
-        
-        [placeholderLabel.centerXAnchor constraintEqualToAnchor:self.candlestickChartContainer.centerXAnchor],
-        [placeholderLabel.centerYAnchor constraintEqualToAnchor:self.candlestickChartContainer.centerYAnchor]
+        [chartView.topAnchor constraintEqualToAnchor:headerView.bottomAnchor constant:5],
+        [chartView.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:10],
+        [chartView.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-10],
+        [chartView.bottomAnchor constraintEqualToAnchor:panel.bottomAnchor constant:-10]
     ]];
     
     return panel;
@@ -453,43 +531,29 @@ static char selectedStatisticMetricKey;
     self.comparisonChartTitleLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [panel addSubview:self.comparisonChartTitleLabel];
     
-    // Chart container (placeholder for now - will add custom view in Step 6)
-    self.comparisonChartContainer = [[NSView alloc] init];
-    self.comparisonChartContainer.wantsLayer = YES;
-    self.comparisonChartContainer.layer.backgroundColor = [[NSColor windowBackgroundColor] CGColor];
-    self.comparisonChartContainer.layer.borderColor = [[NSColor separatorColor] CGColor];
-    self.comparisonChartContainer.layer.borderWidth = 1.0;
-    self.comparisonChartContainer.translatesAutoresizingMaskIntoConstraints = NO;
-    [panel addSubview:self.comparisonChartContainer];
+    // ✅ CREATE ACTUAL COMPARISON CHART VIEW
+    ComparisonChartView *chartView = [[ComparisonChartView alloc] initWithFrame:NSZeroRect];
+    chartView.delegate = self;
+    chartView.translatesAutoresizingMaskIntoConstraints = NO;
+    [panel addSubview:chartView];
     
-    // Placeholder label
-    NSTextField *placeholderLabel = [[NSTextField alloc] init];
-    placeholderLabel.stringValue = @"📈 Comparison Chart\n(Custom view will be added in Step 6)";
-    placeholderLabel.alignment = NSTextAlignmentCenter;
-    placeholderLabel.editable = NO;
-    placeholderLabel.bordered = NO;
-    placeholderLabel.backgroundColor = [NSColor clearColor];
-    placeholderLabel.textColor = [NSColor tertiaryLabelColor];
-    placeholderLabel.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.comparisonChartContainer addSubview:placeholderLabel];
+    // Store reference using container
+    [self setComparisonChartView:chartView];
     
+    // Layout constraints
     [NSLayoutConstraint activateConstraints:@[
         [self.comparisonChartTitleLabel.topAnchor constraintEqualToAnchor:panel.topAnchor constant:10],
         [self.comparisonChartTitleLabel.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:10],
         [self.comparisonChartTitleLabel.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-10],
         
-        [self.comparisonChartContainer.topAnchor constraintEqualToAnchor:self.comparisonChartTitleLabel.bottomAnchor constant:5],
-        [self.comparisonChartContainer.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:10],
-        [self.comparisonChartContainer.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-10],
-        [self.comparisonChartContainer.bottomAnchor constraintEqualToAnchor:panel.bottomAnchor constant:-10],
-        
-        [placeholderLabel.centerXAnchor constraintEqualToAnchor:self.comparisonChartContainer.centerXAnchor],
-        [placeholderLabel.centerYAnchor constraintEqualToAnchor:self.comparisonChartContainer.centerYAnchor]
+        [chartView.topAnchor constraintEqualToAnchor:self.comparisonChartTitleLabel.bottomAnchor constant:5],
+        [chartView.leadingAnchor constraintEqualToAnchor:panel.leadingAnchor constant:10],
+        [chartView.trailingAnchor constraintEqualToAnchor:panel.trailingAnchor constant:-10],
+        [chartView.bottomAnchor constraintEqualToAnchor:panel.bottomAnchor constant:-10]
     ]];
     
     return panel;
 }
-
 - (NSView *)createBacktestControlBar {
     NSView *controlBar = [[NSView alloc] init];
     
@@ -639,11 +703,15 @@ static char selectedStatisticMetricKey;
         self.comparisonChartTitleLabel.stringValue = [NSString stringWithFormat:@"Metric Comparison: %@",
                                                       self.selectedStatisticMetric];
         
-        // TODO: Update comparison chart with selected metric
+        // Update comparison chart data
+        if (self.comparisonChartView && self.currentBacktestSession) {
+            NSString *metricKey = [self metricKeyForDisplayName:self.selectedStatisticMetric];
+            [self.comparisonChartView setMetricKey:metricKey];
+        }
+        
         NSLog(@"📊 Selected metric: %@", self.selectedStatisticMetric);
     }
 }
-
 - (IBAction)runBacktest:(id)sender {
     NSLog(@"🚀 Run Backtest button pressed");
     
@@ -754,20 +822,7 @@ static char selectedStatisticMetricKey;
     [self.backtestRunner cancel];
 }
 
-- (IBAction)zoomInChart:(id)sender {
-    NSLog(@"🔍 Zoom In");
-    // TODO: Implement in Step 6
-}
 
-- (IBAction)zoomOutChart:(id)sender {
-    NSLog(@"🔍 Zoom Out");
-    // TODO: Implement in Step 6
-}
-
-- (IBAction)zoomAllChart:(id)sender {
-    NSLog(@"🔍 Zoom All");
-    // TODO: Implement in Step 6
-}
 
 #pragma mark - Helper Methods
 
@@ -879,8 +934,8 @@ static char selectedStatisticMetricKey;
                                             (long)session.dailyResults.count,
                                             session.totalExecutionTime];
     
-    // TODO: Update charts with results
-    
+    [self updateChartsWithSession:session];
+
     NSAlert *alert = [[NSAlert alloc] init];
     alert.messageText = @"Backtest Complete";
     alert.informativeText = [NSString stringWithFormat:@"Generated %ld daily results for %ld models.\n\nExecution time: %.2fs",
@@ -890,6 +945,73 @@ static char selectedStatisticMetricKey;
     alert.alertStyle = NSAlertStyleInformational;
     [alert runModal];
 }
+
+#pragma mark - Chart Updates
+
+- (void)updateChartsWithSession:(BacktestSession *)session {
+    
+    if (!session) {
+        NSLog(@"⚠️ Cannot update charts: nil session");
+        return;
+    }
+    
+    NSLog(@"📊 Updating charts with backtest session");
+    
+    // Update candlestick chart with benchmark data
+    if (self.candlestickChartView && session.benchmarkBars) {
+        [self.candlestickChartView setData:session.benchmarkBars
+                                    symbol:session.benchmarkSymbol];
+        
+        // Zoom to backtest date range
+        if (session.startDate && session.endDate) {
+            [self.candlestickChartView zoomToDateRange:session.startDate
+                                              endDate:session.endDate];
+        }
+        
+        NSLog(@"✅ Updated candlestick chart: %@ (%lu bars)",
+              session.benchmarkSymbol, (unsigned long)session.benchmarkBars.count);
+    }
+    
+    // Update comparison chart
+    if (self.comparisonChartView) {
+        // Use first metric by default if none selected
+        if (!self.selectedStatisticMetric) {
+            self.selectedStatisticMetric = @"# Symbols";
+        }
+        
+        NSString *metricKey = [self metricKeyForDisplayName:self.selectedStatisticMetric];
+        
+        [self.comparisonChartView setSession:session
+                                  metricKey:metricKey
+                                modelColors:session.modelColors];
+        
+        NSLog(@"✅ Updated comparison chart: %@ metric", self.selectedStatisticMetric);
+    }
+    
+    // Update date range label
+    if (session.startDate && session.endDate) {
+        NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
+        formatter.dateStyle = NSDateFormatterShortStyle;
+        
+        self.dateRangeLabel.stringValue = [NSString stringWithFormat:@"%@ → %@",
+                                           [formatter stringFromDate:session.startDate],
+                                           [formatter stringFromDate:session.endDate]];
+    }
+}
+
+- (NSString *)metricKeyForDisplayName:(NSString *)displayName {
+    NSDictionary *mapping = @{
+        @"# Symbols": @"symbolCount",
+        @"Win Rate %": @"winRate",
+        @"Avg Gain %": @"avgGain",
+        @"Avg Loss %": @"avgLoss",
+        @"# Trades": @"tradeCount",
+        @"Win/Loss Ratio": @"winLossRatio"
+    };
+    
+    return mapping[displayName] ?: @"symbolCount";
+}
+
 
 - (void)backtestRunner:(BacktestRunner *)runner
         didFailWithError:(NSError *)error {

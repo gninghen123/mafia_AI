@@ -24,7 +24,7 @@
 @property (nonatomic, assign) double maxVolume;
 @property (nonatomic, strong) NSBezierPath *chartPath;
 @property (nonatomic, strong) NSBezierPath *volumePath;
-
+@property (nonatomic, strong) NSTextField *descriptionLabel;
 @end
 
 @implementation MiniChart
@@ -42,7 +42,7 @@
 }
 
 - (instancetype)init {
-    return [self initWithFrame:NSMakeRect(0, 0, 300, 200)];
+    return [self initWithFrame:NSMakeRect(0, 0, 300, 300)];
 }
 
 + (instancetype)miniChartWithSymbol:(NSString *)symbol
@@ -106,10 +106,21 @@
     self.symbolLabel.backgroundColor = [NSColor clearColor];
     self.symbolLabel.bordered = NO;
     self.symbolLabel.editable = NO;
-    self.symbolLabel.font = [NSFont boldSystemFontOfSize:12];
+    self.symbolLabel.font = [NSFont boldSystemFontOfSize:16];
     self.symbolLabel.textColor = self.textColor;
     self.symbolLabel.stringValue = self.symbol ?: @"";
     [self addSubview:self.symbolLabel];
+    
+    // Description label (NUOVO: sotto il simbolo, per nome modello)
+    self.descriptionLabel = [[NSTextField alloc] init];
+    self.descriptionLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    self.descriptionLabel.bordered = NO;
+    self.descriptionLabel.editable = NO;
+    self.descriptionLabel.font = [NSFont systemFontOfSize:12];
+    self.descriptionLabel.textColor = [NSColor lightGrayColor];
+    self.descriptionLabel.stringValue = @"";
+    self.descriptionLabel.hidden = YES;  // Nascosto di default
+    [self addSubview:self.descriptionLabel];
     
     // Price label (top right)
     self.priceLabel = [[NSTextField alloc] init];
@@ -117,7 +128,7 @@
     self.priceLabel.backgroundColor = [NSColor clearColor];
     self.priceLabel.bordered = NO;
     self.priceLabel.editable = NO;
-    self.priceLabel.font = [NSFont systemFontOfSize:11];
+    self.priceLabel.font = [NSFont systemFontOfSize:14];
     self.priceLabel.textColor = self.textColor;
     self.priceLabel.alignment = NSTextAlignmentRight;
     self.priceLabel.stringValue = @"--";
@@ -141,7 +152,7 @@
     self.aptrLabel.backgroundColor = [NSColor clearColor];
     self.aptrLabel.bordered = NO;
     self.aptrLabel.editable = NO;
-    self.aptrLabel.font = [NSFont systemFontOfSize:12];
+    self.aptrLabel.font = [NSFont systemFontOfSize:10];
     self.aptrLabel.textColor = [NSColor secondaryLabelColor];
     self.aptrLabel.stringValue = @"APTR: --";
     [self addSubview:self.aptrLabel];
@@ -167,10 +178,15 @@
         [self.symbolLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:padding],
         [self.symbolLabel.heightAnchor constraintEqualToConstant:labelHeight]
     ]];
-    
+    // Description label (sotto il simbolo)
+    [NSLayoutConstraint activateConstraints:@[
+        [self.descriptionLabel.topAnchor constraintEqualToAnchor:self.symbolLabel.bottomAnchor],
+        [self.descriptionLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:padding],
+        [self.descriptionLabel.heightAnchor constraintEqualToConstant:12.0]
+    ]];
     // APTR label (NUOVO: sotto il simbolo)
     [NSLayoutConstraint activateConstraints:@[
-        [self.aptrLabel.topAnchor constraintEqualToAnchor:self.symbolLabel.bottomAnchor],
+        [self.aptrLabel.topAnchor constraintEqualToAnchor:self.descriptionLabel.bottomAnchor],
         [self.aptrLabel.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:padding],
         [self.aptrLabel.heightAnchor constraintEqualToConstant:12.0]
     ]];
@@ -198,7 +214,7 @@
 #pragma mark - Drawing Areas Calculation
 
 - (CGRect)chartRect {
-    CGFloat labelHeight = 40; // spazio per i label in alto
+    CGFloat labelHeight = 30;
     CGFloat volumeHeight = self.showVolume ? 30 : 0;
     CGFloat padding = 8;
     

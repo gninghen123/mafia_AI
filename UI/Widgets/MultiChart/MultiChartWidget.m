@@ -1123,7 +1123,7 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
     }
 }
 
-- (void)loadScreenerDataFromChainData:(NSDictionary *)data fromWidget:(BaseWidget *)sender {
+-  (void)loadScreenerDataFromChainData:(NSDictionary *)data fromWidget:(BaseWidget *)sender {
     // 1️⃣ VALIDAZIONE DATI
     if (!data || ![data isKindOfClass:[NSDictionary class]]) {
         NSLog(@"❌ MultiChartWidget: Invalid screener data received from %@", NSStringFromClass([sender class]));
@@ -1134,7 +1134,6 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
     NSArray<HistoricalBarModel *> *historicalBars = data[@"historicalBars"];
     NSNumber *timeframeNum = data[@"timeframe"];
     NSString *source = data[@"source"] ?: @"Unknown";
-    NSString *patternType = data[@"patternType"] ?: @"Screener";
     
     // Validazione campi essenziali
     if (!symbol || !historicalBars || historicalBars.count == 0) {
@@ -1146,17 +1145,49 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
     
     BarTimeframe timeframe = timeframeNum ? [timeframeNum integerValue] : BarTimeframeDaily;
     
-    NSLog(@"📊 MultiChartWidget: Loading screener data for %@ (%lu bars) from %@",
+    NSLog(@"📊 MultiChartWidget: Loading screener data for %@ (%lu bars) from model: %@",
           symbol, (unsigned long)historicalBars.count, source);
+    
+    // ✅ AGGIUNGI IL SIMBOLO AL TEXTFIELD (separato da virgola)
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSString *currentText = self.symbolsTextField.stringValue;
+        
+        if (!currentText || currentText.length == 0) {
+            // TextField vuoto: aggiungi solo il simbolo
+            self.symbolsTextField.stringValue = symbol;
+        } else {
+            // TextField ha già simboli: aggiungi con virgola
+            NSArray *existingSymbols = [currentText componentsSeparatedByString:@","];
+            NSMutableArray *trimmedSymbols = [NSMutableArray array];
+            
+            for (NSString *existing in existingSymbols) {
+                NSString *trimmed = [existing stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                if (trimmed.length > 0) {
+                    [trimmedSymbols addObject:trimmed];
+                }
+            }
+            
+            // Aggiungi solo se non è già presente
+            if (![trimmedSymbols containsObject:symbol]) {
+                [trimmedSymbols addObject:symbol];
+                self.symbolsTextField.stringValue = [trimmedSymbols componentsJoinedByString:@", "];
+            }
+        }
+    });
     
     // 2️⃣ CREA MINICHART CON DATI STATICI
     MiniChart *miniChart = [[MiniChart alloc] initWithFrame:CGRectMake(0, 0, self.itemWidth, self.itemHeight)];
     
-    // ✅ DENOMINAZIONE: "PatternType Symbol" per chiarezza
-    NSString *displayName = [NSString stringWithFormat:@"%@ %@", symbol, patternType];
+    // ✅ SIMBOLO NEL CAMPO PRINCIPALE (solo il ticker)
+    miniChart.symbol = symbol;
+    
+    // ✅ NOME DEL MODELLO NEL DESCRIPTION LABEL
+    if (miniChart.descriptionLabel) {
+        miniChart.descriptionLabel.stringValue = source;
+        miniChart.descriptionLabel.hidden = NO;
+    }
     
     // Configura il MiniChart
-    miniChart.symbol = displayName;  // ✅ Usa display name per identificazione
     miniChart.chartType = self.chartType;
     miniChart.timeframe = [self convertFromBarTimeframe:timeframe];
     miniChart.scaleType = self.scaleType;
@@ -1178,13 +1209,14 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
         [self.collectionView scrollToItemsAtIndexPaths:@[lastIndexPath]
                                         scrollPosition:NSCollectionViewScrollPositionBottom];
         
-        // Feedback all'utente
-        NSString *feedbackMessage = [NSString stringWithFormat:@"📊 Added %@", displayName];
+        // ✅ FEEDBACK CON SIMBOLO E MODELLO SEPARATI
+        NSString *feedbackMessage = [NSString stringWithFormat:@"📊 Added %@ from %@", symbol, source];
         [self showTemporaryMessageForCollectionView:feedbackMessage];
         
-        NSLog(@"✅ MultiChartWidget: Added screener chart '%@' from %@", displayName, source);
+        NSLog(@"✅ MultiChartWidget: Added chart for %@ (Model: %@)", symbol, source);
     });
 }
+
 
 - (void)loadChartPatternFromChainData:(NSDictionary *)data fromWidget:(BaseWidget *)sender {
     // 1️⃣ VALIDAZIONE DATI
@@ -2095,10 +2127,7 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         NSParagraphStyleAttributeName: style
     };
     
-    // Draw background
-    [[NSColor colorWithWhite:0.9 alpha:0.8] setFill];
-    [[NSBezierPath bezierPathWithRect:rect] fill];
-    
+   
     // Draw text
     NSRect textRect = NSInsetRect(rect, 5, 2);
     [symbol drawInRect:textRect withAttributes:attributes];

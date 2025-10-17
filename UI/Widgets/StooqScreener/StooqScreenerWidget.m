@@ -12,8 +12,8 @@
 #import "BaseScreener.h"
 #import "datahub+marketdata.h"
 #import "ScreenedSymbol.h"
-#import "ExecutionSession.h"
 #import "StooqScreenerWidget+BacktestTab.h"  // ← ADD THIS
+#import "StooqScreenerWidget+ImageReport.h"
 
 
 @interface StooqScreenerWidget () <NSTableViewDelegate, NSTableViewDataSource,
@@ -246,7 +246,22 @@
                                                     keyEquivalent:@""];
     selectedItem.target = self;
     [self.compactReportButton.menu addItem:selectedItem];
-    
+    [self.compactReportButton.menu addItem:[NSMenuItem separatorItem]];
+
+    // All Symbols (Image Report)
+    NSMenuItem *allImageItem = [[NSMenuItem alloc] initWithTitle:@"All Symbols (Image Report)"
+                                                          action:@selector(generateImageReportAllSymbols:)
+                                                   keyEquivalent:@""];
+    allImageItem.target = self;
+    [self.compactReportButton.menu addItem:allImageItem];
+
+    // Selected Symbols (Image Report)
+    NSMenuItem *selectedImageItem = [[NSMenuItem alloc] initWithTitle:@"Selected Symbols (Image Report)"
+                                                               action:@selector(generateImageReportSelectedSymbols:)
+                                                        keyEquivalent:@""];
+    selectedImageItem.target = self;
+    [self.compactReportButton.menu addItem:selectedImageItem];
+
     self.compactReportButton.translatesAutoresizingMaskIntoConstraints = NO;
     self.compactReportButton.enabled = NO;
     [archiveView addSubview:self.compactReportButton];
@@ -3235,6 +3250,31 @@
         return;
     }
     
+    // ✅ DETERMINA IL NOME DEL MODELLO
+    NSString *modelName = @"StooqScreener"; // Default fallback
+    NSString *displaySource = @"Screener Result"; // Default
+    
+    if (self.selectedModelResult) {
+        // Se c'è un model result selezionato, usa quello
+        modelName = self.selectedModelResult.modelName ?: @"Unknown Model";
+        displaySource = modelName;
+    } else if (self.selectedSession) {
+        // Se c'è una sessione selezionata
+        if (self.selectedSession.modelResults.count == 1) {
+            // Una sola model nella sessione
+            ModelResult *result = self.selectedSession.modelResults.firstObject;
+            modelName = result.modelName ?: @"Unknown Model";
+            displaySource = modelName;
+        } else if (self.selectedSession.modelResults.count > 1) {
+            // Più modelli nella sessione
+            modelName = @"Multi-Model Session";
+            displaySource = [NSString stringWithFormat:@"Session (%ld models)",
+                           (long)self.selectedSession.modelResults.count];
+        }
+    }
+    
+    NSLog(@"📤 Sending %lu symbols from model: %@", (unsigned long)symbols.count, modelName);
+    
     // ✅ INVIA OGNI SIMBOLO SEPARATAMENTE come fa ChartPatternLibrary
     for (NSString *symbol in symbols) {
         NSArray<HistoricalBarModel *> *bars = historicalData[symbol];
@@ -3244,20 +3284,22 @@
         // Crea un payload che simula un pattern con i dati screener
         NSDictionary *screenerData = @{
             @"symbol": symbol,
-            @"historicalBars": bars,  // ✅ Stessa chiave usata da SavedChartData
+            @"historicalBars": bars,
             @"timeframe": @(1000),
-            @"source": @"StooqScreener",
-            @"patternType": @"Screener Result"  // Identificativo per debugging
+            @"source": modelName,           // ✅ Nome specifico del modello
+            @"patternType": displaySource   // ✅ Nome da mostrare nell'UI
         };
         
         // ✅ INVIA con action personalizzata (non loadChartPattern)
         [self sendChainAction:@"loadScreenerData" withData:screenerData];
         
-        NSLog(@"🔗 Sent %@ with %lu bars to chain", symbol, (unsigned long)bars.count);
+        NSLog(@"🔗 Sent %@ (%@ - %lu bars) to chain", symbol, modelName, (unsigned long)bars.count);
     }
     
-    // Feedback visivo
-    [self showChainFeedback:[NSString stringWithFormat:@"📊 Sent %ld symbols with data", (long)symbols.count]];
+    // Feedback visivo con nome modello
+    NSString *feedbackMessage = [NSString stringWithFormat:@"📊 Sent %ld symbols from %@",
+                                (long)symbols.count, modelName];
+    [self showChainFeedback:feedbackMessage];
 }
 
 #pragma mark - Calculate MinBars
@@ -3591,6 +3633,19 @@
 - (void)copyArchiveSelectedSymbols:(id)sender {
     [self copyArchiveCompactReportWithSelectedOnly:YES];
 }
+
+#pragma mark - Image Report Actions
+
+- (void)generateImageReportAllSymbols:(id)sender {
+    NSLog(@"🖼️ Generating image report for all symbols...");
+    [self generateImageReportWithSelectedOnly:NO];
+}
+
+- (void)generateImageReportSelectedSymbols:(id)sender {
+    NSLog(@"🖼️ Generating image report for selected symbols...");
+    [self generateImageReportWithSelectedOnly:YES];
+}
+
 
 - (void)copyArchiveCompactReportWithSelectedOnly:(BOOL)onlySelectedSymbols {
     NSMutableString *reportString = [NSMutableString string];

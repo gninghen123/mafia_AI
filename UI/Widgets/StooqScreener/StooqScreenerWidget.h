@@ -7,6 +7,8 @@
 
 #import "BaseWidget.h"
 #import "BacktestRunner.h"
+#import "ExecutionSession.h"
+
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -91,6 +93,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Cancel current batch execution
 - (void)cancelExecution;
+- (NSInteger)calculateMinBarsForModelResult:(ModelResult *)modelResult;
+- (NSInteger)calculateMinBarsForSession:(ExecutionSession *)session;
 
 @end
 

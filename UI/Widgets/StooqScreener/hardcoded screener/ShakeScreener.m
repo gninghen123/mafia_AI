@@ -246,8 +246,8 @@
         @"sma_period": @50,
         
         // Bollinger Bands optional parameters
-        @"check_bb_breakout": @NO,              // Enable/disable BB check
-        @"bb_period": @100,                     // BB period (default 100)
+        @"check_bb_breakout": @YES,              // Enable/disable BB check
+        @"bb_period": @20,                     // BB period (default 100)
         @"bb_multiplier": @2.0,                 // BB multiplier (default 2.0)
         @"bb_basis_type": @"ema",               // "sma" or "ema"
         @"bb_breakout_direction": @"upper",     // "upper", "lower", or "any"

@@ -550,6 +550,10 @@
     
     // Top Gainers
     [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopGainers
+                                                              timeframe:MarketTimeframePreMarket]];
+    [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopGainers
+                                                              timeframe:MarketTimeframeAfterHours]];
+    [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopGainers
                                                               timeframe:MarketTimeframeOneDay]];
     [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopGainers
                                                               timeframe:MarketTimeframeFiveDays]];
@@ -561,6 +565,10 @@
                                                               timeframe:MarketTimeframeFiftyTwoWeeks]]; // ← AGGIUNGI
     
     // Top Losers
+    [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopLosers
+                                                              timeframe:MarketTimeframePreMarket]];
+    [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopLosers
+                                                              timeframe:MarketTimeframeAfterHours]];
     [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopLosers
                                                               timeframe:MarketTimeframeOneDay]];
     [providers addObject:[[MarketListProvider alloc] initWithMarketType:MarketListTypeTopLosers

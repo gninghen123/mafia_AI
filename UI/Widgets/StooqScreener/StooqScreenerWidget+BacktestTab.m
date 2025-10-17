@@ -841,8 +841,15 @@ static char selectedStatisticMetricKey;
                                                           (unsigned long)bars.count];
                 self.symbolValidationLabel.textColor = [NSColor systemGreenColor];
                 
-                // TODO: Load into candlestick chart
-                NSLog(@"✅ Benchmark symbol '%@' validated: %lu bars", symbol, (unsigned long)bars.count);
+                // ✅ FIX: Load data into candlestick chart
+                if (self.candlestickChartView) {
+                    [self.candlestickChartView setData:bars symbol:symbol];
+                    [self.candlestickChartView zoomAll];
+                    
+                    NSLog(@"✅ Benchmark symbol '%@' validated and loaded: %lu bars", symbol, (unsigned long)bars.count);
+                } else {
+                    NSLog(@"⚠️ Candlestick chart view is not initialized");
+                }
             } else {
                 self.symbolValidationLabel.stringValue = @"❌ Symbol not found in database";
                 self.symbolValidationLabel.textColor = [NSColor systemRedColor];

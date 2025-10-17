@@ -79,6 +79,8 @@ static NSString *const kChainSenderKey = @"sender";
 
 
 
+// In BaseWidget.m - MODIFICA il metodo setupViews
+
 - (void)setupViews {
     NSLog(@"🔧 BaseWidget: Setting up views with proper expansion configuration");
     
@@ -89,8 +91,19 @@ static NSString *const kChainSenderKey = @"sender";
     // 🎯 CRITICAL: Use Fill distribution to expand content area
     self.mainStackView.distribution = NSStackViewDistributionFill;
     
-    // 🚀 Set alignment to fill entire width
-    self.mainStackView.alignment = NSLayoutAttributeLeading; // This ensures full width usage
+    // ✅ FIX: Set alignment to LEADING for horizontal fill
+    // But we need to ensure arranged subviews fill the width by NOT setting alignment constraints
+    // The correct way is to use .alignment property correctly for NSStackView
+    
+    // For VERTICAL stack view, we want horizontal fill (width)
+    // So we use NSLayoutAttributeLeft or NSLayoutAttributeRight with stretching
+    // OR better: Don't set alignment and let distribution handle it
+    
+    // ✅ CORRECT FIX: Use alignment that allows horizontal stretching
+    self.mainStackView.alignment = NSLayoutAttributeLeading;
+    
+    // ✅ IMPORTANT: Set detachesHiddenViews to NO to maintain layout
+    self.mainStackView.detachesHiddenViews = NO;
     
     [self setupHeaderView];
     
@@ -884,21 +897,21 @@ static NSString *const kChainSenderKey = @"sender";
     // Add to stack view
     [self.mainStackView addArrangedSubview:self.contentViewInternal];
     
-    // 🎯 CRITICAL: Set minimum height constraint to prevent collapse
-   // NSLayoutConstraint *minHeightConstraint = [self.contentViewInternal.heightAnchor constraintGreaterThanOrEqualToConstant:100];
-  //  minHeightConstraint.priority = NSLayoutPriorityDefaultHigh;
-//    minHeightConstraint.active = YES;
+    // ✅ FIX: Add LEADING and TRAILING constraints to force horizontal fill
+    [NSLayoutConstraint activateConstraints:@[
+        [self.contentViewInternal.leadingAnchor constraintEqualToAnchor:self.mainStackView.leadingAnchor],
+        [self.contentViewInternal.trailingAnchor constraintEqualToAnchor:self.mainStackView.trailingAnchor]
+    ]];
     
-    // 🚀 CRITICAL: Ensure content view expands to fill available space
-    // This prevents the widget from collapsing when content is small
+    // 🚀 CRITICAL: Ensure content view expands to fill available space vertically
     NSLayoutConstraint *expansionConstraint = [self.contentViewInternal.heightAnchor
                                               constraintGreaterThanOrEqualToConstant:200];
-    expansionConstraint.priority = NSLayoutPriorityDefaultLow; // Low priority = preference, not requirement
+    expansionConstraint.priority = NSLayoutPriorityDefaultLow;
     expansionConstraint.active = YES;
     
     NSLog(@"✅ BaseWidget: Content view configured with expansion constraints");
-    NSLog(@"   - Min height: 100px (high priority)");
-    NSLog(@"   - Preferred height: 200px (low priority)");
+    NSLog(@"   - Horizontal: LEADING + TRAILING anchors to mainStackView");
+    NSLog(@"   - Vertical: Min 200px (low priority)");
     NSLog(@"   - Content hugging: Low (will expand to fill space)");
     NSLog(@"   - Compression resistance: High (won't shrink below min)");
     
@@ -918,7 +931,6 @@ static NSString *const kChainSenderKey = @"sender";
     
     NSLog(@"🎯 BaseWidget: setupContentView completed - widget will now expand to fill available space");
 }
-
 #pragma mark - State Management
 
 - (NSDictionary *)serializeState {

@@ -60,10 +60,20 @@ extern NSString *const DataHubDataLoadedNotification;
 }
 
 
+
+// In ChartWidget.m - SOSTITUISCI il metodo loadView esistente
+
 - (void)loadView {
-    NSLog(@"🔧 ChartWidget: Loading XIB...");
+    NSLog(@"🔧 ChartWidget: Starting loadView with XIB integration...");
     
-    // Load ChartWidget.xib
+    // ✅ STEP 1: Call super to create the base structure
+    [super loadView];
+    
+    NSLog(@"   - View after super: %@", self.view);
+    NSLog(@"   - Header after super: %@", self.headerView);
+    NSLog(@"   - Content after super: %@", self.contentView);
+    
+    // ✅ STEP 2: Load ChartWidget.xib
     NSArray *topLevelObjects = nil;
     BOOL xibLoaded = [[NSBundle mainBundle] loadNibNamed:@"ChartWidget"
                                                    owner:self
@@ -76,37 +86,91 @@ extern NSString *const DataHubDataLoadedNotification;
                                      userInfo:nil];
     }
     
-    // Find the main view from XIB
-    NSView *mainView = nil;
+    // ✅ STEP 3: Find the XIB's main view
+    NSView *xibMainView = nil;
     for (id object in topLevelObjects) {
         if ([object isKindOfClass:[NSView class]]) {
-            mainView = (NSView *)object;
+            xibMainView = (NSView *)object;
             break;
         }
     }
     
-    if (!mainView) {
+    if (!xibMainView) {
         NSLog(@"❌ ChartWidget: No NSView found in XIB");
         @throw [NSException exceptionWithName:@"XIBLoadException"
                                        reason:@"No NSView found in ChartWidget.xib"
                                      userInfo:nil];
     }
     
-    // Set the XIB view as our main view
-    self.view = mainView;
+    NSLog(@"   - XIB view found: %@", xibMainView);
     
-    // Configure view properties
-    self.view.wantsLayer = YES;
+    // ✅ STEP 4: Insert XIB view into BaseWidget's contentView
+    NSView *contentView = self.contentView;
     
-    // Set minimum size constraints for chart widget
-   [self.view.widthAnchor constraintGreaterThanOrEqualToConstant:1800].active = YES;
-   [self.view.heightAnchor constraintGreaterThanOrEqualToConstant:1400].active = YES;
+    if (!contentView) {
+        NSLog(@"❌ ChartWidget: contentView is nil after [super loadView]!");
+        NSLog(@"   - Trying to access contentViewInternal via KVC...");
+        
+        // Fallback: Try to access the internal property via KVC
+        contentView = [self valueForKey:@"contentViewInternal"];
+        
+        if (!contentView) {
+            NSLog(@"❌ ChartWidget: Still can't access contentView!");
+            return;
+        }
+    }
     
-    NSLog(@"✅ ChartWidget: XIB loaded successfully");
-    NSLog(@"   - View frame: %@", NSStringFromRect(self.view.frame));
+    NSLog(@"✅ ChartWidget: contentView accessed: %@", contentView);
+    NSLog(@"   - contentView subviews before: %@", contentView.subviews);
+    NSLog(@"   - contentView frame: %@", NSStringFromRect(contentView.frame));
+    NSLog(@"   - contentView constraints: %@", contentView.constraints);
+    NSLog(@"   - contentView translatesAutoresizing: %@", contentView.translatesAutoresizingMaskIntoConstraints ? @"YES" : @"NO");
     
-    // Verify outlets and setup
- // [self setupAfterXIBLoad];
+    // Remove any default placeholder content from BaseWidget
+    for (NSView *subview in [contentView.subviews copy]) {
+        NSLog(@"   - Removing placeholder: %@", subview);
+        [subview removeFromSuperview];
+    }
+    
+    // Add XIB view to contentView
+    xibMainView.translatesAutoresizingMaskIntoConstraints = NO;
+    [contentView addSubview:xibMainView];
+    
+    NSLog(@"   - XIB view added to contentView");
+    
+    // Pin XIB view to contentView edges
+    [NSLayoutConstraint activateConstraints:@[
+        [xibMainView.topAnchor constraintEqualToAnchor:contentView.topAnchor],
+        [xibMainView.leadingAnchor constraintEqualToAnchor:contentView.leadingAnchor],
+        [xibMainView.trailingAnchor constraintEqualToAnchor:contentView.trailingAnchor],
+        [xibMainView.bottomAnchor constraintEqualToAnchor:contentView.bottomAnchor]
+    ]];
+    
+    NSLog(@"   - Constraints activated");
+    
+    // Configure XIB view properties
+    xibMainView.wantsLayer = YES;
+    
+    // Force layout update
+    [self.view layoutSubtreeIfNeeded];
+    
+    NSLog(@"✅ ChartWidget: XIB integrated successfully");
+    NSLog(@"   - Header visible: %@", self.headerView.superview ? @"YES" : @"NO");
+    NSLog(@"   - Header frame: %@", NSStringFromRect(self.headerView.frame));
+    NSLog(@"   - Content frame: %@", NSStringFromRect(contentView.frame));
+    NSLog(@"   - XIB frame: %@", NSStringFromRect(xibMainView.frame));
+    NSLog(@"   - Main view frame: %@", NSStringFromRect(self.view.frame));
+    NSLog(@"   - View hierarchy:");
+    [self logViewHierarchy:self.view level:0];
+}
+
+// Helper method per debug
+- (void)logViewHierarchy:(NSView *)view level:(NSInteger)level {
+    NSString *indent = [@"" stringByPaddingToLength:level * 2 withString:@" " startingAtIndex:0];
+    NSLog(@"%@%@ - frame:%@", indent, [view class], NSStringFromRect(view.frame));
+    for (NSView *subview in view.subviews) {
+        [self logViewHierarchy:subview level:level + 1];
+    }
 }
 
 - (void)setupAfterXIBLoad {
@@ -155,6 +219,7 @@ extern NSString *const DataHubDataLoadedNotification;
     // ✅ Enable frame change notifications
     self.view.postsFrameChangedNotifications = YES;
     NSLog(@"✅ ChartWidget setup completed");
+    [self setupAfterXIBLoad];
 }
 
 /*

@@ -18,7 +18,6 @@
                 <outlet property="staticModeToggle" destination="6xA-al-JW4" id="fwH-uz-lWw"/>
                 <outlet property="symbolTextField" destination="jQc-bl-0kG" id="xmg-yL-9iy"/>
                 <outlet property="timeframeSegmented" destination="AbQ-SP-niQ" id="NEd-z1-VVE"/>
-                <outlet property="view" destination="gkY-uZ-2Vt" id="lYv-cY-2eW"/>
                 <outlet property="zoomAllButton" destination="KEi-gj-xBb" id="Pzc-h4-r0c"/>
                 <outlet property="zoomInButton" destination="N5U-79-1jH" id="cf7-MT-6sf"/>
                 <outlet property="zoomOutButton" destination="q6v-oX-Foa" id="Dn1-E6-a3F"/>
@@ -27,7 +26,7 @@
         <customObject id="-1" userLabel="First Responder" customClass="FirstResponder"/>
         <customObject id="-3" userLabel="Application" customClass="NSObject"/>
         <customView id="gkY-uZ-2Vt">
-            <rect key="frame" x="0.0" y="0.0" width="1277" height="738"/>
+            <rect key="frame" x="0.0" y="0.0" width="1278" height="738"/>
             <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
             <subviews>
                 <button verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="kUx-os-VYx">
@@ -41,7 +40,7 @@
                     </connections>
                 </button>
                 <button verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="Po4-5B-WCZ">
-                    <rect key="frame" x="1146" y="701" width="43" height="24"/>
+                    <rect key="frame" x="1147" y="701" width="43" height="24"/>
                     <buttonCell key="cell" type="push" title="Ind" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="hIA-14-WWr">
                         <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES" changeBackground="YES" changeGray="YES"/>
                         <font key="font" metaFont="system"/>
@@ -51,7 +50,7 @@
                     </connections>
                 </button>
                 <button verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="api-E2-n6O">
-                    <rect key="frame" x="1201" y="701" width="56" height="24"/>
+                    <rect key="frame" x="1202" y="701" width="56" height="24"/>
                     <buttonCell key="cell" type="push" bezelStyle="rounded" image="NSAdvanced" imagePosition="only" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="xRn-Na-U1V">
                         <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                         <font key="font" metaFont="system"/>
@@ -67,10 +66,10 @@
                     </connections>
                 </switch>
                 <splitView dividerStyle="thin" vertical="YES" translatesAutoresizingMaskIntoConstraints="NO" id="65j-Ye-ijW">
-                    <rect key="frame" x="0.0" y="33" width="1277" height="659"/>
+                    <rect key="frame" x="0.0" y="33" width="1278" height="659"/>
                     <subviews>
                         <splitView fixedFrame="YES" dividerStyle="paneSplitter" id="Var-LY-gAA">
-                            <rect key="frame" x="0.0" y="0.0" width="1277" height="659"/>
+                            <rect key="frame" x="0.0" y="0.0" width="1278" height="659"/>
                             <autoresizingMask key="autoresizingMask"/>
                         </splitView>
                     </subviews>
@@ -79,7 +78,7 @@
                     </holdingPriorities>
                 </splitView>
                 <slider verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="q9h-ca-HQ2">
-                    <rect key="frame" x="20" y="9" width="1089" height="16"/>
+                    <rect key="frame" x="20" y="9" width="1090" height="16"/>
                     <sliderCell key="cell" continuous="YES" state="on" alignment="left" maxValue="100" doubleValue="50" tickMarkPosition="above" sliderType="linear" id="XUa-IE-gWC">
                         <font key="font" size="12" name="Helvetica"/>
                     </sliderCell>
@@ -88,7 +87,7 @@
                     </connections>
                 </slider>
                 <button verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="KEi-gj-xBb">
-                    <rect key="frame" x="1209" y="9" width="48" height="24"/>
+                    <rect key="frame" x="1210" y="9" width="48" height="24"/>
                     <buttonCell key="cell" type="push" title="ALL" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="H0L-p1-vvW">
                         <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                         <font key="font" metaFont="system"/>
@@ -98,7 +97,7 @@
                     </connections>
                 </button>
                 <button verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="N5U-79-1jH">
-                    <rect key="frame" x="1164" y="9" width="33" height="24"/>
+                    <rect key="frame" x="1165" y="9" width="33" height="24"/>
                     <buttonCell key="cell" type="push" title="+" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="rIW-Xx-r0V">
                         <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                         <font key="font" metaFont="system"/>
@@ -108,7 +107,7 @@
                     </connections>
                 </button>
                 <button verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="q6v-oX-Foa">
-                    <rect key="frame" x="1120" y="9" width="31" height="24"/>
+                    <rect key="frame" x="1121" y="9" width="31" height="24"/>
                     <buttonCell key="cell" type="push" title="-" bezelStyle="rounded" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="BBD-TW-lZD">
                         <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES"/>
                         <font key="font" metaFont="system"/>
@@ -118,7 +117,7 @@
                     </connections>
                 </button>
                 <button verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="6xA-al-JW4">
-                    <rect key="frame" x="323" y="701" width="22" height="24"/>
+                    <rect key="frame" x="324" y="701" width="22" height="24"/>
                     <buttonCell key="cell" type="push" bezelStyle="rounded" image="NSLockLockedTemplate" imagePosition="only" alignment="center" borderStyle="border" imageScaling="proportionallyDown" inset="2" id="evY-sr-y79">
                         <behavior key="behavior" pushIn="YES" lightByBackground="YES" lightByGray="YES" changeBackground="YES" changeGray="YES"/>
                         <font key="font" metaFont="system"/>
@@ -132,7 +131,7 @@
                     </connections>
                 </button>
                 <segmentedControl verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="AbQ-SP-niQ">
-                    <rect key="frame" x="353" y="702" width="304" height="24"/>
+                    <rect key="frame" x="354" y="702" width="304" height="24"/>
                     <segmentedCell key="cell" borderStyle="border" alignment="left" style="rounded" trackingMode="selectOne" id="IP0-Bf-hdV">
                         <font key="font" metaFont="system"/>
                         <segments>
@@ -151,7 +150,7 @@
                     </connections>
                 </segmentedControl>
                 <segmentedControl verticalHuggingPriority="750" translatesAutoresizingMaskIntoConstraints="NO" id="rAc-lA-MOP">
-                    <rect key="frame" x="665" y="702" width="333" height="24"/>
+                    <rect key="frame" x="666" y="702" width="333" height="24"/>
                     <segmentedCell key="cell" borderStyle="border" alignment="left" style="rounded" trackingMode="selectOne" id="y6i-HP-EbH">
                         <font key="font" metaFont="system"/>
                         <segments>
@@ -170,10 +169,13 @@
                     </connections>
                 </segmentedControl>
                 <switch horizontalHuggingPriority="750" verticalHuggingPriority="750" baseWritingDirection="leftToRight" alignment="left" state="on" translatesAutoresizingMaskIntoConstraints="NO" id="Cn0-1E-CYv">
-                    <rect key="frame" x="1084" y="703" width="54" height="24"/>
+                    <rect key="frame" x="1085" y="703" width="54" height="24"/>
                 </switch>
-                <comboBox focusRingType="none" verticalHuggingPriority="750" allowsExpansionToolTips="YES" allowsCharacterPickerTouchBarItem="YES" translatesAutoresizingMaskIntoConstraints="NO" id="jQc-bl-0kG">
-                    <rect key="frame" x="138" y="703" width="180" height="23"/>
+                <comboBox focusRingType="none" horizontalHuggingPriority="1000" verticalHuggingPriority="750" horizontalCompressionResistancePriority="1000" allowsExpansionToolTips="YES" allowsCharacterPickerTouchBarItem="YES" translatesAutoresizingMaskIntoConstraints="NO" id="jQc-bl-0kG">
+                    <rect key="frame" x="138" y="703" width="181" height="23"/>
+                    <constraints>
+                        <constraint firstAttribute="width" relation="greaterThanOrEqual" constant="177" id="NbX-Vz-a6k"/>
+                    </constraints>
                     <comboBoxCell key="cell" scrollable="YES" lineBreakMode="clipping" selectable="YES" editable="YES" sendsActionOnEndEditing="YES" borderStyle="bezel" alignment="left" usesSingleLineMode="YES" bezelStyle="round" buttonBordered="NO" usesDataSource="YES" numberOfVisibleItems="5" id="OOj-wP-LQx">
                         <font key="font" metaFont="system"/>
                         <color key="textColor" name="controlTextColor" catalog="System" colorSpace="catalog"/>
@@ -224,7 +226,7 @@
                 <constraint firstItem="q6v-oX-Foa" firstAttribute="leading" secondItem="q9h-ca-HQ2" secondAttribute="trailing" constant="11" id="wTv-w2-517"/>
                 <constraint firstItem="rAc-lA-MOP" firstAttribute="leading" secondItem="AbQ-SP-niQ" secondAttribute="trailing" constant="8" symbolic="YES" id="xVm-sc-W4f"/>
             </constraints>
-            <point key="canvasLocation" x="241.5" y="32"/>
+            <point key="canvasLocation" x="514" y="112"/>
         </customView>
     </objects>
     <resources>

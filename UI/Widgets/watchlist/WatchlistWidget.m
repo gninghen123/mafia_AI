@@ -1906,9 +1906,9 @@
        [menu addItem:sendToChainItem];
        
        // ✅ NUOVO: Send all symbols of current list to chain
-       if (self.currentProvider && self.currentProvider.symbols.count > 0) {
+       if (self.currentProvider) {
            NSString *sendAllTitle = [NSString stringWithFormat:@"🔗 Send All Symbols (%lu) to Chain",
-                                    (unsigned long)self.currentProvider.symbols.count];
+                                    (unsigned long)self.displaySymbols.count];
            NSMenuItem *sendAllItem = [[NSMenuItem alloc] initWithTitle:sendAllTitle
                                                                  action:@selector(contextMenuSendAllToChain:)
                                                           keyEquivalent:@""];
@@ -1953,19 +1953,17 @@
 - (void)contextMenuSendAllToChain:(NSMenuItem *)sender {
     if (!self.currentProvider) return;
     
-    NSArray<NSString *> *allSymbols = self.currentProvider.symbols;
     
-    if (allSymbols.count > 0) {
+    if (self.displaySymbols.count > 0) {
         [self broadcastUpdate:@{
             @"action": @"setSymbols",
-            @"symbols": allSymbols
+            @"symbols": self.displaySymbols
         }];
         
-        NSLog(@"🔗 Sent all %lu symbols from '%@' to chain",
-              (unsigned long)allSymbols.count, self.currentProvider.displayName);
+    
         
         self.statusLabel.stringValue = [NSString stringWithFormat:@"Sent all %lu symbols to chain",
-                                        (unsigned long)allSymbols.count];
+                                        (unsigned long)self.displaySymbols.count];
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             self.statusLabel.stringValue = @"Ready";
         });

@@ -72,8 +72,8 @@
     }
     
     // Create SavedChartData object as snapshot
-    SavedChartData *savedData = [[SavedChartData alloc] initSnapshotWithChartWidget:self notes:notes];
-    if (!savedData.isDataValid) {
+    SavedChartData *newSnapshot = [[SavedChartData alloc] initSnapshotWithChartWidget:self notes:notes];
+    if (!newSnapshot.isDataValid) {
         NSError *validationError = [NSError errorWithDomain:@"ChartWidgetSave"
                                                         code:1001
                                                     userInfo:@{NSLocalizedDescriptionKey: @"Invalid chart data for snapshot"}];
@@ -81,16 +81,199 @@
         return;
     }
     
-    // Generate file path
+    // ✅ NEW: Check for existing compatible snapshots
+    [self checkForMergeableSnapshot:newSnapshot completion:^(SavedChartData * _Nullable existingSnapshot, NSString * _Nullable existingFilePath) {
+        
+        if (existingSnapshot && existingFilePath) {
+            // Found compatible snapshot - ask user what to do
+            [self showMergeDialog:newSnapshot
+                 existingSnapshot:existingSnapshot
+                 existingFilePath:existingFilePath
+                         userNotes:notes
+                        completion:completion];
+        } else {
+            // No compatible snapshot found - save as new file
+            [self saveSnapshotAsNewFile:newSnapshot completion:completion];
+        }
+    }];
+}
+
+#pragma mark - Helper Methods for Snapshot Merge
+
+/// Check if there's an existing snapshot that can be merged with the new one
+- (void)checkForMergeableSnapshot:(SavedChartData *)newSnapshot
+                       completion:(void(^)(SavedChartData * _Nullable existingSnapshot, NSString * _Nullable existingFilePath))completion {
+    
+    // Get all snapshot metadata for this symbol
+    NSArray<StorageMetadataItem *> *allItems = [ChartWidget availableStorageMetadataForSymbol:newSnapshot.symbol];
+    
+    // Filter for snapshots only with matching timeframe and extended hours
+    NSMutableArray<StorageMetadataItem *> *candidateSnapshots = [NSMutableArray array];
+    
+    for (StorageMetadataItem *item in allItems) {
+        if (item.dataType == SavedChartDataTypeSnapshot &&
+            item.timeframe == newSnapshot.timeframe &&
+            item.includesExtendedHours == newSnapshot.includesExtendedHours) {
+            [candidateSnapshots addObject:item];
+        }
+    }
+    
+    if (candidateSnapshots.count == 0) {
+        NSLog(@"📸 No existing compatible snapshots found for %@ [%@]",
+              newSnapshot.symbol, [newSnapshot timeframeDescription]);
+        completion(nil, nil);
+        return;
+    }
+    
+    NSLog(@"🔍 Found %lu candidate snapshot(s) for potential merge", (unsigned long)candidateSnapshots.count);
+    
+    // Check each candidate to see if it can be merged
+    for (StorageMetadataItem *item in candidateSnapshots) {
+        SavedChartData *existingSnapshot = [SavedChartData loadFromFile:item.filePath];
+        
+        if (existingSnapshot && [newSnapshot canMergeWithSnapshot:existingSnapshot]) {
+            NSLog(@"✅ Found mergeable snapshot: %@", [item.filePath lastPathComponent]);
+            completion(existingSnapshot, item.filePath);
+            return;
+        }
+    }
+    
+    NSLog(@"📸 No mergeable snapshots found (incompatible date ranges)");
+    completion(nil, nil);
+}
+
+/// Show dialog asking user whether to merge or create new file
+- (void)showMergeDialog:(SavedChartData *)newSnapshot
+       existingSnapshot:(SavedChartData *)existingSnapshot
+       existingFilePath:(NSString *)existingFilePath
+              userNotes:(NSString *)userNotes
+             completion:(void(^)(BOOL success, NSString * _Nullable filePath, NSError * _Nullable error))completion {
+    
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"Compatible Snapshot Found";
+        
+        NSString *infoText = [NSString stringWithFormat:
+            @"Found an existing snapshot that can be merged:\n\n"
+            @"EXISTING SNAPSHOT:\n"
+            @"  Range: %@ to %@\n"
+            @"  Bars: %ld\n"
+            @"  Created: %@\n\n"
+            @"NEW SNAPSHOT:\n"
+            @"  Range: %@ to %@\n"
+            @"  Bars: %ld\n\n"
+            @"What would you like to do?",
+            [self formatDateForDisplay:existingSnapshot.startDate],
+            [self formatDateForDisplay:existingSnapshot.endDate],
+            (long)existingSnapshot.barCount,
+            [self formatDateForDisplay:existingSnapshot.creationDate],
+            [self formatDateForDisplay:newSnapshot.startDate],
+            [self formatDateForDisplay:newSnapshot.endDate],
+            (long)newSnapshot.barCount
+        ];
+        
+        alert.informativeText = infoText;
+        
+        [alert addButtonWithTitle:@"Merge Snapshots"];
+        [alert addButtonWithTitle:@"Save as New File"];
+        [alert addButtonWithTitle:@"Cancel"];
+        
+        NSModalResponse response = [alert runModal];
+        
+        if (response == NSAlertFirstButtonReturn) {
+            // User chose to MERGE
+            [self performSnapshotMerge:newSnapshot
+                      existingSnapshot:existingSnapshot
+                      existingFilePath:existingFilePath
+                             userNotes:userNotes
+                            completion:completion];
+            
+        } else if (response == NSAlertSecondButtonReturn) {
+            // User chose to save as NEW FILE
+            [self saveSnapshotAsNewFile:newSnapshot completion:completion];
+            
+        } else {
+            // User cancelled
+            NSError *cancelError = [NSError errorWithDomain:@"ChartWidgetSave"
+                                                       code:1003
+                                                   userInfo:@{NSLocalizedDescriptionKey: @"User cancelled save"}];
+            if (completion) completion(NO, nil, cancelError);
+        }
+    });
+}
+
+/// Perform the actual merge and save
+- (void)performSnapshotMerge:(SavedChartData *)newSnapshot
+            existingSnapshot:(SavedChartData *)existingSnapshot
+            existingFilePath:(NSString *)existingFilePath
+                   userNotes:(NSString *)userNotes
+                  completion:(void(^)(BOOL success, NSString * _Nullable filePath, NSError * _Nullable error))completion {
+    
+    NSLog(@"🔄 Merging snapshots...");
+    
+    // Add user notes to new snapshot before merge
+    if (userNotes && userNotes.length > 0) {
+        newSnapshot.notes = userNotes;
+    }
+    
+    // Perform merge
+    NSError *mergeError;
+    BOOL mergeSuccess = [existingSnapshot mergeWithSnapshot:newSnapshot error:&mergeError];
+    
+    if (!mergeSuccess) {
+        NSLog(@"❌ Merge failed: %@", mergeError.localizedDescription);
+        if (completion) completion(NO, nil, mergeError);
+        return;
+    }
+    
+    // Save merged snapshot (with filename update to reflect new range)
+    NSError *saveError;
+    NSString *newFilePath = [existingSnapshot saveToFileWithFilenameUpdate:existingFilePath error:&saveError];
+    
+    if (newFilePath) {
+        NSLog(@"✅ Merged snapshot saved successfully: %@", [newFilePath lastPathComponent]);
+        
+        // Update cache
+        StorageMetadataCache *cache = [StorageMetadataCache sharedCache];
+        
+        // If filename changed, delete old file and update cache
+        if (![newFilePath isEqualToString:existingFilePath]) {
+            [[NSFileManager defaultManager] removeItemAtPath:existingFilePath error:nil];
+            [cache handleFileDeleted:existingFilePath];
+        }
+        
+        [cache handleFileUpdated:newFilePath];
+        [cache saveToUserDefaults];
+        
+        if (completion) completion(YES, newFilePath, nil);
+    } else {
+        NSLog(@"❌ Failed to save merged snapshot: %@", saveError.localizedDescription);
+        if (completion) completion(NO, nil, saveError);
+    }
+}
+
+/// Save snapshot as new file (no merge)
+- (void)saveSnapshotAsNewFile:(SavedChartData *)snapshot
+                   completion:(void(^)(BOOL success, NSString * _Nullable filePath, NSError * _Nullable error))completion {
+    
     NSString *directory = [ChartWidget savedChartDataDirectory];
-    NSString *filename = [savedData generateCurrentFilename];
+    NSString *filename = [snapshot generateCurrentFilename];
     NSString *filePath = [directory stringByAppendingPathComponent:filename];
     
-    // Save to file
-    BOOL success = [savedData saveToFile:filePath error:&error];
+    NSError *saveError;
+    BOOL success = [snapshot saveToFile:filePath error:&saveError];
+    
+    if (success) {
+        NSLog(@"✅ Saved new snapshot: %@", filename);
+        
+        // Update cache
+        StorageMetadataCache *cache = [StorageMetadataCache sharedCache];
+        [cache handleFileUpdated:filePath];
+        [cache saveToUserDefaults];
+    }
     
     if (completion) {
-        completion(success, success ? filePath : nil, error);
+        completion(success, success ? filePath : nil, saveError);
     }
 }
 

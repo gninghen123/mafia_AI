@@ -207,6 +207,120 @@
     }
 }
 
+- (BOOL)canMergeWithSnapshot:(SavedChartData *)otherSnapshot {
+    if (!otherSnapshot) return NO;
+    
+    // Check basic compatibility (symbol, timeframe, extended hours)
+    if (![self matchesSymbol:otherSnapshot.symbol
+                   timeframe:otherSnapshot.timeframe
+       includesExtendedHours:otherSnapshot.includesExtendedHours]) {
+        return NO;
+    }
+    
+    // Both must be snapshots
+    if (self.dataType != SavedChartDataTypeSnapshot ||
+        otherSnapshot.dataType != SavedChartDataTypeSnapshot) {
+        return NO;
+    }
+    
+    // Check if ranges overlap or are contiguous
+    // Case 1: Complete overlap (one range contains the other)
+    if ([self.startDate compare:otherSnapshot.endDate] != NSOrderedDescending &&
+        [self.endDate compare:otherSnapshot.startDate] != NSOrderedAscending) {
+        return YES; // Ranges overlap
+    }
+    
+    // Case 2: Adjacent ranges (with small tolerance for gaps)
+    // Allow up to 1 day gap for intraday, 7 days for daily+
+    NSTimeInterval maxGap = (self.timeframe <= BarTimeframe4Hour) ? 86400 : 604800; // 1 day or 7 days
+    
+    // Check if otherSnapshot comes right after self
+    NSTimeInterval gapAfter = [otherSnapshot.startDate timeIntervalSinceDate:self.endDate];
+    if (gapAfter >= 0 && gapAfter <= maxGap) {
+        return YES;
+    }
+    
+    // Check if otherSnapshot comes right before self
+    NSTimeInterval gapBefore = [self.startDate timeIntervalSinceDate:otherSnapshot.endDate];
+    if (gapBefore >= 0 && gapBefore <= maxGap) {
+        return YES;
+    }
+    
+    return NO;
+}
+
+- (BOOL)mergeWithSnapshot:(SavedChartData *)otherSnapshot error:(NSError **)error {
+    if (![self canMergeWithSnapshot:otherSnapshot]) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"SavedChartDataMerge"
+                                         code:2001
+                                     userInfo:@{NSLocalizedDescriptionKey: @"Snapshots are not compatible for merging"}];
+        }
+        NSLog(@"❌ Snapshot merge failed: Incompatible snapshots");
+        return NO;
+    }
+    
+    // Combine bars from both snapshots
+    NSMutableArray<HistoricalBarModel *> *allBars = [NSMutableArray array];
+    [allBars addObjectsFromArray:self.historicalBars];
+    [allBars addObjectsFromArray:otherSnapshot.historicalBars];
+    
+    // Sort by date
+    [allBars sortUsingComparator:^NSComparisonResult(HistoricalBarModel *bar1, HistoricalBarModel *bar2) {
+        return [bar1.date compare:bar2.date];
+    }];
+    
+    // Remove duplicates (keep first occurrence)
+    NSMutableArray<HistoricalBarModel *> *uniqueBars = [NSMutableArray array];
+    NSDate *lastDate = nil;
+    
+    for (HistoricalBarModel *bar in allBars) {
+        if (!lastDate || ![bar.date isEqualToDate:lastDate]) {
+            [uniqueBars addObject:bar];
+            lastDate = bar.date;
+        }
+    }
+    
+    if (uniqueBars.count == 0) {
+        if (error) {
+            *error = [NSError errorWithDomain:@"SavedChartDataMerge"
+                                         code:2002
+                                     userInfo:@{NSLocalizedDescriptionKey: @"No bars after merge"}];
+        }
+        NSLog(@"❌ Snapshot merge failed: No bars after deduplication");
+        return NO;
+    }
+    
+    // Update properties with merged data
+    _historicalBars = [uniqueBars copy];
+    _startDate = uniqueBars.firstObject.date;
+    _endDate = uniqueBars.lastObject.date;
+    _lastUpdateDate = [NSDate date];
+    
+    // Merge notes if both have them
+    if (otherSnapshot.notes && otherSnapshot.notes.length > 0) {
+        if (self.notes && self.notes.length > 0) {
+            _notes = [NSString stringWithFormat:@"%@\n[MERGED] %@", self.notes, otherSnapshot.notes];
+        } else {
+            _notes = [NSString stringWithFormat:@"[MERGED] %@", otherSnapshot.notes];
+        }
+    }
+    
+    NSLog(@"✅ Snapshot merge successful: %ld total bars (range: %@ to %@)",
+          (long)self.barCount, self.startDate, self.endDate);
+    
+    return YES;
+}
+
+- (BOOL)matchesSymbol:(NSString *)symbol
+            timeframe:(BarTimeframe)timeframe
+includesExtendedHours:(BOOL)includesExtendedHours {
+    
+    return ([self.symbol.uppercaseString isEqualToString:symbol.uppercaseString] &&
+            self.timeframe == timeframe &&
+            self.includesExtendedHours == includesExtendedHours);
+}
+
 - (void)convertToSnapshot {
     if (self.dataType == SavedChartDataTypeSnapshot) {
         NSLog(@"⚠️ Already a snapshot, no conversion needed");
@@ -434,6 +548,7 @@
         case BarTimeframe30Min: return @"30min";
         case BarTimeframe1Hour: return @"1hour";
         case BarTimeframe4Hour: return @"4hour";
+        case BarTimeframe12Hour: return @"12hour";
         case BarTimeframeDaily: return @"daily";
         case BarTimeframeWeekly: return @"weekly";
         case BarTimeframeMonthly: return @"monthly";
@@ -526,6 +641,7 @@
         case BarTimeframe30Min:
         case BarTimeframe1Hour:
         case BarTimeframe4Hour:
+        case BarTimeframe12Hour:
             limitDays = 255; // ~8.5 months
             break;
         default:
@@ -553,6 +669,7 @@
         case BarTimeframe30Min:
         case BarTimeframe1Hour:
         case BarTimeframe4Hour:
+        case BarTimeframe12Hour:
             bufferDays = 241; // Conservative: 241 days (14 days safety buffer)
             break;
         default:
@@ -721,6 +838,7 @@
         case BarTimeframe30Min: return @"30m";
         case BarTimeframe1Hour: return @"1h";
         case BarTimeframe4Hour: return @"4h";
+        case BarTimeframe12Hour: return @"12h";
         case BarTimeframeDaily: return @"1d";
         case BarTimeframeWeekly: return @"1w";
         case BarTimeframeMonthly: return @"1M";
@@ -739,6 +857,7 @@
     if ([timeframeStr isEqualToString:@"30m"]) return BarTimeframe30Min;
     if ([timeframeStr isEqualToString:@"1h"]) return BarTimeframe1Hour;
     if ([timeframeStr isEqualToString:@"4h"]) return BarTimeframe4Hour;
+    if ([timeframeStr isEqualToString:@"12h"]) return BarTimeframe12Hour;
     if ([timeframeStr isEqualToString:@"1d"]) return BarTimeframeDaily;
     if ([timeframeStr isEqualToString:@"1w"]) return BarTimeframeWeekly;
     if ([timeframeStr isEqualToString:@"1M"]) return BarTimeframeMonthly;

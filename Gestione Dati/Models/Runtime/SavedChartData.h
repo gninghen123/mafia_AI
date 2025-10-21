@@ -104,6 +104,27 @@ typedef NS_ENUM(NSInteger, SavedChartDataType) {
 /// @return YES if merge was successful, NO if data incompatible
 - (BOOL)mergeWithNewBars:(NSArray<HistoricalBarModel *> *)newBars overlapBarCount:(NSInteger)overlapBarCount;
 
+
+/// Check if two snapshot ranges overlap or are contiguous (can be merged)
+/// @param otherSnapshot Another SavedChartData to check compatibility with
+/// @return YES if ranges overlap or are adjacent (mergeable)
+- (BOOL)canMergeWithSnapshot:(SavedChartData *)otherSnapshot;
+
+/// Merge this snapshot with another compatible snapshot
+/// @param otherSnapshot Snapshot to merge with
+/// @param error Error pointer for any merge issues
+/// @return YES if merge was successful, NO otherwise
+- (BOOL)mergeWithSnapshot:(SavedChartData *)otherSnapshot error:(NSError **)error;
+
+/// Check if this snapshot's parameters match (symbol, timeframe, extended hours)
+/// @param symbol Symbol to check
+/// @param timeframe Timeframe to check
+/// @param includesExtendedHours Extended hours setting to check
+/// @return YES if all parameters match
+- (BOOL)matchesSymbol:(NSString *)symbol
+            timeframe:(BarTimeframe)timeframe
+includesExtendedHours:(BOOL)includesExtendedHours;
+
 /// Convert continuous storage to snapshot (when gaps become irreversible)
 - (void)convertToSnapshot;
 
@@ -146,6 +167,9 @@ typedef NS_ENUM(NSInteger, SavedChartDataType) {
 
 + (NSString *)canonicalTimeframeString:(BarTimeframe)timeframe;
 + (BarTimeframe)timeframeFromCanonicalString:(NSString *)timeframeStr;
+
+
+
 
 @end
 

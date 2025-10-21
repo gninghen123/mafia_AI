@@ -325,6 +325,7 @@ static inline NSString* BarTimeframeToString(BarTimeframe timeframe) {
         case BarTimeframe90Min: return @"90min";
         case BarTimeframe2Hour: return @"2hour";
         case BarTimeframe4Hour: return @"4hour";
+        case BarTimeframe12Hour: return @"12hour";
         case BarTimeframeDaily: return @"1day";
         case BarTimeframeWeekly: return @"1week";
         case BarTimeframeMonthly: return @"1month";

@@ -4,6 +4,7 @@
 //
 
 #import <Cocoa/Cocoa.h>
+
 // Forward declarations
 @class BaseWidget;
 @class ChartWidget;

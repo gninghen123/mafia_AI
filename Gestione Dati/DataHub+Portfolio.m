@@ -301,7 +301,7 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
 
 - (void)placeOrder:(NSDictionary *)orderData
         forAccount:(NSString *)accountId
-        withBroker:(DataSourceType)brokerType
+        usingBroker:(DataSourceType)brokerType
         completion:(void(^)(NSString * _Nullable orderId, NSError * _Nullable error))completion {
     
     if (!completion) {
@@ -347,14 +347,14 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
 
 - (void)cancelOrder:(NSString *)orderId
          forAccount:(NSString *)accountId
-         withBroker:(DataSourceType)brokerType
+         usingBroker:(DataSourceType)brokerType
          completion:(void(^)(BOOL success, NSError * _Nullable error))completion {
-    
+
     if (!completion) {
         NSLog(@"⚠️ DataHub+Portfolio: No completion block provided for cancelOrder");
         return;
     }
-    
+
     if (!accountId || accountId.length == 0 || !orderId || orderId.length == 0) {
         NSError *error = [NSError errorWithDomain:@"DataHub"
                                              code:400
@@ -364,15 +364,15 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
         });
         return;
     }
-    
+
     NSLog(@"❌ DataHub: Cancelling order %@ for account %@ via broker %@", orderId, accountId, DataSourceTypeToString(brokerType));
-    
+
     // Forward to DataManager's secure trading methods
     [[DataManager sharedManager] cancelOrder:orderId
                                   forAccount:accountId
                              usingDataSource:brokerType
                                   completion:^(BOOL success, NSError *error) {
-        
+
         if (success && !error) {
             // Broadcast notification about successful order cancellation
             [[NSNotificationCenter defaultCenter] postNotificationName:PortfolioOrderStatusChangedNotification
@@ -384,7 +384,7 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
                                                                   @"status": @"CANCELLED"
                                                               }];
         }
-        
+
         dispatch_async(dispatch_get_main_queue(), ^{
             completion(success, error);
         });
@@ -392,17 +392,17 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
 }
 
 - (void)modifyOrder:(NSString *)orderId
-        withNewData:(NSDictionary *)newOrderData
          forAccount:(NSString *)accountId
-         withBroker:(DataSourceType)brokerType
+        usingBroker:(DataSourceType)brokerType
+            newData:(NSDictionary *)modifiedData
          completion:(void(^)(BOOL success, NSError * _Nullable error))completion {
-    
+
     if (!completion) {
         NSLog(@"⚠️ DataHub+Portfolio: No completion block provided for modifyOrder");
         return;
     }
-    
-    if (!accountId || accountId.length == 0 || !orderId || orderId.length == 0 || !newOrderData) {
+
+    if (!accountId || accountId.length == 0 || !orderId || orderId.length == 0 || !modifiedData) {
         NSError *error = [NSError errorWithDomain:@"DataHub"
                                              code:400
                                          userInfo:@{NSLocalizedDescriptionKey: @"Invalid modify order parameters"}];
@@ -411,14 +411,14 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
         });
         return;
     }
-    
+
     NSLog(@"🔧 DataHub: Modifying order %@ for account %@ via broker %@", orderId, accountId, DataSourceTypeToString(brokerType));
-    
+
     // For now, implement modify as cancel + place new order
     // TODO: Implement proper order modification when brokers support it
-    [self cancelOrder:orderId forAccount:accountId withBroker:brokerType completion:^(BOOL cancelSuccess, NSError *cancelError) {
+    [self cancelOrder:orderId forAccount:accountId usingBroker:brokerType completion:^(BOOL cancelSuccess, NSError *cancelError) {
         if (cancelSuccess && !cancelError) {
-        [self placeOrder:newOrderData forAccount:accountId withBroker:brokerType completion:^(NSString *newOrderId, NSError *placeError) {
+        [self placeOrder:modifiedData forAccount:accountId usingBroker:brokerType completion:^(NSString *newOrderId, NSError *placeError) {
                 if (!placeError && newOrderId) {
                     // Broadcast notification about order modification
                     [[NSNotificationCenter defaultCenter] postNotificationName:PortfolioOrderStatusChangedNotification
@@ -430,7 +430,7 @@ NSString * const PortfolioOrderFilledNotification = @"PortfolioOrderFilledNotifi
                                                                           @"brokerType": @(brokerType),
                                                                           @"status": @"MODIFIED"}];
                 }
-                
+
                 completion(!placeError && newOrderId != nil, placeError);
             }];
         } else {

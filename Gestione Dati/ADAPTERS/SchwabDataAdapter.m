@@ -252,14 +252,21 @@
     if (!rawData || ![rawData isKindOfClass:[NSDictionary class]]) {
         return nil;
     }
-    
+
+    // 🔍 LOGGING: Vediamo la struttura della position da Schwab
+    NSLog(@"🔍 SchwabAdapter: standardizePositionData - RAW KEYS: %@", [rawData allKeys]);
+    NSLog(@"🔍 SchwabAdapter: RAW POSITION DATA: %@", rawData);
+
     AdvancedPositionModel *position = [[AdvancedPositionModel alloc] init];
-    
+
     // Basic position info
     position.symbol = rawData[@"instrument"][@"symbol"] ?: rawData[@"symbol"] ?: @"";
     position.accountId = rawData[@"accountId"] ?: @"";
     position.quantity = [rawData[@"longQuantity"] doubleValue] - [rawData[@"shortQuantity"] doubleValue];
     position.avgCost = [rawData[@"averagePrice"] doubleValue];
+
+    NSLog(@"🔍 SchwabAdapter: Parsed - symbol:%@, qty:%.0f, avgCost:%.2f",
+          position.symbol, position.quantity, position.avgCost);
     
     // Market data
     position.currentPrice = [rawData[@"currentPrice"] doubleValue] ?: [rawData[@"marketValue"] doubleValue] / position.quantity;
@@ -282,10 +289,10 @@
     position.volume = [rawData[@"volume"] integerValue];
     
     position.priceLastUpdated = [NSDate date];
-    
-    NSLog(@"✅ SchwabAdapter: Created AdvancedPositionModel for %@ - %.0f shares @ $%.2f",
-          position.symbol, position.quantity, position.avgCost);
-    
+
+    NSLog(@"✅ SchwabAdapter: Created AdvancedPositionModel for %@ - %.0f shares @ $%.2f (P&L: $%.2f)",
+          position.symbol, position.quantity, position.avgCost, position.unrealizedPL);
+
     return position;
 }
 
@@ -293,26 +300,36 @@
     if (!rawData || ![rawData isKindOfClass:[NSDictionary class]]) {
         return nil;
     }
-    
+
+    // 🔍 LOGGING: Vediamo la struttura dell'order da Schwab
+    NSLog(@"🔍 SchwabAdapter: standardizeOrderData - RAW KEYS: %@", [rawData allKeys]);
+    NSLog(@"🔍 SchwabAdapter: RAW ORDER DATA: %@", rawData);
+
     AdvancedOrderModel *order = [[AdvancedOrderModel alloc] init];
-    
+
     // Basic order info
     order.orderId = rawData[@"orderId"] ?: @"";
     order.accountId = rawData[@"accountId"] ?: @"";
     order.symbol = rawData[@"orderLegCollection"][0][@"instrument"][@"symbol"] ?: @"";
-    
+
+    NSLog(@"🔍 SchwabAdapter: Parsed - orderId:%@, accountId:%@, symbol:%@",
+          order.orderId, order.accountId, order.symbol);
+
     // Order type and side
     order.orderType = rawData[@"orderType"] ?: @"MARKET";
     order.side = rawData[@"orderLegCollection"][0][@"instruction"] ?: @"BUY";
     order.status = rawData[@"status"] ?: @"PENDING";
     order.timeInForce = rawData[@"duration"] ?: @"DAY";
-    
+
     // Quantities and prices
     order.quantity = [rawData[@"quantity"] doubleValue];
     order.filledQuantity = [rawData[@"filledQuantity"] doubleValue];
     order.price = [rawData[@"price"] doubleValue];
     order.stopPrice = [rawData[@"stopPrice"] doubleValue];
     order.avgFillPrice = [rawData[@"avgFillPrice"] doubleValue];
+
+    NSLog(@"🔍 SchwabAdapter: Parsed - type:%@, side:%@, status:%@, qty:%.0f, price:%.2f",
+          order.orderType, order.side, order.status, order.quantity, order.price);
     
     // Dates (Schwab uses ISO date strings or timestamps)
     NSString *enteredTime = rawData[@"enteredTime"];
@@ -335,16 +352,30 @@
     // Additional fields
     order.instruction = rawData[@"orderLegCollection"][0][@"instruction"] ?: @"";
     order.orderStrategy = rawData[@"orderStrategyType"] ?: @"SINGLE";
-    
-    NSLog(@"✅ SchwabAdapter: Created AdvancedOrderModel %@ for %@ - %@ %.0f shares",
-          order.orderId, order.symbol, order.side, order.quantity);
-    
+
+    NSLog(@"✅ SchwabAdapter: Created AdvancedOrderModel %@ for %@ - %@ %.0f shares (status:%@)",
+          order.orderId, order.symbol, order.side, order.quantity, order.status);
+
     return order;
 }
 
 - (NSArray<AccountModel *> *)standardizeAccountData:(id)rawData {
+    // 🔍 LOGGING: Vediamo esattamente cosa arriva da Schwab
+    NSLog(@"🔍 SchwabAdapter: standardizeAccountData called with data type: %@", [rawData class]);
+    if ([rawData isKindOfClass:[NSDictionary class]]) {
+        NSLog(@"🔍 SchwabAdapter: RAW ACCOUNT DICT KEYS: %@", [(NSDictionary *)rawData allKeys]);
+    } else if ([rawData isKindOfClass:[NSArray class]]) {
+        NSLog(@"🔍 SchwabAdapter: RAW ACCOUNT ARRAY COUNT: %lu", (unsigned long)[(NSArray *)rawData count]);
+        if ([(NSArray *)rawData count] > 0) {
+            id firstItem = [(NSArray *)rawData firstObject];
+            if ([firstItem isKindOfClass:[NSDictionary class]]) {
+                NSLog(@"🔍 SchwabAdapter: FIRST ACCOUNT KEYS: %@", [(NSDictionary *)firstItem allKeys]);
+            }
+        }
+    }
+
     NSMutableArray<AccountModel *> *accounts = [NSMutableArray array];
-    
+
     if ([rawData isKindOfClass:[NSArray class]]) {
         // Array of account dictionaries from Schwab API
         NSArray *accountsArray = (NSArray *)rawData;
@@ -364,6 +395,7 @@
         
         // Check if it's a wrapper with "accounts" key
         if (accountDict[@"accounts"]) {
+            NSLog(@"🔍 SchwabAdapter: Found 'accounts' wrapper, recursing...");
             return [self standardizeAccountData:accountDict[@"accounts"]];
         } else {
             // Single account data

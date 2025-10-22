@@ -1498,13 +1498,22 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
 // Override del metodo BaseWidget per includere le impostazioni UI
 - (NSDictionary *)serializeState {
     NSMutableDictionary *state = [[super serializeState] mutableCopy];
-    
+
     // Includi le impostazioni UI nello stato del widget
     state[@"chartType"] = @(self.chartType);
     state[@"timeframe"] = @(self.timeframe);
     state[@"scaleType"] = @(self.scaleType);
     state[@"showVolume"] = @(self.showVolume);
-    
+    state[@"timeRange"] = @(self.timeRange);
+    state[@"itemWidth"] = @(self.itemWidth);
+    state[@"itemHeight"] = @(self.itemHeight);
+    state[@"autoRefreshEnabled"] = @(self.autoRefreshEnabled);
+
+    // Save symbols string
+    if (self.symbolsString) {
+        state[@"symbolsString"] = self.symbolsString;
+    }
+
     return state;
 }
 
@@ -1516,25 +1525,44 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
     if (state[@"chartType"]) {
         self.chartType = [state[@"chartType"] integerValue];
     }
-    
+
     if (state[@"timeframe"]) {
         self.timeframe = [state[@"timeframe"] integerValue];
     }
-    
+
     if (state[@"scaleType"]) {
         self.scaleType = [state[@"scaleType"] integerValue];
     }
-    
-   
-    
+
     if (state[@"showVolume"]) {
         self.showVolume = [state[@"showVolume"] boolValue];
     }
-    
-    
-    
-  
-    
+
+    if (state[@"timeRange"]) {
+        self.timeRange = [state[@"timeRange"] integerValue];
+    }
+
+    if (state[@"itemWidth"]) {
+        self.itemWidth = [state[@"itemWidth"] floatValue];
+    }
+
+    if (state[@"itemHeight"]) {
+        self.itemHeight = [state[@"itemHeight"] floatValue];
+    }
+
+    if (state[@"autoRefreshEnabled"]) {
+        self.autoRefreshEnabled = [state[@"autoRefreshEnabled"] boolValue];
+    }
+
+    // Restore symbols string
+    if (state[@"symbolsString"]) {
+        self.symbolsString = state[@"symbolsString"];
+        // Also update the text field
+        if (self.symbolsTextField) {
+            self.symbolsTextField.stringValue = self.symbolsString;
+        }
+    }
+
     // Aggiorna l'UI dopo il ripristino
     [self updateUIFromSettings];
     
@@ -1653,41 +1681,52 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
 
 - (void)updateUIFromSettings {
     // Aggiorna i controlli UI per riflettere le impostazioni caricate
-    
+
     // Chart Type Popup
     if (self.chartTypePopup && self.chartType < self.chartTypePopup.numberOfItems) {
         [self.chartTypePopup selectItemAtIndex:self.chartType];
     }
-    
+
     // Timeframe Popup
     if (self.timeframePopup && self.timeframe < self.timeframePopup.numberOfItems) {
         [self.timeframePopup selectItemAtIndex:self.timeframe];
     }
-    
+
     // Scale Type Popup
     if (self.scaleTypePopup && self.scaleType < self.scaleTypePopup.numberOfItems) {
         [self.scaleTypePopup selectItemAtIndex:self.scaleType];
     }
-    
-    if (self.autoRefreshToggle) {
-          self.autoRefreshToggle.state = self.autoRefreshEnabled ? NSControlStateValueOn : NSControlStateValueOff;
-      }
-    
+
     // Volume Checkbox
     if (self.volumeCheckbox) {
         self.volumeCheckbox.state = self.showVolume ? NSControlStateValueOn : NSControlStateValueOff;
     }
-    
-    if (self.itemWidthField) {
-           self.itemWidthField.integerValue = self.itemWidth;
-       }
-       if (self.itemHeightField) {
-           self.itemHeightField.integerValue = self.itemHeight;
-       }
- 
 
-    
-    NSLog(@"MultiChartWidget: Updated UI from settings");
+    // Time Range Segmented Control
+    if (self.timeRangeSegmented && self.timeRange < self.timeRangeSegmented.segmentCount) {
+        self.timeRangeSegmented.selectedSegment = self.timeRange;
+    }
+
+    // Auto Refresh Toggle
+    if (self.autoRefreshToggle) {
+        self.autoRefreshToggle.state = self.autoRefreshEnabled ? NSControlStateValueOn : NSControlStateValueOff;
+    }
+
+    // Item Width/Height Fields
+    if (self.itemWidthField) {
+        self.itemWidthField.integerValue = self.itemWidth;
+    }
+    if (self.itemHeightField) {
+        self.itemHeightField.integerValue = self.itemHeight;
+    }
+
+    // Symbols TextField (already updated in restoreState, but ensure it's set)
+    if (self.symbolsTextField && self.symbolsString) {
+        self.symbolsTextField.stringValue = self.symbolsString;
+    }
+
+    NSLog(@"📋 MultiChartWidget: Updated UI from settings (chartType=%ld, timeframe=%ld, timeRange=%ld, autoRefresh=%d)",
+          (long)self.chartType, (long)self.timeframe, (long)self.timeRange, self.autoRefreshEnabled);
 }
 
 #pragma mark - Enhanced Action Methods with Auto-Save

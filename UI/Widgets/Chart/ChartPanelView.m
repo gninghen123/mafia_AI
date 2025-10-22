@@ -345,7 +345,6 @@
 }
 
 
-// 3. 🆕 AGGIUNGERE: Date/Time bubble in basso
 
 - (void)drawDateBubbleAtCrosshair {
     if (!self.crosshairVisible || !self.chartData || self.chartData.count == 0) return;
@@ -400,7 +399,6 @@
 }
 
 
-// 4. 🆕 AGGIUNGERE: Helper per formattare date/time
 
 - (NSString *)formatDateTimeForDisplay:(NSDate *)timestamp {
     if (!timestamp) return @"--";

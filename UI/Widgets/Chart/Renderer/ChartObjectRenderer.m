@@ -2433,7 +2433,7 @@ typedef struct {
 - (CGFloat)calculateSnapToleranceForIntensity:(CGFloat)intensity {
     // Intensità 0-10 → tolleranza in pixel
     // Intensità alta = tolleranza molto più ampia (snap super aggressivo)
-    CGFloat maxTolerancePixels = 80.0; // AUMENTATO: Tolleranza massima molto ampia
+    CGFloat maxTolerancePixels = 180.0; // AUMENTATO: Tolleranza massima molto ampia
     CGFloat minTolerancePixels = 5.0;  // Minima tolleranza
     
     // Scala NON-LINEARE per rendere intensità 8-10 molto aggressive

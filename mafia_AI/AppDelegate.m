@@ -146,6 +146,13 @@
     deleteWorkspace.target = self;
     [fileMenu insertItem:deleteWorkspace atIndex:insertIndex++];
 
+    // ✅ Clear Auto-Restore
+    NSMenuItem *clearAutoRestore = [[NSMenuItem alloc] initWithTitle:@"Clear Auto-Restore"
+                                                              action:@selector(clearAutoRestore:)
+                                                       keyEquivalent:@""];
+    clearAutoRestore.target = self;
+    [fileMenu insertItem:clearAutoRestore atIndex:insertIndex++];
+
     // ✅ Separator
     [fileMenu insertItem:[NSMenuItem separatorItem] atIndex:insertIndex++];
 
@@ -818,6 +825,26 @@
     }
 
     NSLog(@"✅ AppDelegate: All windows closed");
+}
+
+- (IBAction)clearAutoRestore:(id)sender {
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Clear Auto-Restore";
+    alert.informativeText = @"This will clear the last used workspace that gets restored when you launch the app.\n\nThe app will start with a clean slate next time.\n\nYour saved workspaces will NOT be affected.";
+    [alert addButtonWithTitle:@"Clear"];
+    [alert addButtonWithTitle:@"Cancel"];
+
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        [[WorkspaceManager sharedManager] clearLastUsedWorkspace];
+
+        NSAlert *successAlert = [[NSAlert alloc] init];
+        successAlert.messageText = @"Auto-Restore Cleared";
+        successAlert.informativeText = @"The app will start with no windows next time you launch it.";
+        [successAlert addButtonWithTitle:@"OK"];
+        [successAlert runModal];
+
+        NSLog(@"✅ AppDelegate: Auto-restore cleared by user");
+    }
 }
 
 #pragma mark - Widget Creation

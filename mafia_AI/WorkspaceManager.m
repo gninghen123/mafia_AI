@@ -367,6 +367,15 @@ static NSString * const kWorkspaceVersion = @"1.0";
     }
 }
 
+- (void)clearLastUsedWorkspace {
+    NSLog(@"🗑️ WorkspaceManager: Clearing last used workspace");
+
+    [[NSUserDefaults standardUserDefaults] removeObjectForKey:kLastUsedWorkspaceKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+
+    NSLog(@"✅ WorkspaceManager: Last used workspace cleared (auto-restore disabled)");
+}
+
 #pragma mark - Export/Import
 
 - (BOOL)exportWorkspace:(NSString *)name toURL:(NSURL *)fileURL {

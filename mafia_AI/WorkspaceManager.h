@@ -47,6 +47,9 @@ NS_ASSUME_NONNULL_BEGIN
 // Restore "Last Used" workspace on app launch
 - (void)restoreLastUsedWorkspace;
 
+// Clear "Last Used" workspace (reset auto-restore)
+- (void)clearLastUsedWorkspace;
+
 #pragma mark - Export/Import
 
 // Export workspace to file

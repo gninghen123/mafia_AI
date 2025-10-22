@@ -345,7 +345,7 @@
 }
 
 
-
+// mi leggi?
 - (void)drawDateBubbleAtCrosshair {
     if (!self.crosshairVisible || !self.chartData || self.chartData.count == 0) return;
     

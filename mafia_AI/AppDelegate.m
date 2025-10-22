@@ -26,6 +26,7 @@
 #import "GridWindow.h"
 #import "GridTemplate.h"
 #import "WorkspaceManager.h"
+#import "GridPresetManager.h"
 #import "PreferencesWindowController.h"
 
 
@@ -79,9 +80,19 @@
     
     // ✅ Setup all menus programmatically
     [self setupAllMenus];
-    
+
+    // ✅ Listen for grid preset changes
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(handleGridPresetsDidChange:)
+                                                 name:@"GridPresetsDidChange"
+                                               object:nil];
+
     // ✅ Restore last used workspace
     [[WorkspaceManager sharedManager] restoreLastUsedWorkspace];
+}
+
+- (void)handleGridPresetsDidChange:(NSNotification *)notification {
+    [self refreshGridPresetsMenu];
 }
 
 #pragma mark - Menu Setup
@@ -130,15 +141,23 @@
     
     // ✅ Separator
     [fileMenu insertItem:[NSMenuItem separatorItem] atIndex:insertIndex++];
-    
-    // ✅ New Grid submenu - AGGIORNATO
+
+    // ✅ New Grid submenu - includes both built-in and custom presets
     NSMenuItem *newGridItem = [[NSMenuItem alloc] initWithTitle:@"New Grid"
                                                          action:nil
                                                   keyEquivalent:@""];
+    NSMenu *gridSubmenu = [self buildGridPresetsMenu];
+    [newGridItem setSubmenu:gridSubmenu];
+    [fileMenu insertItem:newGridItem atIndex:insertIndex++];
+
+    NSLog(@"✅ File menu setup complete (workspace + grid items added)");
+}
+
+- (NSMenu *)buildGridPresetsMenu {
     NSMenu *gridSubmenu = [[NSMenu alloc] initWithTitle:@"New Grid"];
-    
-    // ✅ PRESET GRIDS - questi creano grids con dimensioni predefinite
-    NSArray *gridPresets = @[
+
+    // ✅ BUILT-IN PRESETS
+    NSArray *builtInPresets = @[
         @{@"name": @"Single (1×1)", @"rows": @1, @"cols": @1},
         @{@"name": @"List + Chart (1×2)", @"rows": @1, @"cols": @2},
         @{@"name": @"Triple Horizontal (1×3)", @"rows": @1, @"cols": @3},
@@ -146,20 +165,68 @@
         @{@"name": @"2×3 Grid", @"rows": @2, @"cols": @3},
         @{@"name": @"3×3 Grid", @"rows": @3, @"cols": @3}
     ];
-    
-    for (NSDictionary *preset in gridPresets) {
+
+    for (NSDictionary *preset in builtInPresets) {
         NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:preset[@"name"]
                                                       action:@selector(openGridPreset:)
                                                keyEquivalent:@""];
         item.target = self;
-        item.representedObject = preset; // Passa rows/cols come dict
+        item.representedObject = preset;
         [gridSubmenu addItem:item];
     }
-    
-    [newGridItem setSubmenu:gridSubmenu];
-    [fileMenu insertItem:newGridItem atIndex:insertIndex++];
-    
-    NSLog(@"✅ File menu setup complete (workspace + grid items added)");
+
+    // ✅ CUSTOM PRESETS
+    NSArray<NSDictionary *> *customPresets = [[GridPresetManager sharedManager] availablePresets];
+
+    if (customPresets.count > 0) {
+        [gridSubmenu addItem:[NSMenuItem separatorItem]];
+
+        // Add section header
+        NSMenuItem *headerItem = [[NSMenuItem alloc] initWithTitle:@"Custom Presets" action:nil keyEquivalent:@""];
+        headerItem.enabled = NO;
+        [gridSubmenu addItem:headerItem];
+
+        for (NSDictionary *presetData in customPresets) {
+            NSString *name = presetData[@"name"];
+            GridTemplate *template = presetData[@"template"];
+
+            NSString *title = [NSString stringWithFormat:@"%@ (%ldx%ld)",
+                              name, (long)template.rows, (long)template.cols];
+
+            NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:title
+                                                          action:@selector(openCustomGridPreset:)
+                                                   keyEquivalent:@""];
+            item.target = self;
+            item.representedObject = @{@"name": name, @"template": template};
+            [gridSubmenu addItem:item];
+        }
+
+        // Add "Manage Presets..." option
+        [gridSubmenu addItem:[NSMenuItem separatorItem]];
+        NSMenuItem *manageItem = [[NSMenuItem alloc] initWithTitle:@"Manage Presets..."
+                                                            action:@selector(manageGridPresets:)
+                                                     keyEquivalent:@""];
+        manageItem.target = self;
+        [gridSubmenu addItem:manageItem];
+    }
+
+    return gridSubmenu;
+}
+
+- (void)refreshGridPresetsMenu {
+    NSMenu *mainMenu = [NSApp mainMenu];
+    NSMenuItem *fileMenuItem = [mainMenu itemWithTitle:@"File"];
+    NSMenu *fileMenu = [fileMenuItem submenu];
+
+    // Find "New Grid" menu item
+    for (NSMenuItem *item in fileMenu.itemArray) {
+        if ([item.title isEqualToString:@"New Grid"]) {
+            NSMenu *newSubmenu = [self buildGridPresetsMenu];
+            [item setSubmenu:newSubmenu];
+            NSLog(@"🔄 AppDelegate: Grid presets menu refreshed");
+            break;
+        }
+    }
 }
 
 #pragma mark - Preferences Actions
@@ -503,6 +570,89 @@
     [gridWindow makeKeyAndOrderFront:self];
     
     NSLog(@"✅ AppDelegate: Grid window opened (%ldx%ld)", (long)rows, (long)cols);
+}
+
+- (IBAction)openCustomGridPreset:(id)sender {
+    NSMenuItem *menuItem = (NSMenuItem *)sender;
+    NSDictionary *presetData = menuItem.representedObject;
+
+    NSString *name = presetData[@"name"];
+    GridTemplate *template = presetData[@"template"];
+
+    NSLog(@"🏗️ AppDelegate: Opening custom grid preset: %@ (%ldx%ld)",
+          name, (long)template.rows, (long)template.cols);
+
+    GridWindow *gridWindow = [[GridWindow alloc] initWithTemplate:template
+                                                             name:name
+                                                      appDelegate:self];
+
+    [self.gridWindows addObject:gridWindow];
+    [gridWindow makeKeyAndOrderFront:self];
+
+    NSLog(@"✅ AppDelegate: Custom grid window opened (%ldx%ld)",
+          (long)template.rows, (long)template.cols);
+}
+
+- (IBAction)manageGridPresets:(id)sender {
+    NSArray<NSString *> *presetNames = [[GridPresetManager sharedManager] availablePresetNames];
+
+    if (presetNames.count == 0) {
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"No Custom Presets";
+        alert.informativeText = @"You haven't saved any custom grid presets yet.\n\nTo create a preset:\n1. Open a grid window\n2. Adjust the layout and proportions\n3. Click the settings button (⚙️)\n4. Select \"Save as Preset...\"";
+        [alert addButtonWithTitle:@"OK"];
+        [alert runModal];
+        return;
+    }
+
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Manage Grid Presets";
+    alert.informativeText = @"Select a preset to delete:";
+
+    NSPopUpButton *popup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 0, 250, 24)
+                                                      pullsDown:NO];
+    [popup addItemsWithTitles:presetNames];
+
+    alert.accessoryView = popup;
+
+    [alert addButtonWithTitle:@"Delete"];
+    [alert addButtonWithTitle:@"Cancel"];
+
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        NSString *selectedPreset = [popup titleOfSelectedItem];
+
+        if (selectedPreset) {
+            // Confirm deletion
+            NSAlert *confirmAlert = [[NSAlert alloc] init];
+            confirmAlert.messageText = @"Confirm Deletion";
+            confirmAlert.informativeText = [NSString stringWithFormat:@"Are you sure you want to delete the preset '%@'?\n\nThis action cannot be undone.", selectedPreset];
+            [confirmAlert addButtonWithTitle:@"Delete"];
+            [confirmAlert addButtonWithTitle:@"Cancel"];
+
+            if ([confirmAlert runModal] == NSAlertFirstButtonReturn) {
+                BOOL success = [[GridPresetManager sharedManager] deletePresetWithName:selectedPreset];
+
+                if (success) {
+                    // Refresh menu
+                    [self refreshGridPresetsMenu];
+
+                    NSAlert *successAlert = [[NSAlert alloc] init];
+                    successAlert.messageText = @"Preset Deleted";
+                    successAlert.informativeText = [NSString stringWithFormat:@"The preset '%@' has been deleted.", selectedPreset];
+                    [successAlert addButtonWithTitle:@"OK"];
+                    [successAlert runModal];
+
+                    NSLog(@"✅ AppDelegate: Deleted preset '%@'", selectedPreset);
+                } else {
+                    NSAlert *errorAlert = [[NSAlert alloc] init];
+                    errorAlert.messageText = @"Delete Failed";
+                    errorAlert.informativeText = @"Failed to delete the preset. Please try again.";
+                    [errorAlert addButtonWithTitle:@"OK"];
+                    [errorAlert runModal];
+                }
+            }
+        }
+    }
 }
 
 

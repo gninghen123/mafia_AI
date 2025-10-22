@@ -10,6 +10,7 @@
 #import "AppDelegate.h"
 #import "WidgetTypeManager.h"
 #import "WorkspaceManager.h"
+#import "GridPresetManager.h"
 
 @interface GridWindow ()
 @property (nonatomic, strong) NSView *containerView;
@@ -868,8 +869,74 @@ found:
 }
 
 - (void)saveAsPreset:(id)sender {
-    NSLog(@"💾 GridWindow: Save as preset - TODO");
-    // TODO: Implement preset saving via WorkspaceManager
+    // Capture current proportions first
+    [self captureCurrentProportions];
+
+    // Show dialog to get preset name
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Save Grid as Preset";
+    alert.informativeText = [NSString stringWithFormat:@"Save this %ldx%ld grid layout as a reusable preset.\nEnter a name:", (long)self.rows, (long)self.cols];
+
+    NSTextField *input = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 250, 24)];
+    input.placeholderString = @"My Custom Grid";
+    input.stringValue = self.gridName;
+    alert.accessoryView = input;
+
+    [alert addButtonWithTitle:@"Save"];
+    [alert addButtonWithTitle:@"Cancel"];
+
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        NSString *presetName = input.stringValue;
+
+        if (presetName.length == 0) {
+            NSAlert *errorAlert = [[NSAlert alloc] init];
+            errorAlert.messageText = @"Invalid Name";
+            errorAlert.informativeText = @"Preset name cannot be empty";
+            [errorAlert addButtonWithTitle:@"OK"];
+            [errorAlert runModal];
+            return;
+        }
+
+        // Check if preset already exists
+        if ([[GridPresetManager sharedManager] presetExistsWithName:presetName]) {
+            NSAlert *overwriteAlert = [[NSAlert alloc] init];
+            overwriteAlert.messageText = @"Preset Already Exists";
+            overwriteAlert.informativeText = [NSString stringWithFormat:@"A preset named '%@' already exists. Overwrite?", presetName];
+            [overwriteAlert addButtonWithTitle:@"Overwrite"];
+            [overwriteAlert addButtonWithTitle:@"Cancel"];
+
+            if ([overwriteAlert runModal] != NSAlertFirstButtonReturn) {
+                return;
+            }
+        }
+
+        // Save preset
+        BOOL success = [[GridPresetManager sharedManager] savePreset:self.currentTemplate
+                                                            withName:presetName];
+
+        if (success) {
+            NSAlert *successAlert = [[NSAlert alloc] init];
+            successAlert.messageText = @"Preset Saved";
+            successAlert.informativeText = [NSString stringWithFormat:@"Grid preset '%@' saved successfully.\nYou can now create new grids with this layout from the File > New Grid menu.", presetName];
+            [successAlert addButtonWithTitle:@"OK"];
+            [successAlert runModal];
+
+            NSLog(@"✅ GridWindow: Saved preset '%@' (%ldx%ld)",
+                  presetName, (long)self.rows, (long)self.cols);
+
+            // Notify AppDelegate to refresh menu
+            [[NSNotificationCenter defaultCenter] postNotificationName:@"GridPresetsDidChange"
+                                                                object:nil];
+        } else {
+            NSAlert *errorAlert = [[NSAlert alloc] init];
+            errorAlert.messageText = @"Save Failed";
+            errorAlert.informativeText = @"Failed to save preset. Please try again.";
+            [errorAlert addButtonWithTitle:@"OK"];
+            [errorAlert runModal];
+
+            NSLog(@"❌ GridWindow: Failed to save preset '%@'", presetName);
+        }
+    }
 }
 
 #pragma mark - Serialization

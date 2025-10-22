@@ -127,48 +127,64 @@ static NSColor *SIMPLIFIED_DRAWING_COLOR = nil;
 - (TechnicalIndicatorBase *)createRootIndicatorFromTemplate:(ChartPanelTemplateModel *)panelTemplate {
     NSString *indicatorType = panelTemplate.rootIndicatorType;
     NSDictionary *parameters = panelTemplate.rootIndicatorParams;
-    
+
     if (!indicatorType || indicatorType.length == 0) {
         NSLog(@"⚠️ No root indicator type specified in template");
         return nil;
     }
-    
+
     // ✅ MIGLIORATO: Usa deserializeFromDictionary se possibile
     if (parameters && parameters.count > 0) {
-        // Create dictionary for deserialization
-        NSDictionary *deserializeDict = @{
+        // ✅ FIX: Extract lineWidth and displayColor from parameters and put them in main dict
+        NSMutableDictionary *deserializeDict = [NSMutableDictionary dictionaryWithDictionary:@{
             @"class": indicatorType,
             @"parameters": parameters,
             @"isVisible": @YES
-        };
-        
+        }];
+
+        // Extract lineWidth from parameters if present
+        if (parameters[@"lineWidth"]) {
+            deserializeDict[@"lineWidth"] = parameters[@"lineWidth"];
+        }
+
+        // Extract displayColor from parameters if present
+        if (parameters[@"displayColor"]) {
+            deserializeDict[@"displayColor"] = parameters[@"displayColor"];
+        }
+
+        // Extract color (legacy name) and map to displayColor
+        if (parameters[@"color"] && !deserializeDict[@"displayColor"]) {
+            deserializeDict[@"displayColor"] = parameters[@"color"];
+        }
+
         TechnicalIndicatorBase *indicator = [TechnicalIndicatorBase deserializeFromDictionary:deserializeDict];
         if (indicator) {
-            NSLog(@"✅ Created root indicator via deserialization: %@", indicator.displayName);
+            NSLog(@"✅ Created root indicator via deserialization: %@ (lineWidth=%.1f, color=%@)",
+                  indicator.displayName, indicator.lineWidth, indicator.displayColor);
             return indicator;
         }
     }
-    
+
     // ✅ FALLBACK: Manual creation
     Class indicatorClass = NSClassFromString(indicatorType);
     if (!indicatorClass || ![indicatorClass isSubclassOfClass:[TechnicalIndicatorBase class]]) {
         NSLog(@"❌ Invalid indicator class: %@", indicatorType);
         return nil;
     }
-    
+
     TechnicalIndicatorBase *indicator = [[indicatorClass alloc] initWithParameters:parameters];
-    
-    
+
+
     NSLog(@"✅ Created root indicator manually: %@", indicator.displayName);
     return indicator;
 }
 
 - (TechnicalIndicatorBase *)createChildIndicatorFromDictionary:(NSDictionary *)childDict {
     NSLog(@"🔍 Creating child from dict: %@", childDict);
-    
+
     // ✅ MIGLIORATO: Converte formato se necessario
     NSMutableDictionary *deserializeDict = [NSMutableDictionary dictionary];
-    
+
     // Map fields to expected format
     NSString *className = childDict[@"class"];
     if (!className) {
@@ -177,26 +193,42 @@ static NSColor *SIMPLIFIED_DRAWING_COLOR = nil;
             className = [NSString stringWithFormat:@"%@Indicator", type];
         }
     }
-    
+
     if (!className) {
         NSLog(@"❌ No class or type found in child dict: %@", childDict);
         return nil;
     }
-    
+
     deserializeDict[@"class"] = className;
     if (childDict[@"parameters"]) deserializeDict[@"parameters"] = childDict[@"parameters"];
     if (childDict[@"instanceID"]) deserializeDict[@"indicatorID"] = childDict[@"instanceID"];
     if (childDict[@"isVisible"]) deserializeDict[@"isVisible"] = childDict[@"isVisible"];
-    
+
+    // ✅ FIX: Extract lineWidth and displayColor from parameters if present
+    NSDictionary *parameters = childDict[@"parameters"];
+    if (parameters && [parameters isKindOfClass:[NSDictionary class]]) {
+        if (parameters[@"lineWidth"]) {
+            deserializeDict[@"lineWidth"] = parameters[@"lineWidth"];
+        }
+        if (parameters[@"displayColor"]) {
+            deserializeDict[@"displayColor"] = parameters[@"displayColor"];
+        }
+        // Legacy color name mapping
+        if (parameters[@"color"] && !deserializeDict[@"displayColor"]) {
+            deserializeDict[@"displayColor"] = parameters[@"color"];
+        }
+    }
+
     // ✅ Use built-in deserialization
     TechnicalIndicatorBase *childIndicator = [TechnicalIndicatorBase deserializeFromDictionary:deserializeDict];
-    
+
     if (!childIndicator) {
         NSLog(@"❌ Failed to deserialize child indicator from: %@", deserializeDict);
     } else {
-        NSLog(@"✅ Created child indicator: %@", childIndicator.displayName);
+        NSLog(@"✅ Created child indicator: %@ (lineWidth=%.1f, color=%@)",
+              childIndicator.displayName, childIndicator.lineWidth, childIndicator.displayColor);
     }
-    
+
     return childIndicator;
 }
 

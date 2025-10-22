@@ -138,7 +138,25 @@
                                                     keyEquivalent:@""];
     loadWorkspace.target = self;
     [fileMenu insertItem:loadWorkspace atIndex:insertIndex++];
-    
+
+    // ✅ Delete Workspace...
+    NSMenuItem *deleteWorkspace = [[NSMenuItem alloc] initWithTitle:@"Delete Workspace..."
+                                                             action:@selector(deleteWorkspace:)
+                                                      keyEquivalent:@""];
+    deleteWorkspace.target = self;
+    [fileMenu insertItem:deleteWorkspace atIndex:insertIndex++];
+
+    // ✅ Separator
+    [fileMenu insertItem:[NSMenuItem separatorItem] atIndex:insertIndex++];
+
+    // ✅ Close All Windows
+    NSMenuItem *closeAllWindows = [[NSMenuItem alloc] initWithTitle:@"Close All Windows"
+                                                             action:@selector(closeAllWindows:)
+                                                      keyEquivalent:@"W"];
+    closeAllWindows.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
+    closeAllWindows.target = self;
+    [fileMenu insertItem:closeAllWindows atIndex:insertIndex++];
+
     // ✅ Separator
     [fileMenu insertItem:[NSMenuItem separatorItem] atIndex:insertIndex++];
 
@@ -726,6 +744,82 @@
     }
 }
 
+- (IBAction)deleteWorkspace:(id)sender {
+    NSArray *workspaces = [[WorkspaceManager sharedManager] availableWorkspaces];
+
+    if (workspaces.count == 0) {
+        NSAlert *alert = [[NSAlert alloc] init];
+        alert.messageText = @"No Workspaces";
+        alert.informativeText = @"No saved workspaces found.";
+        [alert addButtonWithTitle:@"OK"];
+        [alert runModal];
+        return;
+    }
+
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Delete Workspace";
+    alert.informativeText = @"Select a workspace to delete:";
+
+    NSPopUpButton *popup = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)
+                                                      pullsDown:NO];
+    [popup addItemsWithTitles:workspaces];
+    alert.accessoryView = popup;
+
+    [alert addButtonWithTitle:@"Delete"];
+    [alert addButtonWithTitle:@"Cancel"];
+
+    if ([alert runModal] == NSAlertFirstButtonReturn) {
+        NSString *selectedWorkspace = [popup titleOfSelectedItem];
+
+        if (selectedWorkspace) {
+            // Confirm deletion
+            NSAlert *confirmAlert = [[NSAlert alloc] init];
+            confirmAlert.messageText = @"Confirm Deletion";
+            confirmAlert.informativeText = [NSString stringWithFormat:@"Are you sure you want to delete the workspace '%@'?\n\nThis action cannot be undone.", selectedWorkspace];
+            [confirmAlert addButtonWithTitle:@"Delete"];
+            [confirmAlert addButtonWithTitle:@"Cancel"];
+
+            if ([confirmAlert runModal] == NSAlertFirstButtonReturn) {
+                BOOL success = [[WorkspaceManager sharedManager] deleteWorkspaceWithName:selectedWorkspace];
+
+                if (success) {
+                    NSAlert *successAlert = [[NSAlert alloc] init];
+                    successAlert.messageText = @"Workspace Deleted";
+                    successAlert.informativeText = [NSString stringWithFormat:@"The workspace '%@' has been deleted.", selectedWorkspace];
+                    [successAlert addButtonWithTitle:@"OK"];
+                    [successAlert runModal];
+
+                    NSLog(@"✅ AppDelegate: Deleted workspace '%@'", selectedWorkspace);
+                } else {
+                    NSAlert *errorAlert = [[NSAlert alloc] init];
+                    errorAlert.messageText = @"Delete Failed";
+                    errorAlert.informativeText = @"Failed to delete the workspace. Please try again.";
+                    [errorAlert addButtonWithTitle:@"OK"];
+                    [errorAlert runModal];
+                }
+            }
+        }
+    }
+}
+
+- (IBAction)closeAllWindows:(id)sender {
+    NSLog(@"🗑️ AppDelegate: Closing all windows (floating + grid)");
+
+    // Close all floating windows
+    NSArray *floatingCopy = [self.floatingWindows copy];
+    for (FloatingWidgetWindow *window in floatingCopy) {
+        [window close];
+    }
+
+    // Close all grid windows
+    NSArray *gridCopy = [self.gridWindows copy];
+    for (GridWindow *window in gridCopy) {
+        [window close];
+    }
+
+    NSLog(@"✅ AppDelegate: All windows closed");
+}
+
 #pragma mark - Widget Creation
 
 - (BaseWidget *)createWidgetOfType:(NSString *)widgetType {
@@ -940,7 +1034,16 @@
     if (menuItem.action == @selector(closeAllGrids:)) {
         return self.gridWindows.count > 0;
     }
-    
+
+    if (menuItem.action == @selector(closeAllWindows:)) {
+        return (self.floatingWindows.count > 0 || self.gridWindows.count > 0);
+    }
+
+    if (menuItem.action == @selector(deleteWorkspace:)) {
+        NSArray *workspaces = [[WorkspaceManager sharedManager] availableWorkspaces];
+        return workspaces.count > 0;
+    }
+
     if (menuItem.action == @selector(openFloatingWidget:) ||
         menuItem.action == @selector(openGrid:) ||
         menuItem.action == @selector(saveWorkspace:) ||
@@ -948,7 +1051,7 @@
         menuItem.action == @selector(loadWorkspace:)) {
         return YES;
     }
-    
+
     return YES;
 }
 

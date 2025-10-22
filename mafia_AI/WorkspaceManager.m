@@ -223,11 +223,18 @@ static NSString * const kWorkspaceVersion = @"1.0";
 
 - (void)restoreGridWindow:(NSDictionary *)windowData {
     NSString *gridName = windowData[@"gridName"];
-    NSString *templateType = windowData[@"templateType"];
+    NSDictionary *templateDict = windowData[@"template"];  // ✅ FIX: Read template dict, not templateType
     NSString *frameString = windowData[@"frame"];
-    
-    // Create grid window
-    GridWindow *gridWindow = [self.appDelegate createGridWindowWithTemplate:templateType
+
+    // ✅ FIX: Deserialize GridTemplate object
+    GridTemplate *template = [GridTemplate deserialize:templateDict];
+    if (!template) {
+        NSLog(@"❌ WorkspaceManager: Failed to deserialize grid template");
+        return;
+    }
+
+    // Create grid window with deserialized template
+    GridWindow *gridWindow = [self.appDelegate createGridWindowWithTemplate:template
                                                                         name:gridName];
     
     // Restore full state (includes widgets)

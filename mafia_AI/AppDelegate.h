@@ -11,6 +11,7 @@
 @class FloatingWidgetWindow;
 @class WidgetTypeManager;
 @class GridWindow;  // ✅ NUOVO
+@class GridTemplate;  // ✅ NUOVO
 
 
 
@@ -31,7 +32,7 @@
 - (IBAction)openGrid:(id)sender;  // ✅ NUOVO
 #pragma mark - Grid Window Management (NEW)
 
-- (GridWindow *)createGridWindowWithTemplate:(NSString *)templateType
+- (GridWindow *)createGridWindowWithTemplate:(GridTemplate *)template
                                         name:(NSString *)name;  // ✅ NOVO
 - (void)registerGridWindow:(GridWindow *)window;  // ✅ NUOVO
 - (void)unregisterGridWindow:(GridWindow *)window;  // ✅ NUOVO

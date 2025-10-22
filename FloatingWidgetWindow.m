@@ -14,6 +14,7 @@
 
 @interface FloatingWidgetWindow ()
 @property (nonatomic, strong) NSView *containerView;
+- (BOOL)isMicroscopeWindow;  // ✅ FIX: Declare private method
 @end
 
 @implementation FloatingWidgetWindow

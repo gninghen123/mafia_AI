@@ -934,11 +934,24 @@ static NSString *const kChainSenderKey = @"sender";
 #pragma mark - State Management
 
 - (NSDictionary *)serializeState {
+    // ✅ FIX: Use NSKeyedArchiver instead of deprecated NSArchiver
+    NSData *colorData = nil;
+    if (@available(macOS 10.13, *)) {
+        colorData = [NSKeyedArchiver archivedDataWithRootObject:self.chainColor
+                                          requiringSecureCoding:NO
+                                                          error:nil];
+    } else {
+        #pragma clang diagnostic push
+        #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+        colorData = [NSArchiver archivedDataWithRootObject:self.chainColor];
+        #pragma clang diagnostic pop
+    }
+
     return @{
         @"widgetID": self.widgetID,
         @"widgetType": self.widgetType,
         @"chainActive": @(self.chainActive),
-        @"chainColor": [NSArchiver archivedDataWithRootObject:self.chainColor]
+        @"chainColor": colorData ?: [NSData data]
     };
 }
 
@@ -946,10 +959,24 @@ static NSString *const kChainSenderKey = @"sender";
     self.widgetID = state[@"widgetID"] ?: [[NSUUID UUID] UUIDString];
     self.widgetType = state[@"widgetType"] ?: @"Empty Widget";
     self.chainActive = [state[@"chainActive"] boolValue];
-    
+
+    // ✅ FIX: Use NSKeyedUnarchiver instead of deprecated NSUnarchiver
     NSData *colorData = state[@"chainColor"];
-    if (colorData) {
-        self.chainColor = [NSUnarchiver unarchiveObjectWithData:colorData];
+    if (colorData && [colorData length] > 0) {
+        NSColor *restoredColor = nil;
+        if (@available(macOS 10.13, *)) {
+            restoredColor = [NSKeyedUnarchiver unarchivedObjectOfClass:[NSColor class]
+                                                               fromData:colorData
+                                                                  error:nil];
+        } else {
+            #pragma clang diagnostic push
+            #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            restoredColor = [NSUnarchiver unarchiveObjectWithData:colorData];
+            #pragma clang diagnostic pop
+        }
+        if (restoredColor) {
+            self.chainColor = restoredColor;
+        }
     }
     
     if ([self.widgetType isEqualToString:@"Empty Widget"]) {

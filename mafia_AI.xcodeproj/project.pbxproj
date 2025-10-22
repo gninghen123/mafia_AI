@@ -19,6 +19,8 @@
 		95EAE0BF2E928ECB0048215D /* GridTemplate.m in Sources */ = {isa = PBXBuildFile; fileRef = 95EAE0BE2E928ECB0048215D /* GridTemplate.m */; };
 		95EAE0C22E928F4A0048215D /* GridWindow.m in Sources */ = {isa = PBXBuildFile; fileRef = 95EAE0C12E928F4A0048215D /* GridWindow.m */; };
 		456C0B00BAEC46BE921F55745401FDE7 /* GridPresetManager.m in Sources */ = {isa = PBXBuildFile; fileRef = BC8BE2DD8C4F459EB9CF75BA61BC1FBE /* GridPresetManager.m */; };
+		51725E99F9224C97A35065A003818D69 /* PineScriptEditorWidget.m in Sources */ = {isa = PBXBuildFile; fileRef = 131F405228DE47D5856695E1FAB5D1EC /* PineScriptEditorWidget.m */; };
+		45CC616EFEEF499A9C3312ED936B3D72 /* PineScriptParser.m in Sources */ = {isa = PBXBuildFile; fileRef = 852EB2DACE5845ECB711C4C7AA8E5F9D /* PineScriptParser.m */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -64,6 +66,10 @@
 		5E8E860069C043F5B13DF2B2685ED824 /* GridPresetManager.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GridPresetManager.h; sourceTree = "<group>"; };
 		BC8BE2DD8C4F459EB9CF75BA61BC1FBE /* GridPresetManager.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = GridPresetManager.m; sourceTree = "<group>"; };
 		95F1AFC52E32037F00D96BDD /* CommonTypes.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = CommonTypes.h; sourceTree = "<group>"; };
+		12F098E8269A4EEB829CF71E77F65C57 /* PineScriptEditorWidget.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PineScriptEditorWidget.h; sourceTree = "<group>"; };
+		131F405228DE47D5856695E1FAB5D1EC /* PineScriptEditorWidget.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PineScriptEditorWidget.m; sourceTree = "<group>"; };
+		44BE5E750C3C48E88D0ED4F1308D9DC9 /* PineScriptParser.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = PineScriptParser.h; sourceTree = "<group>"; };
+		852EB2DACE5845ECB711C4C7AA8E5F9D /* PineScriptParser.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = PineScriptParser.m; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -149,6 +155,10 @@
 				95EAE0C12E928F4A0048215D /* GridWindow.m */,
 				5E8E860069C043F5B13DF2B2685ED824 /* GridPresetManager.h */,
 				BC8BE2DD8C4F459EB9CF75BA61BC1FBE /* GridPresetManager.m */,
+				12F098E8269A4EEB829CF71E77F65C57 /* PineScriptEditorWidget.h */,
+				131F405228DE47D5856695E1FAB5D1EC /* PineScriptEditorWidget.m */,
+				44BE5E750C3C48E88D0ED4F1308D9DC9 /* PineScriptParser.h */,
+				852EB2DACE5845ECB711C4C7AA8E5F9D /* PineScriptParser.m */,
 				954D30E52E28612100C7DC88 /* AppSettings.h */,
 				954D30E62E28612100C7DC88 /* AppSettings.m */,
 				954D388D2E50D1A6000454EF /* FloatingWidgetWindow.h */,
@@ -343,6 +353,8 @@
 				95EAE0C22E928F4A0048215D /* GridWindow.m in Sources */,
 				95EAE0BF2E928ECB0048215D /* GridTemplate.m in Sources */,
 				456C0B00BAEC46BE921F55745401FDE7 /* GridPresetManager.m in Sources */,
+				51725E99F9224C97A35065A003818D69 /* PineScriptEditorWidget.m in Sources */,
+				45CC616EFEEF499A9C3312ED936B3D72 /* PineScriptParser.m in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -21,7 +21,7 @@
 #import "PortfolioWidget.h"  
 #import "IBKRTestWidget.h"
 #import "NewsWidget.h"
-#import "pinescripteditorwidget.h"
+#import "PineScriptEditorWidget.h"
 #import "screenerwidget.h"
 #import "stooqscreenerwidget.h"
 #import "ComparisonChartWidget.h"

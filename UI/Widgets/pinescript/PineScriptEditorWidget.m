@@ -26,7 +26,7 @@
 
 
 #pragma mark - Private Interface
-@interface PineScriptEditorWidget ()
+@interface PineScriptEditorWidget () <NSTextViewDelegate, NSTextFieldDelegate>
 @property (nonatomic, strong) NSView *metadataPanel;
 @end
 
@@ -173,10 +173,14 @@
     // Labels + Fields
     NSTextField *nameLabel = [NSTextField labelWithString:@"Indicator Name:"];
     self.indicatorNameField = [[NSTextField alloc] init];
-    
+    self.indicatorNameField.placeholderString = @"My Indicator";
+    self.indicatorNameField.delegate = self;
+
     NSTextField *descLabel = [NSTextField labelWithString:@"Description:"];
     self.descriptionField = [[NSTextField alloc] init];
-    
+    self.descriptionField.placeholderString = @"Description...";
+    self.descriptionField.delegate = self;
+
     NSTextField *templateLabel = [NSTextField labelWithString:@"Template:"];
     self.templatePopup = [[NSPopUpButton alloc] init];
     self.templatePopup.target = self;
@@ -256,41 +260,59 @@
     scroll.hasHorizontalScroller = YES;
     scroll.autohidesScrollers = YES;
     scroll.translatesAutoresizingMaskIntoConstraints = NO;
-    
+    scroll.borderType = NSBezelBorder;
+
     self.codeTextView = [[NSTextView alloc] init];
     self.codeTextView.font = [NSFont monospacedSystemFontOfSize:13 weight:NSFontWeightRegular];
+    self.codeTextView.editable = YES;
+    self.codeTextView.richText = NO;
+    self.codeTextView.automaticQuoteSubstitutionEnabled = NO;
+    self.codeTextView.automaticDashSubstitutionEnabled = NO;
+    self.codeTextView.automaticSpellingCorrectionEnabled = NO;
+    self.codeTextView.delegate = self;
+
+    // Enable text change notifications
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(textDidChange:)
+                                                 name:NSTextDidChangeNotification
+                                               object:self.codeTextView];
+
     scroll.documentView = self.codeTextView;
-    
+
     return scroll;
 }
 
 - (NSScrollView *)createOutputPanel {
     NSScrollView *scroll = [[NSScrollView alloc] init];
     scroll.translatesAutoresizingMaskIntoConstraints = NO;
-    
+    scroll.hasVerticalScroller = YES;
+    scroll.autohidesScrollers = YES;
+    scroll.borderType = NSBezelBorder;
+
     self.outputTextView = [[NSTextView alloc] init];
     self.outputTextView.editable = NO;
-    self.outputTextView.font = [NSFont monospacedSystemFontOfSize:13 weight:NSFontWeightRegular];
+    self.outputTextView.richText = YES; // Allow colored output
+    self.outputTextView.font = [NSFont monospacedSystemFontOfSize:12 weight:NSFontWeightRegular];
     scroll.documentView = self.outputTextView;
-    
+
     return scroll;
 }
-- (void)setSplitViewProportions {
-    dispatch_async(dispatch_get_main_queue(), ^{
-        // Set split proportions for the main split view (metadata | editor/output)
-        if (self.mainSplitView.frame.size.width > 0) {
-            CGFloat metadataWidth = self.mainSplitView.frame.size.width * 0.25; // 25% for metadata
-            [self.mainSplitView setPosition:metadataWidth ofDividerAtIndex:0];
-        }
 
-        // Set split proportions for the editor/output split view (code | output)
-        NSSplitView *editorOutputSplitView = self.mainSplitView.arrangedSubviews[1];
-        if (editorOutputSplitView.frame.size.height > 0) {
-            CGFloat outputHeight = editorOutputSplitView.frame.size.height * 0.25; // 25% for output
-            [editorOutputSplitView setPosition:editorOutputSplitView.frame.size.height - outputHeight ofDividerAtIndex:0];
-        }
-    });
-}
+// NOTE: Unused method - references non-existent self.mainSplitView (code uses NSStackView instead)
+// - (void)setSplitViewProportions {
+//     dispatch_async(dispatch_get_main_queue(), ^{
+//         if (self.mainSplitView.frame.size.width > 0) {
+//             CGFloat metadataWidth = self.mainSplitView.frame.size.width * 0.25;
+//             [self.mainSplitView setPosition:metadataWidth ofDividerAtIndex:0];
+//         }
+//         NSSplitView *editorOutputSplitView = self.mainSplitView.arrangedSubviews[1];
+//         if (editorOutputSplitView.frame.size.height > 0) {
+//             CGFloat outputHeight = editorOutputSplitView.frame.size.height * 0.25;
+//             [editorOutputSplitView setPosition:editorOutputSplitView.frame.size.height - outputHeight ofDividerAtIndex:0];
+//         }
+//     });
+// }
+
 #pragma mark - Syntax Highlighting
 
 - (void)setupSyntaxHighlighting {

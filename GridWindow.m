@@ -16,6 +16,7 @@
 @property (nonatomic, strong) NSView *containerView;
 @property (nonatomic, assign, readwrite) NSInteger rows;
 @property (nonatomic, assign, readwrite) NSInteger cols;
+@property (nonatomic, strong) NSTimer *proportionsCaptureTimer;  // ✅ FIX: Debounce timer
 @end
 
 @implementation GridWindow
@@ -642,8 +643,10 @@
     if (rowHeights.count == self.rows && columnWidths.count == self.cols) {
         self.currentTemplate.rowHeights = rowHeights;
         self.currentTemplate.columnWidths = columnWidths;
-        
-        NSLog(@"📏 GridWindow: Captured proportions - Rows: %@, Cols: %@", rowHeights, columnWidths);
+
+        // ✅ FIX: Reduced logging - only log summary
+        NSLog(@"📏 GridWindow: Captured proportions for %ldx%ld grid",
+              (long)self.rows, (long)self.cols);
     } else {
         NSLog(@"⚠️ GridWindow: Proportion count mismatch - expected %ldx%ld, got %ldx%ld",
               (long)self.rows, (long)self.cols,
@@ -710,8 +713,16 @@
 #pragma mark - NSSplitViewDelegate
 
 - (void)splitViewDidResizeSubviews:(NSNotification *)notification {
-    // Automatically capture proportions when user drags dividers
-    [self captureCurrentProportions];
+    // ✅ FIX: Debounce proportion capture to avoid excessive calls
+    // Invalidate existing timer
+    [self.proportionsCaptureTimer invalidate];
+
+    // Schedule new timer to capture proportions after 0.5 seconds of inactivity
+    self.proportionsCaptureTimer = [NSTimer scheduledTimerWithTimeInterval:0.5
+                                                                     target:self
+                                                                   selector:@selector(captureCurrentProportions)
+                                                                   userInfo:nil
+                                                                    repeats:NO];
 }
 
 - (CGFloat)splitView:(NSSplitView *)splitView
@@ -1041,9 +1052,13 @@ found:
 #pragma mark - Window Delegate
 
 - (void)windowWillClose:(NSNotification *)notification {
+    // ✅ FIX: Invalidate debounce timer
+    [self.proportionsCaptureTimer invalidate];
+    self.proportionsCaptureTimer = nil;
+
     // Capture final proportions before closing
     [self captureCurrentProportions];
-    
+
     // Auto-save workspace
     if (self.appDelegate) {
         [[WorkspaceManager sharedManager] autoSaveLastUsedWorkspace];

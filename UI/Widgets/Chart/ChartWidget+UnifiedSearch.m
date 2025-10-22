@@ -329,15 +329,15 @@ static const void *kCurrentSearchResultsKey = &kCurrentSearchResultsKey;
         if (self.isStaticMode) {
             // Rich display for saved data
             NSString *typeStr = [NSString stringWithFormat:@"%@ %@ [%@] %ld bars - %@",
-                                 item.symbol, item.timeframe, item.isContinuous ? @"CONT" : @"SNAP",
+                                 item.symbol, item.timeframeDisplayString, item.isContinuous ? @"CONT" : @"SNAP",  // ✅ FIXED
                                  (long)item.barCount, item.dateRangeString ?: @""];
             
             return typeStr;
         } else {
             // Display for live symbol search results
-            if (item.barCount == 0 && [item.timeframe isEqualToString:@"Live"]) {
+            if (item.barCount == 0 && [item.timeframeDisplayString isEqualToString:@"Live"]) {  // ✅ FIXED
                 // This is a live search result, show company name if available
-                return [NSString stringWithFormat:@"%@ - %@", item.symbol, item.timeframe];
+                return [NSString stringWithFormat:@"%@ - %@", item.symbol, item.timeframeDisplayString];  // ✅ FIXED
             } else {
                 // Fallback display
                 return item.symbol;

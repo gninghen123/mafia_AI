@@ -5,6 +5,7 @@
 
 #import <Foundation/Foundation.h>
 #import "SavedChartData.h"
+#import "CommonTypes.h"  // ✅ AGGIUNTO per BarTimeframe enum
 
 
 NS_ASSUME_NONNULL_BEGIN
@@ -19,7 +20,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 // Parsed metadata
 @property (nonatomic, strong) NSString *symbol;
-@property (nonatomic, strong) NSString *timeframe;
+@property (nonatomic, assign) BarTimeframe timeframe;  // ✅ FIXED: Ora è BarTimeframe enum invece di NSString
 @property (nonatomic, assign) SavedChartDataType dataType;
 @property (nonatomic, assign) NSInteger barCount;
 @property (nonatomic, strong, nullable) NSDate *startDate;
@@ -38,6 +39,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) BOOL isSnapshot;
 @property (nonatomic, readonly) NSString *displayName;
 @property (nonatomic, readonly) NSString *dateRangeString;
+@property (nonatomic, readonly) NSString *timeframeDisplayString;  // ✅ NUOVO: per UI display
+
 
 // Factory methods
 + (instancetype)itemFromFilePath:(NSString *)filePath;

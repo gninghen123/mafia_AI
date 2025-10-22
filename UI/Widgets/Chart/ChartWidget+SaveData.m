@@ -98,6 +98,7 @@
     }];
 }
 
+
 #pragma mark - Helper Methods for Snapshot Merge
 
 /// Check if there's an existing snapshot that can be merged with the new one
@@ -111,6 +112,7 @@
     NSMutableArray<StorageMetadataItem *> *candidateSnapshots = [NSMutableArray array];
     
     for (StorageMetadataItem *item in allItems) {
+        // ✅ FIXED: Ora item.timeframe è BarTimeframe enum, il confronto funziona!
         if (item.dataType == SavedChartDataTypeSnapshot &&
             item.timeframe == newSnapshot.timeframe &&
             item.includesExtendedHours == newSnapshot.includesExtendedHours) {
@@ -276,7 +278,6 @@
         completion(success, success ? filePath : nil, saveError);
     }
 }
-
 #pragma mark - Save Full Data (Continuous)
 
 - (void)saveFullDataAsContinuousInteractive {
@@ -795,7 +796,7 @@
         // Return metadata from cache
         return @{
             @"symbol": cacheItem.symbol ?: @"Unknown",
-            @"timeframe": cacheItem.timeframe ?: @"Unknown",
+            @"timeframe": cacheItem.timeframeDisplayString ?: @"Unknown",  // ✅ FIXED
             @"type": cacheItem.isContinuous ? @"Continuous" : @"Snapshot",
             @"barCount": @(cacheItem.barCount),
             @"dateRange": cacheItem.dateRangeString ?: @"Unknown",
@@ -835,7 +836,6 @@
     
     return @{@"symbol": @"Unknown", @"source": @"failed"};
 }
-
 // ✅ NUOVO METODO: Get display summary per file senza caricarlo
 + (NSString *)getDisplaySummaryForFile:(NSString *)filePath {
     NSDictionary *info = [self getFileInfoFromPath:filePath];

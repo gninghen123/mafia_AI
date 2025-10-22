@@ -39,7 +39,18 @@
     item.fileSizeBytes = [dict[@"fileSizeBytes"] integerValue];
     
     item.symbol = dict[@"symbol"];
-    item.timeframe = dict[@"timeframe"];
+    NSNumber *timeframeNum = dict[@"timeframe"];
+      if (timeframeNum) {
+          item.timeframe = (BarTimeframe)[timeframeNum integerValue];
+      } else {
+          // Fallback per vecchie cache che usavano string
+          NSString *timeframeStr = dict[@"timeframeString"]; // Per retrocompatibilità
+          if (timeframeStr) {
+              item.timeframe = [SavedChartData timeframeFromCanonicalString:timeframeStr];
+          } else {
+              item.timeframe = BarTimeframeDaily; // Default
+          }
+      }
     item.dataType = [dict[@"dataType"] integerValue];
     item.barCount = [dict[@"barCount"] integerValue];
     item.startDate = [dict[@"startDate"] doubleValue] >0 ? [NSDate dateWithTimeIntervalSince1970:[dict[@"startDate"] doubleValue]] : nil;
@@ -61,7 +72,7 @@
         @"fileModificationTime": @(self.fileModificationTime),
         @"fileSizeBytes": @(self.fileSizeBytes),
         @"symbol": self.symbol ?: @"",
-        @"timeframe": self.timeframe ?: @"",
+        @"timeframe": @(self.timeframe),  // ✅ FIXED: Salva come NSNumber (enum value)
         @"dataType": @(self.dataType),
         @"barCount": @(self.barCount),
         @"startDate": self.startDate ? @([self.startDate timeIntervalSince1970]) : @0,
@@ -83,8 +94,12 @@
     if (self.isNewFormat) {
         // Fast filename parsing
         self.symbol = [SavedChartData symbolFromFilename:self.filename] ?: @"Unknown";
-        self.timeframe = [SavedChartData timeframeFromFilename:self.filename] ?: @"Unknown";
-        
+        NSString *timeframeStr = [SavedChartData timeframeFromFilename:self.filename];
+               if (timeframeStr) {
+                   self.timeframe = [SavedChartData timeframeFromCanonicalString:timeframeStr];
+               } else {
+                   self.timeframe = BarTimeframeDaily; // Default fallback
+               }
         NSString *typeStr = [SavedChartData typeFromFilename:self.filename];
         self.dataType = [typeStr isEqualToString:@"Continuous"] ? SavedChartDataTypeContinuous : SavedChartDataTypeSnapshot;
         
@@ -112,9 +127,7 @@
     NSFileManager *fm = [NSFileManager defaultManager];
     NSDictionary *attrs = [fm attributesOfItemAtPath:self.filePath error:nil];
     
-    if (!attrs) {
-        return NO; // File doesn't exist
-    }
+    if (!attrs) return NO; // File no longer exists
     
     NSTimeInterval newModTime = [attrs[NSFileModificationDate] timeIntervalSince1970];
     NSInteger newSize = [attrs[NSFileSize] integerValue];
@@ -122,15 +135,12 @@
     if (newModTime != self.fileModificationTime || newSize != self.fileSizeBytes) {
         self.fileModificationTime = newModTime;
         self.fileSizeBytes = newSize;
-        
-        // Re-parse metadata in case filename changed
         [self parseMetadataFromFilename];
         self.cacheTime = [[NSDate date] timeIntervalSince1970];
-        
-        return YES; // Updated
+        return YES;
     }
     
-    return NO; // No changes
+    return NO;
 }
 
 - (BOOL)needsRefreshFromFilesystem {
@@ -154,7 +164,7 @@
 }
 
 - (NSString *)displayName {
-    return [NSString stringWithFormat:@"%@ [%@]", self.symbol, self.timeframe];
+    return [NSString stringWithFormat:@"%@ [%@]", self.symbol, self.timeframeDisplayString];
 }
 
 - (NSString *)dateRangeString {
@@ -167,6 +177,25 @@
             [formatter stringFromDate:self.startDate],
             [formatter stringFromDate:self.endDate]];
 }
+
+
+- (NSString *)timeframeDisplayString {
+    // ✅ NUOVO: Converti enum in stringa leggibile per UI
+    switch (self.timeframe) {
+        case BarTimeframe1Min: return @"1min";
+        case BarTimeframe5Min: return @"5min";
+        case BarTimeframe15Min: return @"15min";
+        case BarTimeframe30Min: return @"30min";
+        case BarTimeframe1Hour: return @"1hour";
+        case BarTimeframe4Hour: return @"4hour";
+        case BarTimeframe12Hour: return @"12hour";
+        case BarTimeframeDaily: return @"daily";
+        case BarTimeframeWeekly: return @"weekly";
+        case BarTimeframeMonthly: return @"monthly";
+        default: return @"unknown";
+    }
+}
+
 
 @end
 

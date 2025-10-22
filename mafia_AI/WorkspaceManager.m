@@ -17,6 +17,7 @@ static NSString * const kWorkspaceVersion = @"1.0";
 
 @interface WorkspaceManager ()
 @property (nonatomic, strong) NSDate *lastAutoSaveTime;
+@property (nonatomic, assign) BOOL isPerformingWorkspaceOperation;  // ✅ FIX: Prevent auto-save during workspace ops
 @end
 @implementation WorkspaceManager
 
@@ -38,31 +39,36 @@ static NSString * const kWorkspaceVersion = @"1.0";
         NSLog(@"❌ WorkspaceManager: Invalid workspace name");
         return NO;
     }
-    
+
     if (!self.appDelegate) {
         NSLog(@"❌ WorkspaceManager: AppDelegate not set");
         return NO;
     }
-    
+
     NSLog(@"💾 WorkspaceManager: Saving workspace '%@'", name);
-    
+    NSLog(@"   Current state: %ld floating + %ld grid windows",
+          (long)self.appDelegate.floatingWindows.count,
+          (long)self.appDelegate.gridWindows.count);
+
     // Serialize current state
     NSDictionary *workspaceData = [self serializeCurrentWorkspace];
-    
+
     if (!workspaceData) {
         NSLog(@"❌ WorkspaceManager: Failed to serialize workspace");
         return NO;
     }
-    
+
+    NSLog(@"   Serialized: %ld floating + %ld grid windows",
+          (long)[workspaceData[@"floatingWindows"] count],
+          (long)[workspaceData[@"gridWindows"] count]);
+
     // Save to UserDefaults
     NSString *key = [self keyForWorkspaceName:name];
     [[NSUserDefaults standardUserDefaults] setObject:workspaceData forKey:key];
     [[NSUserDefaults standardUserDefaults] synchronize];
-    
-    NSLog(@"✅ WorkspaceManager: Workspace '%@' saved successfully", name);
-    NSLog(@"   - Floating windows: %@", workspaceData[@"floatingWindows"]);
-    NSLog(@"   - Grid windows: %@", workspaceData[@"gridWindows"]);
-    
+
+    NSLog(@"✅ WorkspaceManager: Workspace '%@' saved to key: %@", name, key);
+
     return YES;
 }
 
@@ -118,35 +124,53 @@ static NSString * const kWorkspaceVersion = @"1.0";
         NSLog(@"❌ WorkspaceManager: Invalid workspace name");
         return NO;
     }
-    
+
     if (!self.appDelegate) {
         NSLog(@"❌ WorkspaceManager: AppDelegate not set");
         return NO;
     }
-    
+
     NSLog(@"🔄 WorkspaceManager: Loading workspace '%@'", name);
-    
+    NSLog(@"   Current state: %ld floating + %ld grid windows",
+          (long)self.appDelegate.floatingWindows.count,
+          (long)self.appDelegate.gridWindows.count);
+
     // Load from UserDefaults
     NSString *key = [self keyForWorkspaceName:name];
     NSDictionary *workspaceData = [[NSUserDefaults standardUserDefaults] objectForKey:key];
-    
+
     if (!workspaceData) {
         NSLog(@"❌ WorkspaceManager: Workspace '%@' not found", name);
         return NO;
     }
-    
+
+    NSLog(@"   Workspace data: %ld floating + %ld grid windows to restore",
+          (long)[workspaceData[@"floatingWindows"] count],
+          (long)[workspaceData[@"gridWindows"] count]);
+
+    // ✅ FIX: Disable auto-save during workspace load
+    self.isPerformingWorkspaceOperation = YES;
+    NSLog(@"🔒 WorkspaceManager: Auto-save disabled during load operation");
+
     // Close all current windows
     [self closeAllWindows];
-    
+
     // Restore workspace
     BOOL success = [self restoreWorkspace:workspaceData];
-    
+
+    // ✅ FIX: Re-enable auto-save after load completes
+    self.isPerformingWorkspaceOperation = NO;
+    NSLog(@"🔓 WorkspaceManager: Auto-save re-enabled");
+
     if (success) {
         NSLog(@"✅ WorkspaceManager: Workspace '%@' loaded successfully", name);
+        NSLog(@"   Final state: %ld floating + %ld grid windows",
+              (long)self.appDelegate.floatingWindows.count,
+              (long)self.appDelegate.gridWindows.count);
     } else {
         NSLog(@"❌ WorkspaceManager: Failed to load workspace '%@'", name);
     }
-    
+
     return success;
 }
 
@@ -325,11 +349,18 @@ static NSString * const kWorkspaceVersion = @"1.0";
 
 - (void)restoreLastUsedWorkspace {
     NSLog(@"🔄 WorkspaceManager: Restoring last used workspace");
-    
+
     NSDictionary *workspaceData = [[NSUserDefaults standardUserDefaults] objectForKey:kLastUsedWorkspaceKey];
-    
+
     if (workspaceData) {
+        // ✅ FIX: Disable auto-save during workspace restore
+        self.isPerformingWorkspaceOperation = YES;
+
         [self restoreWorkspace:workspaceData];
+
+        // ✅ FIX: Re-enable auto-save after restore completes
+        self.isPerformingWorkspaceOperation = NO;
+
         NSLog(@"✅ WorkspaceManager: Last used workspace restored");
     } else {
         NSLog(@"ℹ️ WorkspaceManager: No last used workspace found");
@@ -402,15 +433,21 @@ static NSString * const kWorkspaceVersion = @"1.0";
 #pragma mark - Auto-save
 
 - (void)autoSaveLastUsedWorkspace {
+    // ✅ FIX: Skip auto-save during workspace load/close operations
+    if (self.isPerformingWorkspaceOperation) {
+        NSLog(@"⏸️ WorkspaceManager: Auto-save skipped (workspace operation in progress)");
+        return;
+    }
+
     // Debounce: salva solo se è passato almeno 2 secondi dall'ultimo save
     if (self.lastAutoSaveTime && [[NSDate date] timeIntervalSinceDate:self.lastAutoSaveTime] < 2.0) {
         return; // Skip se troppo frequente
     }
-    
+
     self.lastAutoSaveTime = [NSDate date];
-    
+
     NSLog(@"⏰ WorkspaceManager: Auto-saving workspace...");
-    
+
     // Salva in background per non bloccare UI
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
         [self saveLastUsedWorkspace];

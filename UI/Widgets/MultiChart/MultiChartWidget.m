@@ -275,21 +275,17 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
     
 
 - (void)setupScrollView {
-    // ✅ FIX: Collection view layout CORRETTO
+    // ✅ Collection view layout with adaptive sizing
     NSCollectionViewGridLayout *gridLayout = [[NSCollectionViewGridLayout alloc] init];
-    
-    // ❌ PROBLEMA ERA QUI: minimumItemSize troppo piccolo e maximumItemSize troppo grande
-    gridLayout.minimumItemSize = NSMakeSize(200, 150);  // Era 100,80 - troppo piccolo
-    gridLayout.maximumItemSize = NSMakeSize(400, 300);  // Era 500,400 - troppo grande
+
+    // Initial sizes (will be updated by updateAdaptiveLayout)
+    gridLayout.minimumItemSize = NSMakeSize(self.itemWidth, self.itemHeight);
+    gridLayout.maximumItemSize = NSMakeSize(self.itemWidth * 2, self.itemHeight * 2);
     gridLayout.minimumInteritemSpacing = 10;
     gridLayout.minimumLineSpacing = 10;
     gridLayout.margins = NSEdgeInsetsMake(10, 10, 10, 10);
-    
-    // ✅ FIX: Configura ESPLICITAMENTE il numero di colonne
 
-    
-    NSLog(@"🔧 GridLayout configured: columns=%ld, minSize=%.0fx%.0f, maxSize=%.0fx%.0f",
-          (long)gridLayout.maximumNumberOfColumns,
+    NSLog(@"🔧 GridLayout configured: minSize=%.0fx%.0f, maxSize=%.0fx%.0f (will be updated adaptively)",
           gridLayout.minimumItemSize.width, gridLayout.minimumItemSize.height,
           gridLayout.maximumItemSize.width, gridLayout.maximumItemSize.height);
     
@@ -326,8 +322,20 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
         [self.collectionScrollView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-8],
         [self.collectionScrollView.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-8]
     ]];
-    
+
+    // Observe frame changes to update adaptive layout when view resizes
+    self.collectionScrollView.postsFrameChangedNotifications = YES;
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(scrollViewFrameDidChange:)
+                                                 name:NSViewFrameDidChangeNotification
+                                               object:self.collectionScrollView];
+
     NSLog(@"✅ NSCollectionView setup completed with proper grid configuration");
+}
+
+- (void)scrollViewFrameDidChange:(NSNotification *)notification {
+    // Update adaptive layout when scroll view resizes
+    [self updateAdaptiveLayout];
 }
 
 
@@ -390,6 +398,12 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
 
 - (void)viewWillDisappear {
     [super viewWillDisappear];
+}
+
+- (void)viewDidLayout {
+    [super viewDidLayout];
+    // Update adaptive layout after view is laid out and has final frame
+    [self updateAdaptiveLayout];
 }
 
 #pragma mark - Data Loading
@@ -607,12 +621,12 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
     }
     
     
-    // ✅ FIX: Force layout update prima del reload
-    [self.collectionView.collectionViewLayout invalidateLayout];
-    
+    // ✅ Update adaptive layout based on chart count
+    [self updateAdaptiveLayout];
+
     // Aggiorna collection view
     [self.collectionView reloadData];
-    
+
     NSLog(@"✅ MultiChartWidget: Rebuilt %lu mini charts with NSCollectionView", (unsigned long)self.miniCharts.count);
 }
 
@@ -651,6 +665,109 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
     [self saveSettingsToUserDefaults];
     
     NSLog(@"✅ MultiChartWidget: Item size changed to %ldx%ld", (long)newWidth, (long)newHeight);
+
+    // Aggiorna layout adattivo
+    [self updateAdaptiveLayout];
+}
+
+#pragma mark - Adaptive Layout
+
+- (void)updateAdaptiveLayout {
+    // Get chart count
+    NSInteger chartCount = self.miniCharts.count;
+    if (chartCount == 0) {
+        NSLog(@"⚠️ updateAdaptiveLayout: No charts, skipping");
+        return;
+    }
+
+    if (!self.collectionScrollView) {
+        NSLog(@"⚠️ updateAdaptiveLayout: No scroll view, skipping");
+        return;
+    }
+
+    // Get available space in scroll view (use documentVisibleRect for actual visible area)
+    NSSize availableSize = self.collectionScrollView.documentVisibleRect.size;
+
+    // Minimum sizes from controls (these are the user-defined minimums)
+    CGFloat minWidth = self.itemWidth;
+    CGFloat minHeight = self.itemHeight;
+
+    NSLog(@"📐 updateAdaptiveLayout: chartCount=%ld, availableSize=%.0fx%.0f, minSize=%.0fx%.0f",
+          (long)chartCount, availableSize.width, availableSize.height, minWidth, minHeight);
+
+    // Calculate optimal grid layout based on chart count
+    NSInteger columns, rows;
+
+    if (chartCount == 1) {
+        // Single chart: full space
+        columns = 1;
+        rows = 1;
+    } else if (chartCount == 2) {
+        // Two charts: side by side
+        columns = 2;
+        rows = 1;
+    } else if (chartCount <= 4) {
+        // 3-4 charts: 2x2 grid
+        columns = 2;
+        rows = (chartCount <= 2) ? 1 : 2;
+    } else if (chartCount <= 6) {
+        // 5-6 charts: 3x2 grid
+        columns = 3;
+        rows = 2;
+    } else if (chartCount <= 9) {
+        // 7-9 charts: 3x3 grid
+        columns = 3;
+        rows = 3;
+    } else if (chartCount <= 12) {
+        // 10-12 charts: 4x3 grid
+        columns = 4;
+        rows = 3;
+    } else {
+        // More charts: calculate dynamically
+        columns = (NSInteger)ceil(sqrt(chartCount));
+        rows = (NSInteger)ceil((double)chartCount / columns);
+    }
+
+    // Calculate item sizes based on available space and grid
+    CGFloat padding = 10;
+    CGFloat totalPaddingWidth = padding * (columns + 1);
+    CGFloat totalPaddingHeight = padding * (rows + 1);
+
+    CGFloat availableWidthForItems = availableSize.width - totalPaddingWidth;
+    CGFloat availableHeightForItems = availableSize.height - totalPaddingHeight;
+
+    CGFloat calculatedWidth = availableWidthForItems / columns;
+    CGFloat calculatedHeight = availableHeightForItems / rows;
+
+    // Apply minimum constraints - items can be larger than minimum, but never smaller
+    CGFloat maxWidth = MAX(minWidth, calculatedWidth);
+    CGFloat maxHeight = MAX(minHeight, calculatedHeight);
+
+    // Cap maximum size to something reasonable (to prevent huge items)
+    maxWidth = MIN(maxWidth, 800);
+    maxHeight = MIN(maxHeight, 600);
+
+    NSLog(@"📊 Calculated layout: %ldx%ld grid, itemSize: min(%.0fx%.0f) max(%.0fx%.0f)",
+          (long)columns, (long)rows, minWidth, minHeight, maxWidth, maxHeight);
+
+    // Update grid layout
+    if ([self.collectionView.collectionViewLayout isKindOfClass:[NSCollectionViewGridLayout class]]) {
+        NSCollectionViewGridLayout *gridLayout = (NSCollectionViewGridLayout *)self.collectionView.collectionViewLayout;
+
+        // Set minimum size (user-defined minimum)
+        gridLayout.minimumItemSize = NSMakeSize(minWidth, minHeight);
+
+        // Set maximum size (calculated based on available space and chart count)
+        gridLayout.maximumItemSize = NSMakeSize(maxWidth, maxHeight);
+
+        // Update column count to match calculated grid
+        gridLayout.maximumNumberOfColumns = columns;
+
+        NSLog(@"✅ Grid layout updated: columns=%ld, minSize=%.0fx%.0f, maxSize=%.0fx%.0f",
+              (long)columns, minWidth, minHeight, maxWidth, maxHeight);
+
+        [gridLayout invalidateLayout];
+    }
 }
 
 

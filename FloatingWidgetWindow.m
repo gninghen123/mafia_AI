@@ -83,20 +83,28 @@
         NSLog(@"❌ FloatingWindow: No class found for type: %@", newType);
         return;
     }
-    
+
     // 2. Salva stato del vecchio widget
     NSDictionary *oldState = [self.containedWidget serializeState];
     NSRect oldFrame = self.frame;
-    
+
+    NSLog(@"💾 FloatingWindow: Saved state from old widget: %@", oldState);
+
     // 3. Crea nuovo widget
     BaseWidget *newWidget = [[widgetClass alloc] initWithType:newType];
     [newWidget loadView];
-    
+
     // 4. Ripristina stato (widgetID, chain, ecc.)
     newWidget.widgetID = self.containedWidget.widgetID;
     newWidget.chainActive = self.containedWidget.chainActive;
     newWidget.chainColor = self.containedWidget.chainColor;
-    
+
+    // ✅ FIX: Ripristina lo stato completo del widget
+    if (oldState && oldState.count > 0) {
+        [newWidget restoreState:oldState];
+        NSLog(@"✅ FloatingWindow: Restored state to new widget type: %@", newType);
+    }
+
     // 5. Rimuovi vecchio widget dalla finestra
     [self.containedWidget.view removeFromSuperview];
     

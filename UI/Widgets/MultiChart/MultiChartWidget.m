@@ -49,7 +49,7 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
     _chartType = MiniChartTypeLine;
     _timeframe = MiniBarTimeframeDaily;
     _scaleType = MiniChartScaleLinear;
-    self.timeRange = 3;  // NUOVO: Default 1 mese
+    self.timeRange = 1;
 
     _autoRefreshEnabled = NO;  // Default: disattivato
 
@@ -121,7 +121,7 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
     // Timeframe popup
     self.timeframePopup = [[NSPopUpButton alloc] init];
     [self.timeframePopup addItemsWithTitles:@[@"1m", @"5m", @"15m", @"30m", @"1h", @"1D", @"1W", @"1M"]];
-    [self.timeframePopup selectItemAtIndex:5]; // Default to Daily
+    [self.timeframePopup selectItemAtIndex:0]; 
     self.timeframePopup.translatesAutoresizingMaskIntoConstraints = NO;
     [self.timeframePopup setTarget:self];
     [self.timeframePopup setAction:@selector(timeframeChanged:)];
@@ -1613,7 +1613,7 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     }
     
     // Timeframe (default: Daily se non salvato)
-    if (savedTimeframe >= MiniBarTimeframe5Min && savedTimeframe <= MiniBarTimeframeMonthly) {
+    if (savedTimeframe) {
         self.timeframe = (MiniBarTimeframe)savedTimeframe;
     } else {
         self.timeframe = MiniBarTimeframeDaily; // Default

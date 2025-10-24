@@ -1310,6 +1310,7 @@ extern NSString *const DataHubDataLoadedNotification;
         case BarTimeframe15Min: return @"15m";
         case BarTimeframe30Min: return @"30m";
         case BarTimeframe1Hour: return @"1h";
+        case BarTimeframe4Hour: return @"4h";
         case BarTimeframe12Hour: return @"12h";
         case BarTimeframeDaily: return @"1d";
         case BarTimeframeWeekly: return @"1w";

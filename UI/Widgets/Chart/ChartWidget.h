@@ -262,4 +262,6 @@ typedef struct {
 - (void)refreshIndicatorsRendering;
 - (void)applyChartTemplate:(ChartTemplateModel *)template;
 
+- (NSString *)timeframeToString:(BarTimeframe)timeframe;
+
 @end

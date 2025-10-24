@@ -160,18 +160,18 @@ static const void *kCurrentSearchResultsKey = &kCurrentSearchResultsKey;
         return;
     }
     
-    // Flexible search predicate
-    NSString *searchLower = searchTerm.lowercaseString;
+    // Flexible search predicate - ONLY ON STRING PROPERTIES
+    NSString *searchUpper = searchTerm.uppercaseString;
     NSPredicate *predicate = [NSPredicate predicateWithFormat:
-        @"symbol CONTAINS[c] %@ OR timeframe CONTAINS[c] %@ OR displayName CONTAINS[c] %@",
-        searchLower, searchLower, searchLower];
+        @"symbol CONTAINS[c] %@ OR displayName CONTAINS[c] %@",
+        searchUpper, searchUpper];
     
     NSArray<StorageMetadataItem *> *matches = [allItems filteredArrayUsingPredicate:predicate];
     
     // Sort by relevance: exact symbol match first, then by recency
     self.currentSearchResults = [matches sortedArrayUsingComparator:^NSComparisonResult(StorageMetadataItem *obj1, StorageMetadataItem *obj2) {
-        BOOL obj1Exact = [obj1.symbol.lowercaseString isEqualToString:searchLower];
-        BOOL obj2Exact = [obj2.symbol.lowercaseString isEqualToString:searchLower];
+        BOOL obj1Exact = [obj1.symbol.lowercaseString isEqualToString:searchUpper];
+        BOOL obj2Exact = [obj2.symbol.lowercaseString isEqualToString:searchUpper];
         
         if (obj1Exact && !obj2Exact) return NSOrderedAscending;
         if (!obj1Exact && obj2Exact) return NSOrderedDescending;
@@ -329,7 +329,7 @@ static const void *kCurrentSearchResultsKey = &kCurrentSearchResultsKey;
         if (self.isStaticMode) {
             // Rich display for saved data
             NSString *typeStr = [NSString stringWithFormat:@"%@ %@ [%@] %ld bars - %@",
-                                 item.symbol, item.timeframeDisplayString, item.isContinuous ? @"CONT" : @"SNAP",  // ✅ FIXED
+                                 item.symbol, [self timeframeToString:item.timeframe], item.isContinuous ? @"CONT" : @"SNAP",  // ✅ FIXED
                                  (long)item.barCount, item.dateRangeString ?: @""];
             
             return typeStr;

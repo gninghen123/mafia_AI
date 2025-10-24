@@ -543,9 +543,10 @@ static NSColor *SIMPLIFIED_DRAWING_COLOR = nil;
                                                   endIndex:visibleRange.location + visibleRange.length - 1];
     if (!path) return;
     
+    [[self defaultStrokeColorForIndicator:indicator] setStroke];
+
     // Apply style
     [self applyStyleToPath:path forIndicator:indicator];
-    [[self defaultStrokeColorForIndicator:indicator] setStroke];
     
     [path stroke];
 
@@ -1038,16 +1039,68 @@ static NSColor *SIMPLIFIED_DRAWING_COLOR = nil;
 }
 
 - (void)applyStyleToPath:(NSBezierPath *)path forIndicator:(TechnicalIndicatorBase *)indicator {
-    path.lineWidth = [self defaultLineWidthForIndicator:indicator];
+    // Get parameters from indicator
+    NSDictionary *params = indicator.parameters;
+    
+    // Line width
+    NSNumber *lineWidth = params[@"lineWidth"];
+    if (lineWidth) {
+        path.lineWidth = [lineWidth doubleValue];
+    } else {
+        path.lineWidth = [self defaultLineWidthForIndicator:indicator];
+    }
+    
+    // Line cap and join style
     path.lineCapStyle = NSLineCapStyleRound;
     path.lineJoinStyle = NSLineJoinStyleRound;
     
-    // Apply dash pattern if needed
-    if ([indicator respondsToSelector:@selector(isDashed)] &&
-        [[indicator valueForKey:@"isDashed"] boolValue]) {
-        CGFloat pattern[] = {5.0, 3.0};
-        [path setLineDash:pattern count:2 phase:0];
+    // Color
+    NSColor *color = params[@"color"];
+    if (color) {
+        [color setStroke];
+    } else {
+        // Use default color for indicator
+        NSColor *defaultColor = [self defaultColorForIndicator:indicator];
+        [defaultColor setStroke];
     }
+    
+    // Dash pattern
+    NSNumber *isDashed = params[@"isDashed"];
+    if (isDashed && [isDashed boolValue]) {
+        // Check if custom dash pattern is provided
+        NSArray *dashPattern = params[@"dashPattern"];
+        if (dashPattern && dashPattern.count >= 2) {
+            CGFloat pattern[dashPattern.count];
+            for (NSUInteger i = 0; i < dashPattern.count; i++) {
+                pattern[i] = [dashPattern[i] doubleValue];
+            }
+            [path setLineDash:pattern count:dashPattern.count phase:0];
+        } else {
+            // Default dash pattern
+            CGFloat pattern[] = {5.0, 3.0};
+            [path setLineDash:pattern count:2 phase:0];
+        }
+    }
+    
+    // Line cap style (optional parameter)
+    NSNumber *lineCapStyle = params[@"lineCapStyle"];
+    if (lineCapStyle) {
+        path.lineCapStyle = [lineCapStyle integerValue];
+    }
+    
+    // Line join style (optional parameter)
+    NSNumber *lineJoinStyle = params[@"lineJoinStyle"];
+    if (lineJoinStyle) {
+        path.lineJoinStyle = [lineJoinStyle integerValue];
+    }
+}
+
+- (NSColor*)defaultColorForIndicator:(id)ind{
+    NSColor * defColor = [ind defaultColor];
+    if (!defColor) {
+        defColor = [NSColor blueColor];
+    }
+    return  defColor;
 }
 
 #pragma mark - Visible Data Optimization

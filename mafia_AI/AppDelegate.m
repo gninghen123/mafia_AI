@@ -30,12 +30,15 @@
 #import "PreferencesWindowController.h"
 
 
-
 @implementation AppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
     NSLog(@"AppDelegate: applicationDidFinishLaunching called");
-    
+    /*
+    [[StorageMetadataCache sharedCache] rebuildCacheFromFilesystem:^{
+        NSLog(@"🎯 ONE-TIME cache rebuild complete!");
+    }];
+*/
     // Window restoration fixes
     [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"NSQuitAlwaysKeepsWindows"];
     [[NSUserDefaults standardUserDefaults] setBool:NO forKey:@"NSCloseAlwaysConfirmsChanges"];

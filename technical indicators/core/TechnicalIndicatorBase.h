@@ -105,7 +105,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (BOOL)canCalculateWithBars:(NSArray<HistoricalBarModel *> *)bars;
 
 #pragma mark - Utility
-
+- (NSColor*)defaultColor;
 /// Reset calculation state (clears output and errors)
 - (void)reset;
 

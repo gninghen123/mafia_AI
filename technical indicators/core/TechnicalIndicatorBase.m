@@ -175,7 +175,9 @@
 - (NSString *)displayDescription {
     return [NSString stringWithFormat:@"%@ (%@)", self.name, self.parameters];
 }
-
+- (NSColor *)defaultColor{
+    return [NSColor blueColor];
+}
 @end
 
 #pragma mark - Indicator Data Model Implementation

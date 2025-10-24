@@ -113,7 +113,7 @@
                                                                          value:emaValue
                                                                     seriesName:seriesName
                                                                    seriesType:VisualizationTypeLine
-                                                                         color:[self emaColor]];
+                                                                         color:[self defaultColor]];
         
         // For EMA, we can use the EMA value itself as anchor (for overlay on price chart)
         dataPoint.anchorValue = emaValue;
@@ -217,7 +217,7 @@
 #pragma mark - Display Properties
 
 // Restituisce un colore diverso in base al valore di periodo
-- (NSColor *)emaColor {
+- (NSColor *)defaultColor {
     NSInteger period = [self.parameters[@"period"] integerValue];
     switch (period) {
         case 5:

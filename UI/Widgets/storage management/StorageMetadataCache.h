@@ -90,7 +90,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 // Statistics
 - (NSDictionary *)cacheStatistics;
-
+- (void)rebuildCacheFromFilesystem:(void(^)(void))completion;
 @end
 
 NS_ASSUME_NONNULL_END

@@ -72,7 +72,7 @@
         @"fileModificationTime": @(self.fileModificationTime),
         @"fileSizeBytes": @(self.fileSizeBytes),
         @"symbol": self.symbol ?: @"",
-        @"timeframe": @(self.timeframe),  // ✅ FIXED: Salva come NSNumber (enum value)
+        @"timeframe": @(self.timeframe),  
         @"dataType": @(self.dataType),
         @"barCount": @(self.barCount),
         @"startDate": self.startDate ? @([self.startDate timeIntervalSince1970]) : @0,
@@ -95,11 +95,11 @@
         // Fast filename parsing
         self.symbol = [SavedChartData symbolFromFilename:self.filename] ?: @"Unknown";
         NSString *timeframeStr = [SavedChartData timeframeFromFilename:self.filename];
-               if (timeframeStr) {
-                   self.timeframe = [SavedChartData timeframeFromCanonicalString:timeframeStr];
-               } else {
-                   self.timeframe = BarTimeframeDaily; // Default fallback
-               }
+        if (timeframeStr) {
+            self.timeframe = [SavedChartData timeframeFromCanonicalString:timeframeStr];
+        } else {
+            self.timeframe = BarTimeframeDaily; // Default fallback
+        }
         NSString *typeStr = [SavedChartData typeFromFilename:self.filename];
         self.dataType = [typeStr isEqualToString:@"Continuous"] ? SavedChartDataTypeContinuous : SavedChartDataTypeSnapshot;
         
@@ -113,7 +113,7 @@
     } else {
         // Old format - set defaults
         self.symbol = @"Unknown";
-        self.timeframe = @"Unknown";
+        self.timeframe = BarTimeframeDaily;  // ✅ CORRETTO: usa enum, non stringa!
         self.dataType = SavedChartDataTypeSnapshot; // Assume old files are snapshots
         self.barCount = 0;
         self.includesExtendedHours = NO;
@@ -417,6 +417,77 @@
         dispatch_async(dispatch_get_main_queue(), ^{
             NSLog(@"✅ Consistency check complete: %ld inconsistencies found and fixed", (long)inconsistencies);
             if (completion) completion(inconsistencies);
+        });
+    });
+}
+
+
+- (void)rebuildCacheFromFilesystem:(void(^)(void))completion {
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0), ^{
+        NSLog(@"🔄 REBUILDING CACHE FROM FILESYSTEM...");
+        NSLog(@"⚠️ This will DELETE the current cache and recreate it from disk");
+        
+        // Get directory from CommonTypes
+        NSString *directory = [CommonTypes savedChartDataDirectory];
+        NSLog(@"📂 Using directory: %@", directory);
+        
+        // 1. Clear UserDefaults cache
+        [[NSUserDefaults standardUserDefaults] removeObjectForKey:@"StorageMetadataCache"];
+        [[NSUserDefaults standardUserDefaults] synchronize];
+        NSLog(@"✅ Cleared cache from UserDefaults");
+        
+        // 2. Clear in-memory cache
+        dispatch_barrier_async(self.cacheQueue, ^{
+            [self.cache removeAllObjects];
+        });
+        NSLog(@"✅ Cleared in-memory cache");
+        
+        // 3. Scan all files and rebuild from filenames
+        NSFileManager *fm = [NSFileManager defaultManager];
+        NSArray<NSString *> *filesOnDisk = [fm contentsOfDirectoryAtPath:directory error:nil];
+        
+        NSMutableDictionary *newCache = [NSMutableDictionary dictionary];
+        NSInteger processed = 0;
+        NSInteger skipped = 0;
+        
+        for (NSString *filename in filesOnDisk) {
+            if ([filename hasSuffix:@".chartdata"]) {
+                NSString *filePath = [directory stringByAppendingPathComponent:filename];
+                
+                // Create item by parsing filename only
+                StorageMetadataItem *item = [StorageMetadataItem itemFromFilePath:filePath];
+                
+                if (item && item.isNewFormat) {
+                    newCache[filePath] = item;
+                    processed++;
+                    
+                    NSLog(@"   ✅ %@ [%@] - %ld bars",
+                          item.symbol,
+                          item.timeframeDisplayString,
+                          (long)item.barCount);
+                } else {
+                    skipped++;
+                    NSLog(@"   ⚠️ Skipped old format: %@", filename);
+                }
+            }
+        }
+        
+        // 4. Update in-memory cache atomically
+        dispatch_barrier_async(self.cacheQueue, ^{
+            self.cache = newCache;
+        });
+        
+        // 5. Save new cache to UserDefaults
+        [self saveToUserDefaults];
+        
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSLog(@"✅ CACHE REBUILD COMPLETE:");
+            NSLog(@"   - Processed: %ld files", (long)processed);
+            NSLog(@"   - Skipped (old format): %ld files", (long)skipped);
+            NSLog(@"   - Total in cache: %ld items", (long)newCache.count);
+            NSLog(@"   - Saved to UserDefaults");
+            
+            if (completion) completion();
         });
     });
 }

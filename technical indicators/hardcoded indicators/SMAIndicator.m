@@ -101,7 +101,7 @@
                                                                          value:smaValue
                                                                     seriesName:seriesName
                                                                    seriesType:VisualizationTypeLine
-                                                                         color:[self smaColor]];
+                                                                         color:[self defaultColor]];
         
         dataPoint.anchorValue = smaValue;
         dataPoint.isSignal = NO;
@@ -153,7 +153,7 @@
 #pragma mark - Display Properties
 
 // Restituisce un colore in base al valore di 'period'
-- (NSColor *)smaColor {
+- (NSColor *)defaultColor {
     NSInteger period = [self.parameters[@"period"] integerValue];
     switch (period) {
         case 5:

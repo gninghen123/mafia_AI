@@ -211,7 +211,7 @@ static const void *kCurrentSearchResultsKey = &kCurrentSearchResultsKey;
             if (success) {
                 NSString *icon = bestMatch.isContinuous ? @"📊" : @"📸";
                 NSString *message = [NSString stringWithFormat:@"%@ %@ [%@]",
-                                   icon, bestMatch.symbol, bestMatch.timeframe];
+                                   icon, bestMatch.symbol, [self timeframeToString:bestMatch.timeframe]];
                 [self showTemporaryMessage:message];
                 
                 // Update field to show loaded symbol

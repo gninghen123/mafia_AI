@@ -41,10 +41,10 @@
 // UI Components - REMOVED readonly to allow internal assignment
 @property (nonatomic, strong) NSTextField *symbolsTextField;
 @property (nonatomic, strong) NSPopUpButton *chartTypePopup;
-@property (nonatomic, strong) NSPopUpButton *timeframePopup;
 @property (nonatomic, strong) NSPopUpButton *scaleTypePopup;
 @property (nonatomic, strong) NSButton *volumeCheckbox;
-
+@property (nonatomic, strong) NSSegmentedControl *timeframeSegmented;
+@property (nonatomic, strong) NSButton *afterHoursSwitch;
 @property (nonatomic, assign) NSInteger timeRange;  // 0=1d, 1=3d, 2=5d, 3=1m, 4=3m, 5=6m, 6=1y, 7=5y
 @property (nonatomic, strong) NSSegmentedControl *timeRangeSegmented;
 

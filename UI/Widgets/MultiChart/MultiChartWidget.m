@@ -19,6 +19,7 @@
 static NSString *const kMultiChartItemWidthKey = @"MultiChart_ItemWidth";
 static NSString *const kMultiChartItemHeightKey = @"MultiChart_ItemHeight";
 static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefreshEnabled";
+static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAfterHours";
 
 
 @interface MultiChartWidget ()
@@ -118,15 +119,35 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
     [self.chartTypePopup setAction:@selector(chartTypeChanged:)];
     [self.controlsView addSubview:self.chartTypePopup];
     
-    // Timeframe popup
-    self.timeframePopup = [[NSPopUpButton alloc] init];
-    [self.timeframePopup addItemsWithTitles:@[@"1m", @"5m", @"15m", @"30m", @"1h", @"1D", @"1W", @"1M"]];
-    [self.timeframePopup selectItemAtIndex:0]; 
-    self.timeframePopup.translatesAutoresizingMaskIntoConstraints = NO;
-    [self.timeframePopup setTarget:self];
-    [self.timeframePopup setAction:@selector(timeframeChanged:)];
-    [self.controlsView addSubview:self.timeframePopup];
-    
+    // ✅ Timeframe segmented control
+        self.timeframeSegmented = [[NSSegmentedControl alloc] init];
+        self.timeframeSegmented.translatesAutoresizingMaskIntoConstraints = NO;
+        self.timeframeSegmented.segmentCount = 8;
+        [self.timeframeSegmented setLabel:@"1" forSegment:0];
+        [self.timeframeSegmented setLabel:@"5" forSegment:1];
+        [self.timeframeSegmented setLabel:@"15" forSegment:2];
+        [self.timeframeSegmented setLabel:@"30" forSegment:3];
+    [self.timeframeSegmented setLabel:@"1h" forSegment:4];
+    [self.timeframeSegmented setLabel:@"12h" forSegment:5];
+        [self.timeframeSegmented setLabel:@"D" forSegment:6];
+        [self.timeframeSegmented setLabel:@"W" forSegment:7];
+        [self.timeframeSegmented setLabel:@"M" forSegment:8];
+        self.timeframeSegmented.selectedSegment = self.timeframe;
+        self.timeframeSegmented.target = self;
+        self.timeframeSegmented.action = @selector(timeframeChanged:);
+        [self.controlsView addSubview:self.timeframeSegmented];
+
+    // ✅ MODIFICA 2: Aggiungere afterhours switch DOPO volumeCheckbox
+    // NUOVO CODICE DA AGGIUNGERE (dopo la volumeCheckbox):
+        // AfterHours switch
+        self.afterHoursSwitch = [[NSButton alloc] init];
+        self.afterHoursSwitch.translatesAutoresizingMaskIntoConstraints = NO;
+        self.afterHoursSwitch.buttonType = NSButtonTypeSwitch;
+        self.afterHoursSwitch.title = @"After Hours";
+        self.afterHoursSwitch.target = self;
+        self.afterHoursSwitch.action = @selector(afterHoursSwitchChanged:);
+        [self.controlsView addSubview:self.afterHoursSwitch];
+
     // Scale type popup
     self.scaleTypePopup = [[NSPopUpButton alloc] init];
     [self.scaleTypePopup addItemsWithTitles:@[@"Linear", @"Log", @"Percent"]];
@@ -220,19 +241,20 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
         [self.chartTypePopup.widthAnchor constraintEqualToConstant:70]
     ]];
     
-    // Timeframe popup
+    // Timeframe segmented
     [NSLayoutConstraint activateConstraints:@[
-        [self.timeframePopup.leadingAnchor constraintEqualToAnchor:self.chartTypePopup.trailingAnchor constant:spacing],
-        [self.timeframePopup.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
-        [self.timeframePopup.widthAnchor constraintEqualToConstant:50]
+        [self.timeframeSegmented.leadingAnchor constraintEqualToAnchor:self.chartTypePopup.trailingAnchor constant:spacing],
+        [self.timeframeSegmented.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
+        [self.timeframeSegmented.widthAnchor constraintEqualToConstant:260]  
     ]];
+
     
     // Scale type popup
-    [NSLayoutConstraint activateConstraints:@[
-        [self.scaleTypePopup.leadingAnchor constraintEqualToAnchor:self.timeframePopup.trailingAnchor constant:spacing],
-        [self.scaleTypePopup.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
-        [self.scaleTypePopup.widthAnchor constraintEqualToConstant:70]
-    ]];
+       [NSLayoutConstraint activateConstraints:@[
+           [self.scaleTypePopup.leadingAnchor constraintEqualToAnchor:self.timeframeSegmented.trailingAnchor constant:spacing],
+           [self.scaleTypePopup.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
+           [self.scaleTypePopup.widthAnchor constraintEqualToConstant:70]
+       ]];
     
     // Max bars field
     [NSLayoutConstraint activateConstraints:@[
@@ -247,9 +269,14 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
         [self.volumeCheckbox.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor]
     ]];
     
+    [NSLayoutConstraint activateConstraints:@[
+          [self.afterHoursSwitch.leadingAnchor constraintEqualToAnchor:self.volumeCheckbox.trailingAnchor constant:spacing],
+          [self.afterHoursSwitch.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor]
+      ]];
+    
     // ✅ SOSTITUISCI CON QUESTI (nuovi constraint width/height):
     [NSLayoutConstraint activateConstraints:@[
-        [self.itemWidthField.leadingAnchor constraintEqualToAnchor:self.volumeCheckbox.trailingAnchor constant:spacing],
+        [self.itemWidthField.leadingAnchor constraintEqualToAnchor:self.afterHoursSwitch.trailingAnchor constant:spacing],
         [self.itemWidthField.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
         [self.itemWidthField.widthAnchor constraintEqualToConstant:40]
     ]];
@@ -452,7 +479,7 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
         [[DataHub shared] getHistoricalBarsForSymbol:chart.symbol
                                            timeframe:[self convertToBarTimeframe:self.timeframe]
                                             barCount:[self calculateMaxBarsForTimeRange]
-                                   needExtendedHours:YES  // ← Aggiungi questo
+                                   needExtendedHours:self.afterHoursSwitch.state
                                           completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isLive) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 completedCount++;
@@ -526,6 +553,8 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
             return BarTimeframe30Min;
         case MiniBarTimeframe1Hour:
             return BarTimeframe1Hour;
+        case MiniBarTimeframe12Hour:
+            return BarTimeframe12Hour;
         case MiniBarTimeframeDaily:
             return BarTimeframeDaily;
         case MiniBarTimeframeWeekly:
@@ -1103,14 +1132,59 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
 }
 
 - (void)timeframeChanged:(id)sender {
-    NSInteger index = self.timeframePopup.indexOfSelectedItem;
-    self.timeframe = (MiniBarTimeframe)index;
+    // Ottieni il nuovo timeframe dal segmented control
+    NSInteger segmentIndex = self.timeframeSegmented.selectedSegment;
+    self.timeframe = (MiniBarTimeframe)segmentIndex;
     
-    // Update all charts and reload data
-    for (MiniChart *chart in self.miniCharts) {
-        chart.timeframe = self.timeframe;
+    // ✅ LOGICA AUTO-UPDATE DATE RANGE
+    // Prima di caricare i dati, aggiorna il timeRange in base al timeframe
+    switch (self.timeframe) {
+        case MiniBarTimeframe1Min:
+            self.timeRange = 0;  // 1 day
+            self.timeRangeSegmented.selectedSegment = 0;
+            NSLog(@"📊 Timeframe changed to 1m → Auto-set range to 1 day");
+            break;
+            
+        case MiniBarTimeframe5Min:
+        case MiniBarTimeframe15Min:
+            self.timeRange = 1;  // 3 days
+            self.timeRangeSegmented.selectedSegment = 1;
+            NSLog(@"📊 Timeframe changed to 5m/15m → Auto-set range to 3 days");
+            break;
+            
+        case MiniBarTimeframe30Min:
+        case MiniBarTimeframe1Hour:
+        case MiniBarTimeframe12Hour:
+            self.timeRange = 4;  // 3 months
+            self.timeRangeSegmented.selectedSegment = 4;
+            NSLog(@"📊 Timeframe changed to 30m/1h/12h → Auto-set range to 3 months");
+            break;
+            
+        case MiniBarTimeframeDaily:
+            self.timeRange = 4;  // 3 months
+            self.timeRangeSegmented.selectedSegment = 4;
+            NSLog(@"📊 Timeframe changed to Daily → Auto-set range to 3 months");
+            break;
+            
+        case MiniBarTimeframeWeekly:
+        case MiniBarTimeframeMonthly:
+            self.timeRange = 6;  // 1 year
+            self.timeRangeSegmented.selectedSegment = 6;
+            NSLog(@"📊 Timeframe changed to Weekly/Monthly → Auto-set range to 1 year");
+            break;
+            
+        default:
+            NSLog(@"⚠️ Unknown timeframe: %ld", (long)self.timeframe);
+            break;
     }
     
+    // Reload data con nuovo timeframe e range
+    [self loadDataFromDataHub];
+}
+
+- (void)afterHoursSwitchChanged:(id)sender {
+   
+    // Ricarica i dati con la nuova impostazione
     [self loadDataFromDataHub];
 }
 
@@ -1451,6 +1525,8 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
             return MiniBarTimeframe30Min;
         case BarTimeframe1Hour:
             return MiniBarTimeframe1Hour;
+        case BarTimeframe12Hour:
+            return MiniBarTimeframe12Hour;
         case BarTimeframeDaily:
             return MiniBarTimeframeDaily;
         case BarTimeframeWeekly:
@@ -1462,6 +1538,7 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
     }
 }
 
+
 - (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
     NSLog(@"MultiChartWidget: Received %lu symbols from chain", (unsigned long)symbols.count);
     
@@ -1471,6 +1548,7 @@ static NSString *const kMultiChartAutoRefreshEnabledKey = @"MultiChart_AutoRefre
         NSLog(@"MultiChartWidget: No new symbols to add, current list unchanged");
         return;
     }
+    [self.miniCharts removeAllObjects];
     
     self.symbols = symbols;
     
@@ -1625,7 +1703,8 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     } else {
         self.scaleType = MiniChartScaleLinear; // Default
     }
-    
+    self.afterHoursSwitch.state = [defaults boolForKey:kMultiChartIncludeAfterHoursKey];
+
     if ([defaults objectForKey:kMultiChartAutoRefreshEnabledKey] == nil) {
            self.autoRefreshEnabled = NO;  // Default disabilitato
        } else {
@@ -1672,6 +1751,7 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     [defaults setInteger:self.itemWidth forKey:kMultiChartItemWidthKey];
        [defaults setInteger:self.itemHeight forKey:kMultiChartItemHeightKey];
     [defaults setBool:self.autoRefreshEnabled forKey:kMultiChartAutoRefreshEnabledKey];
+    [defaults setBool:self.afterHoursSwitch.state forKey:kMultiChartIncludeAfterHoursKey];
 
     // Forza la sincronizzazione immediata
     [defaults synchronize];
@@ -1687,10 +1767,12 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         [self.chartTypePopup selectItemAtIndex:self.chartType];
     }
 
-    // Timeframe Popup
-    if (self.timeframePopup && self.timeframe < self.timeframePopup.numberOfItems) {
-        [self.timeframePopup selectItemAtIndex:self.timeframe];
+    // Timeframe Segmented
+    if (self.timeframeSegmented && self.timeframe < self.timeframeSegmented.segmentCount) {
+        self.timeframeSegmented.selectedSegment = self.timeframe;
     }
+
+   
 
     // Scale Type Popup
     if (self.scaleTypePopup && self.scaleType < self.scaleTypePopup.numberOfItems) {
@@ -1711,7 +1793,6 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     if (self.autoRefreshToggle) {
         self.autoRefreshToggle.state = self.autoRefreshEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     }
-
     // Item Width/Height Fields
     if (self.itemWidthField) {
         self.itemWidthField.integerValue = self.itemWidth;
@@ -1741,13 +1822,7 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     [self saveSettingsToUserDefaults];
 }
 
-- (void)timeframeChangedWithAutoSave:(id)sender {
-    // Chiama il metodo originale
-    [self timeframeChanged:sender];
-    
-    // Salva automaticamente
-    [self saveSettingsToUserDefaults];
-}
+
 
 - (void)scaleTypeChangedWithAutoSave:(id)sender {
     // Chiama il metodo originale
@@ -1802,10 +1877,15 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         self.chartTypePopup.action = @selector(chartTypeChangedWithAutoSave:);
     }
     
-    if (self.timeframePopup) {
-        self.timeframePopup.target = self;
-        self.timeframePopup.action = @selector(timeframeChangedWithAutoSave:);
-    }
+    if (self.timeframeSegmented) {
+          self.timeframeSegmented.target = self;
+          self.timeframeSegmented.action = @selector(timeframeChanged:);
+      }
+
+      if (self.afterHoursSwitch) {
+          self.afterHoursSwitch.target = self;
+          self.afterHoursSwitch.action = @selector(afterHoursSwitchChanged:);
+      }
     
     if (self.scaleTypePopup) {
         self.scaleTypePopup.target = self;

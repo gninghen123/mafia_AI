@@ -124,8 +124,8 @@
             filePath = "UI/Widgets/MultiChart/MultiChartWidget.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "659"
-            endingLineNumber = "659"
+            startingLineNumber = "688"
+            endingLineNumber = "688"
             landmarkName = "-itemSizeChanged:"
             landmarkType = "7">
          </BreakpointContent>
@@ -140,8 +140,8 @@
             filePath = "UI/Widgets/MultiChart/MultiChartWidget.m"
             startingColumnNumber = "9223372036854775807"
             endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "666"
-            endingLineNumber = "666"
+            startingLineNumber = "695"
+            endingLineNumber = "695"
             landmarkName = "-itemSizeChanged:"
             landmarkType = "7">
          </BreakpointContent>
@@ -207,22 +207,6 @@
             startingLineNumber = "327"
             endingLineNumber = "327"
             landmarkName = "+highestBarIndex:index:period:valueKey:"
-            landmarkType = "7">
-         </BreakpointContent>
-      </BreakpointProxy>
-      <BreakpointProxy
-         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
-         <BreakpointContent
-            uuid = "3F524C79-A966-49C1-B40F-BA28D17B8B5A"
-            shouldBeEnabled = "Yes"
-            ignoreCount = "0"
-            continueAfterRunningActions = "No"
-            filePath = "UI/Widgets/MultiChart/MultiChartWidget.m"
-            startingColumnNumber = "9223372036854775807"
-            endingColumnNumber = "9223372036854775807"
-            startingLineNumber = "717"
-            endingLineNumber = "717"
-            landmarkName = "-updateAdaptiveLayout"
             landmarkType = "7">
          </BreakpointContent>
       </BreakpointProxy>

@@ -24,6 +24,7 @@ typedef NS_ENUM(NSInteger, MiniBarTimeframe) {
     MiniBarTimeframe15Min,
     MiniBarTimeframe30Min,
     MiniBarTimeframe1Hour,
+    MiniBarTimeframe12Hour,
     MiniBarTimeframeDaily,
     MiniBarTimeframeWeekly,
     MiniBarTimeframeMonthly

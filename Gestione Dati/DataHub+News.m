@@ -214,6 +214,62 @@ static NSString *const kNewsCacheTimestampPrefix = @"news_ts_";
     });
 }
 
+#pragma mark - Time-based News Queries (NEW)
+
+/**
+ * Get news for symbol within a specific date range
+ * Used by annotation system to find news relevant to visible chart period
+ */
+- (void)getNewsForSymbol:(NSString *)symbol
+               startDate:(NSDate *)startDate
+                 endDate:(NSDate *)endDate
+              completion:(void(^)(NSArray<NewsModel *> *news, NSError * _Nullable error))completion {
+    
+    if (!symbol || symbol.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"DataHub"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid symbol for time-based news request"}];
+        if (completion) completion(@[], error);
+        return;
+    }
+    
+    if (!startDate || !endDate) {
+        NSError *error = [NSError errorWithDomain:@"DataHub"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid date range for news request"}];
+        if (completion) completion(@[], error);
+        return;
+    }
+    
+    NSLog(@"📰 DataHub: Fetching news for %@ from %@ to %@", symbol, startDate, endDate);
+    
+    // Per ora, usa il metodo standard e filtra i risultati per date
+    // TODO: In futuro, implementare query diretta con date range nell'API
+    [self getNewsForSymbol:symbol
+                     limit:100  // Prendi più news per avere copertura del range
+              forceRefresh:NO
+                completion:^(NSArray<NewsModel *> *allNews, BOOL isFresh, NSError * _Nullable error) {
+        
+        if (error) {
+            if (completion) completion(@[], error);
+            return;
+        }
+        
+        // Filtra news nel range di date
+        NSPredicate *datePredicate = [NSPredicate predicateWithBlock:^BOOL(NewsModel *news, NSDictionary *bindings) {
+            return [news.publishedDate compare:startDate] != NSOrderedAscending &&
+                   [news.publishedDate compare:endDate] != NSOrderedDescending;
+        }];
+        
+        NSArray<NewsModel *> *filteredNews = [allNews filteredArrayUsingPredicate:datePredicate];
+        
+        NSLog(@"✅ DataHub: Found %lu news items for %@ in date range (from %lu total)",
+              (unsigned long)filteredNews.count, symbol, (unsigned long)allNews.count);
+        
+        if (completion) completion(filteredNews, nil);
+    }];
+}
+
 #pragma mark - Cache Management
 
 - (void)cacheNews:(NSArray<NewsModel *> *)news forKey:(NSString *)cacheKey withTTL:(NewsCacheTTL)ttl {
@@ -326,6 +382,113 @@ static NSString *const kNewsCacheTimestampPrefix = @"news_ts_";
     }
     
     return [uniqueNews copy];
+}
+
+// DataHub+News.m - AGGIUNGI QUESTE IMPLEMENTAZIONI
+
+- (void)getNewsAroundDate:(NSDate *)anomalyDate
+                forSymbol:(NSString *)symbol
+             hoursBefore:(NSInteger)hoursBefore
+              hoursAfter:(NSInteger)hoursAfter
+            forceRefresh:(BOOL)forceRefresh
+              completion:(void(^)(NSArray<NewsModel *> *news, BOOL isFresh, NSError *error))completion {
+    
+    if (!anomalyDate || !symbol || symbol.length == 0) {
+        NSError *error = [NSError errorWithDomain:@"DataHub"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid parameters for news request"}];
+        if (completion) completion(@[], NO, error);
+        return;
+    }
+    
+    // Calcola range temporale
+    NSDate *startDate = [anomalyDate dateByAddingTimeInterval:-hoursBefore * 3600];
+    NSDate *endDate = [anomalyDate dateByAddingTimeInterval:hoursAfter * 3600];
+    
+    [self getNewsForSymbol:symbol
+                 startDate:startDate
+                   endDate:endDate
+              forceRefresh:forceRefresh
+                completion:completion];
+}
+
+- (void)getNewsForSymbol:(NSString *)symbol
+               startDate:(NSDate *)startDate
+                 endDate:(NSDate *)endDate
+            forceRefresh:(BOOL)forceRefresh
+              completion:(void(^)(NSArray<NewsModel *> *news, BOOL isFresh, NSError *error))completion {
+    
+    if (!symbol || symbol.length == 0 || !startDate || !endDate) {
+        NSError *error = [NSError errorWithDomain:@"DataHub"
+                                             code:400
+                                         userInfo:@{NSLocalizedDescriptionKey: @"Invalid parameters"}];
+        if (completion) completion(@[], NO, error);
+        return;
+    }
+    
+    // Genera cache key specifico per il range temporale
+    NSTimeInterval startTimestamp = [startDate timeIntervalSince1970];
+    NSTimeInterval endTimestamp = [endDate timeIntervalSince1970];
+    NSString *cacheKey = [NSString stringWithFormat:@"%@%@_%.0f_%.0f",
+                          kNewsCachePrefix,
+                          symbol.uppercaseString,
+                          startTimestamp,
+                          endTimestamp];
+    
+    // Check cache (se non forceRefresh)
+    if (!forceRefresh) {
+        NSArray<NewsModel *> *cachedNews = [self getCachedNewsForKey:cacheKey];
+        if (cachedNews) {
+            // Filtra per date range (safety check)
+            NSArray *filteredNews = [self filterNews:cachedNews betweenStart:startDate andEnd:endDate];
+            NSLog(@"📰 DataHub: Returning cached news for %@ (%lu items in range)", symbol, (unsigned long)filteredNews.count);
+            completion(filteredNews, YES, nil);
+            return;
+        }
+    }
+    
+    NSLog(@"📰 DataHub: Fetching news for %@ between %@ and %@", symbol, startDate, endDate);
+    
+    // Fetch from DataManager
+    DataManager *dataManager = [DataManager sharedManager];
+    
+    // Prima prendi tutte le news (API potrebbero non supportare filtro date)
+    [dataManager requestNewsForSymbol:symbol
+                                limit:100  // Prendi più news per poi filtrare
+                           completion:^(NSArray<NewsModel *> *allNews, NSError *error) {
+        
+        if (error) {
+            NSLog(@"❌ DataHub: Failed to fetch news: %@", error.localizedDescription);
+            completion(@[], NO, error);
+            return;
+        }
+        
+        // Filtra per date range
+        NSArray<NewsModel *> *filteredNews = [self filterNews:allNews betweenStart:startDate andEnd:endDate];
+        
+        NSLog(@"✅ DataHub: Fetched %lu news, %lu in date range", (unsigned long)allNews.count, (unsigned long)filteredNews.count);
+        
+        // Cache todo
+      //  [self cache:filteredNews forKey:cacheKey wit];
+        
+        completion(filteredNews, NO, nil);
+    }];
+}
+
+#pragma mark - Helper Methods
+
+- (NSArray<NewsModel *> *)filterNews:(NSArray<NewsModel *> *)news
+                        betweenStart:(NSDate *)startDate
+                              andEnd:(NSDate *)endDate {
+    
+    return [news filteredArrayUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NewsModel *newsItem, NSDictionary *bindings) {
+        if (!newsItem.publishedDate) return NO;
+        
+        NSComparisonResult startComparison = [newsItem.publishedDate compare:startDate];
+        NSComparisonResult endComparison = [newsItem.publishedDate compare:endDate];
+        
+        return (startComparison != NSOrderedAscending && endComparison != NSOrderedDescending);
+    }]];
 }
 
 @end

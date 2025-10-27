@@ -226,7 +226,7 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     [NSLayoutConstraint activateConstraints:@[
         [self.symbolsTextField.leadingAnchor constraintEqualToAnchor:self.controlsView.leadingAnchor constant:spacing],
         [self.symbolsTextField.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
-        [self.symbolsTextField.widthAnchor constraintEqualToConstant:180],
+        [self.symbolsTextField.widthAnchor constraintEqualToConstant:120],
         
         [self.resetSymbolsButton.leadingAnchor constraintEqualToAnchor:self.symbolsTextField.trailingAnchor constant:4],
         [self.resetSymbolsButton.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],

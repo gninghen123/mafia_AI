@@ -36,7 +36,25 @@ NS_ASSUME_NONNULL_BEGIN
 /// @param panel The objects panel instance
 /// @param isVisible Whether the panel is now visible
 - (void)objectsPanel:(id)panel didChangeVisibility:(BOOL)isVisible;
+// AGGIUNGI QUESTI METODI AL PROTOCOLLO (ancora in @optional)
 
+/// Called when annotation type checkbox is toggled
+/// @param panel The objects panel instance
+/// @param type Annotation type (ChartAnnotationType enum value)
+/// @param enabled Whether the annotation type is now enabled
+- (void)objectsPanel:(id)panel
+didChangeAnnotationType:(NSInteger)type
+              enabled:(BOOL)enabled;
+
+/// Called when minimum relevance score slider changes
+/// @param panel The objects panel instance
+/// @param score The new minimum relevance score (0-100)
+- (void)objectsPanel:(id)panel
+didChangeMinimumRelevanceScore:(double)score;
+
+/// Called when user taps "Add Note" button
+/// @param panel The objects panel instance
+- (void)objectsPanelDidRequestAddNote:(id)panel;
 @end
 
 
@@ -70,6 +88,22 @@ NS_ASSUME_NONNULL_BEGIN
 
 #pragma mark - Animation
 @property (nonatomic, strong) NSLayoutConstraint *widthConstraint;
+
+#pragma mark - Annotation Controls (NEW)
+@property (nonatomic, strong) NSView *annotationRelevanceRow;
+@property (nonatomic, strong) NSButton *showNewsCheckbox;
+@property (nonatomic, strong) NSButton *showNotesCheckbox;
+@property (nonatomic, strong) NSButton *showMessagesCheckbox;
+@property (nonatomic, strong) NSButton *showAlertsCheckbox;
+@property (nonatomic, strong) NSButton *showEventsCheckbox;
+
+@property (nonatomic, strong) NSSlider *annotationRelevanceSlider;
+@property (nonatomic, strong) NSTextField *annotationRelevanceLabel;
+@property (nonatomic, strong) NSButton *addNoteButton;
+
+@property (nonatomic, strong) NSBox *annotationsSeparator;
+@property (nonatomic, strong) NSTextField *annotationsTitle;
+
 
 #pragma mark - Public Methods
 - (ChartObjectType)getActiveObjectType;

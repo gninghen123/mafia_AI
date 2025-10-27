@@ -107,8 +107,7 @@
     clearAllButton.bezelStyle = NSBezelStyleRounded;
     clearAllButton.font = [NSFont systemFontOfSize:10];
     clearAllButton.toolTip = @"Delete all objects";
-    clearAllButton.bezelColor = NSColor.systemRedColor; // sfondo rosso
-    // Sposta clearAllButton come subview di self invece che controlsRow
+    clearAllButton.bezelColor = NSColor.systemRedColor;
     [self addSubview:clearAllButton];
     
     // NEW: Snap controls row
@@ -129,7 +128,7 @@
     self.snapIntensitySlider.sliderType = NSSliderTypeLinear;
     self.snapIntensitySlider.minValue = 0.0;
     self.snapIntensitySlider.maxValue = 10.0;
-    self.snapIntensitySlider.numberOfTickMarks = 11; // 0, 1, 2, ..., 10
+    self.snapIntensitySlider.numberOfTickMarks = 11;
     self.snapIntensitySlider.allowsTickMarkValuesOnly = YES;
     self.snapIntensitySlider.tickMarkPosition = NSTickMarkPositionBelow;
     
@@ -174,7 +173,114 @@
     self.objectManagerButton.font = [NSFont systemFontOfSize:11];
     [self addSubview:self.objectManagerButton];
     
-    // Setup constraints
+    // ===== ANNOTATIONS SECTION (NEW) =====
+
+    // Separator prima della sezione annotations
+    self.annotationsSeparator = [NSBox new];
+    self.annotationsSeparator.boxType = NSBoxSeparator;
+    self.annotationsSeparator.translatesAutoresizingMaskIntoConstraints = NO;
+    [self addSubview:self.annotationsSeparator];
+
+    // Section title
+    self.annotationsTitle = [[NSTextField alloc] init];
+    self.annotationsTitle.stringValue = @"Annotations:";
+    self.annotationsTitle.font = [NSFont systemFontOfSize:11 weight:NSFontWeightMedium];
+    self.annotationsTitle.textColor = [NSColor secondaryLabelColor];
+    self.annotationsTitle.editable = NO;
+    self.annotationsTitle.bordered = NO;
+    self.annotationsTitle.backgroundColor = [NSColor clearColor];
+    self.annotationsTitle.translatesAutoresizingMaskIntoConstraints = NO;
+    [self addSubview:self.annotationsTitle];
+
+    // Checkboxes
+    self.showNewsCheckbox = [self createAnnotationCheckbox:@"📰 News"
+                                                        tag:0  // ChartAnnotationTypeNews
+                                                   selected:YES];
+    [self addSubview:self.showNewsCheckbox];
+
+    self.showNotesCheckbox = [self createAnnotationCheckbox:@"📝 Notes"
+                                                         tag:1  // ChartAnnotationTypeNote
+                                                    selected:YES];
+    [self addSubview:self.showNotesCheckbox];
+
+    self.showMessagesCheckbox = [self createAnnotationCheckbox:@"💬 Messages"
+                                                            tag:2  // ChartAnnotationTypeUserMessage
+                                                       selected:NO];
+    [self addSubview:self.showMessagesCheckbox];
+
+    self.showAlertsCheckbox = [self createAnnotationCheckbox:@"⚠️ Alerts"
+                                                          tag:3  // ChartAnnotationTypeAlert
+                                                     selected:YES];
+    [self addSubview:self.showAlertsCheckbox];
+
+    self.showEventsCheckbox = [self createAnnotationCheckbox:@"📅 Events"
+                                                          tag:4  // ChartAnnotationTypeEvent
+                                                     selected:NO];
+    [self addSubview:self.showEventsCheckbox];
+
+    // Relevance slider row
+    self.annotationRelevanceRow = [[NSView alloc] init];
+    self.annotationRelevanceRow.translatesAutoresizingMaskIntoConstraints = NO;
+    [self addSubview:self.annotationRelevanceRow];
+
+    NSTextField *relevanceLabel = [[NSTextField alloc] init];
+    relevanceLabel.stringValue = @"Min Score:";
+    relevanceLabel.font = [NSFont systemFontOfSize:10];
+    relevanceLabel.textColor = [NSColor secondaryLabelColor];
+    relevanceLabel.editable = NO;
+    relevanceLabel.bordered = NO;
+    relevanceLabel.backgroundColor = [NSColor clearColor];
+    relevanceLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.annotationRelevanceRow addSubview:relevanceLabel];
+
+    self.annotationRelevanceSlider = [[NSSlider alloc] init];
+    self.annotationRelevanceSlider.minValue = 0;
+    self.annotationRelevanceSlider.maxValue = 100;
+    self.annotationRelevanceSlider.doubleValue = 50;
+    self.annotationRelevanceSlider.target = self;
+    self.annotationRelevanceSlider.action = @selector(annotationRelevanceChanged:);
+    self.annotationRelevanceSlider.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.annotationRelevanceRow addSubview:self.annotationRelevanceSlider];
+
+    self.annotationRelevanceLabel = [[NSTextField alloc] init];
+    self.annotationRelevanceLabel.stringValue = @"50";
+    self.annotationRelevanceLabel.font = [NSFont monospacedDigitSystemFontOfSize:10 weight:NSFontWeightMedium];
+    self.annotationRelevanceLabel.textColor = [NSColor secondaryLabelColor];
+    self.annotationRelevanceLabel.alignment = NSTextAlignmentRight;
+    self.annotationRelevanceLabel.editable = NO;
+    self.annotationRelevanceLabel.bordered = NO;
+    self.annotationRelevanceLabel.backgroundColor = [NSColor clearColor];
+    self.annotationRelevanceLabel.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.annotationRelevanceRow addSubview:self.annotationRelevanceLabel];
+
+    // ⚠️ IMPORTANTE: Attiva i constraints INTERNI di relevanceRow SUBITO
+    [NSLayoutConstraint activateConstraints:@[
+        [relevanceLabel.leadingAnchor constraintEqualToAnchor:self.annotationRelevanceRow.leadingAnchor],
+        [relevanceLabel.centerYAnchor constraintEqualToAnchor:self.annotationRelevanceRow.centerYAnchor],
+        [relevanceLabel.widthAnchor constraintEqualToConstant:70],
+        
+        [self.annotationRelevanceSlider.leadingAnchor constraintEqualToAnchor:relevanceLabel.trailingAnchor constant:4],
+        [self.annotationRelevanceSlider.centerYAnchor constraintEqualToAnchor:self.annotationRelevanceRow.centerYAnchor],
+        [self.annotationRelevanceSlider.trailingAnchor constraintEqualToAnchor:self.annotationRelevanceLabel.leadingAnchor constant:-4],
+        
+        [self.annotationRelevanceLabel.trailingAnchor constraintEqualToAnchor:self.annotationRelevanceRow.trailingAnchor],
+        [self.annotationRelevanceLabel.centerYAnchor constraintEqualToAnchor:self.annotationRelevanceRow.centerYAnchor],
+        [self.annotationRelevanceLabel.widthAnchor constraintEqualToConstant:30],
+        
+        [self.annotationRelevanceRow.heightAnchor constraintEqualToConstant:24]
+    ]];
+
+    // Add note button
+    self.addNoteButton = [NSButton buttonWithTitle:@"+ Add Note"
+                                            target:self
+                                            action:@selector(addNoteClicked:)];
+    self.addNoteButton.bezelStyle = NSBezelStyleRounded;
+    self.addNoteButton.controlSize = NSControlSizeSmall;
+    self.addNoteButton.font = [NSFont systemFontOfSize:11];
+    self.addNoteButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [self addSubview:self.addNoteButton];
+    
+    // ===== CONSTRAINTS GLOBALI (TUTTI GLI ELEMENTI) =====
     [NSLayoutConstraint activateConstraints:@[
         // Title
         [titleLabel.topAnchor constraintEqualToAnchor:self.topAnchor constant:12],
@@ -187,12 +293,12 @@
         [controlsRow.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
         [controlsRow.heightAnchor constraintEqualToConstant:22],
         
-        // Solo Lock sulla prima riga
+        // Lock toggle
         [self.lockCreationToggle.leadingAnchor constraintEqualToAnchor:controlsRow.leadingAnchor],
         [self.lockCreationToggle.centerYAnchor constraintEqualToAnchor:controlsRow.centerYAnchor],
         [self.lockCreationToggle.widthAnchor constraintEqualToConstant:65],
         
-        // Clear all button (nuova riga sotto controlsRow, come subview di self)
+        // Clear all button
         [clearAllButton.topAnchor constraintEqualToAnchor:controlsRow.bottomAnchor constant:8],
         [clearAllButton.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
         [clearAllButton.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
@@ -204,7 +310,7 @@
         [snapRow.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
         [snapRow.heightAnchor constraintEqualToConstant:22],
         
-        // Snap controls within row
+        // Snap controls
         [self.snapIconLabel.leadingAnchor constraintEqualToAnchor:snapRow.leadingAnchor],
         [self.snapIconLabel.centerYAnchor constraintEqualToAnchor:snapRow.centerYAnchor],
         [self.snapIconLabel.widthAnchor constraintEqualToConstant:20],
@@ -232,10 +338,52 @@
         [self.objectManagerButton.topAnchor constraintEqualToAnchor:self.separatorView.bottomAnchor constant:12],
         [self.objectManagerButton.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:8],
         [self.objectManagerButton.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-8],
-        [self.objectManagerButton.bottomAnchor constraintLessThanOrEqualToAnchor:self.bottomAnchor constant:-12]
+        
+        // ===== ANNOTATIONS CONSTRAINTS =====
+        
+        // Annotations separator
+        [self.annotationsSeparator.topAnchor constraintEqualToAnchor:self.objectManagerButton.bottomAnchor constant:16],
+        [self.annotationsSeparator.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:16],
+        [self.annotationsSeparator.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-16],
+        [self.annotationsSeparator.heightAnchor constraintEqualToConstant:0.5],
+        
+        // Annotations title
+        [self.annotationsTitle.topAnchor constraintEqualToAnchor:self.annotationsSeparator.bottomAnchor constant:12],
+        [self.annotationsTitle.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:12],
+        
+        // Checkboxes
+        [self.showNewsCheckbox.topAnchor constraintEqualToAnchor:self.annotationsTitle.bottomAnchor constant:8],
+        [self.showNewsCheckbox.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:12],
+        [self.showNewsCheckbox.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-12],
+        
+        [self.showNotesCheckbox.topAnchor constraintEqualToAnchor:self.showNewsCheckbox.bottomAnchor constant:4],
+        [self.showNotesCheckbox.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:12],
+        [self.showNotesCheckbox.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-12],
+        
+        [self.showMessagesCheckbox.topAnchor constraintEqualToAnchor:self.showNotesCheckbox.bottomAnchor constant:4],
+        [self.showMessagesCheckbox.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:12],
+        [self.showMessagesCheckbox.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-12],
+        
+        [self.showAlertsCheckbox.topAnchor constraintEqualToAnchor:self.showMessagesCheckbox.bottomAnchor constant:4],
+        [self.showAlertsCheckbox.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:12],
+        [self.showAlertsCheckbox.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-12],
+        
+        [self.showEventsCheckbox.topAnchor constraintEqualToAnchor:self.showAlertsCheckbox.bottomAnchor constant:4],
+        [self.showEventsCheckbox.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:12],
+        [self.showEventsCheckbox.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-12],
+        
+        // Relevance row (SOLO posizionamento - contenuto interno già fatto sopra)
+        [self.annotationRelevanceRow.topAnchor constraintEqualToAnchor:self.showEventsCheckbox.bottomAnchor constant:12],
+        [self.annotationRelevanceRow.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:12],
+        [self.annotationRelevanceRow.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-12],
+        
+        // Add note button
+        [self.addNoteButton.topAnchor constraintEqualToAnchor:self.annotationRelevanceRow.bottomAnchor constant:12],
+        [self.addNoteButton.leadingAnchor constraintEqualToAnchor:self.leadingAnchor constant:12],
+        [self.addNoteButton.trailingAnchor constraintEqualToAnchor:self.trailingAnchor constant:-12],
+        [self.addNoteButton.bottomAnchor constraintLessThanOrEqualToAnchor:self.bottomAnchor constant:-12]
     ]];
 }
-
 
 - (void)createObjectButtons {
     // AGGIORNATO: Includi TUTTI gli oggetti implementati
@@ -564,6 +712,54 @@
     [self snapIntensityChanged:self.snapIntensitySlider];
 }
 
+
+#pragma mark - Annotation Helpers
+
+- (NSButton *)createAnnotationCheckbox:(NSString *)title tag:(NSInteger)tag selected:(BOOL)selected {
+    NSButton *checkbox = [NSButton checkboxWithTitle:title
+                                              target:self
+                                              action:@selector(annotationCheckboxChanged:)];
+    checkbox.tag = tag;
+    checkbox.state = selected ? NSControlStateValueOn : NSControlStateValueOff;
+    checkbox.font = [NSFont systemFontOfSize:11];
+    checkbox.translatesAutoresizingMaskIntoConstraints = NO;
+    return checkbox;
+}
+
+#pragma mark - Annotation Actions
+
+- (void)annotationCheckboxChanged:(NSButton *)sender {
+    NSInteger annotationType = sender.tag;
+    BOOL isEnabled = (sender.state == NSControlStateValueOn);
+    
+    NSLog(@"📍 ObjectsPanel: Annotation type %ld %@", (long)annotationType, isEnabled ? @"enabled" : @"disabled");
+    
+    // Notifica il delegate (ChartWidget)
+    if ([self.delegate respondsToSelector:@selector(objectsPanel:didChangeAnnotationType:enabled:)]) {
+        [self.delegate objectsPanel:self didChangeAnnotationType:annotationType enabled:isEnabled];
+    }
+}
+
+- (void)annotationRelevanceChanged:(NSSlider *)sender {
+    NSInteger score = (NSInteger)sender.doubleValue;
+    self.annotationRelevanceLabel.stringValue = [NSString stringWithFormat:@"%ld", (long)score];
+    
+    NSLog(@"📍 ObjectsPanel: Relevance score changed to %ld", (long)score);
+    
+    // Notifica il delegate
+    if ([self.delegate respondsToSelector:@selector(objectsPanel:didChangeMinimumRelevanceScore:)]) {
+        [self.delegate objectsPanel:self didChangeMinimumRelevanceScore:score];
+    }
+}
+
+- (void)addNoteClicked:(id)sender {
+    NSLog(@"📝 ObjectsPanel: Add Note clicked");
+    
+    // Notifica il delegate per aprire finestra creazione nota
+    if ([self.delegate respondsToSelector:@selector(objectsPanelDidRequestAddNote:)]) {
+        [self.delegate objectsPanelDidRequestAddNote:self];
+    }
+}
 
 
 @end

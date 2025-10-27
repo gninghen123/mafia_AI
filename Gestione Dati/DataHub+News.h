@@ -54,6 +54,42 @@ typedef NS_ENUM(NSInteger, NewsCacheTTL) {
                        fromSources:(NSArray<NSNumber *> *)sources
                         completion:(void(^)(NSArray<NewsModel *> *news, NSError * _Nullable error))completion;
 
+
+/**
+ * Get news for symbol within a specific date range
+ * @param symbol Stock symbol
+ * @param startDate Start date for news search
+ * @param endDate End date for news search
+ * @param completion Completion handler with NewsModel array filtered by date
+ */
+- (void)getNewsForSymbol:(NSString *)symbol
+               startDate:(NSDate *)startDate
+                 endDate:(NSDate *)endDate
+              completion:(void(^)(NSArray<NewsModel *> *news, NSError * _Nullable error))completion;
+/**
+ * Get news for a symbol within a specific date range
+ * Useful for correlating news with chart events
+ */
+- (void)getNewsForSymbol:(NSString *)symbol
+               startDate:(NSDate *)startDate
+                 endDate:(NSDate *)endDate
+            forceRefresh:(BOOL)forceRefresh
+              completion:(void(^)(NSArray<NewsModel *> *news, BOOL isFresh, NSError * _Nullable error))completion;
+
+/**
+ * Get news around a specific date (e.g., for anomaly detection)
+ * @param anomalyDate The date of the market anomaly
+ * @param hoursBefore How many hours before the anomaly to look
+ * @param hoursAfter How many hours after the anomaly to look
+ */
+- (void)getNewsAroundDate:(NSDate *)anomalyDate
+                forSymbol:(NSString *)symbol
+             hoursBefore:(NSInteger)hoursBefore
+              hoursAfter:(NSInteger)hoursAfter
+            forceRefresh:(BOOL)forceRefresh
+              completion:(void(^)(NSArray<NewsModel *> *news, BOOL isFresh, NSError * _Nullable error))completion;
+
+
 #pragma mark - Cache Management
 
 /**

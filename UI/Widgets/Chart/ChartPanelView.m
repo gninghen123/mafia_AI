@@ -22,6 +22,7 @@
 #import "ChartWidget+ImageExport.h"
 #import "ChartWidget+Patterns.h"
 #import "ChartIndicatorRenderer.h"
+#import "NewsAnnotationProvider.h"  // ✅ AGGIUNGERE QUESTO
 
 @interface ChartPanelView ()
 
@@ -75,6 +76,9 @@
     // 1. SEMPRE: Indicator renderer (tutti i panel types)
     [self setupIndicatorRenderer];
     
+    [self setupAnnotationRenderer]; // Vedi Integration Guide
+
+    
     // 2. CONDIZIONALE: Objects renderer (solo security panels)
     if ([self.panelType isEqualToString:@"security"]) {
         // Objects renderer sarà inizializzato quando il chartWidget sarà impostato
@@ -88,6 +92,24 @@
     }
     
     NSLog(@"✅ ChartPanelView (%@): All applicable renderers setup completed", self.panelType);
+}
+
+- (void)setupAnnotationRenderer {
+    // Create annotations manager (if not already created elsewhere)
+    if (!self.annotationsManager) {
+        // Initialize with providers (example)
+        NSArray *providers = @[
+            [[NewsAnnotationProvider alloc] init],
+            // Add other providers as needed
+        ];
+        self.annotationsManager = [[ChartAnnotationsManager alloc] initWithProviders:providers];
+    }
+    
+    // Create annotation renderer
+    self.annotationRenderer = [[ChartAnnotationRenderer alloc] initWithPanelView:self
+                                                                          manager:self.annotationsManager];
+    
+    NSLog(@"📍 ChartPanelView: Annotation renderer initialized");
 }
 
 #pragma mark - Template Configuration (NEW ARCHITECTURE)
@@ -1193,6 +1215,8 @@
 - (void)mouseMoved:(NSEvent *)event {
     NSPoint locationInView = [self convertPoint:event.locationInWindow fromView:nil];
     
+    [self.annotationRenderer updateHoverAtPoint:locationInView];
+
     // 🆕 FIX: Clamp crosshair position to chart area
     NSPoint clampedPoint = [self clampCrosshairToChartArea:locationInView];
     self.crosshairPoint = clampedPoint;
@@ -3077,8 +3101,15 @@
               self.panelType, self.yRangeMin, self.yRangeMax,
               self.panelYContext.useLogScale ? @"YES" : @"NO");
     }
+    
     // ✅ ESISTENTE: Invalida layer dipendenti dalle coordinate
     [self invalidateCoordinateDependentLayersWithReason:@"data updated"];
+    
+    if (self.annotationRenderer) {
+            self.annotationRenderer.sharedXContext = self.sharedXContext;
+            self.annotationRenderer.panelYContext = self.panelYContext;
+            [self.annotationRenderer renderAllAnnotations];
+        }
 }
 
 /// Updates SharedXContext for all external renderers
@@ -3105,6 +3136,13 @@
         }
         [self.indicatorRenderer invalidateIndicatorLayers];
     }
+    if (self.annotationRenderer) {
+          self.annotationRenderer.sharedXContext = self.sharedXContext;
+          self.annotationRenderer.panelYContext = self.panelYContext;
+          
+          // Force re-render with new coordinates
+          [self.annotationRenderer renderAllAnnotations];
+      }
 }
 
 

@@ -1,146 +1,111 @@
 //
 //  ChartAnnotationRenderer.h
-//  mafia_AI
+//  TradingApp
 //
-//  Rendering layer for chart annotations
-//  Handles visual display and coordinate conversion
+//  Annotation rendering engine for chart panels with CALayer-based drawing
+//  ✅ REFACTORED: Follows pattern of AlertRenderer/ObjectRenderer
 //
 
 #import <Foundation/Foundation.h>
-#import <AppKit/AppKit.h>
+#import <Cocoa/Cocoa.h>
 #import "ChartAnnotation.h"
+
+@class ChartPanelView;
+@class ChartAnnotationsManager;
+@class SharedXCoordinateContext;
+@class PanelYCoordinateContext;
 
 NS_ASSUME_NONNULL_BEGIN
 
-@class ChartAnnotationsManager;
-@class ChartPanelView;
-@class ChartAnnotationMarker;
+#pragma mark - Chart Annotation Renderer
 
-/**
- * Renderer for chart annotations
- *
- * Responsibilities:
- * - Rendering markers on chart
- * - Coordinate conversion (delegates to ChartPanelView)
- * - Visual updates (position, visibility)
- *
- * Does NOT handle:
- * - Data loading (done by ChartAnnotationsManager)
- * - Filtering (done by ChartAnnotationsManager)
- * - Business logic (done by ChartAnnotationsManager)
- */
-@interface ChartAnnotationRenderer : NSObject
+@interface ChartAnnotationRenderer : NSObject <CALayerDelegate>
 
-#pragma mark - References
+#pragma mark - Context and Dependencies
 
-/**
- * Weak reference to the chart panel view (coordinator)
- */
+/// Weak reference to the chart panel view
 @property (nonatomic, weak) ChartPanelView *panelView;
 
-/**
- * Reference to the annotations manager (data source)
- */
+/// Reference to the annotations manager (data source)
 @property (nonatomic, strong) ChartAnnotationsManager *manager;
 
-/**
- * Parent layer for annotations
- */
-@property (nonatomic, weak) CALayer *annotationsLayer;
+/// ✅ NEW: Coordinate contexts (matching other renderers)
+@property (nonatomic, weak) SharedXCoordinateContext *sharedXContext;
+@property (nonatomic, weak) PanelYCoordinateContext *panelYContext;
+
+#pragma mark - Rendering Layers
+
+/// Static annotations layer
+@property (nonatomic, strong) CALayer *annotationsLayer;
 
 #pragma mark - State
 
-/**
- * Currently displayed markers
- */
-@property (nonatomic, strong, readonly) NSArray<ChartAnnotationMarker *> *visibleMarkers;
+/// Currently displayed annotations (cached for performance)
+@property (nonatomic, strong, readwrite) NSMutableArray<ChartAnnotation *> *visibleAnnotations;  // ✅ NSMutableArray
+
+/// Hovered annotation (for interactive feedback)
+@property (nonatomic, strong, nullable) ChartAnnotation *hoveredAnnotation;
 
 #pragma mark - Initialization
 
-/**
- * Initialize with panel view and manager
- */
+/// Initialize annotation renderer for chart panel
+/// @param panelView The chart panel view that will contain annotation layers
+/// @param manager The annotations manager providing data
 - (instancetype)initWithPanelView:(ChartPanelView *)panelView
                           manager:(ChartAnnotationsManager *)manager;
 
+#pragma mark - Layer Management
+
+/// Update layer frames when panel resizes
+- (void)updateLayerFrames;
+
 #pragma mark - Rendering
 
-/**
- * Render all annotations in the specified layer
- * Creates markers for filtered annotations from manager
- * @param layer Parent layer for annotation markers
- */
-- (void)renderInLayer:(CALayer *)layer;
+/// Render all visible annotations to annotationsLayer
+- (void)renderAllAnnotations;
 
-/**
- * Update positions of all markers
- * Call this when chart pans/zooms
- */
-- (void)updateAllMarkerPositions;
+/// Force redraw of annotations layer
+- (void)invalidateAnnotationsLayer;
 
-/**
- * Clear all markers
- */
-- (void)clearAllMarkers;
-
-/**
- * Force full re-render
- * Removes all markers and recreates them
- */
-- (void)invalidate;
+/// Clear all rendered content
+- (void)clearAllAnnotations;
 
 #pragma mark - Coordinate Conversion
 
-/**
- * Convert date to screen position
- * Delegates to panelView for coordinate conversion
- * @param date Date to convert
- * @return Screen position (CGPoint) or CGPointZero if date not visible
- */
-- (CGPoint)screenPositionForDate:(NSDate *)date;
+/// Convert annotation date to screen X coordinate
+/// @param date Annotation date
+/// @return X coordinate in panel, or -9999 if not visible
+- (CGFloat)screenXForDate:(NSDate *)date;
 
-/**
- * Check if date is visible in current chart range
- */
+/// Check if date is visible in current chart range
+/// @param date Date to check
+/// @return YES if date is within visible range
 - (BOOL)isDateVisible:(NSDate *)date;
 
-#pragma mark - Interaction
+#pragma mark - Hit Testing
 
-/**
- * Get marker at screen point
- * @param point Screen point
- * @param tolerance Hit test tolerance in pixels
- * @return Marker at point or nil
- */
-- (nullable ChartAnnotationMarker *)markerAtPoint:(CGPoint)point
-                                        tolerance:(CGFloat)tolerance;
+/// Find annotation at screen point
+/// @param screenPoint Point in panel coordinates
+/// @param tolerance Hit test tolerance in pixels
+/// @return ChartAnnotation if found, nil otherwise
+- (nullable ChartAnnotation *)annotationAtScreenPoint:(NSPoint)screenPoint
+                                            tolerance:(CGFloat)tolerance;
 
-/**
- * Get all markers near a point
- */
-- (NSArray<ChartAnnotationMarker *> *)markersNearPoint:(CGPoint)point
-                                             tolerance:(CGFloat)tolerance;
+/// Get all annotations near a point
+/// @param screenPoint Point in panel coordinates
+/// @param tolerance Hit test tolerance in pixels
+/// @return Array of annotations near point
+- (NSArray<ChartAnnotation *> *)annotationsNearPoint:(NSPoint)screenPoint
+                                           tolerance:(CGFloat)tolerance;
 
-@end
+#pragma mark - Interactive Feedback
 
-#pragma mark - ChartAnnotationMarker
+/// Update hover state at mouse position
+/// @param screenPoint Current mouse position
+- (void)updateHoverAtPoint:(NSPoint)screenPoint;
 
-/**
- * Visual marker for a single annotation
- * Simple view that displays icon + optional popup
- */
-@interface ChartAnnotationMarker : NSView
-
-@property (nonatomic, strong) ChartAnnotation *annotation;
-@property (nonatomic, assign) CGPoint chartPosition;
-@property (nonatomic, strong) CAShapeLayer *iconLayer;
-@property (nonatomic, strong) NSTextField *popupLabel;
-@property (nonatomic, assign) BOOL isHighlighted;
-
-- (instancetype)initWithAnnotation:(ChartAnnotation *)annotation;
-- (void)updatePosition:(CGPoint)position;
-- (void)showPopup;
-- (void)hidePopup;
+/// Clear hover state
+- (void)clearHover;
 
 @end
 

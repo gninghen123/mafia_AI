@@ -16,6 +16,10 @@
 #import "PanelYCoordinateContext.h"
 #import "ChartPanelTemplate+CoreDataClass.h"
 #import "TechnicalIndicatorBase.h"
+#import "ChartAnnotationRenderer.h"
+#import "ChartAnnotationsManager.h"
+
+
 
 #pragma mark - Import ChartWidget for constants
 #import "ChartWidget.h"
@@ -103,6 +107,9 @@ typedef NS_OPTIONS(NSUInteger, ChartLayerInvalidationOptions) {
 @property (nonatomic, strong) ChartObjectRenderer *objectRenderer;
 @property (nonatomic, strong) ChartIndicatorRenderer *indicatorRenderer;
 @property (nonatomic, strong) ChartAlertRenderer *alertRenderer;
+@property (nonatomic, strong) ChartAnnotationRenderer *annotationRenderer;
+@property (nonatomic, strong) ChartAnnotationsManager *annotationsManager;
+
 
 @property (nonatomic, strong, nullable) ChartObjectSettingsWindow *activeSettingsWindow;
 

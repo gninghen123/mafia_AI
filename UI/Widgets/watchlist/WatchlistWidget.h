@@ -22,7 +22,8 @@ typedef NS_ENUM(NSInteger, WatchlistProviderType) {
     WatchlistProviderTypeMarket,
     WatchlistProviderTypeBaskets,
     WatchlistProviderTypeTags,
-    WatchlistProviderTypeArchives
+    WatchlistProviderTypeArchives,
+    WatchlistProviderTypeScreenerResults
 };
 
 #pragma mark - Display Mode Enum

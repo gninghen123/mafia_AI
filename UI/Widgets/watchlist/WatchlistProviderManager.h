@@ -25,6 +25,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic, readonly) NSArray<id<WatchlistProvider>> *basketProviders;
 @property (nonatomic, readonly) NSArray<id<WatchlistProvider>> *tagListProviders;
 @property (nonatomic, readonly) NSArray<id<WatchlistProvider>> *archiveProviders;
+@property (nonatomic, readonly) NSArray<id<WatchlistProvider>> *screenerProviders;
 
 // All providers (flat list for search)
 @property (nonatomic, readonly) NSArray<id<WatchlistProvider>> *allProviders;
@@ -59,6 +60,12 @@ NS_ASSUME_NONNULL_BEGIN
 // Archive management (now async)
 - (void)refreshArchiveProviders;
 - (void)loadArchiveProvidersAsync;
+
+
+// Screener results management
+- (void)refreshScreenerProviders;
+- (void)loadScreenerProvidersAsync;
+
 
 #pragma mark - Factory Methods
 

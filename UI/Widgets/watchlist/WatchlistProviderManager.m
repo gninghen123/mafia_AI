@@ -12,6 +12,9 @@
 #import "DataHub+WatchlistProviders.h"
 #import "TagManager.h"
 
+#import "WatchlistProviderManager+ScreenerResults.h"
+#import "StooqScreenerArchiveProvider.h"
+
 
 @interface WatchlistProviderManager ()
 
@@ -21,6 +24,7 @@
 @property (nonatomic, strong) NSMutableArray<id<WatchlistProvider>> *mutableBasketProviders;
 @property (nonatomic, strong) NSMutableArray<id<WatchlistProvider>> *mutableTagListProviders;
 @property (nonatomic, strong) NSMutableArray<id<WatchlistProvider>> *mutableArchiveProviders;
+@property (nonatomic, strong) NSMutableArray<id<WatchlistProvider>> *mutableScreenerProviders;
 
 // Provider lookup cache
 @property (nonatomic, strong) NSMutableDictionary<NSString *, id<WatchlistProvider>> *providerCache;
@@ -58,7 +62,8 @@
     self.mutableTagListProviders = [NSMutableArray array];
     self.mutableArchiveProviders = [NSMutableArray array];
     self.providerCache = [NSMutableDictionary dictionary];
-    
+    self.mutableScreenerProviders = [NSMutableArray array];
+
     [self initializeProviders];
 }
 
@@ -78,7 +83,8 @@
     [self.mutableTagListProviders removeAllObjects];
     [self.mutableArchiveProviders removeAllObjects];
     [self.providerCache removeAllObjects];
-    
+    [self.mutableScreenerProviders removeAllObjects];
+
     // ✅ FIX: Only load essential providers immediately
     [self loadManualWatchlistProviders];  // Always load manual watchlists
     [self loadBasketProviders];          // Always load baskets (lightweight)
@@ -117,7 +123,10 @@
     } else if ([categoryName isEqualToString:@"Archives"] && self.mutableArchiveProviders.count == 0) {
         NSLog(@"⚡ Force loading: Archives");
         [self loadArchiveProviders];
+    } else if ([categoryName isEqualToString:@"Screener Results"]) {
+        [self loadScreenerProvidersAsync];
     }
+
     
     NSLog(@"⚡ ensureProvidersLoadedForCategory completed: %@", categoryName);
 }
@@ -200,7 +209,10 @@
         return self.tagListProviders;
     } else if ([categoryName isEqualToString:@"Archives"]) {
         return self.archiveProviders;
+    } else if ([categoryName isEqualToString:@"Screener Results"]) {
+        return self.screenerProviders;
     }
+
     
     return @[];
 }
@@ -445,6 +457,12 @@
     return [self.mutableArchiveProviders copy];
 }
 
+- (NSArray<id<WatchlistProvider>> *)screenerProviders {
+    // Ensure loaded on access
+    [self ensureProvidersLoadedForCategory:@"Screener Results"];
+    return [self.mutableScreenerProviders copy];
+}
+
 - (NSArray<id<WatchlistProvider>> *)allProviders {
     NSMutableArray *all = [NSMutableArray array];
     [all addObjectsFromArray:self.mutableManualProviders];
@@ -452,6 +470,7 @@
     [all addObjectsFromArray:self.mutableBasketProviders];
     [all addObjectsFromArray:self.tagListProviders]; // This will trigger lazy loading
     [all addObjectsFromArray:self.archiveProviders]; // This will trigger lazy loading
+    [all addObjectsFromArray:self.mutableScreenerProviders];
     return [all copy];
 }
 
@@ -686,5 +705,15 @@
     NSLog(@"📦 Discovered %lu available archives: %@", (unsigned long)discoveredArchives.count, discoveredArchives);
     return discoveredArchives;
 }
+#pragma mark - Screener Providers Management
+
+- (void)refreshScreenerProviders {
+    [self loadScreenerResultProviders];
+}
+
+- (void)loadScreenerProvidersAsync {
+    [self loadScreenerResultProvidersAsync];
+}
+
 
 @end

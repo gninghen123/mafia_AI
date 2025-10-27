@@ -15,6 +15,8 @@
 #import "OtherDataSource.h"
 #import "DownloadManager.h"
 #import "TagManagementWindowController.h"
+#import "StooqScreenerArchiveProvider.h"
+#import "WatchlistProviderManager+ScreenerResults.h"
 
 @interface WatchlistWidget ()
 
@@ -157,7 +159,7 @@
     // Create segmented control with 5 segments
     self.providerTypeSegmented = [[NSSegmentedControl alloc] init];
     self.providerTypeSegmented.translatesAutoresizingMaskIntoConstraints = NO;
-    self.providerTypeSegmented.segmentCount = 5;
+    self.providerTypeSegmented.segmentCount = 6;
     self.providerTypeSegmented.trackingMode = NSSegmentSwitchTrackingSelectOne;
     self.providerTypeSegmented.target = self;
     self.providerTypeSegmented.action = @selector(providerTypeChanged:);
@@ -181,9 +183,11 @@
     [self.providerTypeSegmented setImage:[NSImage imageWithSystemSymbolName:@"archivebox"
                                                  accessibilityDescription:nil]
                                forSegment:4];
-    
+    [self.providerTypeSegmented setImage:[NSImage imageWithSystemSymbolName:@"scope"
+                                                  accessibilityDescription:nil]
+                                forSegment:5];
     // Set equal widths for all segments
-    for (NSInteger i = 0; i < 5; i++) {
+    for (NSInteger i = 0; i < 6; i++) {
         [self.providerTypeSegmented setWidth:50 forSegment:i];
     }
     
@@ -324,6 +328,8 @@
             return @"Tag Lists";
         case WatchlistProviderTypeArchives:
             return @"Archives";
+        case WatchlistProviderTypeScreenerResults:  // ← NUOVO
+                   return @"Screener Results";
         default:
             return @"Manual Watchlists";
     }

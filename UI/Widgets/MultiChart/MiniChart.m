@@ -470,6 +470,11 @@
     [self.backgroundColor setFill];
     NSRectFill(dirtyRect);
     
+    // ✅ PRIMA DI TUTTO: Disegna le zone ombreggiate (sotto tutto il resto)
+       if (self.showReferenceLines && !self.isLoading && !self.hasError && [self isIntradayTimeframe]) {
+           [self drawTradingSessionZones];
+       }
+    
     // Draw chart if we have data
     if (self.chartPath && !self.isLoading && !self.hasError) {
         [self drawChart];
@@ -478,6 +483,16 @@
     // Draw volume if enabled
     if (self.volumePath && self.showVolume && !self.isLoading && !self.hasError) {
         [self drawVolume];
+    }
+    
+    // ✅ AGGIUNGI QUESTE DUE RIGHE - Disegna reference lines se abilitato
+    if (self.showReferenceLines && !self.isLoading && !self.hasError) {
+        [self drawIntradayReferenceLines];
+    }
+    
+    // ✅ AGGIUNGI QUESTE DUE RIGHE - Disegna medie mobili se abilitate
+    if (self.showReferenceLines && !self.isLoading && !self.hasError) {
+        [self drawMovingAverages];
     }
     
     // Draw loading or error state
@@ -535,7 +550,7 @@
     
     for (NSInteger i = 0; i < self.priceData.count; i++) {
         HistoricalBarModel *bar = self.priceData[i];
-        
+
         CGFloat x = rect.origin.x + i * xStep + xStep * 0.5;
         CGFloat highY = rect.origin.y + (([self transformedPriceValue:bar.high] - self.minPrice) / yRange) * rect.size.height;
         CGFloat lowY = rect.origin.y + (([self transformedPriceValue:bar.low] - self.minPrice) / yRange) * rect.size.height;
@@ -870,7 +885,9 @@
  Verifica se il timeframe corrente è intraday (< Daily)
  */
 - (BOOL)isIntradayTimeframe {
+    
     return (self.timeframe < MiniBarTimeframeDaily);
+    
 }
 
 /**
@@ -1156,4 +1173,204 @@
         });
     }
 }
+#pragma mark - Moving Averages Calculation
+
+/**
+ Calcola Exponential Moving Average (EMA) per un dato periodo
+ */
+- (NSArray<NSNumber *> *)calculateEMA:(NSInteger)period {
+    if (!self.priceData || self.priceData.count < period) {
+        return nil;
+    }
+    
+    NSMutableArray<NSNumber *> *emaValues = [NSMutableArray arrayWithCapacity:self.priceData.count];
+    double multiplier = 2.0 / (period + 1.0);
+    double ema = 0.0;
+    BOOL initialized = NO;
+    
+    // Calcola SMA iniziale per i primi 'period' valori
+    double sum = 0.0;
+    for (NSInteger i = 0; i < period && i < self.priceData.count; i++) {
+        sum += self.priceData[i].close;
+        [emaValues addObject:@(NAN)];  // Padding per i primi valori
+    }
+    
+    if (period <= self.priceData.count) {
+        ema = sum / period;
+        emaValues[period - 1] = @(ema);
+        initialized = YES;
+    }
+    
+    // Calcola EMA per i valori successivi
+    for (NSInteger i = period; i < self.priceData.count; i++) {
+        double closePrice = self.priceData[i].close;
+        ema = (closePrice * multiplier) + (ema * (1.0 - multiplier));
+        [emaValues addObject:@(ema)];
+    }
+    
+    return initialized ? [emaValues copy] : nil;
+}
+
+/**
+ Disegna le medie mobili esponenziali (EMA 20 e 100)
+ */
+- (void)drawMovingAverages {
+    if (!self.showReferenceLines || !self.priceData || self.priceData.count < 20) {
+        return;
+    }
+    
+    CGRect rect = [self chartRect];
+    if (CGRectIsEmpty(rect)) return;
+    
+    double yRange = self.maxPrice - self.minPrice;
+    if (yRange <= 0) return;
+    
+    CGFloat xStep = rect.size.width / (CGFloat)self.priceData.count;
+    
+    // Helper per calcolare Y
+    CGFloat (^calculateY)(double) = ^CGFloat(double price) {
+        return rect.origin.y + (([self transformedPriceValue:price] - self.minPrice) / yRange) * rect.size.height;
+    };
+    
+    // ✅ EMA 20 - Gialla, alpha 0.6
+    NSArray<NSNumber *> *ema20 = [self calculateEMA:20];
+    if (ema20 && ema20.count == self.priceData.count) {
+        NSBezierPath *ema20Path = [NSBezierPath bezierPath];
+        ema20Path.lineWidth = 1.5;
+        BOOL pathStarted = NO;
+        
+        for (NSInteger i = 0; i < ema20.count; i++) {
+            double value = [ema20[i] doubleValue];
+            if (!isnan(value)) {
+                CGFloat x = rect.origin.x + i * xStep + xStep * 0.5;
+                CGFloat y = calculateY(value);
+                
+                if (!pathStarted) {
+                    [ema20Path moveToPoint:NSMakePoint(x, y)];
+                    pathStarted = YES;
+                } else {
+                    [ema20Path lineToPoint:NSMakePoint(x, y)];
+                }
+            }
+        }
+        
+        [[NSColor.systemYellowColor colorWithAlphaComponent:0.6] setStroke];
+        [ema20Path stroke];
+    }
+    
+    // ✅ EMA 100 - Verde, alpha 0.6
+    if (self.priceData.count >= 100) {
+        NSArray<NSNumber *> *ema100 = [self calculateEMA:100];
+        if (ema100 && ema100.count == self.priceData.count) {
+            NSBezierPath *ema100Path = [NSBezierPath bezierPath];
+            ema100Path.lineWidth = 1.5;
+            BOOL pathStarted = NO;
+            
+            for (NSInteger i = 0; i < ema100.count; i++) {
+                double value = [ema100[i] doubleValue];
+                if (!isnan(value)) {
+                    CGFloat x = rect.origin.x + i * xStep + xStep * 0.5;
+                    CGFloat y = calculateY(value);
+                    
+                    if (!pathStarted) {
+                        [ema100Path moveToPoint:NSMakePoint(x, y)];
+                        pathStarted = YES;
+                    } else {
+                        [ema100Path lineToPoint:NSMakePoint(x, y)];
+                    }
+                }
+            }
+            
+            [[NSColor.systemGreenColor colorWithAlphaComponent:0.6] setStroke];
+            [ema100Path stroke];
+        }
+    }
+}
+
+/**
+ Disegna zone ombreggiate per pre-market e after-hours (orari USA/EST)
+ Pre-market: 04:00-09:30 EST
+ Regular: 09:30-16:00 EST
+ After-hours: 16:00-20:00 EST
+ */
+- (void)drawTradingSessionZones {
+    if (!self.showReferenceLines) return;
+    if (!self.priceData || self.priceData.count == 0) return;
+    
+    CGRect rect = [self chartRect];
+    if (CGRectIsEmpty(rect)) return;
+    
+    // Identifica le sessioni e disegna le zone
+    CGFloat xStep = rect.size.width / (CGFloat)self.priceData.count;
+    NSInteger currentSession = -1;
+    CGFloat zoneStartX = -1;
+    
+    // ✅ Usa timezone EST per identificare correttamente le sessioni
+    NSTimeZone *estTimeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    calendar.timeZone = estTimeZone;
+    
+    for (NSInteger i = 0; i < self.priceData.count; i++) {
+        HistoricalBarModel *bar = self.priceData[i];
+        if (!bar.date) continue;
+        
+        NSDateComponents *components = [calendar components:(NSCalendarUnitHour | NSCalendarUnitMinute)
+                                                   fromDate:bar.date];
+        NSInteger session = [self identifyTradingSession:components];
+        
+        // Se cambia sessione, disegna la zona precedente
+        if (session != currentSession) {
+            // Disegna la zona completata
+            if (currentSession == 0 || currentSession == 2) { // Pre-market o After-hours
+                if (zoneStartX >= 0) {
+                    CGFloat zoneEndX = rect.origin.x + i * xStep;
+                    CGFloat zoneWidth = zoneEndX - zoneStartX;
+                    
+                    NSRect zoneRect = NSMakeRect(zoneStartX, rect.origin.y, zoneWidth, rect.size.height);
+                    
+                    // Colore diverso per pre-market e after-hours
+                    NSColor *zoneColor;
+                    if (currentSession == 0) {
+                        // Pre-market (04:00-09:30 EST): Arancione chiaro con alpha 0.1
+                        zoneColor = [NSColor.systemOrangeColor colorWithAlphaComponent:0.1];
+                    } else {
+                        // After-hours (16:00-20:00 EST): Blu chiaro con alpha 0.1
+                        zoneColor = [NSColor.systemBlueColor colorWithAlphaComponent:0.1];
+                    }
+                    
+                    [zoneColor setFill];
+                    NSBezierPath *zonePath = [NSBezierPath bezierPathWithRect:zoneRect];
+                    [zonePath fill];
+                }
+            }
+            
+            // Inizia nuova zona
+            currentSession = session;
+            zoneStartX = rect.origin.x + i * xStep;
+        }
+    }
+    
+    // Disegna l'ultima zona se necessario
+    if ((currentSession == 0 || currentSession == 2) && zoneStartX >= 0) {
+        CGFloat zoneEndX = rect.origin.x + rect.size.width;
+        CGFloat zoneWidth = zoneEndX - zoneStartX;
+        
+        NSRect zoneRect = NSMakeRect(zoneStartX, rect.origin.y, zoneWidth, rect.size.height);
+        
+        NSColor *zoneColor;
+        if (currentSession == 0) {
+            // Pre-market: Arancione chiaro
+            zoneColor = [NSColor.systemOrangeColor colorWithAlphaComponent:0.1];
+        } else {
+            // After-hours: Blu chiaro
+            zoneColor = [NSColor.systemBlueColor colorWithAlphaComponent:0.1];
+        }
+        
+        [zoneColor setFill];
+        NSBezierPath *zonePath = [NSBezierPath bezierPathWithRect:zoneRect];
+        [zonePath fill];
+    }
+}
+
+
 @end

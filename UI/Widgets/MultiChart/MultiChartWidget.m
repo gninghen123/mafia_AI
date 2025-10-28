@@ -475,30 +475,58 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
         });
     }];
 }
+// Utility per calcolare la data di inizio escludendo weekend (borsistici)
+- (NSDate *)startDateForDataRange:(NSInteger)daysBack {
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    calendar.timeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
+    
+    NSDate *date = [NSDate date];
+    NSInteger daysCounted = 0;
+    
+    while (daysCounted < daysBack) {
+        date = [calendar dateByAddingUnit:NSCalendarUnitDay value:-1 toDate:date options:0];
+        NSDateComponents *components = [calendar components:NSCalendarUnitWeekday fromDate:date];
+        NSInteger weekday = components.weekday; // 1=Sunday, 7=Saturday
+        if (weekday != 1 && weekday != 7) {
+            daysCounted++;
+        }
+    }
+    return date;
+}
+
 - (void)loadHistoricalDataForAllCharts {
     NSLog(@"📊 MultiChartWidget: Loading historical data for %lu charts", (unsigned long)self.miniCharts.count);
     
     __block NSInteger completedCount = 0;
     NSInteger totalCount = self.miniCharts.count;
     
+    // ✅ CALCOLA DATE RANGE
+    NSDate *startDate = [self calculateStartDateForTimeRange];
+    NSDate *endDate = [self calculateEndDateForTimeRange];
+    
+    NSLog(@"📅 Using date range: %@ to %@", startDate, endDate);
+    
     for (MiniChart *chart in self.miniCharts) {
-        // ✅ SEMPLIFICATO: Loading solo se chiamato da setup iniziale
-        // Non controlliamo historicalBars perché non esiste come proprietà
         [chart setLoading:YES];
 
+        // ✅ USA IL NUOVO METODO CON DATE RANGE
         [[DataHub shared] getHistoricalBarsForSymbol:chart.symbol
                                            timeframe:[self convertToBarTimeframe:self.timeframe]
-                                            barCount:[self calculateMaxBarsForTimeRange]
+                                           startDate:startDate
+                                             endDate:endDate
                                    needExtendedHours:self.afterHoursSwitch.state
-                                          completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isLive) {
+                                          completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 completedCount++;
                 
                 [chart setLoading:NO];
                 
                 if (bars && bars.count > 0) {
+                    // ✅ AGGIUNTO: Imposta il timeframe PRIMA di aggiornare i dati
+                    chart.timeframe = self.timeframe;
                     [chart updateWithHistoricalBars:bars];
-                    NSLog(@"📈 Loaded %lu bars for %@", (unsigned long)bars.count, chart.symbol);
+                    NSLog(@"📈 Loaded %lu bars for %@ (timeframe: %ld, fresh: %@)",
+                          (unsigned long)bars.count, chart.symbol, (long)self.timeframe, isFresh ? @"YES" : @"NO");
                 } else {
                     [chart setError:@"No data available"];
                     NSLog(@"❌ No historical data for %@", chart.symbol);
@@ -511,9 +539,8 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
             });
         }];
     }
-  
-    
 }
+
 - (void)loadDataForMiniChart:(MiniChart *)miniChart {
     NSString *symbol = miniChart.symbol;
     if (!symbol) return;
@@ -531,17 +558,26 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
                 miniChart.percentChange = quote.changePercent;
             }
             
-            // Load historical data
+            // ✅ CALCOLA DATE RANGE
+            NSDate *startDate = [self calculateStartDateForTimeRange];
+            NSDate *endDate = [self calculateEndDateForTimeRange];
+            
+            // ✅ USA IL NUOVO METODO CON DATE RANGE
             [[DataHub shared] getHistoricalBarsForSymbol:symbol
                                                timeframe:[self convertToBarTimeframe:self.timeframe]
-                                                barCount:[self calculateMaxBarsForTimeRange]
-                                       needExtendedHours:NO  // ← Aggiungi questo
-                                              completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isLive) {
+                                               startDate:startDate
+                                                 endDate:endDate
+                                       needExtendedHours:self.afterHoursSwitch.state
+                                              completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
                 dispatch_async(dispatch_get_main_queue(), ^{
                     [miniChart setLoading:NO];
                     
                     if (bars && bars.count > 0) {
+                        // ✅ AGGIUNTO: Imposta il timeframe PRIMA di aggiornare i dati
+                        miniChart.timeframe = self.timeframe;
                         [miniChart updateWithHistoricalBars:bars];
+                        NSLog(@"📈 Loaded %lu bars for single chart %@ (timeframe: %ld)",
+                              (unsigned long)bars.count, symbol, (long)self.timeframe);
                     } else {
                         [miniChart setError:@"No data available"];
                     }
@@ -550,6 +586,7 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
         });
     }];
 }
+
 
 - (BarTimeframe)convertToBarTimeframe:(MiniBarTimeframe)timeframe {
     switch (timeframe) {
@@ -1255,15 +1292,24 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
                     chart.percentChange = quote.changePercent;
                 }
                 
-                // Also refresh historical data
+                // ✅ CALCOLA DATE RANGE
+                NSDate *startDate = [self calculateStartDateForTimeRange];
+                NSDate *endDate = [self calculateEndDateForTimeRange];
+                
+                // ✅ USA IL NUOVO METODO CON DATE RANGE
                 [[DataHub shared] getHistoricalBarsForSymbol:symbol
                                                    timeframe:[self convertToBarTimeframe:self.timeframe]
-                                                    barCount:[self calculateMaxBarsForTimeRange]
-                                           needExtendedHours:NO  // ← Aggiungi questo
-                                                  completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isLive) {
+                                                   startDate:startDate
+                                                     endDate:endDate
+                                           needExtendedHours:self.afterHoursSwitch.state
+                                                  completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
                     dispatch_async(dispatch_get_main_queue(), ^{
                         if (bars && bars.count > 0) {
+                            // ✅ AGGIUNTO: Imposta il timeframe PRIMA di aggiornare i dati
+                            chart.timeframe = self.timeframe;
                             [chart updateWithHistoricalBars:bars];
+                            NSLog(@"📈 Refreshed %lu bars for %@ (timeframe: %ld)",
+                                  (unsigned long)bars.count, symbol, (long)self.timeframe);
                         }
                     });
                 }];
@@ -1271,7 +1317,6 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
         }];
     }
 }
-
 - (MiniChart *)miniChartForSymbol:(NSString *)symbol {
     // Con collection view, cerchiamo direttamente nell'array miniCharts
     for (MiniChart *chart in self.miniCharts) {
@@ -2501,6 +2546,64 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         [chart setNeedsDisplay:YES];
     }
     
+}
+#pragma mark - Date Range Calculation
+
+/**
+ Calcola la data di inizio escludendo weekend per il range selezionato
+ @return Data di inizio calcolata escludendo sabato e domenica
+ */
+- (NSDate *)calculateStartDateForTimeRange {
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDate *now = [NSDate date];
+    
+    // Ottieni numero di giorni dal time range
+    NSArray *calendarDays = @[@1, @3, @5, @30, @90, @180, @365, @1825];
+    NSInteger totalDays = [calendarDays[self.timeRange] integerValue];
+    
+    // ✅ SEMPRE esclude weekend, anche per intraday
+    NSInteger businessDaysToAdd = 0;
+    NSInteger totalBusinessDaysNeeded = totalDays;
+    NSDate *startDate = now;
+    
+    while (businessDaysToAdd < totalBusinessDaysNeeded) {
+        startDate = [calendar dateByAddingUnit:NSCalendarUnitDay value:-1 toDate:startDate options:0];
+        
+        NSInteger weekday = [calendar component:NSCalendarUnitWeekday fromDate:startDate];
+        
+        // Escludi sabato (7) e domenica (1)
+        if (weekday != 1 && weekday != 7) {
+            businessDaysToAdd++;
+        }
+    }
+    
+    // Aggiungi un piccolo buffer (5%) per sicurezza
+    NSInteger bufferDays = MAX(1, (NSInteger)(totalBusinessDaysNeeded * 0.05));
+    for (NSInteger i = 0; i < bufferDays; i++) {
+        startDate = [calendar dateByAddingUnit:NSCalendarUnitDay value:-1 toDate:startDate options:0];
+        NSInteger weekday = [calendar component:NSCalendarUnitWeekday fromDate:startDate];
+        if (weekday == 1 || weekday == 7) {
+            i--; // Non contare weekend nel buffer
+        }
+    }
+    
+    NSLog(@"📅 Calculated start date: %@ for %ld business days (%@ timeframe)",
+          startDate, (long)totalDays, [self timeframeString]);
+    
+    return startDate;
+}
+
+/**
+ Calcola la data di fine (domani per sicurezza)
+ @return Data di domani
+ */
+- (NSDate *)calculateEndDateForTimeRange {
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDate *tomorrow = [calendar dateByAddingUnit:NSCalendarUnitDay value:1 toDate:[NSDate date] options:0];
+    
+    NSLog(@"📅 End date set to tomorrow: %@", tomorrow);
+    
+    return tomorrow;
 }
 
 @end

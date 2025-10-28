@@ -180,6 +180,13 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     self.volumeCheckbox.translatesAutoresizingMaskIntoConstraints = NO;
     [self.controlsView addSubview:self.volumeCheckbox];
     
+    // Reference Lines checkbox (✅ NUOVO - dopo volumeCheckbox)
+    self.referenceLinesCheckbox = [NSButton checkboxWithTitle:@"Studi"
+                                                        target:self
+                                                        action:@selector(referenceLinesCheckboxChanged:)];
+    self.referenceLinesCheckbox.state = NSControlStateValueOn;  // Default: attivo
+    self.referenceLinesCheckbox.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.controlsView addSubview:self.referenceLinesCheckbox];
     
     self.itemWidthField = [[NSTextField alloc] init];
     self.itemWidthField.stringValue = @"200";
@@ -268,9 +275,12 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
         [self.volumeCheckbox.leadingAnchor constraintEqualToAnchor:self.timeRangeSegmented.trailingAnchor constant:spacing],
         [self.volumeCheckbox.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor]
     ]];
-    
     [NSLayoutConstraint activateConstraints:@[
-          [self.afterHoursSwitch.leadingAnchor constraintEqualToAnchor:self.volumeCheckbox.trailingAnchor constant:spacing],
+        [self.referenceLinesCheckbox.leadingAnchor constraintEqualToAnchor:self.volumeCheckbox.trailingAnchor constant:12],
+        [self.referenceLinesCheckbox.centerYAnchor constraintEqualToAnchor:self.volumeCheckbox.centerYAnchor]
+    ]];
+    [NSLayoutConstraint activateConstraints:@[
+          [self.afterHoursSwitch.leadingAnchor constraintEqualToAnchor:self.referenceLinesCheckbox.trailingAnchor constant:spacing],
           [self.afterHoursSwitch.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor]
       ]];
     
@@ -642,6 +652,7 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
         miniChart.timeframe = self.timeframe;
         miniChart.scaleType = self.scaleType;
         miniChart.showVolume = self.showVolume;
+        miniChart.showReferenceLines = self.referenceLinesCheckbox.state;
         
         // Setup appearance esistente
         [self setupChartSelectionAppearance:miniChart];
@@ -2479,6 +2490,17 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     [self createMultiChartImageInteractive];
 }
 
+#pragma mark - Control Actions
 
+- (void)referenceLinesCheckboxChanged:(id)sender {
+    bool showReferenceLines = (self.referenceLinesCheckbox.state == NSControlStateValueOn);
+    
+    // Update all charts
+    for (MiniChart *chart in self.miniCharts) {
+        chart.showReferenceLines = showReferenceLines;
+        [chart setNeedsDisplay:YES];
+    }
+    
+}
 
 @end

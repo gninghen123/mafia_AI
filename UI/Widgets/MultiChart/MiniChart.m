@@ -4,6 +4,7 @@
 //
 //  Lightweight chart view for grid display
 //  REWRITTEN: Uses ONLY RuntimeModels, optimized direct drawing
+//  UPDATED: Added intraday reference lines support
 //
 
 #import "MiniChart.h"
@@ -30,7 +31,13 @@
 @implementation MiniChart
 
 #pragma mark - Initialization
-
+- (instancetype)initWithFrame:(NSRect)frameRect showReferenceLines:(BOOL)showRefLines{
+    self =    self = [self initWithFrame:frameRect];
+    if (self) {
+        self.showReferenceLines = showRefLines;
+    }
+    return self;
+}
 - (instancetype)initWithFrame:(NSRect)frameRect {
     self = [super initWithFrame:frameRect];
     if (self) {
@@ -50,7 +57,8 @@
                           timeframe:(MiniBarTimeframe)timeframe
                           scaleType:(MiniChartScaleType)scaleType
                             maxBars:(NSInteger)maxBars
-                         showVolume:(BOOL)showVolume {
+                         showVolume:(BOOL)showVolume
+                 showReferenceLines:(BOOL)showRefLines{
     
     MiniChart *chart = [[MiniChart alloc] init];
     chart.symbol = symbol;
@@ -59,6 +67,7 @@
     chart.scaleType = scaleType;
     chart.maxBars = maxBars;
     chart.showVolume = showVolume;
+    chart.showReferenceLines=showRefLines;
     return chart;
 }
 
@@ -225,8 +234,9 @@
 }
 
 - (CGRect)volumeRect {
-    if (!self.showVolume) return NSZeroRect;
+    if (!self.showVolume) return CGRectZero;
     
+    CGFloat labelHeight = 30;
     CGFloat volumeHeight = 30;
     CGFloat padding = 8;
     
@@ -240,103 +250,89 @@
 
 - (void)updateWithHistoricalBars:(NSArray<HistoricalBarModel *> *)bars {
     if (!bars || bars.count == 0) {
+        NSLog(@"⚠️ MiniChart[%@]: No bars to update", self.symbol ?: @"nil");
+        self.priceData = nil;
         [self setError:@"No data"];
         return;
     }
     
-    // Clear any existing error
-    [self clearError];
-    
-    // Store data
     self.priceData = bars;
+    [self clearError];
+    [self setLoading:NO];
     
-    // Update current price from last bar
-    HistoricalBarModel *lastBar = bars.lastObject;
-    if (lastBar) {
-        self.currentPrice = @(lastBar.close);
-        
-        // Calculate change from first to last
-        HistoricalBarModel *firstBar = bars.firstObject;
-        if (firstBar && bars.count > 1) {
-            double change = lastBar.close - firstBar.close;
-            double percentChange = (change / firstBar.close) * 100.0;
-            self.priceChange = @(change);
-            self.percentChange = @(percentChange);
-        }
-    }
-    
-    // Calculate ranges and generate paths
+    // Calculate price range and volume
     [self calculatePriceRange];
     [self calculateVolumeRange];
-    [self calculateAPTR];  // NUOVO: Calcola APTR quando si aggiornano i dati
+    
+    // Generate chart paths
     [self generateChartPath];
     [self generateVolumePath];
     
-    // Update UI
-    [self updateLabels];
+    // Update price labels
+    [self updatePriceLabels];
+    
+    // Calculate APTR
+    [self calculateAPTR];
+    
     [self setNeedsDisplay:YES];
+    
+    NSLog(@"📊 MiniChart[%@]: Updated with %lu bars", self.symbol ?: @"nil", (unsigned long)bars.count);
 }
 
 - (void)calculatePriceRange {
-    if (!self.priceData || self.priceData.count == 0) return;
+    if (!self.priceData || self.priceData.count == 0) {
+        self.minPrice = 0;
+        self.maxPrice = 100;
+        return;
+    }
     
-    double minPrice = INFINITY;
-    double maxPrice = -INFINITY;
+    double minVal = INFINITY;
+    double maxVal = -INFINITY;
     
     for (HistoricalBarModel *bar in self.priceData) {
-        double transformedLow = [self transformedPriceValue:bar.low];
-        double transformedHigh = [self transformedPriceValue:bar.high];
-        
-        minPrice = MIN(minPrice, transformedLow);
-        maxPrice = MAX(maxPrice, transformedHigh);
+        minVal = MIN(minVal, [self transformedPriceValue:bar.low]);
+        maxVal = MAX(maxVal, [self transformedPriceValue:bar.high]);
     }
     
     // Add 5% padding
-    double range = maxPrice - minPrice;
+    double range = maxVal - minVal;
     double padding = range * 0.05;
     
-    self.minPrice = minPrice - padding;
-    self.maxPrice = maxPrice + padding;
+    self.minPrice = minVal - padding;
+    self.maxPrice = maxVal + padding;
 }
 
 - (void)calculateVolumeRange {
-    if (!self.priceData || self.priceData.count == 0) return;
-    
-    double maxVolume = 0;
-    for (HistoricalBarModel *bar in self.priceData) {
-        maxVolume = MAX(maxVolume, bar.volume);
+    if (!self.priceData || self.priceData.count == 0) {
+        self.maxVolume = 1000000;
+        return;
     }
     
-    self.maxVolume = maxVolume;
+    long long maxVol = 0;
+    for (HistoricalBarModel *bar in self.priceData) {
+        maxVol = MAX(maxVol, bar.volume);
+    }
+    
+    self.maxVolume = maxVol > 0 ? maxVol : 1000000;
 }
 
-- (void)updateLabels {
-    // Symbol label
-    self.symbolLabel.stringValue = self.symbol ?: @"";
+- (void)updatePriceLabels {
+    if (!self.priceData || self.priceData.count == 0) return;
     
-    // Price label
+    HistoricalBarModel *lastBar = self.priceData.lastObject;
+    
     if (self.currentPrice) {
         self.priceLabel.stringValue = [NSString stringWithFormat:@"$%.2f", [self.currentPrice doubleValue]];
     } else {
-        self.priceLabel.stringValue = @"--";
+        self.priceLabel.stringValue = [NSString stringWithFormat:@"$%.2f", lastBar.close];
     }
     
-    // Change label
-    if (self.percentChange && self.priceChange) {
-        double change = [self.percentChange doubleValue];
-        NSString *sign = change >= 0 ? @"+" : @"";
-        self.changeLabel.stringValue = [NSString stringWithFormat:@"%@%.2f%%", sign, change];
-        self.changeLabel.textColor = change >= 0 ? self.positiveColor : self.negativeColor;
-    } else {
-        self.changeLabel.stringValue = @"+0.00%";
-        self.changeLabel.textColor = self.textColor;
+    if (self.percentChange) {
+        double percent = [self.percentChange doubleValue];
+        self.changeLabel.stringValue = [NSString stringWithFormat:@"%+.2f%%", percent];
+        self.changeLabel.textColor = percent >= 0 ? self.positiveColor : self.negativeColor;
     }
-    
-    // APTR label is updated by updateAPTRLabel method
-    [self setNeedsDisplay:YES];
 }
-
-#pragma mark - Chart Path Generation
 
 - (void)generateChartPath {
     if (!self.priceData || self.priceData.count == 0) {
@@ -506,6 +502,11 @@
     if (self.chartType == MiniChartTypeCandle) {
         // For candle charts, draw each candle individually with correct colors
         [self drawCandleChart];
+        
+        // ✅ NUOVO: Disegna linee di riferimento intraday DOPO le candele (solo se attivato)
+        if (self.showReferenceLines) {
+            [self drawIntradayReferenceLines];
+        }
     } else {
         // For line and bar charts, use single color based on overall price change
         NSColor *strokeColor = self.textColor;
@@ -598,80 +599,35 @@
 
 - (void)drawLoadingState {
     NSRect bounds = self.bounds;
-    NSString *loadingText = @"Loading...";
+    NSString *message = @"Loading...";
     NSDictionary *attributes = @{
         NSFontAttributeName: [NSFont systemFontOfSize:12],
         NSForegroundColorAttributeName: [NSColor secondaryLabelColor]
     };
     
-    NSSize textSize = [loadingText sizeWithAttributes:attributes];
-    NSPoint textPoint = NSMakePoint(
-        (bounds.size.width - textSize.width) / 2,
-        (bounds.size.height - textSize.height) / 2
-    );
+    NSSize textSize = [message sizeWithAttributes:attributes];
+    NSPoint drawPoint = NSMakePoint((bounds.size.width - textSize.width) / 2,
+                                   (bounds.size.height - textSize.height) / 2);
     
-    [loadingText drawAtPoint:textPoint withAttributes:attributes];
+    [message drawAtPoint:drawPoint withAttributes:attributes];
 }
 
 - (void)drawErrorState {
     NSRect bounds = self.bounds;
-    NSString *errorText = self.errorMessage ?: @"Error";
+    NSString *message = self.errorMessage ?: @"Error";
     NSDictionary *attributes = @{
         NSFontAttributeName: [NSFont systemFontOfSize:12],
         NSForegroundColorAttributeName: [NSColor systemRedColor]
     };
     
-    NSSize textSize = [errorText sizeWithAttributes:attributes];
-    NSPoint textPoint = NSMakePoint(
-        (bounds.size.width - textSize.width) / 2,
-        (bounds.size.height - textSize.height) / 2
-    );
+    NSSize textSize = [message sizeWithAttributes:attributes];
+    NSPoint drawPoint = NSMakePoint((bounds.size.width - textSize.width) / 2,
+                                   (bounds.size.height - textSize.height) / 2);
     
-    [errorText drawAtPoint:textPoint withAttributes:attributes];
+    [message drawAtPoint:drawPoint withAttributes:attributes];
 }
 
-#pragma mark - Properties
-
-- (void)setSymbol:(NSString *)symbol {
-    _symbol = symbol;
-    [self updateLabels];
-}
-
-- (void)setCurrentPrice:(NSNumber *)currentPrice {
-    _currentPrice = currentPrice;
-    [self updateLabels];
-}
-
-- (void)setPriceChange:(NSNumber *)priceChange {
-    _priceChange = priceChange;
-    [self updateLabels];
-}
-
-- (void)setPercentChange:(NSNumber *)percentChange {
-    _percentChange = percentChange;
-    [self updateLabels];
-}
-
-- (void)setChartType:(MiniChartType)chartType {
-    _chartType = chartType;
-    [self generateChartPath];
-    [self setNeedsDisplay:YES];
-}
-
-- (void)setScaleType:(MiniChartScaleType)scaleType {
-    _scaleType = scaleType;
-    [self calculatePriceRange];
-    [self generateChartPath];
-    [self setNeedsDisplay:YES];
-}
-
-- (void)setShowVolume:(BOOL)showVolume {
-    _showVolume = showVolume;
-    [self generateVolumePath];
-    [self setNeedsDisplay:YES];
-}
-
-#pragma mark - Loading State
+#pragma mark - UI State
 
 - (void)setLoading:(BOOL)loading {
     _isLoading = loading;
@@ -680,7 +636,8 @@
         if (loading) {
             self.loadingIndicator.hidden = NO;
             [self.loadingIndicator startAnimation:nil];
-            self.aptrValue = nil;
+            // Clear APTR when loading
+                    self.aptrValue = nil;
                     [self updateAPTRLabel];
         } else {
             self.loadingIndicator.hidden = YES;
@@ -907,4 +864,296 @@
     }
 }
 
+#pragma mark - Intraday Reference Lines
+
+/**
+ Verifica se il timeframe corrente è intraday (< Daily)
+ */
+- (BOOL)isIntradayTimeframe {
+    return (self.timeframe < MiniBarTimeframeDaily);
+}
+
+/**
+ Identifica la sessione di trading basandosi sull'orario ET
+ @param components Componenti date/ora in timezone ET
+ @return Tipo di sessione: 0=premarket, 1=regular, 2=afterhours
+ */
+- (NSInteger)identifyTradingSession:(NSDateComponents *)components {
+    NSInteger hour = components.hour;
+    NSInteger minute = components.minute;
+    NSInteger totalMinutes = hour * 60 + minute;
+    
+    // Premarket: 4:00-9:30 (240-570 minuti)
+    if (totalMinutes >= 240 && totalMinutes < 570) {
+        return 0; // Premarket
+    }
+    // Regular session: 9:30-16:00 (570-960 minuti)
+    else if (totalMinutes >= 570 && totalMinutes < 960) {
+        return 1; // Regular
+    }
+    // After-hours: 16:00-23:59 O 0:00-4:00 (960-1440 minuti O 0-240 minuti)
+    else if (totalMinutes >= 960 || totalMinutes < 240) {
+        return 2; // Afterhours
+    }
+    
+    return -1; // Should not happen
+}
+
+/**
+ Trova l'inizio dell'ultimo giorno di trading completo (ieri)
+ @param currentDate Data corrente
+ @return Data dell'inizio dell'ultimo giorno di trading
+ */
+- (NSDate *)findPreviousTradingDay:(NSDate *)currentDate {
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    calendar.timeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
+    
+    NSDateComponents *components = [calendar components:(NSCalendarUnitYear | NSCalendarUnitMonth | NSCalendarUnitDay | NSCalendarUnitWeekday) fromDate:currentDate];
+    
+    // Sottrai 1 giorno
+    components.day -= 1;
+    
+    // Se è weekend, torna indietro fino a venerdì
+    if (components.weekday == 1) { // Domenica
+        components.day -= 2;
+    } else if (components.weekday == 7) { // Sabato
+        components.day -= 1;
+    }
+    
+    // Azzera ore per avere inizio giornata
+    components.hour = 0;
+    components.minute = 0;
+    components.second = 0;
+    
+    return [calendar dateFromComponents:components];
+}
+
+/**
+ Calcola i valori delle linee di riferimento intraday (ottimizzato: solo ultimi due giorni, ciclo interrotto appena trovati tutti)
+ @return Dizionario con i valori delle linee, o nil se non applicabile
+ */
+- (NSDictionary *)calculateIntradayReferenceValues {
+    // Verifica che sia timeframe intraday
+    if (![self isIntradayTimeframe]) {
+        return nil;
+    }
+
+    // Verifica dati disponibili
+    if (!self.priceData || self.priceData.count == 0) {
+        return nil;
+    }
+
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    calendar.timeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
+
+    // Ottieni data più recente
+    HistoricalBarModel *lastBar = self.priceData.lastObject;
+    NSDate *mostRecentDate = lastBar.date;
+    NSDateComponents *currentComponents = [calendar components:(NSCalendarUnitYear | NSCalendarUnitMonth | NSCalendarUnitDay)
+                                                      fromDate:mostRecentDate];
+
+    // Trova l'inizio dell'ultimo giorno di trading completo
+    NSDate *previousTradingDay = [self findPreviousTradingDay:mostRecentDate];
+    NSDate *threeDaysAgo = [mostRecentDate dateByAddingTimeInterval:-3 * 24 * 60 * 60];
+    NSDateComponents *previousComponents = [calendar components:(NSCalendarUnitYear | NSCalendarUnitMonth | NSCalendarUnitDay)
+                                                       fromDate:previousTradingDay];
+
+    NSMutableDictionary *values = [NSMutableDictionary dictionary];
+
+    BOOL foundOpenToday = NO;
+    double highPremarket = -INFINITY;
+    double lowPremarket = INFINITY;
+    double highAfterPrevious = -INFINITY;
+    double lowAfterPrevious = INFINITY;
+    double highRegularPrevious = -INFINITY;
+    double lowRegularPrevious = INFINITY;
+
+    // ✅ Limita la scansione agli ultimi 3 giorni per garantire la presenza del giorno precedente completo
+    NSMutableArray<HistoricalBarModel *> *recentBars = [NSMutableArray array];
+    for (HistoricalBarModel *bar in self.priceData) {
+        if (!bar.date) continue;
+        if ([bar.date compare:threeDaysAgo] == NSOrderedDescending) {
+            [recentBars addObject:bar];
+        }
+    }
+
+    // ✅ Scorri solo le barre più recenti
+    for (HistoricalBarModel *bar in recentBars) {
+        NSDateComponents *barComponents = [calendar components:(NSCalendarUnitYear|NSCalendarUnitMonth|NSCalendarUnitDay|NSCalendarUnitHour|NSCalendarUnitMinute)
+                                                      fromDate:bar.date];
+        NSInteger session = [self identifyTradingSession:barComponents];
+
+        BOOL isToday = (barComponents.year == currentComponents.year &&
+                        barComponents.month == currentComponents.month &&
+                        barComponents.day == currentComponents.day);
+        BOOL isPreviousDay = (barComponents.year == previousComponents.year &&
+                              barComponents.month == previousComponents.month &&
+                              barComponents.day == previousComponents.day);
+
+        if (isToday) {
+            if (session == 1 && !foundOpenToday) {
+                values[@"openToday"] = @(bar.open);
+                foundOpenToday = YES;
+            } else if (session == 0) {
+                highPremarket = MAX(highPremarket, bar.high);
+                lowPremarket = MIN(lowPremarket, bar.low);
+            }
+        } else if (isPreviousDay) {
+            if (session == 2) {
+                highAfterPrevious = MAX(highAfterPrevious, bar.high);
+                lowAfterPrevious = MIN(lowAfterPrevious, bar.low);
+            } else if (session == 1) {
+                highRegularPrevious = MAX(highRegularPrevious, bar.high);
+                lowRegularPrevious = MIN(lowRegularPrevious, bar.low);
+            }
+        }
+
+        // ✅ Interrompi se tutti i valori sono stati trovati
+        if (foundOpenToday &&
+            highPremarket != -INFINITY && lowPremarket != INFINITY &&
+            highAfterPrevious != -INFINITY && lowAfterPrevious != INFINITY &&
+            highRegularPrevious != -INFINITY && lowRegularPrevious != INFINITY) {
+            break;
+        }
+    }
+
+    // Salva i valori trovati
+    if (highPremarket != -INFINITY) values[@"highPremarketToday"] = @(highPremarket);
+    if (lowPremarket != INFINITY) values[@"lowPremarketToday"] = @(lowPremarket);
+    if (highAfterPrevious != -INFINITY) values[@"highAfterhoursPrevious"] = @(highAfterPrevious);
+    if (lowAfterPrevious != INFINITY) values[@"lowAfterhoursPrevious"] = @(lowAfterPrevious);
+    if (highRegularPrevious != -INFINITY) values[@"highRegularPrevious"] = @(highRegularPrevious);
+    if (lowRegularPrevious != INFINITY) values[@"lowRegularPrevious"] = @(lowRegularPrevious);
+
+    NSLog(@"📊 MiniChart[%@]: Calculated %lu optimized intraday reference values: %@",
+          self.symbol ?: @"nil", (unsigned long)values.count, values);
+    NSLog(@"🟩 RegularPrev High=%.2f, Low=%.2f", highRegularPrevious, lowRegularPrevious);
+    return values.count > 0 ? values : nil;
+}
+
+/**
+ Disegna le linee di riferimento intraday nel grafico
+ */
+- (void)drawIntradayReferenceLines {
+    // ✅ OTTIMIZZAZIONE: Calcola solo se necessario
+    if (!self.showReferenceLines) return;
+    
+    NSDictionary *referenceValues = [self calculateIntradayReferenceValues];
+    if (!referenceValues) return;
+    
+    CGRect rect = [self chartRect];
+    if (CGRectIsEmpty(rect)) return;
+    
+    double yRange = self.maxPrice - self.minPrice;
+    if (yRange <= 0) return;
+    
+    CGFloat leftX = rect.origin.x;
+    CGFloat rightX = rect.origin.x + rect.size.width;
+    
+    // Helper per calcolare Y
+    CGFloat (^calculateY)(double) = ^CGFloat(double price) {
+        return rect.origin.y + (([self transformedPriceValue:price] - self.minPrice) / yRange) * rect.size.height;
+    };
+    
+    // 1. OPEN OGGI - Giallo continuo, alpha 0.6
+    NSNumber *openToday = referenceValues[@"openToday"];
+    if (openToday) {
+        CGFloat y = calculateY([openToday doubleValue]);
+        [[NSColor.systemYellowColor colorWithAlphaComponent:0.6] setStroke];
+        NSBezierPath *path = [NSBezierPath bezierPath];
+        path.lineWidth = 1.5;
+        [path moveToPoint:NSMakePoint(leftX, y)];
+        [path lineToPoint:NSMakePoint(rightX, y)];
+        [path stroke];
+    }
+    
+    // 2. HIGH/LOW PREMARKET OGGI - Arancione tratteggiato, alpha 0.3
+    NSNumber *highPremarket = referenceValues[@"highPremarketToday"];
+    NSNumber *lowPremarket = referenceValues[@"lowPremarketToday"];
+    if (highPremarket || lowPremarket) {
+        [[NSColor.systemOrangeColor colorWithAlphaComponent:0.3] setStroke];
+        CGFloat dashPattern[] = {4.0, 4.0};
+        
+        if (highPremarket) {
+            CGFloat y = calculateY([highPremarket doubleValue]);
+            NSBezierPath *path = [NSBezierPath bezierPath];
+            path.lineWidth = 1.0;
+            [path setLineDash:dashPattern count:2 phase:0];
+            [path moveToPoint:NSMakePoint(leftX, y)];
+            [path lineToPoint:NSMakePoint(rightX, y)];
+            [path stroke];
+        }
+        
+        if (lowPremarket) {
+            CGFloat y = calculateY([lowPremarket doubleValue]);
+            NSBezierPath *path = [NSBezierPath bezierPath];
+            path.lineWidth = 1.0;
+            [path setLineDash:dashPattern count:2 phase:0];
+            [path moveToPoint:NSMakePoint(leftX, y)];
+            [path lineToPoint:NSMakePoint(rightX, y)];
+            [path stroke];
+        }
+    }
+    
+    // 3. HIGH/LOW AFTERHOURS IERI - Blu tratteggiato, alpha 0.3
+    NSNumber *highAfter = referenceValues[@"highAfterhoursPrevious"];
+    NSNumber *lowAfter = referenceValues[@"lowAfterhoursPrevious"];
+    if (highAfter || lowAfter) {
+        [[NSColor.systemBlueColor colorWithAlphaComponent:0.3] setStroke];
+        CGFloat dashPattern[] = {4.0, 4.0};
+        
+        if (highAfter) {
+            CGFloat y = calculateY([highAfter doubleValue]);
+            NSBezierPath *path = [NSBezierPath bezierPath];
+            path.lineWidth = 1.0;
+            [path setLineDash:dashPattern count:2 phase:0];
+            [path moveToPoint:NSMakePoint(leftX, y)];
+            [path lineToPoint:NSMakePoint(rightX, y)];
+            [path stroke];
+        }
+        
+        if (lowAfter) {
+            CGFloat y = calculateY([lowAfter doubleValue]);
+            NSBezierPath *path = [NSBezierPath bezierPath];
+            path.lineWidth = 1.0;
+            [path setLineDash:dashPattern count:2 phase:0];
+            [path moveToPoint:NSMakePoint(leftX, y)];
+            [path lineToPoint:NSMakePoint(rightX, y)];
+            [path stroke];
+        }
+    }
+    
+    // 4. HIGH REGULAR SESSION IERI - Verde continuo, alpha 0.6
+    NSNumber *highRegular = referenceValues[@"highRegularPrevious"];
+    if (highRegular) {
+        CGFloat y = calculateY([highRegular doubleValue]);
+        [[NSColor.systemGreenColor colorWithAlphaComponent:0.6] setStroke];
+        NSBezierPath *path = [NSBezierPath bezierPath];
+        path.lineWidth = 1.5;
+        [path moveToPoint:NSMakePoint(leftX, y)];
+        [path lineToPoint:NSMakePoint(rightX, y)];
+        [path stroke];
+    }
+    
+    // 5. LOW REGULAR SESSION IERI - Rosso continuo, alpha 0.6
+    NSNumber *lowRegular = referenceValues[@"lowRegularPrevious"];
+    if (lowRegular) {
+        CGFloat y = calculateY([lowRegular doubleValue]);
+        [[NSColor.systemRedColor colorWithAlphaComponent:0.6] setStroke];
+        NSBezierPath *path = [NSBezierPath bezierPath];
+        path.lineWidth = 1.5;
+        [path moveToPoint:NSMakePoint(leftX, y)];
+        [path lineToPoint:NSMakePoint(rightX, y)];
+        [path stroke];
+    }
+}
+- (void)setSymbol:(NSString *)symbol {
+    _symbol = symbol;
+
+    if (self.symbolLabel) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            self.symbolLabel.stringValue = symbol ?: @"";
+        });
+    }
+}
 @end

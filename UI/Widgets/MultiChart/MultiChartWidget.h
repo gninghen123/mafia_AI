@@ -51,6 +51,9 @@
 // Mini charts container - REMOVED readonly to allow internal assignment
 @property (nonatomic, strong) NSMutableArray<MiniChart *> *miniCharts;
 
+@property (nonatomic, strong) NSButton *referenceLinesCheckbox;  // ✅ NUOVO
+
+
 // Actions
 - (void)setSymbolsFromString:(NSString *)symbolsString;
 - (void)addSymbol:(NSString *)symbol;

@@ -46,6 +46,7 @@ typedef NS_ENUM(NSInteger, MiniChartScaleType) {
 @property (nonatomic, strong) NSArray<HistoricalBarModel *> *priceData;  // UPDATED: Array di RuntimeModels
 @property (nonatomic, assign) NSInteger maxBars;  // Numero massimo di barre da visualizzare
 @property (nonatomic, assign) BOOL showVolume;    // Mostra volumi sovrapposti
+@property (nonatomic, assign) BOOL showReferenceLines;  // ✅ NUOVO: Mostra linee di riferimento intraday
 
 // Display info
 @property (nonatomic, strong) NSNumber *currentPrice;
@@ -81,16 +82,18 @@ typedef NS_ENUM(NSInteger, MiniChartScaleType) {
                           timeframe:(MiniBarTimeframe)timeframe
                           scaleType:(MiniChartScaleType)scaleType
                             maxBars:(NSInteger)maxBars
-                         showVolume:(BOOL)showVolume;
+                         showVolume:(BOOL)showVolume
+                 showReferenceLines:(BOOL)showRefLines;
 
 // Data management - UPDATED for RuntimeModels
 - (void)updateWithHistoricalBars:(NSArray<HistoricalBarModel *> *)bars;
-
+- (instancetype)initWithFrame:(NSRect)frameRect showReferenceLines:(BOOL)showRefLines;
+   
 // DEPRECATED: Remove old method
 // - (void)updateWithPriceData:(NSArray *)priceData;
 
 - (void)calculateAPTR;                                                    // NUOVO: Calcola APTR dalle price data
-- (double)calculateAPTRFromBars:(NSArray<HistoricalBarModel *> *)bars;  
+- (double)calculateAPTRFromBars:(NSArray<HistoricalBarModel *> *)bars;
 
 // UI State
 - (void)setLoading:(BOOL)loading;

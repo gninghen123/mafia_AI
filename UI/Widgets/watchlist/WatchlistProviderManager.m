@@ -123,8 +123,16 @@
     } else if ([categoryName isEqualToString:@"Archives"] && self.mutableArchiveProviders.count == 0) {
         NSLog(@"⚡ Force loading: Archives");
         [self loadArchiveProviders];
-    } else if ([categoryName isEqualToString:@"Screener Results"]) {
+    } else if ([categoryName isEqualToString:@"Screener Results"] && self.mutableScreenerProviders.count == 0) {
+        // ✅ FIX: Aggiunto controllo `&& self.mutableScreenerProviders.count == 0`
+        // Questo previene il doppio caricamento quando:
+        // 1. selectProviderType -> ensureProvidersLoadedForCategory
+        // 2. screenerProviders getter -> ensureProvidersLoadedForCategory
+        NSLog(@"⚡ Force loading: Screener Results");
         [self loadScreenerProvidersAsync];
+    } else if ([categoryName isEqualToString:@"Screener Results"] && self.mutableScreenerProviders.count > 0) {
+        NSLog(@"✅ Screener Results already loaded (%lu providers), skipping",
+              (unsigned long)self.mutableScreenerProviders.count);
     }
 
     

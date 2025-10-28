@@ -18,7 +18,6 @@ static BOOL _screenerProvidersLoaded = NO;
 #pragma mark - Public Methods
 
 - (void)loadScreenerResultProviders {
-    NSLog(@"📊 Loading Screener Result Providers");
     
     // ✅ FIX: Evita caricamenti duplicati
     if (_screenerProvidersLoaded) {
@@ -26,14 +25,15 @@ static BOOL _screenerProvidersLoaded = NO;
         return;
     }
     
+    // ✅ SETTA IL FLAG SUBITO
+    _screenerProvidersLoaded = YES;
+    
     // Get most recent session file
     NSString *sessionFile = [self findMostRecentSessionFile];
     
     if (!sessionFile) {
         NSLog(@"⚠️ No recent screener sessions found (last 7 days)");
-        // Clear any existing screener providers
         [self clearScreenerProviders];
-        _screenerProvidersLoaded = YES;  // ✅ Marca come caricato anche se vuoto
         return;
     }
     
@@ -44,21 +44,23 @@ static BOOL _screenerProvidersLoaded = NO;
     if (!session) {
         NSLog(@"❌ Failed to load session from %@: %@", sessionFile, error);
         [self clearScreenerProviders];
-        _screenerProvidersLoaded = YES;
         return;
     }
     
-    NSLog(@"✅ Loaded session: %@", [session formattedExecutionDate]);
-    NSLog(@"   📊 %@", [session summaryString]);
     
     // Clear existing screener providers
     [self clearScreenerProviders];
+    // ✅ RESETTA IL FLAG DOPO LA CLEAR (clearScreenerProviders lo resetta)
+    _screenerProvidersLoaded = YES;
+    
     
     // Create provider for each ModelResult
     for (ModelResult *modelResult in session.modelResults) {
+        
         StooqScreenerArchiveProvider *provider =
             [[StooqScreenerArchiveProvider alloc] initWithModelResult:modelResult
                                                         executionDate:session.executionDate];
+        
         
         [self addScreenerProvider:provider];
         
@@ -67,10 +69,6 @@ static BOOL _screenerProvidersLoaded = NO;
               (unsigned long)provider.symbols.count);
     }
     
-    _screenerProvidersLoaded = YES;  // ✅ Marca come caricato
-    
-    NSLog(@"✅ Loaded %lu screener result providers",
-          (unsigned long)[self screenerProviderCount]);
 }
 
 - (void)loadScreenerResultProvidersAsync {

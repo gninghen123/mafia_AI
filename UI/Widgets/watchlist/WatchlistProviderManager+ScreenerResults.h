@@ -25,6 +25,11 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)loadScreenerResultProvidersAsync;
 
 /**
+ * Reset loading state (call from refreshAllProviders)
+ */
++ (void)resetScreenerProvidersState;
+
+/**
  * Get path to screener archive directory
  * @return Full path to directory containing session JSON files
  */

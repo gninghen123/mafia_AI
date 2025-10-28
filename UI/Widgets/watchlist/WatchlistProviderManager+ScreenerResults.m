@@ -10,12 +10,21 @@
 #import "ExecutionSession.h"
 #import "ScreenerModel.h"
 
+// ✅ Private flag per tracking dello stato di caricamento
+static BOOL _screenerProvidersLoaded = NO;
+
 @implementation WatchlistProviderManager (ScreenerResults)
 
 #pragma mark - Public Methods
 
 - (void)loadScreenerResultProviders {
     NSLog(@"📊 Loading Screener Result Providers");
+    
+    // ✅ FIX: Evita caricamenti duplicati
+    if (_screenerProvidersLoaded) {
+        NSLog(@"⚠️ Screener providers already loaded, skipping");
+        return;
+    }
     
     // Get most recent session file
     NSString *sessionFile = [self findMostRecentSessionFile];
@@ -24,6 +33,7 @@
         NSLog(@"⚠️ No recent screener sessions found (last 7 days)");
         // Clear any existing screener providers
         [self clearScreenerProviders];
+        _screenerProvidersLoaded = YES;  // ✅ Marca come caricato anche se vuoto
         return;
     }
     
@@ -34,6 +44,7 @@
     if (!session) {
         NSLog(@"❌ Failed to load session from %@: %@", sessionFile, error);
         [self clearScreenerProviders];
+        _screenerProvidersLoaded = YES;
         return;
     }
     
@@ -56,6 +67,8 @@
               (unsigned long)provider.symbols.count);
     }
     
+    _screenerProvidersLoaded = YES;  // ✅ Marca come caricato
+    
     NSLog(@"✅ Loaded %lu screener result providers",
           (unsigned long)[self screenerProviderCount]);
 }
@@ -66,10 +79,19 @@
         
         dispatch_async(dispatch_get_main_queue(), ^{
             NSLog(@"✅ Async screener provider loading complete");
+            
+            // ✅ FIX: Posta notifica per aggiornare la UI
             [[NSNotificationCenter defaultCenter] postNotificationName:@"ScreenerProvidersDidLoad"
-                                                                object:self];
+                                                                object:self
+                                                              userInfo:@{@"count": @([self screenerProviderCount])}];
         });
     });
+}
+
+#pragma mark - Reset (chiamare da refreshAllProviders)
+
++ (void)resetScreenerProvidersState {
+    _screenerProvidersLoaded = NO;
 }
 
 #pragma mark - File System
@@ -160,6 +182,9 @@
         // Clear array
         [providers removeAllObjects];
     }
+    
+    // ✅ Reset flag
+    _screenerProvidersLoaded = NO;
 }
 
 - (void)addScreenerProvider:(StooqScreenerArchiveProvider *)provider {

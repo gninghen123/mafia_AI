@@ -9,7 +9,6 @@
 #import "ScreenerModel.h"  // Per ModelResult, ScreenedSymbol
 #import "screenedsymbol.h"
 
-
 @implementation StooqScreenerArchiveProvider
 
 #pragma mark - Initialization
@@ -35,9 +34,12 @@
     formatter.dateFormat = @"MMM dd";
     NSString *dateStr = [formatter stringFromDate:self.executionDate];
     
+    // ✅ FIX: Protezione contro nil
+    NSString *modelName = self.modelResult.modelName ?: @"Unknown Model";
+    
     return [NSString stringWithFormat:@"%@ (%@)",
-            self.modelResult.modelName,
-            dateStr];
+            modelName,
+            dateStr ?: @"Unknown Date"];
 }
 
 - (NSString *)categoryName {

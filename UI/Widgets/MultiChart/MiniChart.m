@@ -424,25 +424,18 @@
         return;
     }
 
-    NSBezierPath *path = [NSBezierPath bezierPath];
-    CGRect chartRect = [self chartRect];   // <-- usa la stessa larghezza delle candele
+    CGRect chartRect = [self chartRect];
     CGRect rect = [self volumeRect];
     if (CGRectIsEmpty(rect)) return;
 
     CGFloat xStep = chartRect.size.width / (CGFloat)self.priceData.count;
-    CGFloat barWidth = xStep * 0.6; // come le candele
+    CGFloat barWidth = xStep * 0.6;
 
-    for (NSInteger i = 0; i < self.priceData.count; i++) {
-        HistoricalBarModel *bar = self.priceData[i];
-
-        CGFloat x = chartRect.origin.x + i * xStep + xStep * 0.5;
-        CGFloat height = (bar.volume / self.maxVolume) * rect.size.height;
-
-        NSRect volumeRect = NSMakeRect(x - barWidth * 0.5, rect.origin.y, barWidth, height);
-        [path appendBezierPathWithRect:volumeRect];
-    }
-
-    self.volumePath = path;
+    // ✅ NOTA: Non possiamo colorare individualmente le barre in un singolo NSBezierPath
+    // Dobbiamo disegnare ogni barra separatamente nel drawVolume
+    // Quindi questo metodo ora serve solo per validazione
+    
+    self.volumePath = [NSBezierPath bezierPath]; // Path vuoto, disegneremo nel drawVolume
 }
 
 - (double)transformedPriceValue:(double)price {
@@ -595,19 +588,58 @@
 }
 
 - (void)drawVolume {
-    if (!self.volumePath) return;
+    if (!self.priceData || self.priceData.count == 0 || !self.showVolume) {
+        return;
+    }
     
     NSGraphicsContext *context = [NSGraphicsContext currentContext];
     [context saveGraphicsState];
     
-    // Clip to volume area
-    CGRect volumeRect = [self volumeRect];
-    NSBezierPath *clipPath = [NSBezierPath bezierPathWithRect:volumeRect];
-    [clipPath addClip];
+    CGRect chartRect = [self chartRect];
+    CGRect rect = [self volumeRect];
+    if (CGRectIsEmpty(rect)) {
+        [context restoreGraphicsState];
+        return;
+    }
     
-    // Set volume color
-    [[[NSColor systemBlueColor] colorWithAlphaComponent:0.6] setFill];
-    [self.volumePath fill];
+    CGFloat xStep = chartRect.size.width / (CGFloat)self.priceData.count;
+    CGFloat barWidth = xStep * 0.6;
+    
+    // ✅ Disegna ogni barra di volume con il colore appropriato
+    for (NSInteger i = 0; i < self.priceData.count; i++) {
+        HistoricalBarModel *bar = self.priceData[i];
+        
+        CGFloat x = chartRect.origin.x + i * xStep + xStep * 0.5;
+        CGFloat height = (bar.volume / self.maxVolume) * rect.size.height;
+        
+        NSRect volumeRect = NSMakeRect(x - barWidth * 0.5, rect.origin.y, barWidth, height);
+        
+        // ✅ Determina il colore in base al movimento del prezzo
+        NSColor *volumeColor;
+        
+        if (i == 0) {
+            // Prima barra: grigio (non abbiamo un close precedente)
+            volumeColor = [NSColor.systemGrayColor colorWithAlphaComponent:0.3];
+        } else {
+            HistoricalBarModel *previousBar = self.priceData[i - 1];
+            
+            if (bar.close > previousBar.close) {
+                // Close maggiore: verde
+                volumeColor = [NSColor.systemGreenColor colorWithAlphaComponent:0.5];
+            } else if (bar.close < previousBar.close) {
+                // Close minore: rosso
+                volumeColor = [NSColor.systemRedColor colorWithAlphaComponent:0.5];
+            } else {
+                // Close uguale: grigio
+                volumeColor = [NSColor.systemGrayColor colorWithAlphaComponent:0.3];
+            }
+        }
+        
+        // Disegna la barra con il colore determinato
+        [volumeColor setFill];
+        NSBezierPath *barPath = [NSBezierPath bezierPathWithRect:volumeRect];
+        [barPath fill];
+    }
     
     [context restoreGraphicsState];
 }
@@ -1231,7 +1263,56 @@
     CGFloat (^calculateY)(double) = ^CGFloat(double price) {
         return rect.origin.y + (([self transformedPriceValue:price] - self.minPrice) / yRange) * rect.size.height;
     };
-    
+    // ✅ EMA 5 - grigia, alpha 0.6
+    NSArray<NSNumber *> *ema5 = [self calculateEMA:5];
+    if (ema5 && ema5.count == self.priceData.count) {
+        NSBezierPath *ema5Path = [NSBezierPath bezierPath];
+        ema5Path.lineWidth = 1.5;
+        BOOL pathStarted = NO;
+        
+        for (NSInteger i = 0; i < ema5.count; i++) {
+            double value = [ema5[i] doubleValue];
+            if (!isnan(value)) {
+                CGFloat x = rect.origin.x + i * xStep + xStep * 0.5;
+                CGFloat y = calculateY(value);
+                
+                if (!pathStarted) {
+                    [ema5Path moveToPoint:NSMakePoint(x, y)];
+                    pathStarted = YES;
+                } else {
+                    [ema5Path lineToPoint:NSMakePoint(x, y)];
+                }
+            }
+        }
+        
+        [[NSColor.systemGrayColor colorWithAlphaComponent:0.6] setStroke];
+        [ema5Path stroke];
+    }
+    // ✅ EMA 10 - blue, alpha 0.6
+    NSArray<NSNumber *> *ema10 = [self calculateEMA:10];
+    if (ema10 && ema10.count == self.priceData.count) {
+        NSBezierPath *ema10Path = [NSBezierPath bezierPath];
+        ema10Path.lineWidth = 1.5;
+        BOOL pathStarted = NO;
+        
+        for (NSInteger i = 0; i < ema10.count; i++) {
+            double value = [ema10[i] doubleValue];
+            if (!isnan(value)) {
+                CGFloat x = rect.origin.x + i * xStep + xStep * 0.5;
+                CGFloat y = calculateY(value);
+                
+                if (!pathStarted) {
+                    [ema10Path moveToPoint:NSMakePoint(x, y)];
+                    pathStarted = YES;
+                } else {
+                    [ema10Path lineToPoint:NSMakePoint(x, y)];
+                }
+            }
+        }
+        
+        [[NSColor.systemBlueColor colorWithAlphaComponent:0.6] setStroke];
+        [ema10Path stroke];
+    }
     // ✅ EMA 20 - Gialla, alpha 0.6
     NSArray<NSNumber *> *ema20 = [self calculateEMA:20];
     if (ema20 && ema20.count == self.priceData.count) {

@@ -1113,10 +1113,7 @@
           (long)barCount, dragVariationPercent, varPercentStartEnd);
 }
 
-- (void)drawCrosshair {
-    // This method is now unused - drawing moved to drawCrosshairContent
-    // Kept for compatibility but all crosshair drawing happens in layers
-}
+
 
 - (void)drawPriceLabel:(NSString *)priceText atPoint:(NSPoint)point {
     NSDictionary *attributes = @{

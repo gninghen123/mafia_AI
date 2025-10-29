@@ -2578,7 +2578,11 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     }
     
     // Aggiungi un piccolo buffer (5%) per sicurezza
-    NSInteger bufferDays = MAX(1, (NSInteger)(totalBusinessDaysNeeded * 0.05));
+    CGFloat rawBuffer = totalBusinessDaysNeeded * 0.05;
+    NSInteger bufferDays = 0;
+    if (rawBuffer >= 0.5) {
+        bufferDays = MAX(1, (NSInteger)round(rawBuffer));
+    }
     for (NSInteger i = 0; i < bufferDays; i++) {
         startDate = [calendar dateByAddingUnit:NSCalendarUnitDay value:-1 toDate:startDate options:0];
         NSInteger weekday = [calendar component:NSCalendarUnitWeekday fromDate:startDate];

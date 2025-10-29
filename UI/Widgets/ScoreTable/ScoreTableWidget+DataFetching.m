@@ -3,14 +3,16 @@
 //  TradingApp
 //
 //  Data fetching logic with priority cascade
+//  ✅ FIXED: Added on-demand database scanning
+//  ✅ FIXED: Corrected minBars parameter (was using timeframe enum)
 //
 
 #import "ScoreTableWidget.h"
-#import "DataHub.h"
+#import "DataHub+marketdata.h"
 #import "ScoreCalculator.h"
 #import "DataRequirementCalculator.h"
 #import "ChainDataValidator.h"
-#import "ScoreTableWidget_Private.h"  // ✅ IMPORTA IL PRIVATE HEADER
+#import "ScoreTableWidget_Private.h"
 
 @implementation ScoreTableWidget (DataFetching)
 
@@ -23,12 +25,11 @@
     }
     
     self.isCalculating = YES;
-    self.isCancelled = NO; // ✅ Reset cancel flag
+    self.isCancelled = NO;
     [self.currentSymbols setArray:symbols];
     
     NSLog(@"📊 Loading data for %lu symbols...", (unsigned long)symbols.count);
     
-    // ✅ Show progress UI
     [self showLoadingUI];
     self.statusLabel.stringValue = [NSString stringWithFormat:@"Loading data for %lu symbols...", (unsigned long)symbols.count];
     
@@ -38,7 +39,6 @@
     // Fetch data with priority cascade
     [self fetchDataForSymbols:symbols requirements:requirements completion:^(NSDictionary<NSString *, NSArray<HistoricalBarModel *> *> *symbolData, NSError *error) {
         
-        // ✅ Check if cancelled
         if (self.isCancelled) {
             NSLog(@"❌ Calculation was cancelled");
             dispatch_async(dispatch_get_main_queue(), ^{
@@ -65,157 +65,233 @@
 
 #pragma mark - Data Fetching Priority Cascade
 
+/**
+ * Main entry point for data fetching
+ * Ensures database is scanned before attempting to fetch data
+ */
 - (void)fetchDataForSymbols:(NSArray<NSString *> *)symbols
                requirements:(DataRequirements *)requirements
-                 completion:(void (^)(NSDictionary<NSString *, NSArray<HistoricalBarModel *> *> *symbolData, NSError *error))completion {
+                 completion:(void (^)(NSDictionary<NSString *, NSArray<HistoricalBarModel *> *> *, NSError *))completion {
     
-    NSLog(@"🔄 Starting data fetch for %lu symbols with priority cascade", (unsigned long)symbols.count);
-    
-    __block NSInteger processedCount = 0;
-    __block NSInteger totalSymbols = symbols.count;
-    NSMutableDictionary<NSString *, NSArray<HistoricalBarModel *> *> *results = [NSMutableDictionary dictionary];
-    
-    dispatch_queue_t fetchQueue = dispatch_queue_create("com.scoretable.fetch", DISPATCH_QUEUE_CONCURRENT);
-    dispatch_group_t group = dispatch_group_create();
-    
-    for (NSString *symbol in symbols) {
-        dispatch_group_enter(group);
+    // ✅ FIX: Check if StooqDataManager database needs scanning
+    if (self.stooqManager && self.stooqManager.symbolCount == 0) {
+        NSLog(@"📂 StooqDataManager database not scanned yet, scanning now...");
         
-        dispatch_async(fetchQueue, ^{
-            // ✅ Check cancel before processing each symbol
-            if (self.isCancelled) {
-                NSLog(@"❌ Fetch cancelled, skipping %@", symbol);
-                dispatch_group_leave(group);
+        [self.stooqManager scanDatabaseWithCompletion:^(NSArray<NSString *> *availableSymbols, NSError *error) {
+            if (error) {
+                NSLog(@"❌ Database scan failed: %@", error);
+                if (completion) completion(@{}, error);
                 return;
             }
             
-            // Try cache first
-            NSArray<HistoricalBarModel *> *cachedData = self.symbolDataCache[symbol];
-            if (cachedData && [self isDataValid:cachedData forRequirements:requirements]) {
-                NSLog(@"💾 Using cached data for %@", symbol);
-                @synchronized (results) {
-                    results[symbol] = cachedData;
-                }
-                
-                // ✅ Update progress
-                @synchronized (self) {
-                    processedCount++;
-                }
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    [self updateProgress:processedCount total:totalSymbols];
-                });
-                
-                dispatch_group_leave(group);
-                return;
-            }
+            NSLog(@"✅ Database scanned: %ld symbols available", (long)availableSymbols.count);
             
-            // Priority 1: Try DataHub
-            [self fetchFromDataHub:@[symbol]
-                      requirements:requirements
-                        completion:^(NSDictionary<NSString *, NSArray<HistoricalBarModel *> *> *data, NSError *error) {
-                
-                // ✅ Check cancel after DataHub fetch
-                if (self.isCancelled) {
-                    NSLog(@"❌ Fetch cancelled after DataHub for %@", symbol);
-                    dispatch_group_leave(group);
-                    return;
-                }
-                
-                if (data[symbol] && [self isDataValid:data[symbol] forRequirements:requirements]) {
-                    NSLog(@"✅ DataHub: Got valid data for %@", symbol);
-                    @synchronized (results) {
-                        results[symbol] = data[symbol];
-                        self.symbolDataCache[symbol] = data[symbol];
-                    }
-                    
-                    // ✅ Update progress
-                    @synchronized (self) {
-                        processedCount++;
-                    }
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        [self updateProgress:processedCount total:totalSymbols];
-                    });
-                    
-                    dispatch_group_leave(group);
-                    return;
-                }
-                
-                // Priority 2: Try StooqDataManager
-                if (self.stooqManager) {
-                    NSLog(@"📂 DataHub failed, trying Stooq for %@", symbol);
-                    
-                    [self.stooqManager loadDataForSymbols:@[symbol]
-                                                  minBars:requirements.minimumBars
-                                               completion:^(NSDictionary<NSString *, NSArray<HistoricalBarModel *> *> *stooqData, NSError *stooqError) {
-                        
-                        // ✅ Check cancel after Stooq fetch
-                        if (self.isCancelled) {
-                            NSLog(@"❌ Fetch cancelled after Stooq for %@", symbol);
-                            dispatch_group_leave(group);
-                            return;
-                        }
-                        
-                        if (stooqData[symbol] && [self isDataValid:stooqData[symbol] forRequirements:requirements]) {
-                            NSLog(@"✅ Stooq: Got valid data for %@", symbol);
-                            @synchronized (results) {
-                                results[symbol] = stooqData[symbol];
-                                self.symbolDataCache[symbol] = stooqData[symbol];
-                            }
-                        } else {
-                            NSLog(@"❌ All sources failed for %@", symbol);
-                        }
-                        
-                        // ✅ Update progress
-                        @synchronized (self) {
-                            processedCount++;
-                        }
-                        dispatch_async(dispatch_get_main_queue(), ^{
-                            [self updateProgress:processedCount total:totalSymbols];
-                        });
-                        
-                        dispatch_group_leave(group);
-                    }];
-                } else {
-                    NSLog(@"❌ No Stooq manager, failed for %@", symbol);
-                    
-                    // ✅ Update progress even on failure
-                    @synchronized (self) {
-                        processedCount++;
-                    }
-                    dispatch_async(dispatch_get_main_queue(), ^{
-                        [self updateProgress:processedCount total:totalSymbols];
-                    });
-                    
-                    dispatch_group_leave(group);
-                }
-            }];
-        });
+            // Now proceed with normal fetch
+            [self performFetchDataForSymbols:symbols requirements:requirements completion:completion];
+        }];
+        
+        return;
     }
     
-    // Wait for all fetches to complete
-    dispatch_group_notify(group, dispatch_get_main_queue(), ^{
-        // ✅ Final check if cancelled
-        if (self.isCancelled) {
-            NSLog(@"❌ Fetch completed but was cancelled");
-            if (completion) {
-                NSError *cancelError = [NSError errorWithDomain:@"ScoreTableWidget"
-                                                           code:-999
-                                                       userInfo:@{NSLocalizedDescriptionKey: @"Cancelled by user"}];
-                completion(@{}, cancelError);
+    // Database already scanned (or StooqDataManager not available), proceed normally
+    [self performFetchDataForSymbols:symbols requirements:requirements completion:completion];
+}
+
+/**
+ * Internal implementation of data fetching with priority cascade
+ * PHASE 1: Cache → PHASE 2: StooqDataManager → PHASE 3: DataHub
+ */
+- (void)performFetchDataForSymbols:(NSArray<NSString *> *)symbols
+                      requirements:(DataRequirements *)requirements
+                        completion:(void (^)(NSDictionary<NSString *, NSArray<HistoricalBarModel *> *> *, NSError *))completion {
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        NSMutableDictionary *resultData = [NSMutableDictionary dictionary];
+        NSMutableArray *missingSymbols = [NSMutableArray array];
+        
+        // PHASE 1: Check cache
+        NSLog(@"🔍 PHASE 1: Checking cache for %lu symbols...", (unsigned long)symbols.count);
+        
+        for (NSString *symbol in symbols) {
+            NSArray<HistoricalBarModel *> *cachedData = self.symbolDataCache[symbol];
+            
+            if (cachedData && [self isDataValid:cachedData forRequirements:requirements]) {
+                NSLog(@"✅ Cache hit: %@", symbol);
+                resultData[symbol] = cachedData;
+            } else {
+                [missingSymbols addObject:symbol];
             }
+        }
+        
+        if (missingSymbols.count == 0) {
+            NSLog(@"✅ All data found in cache");
+            dispatch_async(dispatch_get_main_queue(), ^{
+                completion([resultData copy], nil);
+            });
             return;
         }
         
-        NSLog(@"✅ Data fetch complete: %lu/%lu symbols successful",
-              (unsigned long)results.count, (unsigned long)totalSymbols);
+        // PHASE 2: Try StooqDataManager
+        NSLog(@"📂 PHASE 2: Requesting %lu symbols from StooqDataManager...", (unsigned long)missingSymbols.count);
         
-        if (results.count == 0) {
-            NSError *error = [NSError errorWithDomain:@"ScoreTableWidget"
-                                                 code:-1
-                                             userInfo:@{NSLocalizedDescriptionKey: @"No data could be loaded for any symbol"}];
-            if (completion) completion(@{}, error);
+        // PHASE 2: Try StooqDataManager for all missing symbols
+        NSLog(@"📂 PHASE 2: Requesting %lu symbols from StooqDataManager...", (unsigned long)missingSymbols.count);
+        
+        if (self.stooqManager) {
+            // ✅ FIX: Use requirements.minimumBars instead of requirements.timeframe
+            [self.stooqManager loadDataForSymbols:missingSymbols
+                                          minBars:requirements.minimumBars
+                                       completion:^(NSDictionary<NSString *, NSArray<HistoricalBarModel *> *> *stooqData, NSError *stooqError) {
+                
+                if (self.isCancelled) {
+                    NSLog(@"❌ Fetch cancelled after Stooq");
+                    if (completion) {
+                        NSError *cancelError = [NSError errorWithDomain:@"ScoreTableWidget"
+                                                                   code:-999
+                                                               userInfo:@{NSLocalizedDescriptionKey: @"Cancelled by user"}];
+                        completion(@{}, cancelError);
+                    }
+                    return;
+                }
+                
+                // Merge Stooq results
+                NSMutableArray *stillMissingSymbols = [NSMutableArray array];
+                
+                if (stooqData) {
+                    [resultData addEntriesFromDictionary:stooqData];
+                    
+                    // Cache Stooq results
+                    for (NSString *symbol in stooqData.allKeys) {
+                        self.symbolDataCache[symbol] = stooqData[symbol];
+                    }
+                    
+                    NSLog(@"✅ Stooq: Got data for %lu/%lu symbols",
+                          (unsigned long)stooqData.count, (unsigned long)missingSymbols.count);
+                    
+                    // Find symbols still missing
+                    for (NSString *symbol in missingSymbols) {
+                        if (!stooqData[symbol]) {
+                            [stillMissingSymbols addObject:symbol];
+                        }
+                    }
+                } else {
+                    // All symbols still missing
+                    [stillMissingSymbols addObjectsFromArray:missingSymbols];
+                }
+                
+                // PHASE 3: Fallback to DataHub for symbols not found in Stooq
+                if (stillMissingSymbols.count > 0) {
+                    NSLog(@"🌐 PHASE 3: Requesting %lu symbols from DataHub (fallback)...",
+                          (unsigned long)stillMissingSymbols.count);
+                    
+                    dispatch_group_t dataHubGroup = dispatch_group_create();
+                    
+                    for (NSString *symbol in stillMissingSymbols) {
+                        dispatch_group_enter(dataHubGroup);
+                        
+                        [[DataHub shared] getHistoricalBarsForSymbol:symbol
+                                                           timeframe:requirements.timeframe
+                                                            barCount:requirements.minimumBars
+                                                   needExtendedHours:NO
+                                                          completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
+                            
+                            if (self.isCancelled) {
+                                NSLog(@"❌ Fetch cancelled during DataHub fallback for %@", symbol);
+                                dispatch_group_leave(dataHubGroup);
+                                return;
+                            }
+                            
+                            if (bars && bars.count > 0 && [self isDataValid:bars forRequirements:requirements]) {
+                                NSLog(@"✅ DataHub: Got valid data for %@ (fallback)", symbol);
+                                @synchronized (resultData) {
+                                    resultData[symbol] = bars;
+                                    self.symbolDataCache[symbol] = bars;
+                                }
+                            } else {
+                                NSLog(@"❌ DataHub: No valid data for %@", symbol);
+                            }
+                            
+                            dispatch_group_leave(dataHubGroup);
+                        }];
+                    }
+                    
+                    // Wait for all DataHub fallback requests
+                    dispatch_group_notify(dataHubGroup, dispatch_get_main_queue(), ^{
+                        NSLog(@"✅ Data fetching complete: %lu/%lu symbols (Cache + Stooq + DataHub)",
+                              (unsigned long)resultData.count, (unsigned long)symbols.count);
+                        
+                        if (resultData.count == 0) {
+                            NSError *error = [NSError errorWithDomain:@"ScoreTableWidget"
+                                                                 code:-1
+                                                             userInfo:@{NSLocalizedDescriptionKey: @"No data could be loaded for any symbol"}];
+                            if (completion) completion(@{}, error);
+                        } else {
+                            if (completion) completion([resultData copy], nil);
+                        }
+                    });
+                } else {
+                    // All symbols found in Stooq
+                    NSLog(@"✅ Data fetching complete: %lu/%lu symbols (Cache + Stooq)",
+                          (unsigned long)resultData.count, (unsigned long)symbols.count);
+                    
+                    dispatch_async(dispatch_get_main_queue(), ^{
+                        if (resultData.count == 0) {
+                            NSError *error = [NSError errorWithDomain:@"ScoreTableWidget"
+                                                                 code:-1
+                                                             userInfo:@{NSLocalizedDescriptionKey: @"No data could be loaded for any symbol"}];
+                            if (completion) completion(@{}, error);
+                        } else {
+                            if (completion) completion([resultData copy], nil);
+                        }
+                    });
+                }
+            }];
         } else {
-            if (completion) completion([results copy], nil);
+            // No StooqDataManager, go directly to DataHub
+            NSLog(@"⚠️ StooqDataManager not available, using DataHub for all symbols");
+            
+            dispatch_group_t dataHubGroup = dispatch_group_create();
+            
+            for (NSString *symbol in missingSymbols) {
+                dispatch_group_enter(dataHubGroup);
+                
+                [[DataHub shared] getHistoricalBarsForSymbol:symbol
+                                                   timeframe:requirements.timeframe
+                                                    barCount:requirements.minimumBars
+                                           needExtendedHours:NO
+                                                  completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
+                    
+                    if (self.isCancelled) {
+                        NSLog(@"❌ Fetch cancelled during DataHub for %@", symbol);
+                        dispatch_group_leave(dataHubGroup);
+                        return;
+                    }
+                    
+                    if (bars && bars.count > 0 && [self isDataValid:bars forRequirements:requirements]) {
+                        NSLog(@"✅ DataHub: Got valid data for %@", symbol);
+                        @synchronized (resultData) {
+                            resultData[symbol] = bars;
+                            self.symbolDataCache[symbol] = bars;
+                        }
+                    }
+                    
+                    dispatch_group_leave(dataHubGroup);
+                }];
+            }
+            
+            dispatch_group_notify(dataHubGroup, dispatch_get_main_queue(), ^{
+                NSLog(@"✅ Data fetching complete: %lu/%lu symbols (Cache + DataHub)",
+                      (unsigned long)resultData.count, (unsigned long)symbols.count);
+                
+                if (resultData.count == 0) {
+                    NSError *error = [NSError errorWithDomain:@"ScoreTableWidget"
+                                                         code:-1
+                                                     userInfo:@{NSLocalizedDescriptionKey: @"No data could be loaded for any symbol"}];
+                    if (completion) completion(@{}, error);
+                } else {
+                    if (completion) completion([resultData copy], nil);
+                }
+            });
         }
     });
 }
@@ -223,14 +299,6 @@
 - (BOOL)isDataValid:(NSArray<HistoricalBarModel *> *)data forRequirements:(DataRequirements *)requirements {
     if (!data || data.count < requirements.minimumBars) {
         return NO;
-    }
-    
-    // Check timeframe if first bar has it
-    if (data.count > 0) {
-        HistoricalBarModel *firstBar = data.firstObject;
-        if (firstBar.timeframe != requirements.timeframe) {
-            return NO;
-        }
     }
     
     return YES;
@@ -262,8 +330,10 @@
             return;
         }
 
+        // ✅ FIX: This was the original bug - using requirements.timeframe instead of minimumBars
+        // Now this code path is not used anymore since we moved to performFetchDataForSymbols
         [self.stooqManager loadDataForSymbols:symbols
-                                      minBars:requirements.timeframe
+                                      minBars:requirements.minimumBars
                                    completion:^(NSDictionary<NSString *, NSArray<HistoricalBarModel *> *> *cache, NSError *error) {
             if (completion) {
                 completion(cache, error);
@@ -305,6 +375,7 @@
             }];
             
             [self.scoreTableView reloadData];
+            [self hideLoadingUI];
             
             self.statusLabel.stringValue = [NSString stringWithFormat:@"Calculated scores for %lu symbols", (unsigned long)results.count];
             

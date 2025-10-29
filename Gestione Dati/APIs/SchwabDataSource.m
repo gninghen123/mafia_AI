@@ -249,11 +249,10 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
                    needExtendedHours:(BOOL)needExtendedHours
                           completion:(void (^)(NSArray *bars, NSError *error))completion {
     
-    // ✅ NUOVO: Check per timeframe che richiedono aggregazione
+    // ✅ Check per timeframe che richiedono aggregazione
     if ([self needsAggregationForTimeframe:timeframe]) {
         NSLog(@"🔄 SchwabDataSource: Timeframe %ld needs aggregation for %ld bars", (long)timeframe, (long)barCount);
         
-        // Usa 30min come base e aggrega
         [self fetchAndAggregateHistoricalData:symbol
                                     timeframe:timeframe
                                      barCount:barCount
@@ -262,7 +261,7 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
         return;
     }
     
-    // ✅ ESISTENTE: Per timeframe supportati nativamente, continua con la logica originale
+    // ✅ Per timeframe supportati nativamente
     [self.loginManager ensureTokensValidWithCompletion:^(BOOL success, NSError *error) {
         if (!success) {
             if (completion) completion(nil, error);
@@ -278,59 +277,65 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
             return;
         }
         
-        // ✅ RESTO DELLA LOGICA ORIGINALE - INVARIATA
+        // ✅ Conversioni timeframe → parametri Schwab
         NSString *schwabTimeframe = [self convertTimeframeSchwab:timeframe];
         NSString *frequencyType = [self convertFrequencyTypeSchwab:timeframe];
         NSString *periodType = [self convertPeriodTypeSchwab:frequencyType timeframe:timeframe];
         
-        
-        // Calculate endDateMillis = now, startDateMillis = now - barCount * interval * 1000
+        // ✅ Calcolo date
         NSTimeInterval now = [[NSDate date] timeIntervalSince1970];
         long long endDateMillis = (long long)(now * 1000.0);
-        long long intervalSeconds = 60; // default to 1 min
+        long long startDateMillis = 0;
+        
         NSInteger frequency = [schwabTimeframe integerValue];
+        long long intervalSeconds = 60; // default
+        
         if ([frequencyType isEqualToString:@"minute"]) {
             intervalSeconds = 60 * frequency;
+            startDateMillis = endDateMillis - (long long)barCount * intervalSeconds * 1000;
         } else if ([frequencyType isEqualToString:@"daily"]) {
-            intervalSeconds = 60 * 60 * 24 * frequency;
+            // ✅ Usa solo giorni di borsa (lun–ven)
+            NSDate *startDate = [self calculateStartDateForTradingDays:barCount];
+            startDateMillis = (long long)([startDate timeIntervalSince1970] * 1000.0);
         } else if ([frequencyType isEqualToString:@"weekly"]) {
             intervalSeconds = 60 * 60 * 24 * 7 * frequency;
+            startDateMillis = endDateMillis - (long long)barCount * intervalSeconds * 1000;
         } else if ([frequencyType isEqualToString:@"monthly"]) {
-            // Approximate a month as 30 days
             intervalSeconds = 60 * 60 * 24 * 30 * frequency;
+            startDateMillis = endDateMillis - (long long)barCount * intervalSeconds * 1000;
+        } else {
+            startDateMillis = endDateMillis - (long long)barCount * intervalSeconds * 1000;
         }
-        long long startDateMillis = endDateMillis - (long long)barCount * intervalSeconds * 1000;
         
-        NSString *urlString = [NSString stringWithFormat:@"%@/marketdata/v1/pricehistory?symbol=%@&periodType=%@&frequencyType=%@&frequency=%@&startDate=%lld&endDate=%lld&needExtendedHoursData=%@",
-                              kSchwabAPIBaseURL,
-                              symbol,
-                              periodType,
-                              frequencyType,
-                              schwabTimeframe,
-                              startDateMillis,
-                              endDateMillis,
-                              needExtendedHours ? @"true" : @"false"];
+        // ✅ URL API Schwab
+        NSString *urlString = [NSString stringWithFormat:
+            @"%@/marketdata/v1/pricehistory?symbol=%@&periodType=%@&frequencyType=%@&frequency=%@&startDate=%lld&endDate=%lld&needExtendedHoursData=%@",
+            kSchwabAPIBaseURL,
+            symbol,
+            periodType,
+            frequencyType,
+            schwabTimeframe,
+            startDateMillis,
+            endDateMillis,
+            needExtendedHours ? @"true" : @"false"];
         
         NSMutableURLRequest *request = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:urlString]];
-        NSString *authHeader = [NSString stringWithFormat:@"Bearer %@", accessToken];
-        [request setValue:authHeader forHTTPHeaderField:@"Authorization"];
+        [request setValue:[NSString stringWithFormat:@"Bearer %@", accessToken] forHTTPHeaderField:@"Authorization"];
         
+        // ✅ Chiamata API
         NSURLSessionDataTask *task = [self.session dataTaskWithRequest:request
                                                      completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
             [self handleGenericResponse:data response:response error:error completion:^(id result, NSError *error) {
                 if (error) {
                     if (completion) completion(nil, error);
                 } else {
-                    // ✅ PARSING SCHWAB DATA - INVARIATO
                     NSArray *bars = @[];
                     if ([result isKindOfClass:[NSDictionary class]]) {
-                        NSDictionary *responseDict = (NSDictionary *)result;
-                        NSArray *candlesArray = responseDict[@"candles"];
+                        NSArray *candlesArray = ((NSDictionary *)result)[@"candles"];
                         if ([candlesArray isKindOfClass:[NSArray class]]) {
                             bars = candlesArray;
                         }
                     }
-                    
                     if (completion) completion(bars, nil);
                 }
             }];
@@ -338,7 +343,6 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
         [task resume];
     }];
 }
-
 
 #pragma mark - Portfolio Data - INVARIATI (solo auth token cambiato)
 
@@ -734,6 +738,7 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
             
         case BarTimeframe1Hour:
         case BarTimeframe4Hour:
+        case BarTimeframe12Hour:
             return YES; // Richiedono aggregazione da 30min
             
         default:
@@ -823,6 +828,7 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
     switch (timeframe) {
         case BarTimeframe1Hour:  return 2;  // 60min / 30min = 2
         case BarTimeframe4Hour:  return 8;  // 240min / 30min = 8
+        case BarTimeframe12Hour:  return 24;  // 720min / 30min = 24
         default:                 return 1;
     }
 }
@@ -948,4 +954,22 @@ static NSString *const kSchwabAPIBaseURL = @"https://api.schwabapi.com";
     NSDate *alignedDate = [calendar dateFromComponents:components] ?: baseDate;
     return @([alignedDate timeIntervalSince1970] * 1000.0);
 }
+
+// 🔹 Calcola la data di inizio considerando solo i giorni di trading (lun–ven)
+- (NSDate *)calculateStartDateForTradingDays:(NSInteger)tradingDays {
+    NSCalendar *calendar = [NSCalendar currentCalendar];
+    NSDate *date = [NSDate date];
+    NSInteger counted = 0;
+
+    while (counted < tradingDays) {
+        date = [calendar dateByAddingUnit:NSCalendarUnitDay value:-1 toDate:date options:0];
+        NSInteger weekday = [calendar component:NSCalendarUnitWeekday fromDate:date];
+        // 1 = Domenica, 7 = Sabato
+        if (weekday != 1 && weekday != 7) {
+            counted++;
+        }
+    }
+    return date;
+}
+
 @end

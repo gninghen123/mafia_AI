@@ -209,6 +209,8 @@ static NSString *const kDefaultRedColor = @"F44336";
     variationColumn.title = @"Var %";
     variationColumn.width = 80;
     variationColumn.minWidth = 60;
+    NSSortDescriptor *variationSortDescriptor = [NSSortDescriptor sortDescriptorWithKey:@"variation" ascending:NO];
+    variationColumn.sortDescriptorPrototype = variationSortDescriptor;
     [self.tableView addTableColumn:variationColumn];
     
     // Priority/Strength Column - SORTABLE
@@ -521,22 +523,45 @@ static NSString *const kDefaultRedColor = @"F44336";
 - (void)applySortingAndFilters {
     NSMutableArray<NewsModel *> *filtered = [NSMutableArray arrayWithArray:self.allNews];
     
-    // Apply exclusion keywords filter
+    // ✅ 1. Applica filtro parole escluse
     if (self.excludeKeywords.count > 0) {
         [filtered filterUsingPredicate:[NSPredicate predicateWithBlock:^BOOL(NewsModel *news, NSDictionary *bindings) {
             return ![self newsItem:news containsAnyExcludedKeywords:self.excludeKeywords];
         }]];
     }
     
-    // Apply sorting using table view sort descriptors
-    if (self.tableView.sortDescriptors.count > 0) {
+    // ✅ 2. Controlla se si sta ordinando per "variation"
+    NSSortDescriptor *sortDescriptor = self.tableView.sortDescriptors.firstObject;
+    if (sortDescriptor && [sortDescriptor.key isEqualToString:@"variation"]) {
+        BOOL ascending = sortDescriptor.ascending;
+        
+        [filtered sortUsingComparator:^NSComparisonResult(NewsModel *a, NewsModel *b) {
+            NSString *keyA = [NSString stringWithFormat:@"%@_%@", a.symbol.uppercaseString, @(a.publishedDate.timeIntervalSince1970)];
+            NSString *keyB = [NSString stringWithFormat:@"%@_%@", b.symbol.uppercaseString, @(b.publishedDate.timeIntervalSince1970)];
+            NSNumber *varA = self.symbolVariations[keyA];
+            NSNumber *varB = self.symbolVariations[keyB];
+            
+            double valA = varA ? varA.doubleValue : 0.0;
+            double valB = varB ? varB.doubleValue : 0.0;
+            
+            if (valA == valB) return NSOrderedSame;
+            if (ascending) {
+                return valA < valB ? NSOrderedAscending : NSOrderedDescending;
+            } else {
+                return valA > valB ? NSOrderedAscending : NSOrderedDescending;
+            }
+        }];
+    }
+    // ✅ 3. Per tutte le altre colonne, usa sortDescriptors standard
+    else if (self.tableView.sortDescriptors.count > 0) {
         [filtered sortUsingDescriptors:self.tableView.sortDescriptors];
     }
     
+    // ✅ 4. Aggiorna i dati mostrati
     self.filteredNews = [filtered copy];
     [self.tableView reloadData];
     
-    // Clear preview when data changes
+    // ✅ 5. Resetta la preview quando i dati cambiano
     [self updatePreview:nil];
 }
 

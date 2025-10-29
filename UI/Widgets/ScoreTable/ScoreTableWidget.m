@@ -27,10 +27,8 @@
         self.symbolDataCache = [NSMutableDictionary dictionary];
         self.isCalculating = NO;
         
-        // Initialize StooqDataManager
-        NSString *dataPath = [@"~/Documents/stooq_data" stringByExpandingTildeInPath];
-        self.stooqManager = [[StooqDataManager alloc] initWithDataDirectory:dataPath];
-        
+        [self initializeStooqDataManager];
+
         // Load default strategy
         self.currentStrategy = [[StrategyManager sharedManager] defaultStrategy];
         
@@ -38,6 +36,35 @@
     }
     return self;
 }
+
+#pragma mark - StooqDataManager Initialization
+
+- (void)initializeStooqDataManager {
+    // ✅ Leggi il path salvato da StooqScreenerWidget (stessa chiave usata in loadInitialData)
+    NSString *savedPath = [[NSUserDefaults standardUserDefaults] stringForKey:@"StooqDataDirectory"];
+    
+    if (savedPath) {
+        NSFileManager *fm = [NSFileManager defaultManager];
+        BOOL isDir;
+        
+        // Verifica che la directory esista ancora
+        if ([fm fileExistsAtPath:savedPath isDirectory:&isDir] && isDir) {
+            NSLog(@"✅ ScoreTableWidget: Using saved data directory: %@", savedPath);
+            self.stooqManager = [[StooqDataManager alloc] initWithDataDirectory:savedPath];
+            return;
+        } else {
+            NSLog(@"⚠️ ScoreTableWidget: Saved directory no longer exists: %@", savedPath);
+        }
+    } else {
+        NSLog(@"⚠️ ScoreTableWidget: No saved data directory found");
+    }
+    
+    // ✅ Fallback: usa path di default se non c'è path salvato
+    NSString *fallbackPath = [@"~/Documents/stooq_data" stringByExpandingTildeInPath];
+    NSLog(@"ℹ️ ScoreTableWidget: Using fallback path: %@", fallbackPath);
+    self.stooqManager = [[StooqDataManager alloc] initWithDataDirectory:fallbackPath];
+}
+
 #pragma mark - BaseWidget Override
 
 - (void)setupContentView {
@@ -415,11 +442,41 @@
     self.progressBar.hidden = YES;
     self.cancelButton.hidden = YES;
     [self.loadingIndicator stopAnimation:nil];
+    self.isCalculating = NO;
 }
 
 - (void)updateProgress:(NSInteger)current total:(NSInteger)total {
     double percentage = (double)current / (double)total * 100.0;
     self.progressBar.doubleValue = percentage;
     self.statusLabel.stringValue = [NSString stringWithFormat:@"Loading... (%ld/%ld)", (long)current, (long)total];
+}
+
+
+#pragma mark - Helper Methods
+
+- (NSColor *)colorForScore:(CGFloat)score {
+    // Color coding basato sul punteggio
+    // Score range: -100 to +100 (normalized weights)
+    
+    if (score >= 75.0) {
+        // Excellent: Dark Green
+        return [NSColor colorWithRed:0.0 green:0.6 blue:0.0 alpha:1.0];
+    }
+    else if (score >= 50.0) {
+        // Good: Green
+        return [NSColor colorWithRed:0.2 green:0.8 blue:0.2 alpha:1.0];
+    }
+    else if (score >= 25.0) {
+        // Average: Yellow/Orange
+        return [NSColor colorWithRed:0.8 green:0.6 blue:0.0 alpha:1.0];
+    }
+    else if (score >= 0.0) {
+        // Poor: Orange/Red
+        return [NSColor colorWithRed:0.9 green:0.4 blue:0.0 alpha:1.0];
+    }
+    else {
+        // Negative: Red
+        return [NSColor colorWithRed:0.8 green:0.0 blue:0.0 alpha:1.0];
+    }
 }
 @end

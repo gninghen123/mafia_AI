@@ -11,6 +11,7 @@
 #import "ScoreCalculator.h"
 #import "DataRequirementCalculator.h"
 #import "ChainDataValidator.h"
+#import "ScoreTableWidget+Export.h"
 
 #import "ScoreTableWidget_Private.h"  // ✅ IMPORTA IL PRIVATE HEADER
 
@@ -19,12 +20,16 @@
 #pragma mark - Initialization
 
 - (instancetype)initWithType:(NSString *)type {
-    self = [super initWithType:type];
+    self = [super initWithType:type];  // ✅ CORRETTO
     if (self) {
         self.scoreResults = [NSMutableArray array];
         self.currentSymbols = [NSMutableArray array];
         self.symbolDataCache = [NSMutableDictionary dictionary];
         self.isCalculating = NO;
+        
+        // Initialize StooqDataManager
+        NSString *dataPath = [@"~/Documents/stooq_data" stringByExpandingTildeInPath];
+        self.stooqManager = [[StooqDataManager alloc] initWithDataDirectory:dataPath];
         
         // Load default strategy
         self.currentStrategy = [[StrategyManager sharedManager] defaultStrategy];
@@ -33,10 +38,16 @@
     }
     return self;
 }
+#pragma mark - BaseWidget Override
 
-- (void)loadView {
-    [super loadView];
-    
+- (void)setupContentView {
+   
+  
+      
+      [super setupContentView];
+      
+     
+      
     NSLog(@"🔧 ScoreTableWidget: Setting up UI...");
     
     // Setup UI programmatically
@@ -44,18 +55,15 @@
     [self setupTableColumns];
     [self loadStrategies];
     
-    NSLog(@"✅ ScoreTableWidget: UI setup complete");
-}
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    
     // Register for notifications
     [[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(handleDataHubUpdate:)
                                                  name:@"DataHubDataLoadedNotification"
                                                object:nil];
+    
+    NSLog(@"✅ ScoreTableWidget: UI setup complete");
 }
+
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self];
@@ -64,100 +72,68 @@
 #pragma mark - UI Setup
 
 - (void)setupUI {
-    if (!self.contentView) {
-        NSLog(@"❌ No content view available");
-        return;
+    // Remove placeholder
+    for (NSView *subview in self.contentView.subviews) {
+        [subview removeFromSuperview];
     }
     
-    // Container for all content
-    NSView *container = [[NSView alloc] initWithFrame:self.contentView.bounds];
-    container.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    [self.contentView addSubview:container];
-    
-    CGFloat y = container.bounds.size.height;
     CGFloat padding = 10;
-    CGFloat controlHeight = 30;
+    CGFloat inputHeight = 28; // ✅ RIDOTTO: Una sola riga come MultiChart
     
-    // 1️⃣ TOP SECTION: Symbol Input + Strategy Selector
-    y -= (padding + 60); // Space for symbol input
-    
-    // Symbol input label
-    NSTextField *symbolLabel = [NSTextField labelWithString:@"Symbols (comma-separated):"];
-    symbolLabel.frame = NSMakeRect(padding, y + 35, 200, 20);
-    [container addSubview:symbolLabel];
-    
-    // Symbol input text view
-    self.symbolInputScrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(padding, y, container.bounds.size.width - 2*padding, 60)];
-    self.symbolInputScrollView.autoresizingMask = NSViewWidthSizable;
-    self.symbolInputScrollView.hasVerticalScroller = YES;
+    // 1️⃣ SYMBOL INPUT (mini, top)
+    self.symbolInputScrollView = [[NSScrollView alloc] init];
+    self.symbolInputScrollView.translatesAutoresizingMaskIntoConstraints = NO;
+    self.symbolInputScrollView.hasVerticalScroller = NO;  // ✅ No scroll verticale
     self.symbolInputScrollView.borderType = NSBezelBorder;
     
-    self.symbolInputTextView = [[NSTextView alloc] initWithFrame:self.symbolInputScrollView.bounds];
-    self.symbolInputTextView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-    self.symbolInputTextView.font = [NSFont systemFontOfSize:13];
+    self.symbolInputTextView = [[NSTextView alloc] init];
+    self.symbolInputTextView.font = [NSFont systemFontOfSize:12];
     self.symbolInputTextView.delegate = self;
-    self.symbolInputTextView.string = @"AAPL, MSFT, GOOGL, AMZN, TSLA";
+    self.symbolInputTextView.string = @"Symbols (or use chain)";
+    self.symbolInputTextView.textColor = [NSColor secondaryLabelColor]; // ✅ Placeholder style
     
     self.symbolInputScrollView.documentView = self.symbolInputTextView;
-    [container addSubview:self.symbolInputScrollView];
+    [self.contentView addSubview:self.symbolInputScrollView];
     
-    // 2️⃣ CONTROLS ROW: Strategy + Buttons
-    y -= (padding + controlHeight);
-    
-    CGFloat xPos = padding;
-    
-    // Strategy label
-    NSTextField *strategyLabel = [NSTextField labelWithString:@"Strategy:"];
-    strategyLabel.frame = NSMakeRect(xPos, y + 5, 70, 20);
-    [container addSubview:strategyLabel];
-    xPos += 75;
-    
-    // Strategy selector
-    self.strategySelector = [[NSPopUpButton alloc] initWithFrame:NSMakeRect(xPos, y, 200, controlHeight)];
+    // 2️⃣ CONTROLS ROW (stessa riga del text input)
+    self.strategySelector = [[NSPopUpButton alloc] init];
+    self.strategySelector.translatesAutoresizingMaskIntoConstraints = NO;
     [self.strategySelector setTarget:self];
     [self.strategySelector setAction:@selector(strategyChanged:)];
-    [container addSubview:self.strategySelector];
-    xPos += 210;
+    [self.contentView addSubview:self.strategySelector];
     
-    // Configure button
-    self.configureButton = [[NSButton alloc] initWithFrame:NSMakeRect(xPos, y, 100, controlHeight)];
-    [self.configureButton setTitle:@"Configure..."];
+    self.configureButton = [[NSButton alloc] init];
+    self.configureButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.configureButton setTitle:@"Configure"];
     [self.configureButton setTarget:self];
     [self.configureButton setAction:@selector(configureStrategy:)];
     [self.configureButton setBezelStyle:NSBezelStyleRounded];
-    [container addSubview:self.configureButton];
-    xPos += 110;
+    [self.contentView addSubview:self.configureButton];
     
-    // Refresh button
-    self.refreshButton = [[NSButton alloc] initWithFrame:NSMakeRect(xPos, y, 80, controlHeight)];
+    self.refreshButton = [[NSButton alloc] init];
+    self.refreshButton.translatesAutoresizingMaskIntoConstraints = NO;
     [self.refreshButton setTitle:@"Refresh"];
     [self.refreshButton setTarget:self];
     [self.refreshButton setAction:@selector(refreshScores:)];
     [self.refreshButton setBezelStyle:NSBezelStyleRounded];
-    [container addSubview:self.refreshButton];
-    xPos += 90;
+    [self.contentView addSubview:self.refreshButton];
     
-    // Export button
-    self.exportButton = [[NSButton alloc] initWithFrame:NSMakeRect(xPos, y, 80, controlHeight)];
+    self.exportButton = [[NSButton alloc] init];
+    self.exportButton.translatesAutoresizingMaskIntoConstraints = NO;
     [self.exportButton setTitle:@"Export"];
     [self.exportButton setTarget:self];
     [self.exportButton setAction:@selector(exportToCSV:)];
     [self.exportButton setBezelStyle:NSBezelStyleRounded];
-    [container addSubview:self.exportButton];
+    [self.contentView addSubview:self.exportButton];
     
-    // 3️⃣ TABLE VIEW
-    y -= (padding + 10);
-    CGFloat tableHeight = y - 30; // Leave space for status bar
-    
-    self.tableScrollView = [[NSScrollView alloc] initWithFrame:NSMakeRect(padding, 30,
-                                                                          container.bounds.size.width - 2*padding,
-                                                                          tableHeight)];
-    self.tableScrollView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    // 3️⃣ TABLE VIEW (massima priorità - prende quasi tutto lo spazio)
+    self.tableScrollView = [[NSScrollView alloc] init];
+    self.tableScrollView.translatesAutoresizingMaskIntoConstraints = NO;
     self.tableScrollView.hasVerticalScroller = YES;
     self.tableScrollView.hasHorizontalScroller = YES;
     self.tableScrollView.borderType = NSBezelBorder;
     
-    self.scoreTableView = [[NSTableView alloc] initWithFrame:self.tableScrollView.bounds];
+    self.scoreTableView = [[NSTableView alloc] init];
     self.scoreTableView.dataSource = self;
     self.scoreTableView.delegate = self;
     self.scoreTableView.allowsMultipleSelection = YES;
@@ -165,28 +141,98 @@
     self.scoreTableView.columnAutoresizingStyle = NSTableViewUniformColumnAutoresizingStyle;
     
     self.tableScrollView.documentView = self.scoreTableView;
-    [container addSubview:self.tableScrollView];
+    [self.contentView addSubview:self.tableScrollView];
     
-    // 4️⃣ BOTTOM STATUS BAR
-    self.statusLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(padding, 5,
-                                                                     container.bounds.size.width - 100, 20)];
-    self.statusLabel.autoresizingMask = NSViewWidthSizable;
+    // 4️⃣ STATUS BAR (piccolo, bottom)
+    self.statusLabel = [[NSTextField alloc] init];
+    self.statusLabel.translatesAutoresizingMaskIntoConstraints = NO;
     self.statusLabel.editable = NO;
     self.statusLabel.bordered = NO;
     self.statusLabel.backgroundColor = [NSColor clearColor];
     self.statusLabel.stringValue = @"Ready";
     self.statusLabel.font = [NSFont systemFontOfSize:11];
     self.statusLabel.textColor = [NSColor secondaryLabelColor];
-    [container addSubview:self.statusLabel];
+    [self.contentView addSubview:self.statusLabel];
     
-    // Loading indicator
-    self.loadingIndicator = [[NSProgressIndicator alloc] initWithFrame:NSMakeRect(container.bounds.size.width - 80, 5, 20, 20)];
-    self.loadingIndicator.autoresizingMask = NSViewMinXMargin;
+    self.loadingIndicator = [[NSProgressIndicator alloc] init];
+    self.loadingIndicator.translatesAutoresizingMaskIntoConstraints = NO;
     self.loadingIndicator.style = NSProgressIndicatorStyleSpinning;
     self.loadingIndicator.displayedWhenStopped = NO;
-    [container addSubview:self.loadingIndicator];
+    [self.contentView addSubview:self.loadingIndicator];
+    // ✅ NUOVO: Progress Bar
+    self.progressBar = [[NSProgressIndicator alloc] init];
+    self.progressBar.translatesAutoresizingMaskIntoConstraints = NO;
+    self.progressBar.style = NSProgressIndicatorStyleBar;
+    self.progressBar.minValue = 0;
+    self.progressBar.maxValue = 100;
+    self.progressBar.doubleValue = 0;
+    self.progressBar.hidden = YES; // Nascosto di default
+    [self.contentView addSubview:self.progressBar];
     
-    NSLog(@"✅ UI setup complete");
+    // ✅ NUOVO: Cancel Button
+    self.cancelButton = [[NSButton alloc] init];
+    self.cancelButton.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.cancelButton setTitle:@"Cancel"];
+    [self.cancelButton setBezelStyle:NSBezelStyleRounded];
+    self.cancelButton.target = self;
+    self.cancelButton.action = @selector(cancelCalculation:);
+    self.cancelButton.hidden = YES; // Nascosto di default
+    [self.contentView addSubview:self.cancelButton];
+    
+    // 🎯 CONSTRAINTS - Layout compatto
+    [NSLayoutConstraint activateConstraints:@[
+        // TOP ROW: Symbol Input + Controls (tutti sulla stessa riga, altezza fissa 28px)
+        [self.symbolInputScrollView.topAnchor constraintEqualToAnchor:self.contentView.topAnchor constant:padding],
+        [self.symbolInputScrollView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
+        [self.symbolInputScrollView.heightAnchor constraintEqualToConstant:inputHeight],
+        [self.symbolInputScrollView.widthAnchor constraintEqualToConstant:150], // ✅ Larghezza fissa piccola
+        
+        [self.strategySelector.centerYAnchor constraintEqualToAnchor:self.symbolInputScrollView.centerYAnchor],
+        [self.strategySelector.leadingAnchor constraintEqualToAnchor:self.symbolInputScrollView.trailingAnchor constant:10],
+        [self.strategySelector.widthAnchor constraintEqualToConstant:200],
+        
+        [self.configureButton.centerYAnchor constraintEqualToAnchor:self.symbolInputScrollView.centerYAnchor],
+        [self.configureButton.leadingAnchor constraintEqualToAnchor:self.strategySelector.trailingAnchor constant:10],
+        [self.configureButton.widthAnchor constraintEqualToConstant:100],
+        
+        [self.refreshButton.centerYAnchor constraintEqualToAnchor:self.symbolInputScrollView.centerYAnchor],
+        [self.refreshButton.leadingAnchor constraintEqualToAnchor:self.configureButton.trailingAnchor constant:10],
+        [self.refreshButton.widthAnchor constraintEqualToConstant:80],
+        
+        [self.exportButton.centerYAnchor constraintEqualToAnchor:self.symbolInputScrollView.centerYAnchor],
+        [self.exportButton.leadingAnchor constraintEqualToAnchor:self.refreshButton.trailingAnchor constant:10],
+        [self.exportButton.widthAnchor constraintEqualToConstant:80],
+        
+        // TABLE VIEW - Riempie quasi tutto lo spazio verticale
+        [self.tableScrollView.topAnchor constraintEqualToAnchor:self.symbolInputScrollView.bottomAnchor constant:padding],
+        [self.tableScrollView.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
+        [self.tableScrollView.trailingAnchor constraintEqualToAnchor:self.contentView.trailingAnchor constant:-padding],
+        [self.tableScrollView.bottomAnchor constraintEqualToAnchor:self.statusLabel.topAnchor constant:-5],
+        
+        // STATUS BAR - Piccolo footer
+        [self.statusLabel.bottomAnchor constraintEqualToAnchor:self.contentView.bottomAnchor constant:-5],
+        [self.statusLabel.leadingAnchor constraintEqualToAnchor:self.contentView.leadingAnchor constant:padding],
+        [self.statusLabel.heightAnchor constraintEqualToConstant:18],
+        
+        // Progress Bar (affianco a status label)
+              [self.progressBar.centerYAnchor constraintEqualToAnchor:self.statusLabel.centerYAnchor],
+              [self.progressBar.leadingAnchor constraintEqualToAnchor:self.statusLabel.trailingAnchor constant:10],
+              [self.progressBar.widthAnchor constraintEqualToConstant:150],
+              [self.progressBar.heightAnchor constraintEqualToConstant:16],
+              
+              // Cancel Button (dopo progress bar)
+              [self.cancelButton.centerYAnchor constraintEqualToAnchor:self.statusLabel.centerYAnchor],
+              [self.cancelButton.leadingAnchor constraintEqualToAnchor:self.progressBar.trailingAnchor constant:10],
+              [self.cancelButton.widthAnchor constraintEqualToConstant:60],
+              
+              // Loading Indicator (dopo cancel button)
+              [self.loadingIndicator.centerYAnchor constraintEqualToAnchor:self.statusLabel.centerYAnchor],
+              [self.loadingIndicator.leadingAnchor constraintEqualToAnchor:self.cancelButton.trailingAnchor constant:10],
+              [self.loadingIndicator.widthAnchor constraintEqualToConstant:16],
+              [self.loadingIndicator.heightAnchor constraintEqualToConstant:16]
+    ]];
+    
+    NSLog(@"✅ UI setup complete with compact layout (chain-optimized)");
 }
 
 - (void)setupTableColumns {
@@ -325,4 +371,55 @@
     return [symbols copy];
 }
 
+
+#pragma mark - Chain Integration
+
+- (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
+    NSLog(@"📊 ScoreTableWidget: Received %lu symbols from chain", (unsigned long)symbols.count);
+    
+    if (symbols.count == 0) {
+        NSLog(@"⚠️ No symbols received from chain");
+        return;
+    }
+    
+    // REPLACE - Sostituisci i vecchi simboli
+    self.symbolInputTextView.string = [symbols componentsJoinedByString:@", "];
+    self.symbolInputTextView.textColor = [NSColor labelColor];
+    
+    // Show feedback ma NON calcola
+    [self showChainFeedback:[NSString stringWithFormat:@"📥 Received %lu symbols (press Refresh to calculate)", (unsigned long)symbols.count]];
+    
+    NSLog(@"✅ Symbols loaded in text field, waiting for manual refresh");
+}
+
+
+#pragma mark - Cancel Support
+
+- (IBAction)cancelCalculation:(id)sender {
+    NSLog(@"❌ User cancelled calculation");
+    self.isCancelled = YES;
+    
+    [self hideLoadingUI];
+    self.statusLabel.stringValue = @"Cancelled";
+}
+
+- (void)showLoadingUI {
+    self.progressBar.hidden = NO;
+    self.progressBar.doubleValue = 0;
+    self.cancelButton.hidden = NO;
+    [self.loadingIndicator startAnimation:nil];
+    self.isCancelled = NO;
+}
+
+- (void)hideLoadingUI {
+    self.progressBar.hidden = YES;
+    self.cancelButton.hidden = YES;
+    [self.loadingIndicator stopAnimation:nil];
+}
+
+- (void)updateProgress:(NSInteger)current total:(NSInteger)total {
+    double percentage = (double)current / (double)total * 100.0;
+    self.progressBar.doubleValue = percentage;
+    self.statusLabel.stringValue = [NSString stringWithFormat:@"Loading... (%ld/%ld)", (long)current, (long)total];
+}
 @end

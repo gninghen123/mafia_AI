@@ -86,24 +86,94 @@
     }];
     
     [tableView reloadData];
-    
-    NSLog(@"📊 Sorted by %@ (%@)", key, ascending ? @"ascending" : @"descending");
 }
 
-#pragma mark - Color Coding
+#pragma mark - Single Click → Chain
 
-- (NSColor *)colorForScore:(CGFloat)score {
-    if (score >= 75) {
-        return [NSColor colorWithRed:0.0 green:0.7 blue:0.0 alpha:1.0]; // Dark green
-    } else if (score >= 50) {
-        return [NSColor colorWithRed:0.4 green:0.7 blue:0.2 alpha:1.0]; // Medium green
-    } else if (score >= 25) {
-        return [NSColor colorWithRed:0.7 green:0.7 blue:0.0 alpha:1.0]; // Yellow
-    } else if (score >= 0) {
-        return [NSColor colorWithRed:0.8 green:0.5 blue:0.0 alpha:1.0]; // Orange
-    } else {
-        return [NSColor colorWithRed:0.8 green:0.0 blue:0.0 alpha:1.0]; // Red
+- (void)tableViewSelectionDidChange:(NSNotification *)notification {
+    NSTableView *tableView = notification.object;
+    NSInteger selectedRow = tableView.selectedRow;
+    
+    if (selectedRow < 0 || selectedRow >= self.scoreResults.count) return;
+    
+    // ✅ SINGLE CLICK → Send to Chain
+    ScoreResult *result = self.scoreResults[selectedRow];
+    NSString *symbol = result.symbol;
+    
+    if (symbol) {
+        [self sendChainAction:@"symbolSelected" withData:@{@"symbols": @[symbol]}];
+        [self showChainFeedback:[NSString stringWithFormat:@"📤 %@", symbol]];
+        NSLog(@"📤 Single-click: Sent %@ to chain", symbol);
     }
+}
+
+#pragma mark - Context Menu
+
+- (NSMenu *)tableView:(NSTableView *)tableView menuForTableColumn:(NSTableColumn *)column row:(NSInteger)row {
+    NSMenu *menu = [[NSMenu alloc] init];
+    
+    // Export Section
+    NSMenuItem *exportSelectionItem = [[NSMenuItem alloc] initWithTitle:@"Export Selection to Clipboard"
+                                                                  action:@selector(exportSelectionToClipboard:)
+                                                           keyEquivalent:@""];
+    exportSelectionItem.target = self;
+    [menu addItem:exportSelectionItem];
+    
+    NSMenuItem *exportAllItem = [[NSMenuItem alloc] initWithTitle:@"Export All to Clipboard"
+                                                           action:@selector(exportAllToClipboard:)
+                                                    keyEquivalent:@""];
+    exportAllItem.target = self;
+    [menu addItem:exportAllItem];
+    
+    [menu addItem:[NSMenuItem separatorItem]];
+    
+    // Chain Section
+    NSMenuItem *sendSelectedItem = [[NSMenuItem alloc] initWithTitle:@"Send Selected to Chain"
+                                                              action:@selector(sendSelectedToChain:)
+                                                       keyEquivalent:@""];
+    sendSelectedItem.target = self;
+    [menu addItem:sendSelectedItem];
+    
+    NSMenuItem *sendAllItem = [[NSMenuItem alloc] initWithTitle:@"Send All to Chain"
+                                                         action:@selector(sendAllToChain:)
+                                                  keyEquivalent:@""];
+    sendAllItem.target = self;
+    [menu addItem:sendAllItem];
+    
+    return menu;
+}
+
+#pragma mark - Chain Actions
+
+- (void)sendSelectedToChain:(id)sender {
+    NSIndexSet *selectedRows = self.scoreTableView.selectedRowIndexes;
+    if (selectedRows.count == 0) return;
+    
+    NSMutableArray<NSString *> *symbols = [NSMutableArray array];
+    [selectedRows enumerateIndexesUsingBlock:^(NSUInteger idx, BOOL *stop) {
+        if (idx < self.scoreResults.count) {
+            [symbols addObject:self.scoreResults[idx].symbol];
+        }
+    }];
+    
+    if (symbols.count > 0) {
+        [self sendChainAction:@"symbolSelected" withData:@{@"symbols": symbols}];
+        [self showChainFeedback:[NSString stringWithFormat:@"📤 Sent %lu symbols to chain", (unsigned long)symbols.count]];
+        NSLog(@"📤 Sent %lu selected symbols to chain", (unsigned long)symbols.count);
+    }
+}
+
+- (void)sendAllToChain:(id)sender {
+    if (self.scoreResults.count == 0) return;
+    
+    NSMutableArray<NSString *> *symbols = [NSMutableArray array];
+    for (ScoreResult *result in self.scoreResults) {
+        [symbols addObject:result.symbol];
+    }
+    
+    [self sendChainAction:@"symbolSelected" withData:@{@"symbols": symbols}];
+    [self showChainFeedback:[NSString stringWithFormat:@"📤 Sent all %lu symbols to chain", (unsigned long)symbols.count]];
+    NSLog(@"📤 Sent all %lu symbols to chain", (unsigned long)symbols.count);
 }
 
 @end

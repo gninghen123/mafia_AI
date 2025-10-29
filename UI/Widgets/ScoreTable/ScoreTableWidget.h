@@ -27,7 +27,9 @@ NS_ASSUME_NONNULL_BEGIN
 
 @property (nonatomic, strong) NSTextField *statusLabel;
 @property (nonatomic, strong) NSProgressIndicator *loadingIndicator;
-
+@property (nonatomic, strong) NSProgressIndicator *progressBar;
+@property (nonatomic, strong) NSButton *cancelButton;
+@property (nonatomic, assign) BOOL isCancelled;
 #pragma mark - Data
 
 @property (nonatomic, strong) NSMutableArray<ScoreResult *> *scoreResults;

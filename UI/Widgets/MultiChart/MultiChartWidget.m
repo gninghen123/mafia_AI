@@ -1203,14 +1203,14 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
         case MiniBarTimeframe30Min:
         case MiniBarTimeframe1Hour:
         case MiniBarTimeframe12Hour:
-            self.timeRange = 4;  // 3 months
-            self.timeRangeSegmented.selectedSegment = 4;
+            self.timeRange = 3;  // 1 months
+            self.timeRangeSegmented.selectedSegment = 3;
             NSLog(@"📊 Timeframe changed to 30m/1h/12h → Auto-set range to 3 months");
             break;
             
         case MiniBarTimeframeDaily:
-            self.timeRange = 4;  // 3 months
-            self.timeRangeSegmented.selectedSegment = 4;
+            self.timeRange = 3;  // 1 months
+            self.timeRangeSegmented.selectedSegment = 3;
             NSLog(@"📊 Timeframe changed to Daily → Auto-set range to 3 months");
             break;
             

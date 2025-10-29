@@ -25,6 +25,7 @@
 #import "screenerwidget.h"
 #import "stooqscreenerwidget.h"
 #import "ComparisonChartWidget.h"
+#import "scoretablewidget.h"
 
 @interface WidgetTypeManager ()
 @property (nonatomic, strong) NSDictionary<NSString *, NSArray<NSString *> *> *widgetCategories;
@@ -76,6 +77,7 @@
             @"Stooq Screener",
             @"Alerts",
             @"Strategy Tester",
+            @"Score Table",
             @"Pattern Chart Library"  // ✅ AGGIUNTO: ChartPatternLibrary nella categoria Analysis
         ],
         @"Trading": @[
@@ -119,6 +121,7 @@
     typeToClass[@"Pattern Chart Library"] = [ChartPatternLibraryWidget class];
     typeToClass[@"Portfolio"] = [PortfolioWidget class];
     typeToClass[@"IBKR Test"]= [IBKRTestWidget class];
+    typeToClass[@"Score Table"]= [ScoreTableWidget class];
     typeToClass[@"News"] = [NewsWidget class];
     typeToClass[@"Screener"] = [ScreenerWidget class];
     typeToClass[@"Stooq Screener"] = [StooqScreenerWidget class];
@@ -149,6 +152,7 @@
 
         @"Screener": @"magnifyingglass",
         @"Stooq Screener": @"magnifyingglass",
+        @"Score Table": @"magnifyingglass",
         @"Alerts": @"bell",
         @"Strategy Tester": @"play.rectangle",
         @"Correlation Matrix": @"square.grid.3x3",

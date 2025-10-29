@@ -10,6 +10,7 @@
 #import "ScoreCalculator.h"
 #import "DataRequirementCalculator.h"
 #import "ChainDataValidator.h"
+#import "ScoreTableWidget_Private.h"  // ✅ IMPORTA IL PRIVATE HEADER
 
 @implementation ScoreTableWidget (DataFetching)
 
@@ -180,22 +181,23 @@
     for (NSString *symbol in symbols) {
         dispatch_group_enter(group);
         
-        [[DataHub sharedInstance] fetchHistoricalDataForSymbol:symbol
-                                                      timeframe:requirements.timeframe
-                                                           days:requirements.minimumBars + 10  // Buffer
-                                                     completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh, NSError *error) {
-            if (error) {
-                NSLog(@"❌ DataHub error for %@: %@", symbol, error);
-                fetchError = error;
-            } else if (bars && bars.count > 0) {
-                @synchronized(results) {
-                    results[symbol] = bars;
-                }
-                NSLog(@"✅ DataHub loaded %@: %lu bars", symbol, (unsigned long)bars.count);
+        if (!self.stooqManager) {
+            NSLog(@"⚠️ StooqDataManager not initialized");
+            if (completion) {
+                NSError *error = [NSError errorWithDomain:@"ScoreTableWidget"
+                                                     code:-1
+                                                 userInfo:@{NSLocalizedDescriptionKey: @"StooqDataManager not initialized"}];
+                completion(@{}, error);
             }
-            
-            completedRequests++;
-            dispatch_group_leave(group);
+            return;
+        }
+
+        [self.stooqManager loadDataForSymbols:symbols
+                                      minBars:requirements.timeframe
+                                   completion:^(NSDictionary<NSString *, NSArray<HistoricalBarModel *> *> *cache, NSError *error) {
+            if (completion) {
+                completion(cache, error);
+            }
         }];
     }
     

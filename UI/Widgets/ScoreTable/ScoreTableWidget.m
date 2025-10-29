@@ -12,10 +12,7 @@
 #import "DataRequirementCalculator.h"
 #import "ChainDataValidator.h"
 
-@interface ScoreTableWidget ()
-@property (nonatomic, strong) NSMutableArray<NSString *> *currentSymbols;
-@property (nonatomic, assign) BOOL isCalculating;
-@end
+#import "ScoreTableWidget_Private.h"  // ✅ IMPORTA IL PRIVATE HEADER
 
 @implementation ScoreTableWidget
 

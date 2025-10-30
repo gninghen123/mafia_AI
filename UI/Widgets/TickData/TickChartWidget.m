@@ -555,8 +555,8 @@
 - (void)setSymbol:(NSString *)symbol {
     if ([symbol isEqualToString:self.currentSymbol]) return;
     
-    _currentSymbol = symbol.uppercaseString;
-    self.symbolComboBox.stringValue = _currentSymbol;
+    self.currentSymbol = symbol.uppercaseString;
+    self.symbolComboBox.stringValue =  self.currentSymbol;
     
     // Clear existing data
     [self.tickDataInternal removeAllObjects];
@@ -566,7 +566,7 @@
     // Load new data
     [self refreshData];
     
-    NSLog(@"TickChartWidget: Symbol changed to %@", _currentSymbol);
+    NSLog(@"TickChartWidget: Symbol changed to %@",  self.currentSymbol);
 }
 
 - (NSArray<TickDataModel *> *)tickData {

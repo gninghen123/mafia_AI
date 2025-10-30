@@ -7,6 +7,7 @@
 #import "WidgetTypeManager.h"
 #import "DataHub.h"
 #import "TagManagementWindowController.h"
+#import "appdelegate.h"
 
 
 // Notification name for chain updates
@@ -20,7 +21,6 @@ static NSString *const kChainSenderKey = @"sender";
 
 @interface BaseWidget () <NSTextFieldDelegate, NSTextViewDelegate, NSComboBoxDataSource, NSComboBoxDelegate, NSDraggingSource, NSDraggingDestination,TagManagementDelegate>
 
-- (NSButton *)createHeaderButton:(NSString *)title action:(SEL)action;
 
 @property (nonatomic, strong) NSButton *closeButton;
 @property (nonatomic, strong) NSButton *chainButton;
@@ -70,7 +70,7 @@ static NSString *const kChainSenderKey = @"sender";
     self.view.layer.borderWidth = 1;
     self.view.layer.borderColor = [NSColor separatorColor].CGColor;
     self.view.layer.cornerRadius = 4;
-
+    
     [self.view.widthAnchor constraintGreaterThanOrEqualToConstant:150].active = YES;
     [self.view.heightAnchor constraintGreaterThanOrEqualToConstant:100].active = YES;
     [self setupViews];
@@ -126,25 +126,25 @@ static NSString *const kChainSenderKey = @"sender";
     self.headerViewInternal.translatesAutoresizingMaskIntoConstraints = NO;
     [self.mainStackView addArrangedSubview:self.headerViewInternal];
     NSLayoutConstraint *headerHeightConstraint = [self.headerViewInternal.heightAnchor
-                                                    constraintEqualToConstant:30];
-       headerHeightConstraint.priority = NSLayoutPriorityRequired; // Must be exactly 30px
-       headerHeightConstraint.active = YES;
-       
-       // 🎯 Set content hugging to high so header doesn't try to expand
-       [self.headerViewInternal setContentHuggingPriority:NSLayoutPriorityRequired
-                                           forOrientation:NSLayoutConstraintOrientationVertical];
-       [self.headerViewInternal setContentCompressionResistancePriority:NSLayoutPriorityRequired
-                                                        forOrientation:NSLayoutConstraintOrientationVertical];
-       
+                                                  constraintEqualToConstant:30];
+    headerHeightConstraint.priority = NSLayoutPriorityRequired; // Must be exactly 30px
+    headerHeightConstraint.active = YES;
+    
+    // 🎯 Set content hugging to high so header doesn't try to expand
+    [self.headerViewInternal setContentHuggingPriority:NSLayoutPriorityRequired
+                                        forOrientation:NSLayoutConstraintOrientationVertical];
+    [self.headerViewInternal setContentCompressionResistancePriority:NSLayoutPriorityRequired
+                                                      forOrientation:NSLayoutConstraintOrientationVertical];
+    
     NSStackView *headerStack = [[NSStackView alloc] init];
     headerStack.orientation = NSUserInterfaceLayoutOrientationHorizontal;
     headerStack.spacing = 8;
     headerStack.edgeInsets = NSEdgeInsetsMake(4, 8, 4, 8);
-
+    
     self.closeButton = [self createHeaderButton:@"\u2715" action:@selector(closeWidget:)];
-
-   
-
+    
+    
+    
     self.titleComboBox = [[NSComboBox alloc] init];
     self.titleComboBox.usesDataSource = YES;
     self.titleComboBox.dataSource = self;
@@ -155,48 +155,75 @@ static NSString *const kChainSenderKey = @"sender";
     self.titleComboBox.bordered = NO;
     self.titleComboBox.backgroundColor = [NSColor clearColor];
     self.titleComboBox.stringValue = [self.widgetType isEqualToString:@"Empty Widget"] ? @"" : self.widgetType;
-
+    
+    
+    [self setupWidgetTypeSegmented];
+    
+    
     self.chainButton = [NSButton buttonWithTitle:@"" target:self action:@selector(showChainMenu:)];
-      self.chainButton.bezelStyle = NSBezelStyleRounded;
-      self.chainButton.bordered = NO;
-      self.chainButton.font = [NSFont systemFontOfSize:12];
-      
-      // Usa un'immagine template per la chain
-      NSImage *chainImage = [NSImage imageNamed:@"chainIcon"];
-      if (!chainImage) {
-          // Fallback: usa l'icona di sistema se non hai un'immagine custom
-          chainImage = [NSImage imageWithSystemSymbolName:@"link" accessibilityDescription:@"Chain"];
-      }
-      
-      if (chainImage) {
-          chainImage.template = YES;  // Questo permette la colorazione con contentTintColor
-          self.chainButton.image = chainImage;
-          self.chainButton.title = @"";  // Rimuovi il titolo quando usi un'immagine
-      } else {
-          // Fallback finale se non ci sono immagini disponibili
-          self.chainButton.title = @"🔗";
-      }
-      
-      [self.chainButton.widthAnchor constraintEqualToConstant:24].active = YES;
-      [self.chainButton.heightAnchor constraintEqualToConstant:20].active = YES;
+    self.chainButton.bezelStyle = NSBezelStyleRounded;
+    self.chainButton.bordered = NO;
+    self.chainButton.font = [NSFont systemFontOfSize:12];
+    
+    // Usa un'immagine template per la chain
+    NSImage *chainImage = [NSImage imageNamed:@"chainIcon"];
+    if (!chainImage) {
+        // Fallback: usa l'icona di sistema se non hai un'immagine custom
+        chainImage = [NSImage imageWithSystemSymbolName:@"link" accessibilityDescription:@"Chain"];
+    }
+    
+    if (chainImage) {
+        chainImage.template = YES;  // Questo permette la colorazione con contentTintColor
+        self.chainButton.image = chainImage;
+        self.chainButton.title = @"";  // Rimuovi il titolo quando usi un'immagine
+    } else {
+        // Fallback finale se non ci sono immagini disponibili
+        self.chainButton.title = @"🔗";
+    }
+    
+    [self.chainButton.widthAnchor constraintEqualToConstant:24].active = YES;
+    [self.chainButton.heightAnchor constraintEqualToConstant:20].active = YES;
     // Imposta chain attiva di default con colore rosso
     if (self.chainActive){
         self.chainColor = [NSColor systemRedColor];
     }
-      [self updateChainButtonAppearance];
-
+    [self updateChainButtonAppearance];
+    
     self.addButton = [self createHeaderButton:@"+" action:@selector(showAddMenu:)];
-
+    
+    self.favoriteButton = [NSButton buttonWithTitle:@"" target:self action:@selector(toggleFavoriteStatus:)];
+    self.favoriteButton.bezelStyle = NSBezelStyleRounded;
+    self.favoriteButton.bordered = NO;
+    self.favoriteButton.font = [NSFont systemFontOfSize:12];
+    // Use SF Symbol star icon
+    NSImage *starImage = [NSImage imageWithSystemSymbolName:@"star" accessibilityDescription:@"Favorite"];
+    if (starImage) {
+        starImage.template = YES;  // Allow color tinting
+        self.favoriteButton.image = starImage;
+        self.favoriteButton.title = @"";
+    } else {
+        // Fallback to emoji if SF Symbols not available
+        self.favoriteButton.title = @"⭐";
+    }
+    
+    [self.favoriteButton.widthAnchor constraintEqualToConstant:24].active = YES;
+    [self.favoriteButton.heightAnchor constraintEqualToConstant:20].active = YES;
+    
+    [self updateFavoriteButtonAppearance];
+    
     [headerStack addArrangedSubview:self.closeButton];
- 
+    
     [headerStack addArrangedSubview:self.titleComboBox];
+    [headerStack addArrangedSubview:self.widgetTypeSegmented];  // ← ADD THIS
+    
     [headerStack addArrangedSubview:self.chainButton];
+    [headerStack addArrangedSubview:self.favoriteButton];
     if (self.addButton) {
         [headerStack addArrangedSubview:self.addButton];
     }
-
+    
     [self.titleComboBox setContentHuggingPriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
-
+    
     [self.headerViewInternal addSubview:headerStack];
     headerStack.translatesAutoresizingMaskIntoConstraints = NO;
     [NSLayoutConstraint activateConstraints:@[
@@ -205,10 +232,104 @@ static NSString *const kChainSenderKey = @"sender";
         [headerStack.trailingAnchor constraintEqualToAnchor:self.headerViewInternal.trailingAnchor],
         [headerStack.bottomAnchor constraintEqualToAnchor:self.headerViewInternal.bottomAnchor]
     ]];
-
+    
     [self.headerViewInternal.heightAnchor constraintEqualToConstant:30].active = YES;
     [self.mainStackView addArrangedSubview:self.headerViewInternal];
 }
+
+- (void)setupWidgetTypeSegmented {
+    self.widgetTypeSegmented = [[NSSegmentedControl alloc] init];
+    self.widgetTypeSegmented.translatesAutoresizingMaskIntoConstraints = NO;
+    self.widgetTypeSegmented.segmentStyle = NSSegmentStyleRounded;
+    self.widgetTypeSegmented.trackingMode = NSSegmentSwitchTrackingSelectOne;
+    self.widgetTypeSegmented.target = self;
+    self.widgetTypeSegmented.action = @selector(widgetTypeSegmentChanged:);
+    
+    // Initially hidden - will be shown/configured based on width
+    self.widgetTypeSegmented.hidden = NO;
+    
+    
+    // Configure for current width
+    [self updateWidgetTypeSegmentedForWidth];
+}
+
+- (void)updateWidgetTypeSegmentedForWidth {
+    // Clear existing segments
+    self.widgetTypeSegmented.segmentCount = 0;
+    float width = self.view.frame.size.width;
+    
+    NSArray *widgetTypes;
+    BOOL useIconsOnly = (width < 1000);
+    
+    if (width < 500) {
+        // COMPACT MODE: 2 segments only
+        widgetTypes = @[
+            @{@"type": @"Watchlist", @"icon": @"list.bullet", @"label": @"List"},
+            @{@"type": @"Pattern Chart Library", @"icon": @"chart.line.uptrend.xyaxis", @"label": @"Pattern"}
+        ];
+    } else {
+        // FULL MODE: 9 main widgets
+        widgetTypes = @[
+            @{@"type": @"Chart", @"icon": @"chart.xyaxis.line", @"label": @"Chart"},
+            @{@"type": @"MultiChart", @"icon": @"square.grid.2x2", @"label": @"Multi"},
+            @{@"type": @"Watchlist", @"icon": @"list.bullet", @"label": @"List"},
+            @{@"type": @"Stooq Screener", @"icon": @"magnifyingglass", @"label": @"Screen"},
+            @{@"type": @"Score Table", @"icon": @"tablecells", @"label": @"Score"},
+            @{@"type": @"Seasonal Chart", @"icon": @"calendar", @"label": @"Season"},
+            @{@"type": @"News", @"icon": @"newspaper", @"label": @"News"},
+            @{@"type": @"Alert", @"icon": @"bell", @"label": @"Alert"},
+            @{@"type": @"Portfolio", @"icon": @"briefcase", @"label": @"Port"}
+        ];
+    }
+    
+    // Configure segments
+    self.widgetTypeSegmented.segmentCount = widgetTypes.count;
+    
+    for (NSInteger i = 0; i < widgetTypes.count; i++) {
+        NSDictionary *widgetInfo = widgetTypes[i];
+        NSString *iconName = widgetInfo[@"icon"];
+        NSString *label = widgetInfo[@"label"];
+        NSString *type = widgetInfo[@"type"];
+        
+        NSImage *icon = [NSImage imageWithSystemSymbolName:iconName
+                                  accessibilityDescription:label];
+        if (icon) {
+            icon.template = YES;
+        }
+        
+        if (useIconsOnly) {
+            // Icons only
+            if (icon) {
+                [self.widgetTypeSegmented setImage:icon forSegment:i];
+            } else {
+                [self.widgetTypeSegmented setLabel:label forSegment:i];
+            }
+        } else {
+            // Icons + Text (width >= 1000)
+            if (icon) {
+                [self.widgetTypeSegmented setImage:icon forSegment:i];
+            }
+            [self.widgetTypeSegmented setLabel:label forSegment:i];
+            [self.widgetTypeSegmented setImageScaling:NSImageScaleProportionallyDown forSegment:i];
+        }
+        
+        [[self.widgetTypeSegmented cell] setToolTip:type forSegment:i];
+        
+        if (useIconsOnly) {
+            [self.widgetTypeSegmented setWidth:32 forSegment:i];
+        } else {
+            [self.widgetTypeSegmented setWidth:0 forSegment:i];
+        }
+    }
+    
+    // Select current widget type
+    [self selectCurrentWidgetTypeInSegmented:widgetTypes];
+    
+    NSLog(@"🎛️ Updated widget type segmented: %ld segments (width: %.0f, icons-only: %@)",
+          (long)widgetTypes.count, width, useIconsOnly ? @"YES" : @"NO");
+}
+
+
 
 - (NSButton *)createHeaderButton:(NSString *)title action:(SEL)action {
     NSButton *button = [NSButton buttonWithTitle:title target:self action:action];
@@ -220,6 +341,24 @@ static NSString *const kChainSenderKey = @"sender";
     return button;
 }
 
+
+#pragma mark - Mouse Events
+
+- (void)rightMouseDown:(NSEvent *)event {
+    // Check if right-click is on favorite button
+    if (self.favoriteButton && !self.favoriteButton.hidden && self.favoriteButton.enabled) {
+        NSPoint locationInWindow = event.locationInWindow;
+        NSPoint locationInButton = [self.favoriteButton convertPoint:locationInWindow fromView:nil];
+        
+        if ([self.favoriteButton mouse:locationInButton inRect:self.favoriteButton.bounds]) {
+            NSLog(@"🖱️ Right-click on favorite button");
+            [self showFavoriteMenu:event];
+            return;
+        }
+    }
+    
+    [super rightMouseDown:event];
+}
 #pragma mark - Chain Management
 
 - (void)setChainActive:(BOOL)active withColor:(NSColor *)color {
@@ -341,12 +480,16 @@ static NSString *const kChainSenderKey = @"sender";
 }
 
 - (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
-    // Default: Log but take no action
-    NSLog(@"📝 %@ received %lu symbols but has no chain handler",
-          NSStringFromClass([self class]), (unsigned long)symbols.count);
-    
-    // Optional: Store symbols for potential future use
-    // Subclasses should override for specific behavior
+    // ✅ UPDATE currentSymbol automatically when receiving from chain
+    if (symbols.count > 0) {
+        NSString *firstSymbol = symbols.firstObject;
+        if (firstSymbol && firstSymbol.length > 0) {
+            self.currentSymbol = [firstSymbol uppercaseString];
+            
+            // ✅ Update favorite button appearance
+            [self updateFavoriteButtonAppearance];
+        }
+    }
 }
 
 // ✅ DEFAULT CUSTOM ACTION HANDLER - Override in subclasses if needed
@@ -427,8 +570,8 @@ static NSString *const kChainSenderKey = @"sender";
         [self sendSymbolsToChain:symbols];
         
         NSString *message = symbols.count == 1 ?
-            [NSString stringWithFormat:@"Sent %@ to chain", symbols[0]] :
-            [NSString stringWithFormat:@"Sent %lu symbols to chain", (unsigned long)symbols.count];
+        [NSString stringWithFormat:@"Sent %@ to chain", symbols[0]] :
+        [NSString stringWithFormat:@"Sent %lu symbols to chain", (unsigned long)symbols.count];
         [self showChainFeedback:message];
     }
 }
@@ -457,8 +600,8 @@ static NSString *const kChainSenderKey = @"sender";
         }
         
         NSString *message = symbols.count == 1 ?
-            [NSString stringWithFormat:@"Sent %@ to %@ chain", symbols[0], colorName] :
-            [NSString stringWithFormat:@"Sent %lu symbols to %@ chain", (unsigned long)symbols.count, colorName];
+        [NSString stringWithFormat:@"Sent %@ to %@ chain", symbols[0], colorName] :
+        [NSString stringWithFormat:@"Sent %lu symbols to %@ chain", (unsigned long)symbols.count, colorName];
         [self showChainFeedback:message];
     }
 }
@@ -598,8 +741,8 @@ static NSString *const kChainSenderKey = @"sender";
     
     CGFloat tolerance = 0.01;
     return fabs(rgb1.redComponent - rgb2.redComponent) < tolerance &&
-           fabs(rgb1.greenComponent - rgb2.greenComponent) < tolerance &&
-           fabs(rgb1.blueComponent - rgb2.blueComponent) < tolerance;
+    fabs(rgb1.greenComponent - rgb2.greenComponent) < tolerance &&
+    fabs(rgb1.blueComponent - rgb2.blueComponent) < tolerance;
 }
 #pragma mark - Actions
 
@@ -890,9 +1033,9 @@ static NSString *const kChainSenderKey = @"sender";
                                          forOrientation:NSLayoutConstraintOrientationHorizontal];
     
     [self.contentViewInternal setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh
-                                                      forOrientation:NSLayoutConstraintOrientationVertical];
+                                                       forOrientation:NSLayoutConstraintOrientationVertical];
     [self.contentViewInternal setContentCompressionResistancePriority:NSLayoutPriorityDefaultHigh
-                                                      forOrientation:NSLayoutConstraintOrientationHorizontal];
+                                                       forOrientation:NSLayoutConstraintOrientationHorizontal];
     
     // Add to stack view
     [self.mainStackView addArrangedSubview:self.contentViewInternal];
@@ -905,7 +1048,7 @@ static NSString *const kChainSenderKey = @"sender";
     
     // 🚀 CRITICAL: Ensure content view expands to fill available space vertically
     NSLayoutConstraint *expansionConstraint = [self.contentViewInternal.heightAnchor
-                                              constraintGreaterThanOrEqualToConstant:200];
+                                               constraintGreaterThanOrEqualToConstant:200];
     expansionConstraint.priority = NSLayoutPriorityDefaultLow;
     expansionConstraint.active = YES;
     
@@ -941,12 +1084,12 @@ static NSString *const kChainSenderKey = @"sender";
                                           requiringSecureCoding:NO
                                                           error:nil];
     } else {
-        #pragma clang diagnostic push
-        #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
         colorData = [NSArchiver archivedDataWithRootObject:self.chainColor];
-        #pragma clang diagnostic pop
+#pragma clang diagnostic pop
     }
-
+    
     return @{
         @"widgetID": self.widgetID,
         @"widgetType": self.widgetType,
@@ -959,20 +1102,20 @@ static NSString *const kChainSenderKey = @"sender";
     self.widgetID = state[@"widgetID"] ?: [[NSUUID UUID] UUIDString];
     self.widgetType = state[@"widgetType"] ?: @"Empty Widget";
     self.chainActive = [state[@"chainActive"] boolValue];
-
+    
     // ✅ FIX: Use NSKeyedUnarchiver instead of deprecated NSUnarchiver
     NSData *colorData = state[@"chainColor"];
     if (colorData && [colorData length] > 0) {
         NSColor *restoredColor = nil;
         if (@available(macOS 10.13, *)) {
             restoredColor = [NSKeyedUnarchiver unarchivedObjectOfClass:[NSColor class]
-                                                               fromData:colorData
-                                                                  error:nil];
+                                                              fromData:colorData
+                                                                 error:nil];
         } else {
-            #pragma clang diagnostic push
-            #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
             restoredColor = [NSUnarchiver unarchiveObjectWithData:colorData];
-            #pragma clang diagnostic pop
+#pragma clang diagnostic pop
         }
         if (restoredColor) {
             self.chainColor = restoredColor;
@@ -990,7 +1133,7 @@ static NSString *const kChainSenderKey = @"sender";
     [self updateContentForType:self.widgetType];
     [self updateChainButtonAppearance];
     
-   
+    
 }
 
 // Continue with the rest of the implementation...
@@ -1040,12 +1183,12 @@ static NSString *const kChainSenderKey = @"sender";
     if (correctType) {
         Class widgetClass = [[WidgetTypeManager sharedManager] classForWidgetType:correctType];
         BOOL needsRebuild = ![correctType isEqualToString:self.widgetType] ||
-                            (widgetClass != nil && widgetClass != [self class]);
+        (widgetClass != nil && widgetClass != [self class]);
         
         if (needsRebuild) {
             self.widgetType = correctType;
             self.titleComboBox.stringValue = correctType;
-
+            
             if (self.onTypeChange) {
                 self.onTypeChange(self, correctType);
             }
@@ -1123,7 +1266,7 @@ static NSString *const kChainSenderKey = @"sender";
         case NSGestureRecognizerStateChanged: {
             NSPoint currentPoint = [gesture locationInView:self.view];
             CGFloat distance = sqrt(pow(currentPoint.x - self.dragStartPoint.x, 2) +
-                                  pow(currentPoint.y - self.dragStartPoint.y, 2));
+                                    pow(currentPoint.y - self.dragStartPoint.y, 2));
             
             // Inizia il drag dopo un movimento minimo
             if (distance > 10.0 && !self.isDragging) {
@@ -1433,8 +1576,8 @@ static NSString *const kChainSenderKey = @"sender";
 - (void)setupStandardContextMenu {
     // Aggiungi gesture recognizer per right click
     NSClickGestureRecognizer *rightClickGesture = [[NSClickGestureRecognizer alloc]
-                                                  initWithTarget:self
-                                                  action:@selector(handleRightClick:)];
+                                                   initWithTarget:self
+                                                   action:@selector(handleRightClick:)];
     rightClickGesture.buttonMask = 0x2; // Right mouse button
     [self.view addGestureRecognizer:rightClickGesture];
 }
@@ -1754,8 +1897,8 @@ static NSString *const kChainSenderKey = @"sender";
 #pragma mark - TagManagementDelegate
 
 - (void)tagManagement:(TagManagementWindowController *)controller
-       didSelectTags:(NSArray<NSString *> *)tags
-          forSymbols:(NSArray<NSString *> *)symbols {
+        didSelectTags:(NSArray<NSString *> *)tags
+           forSymbols:(NSArray<NSString *> *)symbols {
     
     // Applica i tag ai simboli
     [self addTagsToSymbols:symbols tags:tags];
@@ -1853,6 +1996,385 @@ static NSString *const kChainSenderKey = @"sender";
 }
 
 
+#pragma mark - Favorites Management
+
+- (void)updateFavoriteButtonAppearance {
+    if (!self.favoriteButton) return;
+    
+    // ✅ SEMPRE ABILITATO (anche senza simbolo)
+    self.favoriteButton.enabled = YES;
+    
+    if (!self.currentSymbol || self.currentSymbol.length == 0) {
+        // No symbol - gray star, BUT ENABLED
+        self.favoriteButton.contentTintColor = [NSColor tertiaryLabelColor];
+        
+        NSImage *emptyStar = [NSImage imageWithSystemSymbolName:@"star" accessibilityDescription:@"Favorites"];
+        if (emptyStar) {
+            emptyStar.template = YES;
+            self.favoriteButton.image = emptyStar;
+        }
+        return;
+    }
+    
+    // Check if symbol is favorited
+    AppDelegate *appDelegate = (AppDelegate *)[NSApp delegate];
+    BOOL isFavorite = [appDelegate isSymbolFavorite:self.currentSymbol];
+    
+    if (isFavorite) {
+        // Filled yellow star
+        NSImage *filledStar = [NSImage imageWithSystemSymbolName:@"star.fill"
+                                        accessibilityDescription:@"Favorited"];
+        if (filledStar) {
+            filledStar.template = YES;
+            self.favoriteButton.image = filledStar;
+        }
+        self.favoriteButton.contentTintColor = [NSColor systemYellowColor];
+    } else {
+        // Empty gray star
+        NSImage *emptyStar = [NSImage imageWithSystemSymbolName:@"star"
+                                       accessibilityDescription:@"Not Favorited"];
+        if (emptyStar) {
+            emptyStar.template = YES;
+            self.favoriteButton.image = emptyStar;
+        }
+        self.favoriteButton.contentTintColor = [NSColor tertiaryLabelColor];
+    }
+}
+
+- (void)toggleFavoriteStatus:(id)sender {
+    // Se non c'è simbolo corrente, mostra il menu comunque
+    if (!self.currentSymbol || self.currentSymbol.length == 0) {
+        NSLog(@"ℹ️ No current symbol - showing favorites menu");
+        [self showFavoriteMenu:[NSApp currentEvent]];
+        return;
+    }
+    
+    // Simbolo presente - toggle favorite
+    AppDelegate *appDelegate = (AppDelegate *)[NSApp delegate];
+    [appDelegate toggleFavoriteForSymbol:self.currentSymbol];
+    [self updateFavoriteButtonAppearance];
+    
+    BOOL isFavorite = [appDelegate isSymbolFavorite:self.currentSymbol];
+    NSString *message = isFavorite ?
+    [NSString stringWithFormat:@"⭐ Added %@ to favorites", self.currentSymbol] :
+    [NSString stringWithFormat:@"Removed %@ from favorites", self.currentSymbol];
+    [self showChainFeedback:message];
+}
+
+- (NSString *)currentSymbolForFavorites {
+    // This method should be overridden by subclasses to return their current symbol
+    // Default implementation tries to get from common property names
+    
+    // Try common property names
+    if ([self respondsToSelector:@selector(currentSymbol)]) {
+        return [self valueForKey:@"currentSymbol"];
+    }
+    
+    if ([self respondsToSelector:@selector(symbol)]) {
+        return [self valueForKey:@"symbol"];
+    }
+    
+    // No symbol available
+    return nil;
+}
+
+
+
+- (void)showFavoriteMenu:(NSEvent *)event {
+    NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Favorites"];
+    
+    AppDelegate *appDelegate = (AppDelegate *)[NSApp delegate];
+    BOOL isFavorite = self.currentSymbol ? [appDelegate isSymbolFavorite:self.currentSymbol] : NO;
+    NSArray *allFavorites = [appDelegate favoriteSymbols];
+    
+    // 1. Add/Remove current symbol (SOLO SE ESISTE)
+    if (self.currentSymbol && self.currentSymbol.length > 0) {
+        NSString *toggleTitle = isFavorite ?
+        [NSString stringWithFormat:@"❌ Remove %@ from Favorites", self.currentSymbol] :
+        [NSString stringWithFormat:@"⭐ Add %@ to Favorites", self.currentSymbol];
+        
+        NSMenuItem *toggleItem = [[NSMenuItem alloc] initWithTitle:toggleTitle
+                                                            action:@selector(toggleFavoriteFromMenu:)
+                                                     keyEquivalent:@""];
+        toggleItem.target = self;
+        [menu addItem:toggleItem];
+        
+        [menu addItem:[NSMenuItem separatorItem]];
+    }
+    // ✅ SE NON C'È SIMBOLO, SALTA DIRETTAMENTE ALLA LISTA
+    
+    // 2. View All Favorites submenu (SEMPRE)
+    NSMenuItem *viewAllItem = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"📋 View All Favorites (%ld)", (long)allFavorites.count]
+                                                         action:nil
+                                                  keyEquivalent:@""];
+    
+    if (allFavorites.count > 0) {
+        NSMenu *favoritesSubmenu = [[NSMenu alloc] initWithTitle:@"Favorites List"];
+        
+        for (NSString *symbol in allFavorites) {
+            NSMenuItem *symbolItem = [[NSMenuItem alloc] initWithTitle:[NSString stringWithFormat:@"⭐ %@", symbol]
+                                                                action:@selector(favoriteSymbolClicked:)
+                                                         keyEquivalent:@""];
+            symbolItem.target = self;
+            symbolItem.representedObject = symbol;
+            [favoritesSubmenu addItem:symbolItem];
+        }
+        
+        viewAllItem.submenu = favoritesSubmenu;
+    } else {
+        viewAllItem.enabled = NO;
+    }
+    
+    [menu addItem:viewAllItem];
+    
+    // 3. Send All to Chain submenu (SEMPRE SE CI SONO FAVORITES)
+    if (allFavorites.count > 0) {
+        NSMenuItem *sendToChainItem = [[NSMenuItem alloc] initWithTitle:@"🔗 Send All to Chain"
+                                                                 action:nil
+                                                          keyEquivalent:@""];
+        
+        NSMenu *chainSubmenu = [self createChainColorSubmenuForFavorites];
+        sendToChainItem.submenu = chainSubmenu;
+        
+        [menu addItem:sendToChainItem];
+    }
+    
+    [menu addItem:[NSMenuItem separatorItem]];
+    
+    // 4. Remove All Favorites (SEMPRE)
+    NSMenuItem *removeAllItem = [[NSMenuItem alloc] initWithTitle:@"🗑️ Remove All Favorites"
+                                                           action:@selector(removeAllFavorites:)
+                                                    keyEquivalent:@""];
+    removeAllItem.target = self;
+    removeAllItem.enabled = (allFavorites.count > 0);
+    [menu addItem:removeAllItem];
+    
+    // Show menu
+    [NSMenu popUpContextMenu:menu withEvent:event forView:self.favoriteButton];
+}
+
+- (void)toggleFavoriteFromMenu:(id)sender {
+    if (!self.currentSymbol || self.currentSymbol.length == 0) return;
+    
+    AppDelegate *appDelegate = (AppDelegate *)[NSApp delegate];
+    [appDelegate toggleFavoriteForSymbol:self.currentSymbol];
+    [self updateFavoriteButtonAppearance];
+    
+    BOOL isFavorite = [appDelegate isSymbolFavorite:self.currentSymbol];
+    NSString *message = isFavorite ?
+    [NSString stringWithFormat:@"⭐ Added %@ to favorites", self.currentSymbol] :
+    [NSString stringWithFormat:@"Removed %@ from favorites", self.currentSymbol];
+    [self showChainFeedback:message];
+}
+
+
+- (NSMenu *)createChainColorSubmenuForFavorites {
+    NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Chain Colors"];
+    
+    NSArray *chainColors = @[
+        @{@"name": @"🔴 Red Chain", @"color": [NSColor systemRedColor]},
+        @{@"name": @"🔵 Blue Chain", @"color": [NSColor systemBlueColor]},
+        @{@"name": @"🟢 Green Chain", @"color": [NSColor systemGreenColor]},
+        @{@"name": @"🟠 Orange Chain", @"color": [NSColor systemOrangeColor]},
+        @{@"name": @"🟣 Purple Chain", @"color": [NSColor systemPurpleColor]},
+        @{@"name": @"🟡 Yellow Chain", @"color": [NSColor systemYellowColor]},
+        @{@"name": @"🩷 Pink Chain", @"color": [NSColor systemPinkColor]},
+        @{@"name": @"🔷 Teal Chain", @"color": [NSColor systemTealColor]}
+    ];
+    
+    for (NSDictionary *colorInfo in chainColors) {
+        NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:colorInfo[@"name"]
+                                                      action:@selector(sendFavoritesToChainColor:)
+                                               keyEquivalent:@""];
+        item.target = self;
+        item.representedObject = colorInfo[@"color"];
+        [menu addItem:item];
+    }
+    
+    return menu;
+}
+
+#pragma mark - Favorites Menu Actions
+
+- (void)favoriteSymbolClicked:(NSMenuItem *)sender {
+    NSString *symbol = sender.representedObject;
+    if (!symbol) return;
+    
+    // Update currentSymbol (this will auto-update the favorite button)
+    self.currentSymbol = symbol;
+    
+    // Each widget subclass can override this behavior
+    [self handleFavoriteSymbolSelection:symbol];
+}
+
+- (void)handleFavoriteSymbolSelection:(NSString *)symbol {
+    // Default implementation: send to chain if active
+    if (self.chainActive) {
+        [self sendSymbolToChain:symbol];
+        [self showChainFeedback:[NSString stringWithFormat:@"📤 Sent %@ from favorites", symbol]];
+    } else {
+        NSLog(@"ℹ️ BaseWidget: Symbol %@ selected from favorites (chain not active)", symbol);
+    }
+}
+
+- (void)sendFavoritesToChainColor:(NSMenuItem *)sender {
+    NSColor *color = sender.representedObject;
+    if (!color) return;
+    
+    AppDelegate *appDelegate = (AppDelegate *)[NSApp delegate];
+    [appDelegate sendAllFavoritesToChainWithColor:color];
+    
+    NSString *colorName = [self nameForChainColor:color];
+    [self showChainFeedback:[NSString stringWithFormat:@"🔗 Sent all favorites to %@", colorName]];
+}
+
+- (void)removeAllFavorites:(id)sender {
+    AppDelegate *appDelegate = (AppDelegate *)[NSApp delegate];
+    
+    [appDelegate removeAllFavoritesWithConfirmation:^(BOOL confirmed) {
+        if (confirmed) {
+            [self updateFavoriteButtonAppearance];
+            [self showChainFeedback:@"🗑️ All favorites removed"];
+        }
+    }];
+}
+- (void)setCurrentSymbol:(NSString *)currentSymbol {
+    if ([_currentSymbol isEqualToString:currentSymbol]) return;
+    
+    _currentSymbol = [currentSymbol uppercaseString];
+    
+    NSLog(@"📍 %@ currentSymbol changed to: %@", NSStringFromClass([self class]), _currentSymbol);
+    
+    // Auto-update favorite button when symbol changes
+    [self updateFavoriteButtonAppearance];
+}
+
+#pragma mark - widgetsegmented
+
+- (void)widgetTypeSegmentChanged:(NSSegmentedControl *)sender {
+    NSInteger selectedSegment = sender.selectedSegment;
+    if (selectedSegment == -1) return;
+    
+    
+    // Get widget type from tooltip
+    NSString *newType = [[sender cell] toolTipForSegment:selectedSegment];
+    
+    if (!newType || [newType isEqualToString:self.widgetType]) {
+        NSLog(@"ℹ️ Same widget type selected: %@", newType);
+        return;
+    }
+    
+    NSLog(@"🔄 Widget type changed via segmented: %@ → %@", self.widgetType, newType);
+    
+    // Update widget type
+    self.widgetType = newType;
+    self.titleComboBox.stringValue = newType;
+    
+    if (self.onTypeChange) {
+        self.onTypeChange(self, newType);
+    }
+}
+
+
+- (BOOL)control:(NSControl *)control textShouldBeginEditing:(NSText *)fieldEditor {
+  
+    return YES;
+}
+
+
+- (void)showAllWidgetTypesMenu {
+    NSMenu *menu = [[NSMenu alloc] initWithTitle:@"Widget Types"];
+    
+    WidgetTypeManager *manager = [WidgetTypeManager sharedManager];
+    NSArray *allTypes = [manager availableWidgetTypes];
+    
+    // Group by category (optional)
+    NSDictionary *categories = @{
+        @"Charts": @[@"Chart", @"MultiChart", @"Chart Pattern", @"Seasonal Chart"],
+        @"Data": @[@"Watchlist", @"Score Table", @"Portfolio"],
+        @"Analysis": @[@"Stooq Screener", @"Alert"],
+        @"Info": @[@"News", @"Quote", @"Connections"]
+    };
+    
+    for (NSString *category in @[@"Charts", @"Data", @"Analysis", @"Info"]) {
+        NSArray *categoryTypes = categories[category];
+        
+        // Category header
+        NSMenuItem *headerItem = [[NSMenuItem alloc] initWithTitle:category action:nil keyEquivalent:@""];
+        headerItem.enabled = NO;
+        [menu addItem:headerItem];
+        
+        // Widget types in category
+        for (NSString *type in categoryTypes) {
+            if ([allTypes containsObject:type]) {
+                NSMenuItem *item = [[NSMenuItem alloc] initWithTitle:type
+                                                              action:@selector(changeWidgetTypeFromMenu:)
+                                                       keyEquivalent:@""];
+                item.target = self;
+                item.representedObject = type;
+                
+                // Mark current type
+                if ([type isEqualToString:self.widgetType]) {
+                    item.state = NSControlStateValueOn;
+                }
+                
+                [menu addItem:item];
+            }
+        }
+        
+        [menu addItem:[NSMenuItem separatorItem]];
+    }
+    
+    // Show menu at combobox location
+    NSPoint location = NSMakePoint(0, self.titleComboBox.bounds.size.height);
+    [menu popUpMenuPositioningItem:nil atLocation:location inView:self.titleComboBox];
+}
+
+- (void)changeWidgetTypeFromMenu:(NSMenuItem *)sender {
+    NSString *newType = sender.representedObject;
+    
+    if (!newType || [newType isEqualToString:self.widgetType]) return;
+    
+    NSLog(@"🔄 Widget type changed via menu: %@ → %@", self.widgetType, newType);
+    
+    self.widgetType = newType;
+    self.titleComboBox.stringValue = newType;
+    
+    // Update segmented control
+    [self updateWidgetTypeSegmentedForWidth];
+    
+    if (self.onTypeChange) {
+        self.onTypeChange(self, newType);
+    }
+}
+
+- (void)selectCurrentWidgetTypeInSegmented:(NSArray *)widgetTypes {
+    for (NSInteger i = 0; i < widgetTypes.count; i++) {
+        NSDictionary *widgetInfo = widgetTypes[i];
+        NSString *type = widgetInfo[@"type"];
+        
+        if ([type isEqualToString:self.widgetType]) {
+            [self.widgetTypeSegmented setSelected:YES forSegment:i];
+            return;
+        }
+    }
+    
+    // Current type not in segments - deselect all
+    for (NSInteger i = 0; i < self.widgetTypeSegmented.segmentCount; i++) {
+        [self.widgetTypeSegmented setSelected:NO forSegment:i];
+    }
+}
+
+- (void)viewDidLayout {
+    [super viewDidLayout];
+    
+    CGFloat newWidth = self.view.bounds.size.width;
+    
+    if (fabs(newWidth - self.currentWidth) > 50) {
+        self.currentWidth = newWidth;
+        [self updateWidgetTypeSegmentedForWidth];
+    }
+}
 
 
 @end

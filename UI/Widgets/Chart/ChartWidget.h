@@ -123,7 +123,6 @@ typedef struct {
 @property (nonatomic, assign) BOOL isIndicatorsPanelVisible;
 
 #pragma mark - Data Properties
-@property (nonatomic, strong, readwrite) NSString *currentSymbol;
 @property (nonatomic, assign, readwrite) BarTimeframe currentTimeframe;  // ✅ UNIFIED: Cambiato da BarTimeframe a BarTimeframe
 @property (nonatomic, assign, readwrite) NSInteger initialBarsToShow;
 

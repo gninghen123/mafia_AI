@@ -30,6 +30,12 @@
 #import "PreferencesWindowController.h"
 
 
+
+NSString *const kFavoritesDidChangeNotification = @"FavoritesDidChangeNotification";
+
+// UserDefaults key for storing favorites
+static NSString *const kFavoriteSymbolsKey = @"FavoriteSymbols";
+
 @implementation AppDelegate
 
 - (void)applicationDidFinishLaunching:(NSNotification *)aNotification {
@@ -1114,5 +1120,162 @@
 - (BOOL)application:(NSApplication *)application willContinueUserActivityWithType:(NSString *)userActivityType {
     return NO;
 }
+
+
+
+
+#pragma mark - Favorites Management
+
+- (NSArray<NSString *> *)favoriteSymbols {
+    NSArray *favorites = [[NSUserDefaults standardUserDefaults] arrayForKey:kFavoriteSymbolsKey];
+    return favorites ?: @[];
+}
+
+- (BOOL)isSymbolFavorite:(NSString *)symbol {
+    if (!symbol || symbol.length == 0) return NO;
+    
+    NSString *normalizedSymbol = [symbol uppercaseString];
+    NSArray *favorites = [self favoriteSymbols];
+    
+    return [favorites containsObject:normalizedSymbol];
+}
+
+- (void)addSymbolToFavorites:(NSString *)symbol {
+    if (!symbol || symbol.length == 0) {
+        NSLog(@"⚠️ AppDelegate: Cannot add nil or empty symbol to favorites");
+        return;
+    }
+    
+    NSString *normalizedSymbol = [symbol uppercaseString];
+    
+    // Check if already in favorites
+    if ([self isSymbolFavorite:normalizedSymbol]) {
+        NSLog(@"ℹ️ AppDelegate: Symbol %@ already in favorites", normalizedSymbol);
+        return;
+    }
+    
+    // Add to favorites
+    NSMutableArray *favorites = [[self favoriteSymbols] mutableCopy];
+    [favorites addObject:normalizedSymbol];
+    
+    // Save to UserDefaults
+    [[NSUserDefaults standardUserDefaults] setObject:favorites forKey:kFavoriteSymbolsKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    
+    NSLog(@"⭐ AppDelegate: Added %@ to favorites (total: %ld)", normalizedSymbol, (long)favorites.count);
+    
+    // Post notification
+    [[NSNotificationCenter defaultCenter] postNotificationName:kFavoritesDidChangeNotification
+                                                        object:self
+                                                      userInfo:@{@"symbol": normalizedSymbol, @"action": @"added"}];
+}
+
+- (void)removeSymbolFromFavorites:(NSString *)symbol {
+    if (!symbol || symbol.length == 0) {
+        NSLog(@"⚠️ AppDelegate: Cannot remove nil or empty symbol from favorites");
+        return;
+    }
+    
+    NSString *normalizedSymbol = [symbol uppercaseString];
+    
+    // Check if in favorites
+    if (![self isSymbolFavorite:normalizedSymbol]) {
+        NSLog(@"ℹ️ AppDelegate: Symbol %@ not in favorites", normalizedSymbol);
+        return;
+    }
+    
+    // Remove from favorites
+    NSMutableArray *favorites = [[self favoriteSymbols] mutableCopy];
+    [favorites removeObject:normalizedSymbol];
+    
+    // Save to UserDefaults
+    [[NSUserDefaults standardUserDefaults] setObject:favorites forKey:kFavoriteSymbolsKey];
+    [[NSUserDefaults standardUserDefaults] synchronize];
+    
+    NSLog(@"🗑️ AppDelegate: Removed %@ from favorites (remaining: %ld)", normalizedSymbol, (long)favorites.count);
+    
+    // Post notification
+    [[NSNotificationCenter defaultCenter] postNotificationName:kFavoritesDidChangeNotification
+                                                        object:self
+                                                      userInfo:@{@"symbol": normalizedSymbol, @"action": @"removed"}];
+}
+
+- (void)toggleFavoriteForSymbol:(NSString *)symbol {
+    if (!symbol || symbol.length == 0) return;
+    
+    if ([self isSymbolFavorite:symbol]) {
+        [self removeSymbolFromFavorites:symbol];
+    } else {
+        [self addSymbolToFavorites:symbol];
+    }
+}
+
+- (void)removeAllFavoritesWithConfirmation:(void (^)(BOOL confirmed))completion {
+    NSArray *favorites = [self favoriteSymbols];
+    
+    if (favorites.count == 0) {
+        NSLog(@"ℹ️ AppDelegate: No favorites to remove");
+        if (completion) completion(NO);
+        return;
+    }
+    
+    // Show confirmation alert
+    NSAlert *alert = [[NSAlert alloc] init];
+    alert.messageText = @"Remove All Favorites";
+    alert.informativeText = [NSString stringWithFormat:@"Are you sure you want to remove all %ld favorite symbols? This action cannot be undone.", (long)favorites.count];
+    alert.alertStyle = NSAlertStyleWarning;
+    [alert addButtonWithTitle:@"Remove All"];
+    [alert addButtonWithTitle:@"Cancel"];
+    
+    [alert beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse returnCode) {
+        if (returnCode == NSAlertFirstButtonReturn) {
+            // User confirmed - remove all
+            [[NSUserDefaults standardUserDefaults] removeObjectForKey:kFavoriteSymbolsKey];
+            [[NSUserDefaults standardUserDefaults] synchronize];
+            
+            NSLog(@"🗑️ AppDelegate: Removed all favorites (%ld symbols)", (long)favorites.count);
+            
+            // Post notification
+            [[NSNotificationCenter defaultCenter] postNotificationName:kFavoritesDidChangeNotification
+                                                                object:self
+                                                              userInfo:@{@"action": @"clearedAll"}];
+            
+            if (completion) completion(YES);
+        } else {
+            NSLog(@"ℹ️ AppDelegate: Remove all favorites cancelled by user");
+            if (completion) completion(NO);
+        }
+    }];
+}
+
+- (void)sendAllFavoritesToChainWithColor:(NSColor *)color {
+    NSArray *favorites = [self favoriteSymbols];
+    
+    if (favorites.count == 0) {
+        NSLog(@"ℹ️ AppDelegate: No favorites to send to chain");
+        return;
+    }
+    
+    // Post notification with chain data
+    NSDictionary *chainUpdate = @{
+        @"action": @"setSymbols",
+        @"symbols": favorites,
+        @"chainColor": color
+    };
+    
+    [[NSNotificationCenter defaultCenter] postNotificationName:@"WidgetChainUpdateNotification"
+                                                        object:nil
+                                                      userInfo:@{
+        @"chainColor": color,
+        @"update": chainUpdate,
+        @"sender": self
+    }];
+    
+    NSLog(@"🔗 AppDelegate: Sent %ld favorites to chain", (long)favorites.count);
+}
+
+// ==========================================
+// END FAVORITES SYSTEM ADDITIONS
+// ==========================================
 
 @end

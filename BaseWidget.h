@@ -10,6 +10,16 @@
 @interface BaseWidget : NSViewController <TagManagementDelegate>
 
 
+#pragma mark - Current Symbol Tracking (NEW)
+
+// Current symbol being displayed/managed by this widget
+/// Subclasses should update this property when loading/changing symbols
+/// BaseWidget automatically updates this when receiving chain updates
+@property (nonatomic, strong) NSString *currentSymbol;
+@property (nonatomic, assign) CGFloat currentWidth;
+
+
+@property (nonatomic, strong) NSSegmentedControl *widgetTypeSegmented;
 
 
 @property (nonatomic, strong) NSString *widgetType;
@@ -21,6 +31,7 @@
 @property (nonatomic, strong, readonly) NSView *contentView;
 @property (nonatomic, strong, readonly) NSTextField *titleField;
 @property (nonatomic, strong) NSComboBox *titleComboBox;
+@property (nonatomic, strong) NSButton *favoriteButton;  // Star button
 
 // Callbacks
 @property (nonatomic, copy) void (^onRemoveRequest)(BaseWidget *widget);

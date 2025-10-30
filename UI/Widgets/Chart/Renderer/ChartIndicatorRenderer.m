@@ -938,7 +938,7 @@ static NSColor *SIMPLIFIED_DRAWING_COLOR = nil;
     // ✅ Pre-alloca colori e paths
     NSColor *greenColor = [NSColor systemGreenColor];
     NSColor *redColor = [NSColor systemRedColor];
-    NSColor *strokeColor = [NSColor labelColor];
+    NSColor *strokeColor = nil; // Will set per-bar below
     CGFloat halfBarWidth = barWidth / 2.0;
     
     NSBezierPath *shadowPath = [NSBezierPath bezierPath];
@@ -960,7 +960,7 @@ static NSColor *SIMPLIFIED_DRAWING_COLOR = nil;
         CGFloat lowY = [self.panelView.panelYContext screenYForValue:bar.low];
         
         NSColor *bodyColor = (bar.close >= bar.open) ? greenColor : redColor;
-        
+        NSColor *strokeColor = bodyColor; // Wick same color as body
         // ✅ Draw high-low line (wick)
         [strokeColor setStroke];
         [shadowPath removeAllPoints];

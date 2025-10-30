@@ -4,6 +4,7 @@
 //
 //  Implementation of multi-symbol chart grid widget
 //  FIXED: Properly follows BaseWidget architecture
+//  ✅ UPDATED: Lazy loading with prefetch for historical data
 //
 
 #import "MultiChartWidget.h"
@@ -11,8 +12,8 @@
 #import "DataHub+MarketData.h"
 #import "RuntimeModels.h"
 #import "MiniChartCollectionItem.h"
-#import "OtherDataSource.h"           // ✅ AGGIUNGERE QUESTO IMPORT
-#import "DownloadManager.h"            // ✅ AGGIUNGERE ANCHE QUESTO SE NON GIÀ PRESENTE
+#import "OtherDataSource.h"
+#import "DownloadManager.h"
 #import "SavedChartData.h"
 
 
@@ -30,6 +31,12 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
 
 // Layout
 @property (nonatomic, strong) NSMutableArray<NSLayoutConstraint *> *chartConstraints;
+
+// ✅ NUOVO: Lazy Loading Support
+@property (nonatomic, strong) NSMutableSet<NSNumber *> *loadingIndices;      // Indici in caricamento
+@property (nonatomic, strong) NSMutableSet<NSNumber *> *loadedIndices;       // Indici già caricati
+@property (nonatomic, assign) NSInteger maxConcurrentLoads;                  // Max chiamate simultanee
+@property (nonatomic, strong) NSMutableArray<NSNumber *> *loadQueue;         // Coda di caricamento
 
 @end
 
@@ -65,6 +72,14 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     // Initialize arrays that are in header
     _miniCharts = [NSMutableArray array];
     _chartConstraints = [NSMutableArray array];
+    
+    // ✅ NUOVO: Inizializza lazy loading properties
+    _loadingIndices = [NSMutableSet set];
+    _loadedIndices = [NSMutableSet set];
+    _loadQueue = [NSMutableArray array];
+    _maxConcurrentLoads = 5; // Max 5 chiamate simultanee
+    
+    NSLog(@"✅ MultiChartWidget initialized with lazy loading (max concurrent: %ld)", (long)_maxConcurrentLoads);
 }
 
 
@@ -101,7 +116,7 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
        self.symbolsTextField.placeholderString = @"Enter symbols (AAPL, TSLA, MSFT...)";
        self.symbolsTextField.translatesAutoresizingMaskIntoConstraints = NO;
        [self.symbolsTextField setTarget:self];
-       [self.symbolsTextField setAction:@selector(symbolsChanged:)]; // ✅ NOTA: senza AutoSave
+       [self.symbolsTextField setAction:@selector(symbolsChanged:)];
        [self.controlsView addSubview:self.symbolsTextField];
        
        // ✅ NUOVO: Reset symbols button
@@ -252,7 +267,7 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     [NSLayoutConstraint activateConstraints:@[
         [self.timeframeSegmented.leadingAnchor constraintEqualToAnchor:self.chartTypePopup.trailingAnchor constant:spacing],
         [self.timeframeSegmented.centerYAnchor constraintEqualToAnchor:self.controlsView.centerYAnchor],
-        [self.timeframeSegmented.widthAnchor constraintEqualToConstant:260]  
+        [self.timeframeSegmented.widthAnchor constraintEqualToConstant:260]
     ]];
 
     
@@ -331,7 +346,6 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     self.collectionView.collectionViewLayout = gridLayout;
     self.collectionView.dataSource = self;
     self.collectionView.delegate = self;
-   // self.collectionView.backgroundColors = @[[NSColor controlBackgroundColor]];
     self.collectionView.allowsMultipleSelection = YES;
     self.collectionView.allowsEmptySelection = NO;
     self.collectionView.selectable = YES;
@@ -448,16 +462,15 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
 - (void)loadDataFromDataHub {
     if (self.symbols.count == 0) return;
     
-    NSLog(@"📊 MultiChartWidget: Loading data for %lu symbols using BATCH API", (unsigned long)self.symbols.count);
+    NSLog(@"📊 MultiChartWidget: Loading data for %lu symbols using LAZY LOADING", (unsigned long)self.symbols.count);
     
     // Disable refresh button during loading
     self.refreshButton.enabled = NO;
     
-    // Make SINGLE batch call for quotes
+    // ✅ STEP 1: Load BATCH quotes for ALL symbols (lightweight)
     [[DataHub shared] getQuotesForSymbols:self.symbols completion:^(NSDictionary<NSString *,MarketQuoteModel *> *quotes, BOOL allLive) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            NSLog(@"✅ MultiChartWidget: Batch quotes received - %lu quotes (allLive: %@)",
-                  (unsigned long)quotes.count, allLive ? @"YES" : @"NO");
+            NSLog(@"✅ Batch quotes received - %lu quotes", (unsigned long)quotes.count);
             
             // Update all charts with quote data
             for (MiniChart *chart in self.miniCharts) {
@@ -466,79 +479,154 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
                     chart.currentPrice = quote.last;
                     chart.priceChange = quote.change;
                     chart.percentChange = quote.changePercent;
-                    NSLog(@"📈 Updated %@ with price: %@", chart.symbol, quote.last);
                 }
             }
             
-            // Now load historical data for each chart (these need individual calls)
-            [self loadHistoricalDataForAllCharts];
+            // ✅ STEP 2: Historical data will be loaded LAZILY via NSCollectionViewDelegate
+            // Reset lazy loading state
+            [self.loadingIndices removeAllObjects];
+            [self.loadedIndices removeAllObjects];
+            [self.loadQueue removeAllObjects];
+            
+            self.refreshButton.enabled = YES;
+            
+            // ✅ NUOVO: Forza ricaricamento dei chart visibili
+            [self reloadVisibleCharts];
+            
+            NSLog(@"✅ Lazy loading ready - historical data will load on-demand");
         });
     }];
 }
-// Utility per calcolare la data di inizio escludendo weekend (borsistici)
-- (NSDate *)startDateForDataRange:(NSInteger)daysBack {
-    NSCalendar *calendar = [NSCalendar currentCalendar];
-    calendar.timeZone = [NSTimeZone timeZoneWithName:@"America/New_York"];
+
+- (void)reloadVisibleCharts {
+    // Ottieni gli index path visibili nella collection view
+    NSSet<NSIndexPath *> *visibleIndexPaths = [self.collectionView indexPathsForVisibleItems];
     
-    NSDate *date = [NSDate date];
-    NSInteger daysCounted = 0;
-    
-    while (daysCounted < daysBack) {
-        date = [calendar dateByAddingUnit:NSCalendarUnitDay value:-1 toDate:date options:0];
-        NSDateComponents *components = [calendar components:NSCalendarUnitWeekday fromDate:date];
-        NSInteger weekday = components.weekday; // 1=Sunday, 7=Saturday
-        if (weekday != 1 && weekday != 7) {
-            daysCounted++;
-        }
+    if (visibleIndexPaths.count == 0) {
+        NSLog(@"⚠️ No visible charts to reload");
+        return;
     }
-    return date;
+    
+    NSLog(@"🔄 Reloading %lu visible charts", (unsigned long)visibleIndexPaths.count);
+    
+    for (NSIndexPath *indexPath in visibleIndexPaths) {
+        NSInteger index = indexPath.item;
+        
+        // Carica dati per questo chart
+        [self loadHistoricalDataForChartAtIndex:index];
+        
+        // Prefetch anche i chart vicini
+        [self prefetchChartsAroundIndex:index radius:5];
+    }
 }
 
-- (void)loadHistoricalDataForAllCharts {
-    NSLog(@"📊 MultiChartWidget: Loading historical data for %lu charts", (unsigned long)self.miniCharts.count);
+#pragma mark - 🚀 Lazy Loading Implementation
+
+- (void)loadHistoricalDataForChartAtIndex:(NSInteger)index {
+    // Validazione
+    if (index < 0 || index >= self.miniCharts.count) {
+        return;
+    }
     
-    __block NSInteger completedCount = 0;
-    NSInteger totalCount = self.miniCharts.count;
+    NSNumber *indexKey = @(index);
     
-    // ✅ CALCOLA DATE RANGE
+    // Skip se già caricato o in caricamento
+    if ([self.loadedIndices containsObject:indexKey] ||
+        [self.loadingIndices containsObject:indexKey]) {
+        return;
+    }
+    
+    // Check rate limiting
+    if (self.loadingIndices.count >= self.maxConcurrentLoads) {
+        // Aggiungi alla coda
+        if (![self.loadQueue containsObject:indexKey]) {
+            [self.loadQueue addObject:indexKey];
+            NSLog(@"⏳ Chart %ld queued (loading: %lu)", (long)index, (unsigned long)self.loadingIndices.count);
+        }
+        return;
+    }
+    
+    MiniChart *chart = self.miniCharts[index];
+    NSString *symbol = chart.symbol;
+    
+    if (!symbol) {
+        return;
+    }
+    
+    NSLog(@"📥 Loading historical data for chart %ld: %@", (long)index, symbol);
+    
+    // Mark as loading
+    [self.loadingIndices addObject:indexKey];
+    [chart setLoading:YES];
+    
+    // Calculate date range
     NSDate *startDate = [self calculateStartDateForTimeRange];
     NSDate *endDate = [self calculateEndDateForTimeRange];
     
-    NSLog(@"📅 Using date range: %@ to %@", startDate, endDate);
-    
-    for (MiniChart *chart in self.miniCharts) {
-        [chart setLoading:YES];
+    // Start loading
+    __weak typeof(self) weakSelf = self;
+    [[DataHub shared] getHistoricalBarsForSymbol:symbol
+                                       timeframe:[self convertToBarTimeframe:self.timeframe]
+                                       startDate:startDate
+                                         endDate:endDate
+                               needExtendedHours:self.afterHoursSwitch.state
+                                      completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf) return;
+            
+            // Remove from loading
+            [strongSelf.loadingIndices removeObject:indexKey];
+            [chart setLoading:NO];
+            
+            if (bars && bars.count > 0) {
+                // Update chart
+                chart.timeframe = strongSelf.timeframe;
+                [chart updateWithHistoricalBars:bars];
+                
+                // Mark as loaded
+                [strongSelf.loadedIndices addObject:indexKey];
+                
+                NSLog(@"✅ Loaded %lu bars for chart %ld: %@ (fresh: %@)",
+                      (unsigned long)bars.count, (long)index, symbol, isFresh ? @"YES" : @"NO");
+            } else {
+                [chart setError:@"No data"];
+                NSLog(@"❌ No data for chart %ld: %@", (long)index, symbol);
+            }
+            
+            // Process queue
+            [strongSelf processLoadQueue];
+        });
+    }];
+}
 
-        // ✅ USA IL NUOVO METODO CON DATE RANGE
-        [[DataHub shared] getHistoricalBarsForSymbol:chart.symbol
-                                           timeframe:[self convertToBarTimeframe:self.timeframe]
-                                           startDate:startDate
-                                             endDate:endDate
-                                   needExtendedHours:self.afterHoursSwitch.state
-                                          completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-                completedCount++;
-                
-                [chart setLoading:NO];
-                
-                if (bars && bars.count > 0) {
-                    // ✅ AGGIUNTO: Imposta il timeframe PRIMA di aggiornare i dati
-                    chart.timeframe = self.timeframe;
-                    [chart updateWithHistoricalBars:bars];
-                    NSLog(@"📈 Loaded %lu bars for %@ (timeframe: %ld, fresh: %@)",
-                          (unsigned long)bars.count, chart.symbol, (long)self.timeframe, isFresh ? @"YES" : @"NO");
-                } else {
-                    [chart setError:@"No data available"];
-                    NSLog(@"❌ No historical data for %@", chart.symbol);
-                }
-                
-                if (completedCount == totalCount) {
-                    self.refreshButton.enabled = YES;
-                    NSLog(@"✅ MultiChartWidget: All data loading completed");
-                }
-            });
-        }];
+- (void)prefetchChartsAroundIndex:(NSInteger)index radius:(NSInteger)radius {
+    NSInteger startIndex = MAX(0, index - radius);
+    NSInteger endIndex = MIN(self.miniCharts.count - 1, index + radius);
+    
+    for (NSInteger i = startIndex; i <= endIndex; i++) {
+        [self loadHistoricalDataForChartAtIndex:i];
     }
+}
+
+- (void)processLoadQueue {
+    while (self.loadQueue.count > 0 && self.loadingIndices.count < self.maxConcurrentLoads) {
+        NSNumber *indexToLoad = self.loadQueue.firstObject;
+        [self.loadQueue removeObjectAtIndex:0];
+        
+        NSInteger index = indexToLoad.integerValue;
+        [self loadHistoricalDataForChartAtIndex:index];
+    }
+}
+
+- (void)cancelLoadingForChartAtIndex:(NSInteger)index {
+    NSNumber *indexKey = @(index);
+    
+    // Remove from loading set
+    [self.loadingIndices removeObject:indexKey];
+    
+    // Remove from queue if present
+    [self.loadQueue removeObject:indexKey];
 }
 
 - (void)loadDataForMiniChart:(MiniChart *)miniChart {
@@ -573,11 +661,8 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
                     [miniChart setLoading:NO];
                     
                     if (bars && bars.count > 0) {
-                        // ✅ AGGIUNTO: Imposta il timeframe PRIMA di aggiornare i dati
                         miniChart.timeframe = self.timeframe;
                         [miniChart updateWithHistoricalBars:bars];
-                        NSLog(@"📈 Loaded %lu bars for single chart %@ (timeframe: %ld)",
-                              (unsigned long)bars.count, symbol, (long)self.timeframe);
                     } else {
                         [miniChart setError:@"No data available"];
                     }
@@ -697,6 +782,10 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
         [self.miniCharts addObject:miniChart];
     }
     
+    // ✅ NUOVO: Reset lazy loading state when rebuilding
+    [self.loadingIndices removeAllObjects];
+    [self.loadedIndices removeAllObjects];
+    [self.loadQueue removeAllObjects];
     
     // ✅ Update adaptive layout based on chart count
     [self updateAdaptiveLayout];
@@ -704,7 +793,7 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     // Aggiorna collection view
     [self.collectionView reloadData];
 
-    NSLog(@"✅ MultiChartWidget: Rebuilt %lu mini charts with NSCollectionView", (unsigned long)self.miniCharts.count);
+    NSLog(@"✅ MultiChartWidget: Rebuilt %lu mini charts (lazy loading reset)", (unsigned long)self.miniCharts.count);
 }
 
 - (void)itemSizeChanged:(id)sender {
@@ -753,54 +842,42 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     // Get chart count
     NSInteger chartCount = self.miniCharts.count;
     if (chartCount == 0) {
-        NSLog(@"⚠️ updateAdaptiveLayout: No charts, skipping");
         return;
     }
 
     if (!self.collectionScrollView) {
-        NSLog(@"⚠️ updateAdaptiveLayout: No scroll view, skipping");
         return;
     }
 
-    // Get available space in scroll view (use documentVisibleRect for actual visible area)
+    // Get available space in scroll view
     NSSize availableSize = self.collectionScrollView.documentVisibleRect.size;
 
-    // Minimum sizes from controls (these are the user-defined minimums)
+    // Minimum sizes from controls
     CGFloat minWidth = self.itemWidth;
     CGFloat minHeight = self.itemHeight;
-
-    NSLog(@"📐 updateAdaptiveLayout: chartCount=%ld, availableSize=%.0fx%.0f, minSize=%.0fx%.0f",
-          (long)chartCount, availableSize.width, availableSize.height, minWidth, minHeight);
 
     // Calculate optimal grid layout based on chart count
     NSInteger columns, rows;
 
     if (chartCount == 1) {
-        // Single chart: full space
         columns = 1;
         rows = 1;
     } else if (chartCount == 2) {
-        // Two charts: side by side
         columns = 2;
         rows = 1;
     } else if (chartCount <= 4) {
-        // 3-4 charts: 2x2 grid
         columns = 2;
         rows = (chartCount <= 2) ? 1 : 2;
     } else if (chartCount <= 6) {
-        // 5-6 charts: 3x2 grid
         columns = 3;
         rows = 2;
     } else if (chartCount <= 9) {
-        // 7-9 charts: 3x3 grid
         columns = 3;
         rows = 3;
     } else if (chartCount <= 12) {
-        // 10-12 charts: 4x3 grid
         columns = 4;
         rows = 3;
     } else {
-        // More charts: calculate dynamically
         columns = (NSInteger)ceil(sqrt(chartCount));
         rows = (NSInteger)ceil((double)chartCount / columns);
     }
@@ -816,123 +893,110 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     CGFloat calculatedWidth = availableWidthForItems / columns;
     CGFloat calculatedHeight = availableHeightForItems / rows;
 
-    // Apply minimum constraints - items can be larger than minimum, but never smaller
+    // Apply minimum constraints
     CGFloat maxWidth = MAX(minWidth, calculatedWidth);
     CGFloat maxHeight = MAX(minHeight, calculatedHeight);
 
-    // Cap maximum size to something reasonable (to prevent huge items)
+    // Cap maximum size
     maxWidth = MIN(maxWidth, 800);
     maxHeight = MIN(maxHeight, 600);
-
-    NSLog(@"📊 Calculated layout: %ldx%ld grid, itemSize: min(%.0fx%.0f) max(%.0fx%.0f)",
-          (long)columns, (long)rows, minWidth, minHeight, maxWidth, maxHeight);
 
     // Update grid layout
     if ([self.collectionView.collectionViewLayout isKindOfClass:[NSCollectionViewGridLayout class]]) {
         NSCollectionViewGridLayout *gridLayout = (NSCollectionViewGridLayout *)self.collectionView.collectionViewLayout;
 
-        // Set minimum size (user-defined minimum)
         gridLayout.minimumItemSize = NSMakeSize(minWidth, minHeight);
-
-        // Set maximum size (calculated based on available space and chart count)
         gridLayout.maximumItemSize = NSMakeSize(maxWidth, maxHeight);
-
-        // Update column count to match calculated grid
         gridLayout.maximumNumberOfColumns = columns;
-
-        NSLog(@"✅ Grid layout updated: columns=%ld, minSize=%.0fx%.0f, maxSize=%.0fx%.0f",
-              (long)columns, minWidth, minHeight, maxWidth, maxHeight);
 
         [gridLayout invalidateLayout];
     }
 }
 
+#pragma mark - 🎯 NSCollectionView Delegate (Lazy Loading)
+
+- (void)collectionView:(NSCollectionView *)collectionView
+       willDisplayItem:(NSCollectionViewItem *)item
+forRepresentedObjectAtIndexPath:(NSIndexPath *)indexPath {
+    
+    NSInteger index = indexPath.item;
+    
+    NSLog(@"👁️ Will display chart at index: %ld", (long)index);
+    
+    // ✅ STEP 1: Load data for this chart
+    [self loadHistoricalDataForChartAtIndex:index];
+    
+    // ✅ STEP 2: Prefetch surrounding charts
+    [self prefetchChartsAroundIndex:index radius:5];
+}
+
+- (void)collectionView:(NSCollectionView *)collectionView
+  didEndDisplayingItem:(NSCollectionViewItem *)item
+forRepresentedObjectAtIndexPath:(NSIndexPath *)indexPath {
+    
+    NSInteger index = indexPath.item;
+    NSLog(@"👋 Did end displaying chart at index: %ld", (long)index);
+}
+
+#pragma mark - NSCollectionView DataSource & Delegate
 
 - (NSInteger)collectionView:(NSCollectionView *)collectionView numberOfItemsInSection:(NSInteger)section {
     NSInteger count = self.miniCharts.count;
     return count;
 }
 
-// Sostituisci il metodo itemForRepresentedObjectAtIndexPath: in MultiChartWidget.m
-
 - (NSCollectionViewItem *)collectionView:(NSCollectionView *)collectionView
                      itemForRepresentedObjectAtIndexPath:(NSIndexPath *)indexPath {
-    
-    NSLog(@"🏗️ Collection view requesting item at indexPath: %ld/%ld",
-          (long)indexPath.item, (long)self.miniCharts.count);
     
     MiniChartCollectionItem *item = [collectionView makeItemWithIdentifier:@"MiniChartItem"
                                                               forIndexPath:indexPath];
     
-    // ✅ FIX: Se non riesce a creare l'item, crea uno vuoto invece di return nil
     if (!item) {
-        NSLog(@"❌ Failed to create collection item, creating fallback");
         item = [[MiniChartCollectionItem alloc] init];
     }
     
     if (indexPath.item >= self.miniCharts.count) {
-        NSLog(@"❌ Index %ld out of bounds for miniCharts array (count: %ld)",
-              (long)indexPath.item, (long)self.miniCharts.count);
         return item;
     }
     
     MiniChart *miniChart = self.miniCharts[indexPath.item];
     if (!miniChart) {
-        NSLog(@"❌ MiniChart at index %ld is nil", (long)indexPath.item);
         return item;
     }
     
     // Configura l'item con il MiniChart esistente
     [item configureMiniChart:miniChart];
     
-    
     // ✅ AGGIUNTO: Setup callbacks
     __weak typeof(self) weakSelf = self;
     
-    // ✅ NUOVO: Callback per click su chart -> invia alla chain
     item.onChartClicked = ^(MiniChart *chart) {
-        NSLog(@"📈 MultiChartWidget: Chart clicked callback for: %@", chart.symbol);
         [weakSelf handleChartSelection:chart];
     };
     
-    // Setup context menu callback (esistente)
     item.onSetupContextMenu = ^(MiniChart *chart) {
         [weakSelf setupChartContextMenu:chart];
     };
     
-    
-    NSLog(@"✅ Created collection item for: %@ with callbacks", miniChart.symbol);
     return item;
 }
 
-// ✅ AGGIUNTO: Metodo per gestire la selezione di un chart
 - (void)handleChartSelection:(MiniChart *)selectedChart {
-    NSLog(@"🎯 MultiChartWidget: Handling selection for chart: %@", selectedChart.symbol);
-    
-    // Aggiorna la selezione visiva
     [self updateChartSelection:selectedChart];
     
-    // ✅ INVIA ALLA CHAIN se attiva
     if (self.chainActive && selectedChart.symbol) {
         [self broadcastUpdate:@{
             @"action": @"setSymbols",
             @"symbols": @[selectedChart.symbol]
         }];
         
-        NSLog(@"🔗 MultiChartWidget: Chart '%@' sent to chain", selectedChart.symbol);
-        
-        // Mostra feedback visivo
         [self showTemporaryMessageForCollectionView:
          [NSString stringWithFormat:@"📈 %@ sent to chain", selectedChart.symbol]];
     } else if (!self.chainActive) {
-        NSLog(@"⚠️ MultiChartWidget: Chain not active, selection not broadcasted");
-        
-        // Anche se chain non attiva, mostra feedback che il chart è selezionato
         [self showTemporaryMessageForCollectionView:
          [NSString stringWithFormat:@"📊 %@ selected", selectedChart.symbol]];
     }
 }
-#pragma mark - NSCollectionView Delegate Selection
 
 - (void)collectionView:(NSCollectionView *)collectionView didSelectItemsAtIndexPaths:(NSSet<NSIndexPath *> *)indexPaths {
     NSIndexPath *indexPath = indexPaths.anyObject;
@@ -941,8 +1005,6 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
         [self updateChartSelection:selectedChart];
     }
 }
-
-
 
 - (void)showTemporaryMessageForCollectionView:(NSString *)message {
     NSTextField *messageLabel = [NSTextField labelWithString:message];
@@ -956,7 +1018,6 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     messageLabel.layer.cornerRadius = 4.0;
     messageLabel.translatesAutoresizingMaskIntoConstraints = NO;
     
-    // Aggiungi al contentView (non alla collection view) per evitare problemi scroll
     [self.contentView addSubview:messageLabel];
     
     [NSLayoutConstraint activateConstraints:@[
@@ -966,26 +1027,21 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
         [messageLabel.widthAnchor constraintGreaterThanOrEqualToConstant:100]
     ]];
     
-    // Rimuovi dopo 2 secondi
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [messageLabel removeFromSuperview];
     });
 }
+
 - (void)setupChartSelectionAppearance:(MiniChart *)chart {
-    // Aggiungi bordo per indicare lo stato di selezione
     chart.wantsLayer = YES;
     chart.layer.borderWidth = 0.0;
     chart.layer.borderColor = [NSColor controlAccentColor].CGColor;
     chart.layer.cornerRadius = 4.0;
 }
 
-
-
-
 - (void)setupChartContextMenu:(MiniChart *)chart {
     NSMenu *contextMenu = [[NSMenu alloc] init];
     
-    // Send to chain
     NSMenuItem *sendToChainItem = [[NSMenuItem alloc] init];
     sendToChainItem.title = [NSString stringWithFormat:@"Send '%@' to Chain", chart.symbol];
     sendToChainItem.action = @selector(sendChartSymbolToChain:);
@@ -995,7 +1051,6 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     
     [contextMenu addItem:[NSMenuItem separatorItem]];
     
-    // Send to specific chain colors
     NSMenuItem *sendToChainColorsItem = [[NSMenuItem alloc] init];
     sendToChainColorsItem.title = [NSString stringWithFormat:@"Send '%@' to Chain Color", chart.symbol];
     sendToChainColorsItem.submenu = [self createChainColorSubmenuForSymbol:chart.symbol];
@@ -1003,7 +1058,6 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     
     [contextMenu addItem:[NSMenuItem separatorItem]];
     
-    // Remove from grid
     NSMenuItem *removeItem = [[NSMenuItem alloc] init];
     removeItem.title = [NSString stringWithFormat:@"Remove '%@'", chart.symbol];
     removeItem.action = @selector(removeChartSymbol:);
@@ -1040,7 +1094,6 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
         };
         colorItem.representedObject = actionData;
         
-        // Aggiungi indicatore visivo del colore
         NSImage *colorIndicator = [self createColorIndicatorWithColor:colorInfo[@"color"]];
         colorItem.image = colorIndicator;
         
@@ -1094,10 +1147,8 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     NSString *colorName = actionData[@"colorName"];
     
     if (symbol.length > 0 && chainColor) {
-        // Attiva la chain con il colore specifico
         [self setChainActive:YES withColor:chainColor];
         
-        // Invia il simbolo
         [self broadcastUpdate:@{
             @"action": @"setSymbols",
             @"symbols": @[symbol]
@@ -1114,46 +1165,35 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     if (symbol.length > 0) {
         [self removeSymbol:symbol];
         
-        // Aggiorna il campo di testo
         self.symbolsString = [self.symbols componentsJoinedByString:@", "];
         self.symbolsTextField.stringValue = self.symbolsString;
         
-        // Ricostruisci i chart
         [self rebuildMiniCharts];
         
         [self showTemporaryMessageForCollectionView:[NSString stringWithFormat:@"Removed %@", symbol]];
     }
 }
 
-#pragma mark - UI Feedback
-
-
-
-
 #pragma mark - Actions
 
 - (void)symbolsChanged:(id)sender {
     NSString *input = self.symbolsTextField.stringValue;
     
-    // ✅ NUOVO: Check for Finviz search pattern
     if ([input hasPrefix:@"?"]) {
-        NSString *keyword = [input substringFromIndex:1]; // Remove the '?'
+        NSString *keyword = [input substringFromIndex:1];
         keyword = [keyword stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
         
         if (keyword.length > 0) {
             [self performFinvizSearch:keyword];
             return;
         } else {
-            NSLog(@"⚠️ Empty keyword after '?' - ignoring");
             return;
         }
     }
     
-    // ✅ FALLBACK: Existing logic for normal symbol input
     NSArray<NSString *> *newSymbols = [self parseSymbolsFromInput:input];
     
     if ([newSymbols isEqualToArray:self.symbols]) {
-        NSLog(@"MultiChartWidget: Symbols unchanged, skipping update");
         return;
     }
     
@@ -1163,16 +1203,12 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     [self rebuildMiniCharts];
     [self loadDataFromDataHub];
     
-    // Auto-save settings if enabled
     [self saveSettingsToUserDefaults];
-    
-    NSLog(@"MultiChartWidget: Updated symbols: %@", self.symbolsString);
 }
 
 - (void)chartTypeChanged:(id)sender {
     self.chartType = (MiniChartType)self.chartTypePopup.indexOfSelectedItem;
     
-    // Update all charts
     for (MiniChart *chart in self.miniCharts) {
         chart.chartType = self.chartType;
         [chart setNeedsDisplay:YES];
@@ -1180,91 +1216,77 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
 }
 
 - (void)timeframeChanged:(id)sender {
-    // Ottieni il nuovo timeframe dal segmented control
     NSInteger segmentIndex = self.timeframeSegmented.selectedSegment;
     self.timeframe = (MiniBarTimeframe)segmentIndex;
     
-    // ✅ LOGICA AUTO-UPDATE DATE RANGE
-    // Prima di caricare i dati, aggiorna il timeRange in base al timeframe
     switch (self.timeframe) {
         case MiniBarTimeframe1Min:
-            self.timeRange = 0;  // 1 day
+            self.timeRange = 0;
             self.timeRangeSegmented.selectedSegment = 0;
-            NSLog(@"📊 Timeframe changed to 1m → Auto-set range to 1 day");
             break;
             
         case MiniBarTimeframe5Min:
         case MiniBarTimeframe15Min:
-            self.timeRange = 1;  // 3 days
+            self.timeRange = 1;
             self.timeRangeSegmented.selectedSegment = 1;
-            NSLog(@"📊 Timeframe changed to 5m/15m → Auto-set range to 3 days");
             break;
             
         case MiniBarTimeframe30Min:
         case MiniBarTimeframe1Hour:
         case MiniBarTimeframe12Hour:
-            self.timeRange = 3;  // 1 months
+            self.timeRange = 3;
             self.timeRangeSegmented.selectedSegment = 3;
-            NSLog(@"📊 Timeframe changed to 30m/1h/12h → Auto-set range to 3 months");
             break;
             
         case MiniBarTimeframeDaily:
-            self.timeRange = 3;  // 1 months
+            self.timeRange = 3;
             self.timeRangeSegmented.selectedSegment = 3;
-            NSLog(@"📊 Timeframe changed to Daily → Auto-set range to 3 months");
             break;
             
         case MiniBarTimeframeWeekly:
         case MiniBarTimeframeMonthly:
-            self.timeRange = 6;  // 1 year
+            self.timeRange = 6;
             self.timeRangeSegmented.selectedSegment = 6;
-            NSLog(@"📊 Timeframe changed to Weekly/Monthly → Auto-set range to 1 year");
             break;
             
         default:
-            NSLog(@"⚠️ Unknown timeframe: %ld", (long)self.timeframe);
             break;
     }
     
-    // Reload data con nuovo timeframe e range
+    // Update timeframe per tutti i minichart
+    for (MiniChart *chart in self.miniCharts) {
+        chart.timeframe = self.timeframe;
+    }
+    
     [self loadDataFromDataHub];
 }
 
 - (void)afterHoursSwitchChanged:(id)sender {
-   
-    // Ricarica i dati con la nuova impostazione
     [self loadDataFromDataHub];
 }
 
 - (void)scaleTypeChanged:(id)sender {
     self.scaleType = (MiniChartScaleType)self.scaleTypePopup.indexOfSelectedItem;
     
-    // Update all charts
     for (MiniChart *chart in self.miniCharts) {
         chart.scaleType = self.scaleType;
         [chart setNeedsDisplay:YES];
     }
 }
 
-
-
 - (void)volumeCheckboxChanged:(id)sender {
     self.showVolume = (self.volumeCheckbox.state == NSControlStateValueOn);
     
-    // Update all charts
     for (MiniChart *chart in self.miniCharts) {
         chart.showVolume = self.showVolume;
         [chart setNeedsDisplay:YES];
     }
 }
 
-
-
 - (void)refreshButtonClicked:(id)sender {
     self.refreshButton.enabled = NO;
     [self refreshAllCharts];
     
-    // Re-enable after 1 second to prevent spam
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         self.refreshButton.enabled = YES;
     });
@@ -1282,7 +1304,6 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     
     MiniChart *chart = [self miniChartForSymbol:symbol];
     if (chart) {
-        // Use single symbol batch call (more consistent with architecture)
         [[DataHub shared] getQuotesForSymbols:@[symbol] completion:^(NSDictionary<NSString *,MarketQuoteModel *> *quotes, BOOL allLive) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 MarketQuoteModel *quote = quotes[symbol];
@@ -1292,11 +1313,9 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
                     chart.percentChange = quote.changePercent;
                 }
                 
-                // ✅ CALCOLA DATE RANGE
                 NSDate *startDate = [self calculateStartDateForTimeRange];
                 NSDate *endDate = [self calculateEndDateForTimeRange];
                 
-                // ✅ USA IL NUOVO METODO CON DATE RANGE
                 [[DataHub shared] getHistoricalBarsForSymbol:symbol
                                                    timeframe:[self convertToBarTimeframe:self.timeframe]
                                                    startDate:startDate
@@ -1305,11 +1324,8 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
                                                   completion:^(NSArray<HistoricalBarModel *> *bars, BOOL isFresh) {
                     dispatch_async(dispatch_get_main_queue(), ^{
                         if (bars && bars.count > 0) {
-                            // ✅ AGGIUNTO: Imposta il timeframe PRIMA di aggiornare i dati
                             chart.timeframe = self.timeframe;
                             [chart updateWithHistoricalBars:bars];
-                            NSLog(@"📈 Refreshed %lu bars for %@ (timeframe: %ld)",
-                                  (unsigned long)bars.count, symbol, (long)self.timeframe);
                         }
                     });
                 }];
@@ -1317,8 +1333,8 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
         }];
     }
 }
+
 - (MiniChart *)miniChartForSymbol:(NSString *)symbol {
-    // Con collection view, cerchiamo direttamente nell'array miniCharts
     for (MiniChart *chart in self.miniCharts) {
         if ([chart.symbol isEqualToString:symbol]) {
             return chart;
@@ -1326,7 +1342,6 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     }
     return nil;
 }
-
 
 #pragma mark - Notification Handlers
 
@@ -1358,22 +1373,18 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
 
 #pragma mark - Chain Integration
 
-
 - (void)handleChainAction:(NSString *)action withData:(id)data fromWidget:(BaseWidget *)sender {
     if ([action isEqualToString:@"loadChartPattern"]) {
         [self loadChartPatternFromChainData:data fromWidget:sender];
     } else if ([action isEqualToString:@"loadScreenerData"]) {
-        // ✅ NUOVO: Gestisce dati screener con historicalBars già caricati
         [self loadScreenerDataFromChainData:data fromWidget:sender];
     } else {
         [super handleChainAction:action withData:data fromWidget:sender];
     }
 }
 
--  (void)loadScreenerDataFromChainData:(NSDictionary *)data fromWidget:(BaseWidget *)sender {
-    // 1️⃣ VALIDAZIONE DATI
+- (void)loadScreenerDataFromChainData:(NSDictionary *)data fromWidget:(BaseWidget *)sender {
     if (!data || ![data isKindOfClass:[NSDictionary class]]) {
-        NSLog(@"❌ MultiChartWidget: Invalid screener data received from %@", NSStringFromClass([sender class]));
         return;
     }
     
@@ -1382,28 +1393,19 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     NSNumber *timeframeNum = data[@"timeframe"];
     NSString *source = data[@"source"] ?: @"Unknown";
     
-    // Validazione campi essenziali
     if (!symbol || !historicalBars || historicalBars.count == 0) {
-        NSLog(@"❌ MultiChartWidget: Missing essential screener data - symbol:%@ bars:%lu",
-              symbol, (unsigned long)historicalBars.count);
         [self showTemporaryMessageForCollectionView:@"❌ Missing screener data"];
         return;
     }
     
     BarTimeframe timeframe = timeframeNum ? [timeframeNum integerValue] : BarTimeframeDaily;
     
-    NSLog(@"📊 MultiChartWidget: Loading screener data for %@ (%lu bars) from model: %@",
-          symbol, (unsigned long)historicalBars.count, source);
-    
-    // ✅ AGGIUNGI IL SIMBOLO AL TEXTFIELD (separato da virgola)
     dispatch_async(dispatch_get_main_queue(), ^{
         NSString *currentText = self.symbolsTextField.stringValue;
         
         if (!currentText || currentText.length == 0) {
-            // TextField vuoto: aggiungi solo il simbolo
             self.symbolsTextField.stringValue = symbol;
         } else {
-            // TextField ha già simboli: aggiungi con virgola
             NSArray *existingSymbols = [currentText componentsSeparatedByString:@","];
             NSMutableArray *trimmedSymbols = [NSMutableArray array];
             
@@ -1414,7 +1416,6 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
                 }
             }
             
-            // Aggiungi solo se non è già presente
             if (![trimmedSymbols containsObject:symbol]) {
                 [trimmedSymbols addObject:symbol];
                 self.symbolsTextField.stringValue = [trimmedSymbols componentsJoinedByString:@", "];
@@ -1422,53 +1423,37 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
         }
     });
     
-    // 2️⃣ CREA MINICHART CON DATI STATICI
     MiniChart *miniChart = [[MiniChart alloc] initWithFrame:CGRectMake(0, 0, self.itemWidth, self.itemHeight)];
-    
-    // ✅ SIMBOLO NEL CAMPO PRINCIPALE (solo il ticker)
     miniChart.symbol = symbol;
     
-    // ✅ NOME DEL MODELLO NEL DESCRIPTION LABEL
     if (miniChart.descriptionLabel) {
         miniChart.descriptionLabel.stringValue = source;
         miniChart.descriptionLabel.hidden = NO;
     }
     
-    // Configura il MiniChart
     miniChart.chartType = self.chartType;
     miniChart.timeframe = [self convertFromBarTimeframe:timeframe];
     miniChart.scaleType = self.scaleType;
     miniChart.showVolume = self.showVolume;
     
-    // 3️⃣ CARICA DATI STATICI (già pronti, non serve fetch)
     [miniChart updateWithHistoricalBars:historicalBars];
-    
-    // 4️⃣ AGGIUNGI ALLA COLLEZIONE
     [self.miniCharts addObject:miniChart];
     
-    // 5️⃣ AGGIORNA UI
     dispatch_async(dispatch_get_main_queue(), ^{
         [self.collectionView reloadData];
         
-        // Scroll all'ultimo item aggiunto
         NSInteger lastIndex = self.miniCharts.count - 1;
         NSIndexPath *lastIndexPath = [NSIndexPath indexPathForItem:lastIndex inSection:0];
         [self.collectionView scrollToItemsAtIndexPaths:@[lastIndexPath]
                                         scrollPosition:NSCollectionViewScrollPositionBottom];
         
-        // ✅ FEEDBACK CON SIMBOLO E MODELLO SEPARATI
         NSString *feedbackMessage = [NSString stringWithFormat:@"📊 Added %@ from %@", symbol, source];
         [self showTemporaryMessageForCollectionView:feedbackMessage];
-        
-        NSLog(@"✅ MultiChartWidget: Added chart for %@ (Model: %@)", symbol, source);
     });
 }
 
-
 - (void)loadChartPatternFromChainData:(NSDictionary *)data fromWidget:(BaseWidget *)sender {
-    // 1️⃣ VALIDAZIONE DATI
     if (!data || ![data isKindOfClass:[NSDictionary class]]) {
-        NSLog(@"❌ MultiChartWidget: Invalid pattern data received from %@", NSStringFromClass([sender class]));
         return;
     }
     
@@ -1480,26 +1465,21 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     NSString *patternType = data[@"patternType"];
     
     if (!patternID || !savedDataReference || !symbol) {
-        NSLog(@"❌ MultiChartWidget: Missing essential pattern data");
         return;
     }
     
-    // 2️⃣ CARICA SAVEDCHARTDATA
     NSString *directory = [CommonTypes savedChartDataDirectory];
     NSString *filename = [NSString stringWithFormat:@"%@.chartdata", savedDataReference];
     NSString *filePath = [directory stringByAppendingPathComponent:filename];
     
     SavedChartData *savedData = [SavedChartData loadFromFile:filePath];
     if (!savedData || !savedData.isDataValid) {
-        NSLog(@"❌ MultiChartWidget: Failed to load SavedChartData for pattern %@", patternID);
         [self showTemporaryMessageForCollectionView:@"❌ Failed to load pattern data"];
         return;
     }
     
-    // 3️⃣ CREA MINICHART CON DATI STATICI
     MiniChart *miniChart = [[MiniChart alloc] initWithFrame:CGRectMake(0, 0, self.itemWidth, self.itemHeight)];
     
-    // ✅ DENOMINAZIONE: "PatternType Symbol" o "Saved Symbol"
     NSString *displayName;
     if (patternType && patternType.length > 0) {
         displayName = [NSString stringWithFormat:@"%@ %@", patternType, symbol];
@@ -1507,17 +1487,14 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
         displayName = [NSString stringWithFormat:@"Saved %@", symbol];
     }
     
-    // Configura il MiniChart
-    miniChart.symbol = displayName;  // ✅ Usa display name invece del simbolo originale
+    miniChart.symbol = displayName;
     miniChart.chartType = self.chartType;
     miniChart.timeframe = [self convertFromBarTimeframe:savedData.timeframe];
     miniChart.scaleType = self.scaleType;
     miniChart.showVolume = self.showVolume;
     
-    // 4️⃣ CARICA DATI STATICI
     NSArray<HistoricalBarModel *> *barsToShow = savedData.historicalBars;
     
-    // Se ci sono date pattern specifiche, estrai solo quel range
     if (patternStartDate && patternEndDate && barsToShow.count > 0) {
         NSInteger startIndex = NSNotFound;
         NSInteger endIndex = NSNotFound;
@@ -1533,42 +1510,31 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
         }
         
         if (startIndex != NSNotFound && endIndex != NSNotFound && startIndex <= endIndex) {
-            NSInteger padding = MAX(1, (endIndex - startIndex + 1) / 10); // 10% padding
+            NSInteger padding = MAX(1, (endIndex - startIndex + 1) / 10);
             NSInteger paddedStart = MAX(0, startIndex - padding);
             NSInteger paddedEnd = MIN(barsToShow.count - 1, endIndex + padding);
             
             NSRange range = NSMakeRange(paddedStart, paddedEnd - paddedStart + 1);
             barsToShow = [barsToShow subarrayWithRange:range];
-            
-            NSLog(@"📊 MultiChartWidget: Using pattern range [%ld-%ld] with padding", (long)startIndex, (long)endIndex);
         }
     }
     
-    // Carica i dati nel MiniChart
     [miniChart updateWithHistoricalBars:barsToShow];
-    
-    // 5️⃣ AGGIUNGI ALLA COLLEZIONE
     [self.miniCharts addObject:miniChart];
     
-    // Aggiorna la UI
     dispatch_async(dispatch_get_main_queue(), ^{
         [self.collectionView reloadData];
         
-        // Scroll all'ultimo item aggiunto
         NSInteger lastIndex = self.miniCharts.count - 1;
         NSIndexPath *lastIndexPath = [NSIndexPath indexPathForItem:lastIndex inSection:0];
         [self.collectionView scrollToItemsAtIndexPaths:@[lastIndexPath]
                                         scrollPosition:NSCollectionViewScrollPositionBottom];
         
-        // Feedback all'utente
         NSString *feedbackMessage = [NSString stringWithFormat:@"📊 Added %@", displayName];
         [self showTemporaryMessageForCollectionView:feedbackMessage];
-        
-        NSLog(@"✅ MultiChartWidget: Added pattern chart '%@' from %@", displayName, NSStringFromClass([sender class]));
     });
 }
 
-// ✅ HELPER METHOD: Converte da BarTimeframe a MiniBarTimeframe
 - (MiniBarTimeframe)convertFromBarTimeframe:(BarTimeframe)timeframe {
     switch (timeframe) {
         case BarTimeframe1Min:
@@ -1594,31 +1560,22 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     }
 }
 
-
 - (void)handleSymbolsFromChain:(NSArray<NSString *> *)symbols fromWidget:(BaseWidget *)sender {
-    NSLog(@"MultiChartWidget: Received %lu symbols from chain", (unsigned long)symbols.count);
-    
-    
-    // ✅ ENHANCED: Check for actual changes
     if ([symbols isEqualToArray:self.symbols]) {
-        NSLog(@"MultiChartWidget: No new symbols to add, current list unchanged");
         return;
     }
     [self.miniCharts removeAllObjects];
     
     self.symbols = symbols;
     
-    // Aggiorna il campo di testo
     self.symbolsString = [symbols componentsJoinedByString:@", "];
     if (self.symbolsTextField) {
         self.symbolsTextField.stringValue = self.symbolsString;
     }
     
-    // Ricostruisci i mini chart
     [self rebuildMiniCharts];
     [self loadDataFromDataHub];
     
-    // ✅ NUOVO: Usa metodo BaseWidget standard per feedback
     NSString *senderType = NSStringFromClass([sender class]);
     NSString *message = symbols.count == 1 ?
         [NSString stringWithFormat:@"📊 Added %@ from %@", symbols[0], senderType] :
@@ -1627,13 +1584,11 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     [self showChainFeedback:message];
 }
 
-#pragma mark - Enhanced BaseWidget State Management
+#pragma mark - Settings Management
 
-// Override del metodo BaseWidget per includere le impostazioni UI
 - (NSDictionary *)serializeState {
     NSMutableDictionary *state = [[super serializeState] mutableCopy];
 
-    // Includi le impostazioni UI nello stato del widget
     state[@"chartType"] = @(self.chartType);
     state[@"timeframe"] = @(self.timeframe);
     state[@"scaleType"] = @(self.scaleType);
@@ -1643,7 +1598,6 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     state[@"itemHeight"] = @(self.itemHeight);
     state[@"autoRefreshEnabled"] = @(self.autoRefreshEnabled);
 
-    // Save symbols string
     if (self.symbolsString) {
         state[@"symbolsString"] = self.symbolsString;
     }
@@ -1651,11 +1605,9 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
     return state;
 }
 
-// Override del metodo BaseWidget per ripristinare le impostazioni UI
 - (void)restoreState:(NSDictionary *)state {
     [super restoreState:state];
     
-    // Ripristina le impostazioni UI dallo stato salvato
     if (state[@"chartType"]) {
         self.chartType = [state[@"chartType"] integerValue];
     }
@@ -1688,32 +1640,17 @@ static NSString *const kMultiChartIncludeAfterHoursKey = @"MultiChart_IncludeAft
         self.autoRefreshEnabled = [state[@"autoRefreshEnabled"] boolValue];
     }
 
-    // Restore symbols string
     if (state[@"symbolsString"]) {
         self.symbolsString = state[@"symbolsString"];
-        // Also update the text field
         if (self.symbolsTextField) {
             self.symbolsTextField.stringValue = self.symbolsString;
         }
     }
 
-    // Aggiorna l'UI dopo il ripristino
     [self updateUIFromSettings];
-    
-    // Ricostruisci i chart con le nuove impostazioni
     [self rebuildMiniCharts];
-    
-    NSLog(@"MultiChartWidget: Restored state from layout");
 }
 
-//
-// MultiChartWidget Settings Persistence
-// Aggiungi questo codice al MultiChartWidget.m
-//
-
-#pragma mark - Settings Persistence Keys
-
-// Keys per NSUserDefaults - prefisso per evitare conflitti
 static NSString *const kMultiChartChartTypeKey = @"MultiChart_ChartType";
 static NSString *const kMultiBarTimeframeKey = @"MultiChart_Timeframe";
 static NSString *const kMultiChartScaleTypeKey = @"MultiChart_ScaleType";
@@ -1722,134 +1659,105 @@ static NSString *const kMultiChartShowVolumeKey = @"MultiChart_ShowVolume";
 static NSString *const kMultiChartColumnsCountKey = @"MultiChart_ColumnsCount";
 static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
 
-#pragma mark - Settings Management
-
 - (void)loadSettingsFromUserDefaults {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     
-    // Carica le impostazioni salvate o usa i default
     NSInteger savedChartType = [defaults integerForKey:kMultiChartChartTypeKey];
     NSInteger savedTimeframe = [defaults integerForKey:kMultiBarTimeframeKey];
     NSInteger savedScaleType = [defaults integerForKey:kMultiChartScaleTypeKey];
     BOOL savedShowVolume = [defaults boolForKey:kMultiChartShowVolumeKey];
 
     NSInteger savedItemWidth = [defaults integerForKey:kMultiChartItemWidthKey];
-     NSInteger savedItemHeight = [defaults integerForKey:kMultiChartItemHeightKey];
+    NSInteger savedItemHeight = [defaults integerForKey:kMultiChartItemHeightKey];
     
-    
-    // Applica le impostazioni caricate con validazione
-    
-    // Chart Type (default: Line se non salvato)
     if (savedChartType >= MiniChartTypeLine && savedChartType <= MiniChartTypeCandle) {
         self.chartType = (MiniChartType)savedChartType;
     } else {
-        self.chartType = MiniChartTypeLine; // Default
+        self.chartType = MiniChartTypeLine;
     }
     
-    // Timeframe (default: Daily se non salvato)
     if (savedTimeframe) {
         self.timeframe = (MiniBarTimeframe)savedTimeframe;
     } else {
-        self.timeframe = MiniBarTimeframeDaily; // Default
+        self.timeframe = MiniBarTimeframeDaily;
     }
     
-    // Scale Type (default: Linear se non salvato)
     if (savedScaleType >= MiniChartScaleLinear && savedScaleType <= MiniChartScaleLog) {
         self.scaleType = (MiniChartScaleType)savedScaleType;
     } else {
-        self.scaleType = MiniChartScaleLinear; // Default
+        self.scaleType = MiniChartScaleLinear;
     }
+    
     self.afterHoursSwitch.state = [defaults boolForKey:kMultiChartIncludeAfterHoursKey];
 
     if ([defaults objectForKey:kMultiChartAutoRefreshEnabledKey] == nil) {
-           self.autoRefreshEnabled = NO;  // Default disabilitato
-       } else {
-           self.autoRefreshEnabled = [defaults boolForKey:kMultiChartAutoRefreshEnabledKey];
-       }
-       
+        self.autoRefreshEnabled = NO;
+    } else {
+        self.autoRefreshEnabled = [defaults boolForKey:kMultiChartAutoRefreshEnabledKey];
+    }
     
-    // Show Volume (default: YES se non salvato)
-    // boolForKey ritorna NO se la key non esiste, quindi controlliamo se la key esiste
     if ([defaults objectForKey:kMultiChartShowVolumeKey] != nil) {
         self.showVolume = savedShowVolume;
     } else {
-        self.showVolume = YES; // Default
+        self.showVolume = YES;
     }
     
-    // Applica con validazione
-      if (savedItemWidth >= 100 ) {
-          self.itemWidth = savedItemWidth;
-      } else {
-          self.itemWidth = 200; // Default
-      }
-      
-      if (savedItemHeight >= 80 ) {
-          self.itemHeight = savedItemHeight;
-      } else {
-          self.itemHeight = 150; // Default
-      }
-  
-        self.symbolsString = @"";
-        self.symbols = @[];
+    if (savedItemWidth >= 100) {
+        self.itemWidth = savedItemWidth;
+    } else {
+        self.itemWidth = 200;
+    }
     
-    
-   
+    if (savedItemHeight >= 80) {
+        self.itemHeight = savedItemHeight;
+    } else {
+        self.itemHeight = 150;
+    }
+
+    self.symbolsString = @"";
+    self.symbols = @[];
 }
 
 - (void)saveSettingsToUserDefaults {
     NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
     
-    // Salva tutte le impostazioni correnti
     [defaults setInteger:self.chartType forKey:kMultiChartChartTypeKey];
     [defaults setInteger:self.timeframe forKey:kMultiBarTimeframeKey];
     [defaults setInteger:self.scaleType forKey:kMultiChartScaleTypeKey];
     [defaults setBool:self.showVolume forKey:kMultiChartShowVolumeKey];
     [defaults setInteger:self.itemWidth forKey:kMultiChartItemWidthKey];
-       [defaults setInteger:self.itemHeight forKey:kMultiChartItemHeightKey];
+    [defaults setInteger:self.itemHeight forKey:kMultiChartItemHeightKey];
     [defaults setBool:self.autoRefreshEnabled forKey:kMultiChartAutoRefreshEnabledKey];
     [defaults setBool:self.afterHoursSwitch.state forKey:kMultiChartIncludeAfterHoursKey];
 
-    // Forza la sincronizzazione immediata
     [defaults synchronize];
-    
-  
 }
 
 - (void)updateUIFromSettings {
-    // Aggiorna i controlli UI per riflettere le impostazioni caricate
-
-    // Chart Type Popup
     if (self.chartTypePopup && self.chartType < self.chartTypePopup.numberOfItems) {
         [self.chartTypePopup selectItemAtIndex:self.chartType];
     }
 
-    // Timeframe Segmented
     if (self.timeframeSegmented && self.timeframe < self.timeframeSegmented.segmentCount) {
         self.timeframeSegmented.selectedSegment = self.timeframe;
     }
 
-   
-
-    // Scale Type Popup
     if (self.scaleTypePopup && self.scaleType < self.scaleTypePopup.numberOfItems) {
         [self.scaleTypePopup selectItemAtIndex:self.scaleType];
     }
 
-    // Volume Checkbox
     if (self.volumeCheckbox) {
         self.volumeCheckbox.state = self.showVolume ? NSControlStateValueOn : NSControlStateValueOff;
     }
 
-    // Time Range Segmented Control
     if (self.timeRangeSegmented && self.timeRange < self.timeRangeSegmented.segmentCount) {
         self.timeRangeSegmented.selectedSegment = self.timeRange;
     }
 
-    // Auto Refresh Toggle
     if (self.autoRefreshToggle) {
         self.autoRefreshToggle.state = self.autoRefreshEnabled ? NSControlStateValueOn : NSControlStateValueOff;
     }
-    // Item Width/Height Fields
+
     if (self.itemWidthField) {
         self.itemWidthField.integerValue = self.itemWidth;
     }
@@ -1857,101 +1765,62 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         self.itemHeightField.integerValue = self.itemHeight;
     }
 
-    // Symbols TextField (already updated in restoreState, but ensure it's set)
     if (self.symbolsTextField && self.symbolsString) {
         self.symbolsTextField.stringValue = self.symbolsString;
     }
-
-    NSLog(@"📋 MultiChartWidget: Updated UI from settings (chartType=%ld, timeframe=%ld, timeRange=%ld, autoRefresh=%d)",
-          (long)self.chartType, (long)self.timeframe, (long)self.timeRange, self.autoRefreshEnabled);
 }
-
-#pragma mark - Enhanced Action Methods with Auto-Save
-
-// Override dei metodi action esistenti per aggiungere auto-save
 
 - (void)chartTypeChangedWithAutoSave:(id)sender {
-    // Chiama il metodo originale
     [self chartTypeChanged:sender];
-    
-    // Salva automaticamente
     [self saveSettingsToUserDefaults];
 }
-
-
 
 - (void)scaleTypeChangedWithAutoSave:(id)sender {
-    // Chiama il metodo originale
     [self scaleTypeChanged:sender];
-    
-    // Salva automaticamente
     [self saveSettingsToUserDefaults];
 }
-
-
 
 - (void)volumeCheckboxChangedWithAutoSave:(id)sender {
-    // Chiama il metodo originale
     [self volumeCheckboxChanged:sender];
-    
-    // Salva automaticamente
     [self saveSettingsToUserDefaults];
 }
-
-
 
 - (void)symbolsChangedWithAutoSave:(id)sender {
-    // Chiama il metodo originale
     [self symbolsChanged:sender];
-    
-    // Salva automaticamente
     [self saveSettingsToUserDefaults];
 }
 
-
-#pragma mark - Lifecycle Integration
-
-// Metodo da chiamare in setupContentView DOPO aver creato i controlli UI
 - (void)initializeSettingsSystem {
-    // Carica le impostazioni salvate
     [self loadSettingsFromUserDefaults];
-    
-    // Aggiorna l'UI per riflettere le impostazioni
     [self updateUIFromSettings];
-    
-    // Collega gli action methods enhanced con auto-save
     [self setupAutoSaveActionMethods];
-    
-    NSLog(@"MultiChartWidget: Settings system initialized");
 }
 
 - (void)setupAutoSaveActionMethods {
-    // Ricollega i controlli UI ai metodi enhanced con auto-save
-    
     if (self.chartTypePopup) {
         self.chartTypePopup.target = self;
         self.chartTypePopup.action = @selector(chartTypeChangedWithAutoSave:);
     }
     
     if (self.timeframeSegmented) {
-          self.timeframeSegmented.target = self;
-          self.timeframeSegmented.action = @selector(timeframeChanged:);
-      }
+        self.timeframeSegmented.target = self;
+        self.timeframeSegmented.action = @selector(timeframeChanged:);
+    }
 
-      if (self.afterHoursSwitch) {
-          self.afterHoursSwitch.target = self;
-          self.afterHoursSwitch.action = @selector(afterHoursSwitchChanged:);
-      }
+    if (self.afterHoursSwitch) {
+        self.afterHoursSwitch.target = self;
+        self.afterHoursSwitch.action = @selector(afterHoursSwitchChanged:);
+    }
     
     if (self.scaleTypePopup) {
         self.scaleTypePopup.target = self;
         self.scaleTypePopup.action = @selector(scaleTypeChangedWithAutoSave:);
     }
+    
     if (self.autoRefreshToggle) {
-           self.autoRefreshToggle.target = self;
-           self.autoRefreshToggle.action = @selector(autoRefreshToggleChanged:);
-       }
-  
+        self.autoRefreshToggle.target = self;
+        self.autoRefreshToggle.action = @selector(autoRefreshToggleChanged:);
+    }
     
     if (self.volumeCheckbox) {
         self.volumeCheckbox.target = self;
@@ -1960,23 +1829,14 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     
     if (self.symbolsTextField) {
         self.symbolsTextField.target = self;
-        self.symbolsTextField.action = @selector(symbolsChanged:); // Senza auto-save
+        self.symbolsTextField.action = @selector(symbolsChanged:);
     }
-
-    
-    NSLog(@"MultiChartWidget: Auto-save action methods connected");
 }
 
-// Metodo da chiamare quando il widget viene deallocato
 - (void)saveSettingsOnExit {
     [self saveSettingsToUserDefaults];
-    NSLog(@"MultiChartWidget: Final settings save on exit");
 }
 
-
-#pragma mark - ✅ NUOVI ACTION METHODS
-
-// ✅ NUOVO: Reset simboli (pulisce solo textfield)
 - (void)resetSymbolsClicked:(id)sender {
     [self.miniCharts removeAllObjects];
     self.symbolsTextField.stringValue = @"";
@@ -1987,35 +1847,25 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     self.symbolsTextField.stringValue = @"";
 }
 
-
-
-// Modifica il metodo updateChartSelection: in MultiChartWidget.m
-
 - (void)updateChartSelection:(MiniChart *)selectedChart {
-    // Rimuovi selezione da tutti i chart
     for (MiniChart *chart in self.miniCharts) {
         if (chart.layer) {
             chart.layer.borderWidth = 0.0;
         }
     }
     
-    // Aggiungi selezione al chart cliccato
     if (selectedChart.layer) {
         selectedChart.layer.borderWidth = 2.0;
         selectedChart.layer.borderColor = [NSColor controlAccentColor].CGColor;
     }
     
-    // ✅ NUOVO: Invia simbolo alla chain se attiva
     if (self.chainActive && selectedChart.symbol) {
         [self broadcastUpdate:@{
             @"action": @"setSymbols",
             @"symbols": @[selectedChart.symbol]
         }];
-        
-        NSLog(@"🔗 MultiChartWidget: Selected chart '%@' sent to chain", selectedChart.symbol);
     }
     
-    // Scroll al chart selezionato
     NSInteger index = [self.miniCharts indexOfObject:selectedChart];
     if (index != NSNotFound) {
         NSIndexPath *indexPath = [NSIndexPath indexPathForItem:index inSection:0];
@@ -2023,7 +1873,6 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
                                         scrollPosition:NSCollectionViewScrollPositionCenteredVertically];
     }
     
-    // Animazione UI esistente
     [NSAnimationContext runAnimationGroup:^(NSAnimationContext *context) {
         context.duration = 0.2;
         if (selectedChart.layer) {
@@ -2041,47 +1890,31 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     }];
 }
 
-#pragma mark - Enhanced Action Methods with Auto-Save (AGGIUNGI)
-
-// ✅ NUOVO: Action method per toggle autorefresh
 - (void)autoRefreshToggleChanged:(id)sender {
     self.autoRefreshEnabled = (self.autoRefreshToggle.state == NSControlStateValueOn);
     
-    NSLog(@"MultiChartWidget: AutoRefresh toggled to %@", self.autoRefreshEnabled ? @"ON" : @"OFF");
-    
-    // Salva automaticamente
     [self saveSettingsToUserDefaults];
     
-    // ✅ GESTIONE OBSERVER: Aggiungi/rimuovi observer in base allo stato
     if (self.autoRefreshEnabled) {
         [self registerForNotifications];
-        NSLog(@"MultiChartWidget: AutoRefresh enabled - observer registered");
     } else {
         [self unregisterFromNotifications];
-        NSLog(@"MultiChartWidget: AutoRefresh disabled - observer removed");
     }
 }
 
 - (void)unregisterFromNotifications {
     NSNotificationCenter *nc = [NSNotificationCenter defaultCenter];
     
-    // Rimuovi solo gli observer per auto-refresh
     [nc removeObserver:self name:@"DataHubQuoteUpdatedNotification" object:nil];
     [nc removeObserver:self name:@"DataHubHistoricalDataUpdatedNotification" object:nil];
-    
-    NSLog(@"📊 MultiChartWidget: Unregistered from auto-refresh notifications");
 }
 
-#pragma mark - ✅ FINVIZ SEARCH IMPLEMENTATION
+#pragma mark - Finviz Search
 
 - (void)performFinvizSearch:(NSString *)keyword {
-    NSLog(@"🔍 MultiChartWidget: Performing Finviz search for '%@'", keyword);
-    
-    // Show loading state in text field
     self.symbolsTextField.stringValue = [NSString stringWithFormat:@"Searching '%@'...", keyword];
     self.symbolsTextField.enabled = NO;
     
-    // Get OtherDataSource instance
     DownloadManager *downloadManager = [DownloadManager sharedManager];
     OtherDataSource *otherDataSource = (OtherDataSource *)[downloadManager dataSourceForType:DataSourceTypeOther];
     
@@ -2090,11 +1923,9 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         return;
     }
     
-    // Perform the search
     [otherDataSource fetchFinvizSearchResultsForKeyword:keyword
                                              completion:^(NSArray<NSString *> *symbols, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            // Restore text field
             self.symbolsTextField.enabled = YES;
             
             if (error) {
@@ -2107,68 +1938,42 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
                 return;
             }
             
-            // Success - update with found symbols
             [self applyFinvizSearchResults:symbols keyword:keyword];
         });
     }];
 }
 
 - (void)handleFinvizSearchError:(NSString *)errorMessage keyword:(NSString *)keyword {
-    NSLog(@"❌ MultiChartWidget Finviz search error: %@", errorMessage);
-    
-    // Restore original text field state
     self.symbolsTextField.stringValue = [NSString stringWithFormat:@"?%@", keyword];
     
-    // Show error in a non-intrusive way
     NSString *errorText = [NSString stringWithFormat:@"❌ %@", errorMessage];
     self.symbolsTextField.stringValue = errorText;
     
-    // Auto-clear error after 3 seconds
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         self.symbolsTextField.stringValue = @"";
     });
 }
 
 - (void)applyFinvizSearchResults:(NSArray<NSString *> *)symbols keyword:(NSString *)keyword {
-    NSLog(@"✅ MultiChartWidget: Finviz found %lu symbols for '%@': %@",
-          (unsigned long)symbols.count, keyword, [symbols componentsJoinedByString:@", "]);
-    
-    // Update symbols array and UI
     self.symbols = symbols;
     self.symbolsString = [symbols componentsJoinedByString:@", "];
     self.symbolsTextField.stringValue = self.symbolsString;
     
-    // Rebuild charts with new symbols
     [self rebuildMiniCharts];
     [self loadDataFromDataHub];
     
-    // Save settings
     [self saveSettingsToUserDefaults];
     
-    // Show temporary success feedback
-    NSString *successMessage = [NSString stringWithFormat:@"✅ Found %lu symbols for '%@'", (unsigned long)symbols.count, keyword];
-    
-    // Use temporary message if available, otherwise log
-    if ([self respondsToSelector:@selector(showTemporaryMessage:)]) {
-        [self performSelector:@selector(showTemporaryMessage:) withObject:successMessage];
-    } else {
-        NSLog(@"📊 %@", successMessage);
-    }
-    
-    // Broadcast to chain if active
     if (self.chainActive) {
         [self broadcastSymbolToChain:symbols];
     }
 }
-
-#pragma mark - ✅ UTILITY METHODS
 
 - (NSArray<NSString *> *)parseSymbolsFromInput:(NSString *)input {
     if (!input || input.length == 0) {
         return @[];
     }
     
-    // Split by comma and clean up
     NSArray<NSString *> *components = [input componentsSeparatedByString:@","];
     NSMutableArray<NSString *> *symbols = [NSMutableArray array];
     
@@ -2183,19 +1988,15 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
 }
 
 - (void)broadcastSymbolToChain:(NSArray<NSString *> *)symbols {
-    // Send symbols to chain if active
     [self broadcastUpdate:@{
         @"action": @"setSymbols",
         @"symbols": symbols
     }];
-    
-    NSLog(@"🔗 MultiChartWidget: Finviz results sent to chain: %@", [symbols componentsJoinedByString:@", "]);
 }
 
 #pragma mark - Image Export
 
 - (void)createMultiChartImageInteractive {
-    // Check if there are charts to export
     if (self.miniCharts.count == 0) {
         NSAlert *alert = [[NSAlert alloc] init];
         alert.messageText = @"No Charts to Export";
@@ -2205,11 +2006,9 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         return;
     }
     
-    // Create image with completion
     [self createMultiChartImage:^(BOOL success, NSString *filePath, NSError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (success && filePath) {
-                // Show success alert
                 NSAlert *alert = [[NSAlert alloc] init];
                 alert.messageText = @"Multi-Chart Image Saved";
                 alert.informativeText = [NSString stringWithFormat:@"Image saved to:\n%@", filePath.lastPathComponent];
@@ -2218,12 +2017,10 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
                 
                 NSModalResponse response = [alert runModal];
                 if (response == NSAlertFirstButtonReturn) {
-                    // Open Finder and select the file
                     [[NSWorkspace sharedWorkspace] selectFile:filePath
                                      inFileViewerRootedAtPath:filePath.stringByDeletingLastPathComponent];
                 }
             } else {
-                // Show error alert
                 NSAlert *alert = [[NSAlert alloc] init];
                 alert.messageText = @"Export Failed";
                 alert.informativeText = error.localizedDescription ?: @"Failed to create multi-chart image";
@@ -2236,7 +2033,6 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
 
 - (void)createMultiChartImage:(void(^)(BOOL success, NSString * _Nullable filePath, NSError * _Nullable error))completion {
     @try {
-        // Calculate grid layout
         NSInteger chartsCount = self.miniCharts.count;
         if (chartsCount == 0) {
             NSError *error = [NSError errorWithDomain:@"MultiChartImageExport" code:1001
@@ -2245,82 +2041,66 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
             return;
         }
         
-        // Get item size from actual mini charts or widget properties
         CGSize itemSize;
         if (self.miniCharts.count > 0 && self.miniCharts.firstObject.bounds.size.width > 0) {
-            // Use actual size from first chart
             itemSize = self.miniCharts.firstObject.bounds.size;
         } else {
-            // Fallback to configured size
             itemSize = CGSizeMake(self.itemWidth, self.itemHeight);
         }
 
-        // Calculate columns based on collection view width
         CGFloat collectionWidth = self.collectionView.bounds.size.width;
         NSInteger columns = MAX(1, (NSInteger)(collectionWidth / itemSize.width));
         NSInteger rows = (chartsCount + columns - 1) / columns;
         
-        // Add padding between charts
         CGFloat padding = 10;
         CGFloat totalWidth = (itemSize.width * columns) + (padding * (columns - 1));
         CGFloat totalHeight = (itemSize.height * rows) + (padding * (rows - 1));
         
-        // Create combined image
         NSSize imageSize = NSMakeSize(totalWidth, totalHeight);
         NSImage *combinedImage = [[NSImage alloc] initWithSize:imageSize];
         
         [combinedImage lockFocus];
         
-        // Fill background
         [[NSColor controlBackgroundColor] setFill];
         [[NSBezierPath bezierPathWithRect:NSMakeRect(0, 0, imageSize.width, imageSize.height)] fill];
         
-        // Draw each mini chart
         for (NSInteger i = 0; i < chartsCount; i++) {
             MiniChart *miniChart = self.miniCharts[i];
             
-            // Calculate position in grid
             NSInteger row = i / columns;
             NSInteger col = i % columns;
             
             CGFloat x = col * (itemSize.width + padding);
             CGFloat y = imageSize.height - ((row + 1) * itemSize.height) - (row * padding);
             
-            // Create chart image
             NSImage *chartImage = [self renderMiniChartToImage:miniChart withSize:itemSize];
             if (chartImage) {
-                // Draw chart image at position
                 [chartImage drawInRect:NSMakeRect(x, y, itemSize.width, itemSize.height)
                               fromRect:NSZeroRect
                              operation:NSCompositingOperationSourceOver
                               fraction:1.0];
                 
-                // Add symbol label at top
                 [self drawSymbolLabel:miniChart.symbol
                               inRect:NSMakeRect(x, y + itemSize.height - 25, itemSize.width, 25)];
             }
         }
         
-        // Add timestamp and title at bottom
         [self drawFooterInRect:NSMakeRect(0, 0, imageSize.width, 30) chartsCount:chartsCount];
         
         [combinedImage unlockFocus];
         
-        // Ensure directory exists
         NSError *dirError = nil;
         if (!EnsureChartImagesDirectoryExists(&dirError)) {
             if (completion) completion(NO, nil, dirError);
             return;
         }
         
-        // Generate filename with timestamp
         NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
         formatter.dateFormat = @"yyyyMMdd_HHmmss";
         NSString *timestamp = [formatter stringFromDate:[NSDate date]];
         NSString *filename = [NSString stringWithFormat:@"MultiChart_%@_%ld_symbols.png",
                               timestamp, (long)chartsCount];
         
-        // Save image
         NSString *imagesDirectory = ChartImagesDirectory();
         NSString *filePath = [imagesDirectory stringByAppendingPathComponent:filename];
         
@@ -2328,7 +2108,6 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         BOOL saveSuccess = [imageData writeToFile:filePath atomically:YES];
         
         if (saveSuccess) {
-            NSLog(@"✅ Multi-chart image saved: %@", filePath);
             if (completion) completion(YES, filePath, nil);
         } else {
             NSError *saveError = [NSError errorWithDomain:@"MultiChartImageExport" code:1003
@@ -2343,8 +2122,6 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     }
 }
 
-#pragma mark - Rendering Helpers
-
 - (NSImage *)renderMiniChartToImage:(MiniChart *)miniChart withSize:(NSSize)size {
     if (!miniChart || size.width == 0 || size.height == 0) {
         return nil;
@@ -2353,21 +2130,16 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     NSImage *image = [[NSImage alloc] initWithSize:size];
     [image lockFocus];
     
-    // Fill chart background
     [[NSColor windowBackgroundColor] setFill];
     [[NSBezierPath bezierPathWithRect:NSMakeRect(0, 0, size.width, size.height)] fill];
     
-    // Force the mini chart to draw its content
     if (miniChart.priceData && miniChart.priceData.count > 0) {
-        // Trigger a redraw to the current graphics context
         [miniChart setNeedsDisplay:YES];
         [miniChart displayIfNeeded];
         
-        // Draw the mini chart's view hierarchy
         NSBitmapImageRep *bitmapRep = [miniChart bitmapImageRepForCachingDisplayInRect:miniChart.bounds];
         [miniChart cacheDisplayInRect:miniChart.bounds toBitmapImageRep:bitmapRep];
         
-        // Draw the cached bitmap
         [bitmapRep drawInRect:NSMakeRect(0, 0, size.width, size.height)
                      fromRect:NSZeroRect
                     operation:NSCompositingOperationSourceOver
@@ -2387,11 +2159,9 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     CGContextRef ctx = context.CGContext;
     CGContextSaveGState(ctx);
     
-    // Apply layer transform and position
     CGContextTranslateCTM(ctx, layer.position.x - layer.bounds.size.width * layer.anchorPoint.x,
                           layer.position.y - layer.bounds.size.height * layer.anchorPoint.y);
     
-    // Draw layer contents
     if (layer.delegate && [layer.delegate respondsToSelector:@selector(drawLayer:inContext:)]) {
         [layer.delegate drawLayer:layer inContext:ctx];
     } else if (layer.backgroundColor) {
@@ -2399,7 +2169,6 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         CGContextFillRect(ctx, layer.bounds);
     }
     
-    // Render sublayers
     for (CALayer *sublayer in layer.sublayers) {
         [self renderLayer:sublayer inContext:context];
     }
@@ -2419,8 +2188,6 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         NSParagraphStyleAttributeName: style
     };
     
-   
-    // Draw text
     NSRect textRect = NSInsetRect(rect, 5, 2);
     [symbol drawInRect:textRect withAttributes:attributes];
 }
@@ -2429,12 +2196,10 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     NSMutableParagraphStyle *style = [[NSMutableParagraphStyle alloc] init];
     style.alignment = NSTextAlignmentCenter;
     
-    // Create timestamp
     NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
     formatter.dateFormat = @"yyyy-MM-dd HH:mm:ss";
     NSString *timestamp = [formatter stringFromDate:[NSDate date]];
     
-    // Create footer text
     NSString *footerText = [NSString stringWithFormat:@"Multi-Chart Export • %ld Symbols • %@ • %@",
                             (long)count, timestamp, self.timeframeString];
     
@@ -2444,7 +2209,6 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         NSParagraphStyleAttributeName: style
     };
     
-    // Draw footer
     NSRect textRect = NSInsetRect(rect, 10, 5);
     [footerText drawInRect:textRect withAttributes:attributes];
 }
@@ -2468,36 +2232,24 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     return [imageRep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
 }
 
-#pragma mark - Context Menu Setup
-
 - (void)setupImageExportContextMenu {
-    // Add right-click gesture recognizer to collection view
     NSClickGestureRecognizer *rightClickGesture = [[NSClickGestureRecognizer alloc]
                                                   initWithTarget:self
                                                   action:@selector(handleRightClick:)];
-    rightClickGesture.buttonMask = 0x2; // Right mouse button
+    rightClickGesture.buttonMask = 0x2;
     [self.collectionView addGestureRecognizer:rightClickGesture];
-    
-    NSLog(@"📸 MultiChartWidget: Image export context menu setup completed");
 }
 
 - (void)handleRightClick:(NSClickGestureRecognizer *)gesture {
     if (gesture.state == NSGestureRecognizerStateEnded) {
         NSPoint clickPoint = [gesture locationInView:self.collectionView];
-        
-        // Check if click is on a specific chart or empty area
-        NSIndexPath *indexPath = [self.collectionView indexPathForItemAtPoint:clickPoint];
-        
-       
-            [self showGeneralContextMenuAtPoint:clickPoint];
-      
+        [self showGeneralContextMenuAtPoint:clickPoint];
     }
 }
 
 - (void)showGeneralContextMenuAtPoint:(NSPoint)point {
     NSMenu *contextMenu = [[NSMenu alloc] initWithTitle:@"Multi-Chart Actions"];
     
-    // Create Image menu item
     NSMenuItem *createImageItem = [[NSMenuItem alloc] initWithTitle:@"📸 Create Multi-Chart Image"
                                                              action:@selector(contextMenuCreateImage:)
                                                       keyEquivalent:@""];
@@ -2507,7 +2259,6 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     
     [contextMenu addItem:[NSMenuItem separatorItem]];
     
-    // Refresh All
     NSMenuItem *refreshItem = [[NSMenuItem alloc] initWithTitle:@"🔄 Refresh All Charts"
                                                          action:@selector(refreshAllCharts)
                                                   keyEquivalent:@""];
@@ -2515,7 +2266,6 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     refreshItem.enabled = (self.miniCharts.count > 0);
     [contextMenu addItem:refreshItem];
     
-    // Clear All
     NSMenuItem *clearItem = [[NSMenuItem alloc] initWithTitle:@"🗑 Clear All Charts"
                                                        action:@selector(removeAllSymbols)
                                                 keyEquivalent:@""];
@@ -2523,45 +2273,33 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     clearItem.enabled = (self.miniCharts.count > 0);
     [contextMenu addItem:clearItem];
     
-    // Show menu
     [contextMenu popUpMenuPositioningItem:nil
                                atLocation:point
                                    inView:self.collectionView];
 }
 
-#pragma mark - Context Menu Actions
-
 - (IBAction)contextMenuCreateImage:(id)sender {
     [self createMultiChartImageInteractive];
 }
 
-#pragma mark - Control Actions
-
 - (void)referenceLinesCheckboxChanged:(id)sender {
     bool showReferenceLines = (self.referenceLinesCheckbox.state == NSControlStateValueOn);
     
-    // Update all charts
     for (MiniChart *chart in self.miniCharts) {
         chart.showReferenceLines = showReferenceLines;
         [chart setNeedsDisplay:YES];
     }
-    
 }
+
 #pragma mark - Date Range Calculation
 
-/**
- Calcola la data di inizio escludendo weekend per il range selezionato
- @return Data di inizio calcolata escludendo sabato e domenica
- */
 - (NSDate *)calculateStartDateForTimeRange {
     NSCalendar *calendar = [NSCalendar currentCalendar];
     NSDate *now = [NSDate date];
     
-    // Ottieni numero di giorni dal time range
     NSArray *calendarDays = @[@1, @3, @5, @30, @90, @180, @365, @1825];
     NSInteger totalDays = [calendarDays[self.timeRange] integerValue];
     
-    // ✅ SEMPRE esclude weekend, anche per intraday
     NSInteger businessDaysToAdd = 0;
     NSInteger totalBusinessDaysNeeded = totalDays;
     NSDate *startDate = now;
@@ -2571,13 +2309,11 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         
         NSInteger weekday = [calendar component:NSCalendarUnitWeekday fromDate:startDate];
         
-        // Escludi sabato (7) e domenica (1)
         if (weekday != 1 && weekday != 7) {
             businessDaysToAdd++;
         }
     }
     
-    // Aggiungi un piccolo buffer (5%) per sicurezza
     CGFloat rawBuffer = totalBusinessDaysNeeded * 0.05;
     NSInteger bufferDays = 0;
     if (rawBuffer >= 0.5) {
@@ -2587,25 +2323,16 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
         startDate = [calendar dateByAddingUnit:NSCalendarUnitDay value:-1 toDate:startDate options:0];
         NSInteger weekday = [calendar component:NSCalendarUnitWeekday fromDate:startDate];
         if (weekday == 1 || weekday == 7) {
-            i--; // Non contare weekend nel buffer
+            i--;
         }
     }
-    
-    NSLog(@"📅 Calculated start date: %@ for %ld business days (%@ timeframe)",
-          startDate, (long)totalDays, [self timeframeString]);
     
     return startDate;
 }
 
-/**
- Calcola la data di fine (domani per sicurezza)
- @return Data di domani
- */
 - (NSDate *)calculateEndDateForTimeRange {
     NSCalendar *calendar = [NSCalendar currentCalendar];
     NSDate *tomorrow = [calendar dateByAddingUnit:NSCalendarUnitDay value:1 toDate:[NSDate date] options:0];
-    
-    NSLog(@"📅 End date set to tomorrow: %@", tomorrow);
     
     return tomorrow;
 }

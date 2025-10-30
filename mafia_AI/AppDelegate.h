@@ -73,5 +73,38 @@
 
 - (IBAction)openPreferences:(id)sender;
 
+// ==========================================
+// FAVORITES SYSTEM - ADDITIONS TO AppDelegate.h
+// ==========================================
+// Add these declarations to AppDelegate.h interface
 
+#pragma mark - Favorites Management
+
+// Favorites notification name (add as extern in .m file)
+// extern NSString *const kFavoritesDidChangeNotification;
+
+/// Get all favorite symbols
+- (NSArray<NSString *> *)favoriteSymbols;
+
+/// Check if a symbol is in favorites
+- (BOOL)isSymbolFavorite:(NSString *)symbol;
+
+/// Add a symbol to favorites
+- (void)addSymbolToFavorites:(NSString *)symbol;
+
+/// Remove a symbol from favorites
+- (void)removeSymbolFromFavorites:(NSString *)symbol;
+
+/// Toggle favorite status for a symbol
+- (void)toggleFavoriteForSymbol:(NSString *)symbol;
+
+/// Remove all favorites (with confirmation)
+- (void)removeAllFavoritesWithConfirmation:(void (^)(BOOL confirmed))completion;
+
+/// Send all favorites to a specific chain color
+- (void)sendAllFavoritesToChainWithColor:(NSColor *)color;
+
+// ==========================================
+// END FAVORITES SYSTEM ADDITIONS
+// ==========================================
 @end

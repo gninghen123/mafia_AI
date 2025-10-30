@@ -2367,11 +2367,19 @@ extern NSString *const DataHubDataLoadedNotification;
         NSLog(@"⚠️ Cannot load empty symbol");
         return;
     }
+    NSString *cleanSymbol = [symbol uppercaseString];
     
+    // ✅ SET currentSymbol - this auto-updates favorite button!
+    self.currentSymbol = cleanSymbol;
     // ✅ USE HANDLER with force reload (public method should always reload)
     [self handleSymbolChange:symbol forceReload:YES];
     
     NSLog(@"✅ Advanced: Public loadSymbol completed via handler");
+}
+
+- (void)handleFavoriteSymbolSelection:(NSString *)symbol {
+    [self loadSymbol:symbol];
+    [self showChainFeedback:[NSString stringWithFormat:@"📊 Loaded %@ from favorites", symbol]];
 }
 
 - (void)setTimeframe:(BarTimeframe)timeframe {
@@ -2589,12 +2597,7 @@ extern NSString *const DataHubDataLoadedNotification;
 #pragma mark - Symbol Coordination (NEW)
 
 - (void)setCurrentSymbol:(NSString *)currentSymbol {
-    // Evita lavoro inutile se è lo stesso symbol
-    if ([currentSymbol isEqualToString:_currentSymbol]) {
-        return;
-    }
-    // Aggiorna il symbol
-    _currentSymbol = currentSymbol;
+    [super setCurrentSymbol:currentSymbol];
     
     // 1. Coordina ObjectsManager se esiste
     if (self.objectsManager) {

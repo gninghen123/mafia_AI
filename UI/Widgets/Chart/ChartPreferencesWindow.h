@@ -52,6 +52,8 @@ typedef NS_ENUM(NSInteger, ChartTradingHours) {
 - (IBAction)resetToDefaults:(id)sender;
 - (IBAction)afterHoursSwitchChanged:(id)sender;
 
+- (void)changeAHto:(BOOL)state;
+
 // Window management
 - (void)showPreferencesWindow;
 

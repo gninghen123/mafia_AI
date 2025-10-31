@@ -743,13 +743,12 @@ extern NSString *const DataHubDataLoadedNotification;
     self.visibleEndIndex = 0;
    
     [ChartPreferencesWindow loadDefaultPreferencesForChartWidget:self];
-
+   
 }
 
 
 - (void)viewDidAppear {
     [super viewDidAppear];
-    
     // ✅ Solo setup finale (pannelli già creati)
     [self setInitialDividerPosition];
     [self setupFrameChangeNotifications];
@@ -1736,6 +1735,11 @@ extern NSString *const DataHubDataLoadedNotification;
     self.preferencesWindowController = [[ChartPreferencesWindow alloc] initWithChartWidget:self];
     [self.preferencesWindowController showPreferencesWindow];
     NSLog(@"🛠️ Chart preferences window opened");
+}
+
+
+- (IBAction)afterhourschangeaction:(id)sender {
+    [self.preferencesWindowController changeAHto:[sender state]];
 }
 
 - (void)preferencesDidChange:(BOOL)needsDataReload {

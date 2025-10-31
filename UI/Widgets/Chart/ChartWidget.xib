@@ -7,6 +7,7 @@
     <objects>
         <customObject id="-2" userLabel="File's Owner" customClass="ChartWidget">
             <connections>
+                <outlet property="afterHoursCheckBox" destination="uEa-cp-fXz" id="GgQ-27-Rhw"/>
                 <outlet property="dateRangeSegmented" destination="rAc-lA-MOP" id="AGN-iO-7xq"/>
                 <outlet property="indicatorsVisibilityToggle" destination="Cn0-1E-CYv" id="e5s-3H-gfC"/>
                 <outlet property="mainSplitView" destination="65j-Ye-ijW" id="mKi-CT-x9A"/>
@@ -187,6 +188,16 @@
                         <outlet property="delegate" destination="-2" id="VAP-XU-rx5"/>
                     </connections>
                 </comboBox>
+                <button verticalHuggingPriority="750" misplaced="YES" translatesAutoresizingMaskIntoConstraints="NO" id="uEa-cp-fXz">
+                    <rect key="frame" x="1007" y="706" width="70" height="16"/>
+                    <buttonCell key="cell" type="check" title="AfterH" bezelStyle="regularSquare" imagePosition="left" state="on" inset="2" id="5rZ-se-XSt">
+                        <behavior key="behavior" changeContents="YES" doesNotDimImage="YES" lightByContents="YES"/>
+                        <font key="font" metaFont="system"/>
+                    </buttonCell>
+                    <connections>
+                        <binding destination="-2" name="value" keyPath="self.tradingHoursMode" id="VPP-sE-hm7"/>
+                    </connections>
+                </button>
             </subviews>
             <constraints>
                 <constraint firstItem="kUx-os-VYx" firstAttribute="top" secondItem="gkY-uZ-2Vt" secondAttribute="top" constant="13" id="1ZU-ev-AmW"/>
@@ -195,6 +206,7 @@
                 <constraint firstItem="AbQ-SP-niQ" firstAttribute="top" secondItem="gkY-uZ-2Vt" secondAttribute="top" constant="12" id="3zS-sI-tq1"/>
                 <constraint firstItem="Po4-5B-WCZ" firstAttribute="top" secondItem="gkY-uZ-2Vt" secondAttribute="top" constant="13" id="Bbf-d3-fSj"/>
                 <constraint firstAttribute="trailing" secondItem="KEi-gj-xBb" secondAttribute="trailing" constant="20" symbolic="YES" id="DoG-1m-jbJ"/>
+                <constraint firstItem="uEa-cp-fXz" firstAttribute="baseline" secondItem="rAc-lA-MOP" secondAttribute="baseline" id="ESE-oh-YpC"/>
                 <constraint firstItem="Po4-5B-WCZ" firstAttribute="top" secondItem="gkY-uZ-2Vt" secondAttribute="top" constant="13" id="HGS-64-cmJ"/>
                 <constraint firstItem="p4z-uD-F0P" firstAttribute="leading" secondItem="kUx-os-VYx" secondAttribute="trailing" constant="6" id="J3C-UW-aLX"/>
                 <constraint firstItem="6xA-al-JW4" firstAttribute="top" secondItem="gkY-uZ-2Vt" secondAttribute="top" constant="13" id="JET-dc-aJn"/>
@@ -216,6 +228,7 @@
                 <constraint firstAttribute="trailing" secondItem="api-E2-n6O" secondAttribute="trailing" constant="20" symbolic="YES" id="fna-nf-ncc"/>
                 <constraint firstItem="jQc-bl-0kG" firstAttribute="top" secondItem="gkY-uZ-2Vt" secondAttribute="top" constant="13" id="geT-rX-ysh"/>
                 <constraint firstItem="65j-Ye-ijW" firstAttribute="leading" secondItem="gkY-uZ-2Vt" secondAttribute="leading" id="lCX-nL-Pos"/>
+                <constraint firstItem="uEa-cp-fXz" firstAttribute="leading" secondItem="rAc-lA-MOP" secondAttribute="trailing" constant="8" symbolic="YES" id="n05-xc-Hdf"/>
                 <constraint firstAttribute="trailing" secondItem="api-E2-n6O" secondAttribute="trailing" constant="20" symbolic="YES" id="n1j-B9-dzr"/>
                 <constraint firstItem="jQc-bl-0kG" firstAttribute="leading" secondItem="p4z-uD-F0P" secondAttribute="trailing" constant="14" id="n4D-L0-TTV"/>
                 <constraint firstItem="Po4-5B-WCZ" firstAttribute="leading" secondItem="Cn0-1E-CYv" secondAttribute="trailing" constant="8" symbolic="YES" id="pFm-dI-Wd1"/>
@@ -228,6 +241,7 @@
             </constraints>
             <point key="canvasLocation" x="514" y="112"/>
         </customView>
+        <userDefaultsController representsSharedInstance="YES" id="Vwh-RU-ptk"/>
     </objects>
     <resources>
         <image name="NSAdvanced" width="32" height="32"/>

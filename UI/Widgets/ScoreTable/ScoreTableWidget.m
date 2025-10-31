@@ -347,14 +347,11 @@
 }
 
 - (IBAction)configureStrategy:(id)sender {
-    // TODO: Open configuration window
-    NSLog(@"⚙️ Configure strategy (not yet implemented)");
+    NSLog(@"⚙️ Opening strategy configuration...");
     
-    NSAlert *alert = [[NSAlert alloc] init];
-    alert.messageText = @"Configuration";
-    alert.informativeText = @"Strategy configuration UI will be implemented in the next phase.";
-    [alert addButtonWithTitle:@"OK"];
-    [alert runModal];
+    // Show configuration window with current strategy
+    self.configWindow = [StrategyConfigurationWindowController showConfigurationWithStrategy:self.currentStrategy
+                                                                                     delegate:self];
 }
 
 #pragma mark - Actions
@@ -479,4 +476,49 @@
         return [NSColor colorWithRed:0.8 green:0.0 blue:0.0 alpha:1.0];
     }
 }
+
+
+#pragma mark - StrategyConfigurationDelegate
+
+- (void)strategyConfigurationDidSaveStrategy:(ScoringStrategy *)strategy {
+    NSLog(@"💾 Strategy saved: %@", strategy.strategyName);
+    
+    // Reload strategies in selector
+    [self loadStrategies];
+    
+    // Update current strategy
+    self.currentStrategy = strategy;
+    [self.strategySelector selectItemWithTitle:strategy.strategyName];
+    
+    // Rebuild table columns with new indicators
+    [self setupTableColumns];
+    
+    // Recalculate if we have symbols
+    if (self.currentSymbols.count > 0) {
+        NSLog(@"🔄 Recalculating scores with new strategy...");
+        [self refreshScores:nil];
+    }
+}
+
+- (void)strategyConfigurationDidDeleteStrategy:(NSString *)strategyId {
+    NSLog(@"🗑️ Strategy deleted: %@", strategyId);
+    
+    // Reload strategies
+    [self loadStrategies];
+    
+    // If current strategy was deleted, select first available
+    NSArray<ScoringStrategy *> *strategies = [[StrategyManager sharedManager] allStrategies];
+    if (strategies.count > 0) {
+        self.currentStrategy = strategies.firstObject;
+        [self.strategySelector selectItemWithTitle:self.currentStrategy.strategyName];
+        [self setupTableColumns];
+    }
+}
+
+- (void)strategyConfigurationDidCancel {
+    NSLog(@"❌ Strategy configuration cancelled");
+    // Nothing to do - window was closed without saving
+}
+
+
 @end

@@ -8,10 +8,14 @@
 #import "BaseWidget.h"
 #import "ScoreTableWidget_Models.h"
 #import "StooqDataManager.h"
+#import "StrategyConfigurationWindowController.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface ScoreTableWidget : BaseWidget <NSTableViewDataSource, NSTableViewDelegate, NSTextViewDelegate>
+@interface ScoreTableWidget : BaseWidget <NSTableViewDataSource, NSTableViewDelegate, NSTextViewDelegate,StrategyConfigurationDelegate>
+
+
+@property (nonatomic, strong) StrategyConfigurationWindowController *configWindow;
 
 #pragma mark - UI Components
 

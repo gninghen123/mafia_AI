@@ -1860,6 +1860,7 @@ static NSString *const kMultiChartSymbolsKey = @"MultiChart_Symbols";
     }
     
     if (self.chainActive && selectedChart.symbol) {
+        self.currentSymbol = selectedChart.symbol;
         [self broadcastUpdate:@{
             @"action": @"setSymbols",
             @"symbols": @[selectedChart.symbol]

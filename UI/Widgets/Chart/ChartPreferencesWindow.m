@@ -414,6 +414,11 @@
     [self closeWindow];
 }
 
+- (void)changeAHto:(BOOL)state{
+    self.includeAfterHoursSwitch.state = state;
+    [self afterHoursSwitchChanged:self.includeAfterHoursSwitch];
+}
+
 - (IBAction)cancelPreferences:(id)sender {
     // Restore original values
     if (self.chartWidget) {

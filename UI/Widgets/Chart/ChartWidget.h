@@ -60,6 +60,7 @@ typedef struct {
 @property (nonatomic, strong) IBOutlet NSComboBox *symbolTextField;
 @property (nonatomic, strong) IBOutlet NSSegmentedControl *timeframeSegmented;
 @property (nonatomic, strong) IBOutlet NSButton *preferencesButton;
+@property (nonatomic, strong) IBOutlet NSButton *afterHoursCheckBox;
 @property (nonatomic, strong) IBOutlet NSSplitView *panelsSplitView;
 @property (nonatomic, strong) IBOutlet NSSlider *panSlider;
 @property (nonatomic, strong) IBOutlet NSButton *zoomOutButton;

@@ -114,6 +114,15 @@
 }
 
 - (BOOL)deleteStrategy:(NSString *)strategyId error:(NSError **)error {
+    // Prevent deleting the last strategy
+       if (self.strategies.count <= 1) {
+           if (error) {
+               *error = [NSError errorWithDomain:@"StrategyManager"
+                                            code:1003
+                                        userInfo:@{NSLocalizedDescriptionKey: @"Cannot delete the last strategy"}];
+           }
+           return NO;
+       }
     // Remove from memory
     NSInteger indexToRemove = -1;
     for (NSInteger i = 0; i < self.strategies.count; i++) {
